@@ -18,7 +18,7 @@ LLM agent 正在从单体 demo 走向多 agent 并发生产系统，它们面临
 
 **管什么：** 共享 LLM 资源的分配与调度——token 预算、API 速率限制、并发槽位。
 
-**核心机制：** Resource Governor（配额、限流、准入）+ Task Scheduler（优先级队列、语义存档抢占、zombie 检测与回收）。
+**核心机制：** Resource Governor（配额、限流、准入）+ Multi-Backend Scheduler（优先级队列、语义存档抢占、zombie 检测与回收）。
 
 **研究焦点：** Governor 的基线价值（配额 + 准入本身能改善多少？）、语义存档的可行性边界（有损抢占在什么条件下可行？）。
 
@@ -57,7 +57,7 @@ Agent 提交一个 Turn
 [Paper 1] Resource Governor: 预算够吗？速率限制允许吗？并发槽有空吗？
     │ 通过
     ▼
-[Paper 1] Task Scheduler: 排入优先级队列，等待调度
+[Paper 1] Multi-Backend Scheduler: 排入优先级队列，等待调度
     │ 调度到
     ▼
 执行每个 action 前：
@@ -103,7 +103,7 @@ P2 的恢复尝试、P3 的 LLM 意图分类，都消耗 token——都受 P1 �
 
 每篇论文的贡献不依赖其他论文的正面结果：
 
-**如果语义存档不可行（P1 的 RQ2 否定）：** P1 退化为 FIFO + 配额 + zombie 回收，仍有工程价值。P2 的检查点改用全量 context 保存，成本更高但仍可工作。P3 完全不受影响。
+**如果语义存档不可行（P1 的 RQ3 否定）：** P1 退化为 FIFO + 配额 + zombie 回收，仍有工程价值。P2 的检查点改用全量 context 保存，成本更高但仍可工作。P3 完全不受影响。
 
 **如果反射式恢复没有显著优势（P2 的 RQ2 否定）：** P2 给出"局部恢复在当前技术条件下对哪些任务类型无效"的量化结论，这本身有价值。P1 和 P3 完全不受影响。
 
