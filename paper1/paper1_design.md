@@ -80,9 +80,10 @@ Governor（Budget / Rate Limiter / Admission Control）不依赖语义存档，�
 agentos run --workload <path> --policy <policy> --out runs/<ts>/
 ```
 
-输出目录最少包含：
-- `events.jsonl`：**唯一真相**（所有分析都从这里算）；字段只加不改，改名/改语义会让历史 run 复算崩
-- `summary.json`：本次 run 的汇总指标（方便快速看结果）；同一份 workload + policy + 随机种子多次跑，`summary.json` 与从 `events.jsonl` 复算的指标必须一致
+输出目录最少包含两个文件：
+
+- **`events.jsonl`**（JSON Lines 格式：每行一条独立的 JSON 记录，便于流式追加和逐行解析）——它是整个实验的**唯一事实来源**，所有后续分析脚本都从这个文件重算指标。为了保证旧 run 的数据能被新版分析脚本正确重算，schema 只允许**新增字段**，不得重命名或改变已有字段的语义。
+- **`summary.json`**（标准 JSON，单个对象）——本次 run 的汇总指标快照，方便快速查看结果而无需重跑分析。正确性约束：对同一份 workload + policy + 随机种子，`summary.json` 中的指标必须与从 `events.jsonl` 复算得到的结果一致。
 
 ### 2.2 核心对比实验能跑通（RQ1/RQ2/RQ3/RQ4/RQ5）
 
