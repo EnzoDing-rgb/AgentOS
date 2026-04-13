@@ -54,7 +54,7 @@ paper1/
 ├── workloads/
 │   ├── rq1_mixed.json     # RQ1：混合 short/long，无 zombie
 │   ├── rq2_mixed.json     # RQ2：混合 interactive/batch，两个后端
-│   └── rq5_zombie.json    # RQ5：注入 20% zombie（卡死/烧钱）
+│   └── rq3_zombie.json    # RQ3：注入 20% zombie（卡死/烧钱）
 ├── backends/
 │   └── backends.yaml      # BackendProfile 手填配置
 └── runs/                  # 实验输出（gitignore 大文件，只提交 summary.json）
@@ -574,7 +574,7 @@ done
 
 ---
 
-## 7. RQ5 实验：Zombie 回收效果
+## 7. RQ3 实验（场景 C）：Zombie 回收效果
 
 ### 7.1 生成带 zombie 的 workload（20% 注入）
 
@@ -701,7 +701,7 @@ paper1/runs/
 | RQ1 完成率/429 率柱状图 | `rq1_raw/summary.json` vs `rq1_gov/summary.json` |
 | RQ1 TTFT CDF | 从 `events.jsonl` 中 `backend_call` 事件的 `ttft_ms` 字段算 |
 | RQ2 cost vs quality 散点图 | 四个 `rq2_*/summary.json` 的 `cost_total_usd` + `quality_mean` |
-| RQ5 吞吐/完成时间对比 | `rq5_no_reap/summary.json` vs `rq5_reap/summary.json` |
+| RQ3 吞吐/完成时间对比 | `rq3_no_reap/summary.json` vs `rq3_reap/summary.json` |
 
 ---
 
