@@ -21,7 +21,7 @@ python paper1/agentos-exp/runner.py \
 
 输出目录包含：
 - `events.jsonl` — 唯一真相（所有指标从这里算）
-- `summary.json` — 本次 run 汇总，字段与 `paper1_design.md §8.2` 对齐
+- `summary.json` — 本次 run 汇总，字段与 `paper1_design.md §3.2` 对齐
 - `config_snapshot/` — workload/policy/backends 配置的快照
 
 **主线实验默认用 MockDriver**（可控、可复现）；真实 vLLM 只做 sanity。
@@ -288,8 +288,7 @@ async def main():
     ap.add_argument("--workload",  required=True)
     ap.add_argument("--policy",    required=True,
                     choices=["raw","governor_only","baseline_A_fixed_expensive",
-                             "baseline_B_governor_single_model",
-                             "baseline_C_per_request_router","agentos"])
+                             "baseline_B_per_request_router","agentos"])
     ap.add_argument("--backends",  default="paper1/backends/backends.yaml")
     ap.add_argument("--seed",      type=int, default=42)
     ap.add_argument("--concurrency", type=int, default=50)  # raw 模式用
@@ -321,7 +320,7 @@ async def main():
         concurrency = args.max_inflight
     sem = asyncio.Semaphore(concurrency)
 
-    # 选 backend（简单策略：raw/governor_only/baseline_B 用第一个；其他暂同）
+    # 选 backend（简单策略：raw/governor_only/baseline_A 用第一个；其他暂同）
     default_backend_id = workload.get("default_backend", list(backends.keys())[0])
     driver = make_driver(default_backend_id, backends[default_backend_id])
 
@@ -357,10 +356,12 @@ backends:
     tpm_limit: 100000
     quality_prior:
       codegen: 0.92
-      reasoning: 0.90
+      code_edit: 0.90
+      debug: 0.88
+      test: 0.86
       retrieval: 0.85
-      format: 0.80
-      other: 0.82
+      transform: 0.95
+      docs: 0.84
 
   - backend_id: mock_cheap
     context_window: 32000
@@ -370,10 +371,12 @@ backends:
     tpm_limit: 200000
     quality_prior:
       codegen: 0.70
-      reasoning: 0.65
+      code_edit: 0.68
+      debug: 0.62
+      test: 0.65
       retrieval: 0.75
-      format: 0.80
-      other: 0.72
+      transform: 0.93
+      docs: 0.72
 
   - backend_id: real_vllm
     base_url: http://127.0.0.1:30019
@@ -384,7 +387,13 @@ backends:
     rpm_limit: 60
     tpm_limit: 50000
     quality_prior:
-      other: 0.80
+      codegen: 0.80
+      code_edit: 0.80
+      debug: 0.80
+      test: 0.80
+      retrieval: 0.80
+      transform: 0.80
+      docs: 0.80
 ```
 
 ### 3.4 生成 Phase 0 最小 workload（3 个 Turn）并验收
@@ -398,9 +407,9 @@ cat > paper1/workloads/phase0_smoke.json << 'EOF'
   "turns": [
     {"turn_id": "t001", "at_ms": 0,   "priority": "interactive", "task_type": "codegen",
      "mock": {"input_tokens": 200, "output_tokens": 150, "latency_ms": 300, "ttft_ms": 80,  "error": "none", "quality_score": 0.90}},
-    {"turn_id": "t002", "at_ms": 100, "priority": "batch",       "task_type": "format",
+    {"turn_id": "t002", "at_ms": 100, "priority": "batch",       "task_type": "transform",
      "mock": {"input_tokens": 100, "output_tokens": 80,  "latency_ms": 200, "ttft_ms": 60,  "error": "none", "quality_score": 0.80}},
-    {"turn_id": "t003", "at_ms": 200, "priority": "interactive", "task_type": "reasoning",
+    {"turn_id": "t003", "at_ms": 200, "priority": "interactive", "task_type": "debug",
      "mock": {"input_tokens": 500, "output_tokens": 400, "latency_ms": 800, "ttft_ms": 150, "error": "none", "quality_score": 0.88}}
   ]
 }
@@ -433,7 +442,7 @@ for i in range(20):
     error = "http_429" if rng.random() < 0.3 else "none"
     turns.append({
         "turn_id": f"t{i:03d}", "at_ms": i*50,
-        "priority": "batch", "task_type": "format",
+        "priority": "batch", "task_type": "transform",
         "mock": {"input_tokens": 100, "output_tokens": 80, "latency_ms": 200,
                  "ttft_ms": 60, "error": error, "quality_score": 0.75}
     })
@@ -464,7 +473,7 @@ for i in range(200):
     turns.append({
         "turn_id": f"t{i:03d}", "at_ms": i * 100,
         "priority": "interactive" if rng.random() < 0.5 else "batch",
-        "task_type": rng.choice(["codegen","reasoning","retrieval","format","other"]),
+        "task_type": rng.choice(["codegen","code_edit","debug","test","retrieval","transform","docs"]),
         "mock": {
             "input_tokens":  500 if long else 100,
             "output_tokens": 600 if long else 80,
@@ -534,8 +543,8 @@ rng = random.Random(42)
 turns = []
 for i in range(100):
     priority = "interactive" if i < 20 or rng.random() < 0.3 else "batch"
-    task_type = rng.choice(["codegen","reasoning","retrieval","format","other"])
-    long = task_type in ("codegen","reasoning")
+    task_type = rng.choice(["codegen","code_edit","debug","test","retrieval","transform","docs"])
+    long = task_type in ("codegen","code_edit","debug","test")
     turns.append({
         "turn_id": f"t{i:03d}", "at_ms": i * 150,
         "priority": priority, "task_type": task_type,
@@ -554,12 +563,11 @@ print("done:", len(turns), "turns")
 PY
 ```
 
-### 6.2 跑四个 policy（A/B/C/AgentOS）
+### 6.2 跑三个 policy（A/B/AgentOS）
 
 ```bash
 TS=$(date -u +%Y-%m-%dT%H%M%SZ)
-for POLICY in baseline_A_fixed_expensive baseline_B_governor_single_model \
-              baseline_C_per_request_router agentos; do
+for POLICY in baseline_A_fixed_expensive baseline_B_per_request_router agentos; do
   python paper1/agentos-exp/runner.py \
     --workload paper1/workloads/rq2_mixed.json \
     --policy ${POLICY} \
@@ -569,7 +577,7 @@ for POLICY in baseline_A_fixed_expensive baseline_B_governor_single_model \
 done
 ```
 
-> 当前 runner.py 里四个 policy 共用同一 backend（`default_backend`）——这已经够验证 admission 差异。  
+> 当前 runner.py 里三个 policy 共用同一 backend（`default_backend`）——这已经够验证 admission 差异。  
 > **完整 ModelSelector 分路**（expensive vs cheap）在 Phase 4 实现后再接入；届时在 `runner.py` 里按 `policy==agentos` 加路由逻辑即可，workload 不用改。
 
 ---
@@ -599,12 +607,12 @@ for i in range(60):
                 "ttft_ms": 80, "error": "none", "quality_score": 0.85}
     turns.append({
         "turn_id": f"t{i:03d}", "at_ms": i * 200,
-        "priority": "batch", "task_type": "other",
+        "priority": "batch", "task_type": "code_edit",
         "_zombie_type": zombie_type,    # 方便事后分析；runner 忽略此字段
         "mock": mock
     })
-with open("paper1/workloads/rq5_zombie.json","w") as f:
-    json.dump({"workload_id":"rq5_zombie","default_backend":"mock_expensive","turns":turns},f,indent=2)
+with open("paper1/workloads/rq3_zombie.json","w") as f:
+    json.dump({"workload_id":"rq3_zombie","default_backend":"mock_expensive","turns":turns},f,indent=2)
 zombies = sum(1 for t in turns if t["_zombie_type"]!="none")
 print(f"done: {len(turns)} turns, {zombies} zombies ({zombies/len(turns):.0%})")
 PY
@@ -617,7 +625,7 @@ TS=$(date -u +%Y-%m-%dT%H%M%SZ)
 
 # 无回收（raw，zombie 占满并发槽）
 python paper1/agentos-exp/runner.py \
-  --workload paper1/workloads/rq5_zombie.json \
+  --workload paper1/workloads/rq3_zombie.json \
   --policy raw \
   --concurrency 50 \
   --seed 99 \
@@ -625,7 +633,7 @@ python paper1/agentos-exp/runner.py \
 
 # 有回收（agentos，并发槽被 ZombieDetector 释放）
 python paper1/agentos-exp/runner.py \
-  --workload paper1/workloads/rq5_zombie.json \
+  --workload paper1/workloads/rq3_zombie.json \
   --policy agentos \
   --max-inflight 16 \
   --seed 99 \
@@ -644,10 +652,10 @@ cat > paper1/workloads/sanity_real.json << 'EOF'
   "workload_id": "sanity_real",
   "default_backend": "real_vllm",
   "turns": [
-    {"turn_id": "r001", "at_ms": 0,   "priority": "interactive", "task_type": "format",
+    {"turn_id": "r001", "at_ms": 0,   "priority": "interactive", "task_type": "transform",
      "prompt": "Reply with exactly: ok",
      "mock": {"input_tokens": 10, "output_tokens": 5, "latency_ms": 500, "ttft_ms": 100, "error": "none", "quality_score": null}},
-    {"turn_id": "r002", "at_ms": 200, "priority": "batch",       "task_type": "other",
+    {"turn_id": "r002", "at_ms": 200, "priority": "batch",       "task_type": "docs",
      "prompt": "What is 2+2? Answer with just the number.",
      "mock": {"input_tokens": 15, "output_tokens": 3, "latency_ms": 500, "ttft_ms": 100, "error": "none", "quality_score": null}},
     {"turn_id": "r003", "at_ms": 400, "priority": "interactive", "task_type": "codegen",
@@ -709,8 +717,8 @@ paper1/runs/
 
 ### Phase 4：ModelSelector 接入 runner.py
 
-在 `runner.py` 的 `run_turn` 里，当 `policy in ("baseline_C_per_request_router", "agentos")` 时：
-1. 按 `turn["task_type"]` + `turn["priority"]` + 当前预算水位，用 design §6.2 评分公式选 backend
+在 `runner.py` 的 `run_turn` 里，当 `policy in ("baseline_B_per_request_router", "agentos")` 时：
+1. 按 `turn["task_type"]` + `turn["priority"]` + 当前预算水位，用 design §7.2 评分公式选 backend
 2. `make_driver(selected_backend_id, backends[selected_backend_id])`
 3. 写 Scheduler 事件：`{"event":"model_selected","backend_id":..., "score":...}`
 

@@ -1,6 +1,8 @@
 # AgentOS Paper 1 概念导读
 
-> 这份文档回答一个问题：**AgentOS Paper 1 到底在做什么？**
+> **这份文档回答一个问题：AgentOS Paper 1 到底在做什么？**
+>
+> 包含问题动机、核心概念、实验直觉和术语表。不含接口/算法/实现细节。
 >
 > 读完这份，再看 `paper1_design.md`（规格书）和 `paper1_implementation.md`（操作手册）。
 
@@ -91,8 +93,8 @@ Turn 有两种优先级，不是按"任务类型"分的，而是按**"有没有�
 |---|---|---|---|
 | 用户在 IDE 里等 agent 写代码 | codegen | **interactive** | 用户在等，延迟 = 痛感 |
 | 后台批量给 50 个函数生成单元测试 | codegen | **batch** | 没人盯着，慢点没关系 |
-| 用户问"这个 bug 怎么修？" | reasoning | **interactive** | 用户在等 |
-| 离线批量分析 200 个 PR 的代码质量 | reasoning | **batch** | 后台任务 |
+| 用户问"这个 bug 怎么修？" | debug | **interactive** | 用户在等 |
+| 离线批量分析 200 个 PR 的代码质量 | docs | **batch** | 后台任务 |
 
 所以 workload 文件里每个 Turn 都会标明 `priority: "interactive"` 或 `"batch"`——这是在模拟"这个调用是在什么场景下发出的"。
 
@@ -111,9 +113,9 @@ Turn 有两种优先级，不是按"任务类型"分的，而是按**"有没有�
   "workload_id": "demo",
   "turns": [
     { "turn_id": "t001", "at_ms": 0,    "priority": "interactive", "task_type": "codegen" },
-    { "turn_id": "t002", "at_ms": 50,   "priority": "batch",       "task_type": "format"  },
-    { "turn_id": "t003", "at_ms": 100,  "priority": "interactive", "task_type": "reasoning" },
-    { "turn_id": "t004", "at_ms": 100,  "priority": "batch",       "task_type": "codegen" },
+    { "turn_id": "t002", "at_ms": 50,   "priority": "batch",       "task_type": "transform"  },
+    { "turn_id": "t003", "at_ms": 100,  "priority": "interactive", "task_type": "debug" },
+    { "turn_id": "t004", "at_ms": 100,  "priority": "batch",       "task_type": "code_edit" },
     { "turn_id": "t005", "at_ms": 200,  "priority": "batch",       "task_type": "retrieval" }
   ]
 }
@@ -124,7 +126,7 @@ Turn 有两种优先级，不是按"任务类型"分的，而是按**"有没有�
 - **`turn_id`**：每个 Turn 的编号
 - **`at_ms`**：这个 Turn 在第几毫秒到达系统。`at_ms: 0` 表示一开始就来了，`at_ms: 100` 表示 100ms 后才来。这模拟了"请求不是同时到达的"
 - **`priority`**：interactive 或 batch
-- **`task_type`**：这个 Turn 在做什么类型的事（生成代码 / 检索信息 / 推理 / 格式化……）。类型影响的是"需要多强的模型"——生成代码需要强模型，格式化 JSON 用弱模型就行
+- **`task_type`**：这个 Turn 在做什么类型的事（`codegen / code_edit / debug / test / retrieval / transform / docs`）。类型影响的是"需要多强的模型"——生成/修改代码通常更吃模型能力，而 `transform`（JSON/YAML/格式化）最适合便宜模型
 
 这些 Turn 可能来自同一个 agent session（一个用户请求拆出来的多步），也可能来自不同 agent（不同用户同时在用）。**Workload 不关心"谁发的"，只关心"系统要处理哪些 Turn、什么时候到、什么优先级"。**
 
@@ -186,10 +188,12 @@ Grader 注册表——每个 task_type 对应一个 `(prompt, output) → float`
 
 | task_type | grader | 返回 |
 |---|---|---|
-| `format` | `json.loads(output)` 成功且含必需字段 | 1.0 / 0.0 |
+| `transform` | `json.loads(output)` 成功且含必需字段 | 1.0 / 0.0 |
 | `retrieval` | output 含期望答案子串（正则匹配） | 1.0 / 0.0 |
 | `codegen` | 编译通过 ×0.5 + 单元测试通过率 ×0.5 | 0–1.0 |
-| `reasoning` | 提取最终答案与标准答案精确匹配 | 1.0 / 0.0 |
+| `code_edit` | 编译通过 ×0.5 + 单元测试通过率 ×0.5 | 0–1.0 |
+| `test` | 单元测试通过率 | 0–1.0 |
+| `docs` | 必需小节/字段齐全（正则匹配） | 1.0 / 0.0 |
 
 两种来源产出同一个 `quality_score: float[0,1]`，`analyze.py` 不区分来源。
 
@@ -213,7 +217,7 @@ Grader 注册表——每个 task_type 对应一个 `(prompt, output) → float`
 
 **直觉**：预算 $1，GPT-4 做一次 codegen 花 $0.05，只够做 20 次，剩下 30 个 Turn 没钱了。如果把简单任务（格式化 JSON）交给便宜模型（$0.001/次），把省下的钱留给关键任务用 GPT-4，是不是能完成更多 Turn、整体质量还不差？
 
-**做法**：同一个 workload，用四种策略跑：无脑贵 / 有预算管理但只有一个模型 / 每次独立选最便宜的 / AgentOS 全局智能选。比较完成率和花费。
+**做法**：同一个 workload，用三种策略跑：无脑贵 / 逐请求选性价比最高的但不看全局预算水位 / AgentOS 全局智能选。比较完成率和花费。
 
 ### RQ3：动态资源回收——抢占 + 僵尸检测能挽救多少？
 
@@ -293,7 +297,7 @@ Agent Session（一次会话）
 Turn ────────────────────────────────────────────────
   │  属性：                                           │
   │   - priority: interactive 或 batch（有没有人在等） │
-  │   - task_type: codegen / reasoning / format / ... │
+  │   - task_type: codegen / code_edit / debug / test / retrieval / transform / docs │
   │   - 资源需求：多少 token、多少钱、占一个并发槽     │
   ──────────────────────────────────────────────────── 
   │
@@ -325,7 +329,7 @@ Run（一次实验运行）
 | **Turn** | 一次完整的 LLM 调用（发请求 → 等结果）。调度和计费的基本单位 |
 | **Interactive** | 有用户在等的 Turn。延迟 = 用户痛感。优先级高 |
 | **Batch** | 后台运行的 Turn。没人盯着，晚点没关系。优先级低 |
-| **Task Type** | Turn 在做什么类型的事：codegen / reasoning / retrieval / format。影响"需要多强的模型" |
+| **Task Type** | Turn 在做什么类型的事：codegen / code_edit / debug / test / retrieval / transform / docs。影响"需要多强的模型" |
 | **Workload** | 实验脚本。一份"这次实验要跑哪些 Turn"的清单，用于公平对比不同策略 |
 | **Mock** | workload 里每个 Turn 预设的行为（延迟多少、花多少钱、会不会出错）。保证实验可复现 |
 | **Policy** | 一套调度策略。比如"裸跑"、"只有预算管理"、"AgentOS 全家桶"。同一个 workload 用不同 policy 跑，比较效果 |
