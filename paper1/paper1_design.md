@@ -53,6 +53,18 @@
 └────────────────────────────────────────────────────┘
 ```
 
+### 1.4 为什么主线实验必须用 MockBackend
+
+我们要测的是“策略好不好”，不是“这次 API 刚好快不快”。所以主线默认用 MockBackend：把每个 Turn 在不同后端下的表现先写死（延迟/成本/报错/质量），让大家在同一套输入上公平对比。
+
+如果不用 mock，结论很容易被真实后端的随机性带偏，比如：
+- 同一策略今天 API 慢一点，TTFT/P99 就变差，看起来像策略退化；
+- 限流/429 的波动会改变排队节奏，影响吞吐和完成数；
+- 网络抖动、重试、计费差异会把成本信号搅乱，让“预算松紧度”失真；
+- 想复现一次极端场景（并发冲击/僵尸占槽）很难，审稿人也没法稳定复跑。
+
+RealBackend 也会跑，但它的作用是小规模补充验证：确认系统真能接真实模型跑通，并量化实现层偏差（例如 RQ3 恢复时的 `resume_cost` 和可能的质量退化），不拿它当主线对照来下结论。
+
 **关键决策：治理和调度分离。**
 
 - **Governor（治理层）** 管底线：预算不超支、频率不打 429、异常调用可回收、过载时拒绝。用简单计数器和阈值就能工作，即使什么调度优化都不做，系统也不会崩。
@@ -65,12 +77,12 @@
 三个 RQ 对应三层能力，逐层叠加：
 
 ```
-裸跑 ──(+Governor)──→ 稳定但低效（RQ1）
-       ──(+ModelSelector)──→ 稳定且高效（RQ2）
-       ──(+Preemption+Zombie)──→ 稳定、高效且响应快（RQ3）
+raw ──(+Governor)──→ governor_only（RQ1）
+    ──(+ModelSelector)──→ agentos_no_preempt（RQ2）
+    ──(+Preemption+Zombie)──→ agentos（RQ3）
 ```
 
-文档中的 policy 名称：`raw`、`governor_only`、`baseline_A_fixed_expensive`、`baseline_B_per_request_router`、`baseline_C_budget_aware_router`、`agentos`。
+文档中的 policy 名称：`raw`、`governor_only`、`baseline_A_fixed_expensive`、`baseline_B_per_request_router`、`baseline_C_budget_aware_router`、`agentos_no_preempt`、`agentos`。
 
 ### RQ1：光加治理（不做智能调度），系统就能更稳吗？
 
@@ -97,7 +109,7 @@
 - **对照 A（只用贵的）**：所有请求发 GPT-4，$1 只够 20 个任务，剩下 30 个没钱了。
 - **对照 B（逐请求路由）**：每个请求独立选性价比最高的模型，但不看全局预算松紧度——不知道钱花快了还是慢了。这是成本下界参考线（在本实验参数下通常退化为全用便宜模型）。
 - **对照 C（预算感知路由）**：看全局剩余预算，按预算比例线性调节“选贵模型概率”，但不区分 task_type。
-- **AgentOS**：Governor + Scheduler 完整协作。预算充裕时关键任务用 GPT-4，预算紧张时自动降级，简单任务一律用便宜模型。
+- **AgentOS（无抢占版）**：`agentos_no_preempt` 仅开启 Governor + ModelSelector（不开抢占/僵尸回收）。预算充裕时关键任务用 GPT-4，预算紧张时自动降级，简单任务一律用便宜模型。
 - **我们期望看到什么**：
   - "只用贵的"钱花光后被迫停工，完成率最低。AgentOS 把钱花在刀刃上，完成更多任务。
   - AgentOS 的花费应该接近用满预算（$0.90–1.00），说明钱没有被浪费——不是省着花到一半就停了，而是精打细算花到最后一刻。
@@ -106,7 +118,7 @@
 
 **直觉参照**：
 
-| | 只用贵的 (A) | 逐请求路由 (B) | 预算感知路由 (C) | AgentOS |
+| | 只用贵的 (A) | 逐请求路由 (B) | 预算感知路由 (C) | AgentOS（无抢占版） |
 |---|---|---|---|---|
 | 完成数 / 50 | ~20 | ~50 | 40–50 | 40–50 |
 | 总花费 | ~$1.00（花光停工） | $0.60–0.90 | $0.90–1.00 | $0.90–1.00（精打细算用满） |
@@ -117,9 +129,9 @@
 两个场景，同一个底层模式——**资源被错误的东西占着，检测→中断→释放→重新分配**：
 
 - **场景 A（低优先级阻塞高优先级）**：并发槽 = 4，先提交 8 个后台任务（每个 10 秒），第 3 秒来了 2 个实时请求。无抢占时实时请求要等前面的 batch 释放槽位；有抢占时可在 1–2 秒内开始执行。
-- **场景 B（资源霸占，合并场景）**：50 个任务里注入 10 个"霸占者"（例如 5 个超慢 batch 请求 + 5 个卡死/异常长输出），并在执行中途插入 interactive 请求。无回收/无抢占时，interactive 被 batch 长任务阻塞、整体吞吐下降、P99 被拉高；开启抢占+回收后，interactive 响应和总体吞吐都恢复。
+- **场景 B（资源霸占）**：50 个任务里注入 10 个"霸占者"（例如 5 个超慢 batch 请求 + 5 个卡死/异常长输出）。无回收/无抢占时，interactive 被 batch 长任务阻塞、整体吞吐下降、P99 被拉高；开启抢占+回收后，interactive 响应和总体吞吐都恢复。
 
-对照方式：`governor_only`（无抢占/无僵尸回收）对比 `agentos`（开启抢占与僵尸回收）。
+对照方式：`agentos_no_preempt`（有 Governor + ModelSelector，但无抢占/无僵尸回收）对比 `agentos`（开启抢占与僵尸回收）。
 
 - **我们期望看到什么**：
   - 场景 A：开抢占后，用户的实时请求在 2 秒内开始收到回复（首 token 延迟 TTFT 的 P99 ≤ 2s，P99 指第 99 百分位）。
@@ -138,9 +150,6 @@ agentos run --workload <path> --policy <policy> --out runs/<ts>/
 ```
 
 输出两个文件：
-- **`events.jsonl`**：原始事件日志（唯一真相源）
-- **`summary.json`**：汇总快照（与 `events.jsonl` 不一致时以前者为准）
-
 - **`events.jsonl`**——原始追踪日志。每行一条 JSON，记录每个 Turn 生命周期中的每一个事件。所有指标都从这个文件算出来，它是唯一真相源。
 - **`summary.json`**——汇总指标快照。方便一眼看结果，但不是权威来源。如果和 `events.jsonl` 复算结果不一致，以后者为准。
 
@@ -340,7 +349,7 @@ BudgetGovernor 维护三个核心状态（run 级）：
 
 **BudgetGovernor**
 - 维护 run 级预算状态：`actual_spent_usd / frozen_total_usd / available_budget_usd`
-- 维护"期望花费曲线 vs 已承诺花费曲线"
+- 维护"期望花费曲线（target） vs 已结算花费曲线（actual）"
 - 计算 `budget_factor`（花快了 < 1 / 正好 = 1 / 花慢了 > 1）
 - 提供 reservation / settlement 接口
 
@@ -406,7 +415,8 @@ BudgetGovernor 维护三个核心状态（run 级）：
 
 **配置**：`budget_total_usd`（总预算），`budget_reserve_usd`（保底留多少）
 
-每个 Turn 选模型时计算一次 `budget_factor`。比较“目标花费”与“已承诺花费（已结算 + 已冻结）”：
+每个 Turn 选模型时计算一次 `budget_factor`。  
+**v1 口径（修正后）**：`budget_factor` 只比较“目标花费”与“已结算实际花费”；冻结额不参与选模信号。
 
 进度怎么量？看已完成的 Turn 占总数多少。实验中 workload 预先定义了所有 Turn，总数 `n_total` 已知：
 
@@ -414,9 +424,13 @@ $$\text{target\_spend}(n) = \text{budget\_total\_usd} \times \frac{n_{\text{sett
 
 $n_{\text{settled}}$ = 已结算的 Turn 数（completed + failed + reaped），不含还在跑的或排队的。
 
-已承诺花费定义为：
+用于预算松紧度信号的“实际花费”直接使用 `actual_spent_usd`（已结算实际花费）。
 
-$$\text{committed\_spend} = \text{actual\_spent\_usd} + \text{frozen\_total\_usd}$$
+冻结额仍保留在 Governor 的**准入安全检查**中：
+
+$$\text{available\_budget\_usd} = \text{budget\_total\_usd} - \text{actual\_spent\_usd} - \text{frozen\_total\_usd}$$
+
+即：Admission 管“会不会超支”，`budget_factor` 管“该不该省着花”，两者解耦。
 
 **budget_factor（预算松紧度）：告诉选模器"现在该省还是该花"的一个数字。**
 
@@ -424,17 +438,17 @@ $$\text{committed\_spend} = \text{actual\_spent\_usd} + \text{frozen\_total\_usd
 - `budget_factor = 1`：正好
 - `budget_factor < 1`：钱花快了，优先选便宜的
 
-从偏差到 budget_factor 的映射保持可插拔（输入：已承诺花费、进度、总预算；输出：float）。
+从偏差到 budget_factor 的映射保持可插拔（输入：已结算花费、进度、总预算；输出：float）。
 
 **v0（起步方案）：三挡阈值。**
 
-| 已承诺花费 vs 期望花费 | budget_factor | 含义 |
+| 已结算花费 vs 期望花费 | budget_factor | 含义 |
 |---|---|---|
 | 超出 10% 以上 | 0.5 | 省着花 |
 | 上下 10% 以内 | 1.0 | 正常 |
 | 低于期望 10% 以上 | 2.0 | 可以用好的 |
 
-若三挡太粗，可换连续函数（如 `clamp(target_spend(n) / committed_spend, 0.2, 5.0)`）。
+若三挡太粗，可换连续函数（如 `clamp(target_spend(n) / max(actual_spent_usd, \epsilon), 0.2, 5.0)`）。
 
 **边界情况**：还没有 Turn 结算时（`n_settled = 0`），`target_spend(0) = 0`，没法算比例，此时 budget_factor = 1.0——第一个 Turn 不受预算松紧度影响。
 
@@ -442,9 +456,9 @@ $$\text{committed\_spend} = \text{actual\_spent\_usd} + \text{frozen\_total\_usd
 
 核心原则：先判定“够不够用”，再在可用候选里选最便宜的。
 
-为每种 `task_type` 配置质量及格线 `q_floor`（0–1）：
+为每种 `task_type` 配置质量及格线 `quality_threshold`（0–1）：
 
-| task_type | `q_floor`（v0） | 说明 |
+| task_type | `quality_threshold`（v0） | 说明 |
 |---|---:|---|
 | `generation` | 0.80 | 质量不足会直接产生不可用输出 |
 | `reasoning` | 0.85 | 推理断链的代价最高 |
@@ -455,13 +469,13 @@ $$\text{committed\_spend} = \text{actual\_spent\_usd} + \text{frozen\_total\_usd
 
 预算松紧度只用于调节“够用”门槛。
 
-$$q_{\text{eff}} = q_{\text{floor}}(\text{task\_type}) \times \text{clamp}(\text{budget\_factor}, 0.3, 1.5)$$
+$$\text{required\_quality} = \text{quality\_threshold}(\text{task\_type}) \times \text{clamp}(\text{budget\_factor}, 0.3, 1.5)$$
 
 然后按三步选择：
 
-1. 计算当前 Turn 的 `q_eff`
+1. 计算当前 Turn 的 `required_quality`
 2. 过滤候选后端，必须同时满足：
-   - 质量够用：`q_prior(task_type, backend) ≥ q_eff`
+   - 质量够用：`q_prior(task_type, backend) ≥ required_quality`
    - 买得起：`cost_est(backend) ≤ available_budget_usd`
    - 有容量：`hasCapacity(backend_id) = true` 且上下文窗口可容纳
 3. 在剩余候选里选 `cost_est` 最低者
@@ -502,6 +516,20 @@ MockBackend 下的抢占语义（v0）：
 - 若某 Turn 的 `latency_ms = L`，在已运行 `x` ms 时被抢占，则恢复后只执行剩余 `L - x` ms。
 - `quality_score` 与未抢占时一致（语义存档不丢进度）。
 - 实现上记录 `elapsed_run_ms`，恢复时按 `remaining_ms` 继续，并额外注入 `resume_cost_usd` 与 `resume_prefill_ms`。
+
+> 说明：上面的“质量不降”仅是 Mock 语义定义，不应外推为真实后端结论。
+
+**RealBackend 补充验证（小规模，RQ3 附加实验）**
+- 目标：验证“真实抢占恢复下质量退化可控”，而非假设其严格为 0。
+- 设计：选 20 个 generation/reasoning turn，固定 prompt 与温度；每个 turn 做 A/B 配对：
+  - A：无抢占完整执行；
+  - B：在 30%–50% 已执行时触发一次抢占，再恢复。
+- 记录：`quality_score`、`resume_prefill_ms`、`resume_cost_usd`、`ttft_ms`、`latency_total_ms`。
+- 报告指标：
+  - `delta_quality = quality_B - quality_A`（均值、P95、最差值）；
+  - 恢复开销占比：`resume_cost_usd / base_cost` 与 `resume_prefill_ms / base_latency`；
+  - break-even 是否成立（延迟收益是否覆盖恢复开销）。
+- 论文主线表述：RQ3 的主结论是“调度机制可回收资源并改善交互时延”；质量损失属于实现层变量，需由上述 real backend 补充实验给出上界。
 
 RQ3 报告中必须给出 break-even 条件：只有当“抢占减少的 interactive 尾延迟收益”大于“恢复开销（`resume_cost_usd + resume_prefill_ms`）”时，抢占才算净收益。
 
@@ -548,11 +576,11 @@ Mock/Real 的启用范围（v0）：
 
 整个实验就是一张 **workload × policy** 的矩阵。每个格子 = 一次 run = 一份可对比的实验数据：
 
-| | `raw` | `governor_only` | `baseline_A` | `baseline_B` | `baseline_C` | `agentos` |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|
-| **RQ1 workload**（50 并发冲击限流） | ✓ | ✓ | | | | ✓ |
-| **RQ2 workload**（50 混合任务 + 预算约束） | | | ✓ | ✓ | ✓ | ✓ |
-| **RQ3 workload**（资源霸占合并场景：慢请求 + 僵尸 + interactive 插入） | | ✓ | | | | ✓ on/off |
+| | `raw` | `governor_only` | `baseline_A` | `baseline_B` | `baseline_C` | `agentos_no_preempt` | `agentos` |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| **RQ1 workload**（50 并发冲击限流） | ✓ | ✓ | | | | | |
+| **RQ2 workload**（50 混合任务 + 预算约束） | | | ✓ | ✓ | ✓ | ✓ | |
+| **RQ3 workload**（资源霸占合并场景：慢请求 + 僵尸 + interactive 插入） | | | | | | ✓ | ✓ |
 
 每一行是同一份 workload，横着比不同 policy 的表现；每一列是同一个 policy，竖着看它在不同压力下的表现。Mock 输入是确定的，但在真实时间执行下，时序指标会受线程调度影响，因此要求是：核心计量（完成数、总花费、错误数）一致，延迟类指标允许小幅波动。
 
@@ -561,11 +589,12 @@ Mock/Real 的启用范围（v0）：
 | Policy | 说明 | 用于 |
 |---|---|---|
 | `raw` | 裸跑：无 Governor、无 Scheduler；只记录成本，不执行预算约束 | RQ1 对照组 |
-| `governor_only` | 只有 Governor，Scheduler 仍 FIFO | RQ1 对照组 / RQ3 对照组 |
+| `governor_only` | 只有 Governor，Scheduler 仍 FIFO | RQ1 实验组 / RQ2 与 RQ3 的前置层 |
 | `baseline_A_fixed_expensive` | 所有请求发贵模型，不管预算 | RQ2 对照 A |
 | `baseline_B_per_request_router` | 逐请求选性价比最高的，不看全局预算松紧度（在本实验参数下通常退化为全用便宜模型） | RQ2 对照 B |
 | `baseline_C_budget_aware_router` | 预算感知但不看 task_type：按 `available_budget_usd / budget_total_usd` 线性调节选贵模型概率（例如 `p_expensive = clamp(ratio, 0, 1)`） | RQ2 主对照组 |
-| `agentos` | 全部机制开启 | RQ1–3 实验组 |
+| `agentos_no_preempt` | 开启 Governor + ModelSelector；关闭 Preemption + ZombieDetector | RQ2 实验组 / RQ3 对照组 |
+| `agentos` | 全部机制开启（在 `agentos_no_preempt` 基础上打开 Preemption + ZombieDetector） | RQ3 实验组 |
 
 ### 8.2 Workload（实验脚本）
 
@@ -694,32 +723,32 @@ MockBackend 的读取规则（v1）：
 ## 9. 分阶段实现与验收
 
 ### Phase 0：骨架 + 事件日志
-- **做什么**：数据模型 + events.jsonl writer + 最小 CLI
-- **验收**：跑 3 个 Turn，events 里完整出现 `created → admitted → queued → dispatched → running → completed`；`summary.json` 生成且字段齐全
+- **做什么**：先把最小可跑通版本搭起来：数据模型、`events.jsonl` 写入器、基础 CLI。
+- **验收**：连续跑 3 个 Turn，`events` 里完整出现 `created → admitted → queued → dispatched → running → completed`；同时能生成字段完整的 `summary.json`。
 
 ### Phase 1：MockBackend + RateLimiter
-- **做什么**：mock 按后端分支返回（`mock[backend_id]`）；MockBackend 内置 RPM 动态 429；滑动窗口限流（`anyBackendAvailable/hasCapacity/acquire`）
-- **验收**：20 并发、RPM=5；无限流时后端动态 429 比例 > 20%，限流后 < 1%；同一 Turn 重试会重新选模且跳过已失败 backend；同一 Turn 换 backend_id 时质量分会变化
+- **做什么**：Mock 要按不同后端返回结果（`mock[backend_id]`）；MockBackend 能按 RPM 动态返回 429；再加上滑动窗口限流（`anyBackendAvailable/hasCapacity/acquire`）。
+- **验收**：在 20 并发、RPM=5 下，无限流时动态 429 比例 > 20%，加限流后 < 1%；同一 Turn 重试会重新选模型并跳过失败 backend；同一 Turn 换 `backend_id` 后质量分会跟着变化。
 
 ### Phase 2：Budget + Admission（跑通 RQ1）
-- **做什么**：预算账本 + reservation/settlement + `frozen_total_usd`；admit/wait/reject
-- **验收**：预算 $1、每次估算 $0.2；并发 10 请求同时到达时不发生超支；任意时刻满足 `available_budget_usd = budget_total_usd - actual_spent_usd - frozen_total_usd`；接近耗尽会 reject；`governor_only` 总花费 <= $1.00；预留归还误差 <= $0.001
+- **做什么**：实现预算账本，支持预留和结算（reservation/settlement）以及 `frozen_total_usd`；请求入场只有三种结果：admit / wait / reject。
+- **验收**：预算 $1、单次估算 $0.2 时，10 个并发请求同时到达也不能超支；任意时刻都满足 `available_budget_usd = budget_total_usd - actual_spent_usd - frozen_total_usd`；预算快耗尽时会 reject；`governor_only` 总花费 <= $1.00；预留归还误差 <= $0.001。
 
 ### Phase 3：PriorityQueue
-- **做什么**：interactive 优先 + 并发槽限制
-- **验收**：先提交 batch 再来 interactive；interactive 的排队等待 P99 至少比 batch 低 50%
+- **做什么**：做优先队列，让 interactive 优先，同时加并发槽位限制。
+- **验收**：先压入 batch 再提交 interactive，interactive 的排队等待 P99 至少比 batch 低 50%。
 
 ### Phase 4：ModelSelector（跑通 RQ2）
-- **做什么**：贵/便宜两个后端；六种 policy 全部跑通（含 baseline C）；质量及格线 + 预算松紧度选模机制
-- **验收**：`agentos` 完成数 >= `baseline_A_fixed_expensive` + 30%；`agentos` 平均质量 >= `baseline_C_budget_aware_router`；`agentos` 总花费在预算的 90%–100%
+- **做什么**：准备贵/便宜两个后端；把七种 policy 全部跑通（含 baseline C 和 `agentos_no_preempt`）；选模时同时考虑质量及格线和预算紧张程度。
+- **验收**：`agentos_no_preempt` 完成数 >= `baseline_A_fixed_expensive` + 30%；`agentos_no_preempt` 平均质量 >= `baseline_C_budget_aware_router`；`agentos_no_preempt` 总花费落在预算的 90%–100%。
 
 ### Phase 5：Preemption + Zombie 回收（跑通 RQ3）
-- **做什么**：抢占协议（preempt → archive → resume）；Mock 下剩余时长恢复；计时器暂停/恢复；恢复开销建模（`resume_cost_usd / resume_prefill_ms`）；aging 防饥饿；workload 注入卡死/慢请求；Governor 侧僵尸回收协议（Mock 启用超时规则，Real 启用超时+烧钱规则）
-- **验收**：events 出现 `preempted/archived/resumed`；恢复后 Turn 仅执行剩余时长且质量不降；20% 僵尸注入下 `agentos` 吞吐比 `governor_only` 至少高 30%；给出 RQ3 break-even 对比（延迟收益 vs 恢复开销）；预算/并发槽零泄漏；持续 interactive 压力下 batch 不发生无限饥饿
+- **做什么**：实现抢占流程（preempt → archive → resume）；Mock 能从“剩余时长”继续跑；计时器支持暂停/恢复；把恢复开销建模进来（`resume_cost_usd / resume_prefill_ms`）；加 aging 防饥饿；在 workload 里注入卡死/慢请求；Governor 侧实现僵尸回收（Mock 用超时规则，Real 用超时+烧钱规则）。
+- **验收**：`events` 中出现 `preempted/archived/resumed`；Mock 恢复后 Turn 只执行剩余时长且质量不下降；RealBackend 小样本 A/B 报告给出 `delta_quality` 分布和开销占比；注入 20% 僵尸时，`agentos` 吞吐比 `agentos_no_preempt` 至少高 30%；给出 RQ3 break-even（延迟收益 vs 恢复开销）；预算/并发槽零泄漏；持续 interactive 压力下 batch 不会无限饥饿。
 
 ### Phase 6：重试退避 + 熔断
-- **做什么**：指数退避重试（含 jitter）；后端健康状态机与熔断恢复
-- **验收**：后端短时全故障时不会在几秒内打满重试；熔断后错误洪峰下降；冷却期后后端可自动探测恢复
+- **做什么**：实现指数退避重试（每次失败后等待时间变长，并加一点随机等待，避免请求同时重试把后端打爆）；加后端健康状态机和熔断恢复。
+- **验收**：后端短时间全故障时，不会在几秒内把重试打满；熔断后错误洪峰明显下降；冷却期结束后能自动探测后端恢复。
 
 ---
 
@@ -730,9 +759,9 @@ MockBackend 的读取规则（v1）：
 | 核心系统语言 | C++ | 长生命周期服务，并发调度，计量逻辑单一实现 |
 | 实验与分析 | Python | 读 events.jsonl、算指标、出图表 |
 | 主线实验后端 | MockBackend | 可控可复现，论文数据来自它 |
-| RealBackend | 仅做验证性测试 | 验证系统能跑通，不用于主线对比 |
+| RealBackend | 小规模补充实验 | 验证 RQ3 抢占恢复下的质量退化是否可控，并报告开销 |
 | 质量指标 | mock quality_score | 使 RQ2 可稳定复现，LLM-as-judge 后置 |
-| 预算松紧度怎么判断"花快了" | 按已完成 Turn 占比，对比已承诺花费（已结算+已冻结），不按时间 | workload 里 Turn 总数已知，比"过了多久"更准；把冻结额计入可避免并发超支盲区 |
+| 预算松紧度怎么判断"花快了" | 按已完成 Turn 占比，对比已结算花费（actual_spent），不按时间 | 避免“冻结额按最贵估算”在高并发早期系统性拉低 budget_factor；冻结额仅用于 admission 防超支 |
 | 并发槽 | 启动时固定配置，不做运行时动态调整 | 并发上限是外部已知硬约束（云端 RPM 写在供应商文档、本地 GPU 并发取决于显存），不需要运行时探测；实验中固定 N 避免引入额外变量 |
 | 适用场景 | 通用中间件，不区分个人/企业 | 同样的四个问题（预算/限流/优先级/僵尸）在个人和企业场景都存在，架构一致，只是参数不同 |
 
