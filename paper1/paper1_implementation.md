@@ -355,9 +355,9 @@ backends:
     rpm_limit: 60
     tpm_limit: 100000
     quality_prior:
-      codegen: 0.92
-      code_edit: 0.90
-      debug: 0.88
+      generation: 0.92
+      reasoning: 0.90
+      summarization: 0.85
       test: 0.86
       retrieval: 0.85
       transform: 0.95
@@ -370,9 +370,9 @@ backends:
     rpm_limit: 120
     tpm_limit: 200000
     quality_prior:
-      codegen: 0.70
-      code_edit: 0.68
-      debug: 0.62
+      generation: 0.70
+      reasoning: 0.62
+      summarization: 0.72
       test: 0.65
       retrieval: 0.75
       transform: 0.93
@@ -387,9 +387,9 @@ backends:
     rpm_limit: 60
     tpm_limit: 50000
     quality_prior:
-      codegen: 0.80
-      code_edit: 0.80
-      debug: 0.80
+      generation: 0.80
+      reasoning: 0.80
+      summarization: 0.80
       test: 0.80
       retrieval: 0.80
       transform: 0.80
@@ -405,11 +405,11 @@ cat > paper1/workloads/phase0_smoke.json << 'EOF'
   "workload_id": "phase0_smoke",
   "default_backend": "mock_expensive",
   "turns": [
-    {"turn_id": "t001", "at_ms": 0,   "priority": "interactive", "task_type": "codegen",
+    {"turn_id": "t001", "at_ms": 0,   "priority": "interactive", "task_type": "generation",
      "mock": {"input_tokens": 200, "output_tokens": 150, "latency_ms": 300, "ttft_ms": 80,  "error": "none", "quality_score": 0.90}},
     {"turn_id": "t002", "at_ms": 100, "priority": "batch",       "task_type": "transform",
      "mock": {"input_tokens": 100, "output_tokens": 80,  "latency_ms": 200, "ttft_ms": 60,  "error": "none", "quality_score": 0.80}},
-    {"turn_id": "t003", "at_ms": 200, "priority": "interactive", "task_type": "debug",
+    {"turn_id": "t003", "at_ms": 200, "priority": "interactive", "task_type": "reasoning",
      "mock": {"input_tokens": 500, "output_tokens": 400, "latency_ms": 800, "ttft_ms": 150, "error": "none", "quality_score": 0.88}}
   ]
 }
@@ -473,7 +473,7 @@ for i in range(200):
     turns.append({
         "turn_id": f"t{i:03d}", "at_ms": i * 100,
         "priority": "interactive" if rng.random() < 0.5 else "batch",
-        "task_type": rng.choice(["codegen","code_edit","debug","test","retrieval","transform","docs"]),
+        "task_type": rng.choice(["generation","reasoning","retrieval","transform","summarization","conversation"]),
         "mock": {
             "input_tokens":  500 if long else 100,
             "output_tokens": 600 if long else 80,
@@ -543,8 +543,8 @@ rng = random.Random(42)
 turns = []
 for i in range(100):
     priority = "interactive" if i < 20 or rng.random() < 0.3 else "batch"
-    task_type = rng.choice(["codegen","code_edit","debug","test","retrieval","transform","docs"])
-    long = task_type in ("codegen","code_edit","debug","test")
+    task_type = rng.choice(["generation","reasoning","retrieval","transform","summarization","conversation"])
+    long = task_type in ("generation","reasoning")
     turns.append({
         "turn_id": f"t{i:03d}", "at_ms": i * 150,
         "priority": priority, "task_type": task_type,
@@ -607,7 +607,7 @@ for i in range(60):
                 "ttft_ms": 80, "error": "none", "quality_score": 0.85}
     turns.append({
         "turn_id": f"t{i:03d}", "at_ms": i * 200,
-        "priority": "batch", "task_type": "code_edit",
+        "priority": "batch", "task_type": "summarization",
         "_zombie_type": zombie_type,    # 方便事后分析；runner 忽略此字段
         "mock": mock
     })
@@ -655,10 +655,10 @@ cat > paper1/workloads/sanity_real.json << 'EOF'
     {"turn_id": "r001", "at_ms": 0,   "priority": "interactive", "task_type": "transform",
      "prompt": "Reply with exactly: ok",
      "mock": {"input_tokens": 10, "output_tokens": 5, "latency_ms": 500, "ttft_ms": 100, "error": "none", "quality_score": null}},
-    {"turn_id": "r002", "at_ms": 200, "priority": "batch",       "task_type": "docs",
+    {"turn_id": "r002", "at_ms": 200, "priority": "batch",       "task_type": "conversation",
      "prompt": "What is 2+2? Answer with just the number.",
      "mock": {"input_tokens": 15, "output_tokens": 3, "latency_ms": 500, "ttft_ms": 100, "error": "none", "quality_score": null}},
-    {"turn_id": "r003", "at_ms": 400, "priority": "interactive", "task_type": "codegen",
+    {"turn_id": "r003", "at_ms": 400, "priority": "interactive", "task_type": "generation",
      "prompt": "Write a one-line Python hello world.",
      "mock": {"input_tokens": 20, "output_tokens": 15, "latency_ms": 800, "ttft_ms": 150, "error": "none", "quality_score": null}}
   ]

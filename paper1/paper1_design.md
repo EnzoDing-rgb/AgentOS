@@ -81,27 +81,38 @@
 - **场景**：50 个 Agent 同时发请求，API 频率限制 = 每分钟 60 次。
 - **裸跑**：没有任何协调，想调就调。
 - **加 Governor**：超频时让 Agent 排队等，而不是硬打 429。
-- **预期（可验收口径）**：
-  - `error_429_rate`：`raw ≥ 0.30`，`governor_only ≤ 0.01`
-  - `turn_completed / turn_total`：`raw` 显著偏低（由 429 拉低），`governor_only ≥ 0.95`
-  - `cost_total_usd ≤ budget_total_usd`：两者都必须成立（治理层不得出现“超支后才发现”）
-  - `wall_time_s`：`governor_only` 允许更长（排队带来的代价），但应以“几倍以内”为界（例如 ≤ 3× raw），否则说明准入/限流实现有 bug 或参数极端不合理
-  - **示例**：`turn_total=50` 时，`raw` 可能出现 `turn_failed≈15（http_429）`，而 `governor_only` 期望 `turn_failed≈0（http_429）` 且 `turn_completed≥48`
+- **我们期望看到什么**：
+  - 裸跑时大量请求被 429 打回（三成以上失败），加了 Governor 后 429 几乎消失（低于 1%），因为超速的请求在系统内排队而不是硬冲 API。
+  - 完成率从裸跑的七成左右提升到 Governor 下的 95%+。
+  - 总花费始终不超预算——这是治理层的硬底线，任何时刻都不允许"先超支再发现"。
+  - 代价是 Governor 模式总耗时会更长（排队等待），但应在合理范围内（几倍以内），不能出现排了几十倍时间的反常情况。
+
+**直觉参照**（帮助对齐预期，不是精确指标）：
+
+| | 裸跑 (raw) | 加治理 (governor_only) |
+|---|---|---|
+| 429 失败数 / 50 总请求 | ~15 个 | ~0 个 |
+| 完成率 | ~70% | ≥95% |
+| 总花费 vs 预算 | 可能超支 | 严格不超 |
 
 ### RQ2：智能选模型，能比"无脑用贵的"更好吗？
 
-- **场景**：总预算 $1.00，50 个任务（写代码/检索/格式化混合），两个模型可选——GPT-4（贵、质量高）和 Llama-7B（便宜、质量一般）。
+- **场景**：总预算 $1.00，50 个任务（生成/检索/转换混合），两个模型可选——GPT-4（贵、质量高）和 Llama-7B（便宜、质量一般）。
 - **对照 A（只用贵的）**：所有请求发 GPT-4，$1 只够 20 个任务，剩下 30 个没钱了。
 - **对照 B（逐请求路由）**：每个请求独立选性价比最高的模型，但不看全局预算水位——不知道钱花快了还是慢了。这是现有路由方案（如 LiteLLM）的做法。
 - **AgentOS**：Governor + Scheduler 完整协作。预算充裕时关键任务用 GPT-4，预算紧张时自动降级，简单任务一律用便宜模型。
-- **预期（可验收口径）**：
-  - **完成率**：`baseline_A_fixed_expensive` 明显较低（被预算硬截断），`agentos > baseline_A_fixed_expensive`
-  - **花费**：三者都满足 `cost_total_usd ≤ 1.00`，且 `agentos` 的花费应接近用满预算（“花到最后一刻”，例如 `0.90–1.00`），而不是早早停工（例如 `<0.60`）
-  - **质量**：`quality_mean(agentos) ≥ quality_mean(baseline_B_per_request_router)`，同时 `quality_mean(agentos)` 不应显著低于“全用贵的已完成那部分”的质量分布（用 workload 预设值或 grader 得分衡量）
-  - **示例（便于对齐直觉，不要求精确等于该数字）**：
-    - `baseline_A_fixed_expensive`：`turn_completed≈20/50`，`cost_total_usd≈1.00`，`quality_mean≈0.90`
-    - `baseline_B_per_request_router`：`turn_completed≈50/50`，`cost_total_usd≈0.60–0.90`，`quality_mean≈0.65–0.80`
-    - `agentos`：`turn_completed≈40–50/50`，`cost_total_usd≈0.90–1.00`，`quality_mean≈0.80–0.90`
+- **我们期望看到什么**：
+  - "只用贵的"钱花光后被迫停工，完成率最低。AgentOS 把钱花在刀刃上，完成更多任务。
+  - AgentOS 的花费应该接近用满预算（$0.90–1.00），说明钱没有被浪费——不是省着花到一半就停了，而是精打细算花到最后一刻。
+  - 质量上，AgentOS 不应比"逐请求路由"差——因为它在关键任务上仍然用好模型，只是在简单任务上省钱。也不应比"全用贵的那部分已完成任务"差太多——省钱不等于胡说八道。
+
+**直觉参照**：
+
+| | 只用贵的 (A) | 逐请求路由 (B) | AgentOS |
+|---|---|---|---|
+| 完成数 / 50 | ~20 | ~50 | 40–50 |
+| 总花费 | ~$1.00（花光停工） | $0.60–0.90 | $0.90–1.00（精打细算用满） |
+| 平均质量 | ~0.90（高但做得少） | 0.65–0.80 | 0.80–0.90 |
 
 ### RQ3：动态资源回收（抢占 + 僵尸检测）能挽救多少？
 
@@ -111,11 +122,11 @@
 - **场景 B（慢请求拖垮全局）**：50 个任务里有 5 个"怪物"——延迟 30 秒（正常 1–2 秒），长时间霸占并发槽。无抢占时 P99 被拉到 20–30 秒；有抢占时 P99 保持 3–5 秒。
 - **场景 C（僵尸占着不放）**：50 个任务里有 10 个"僵尸"——5 个永不返回（卡死），5 个输出量是正常的 10 倍（烧钱）。无回收时吞吐下降 50%+；有回收时检测到超时或烧钱异常后强制回收，释放资源，吞吐恢复正常。
 
-- **预期（可验收口径）**：
-  - **交互尾延迟**：在场景 A 中，开启抢占后 `interactive ttft_p99 ≤ 2000ms`；不开抢占时 `interactive ttft_p99 ≥ 10000ms`
-  - **全局尾延迟**：在场景 B 中，开启抢占后 `latency_p99 ≤ 5000ms`（从 events 复算）；不开抢占时 `latency_p99 ≥ 20000ms`
-  - **吞吐恢复**：在场景 C（20% 僵尸）中，开启回收后 `turn_completed` 显著提高，且 `turn_reaped > 0`（证明机制被触发）；不开回收时 `wall_time_s` 显著变长或 `turn_completed` 显著下降
-  - **可恢复性**：被抢占的 batch 最终应进入 `resumed → completed`，不应出现“抢占后永远丢失/卡死”的状态泄漏（从 events 里是否出现 `resumed` 与终态事件验证）
+- **我们期望看到什么**：
+  - 场景 A：开抢占后，用户的实时请求在 2 秒内开始收到回复（TTFT P99 ≤ 2s），而不是干等 10 秒以上。
+  - 场景 B：开抢占后，整体尾延迟（P99）从 20–30 秒降到 5 秒以内——少数慢请求不再拖垮所有人。
+  - 场景 C：开僵尸回收后，被卡死/烧钱的 Turn 被系统强制终止（events 里出现 `zombie_reaped`），释放的资源让正常任务继续跑，完成数显著回升。
+  - 被抢占的后台任务不能"抢了就丢"——它们最终要被恢复并正常完成，不允许出现并发槽或预算泄漏。
 
 ---
 
@@ -139,7 +150,7 @@ agentos run --workload <path> --policy <policy> --out runs/<ts>/
 一个 Turn（t001）从创建到完成，日志里会追加这些行：
 
 ```jsonl
-{"ts_ms":0,    "turn_id":"t001", "event":"created",    "priority":"interactive", "task_type":"codegen"}
+{"ts_ms":0,    "turn_id":"t001", "event":"created",    "priority":"interactive", "task_type":"generation"}
 {"ts_ms":1,    "turn_id":"t001", "event":"admitted",   "reservation_usd":0.05}
 {"ts_ms":2,    "turn_id":"t001", "event":"queued",     "queue":"interactive", "queue_len":1}
 {"ts_ms":3,    "turn_id":"t001", "event":"dispatched", "backend_id":"gpt4", "score":36.8}
@@ -194,7 +205,16 @@ agentos run --workload <path> --policy <policy> --out runs/<ts>/
 | Mock 实验（主线） | `workload.mock.quality_score` 预设值 | 可复现对比，不同 policy 的差异只来自调度机制 |
 | 真实实验 | 按 `task_type` 调用确定性 grader：`(prompt, output) → float` | 验证真实模型下的质量差异 |
 
-Grader 是纯函数，不依赖 LLM：`transform` 用 parse/校验，`retrieval` 用正则命中，`codegen/code_edit/test` 用编译+测试通过率，`docs` 用必需小节/字段校验。同输入同输出必须得到同分数。
+Grader 是纯函数，不依赖 LLM。同输入同输出必须得到同分数。各 task_type 的判分方式：
+
+| task_type | grader 逻辑 | 返回 |
+|---|---|---|
+| `generation` | 编译/执行通过 ×0.5 + 单元测试通过率 ×0.5（代码）；必需字段齐全（文本） | 0–1.0 |
+| `reasoning` | 答案精确匹配 / 逻辑链校验 | 0–1.0 |
+| `retrieval` | 输出含期望答案子串（正则匹配） | 1.0 / 0.0 |
+| `transform` | `json.loads(output)` 成功且含必需字段 | 1.0 / 0.0 |
+| `summarization` | 必需小节/关键词齐全（正则匹配） | 0–1.0 |
+| `conversation` | 回复相关性 + 格式正确性 | 0–1.0 |
 
 存在的意义：RQ2 需要证明"省了钱但没胡说八道"——光比完成率不够，还得看质量。
 
@@ -228,17 +248,16 @@ Grader 是纯函数，不依赖 LLM：`transform` 用 parse/校验，`retrieval`
 | `resource_spec` | 资源需求估算（见 6.2） |
 | `state` | 当前状态 |
 
-`task_type` 的设计目标是“贴近真实 agent 调用形态 + 足够可路由/可判分”，因此避免过粗的 `reasoning/other` 这类兜底桶：
+`task_type` 覆盖真实 agent 的多样化调用场景，不只是写代码。分类依据是“对模型能力的依赖程度”——这直接决定了该给它配贵模型还是便宜模型：
 
-| task_type | 典型 Turn | 备注（用于选模/评分） |
-|---|---|---|
-| `codegen` | 生成新文件/新函数 | 通常更依赖强模型 |
-| `code_edit` | 重构、改 bug、改 API、加参数 | 质量可用编译/测试回归衡量 |
-| `debug` | 定位原因、给出最小修复方案 | 最终仍可落到 `code_edit` 的测试结果 |
-| `test` | 写/改单测、修 flaky、解释失败栈 | 质量可用测试通过率衡量 |
-| `retrieval` | 查文档/检索、读代码定位、收集证据 | 可用“必须字段/引用命中”判分 |
-| `transform` | JSON/YAML/格式化/提取字段/重排结构 | 最适合便宜模型；可用 parse/校验判分 |
-| `docs` | 总结、写 README/设计说明/变更日志 | 可用“结构+必需小节”判分 |
+| task_type | 典型场景 | 对模型能力的依赖 | 为什么这样分 |
+|---|---|---|---|
+| `generation` | 写代码、起草邮件、生成营销文案、创作故事 | **高** | 生成类任务质量差距最大：GPT-4 写的代码能跑，便宜模型可能语法都不对 |
+| `reasoning` | 数学推理、方案评估、bug 定位、数据分析 | **高** | 推理链断了一环结论就全错，这类任务最不能省钱 |
+| `retrieval` | 查文档回答问题、知识问答、信息抽取 | **中** | 答案通常在 context 里，模型只需“找到并复述”，中档模型就够 |
+| `transform` | JSON↔YAML、翻译、格式化、数据清洗 | **低** | 最适合便宜模型：规则明确，只要格式对了就行 |
+| `summarization` | 长文摘要、会议纪要、变更日志、review 总结 | **中** | 差异主要在“有没有遗漏关键点”，中档模型通常够用 |
+| `conversation` | 客服回复、用户咨询、多轮对话 | **中** | 对延迟敏感（用户在等），但对绝对质量的要求不如 generation/reasoning |
 
 **状态流转**：
 - 正常路径：`created → admitted → queued → dispatched → running → completed`
@@ -293,7 +312,7 @@ Grader 是纯函数，不依赖 LLM：`transform` 用 parse/校验，`retrieval`
 
 **BudgetGovernor**
 - 维护"期望花费曲线 vs 实际花费曲线"
-- 发出水位信号：`tighten`（花快了）/ `loosen`（花慢了）
+- 计算 `budget_factor`（花快了 < 1 / 正好 = 1 / 花慢了 > 1）
 - 提供 reservation / settlement 接口
 
 **RateLimiter**
@@ -332,17 +351,41 @@ Grader 是纯函数，不依赖 LLM：`transform` 用 parse/校验，`retrieval`
 
 ### 7.1 预算水位
 
-**配置**：`budget_total_usd`（总预算），`budget_reserve_usd`（保底留多少），`horizon_seconds`（预算窗口时长）
+**作用域**：每个 run（= 一份 workload + 一个 policy）一笔独立预算，互不影响。
 
-**逻辑**：画一条线性"期望花费曲线"——如果预算均匀花完，到时间 t 应该花了多少。然后比较实际花费和期望值：
+**配置**：`budget_total_usd`（总预算），`budget_reserve_usd`（保底留多少）
 
-$$E(t) = \text{budget\_total} \times (t / \text{horizon})$$
-$$\Delta(t) = \text{实际花费}(t) - E(t)$$
+**什么时候算？** 每个 Turn 选模型时算一次。只有 ModelSelector（§7.2）用这个信号，它每个 Turn 选模型时读一次 `budget_factor`，所以那个时刻更新就够了。不需要后台定时器。
 
-- Δ > 0（花快了）→ `tighten`：倾向选便宜模型
-- Δ < 0（花慢了）→ `loosen`：允许选更好模型
+**怎么判断钱花快了还是花慢了？** 比较"按进度应该花多少"和"实际花了多少"。
 
-第一版只让 tighten/loosen 影响选模偏好，不做复杂优化。
+进度怎么量？看已完成的 Turn 占总数多少。实验中 workload 预先定义了所有 Turn，总数 `n_total` 已知：
+
+$$E(n) = \text{budget\_total} \times \frac{n_{\text{settled}}}{n_{\text{total}}}$$
+
+$n_{\text{settled}}$ = 已结算的 Turn 数（completed + failed + reaped），不含还在跑的或排队的。
+
+为什么不按时间算？因为任务不是均匀到达的。50 个 Turn 可能前 10 秒涌入 40 个——按时间看才过 10%，系统会误判"花快了"；但按完成数看已经结算了 80%，花费完全合理。生产环境中若不知道总 Turn 数，可以退化为按时间估算，Paper 1 不实现此 fallback。
+
+**budget_factor：告诉选模器"现在该省还是该花"的一个数字。**
+
+- `budget_factor > 1`：钱花慢了，可以用好一点的模型
+- `budget_factor = 1`：正好
+- `budget_factor < 1`：钱花快了，优先选便宜的
+
+从偏差到 budget_factor 的映射是**可插拔的**——只要输入是（已花费、已结算数、总数、总预算），输出是一个 float，就能接入 ModelSelector。MVP 先用最简单的版本，根据实验数据决定要不要换更精细的。
+
+**v0（起步方案）：三挡阈值。**
+
+| 实际花费 vs 期望花费 | budget_factor | 含义 |
+|---|---|---|
+| 超出 10% 以上 | 0.5 | 省着花 |
+| 上下 10% 以内 | 1.0 | 正常 |
+| 低于期望 10% 以上 | 2.0 | 可以用好的 |
+
+够用就行。如果实验发现三挡太粗（比如从"正常"跳到"省着花"太突然），可以换成连续函数（如 `clamp(E(n) / actual_spent, 0.2, 5.0)`），接口不变，其他模块不受影响。
+
+**边界情况**：还没有 Turn 结算时（`n_settled = 0`），E(0) = 0，没法算比例，此时 budget_factor = 1.0——第一个 Turn 不受水位影响。
 
 ### 7.2 选模型（启发式）
 
@@ -354,37 +397,54 @@ $$\text{score} = w(\text{priority}) \times q\_prior(\text{task\_type}, \text{bac
 
 各项含义：
 - `w(priority)`：优先级权重。interactive = 2.0，batch = 1.0。实时任务愿意为质量多付钱。
-- `q_prior`：预估质量分（0–1），预先配置在后端的配置文件里。例如 GPT-4 做代码生成 = 0.92，Llama-7B 做代码生成 = 0.65。
+- `q_prior`：预估质量分（0–1），预先配置在后端的配置文件里。例如 GPT-4 做内容生成（generation）= 0.92，Llama-7B 做内容生成 = 0.65。
 - `cost_est`：预估花费（美元），根据 prompt 长度 × 后端单价算出。
 
-**举个例子**：一个 interactive 的代码生成任务到来，两个后端可选：
+**举个例子**：一个 interactive 的内容生成任务到来，两个后端可选：
 
 | | GPT-4 | Llama-7B |
 |---|---|---|
-| q_prior | 0.92 | 0.65 |
+| q_prior（generation） | 0.92 | 0.65 |
 | cost_est | $0.05 | $0.001 |
 | w(interactive) | 2.0 | 2.0 |
 | **score** | 2.0 × 0.92 / 0.05 = **36.8** | 2.0 × 0.65 / 0.001 = **1300** |
 
-按性价比 Llama-7B 远胜。但如果预算充裕（loosen），系统会更倾向 GPT-4 以获得更好质量。具体做法：给 w(priority) 乘一个 budget_factor（tighten 时 < 1，loosen 时 > 1）。
+纯看性价比，Llama-7B 以 1300 vs 36.8 碾压 GPT-4。这正是"逐请求路由"（baseline B）会做出的选择——每次都选分数最高的。
 
-**硬约束过滤**（不满足直接排除，不进入评分）：
+但 AgentOS 多了一个维度：**预算水位**。它通过两步配合来改变模型选择——**先淘汰，再打分**：
+
+**第一步：硬约束过滤（真正的开关）。** 不满足的后端直接排除，不进入评分：
 - 预算：`cost_est ≤ remaining_budget − reserve`
 - 上下文窗口：prompt 长度不超过后端容量
 - 频率：RateLimiter 允许
+
+这是让模型选择真正发生变化的主力——钱快花完时，贵模型**过不了预算关**，直接被踢出候选列表，系统自然降级到便宜模型。
+
+**第二步：budget_factor 微调排名。** 在通过过滤的候选中，把 budget_factor（§7.1）乘进评分公式：
+
+$$\text{score} = \text{budget\_factor} \times w(\text{priority}) \times q\_prior \,/\, \text{cost\_est}$$
+
+budget_factor 对评分的影响是**选模策略的可插拔点**——v0 只是简单乘进去。如果实验发现这个乘法不够用（比如需要在候选中更积极地偏好高质量模型），可以换成更复杂的评分逻辑，其他模块不受影响。
+
+**举个例子**：假设预算从 $1.00 花到只剩 $0.08：
+- GPT-4 单次估算 $0.05 → 扣掉 reserve 后勉强还够 1 次
+- Llama-7B 单次估算 $0.001 → 还能跑 80 次
+- 此时 budget_factor = 0.5（钱花快了），评分更偏向便宜模型；再往下走几个 Turn，GPT-4 连硬约束都过不了——自然淘汰
+
+简单说：**硬约束管大方向（贵的能不能选），budget_factor 管微调（候选里谁优先）。** baseline B 永远只看单次性价比，AgentOS 把剩余预算也纳入决策。
 
 ### 7.3 僵尸检测
 
 两条规则，都基于数值信号，不需要分析输出内容：
 
-**规则 1：Wall-clock 超时。** Turn 进入 `running` 后，超过 `T_max` 秒未结束，判定为卡死。`T_max` 按 task_type 配置（如 codegen = 30s，transform = 10s）。覆盖场景：API 挂起、网络断连。
+**规则 1：执行超时。** Turn 进入 `running` 后，超过 `T_max` 秒未结束，判定为卡死。`T_max` 按 task_type 配置（如 generation = 30s，transform = 10s）。覆盖场景：API 挂起、网络断连。
 
-**规则 2：Cost overrun。** 准入时已冻结 `reservation_usd`（成本估算上限）。执行期间实时追踪 `cost_so_far`（流式输出时 = `output_tokens_so_far × price_per_token`）。若 `cost_so_far > k × reservation_usd`（默认 k = 3.0），判定为烧钱僵尸。覆盖场景：模型循环输出、无限续写。关键：**不需要理解输出内容**——模型是在重复自己还是产出有意义的文本无所谓，只看账单。`cost_so_far` 是单调递增计数器，每收到一批 streaming tokens 就更新，计算开销为零。
+**规则 2：烧钱超限（Cost overrun）。** 准入时已冻结 `reservation_usd`（成本估算上限）。执行期间实时追踪 `cost_so_far`（流式输出时 = `output_tokens_so_far × price_per_token`）。若 `cost_so_far > k × reservation_usd`（默认 k = 3.0），判定为烧钱僵尸。覆盖场景：模型循环输出、无限续写。关键：**不需要理解输出内容**——模型是在重复自己还是产出有意义的文本无所谓，只看账单。`cost_so_far` 是单调递增计数器，每收到一批 streaming tokens 就更新，计算开销为零。
 
 | 规则 | 输入信号 | 触发条件 | 典型场景 |
 |---|---|---|---|
-| 超时 | wall_clock_elapsed | > T_max(task_type) | API 挂起、网络断连 |
-| 烧钱 | cost_so_far / reservation_usd | > k（默认 3.0） | 模型循环输出、无限续写 |
+| 执行超时 | running_duration_s | > T_max(task_type) | API 挂起、网络断连 |
+| 烧钱超限 | cost_so_far / reservation_usd | > k（默认 3.0） | 模型循环输出、无限续写 |
 
 触发后的回收流程：释放并发槽 → 归还预留预算 → 写 `zombie_reaped` 事件 → 标记可重试
 
@@ -413,7 +473,7 @@ Workload 是一份提前写好的"剧本"：什么时间点来什么任务、每
   "turn_id": "t001",
   "at_ms": 0,
   "priority": "interactive",
-  "task_type": "codegen",
+  "task_type": "generation",
   "mock": {
     "input_tokens": 500,
     "output_tokens": 300,
@@ -433,7 +493,7 @@ Workload 是一份提前写好的"剧本"：什么时间点来什么任务、每
   "turns": [
     {
       "turn_id": "t001", "at_ms": 0,
-      "priority": "interactive", "task_type": "codegen",
+      "priority": "interactive", "task_type": "generation",
       "mock": { "input_tokens": 200, "output_tokens": 120, "latency_ms": 900, "ttft_ms": 120, "error": "none", "quality_score": 0.85 }
     },
     {
@@ -443,7 +503,7 @@ Workload 是一份提前写好的"剧本"：什么时间点来什么任务、每
     },
     {
       "turn_id": "t003", "at_ms": 100,
-      "priority": "batch", "task_type": "debug",
+      "priority": "batch", "task_type": "reasoning",
       "mock": { "input_tokens": 150, "output_tokens": 200, "latency_ms": 5000, "ttft_ms": 200, "error": "timeout", "quality_score": 0.0 }
     }
   ]
@@ -463,7 +523,7 @@ events.jsonl 记录四条线的事件：
 
 **后端调用**：backend_id、input_tokens、output_tokens、cost_usd、ttft_ms、total_latency_ms、error_type
 
-**Governor 决策**：reservation_usd、settlement_usd、admit/wait/reject、tighten/loosen
+**Governor 决策**：reservation_usd、settlement_usd、admit/wait/reject、budget_factor
 
 **Scheduler 决策**：队列长度、选模结果与分数、抢占/存档/恢复、zombie 回收原因
 
@@ -472,7 +532,7 @@ events.jsonl 记录四条线的事件：
 **完整示例**（对应上面的 3-turn workload）：
 
 ```jsonl
-{"ts_ms":0,   "turn_id":"t001", "event":"created",      "priority":"interactive", "task_type":"codegen"}
+{"ts_ms":0,   "turn_id":"t001", "event":"created",      "priority":"interactive", "task_type":"generation"}
 {"ts_ms":2,   "turn_id":"t001", "event":"admitted",     "reservation_usd":0.05}
 {"ts_ms":3,   "turn_id":"t001", "event":"dispatched",   "backend_id":"gpt4"}
 {"ts_ms":4,   "turn_id":"t001", "event":"running"}
@@ -482,7 +542,7 @@ events.jsonl 记录四条线的事件：
 {"ts_ms":55,  "turn_id":"t002", "event":"dispatched",   "backend_id":"gpt4"}
 {"ts_ms":105, "turn_id":"t002", "event":"failed",       "backend_id":"gpt4", "error_type":"http_429"}
 
-{"ts_ms":100, "turn_id":"t003", "event":"created",      "priority":"batch", "task_type":"debug"}
+{"ts_ms":100, "turn_id":"t003", "event":"created",      "priority":"batch", "task_type":"reasoning"}
 {"ts_ms":110, "turn_id":"t003", "event":"running"}
 {"ts_ms":5200,"turn_id":"t003", "event":"zombie_reaped","reap_reason":"timeout", "reservation_refund_usd":0.05}
 ```
@@ -526,7 +586,7 @@ events.jsonl 记录四条线的事件：
 | 主线实验后端 | MockBackend | 可控可复现，论文数据来自它 |
 | RealBackend | 仅做 sanity check | 验证系统能跑通，不用于主线对比 |
 | 质量指标 | mock quality_score | 使 RQ2 可稳定复现，LLM-as-judge 后置 |
-| 时间尺度 | 分钟级 horizon | 便于快速跑实验 |
+| 预算水位怎么判断"花快了" | 按已完成 Turn 占比，不按时间 | workload 里 Turn 总数已知，比"过了多久"更准——不怕任务扎堆到达 |
 | 并发槽 | 启动时固定配置，不做运行时动态调整 | 并发上限是外部已知硬约束（云端 RPM 写在供应商文档、本地 GPU 并发取决于显存），不需要运行时探测；实验中固定 N 避免引入额外变量 |
 | 适用场景 | 通用中间件，不区分个人/企业 | 同样的四个问题（预算/限流/优先级/僵尸）在个人和企业场景都存在，架构一致，只是参数不同 |
 
