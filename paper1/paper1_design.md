@@ -7,25 +7,21 @@
 
 ---
 
-## 1. 设计思路：像操作系统管进程一样，管 LLM 调用
+## 1. 设计思路：把 LLM 调用当成可治理的系统资源
 
 > 问题动机（没人管钱、没人管闸、没人管顺序）和三种资源（预算/调用带宽/并发槽）的详细解释见 `paper1_concepts.md` §2–§4。
 
-### 1.1 Turn：调度的基本单位
+### 1.1 Turn：统一的调度单位
 
-**Turn** = 一次 `llm.call()` 的完整生命周期。从 Agent 发起调用，到拿到结果（或失败），中间可能排队、执行、被抢占、被回收——都算在同一个 Turn 里。
-
-为什么选这个粒度？因为一个 Turn 刚好对应一次"占并发槽 + 花预算 + 用带宽"的完整周期，就像操作系统以进程（而非单条指令）为调度单位。
+**Turn** = 一次 `llm.call()` 的完整生命周期。从发起调用到完成（或失败），中间的排队、执行、重试、抢占、回收都属于同一个 Turn。
 
 ### 1.2 语义存档抢占
 
-操作系统抢占进程时，把 CPU 寄存器存下来，让给更高优先级的进程，之后恢复继续执行。AgentOS 做类似的事，但存档的是 LLM 的"语义上下文"：
+这里的“语义存档”指：暂停时保存上下文，恢复时继续生成，而不是整段重跑。
 
 - **抢占**：高优先级的实时请求到来，但并发槽被低优先级的后台任务占满了。系统暂停一个后台 Turn。
 - **存档**：把已经生成的中间结果（prompt + 已输出的文本）保存下来。
-- **恢复**：高优先级 Turn 完成后，从存档恢复被暂停的 Turn，把已生成文本拼进新 prompt 继续，而不是从头重来。
-
-叫"语义"是因为存的不是内存地址和寄存器值，而是对话层面有意义的内容。
+- **恢复**：高优先级 Turn 完成后，恢复被暂停 Turn，继续执行剩余部分。
 
 ### 1.3 架构总览
 
@@ -47,7 +43,7 @@
 │                                                      │
 │  ┌─ Scheduler（调度层：优化增益）─────────────┐    │
 │  │  Priority Queue   — 实时请求优先           │    │
-│  │  Model Selector   — 选模型（性价比）       │    │
+│  │  Model Selector   — 选模型（质量及格线）   │    │
 │  │  Preemption       — 语义存档抢占           │    │
 │  └────────────────────────────────────────────┘   │
 │                                                      │
@@ -66,9 +62,7 @@
 
 ## 2. 怎样算做完：3 个实验问题
 
-每个 RQ（Research Question）都是一个"加了 X 机制，数据会不会变好"的问题。
-
-把三者看成一条逐层叠加的链条，每一层都在上一层稳定性的基础上增加能力：
+三个 RQ 对应三层能力，逐层叠加：
 
 ```
 裸跑 ──(+Governor)──→ 稳定但低效（RQ1）
@@ -76,7 +70,7 @@
        ──(+Preemption+Zombie)──→ 稳定、高效且响应快（RQ3）
 ```
 
-为避免读者跳读，先约定 policy 名字：`raw`（无治理无调度）、`governor_only`（仅治理）、`baseline_A_fixed_expensive`（全用贵模型）、`baseline_B_per_request_router`（逐请求性价比路由）、`agentos`（全功能）。
+文档中的 policy 名称：`raw`、`governor_only`、`baseline_A_fixed_expensive`、`baseline_B_per_request_router`、`baseline_C_budget_aware_router`、`agentos`。
 
 ### RQ1：光加治理（不做智能调度），系统就能更稳吗？
 
@@ -101,35 +95,36 @@
 
 - **场景**：总预算 $1.00，50 个任务（生成/检索/转换混合），两个模型可选——GPT-4（贵、质量高）和 Llama-7B（便宜、质量一般）。
 - **对照 A（只用贵的）**：所有请求发 GPT-4，$1 只够 20 个任务，剩下 30 个没钱了。
-- **对照 B（逐请求路由）**：每个请求独立选性价比最高的模型，但不看全局预算水位——不知道钱花快了还是慢了。这是现有路由方案（如 LiteLLM）的做法。
+- **对照 B（逐请求路由）**：每个请求独立选性价比最高的模型，但不看全局预算松紧度——不知道钱花快了还是慢了。这是成本下界参考线（在本实验参数下通常退化为全用便宜模型）。
+- **对照 C（预算感知路由）**：看全局剩余预算，按预算比例线性调节“选贵模型概率”，但不区分 task_type。
 - **AgentOS**：Governor + Scheduler 完整协作。预算充裕时关键任务用 GPT-4，预算紧张时自动降级，简单任务一律用便宜模型。
 - **我们期望看到什么**：
   - "只用贵的"钱花光后被迫停工，完成率最低。AgentOS 把钱花在刀刃上，完成更多任务。
   - AgentOS 的花费应该接近用满预算（$0.90–1.00），说明钱没有被浪费——不是省着花到一半就停了，而是精打细算花到最后一刻。
-  - 质量上，AgentOS 不应比"逐请求路由"差——因为它在关键任务上仍然用好模型，只是在简单任务上省钱。也不应比"全用贵的那部分已完成任务"差太多——省钱不等于胡说八道。
+  - 质量上，AgentOS 应显著优于 baseline C（同样有预算意识但不做任务差异化），证明“把预算花在关键任务上”的增量价值。
+  - baseline A / B 继续作为上界/下界参照线：A 给质量天花板，B 给成本地板。
 
 **直觉参照**：
 
-| | 只用贵的 (A) | 逐请求路由 (B) | AgentOS |
-|---|---|---|---|
-| 完成数 / 50 | ~20 | ~50 | 40–50 |
-| 总花费 | ~$1.00（花光停工） | $0.60–0.90 | $0.90–1.00（精打细算用满） |
-| 平均质量 | ~0.90（高但做得少） | 0.65–0.80 | 0.80–0.90 |
+| | 只用贵的 (A) | 逐请求路由 (B) | 预算感知路由 (C) | AgentOS |
+|---|---|---|---|---|
+| 完成数 / 50 | ~20 | ~50 | 40–50 | 40–50 |
+| 总花费 | ~$1.00（花光停工） | $0.60–0.90 | $0.90–1.00 | $0.90–1.00（精打细算用满） |
+| 平均质量 | ~0.90（高但做得少） | 0.65–0.80 | 0.72–0.84 | 0.80–0.90 |
 
 ### RQ3：动态资源回收（抢占 + 僵尸检测）能挽救多少？
 
-三种场景，同一个底层模式——**资源被错误的东西占着，检测→中断→释放→重新分配**：
+两个场景，同一个底层模式——**资源被错误的东西占着，检测→中断→释放→重新分配**：
 
-- **场景 A（低优先级阻塞高优先级）**：并发槽 = 2，先提交 5 个后台任务（每个 10 秒），第 3 秒来了 1 个实时请求。无抢占时最坏等 10 秒；有抢占时 1 秒内开始执行。
-- **场景 B（慢请求拖垮全局）**：50 个任务里有 5 个"怪物"——延迟 30 秒（正常 1–2 秒），长时间霸占并发槽。无抢占时 P99 被拉到 20–30 秒；有抢占时 P99 保持 3–5 秒。
-- **场景 C（僵尸占着不放）**：50 个任务里有 10 个"僵尸"——5 个永不返回（卡死），5 个输出量是正常的 10 倍（烧钱）。无回收时吞吐下降 50%+；有回收时检测到超时或烧钱异常后强制回收，释放资源，吞吐恢复正常。
+- **场景 A（低优先级阻塞高优先级）**：并发槽 = 4，先提交 8 个后台任务（每个 10 秒），第 3 秒来了 2 个实时请求。无抢占时实时请求要等前面的 batch 释放槽位；有抢占时可在 1–2 秒内开始执行。
+- **场景 B（资源霸占，合并场景）**：50 个任务里注入 10 个"霸占者"（例如 5 个超慢 batch 请求 + 5 个卡死/异常长输出），并在执行中途插入 interactive 请求。无回收/无抢占时，interactive 被 batch 长任务阻塞、整体吞吐下降、P99 被拉高；开启抢占+回收后，interactive 响应和总体吞吐都恢复。
 
 对照方式：`governor_only`（无抢占/无僵尸回收）对比 `agentos`（开启抢占与僵尸回收）。
 
 - **我们期望看到什么**：
   - 场景 A：开抢占后，用户的实时请求在 2 秒内开始收到回复（首 token 延迟 TTFT 的 P99 ≤ 2s，P99 指第 99 百分位）。
-  - 场景 B：开抢占后，整体尾延迟（P99，第 99 百分位）从 20–30 秒降到 5 秒以内——少数慢请求不再拖垮所有人。
-  - 场景 C：开僵尸回收后，被卡死/烧钱的 Turn 被系统强制终止（events 里出现 `zombie_reaped`），释放的资源让正常任务继续跑，完成数显著回升。
+  - 场景 B：开回收后，被卡死/异常超长的 Turn 会出现 `zombie_reaped`；被释放的资源用于推进其他请求，整体吞吐和尾延迟明显改善。
+  - 抢占收益需要扣除恢复开销：报告中显式给出 `resume_cost_usd` 与 `resume_prefill_ms`，并做 break-even 对比。
   - 被抢占的后台任务不能"抢了就丢"——它们最终要被恢复并正常完成，不允许出现并发槽或预算泄漏。
 
 ---
@@ -143,6 +138,8 @@ agentos run --workload <path> --policy <policy> --out runs/<ts>/
 ```
 
 输出两个文件：
+- **`events.jsonl`**：原始事件日志（唯一真相源）
+- **`summary.json`**：汇总快照（与 `events.jsonl` 不一致时以前者为准）
 
 - **`events.jsonl`**——原始追踪日志。每行一条 JSON，记录每个 Turn 生命周期中的每一个事件。所有指标都从这个文件算出来，它是唯一真相源。
 - **`summary.json`**——汇总指标快照。方便一眼看结果，但不是权威来源。如果和 `events.jsonl` 复算结果不一致，以后者为准。
@@ -154,15 +151,12 @@ agentos run --workload <path> --policy <policy> --out runs/<ts>/
 一个 Turn（t001）从创建到完成，日志里会追加这些行：
 
 ```jsonl
-{"ts_ms":0,    "turn_id":"t001", "event":"created",    "priority":"interactive", "task_type":"generation"}
-{"ts_ms":1,    "turn_id":"t001", "event":"admitted",   "reservation_usd":0.05}
-{"ts_ms":2,    "turn_id":"t001", "event":"queued",     "queue":"interactive", "queue_len":1}
-{"ts_ms":3,    "turn_id":"t001", "event":"dispatched", "backend_id":"gpt4", "score":36.8}
-{"ts_ms":3,    "turn_id":"t001", "event":"running"}
-{"ts_ms":1203, "turn_id":"t001", "event":"completed",  "backend_id":"gpt4", "input_tokens":500, "output_tokens":300, "cost_usd":0.042, "ttft_ms":200, "total_latency_ms":1200, "quality_score":0.92, "settlement_usd":0.042, "reservation_refund_usd":0.008}
+{"ts_ms":0, "turn_id":"t001", "event":"created", "priority":"interactive", "task_type":"generation"}
+{"ts_ms":3, "turn_id":"t001", "event":"dispatched", "backend_id":"gpt4"}
+{"ts_ms":1203, "turn_id":"t001", "event":"completed", "settlement_usd":0.042, "ttft_ms":200, "quality_score":0.92}
 ```
 
-其中 `ts_ms` 是 run 内相对时间（run 开始 = 0），方便不同机器跑出来的结果直接对齐。
+`ts_ms` 是 run 内相对时间（run 开始 = 0）。
 
 #### summary.json 示例
 
@@ -184,6 +178,8 @@ agentos run --workload <path> --policy <policy> --out runs/<ts>/
 ```
 
 ### 3.2 summary.json 字段定义
+
+每个 Turn 最终只有一个终态事件：`completed`（成功）、`failed`（失败）、`zombie_reaped`（被回收）。
 
 每个 Turn 最终只有一个终态事件：`completed`（成功）、`failed`（失败）、`zombie_reaped`（被回收）。
 
@@ -232,7 +228,7 @@ Grader 是纯函数，不依赖 LLM。同输入同输出必须得到同分数。
 
 - **Gateway**：所有 `llm.call()` 的统一入口
 - **两种模型后端**
-  - `MockBackend`：按 workload 预设的参数直接返回结果（延迟、token 数、成本、错误、质量分都写死）。主线实验全用它——因为要公平比较不同 policy，不能让真实 API 的随机波动干扰结果。
+  - `MockBackend`：按 workload 预设参数返回结果（延迟、token 数、成本、质量分，以及非速率类错误），并内置与 `rpm_limit` 对齐的动态 RPM 计数器。请求到达时先做 RPM 检查，超限即时返回 `http_429`；未超限再读取 `mock[backend_id]`。主线实验全用它——因为要公平比较不同 policy，不能让真实 API 的随机波动干扰结果。
   - `RealBackend`：接真实模型（Ollama / 云端 API），仅用于验证系统能跑通。
 - **Governor**：Budget + RateLimit + Admission
 - **Scheduler**：PriorityQueue + ModelSelector + Preemption
@@ -303,10 +299,19 @@ Grader 是纯函数，不依赖 LLM。同输入同输出必须得到同分数。
 1. **预留（reservation）**：Turn 开始前，按估算成本从预算中冻结一笔钱。即使 10 个 Turn 并发执行，系统也不会因为"都还没扣钱"而超支。
 2. **结算（settlement）**：Turn 结束后，按实际消耗算真实花费，退回多冻的差额。
 
+BudgetGovernor 维护三个核心状态（run 级）：
+
+- `actual_spent_usd`：已结算实际花费
+- `frozen_total_usd`：当前所有未结算 Turn 的冻结总额
+- `available_budget_usd = budget_total_usd - actual_spent_usd - frozen_total_usd`
+
+预算相关判断一律基于 `available_budget_usd`。这保证并发情况下不会出现“每个请求看起来都能过，但总和超支”的漏洞。
+
 术语对齐（同一条流水线）：
 - `cost_est`（选模打分用）= 在某个候选后端上的单次成本估算。
 - `max_cost_usd_est`（ResourceSpec）= 所有候选后端里最保守的成本上限。
 - `reservation_usd`（事件字段）= 本次 dispatch 前冻结金额，v0 取 `max_cost_usd_est`。
+- `frozen_total_usd`（Governor 状态）= 所有在途 Turn 的 `reservation_usd` 总和。
 
 ### 5.5 实验基本单位（run 与矩阵）
 
@@ -323,10 +328,10 @@ Grader 是纯函数，不依赖 LLM。同输入同输出必须得到同分数。
 
 1. 接收调用请求（prompt + task_type + priority）
 2. 估算资源需求（ResourceSpec）
-3. Admission 粗检（Governor）：预算/并发槽可行，且 `anyBackendAvailable() = true`
+3. Admission 粗检（Governor）：`available_budget_usd`/并发槽可行，且 `anyBackendAvailable() = true`
 4. 入队（Scheduler）：按优先级排队
-5. 选模型（Scheduler）：ModelSelector 结合 budget_factor + `hasCapacity(backend_id)` 过滤候选
-6. 原子获取（Governor）：对选中后端一次性执行 `reserve_budget + acquire(backend_id)`，任一失败就回滚并重选/等待
+5. 选模型（Scheduler）：ModelSelector 结合 budget_factor + `hasCapacity(backend_id)` + backend health 过滤候选
+6. 原子获取（Governor）：对选中后端一次性执行 `reserve_budget + acquire(backend_id)`，任一失败就回滚并重选/等待（`frozen_total_usd` 随预留/回滚原子更新）
 7. 调后端执行（dispatch）
 8. 收集实际消耗（token 数 / 花费 / 延迟 / 错误 / 质量）
 9. 结算预算并释放频率槽，写事件日志
@@ -334,7 +339,8 @@ Grader 是纯函数，不依赖 LLM。同输入同输出必须得到同分数。
 ### 6.2 Governor（治理层）
 
 **BudgetGovernor**
-- 维护"期望花费曲线 vs 实际花费曲线"
+- 维护 run 级预算状态：`actual_spent_usd / frozen_total_usd / available_budget_usd`
+- 维护"期望花费曲线 vs 已承诺花费曲线"
 - 计算 `budget_factor`（花快了 < 1 / 正好 = 1 / 花慢了 > 1）
 - 提供 reservation / settlement 接口
 
@@ -345,9 +351,15 @@ Grader 是纯函数，不依赖 LLM。同输入同输出必须得到同分数。
   - `hasCapacity(backend_id) -> bool`：ModelSelector 过滤候选时用
   - `acquire(backend_id) -> bool`：dispatch 前原子占位
 
+**BackendHealth（熔断器）**
+- 维护每个后端的 `healthy / unhealthy` 状态
+- 连续失败达到阈值 `N_fail`（默认 5）后熔断为 `unhealthy`，进入冷却期（默认 30s）
+- 冷却期内 ModelSelector 不再路由该后端；冷却结束后以低频探测请求恢复
+
 **AdmissionControl**
-- 只做模型无关的底线检查：预算余量、并发槽、`anyBackendAvailable()`
+- 只做模型无关的底线检查：`available_budget_usd`、并发槽、`anyBackendAvailable()`
 - 不满足时：`wait`（排队）或 `reject`（拒绝）
+- 判定规则（v0）：可恢复条件（并发槽满、频率超限）→ `wait`；不可恢复条件（`available_budget_usd` 连最便宜候选的 `cost_est` 都覆盖不了）→ `reject`
 
 **ZombieDetector**
 - 两条规则：超时未返回、花费异常偏高
@@ -357,11 +369,15 @@ Grader 是纯函数，不依赖 LLM。同输入同输出必须得到同分数。
 
 **PriorityQueue**：两级队列，interactive 始终优先于 batch。
 
-**ModelSelector**：在候选后端中选一个（启发式评分 + 频率/预算过滤）。
+**ModelSelector**：在候选后端中选一个（质量及格线 + 预算/频率/健康状态过滤）。
 
 重试约束：同一个 Turn 的每次重试都重新执行 ModelSelector；且对该 Turn 已返回错误的 backend 加入临时黑名单（仅本 Turn 生效），避免在同一失败后端上原地重试耗尽次数。
 
 **Preemption**：当 interactive Turn 到来但无空闲槽时，暂停一个 batch Turn（存档），让 interactive 先跑；之后恢复被暂停的 Turn 继续。
+
+**Anti-starvation（防饥饿）**
+- 对被抢占或长期等待的 batch Turn 启用 aging：每等待 `aging_step_s`（默认 15s）优先级提升一档
+- 同一 Turn 被抢占超过 `max_preemptions`（默认 2）后提升到与 interactive 同级，防止无限延期
 
 ### 6.4 模型后端（统一返回格式）
 
@@ -381,104 +397,83 @@ Grader 是纯函数，不依赖 LLM。同输入同输出必须得到同分数。
 
 > **人话版**：这三节讲的是系统怎么**管钱、选模型、杀僵尸**。
 > - **管钱（§7.1）**：钱花快了就“省着点”，花慢了就“可以用好点的”。
-> - **选模型（§7.2）**：先把“不符合硬条件”的模型踢掉，再在剩下的里挑一个最合算的。
+> - **选模型（§7.2）**：先过“质量够用”门槛，再在可用候选里选最便宜的。
 > - **杀僵尸（§7.3）**：跑太久/花太多就回收，别让它占着预算和并发槽。
 
-### 7.1 预算水位
+### 7.1 预算松紧度
 
 **作用域**：每个 run 一笔独立预算，互不影响。矩阵里每个格子各算各的账。
 
 **配置**：`budget_total_usd`（总预算），`budget_reserve_usd`（保底留多少）
 
-**什么时候算？** 每个 Turn 选模型时算一次。只有 ModelSelector（§7.2）用这个信号，它每个 Turn 选模型时读一次 `budget_factor`，所以那个时刻更新就够了。不需要后台定时器。
-
-**怎么判断钱花快了还是花慢了？** 比较"按进度应该花多少"和"实际花了多少"。
+每个 Turn 选模型时计算一次 `budget_factor`。比较“目标花费”与“已承诺花费（已结算 + 已冻结）”：
 
 进度怎么量？看已完成的 Turn 占总数多少。实验中 workload 预先定义了所有 Turn，总数 `n_total` 已知：
 
-$$\text{target\_spend}(n) = \text{budget\_total} \times \frac{n_{\text{settled}}}{n_{\text{total}}}$$
+$$\text{target\_spend}(n) = \text{budget\_total\_usd} \times \frac{n_{\text{settled}}}{n_{\text{total}}}$$
 
 $n_{\text{settled}}$ = 已结算的 Turn 数（completed + failed + reaped），不含还在跑的或排队的。
 
-为什么不按时间算？因为任务不是均匀到达的。50 个 Turn 可能前 10 秒涌入 40 个——按时间看才过 10%，系统会误判"花快了"；但按完成数看已经结算了 80%，花费完全合理。生产环境中若不知道总 Turn 数，可以退化为按时间估算，Paper 1 不实现此 fallback。
+已承诺花费定义为：
 
-**budget_factor：告诉选模器"现在该省还是该花"的一个数字。**
+$$\text{committed\_spend} = \text{actual\_spent\_usd} + \text{frozen\_total\_usd}$$
+
+**budget_factor（预算松紧度）：告诉选模器"现在该省还是该花"的一个数字。**
 
 - `budget_factor > 1`：钱花慢了，可以用好一点的模型
 - `budget_factor = 1`：正好
 - `budget_factor < 1`：钱花快了，优先选便宜的
 
-从偏差到 budget_factor 的映射是**可插拔的**——只要输入是（已花费、已结算数、总数、总预算），输出是一个 float，就能接入 ModelSelector。MVP 先用最简单的版本，根据实验数据决定要不要换更精细的。
+从偏差到 budget_factor 的映射保持可插拔（输入：已承诺花费、进度、总预算；输出：float）。
 
 **v0（起步方案）：三挡阈值。**
 
-| 实际花费 vs 期望花费 | budget_factor | 含义 |
+| 已承诺花费 vs 期望花费 | budget_factor | 含义 |
 |---|---|---|
 | 超出 10% 以上 | 0.5 | 省着花 |
 | 上下 10% 以内 | 1.0 | 正常 |
 | 低于期望 10% 以上 | 2.0 | 可以用好的 |
 
-够用就行。如果实验发现三挡太粗（比如从"正常"跳到"省着花"太突然），可以换成连续函数（如 `clamp(target_spend(n) / actual_spent, 0.2, 5.0)`），接口不变，其他模块不受影响。
+若三挡太粗，可换连续函数（如 `clamp(target_spend(n) / committed_spend, 0.2, 5.0)`）。
 
-**边界情况**：还没有 Turn 结算时（`n_settled = 0`），`target_spend(0) = 0`，没法算比例，此时 budget_factor = 1.0——第一个 Turn 不受水位影响。
+**边界情况**：还没有 Turn 结算时（`n_settled = 0`），`target_spend(0) = 0`，没法算比例，此时 budget_factor = 1.0——第一个 Turn 不受预算松紧度影响。
 
-### 7.2 选模型（启发式）
+### 7.2 选模型（质量及格线 + 预算松紧度）
 
-**核心原则**：优先级越高越愿意花钱，预算越紧越少花钱。
+核心原则：先判定“够不够用”，再在可用候选里选最便宜的。
 
-评分公式：
+为每种 `task_type` 配置质量及格线 `q_floor`（0–1）：
 
-$$\text{score} = w(\text{priority}) \times q\_prior(\text{task\_type}, \text{backend}) \,/\, \text{cost\_est}$$
+| task_type | `q_floor`（v0） | 说明 |
+|---|---:|---|
+| `generation` | 0.80 | 质量不足会直接产生不可用输出 |
+| `reasoning` | 0.85 | 推理断链的代价最高 |
+| `retrieval` | 0.50 | 中档模型通常可用 |
+| `transform` | 0.30 | 规则明确，低成本模型优先 |
+| `summarization` | 0.60 | 需要覆盖关键点 |
+| `conversation` | 0.55 | 强调可用性与响应 |
 
-各项含义：
-- `w(priority)`：优先级权重。interactive = 2.0，batch = 1.0。实时任务愿意为质量多付钱。
-- `q_prior`：预估质量分（0–1），预先配置在后端的配置文件里。例如 GPT-4 做内容生成（generation）= 0.92，Llama-7B 做内容生成 = 0.65。
-- `cost_est`：预估花费（美元），根据 prompt 长度 × 后端单价算出。
-- `cost_est` 与 `max_cost_usd_est` 的关系：前者是**候选后端级**估算，后者是**跨候选的保守上限**（用于 reservation）。
+预算松紧度只用于调节“够用”门槛。
 
-**举个例子**：一个 interactive 的内容生成任务到来，两个后端可选：
+$$q_{\text{eff}} = q_{\text{floor}}(\text{task\_type}) \times \text{clamp}(\text{budget\_factor}, 0.3, 1.5)$$
 
-| | GPT-4 | Llama-7B |
-|---|---|---|
-| q_prior（generation） | 0.92 | 0.65 |
-| cost_est | $0.05 | $0.001 |
-| w(interactive) | 2.0 | 2.0 |
-| **score** | 2.0 × 0.92 / 0.05 = **36.8** | 2.0 × 0.65 / 0.001 = **1300** |
+然后按三步选择：
 
-纯看性价比，Llama-7B 以 1300 vs 36.8 碾压 GPT-4。这正是"逐请求路由"（baseline B）会做出的选择——每次都选分数最高的。
+1. 计算当前 Turn 的 `q_eff`
+2. 过滤候选后端，必须同时满足：
+   - 质量够用：`q_prior(task_type, backend) ≥ q_eff`
+   - 买得起：`cost_est(backend) ≤ available_budget_usd`
+   - 有容量：`hasCapacity(backend_id) = true` 且上下文窗口可容纳
+3. 在剩余候选里选 `cost_est` 最低者
 
-但 AgentOS 多了一个维度：**预算水位**。它通过两步配合来改变模型选择——**先淘汰，再打分**：
+若无候选，fallback：忽略质量门槛，在满足预算/容量条件的候选里选 `q_prior` 最高者。
 
-**第一步：硬约束过滤（真正的开关）。** 不满足的后端直接排除，不进入评分：
-- 预算：`cost_est ≤ remaining_budget − reserve`
-- 上下文窗口：prompt 长度不超过后端容量
-- 频率：`hasCapacity(backend_id) = true`
+`cost_est` 用于候选比较；`max_cost_usd_est` 用于 reservation 上限。
 
-这是让模型选择真正发生变化的主力——钱快花完时，贵模型**过不了预算关**，直接被踢出候选列表，系统自然降级到便宜模型。
-
-**第二步：预算水位影响"怎么打分"（可插拔点）。** 在通过过滤的候选中，评分仍然是"质量 vs 价格"的权衡，但这里定位为**候选内微调**，不负责模型级切换。
-
-一个简单做法：让"价格惩罚强度"随预算水位变化。
-
-$$\text{score} = w(\text{priority}) \times q\_prior \,/\, (\text{cost\_est})^{\beta}$$
-
-其中 $\beta$ 由 `budget_factor` 决定（v0 三挡）：
-- `budget_factor = 0.5`（钱花快了）→ $\beta = 1.5$：更重视便宜（贵的扣分更狠）
-- `budget_factor = 1.0`（正常）→ $\beta = 1.0$
-- `budget_factor = 2.0`（钱花慢了）→ $\beta = 0.7$：更重视质量（对价格更宽容）
-
-注意：当模型价格相差超过一个数量级时，`β` 往往只能改变分差，不能改变胜负。因此这里不把 `β` 当成"翻盘开关"。模型级切换主要由第一步硬约束过滤触发。
-
-这块刻意设计成**可插拔**：以后如果实验发现 $\beta$ 三挡不够细，可以换连续函数；如果发现需要按 `task_type` 做不同权衡，也可以在这里扩展，接口不变，其他模块不受影响。
-
-**举个例子**：假设预算从 $1.00 花到只剩 $0.08：
-- GPT-4 单次估算 $0.05 → 扣掉 reserve 后勉强还够 1 次
-- Llama-7B 单次估算 $0.001 → 还能跑 80 次
-- 此时 `budget_factor = 0.5` → $\beta = 1.5$，评分会更偏向便宜模型；再往下走几个 Turn，GPT-4 连硬约束都过不了——自然淘汰
-
-简单说：**硬约束管大方向（贵的能不能选），budget_factor 管微调（候选里谁优先）。** baseline B 永远只看单次性价比，AgentOS 把剩余预算也纳入决策。
-
-补充说明：在 GPT-4 与 Llama-7B 这组价格差距下，baseline B 基本会退化为"全用便宜模型"。这个现象是预期行为，文档里明确承认，不把它包装成更复杂的策略。
+**基线对齐**：
+- `baseline_B_per_request_router`：继续采用逐请求性价比路由（不设质量及格线、不看预算松紧度）
+- `baseline_C_budget_aware_router`：看预算不看任务，按预算比例调节贵模型使用概率
+- `agentos`：采用本节的质量及格线 + 预算松紧度机制
 
 ### 7.3 抢占与恢复规则
 
@@ -489,11 +484,26 @@ $$\text{score} = w(\text{priority}) \times q\_prior \,/\, (\text{cost\_est})^{\b
 - 恢复后的 Turn 不保留专属并发槽，按调度规则重新竞争。
 - 恢复队列采用"队首插入"：优先于普通 batch，但仍低于 interactive。
 - 单次调度周期最多抢占 `available_interactive_gap` 个 batch Turn（不做过量抢占）；恢复顺序用 FIFO（先被抢占先恢复）。
+- 防饥饿：被抢占/等待越久优先级越高（aging），且超过 `max_preemptions` 后强制提级。
+
+抢占恢复的额外代价必须显式计入：
+
+- `resume_input_tokens`：恢复时重传的上下文 token 数
+- `resume_cost_usd = resume_input_tokens / 1000 × price_usd_per_1k_input × cache_discount`
+- `resume_prefill_ms`：恢复请求的额外 prefill 延迟
+
+其中 `cache_discount ∈ (0,1]` 用来表示前缀缓存带来的折扣（无缓存 = 1.0，命中缓存时 < 1.0）。
+Turn 的总成本与总延迟更新为：
+
+- `cost_total = base_cost + Σ resume_cost_usd`
+- `latency_total = base_latency + Σ resume_prefill_ms`
 
 MockBackend 下的抢占语义（v0）：
 - 若某 Turn 的 `latency_ms = L`，在已运行 `x` ms 时被抢占，则恢复后只执行剩余 `L - x` ms。
 - `quality_score` 与未抢占时一致（语义存档不丢进度）。
-- 实现上记录 `elapsed_run_ms`，恢复时按 `remaining_ms` 继续。
+- 实现上记录 `elapsed_run_ms`，恢复时按 `remaining_ms` 继续，并额外注入 `resume_cost_usd` 与 `resume_prefill_ms`。
+
+RQ3 报告中必须给出 break-even 条件：只有当“抢占减少的 interactive 尾延迟收益”大于“恢复开销（`resume_cost_usd + resume_prefill_ms`）”时，抢占才算净收益。
 
 ### 7.4 僵尸检测（Governor 侧）
 
@@ -513,14 +523,16 @@ MockBackend 下的抢占语义（v0）：
 Mock/Real 的启用范围（v0）：
 - **MockBackend 主线实验**：仅启用规则 1（超时）。因为 mock 默认非流式返回，`cost_so_far` 不可连续观测。
 - **RealBackend 验证性测试**：启用规则 1 + 规则 2。
-- RQ3 的 Mock 场景 C 用"超长延迟 + 高 output_tokens"近似烧钱僵尸，并通过超时回收验证止损路径。
+- RQ3 的 Mock 场景 B（资源霸占合并场景）用"超长延迟 + 高 output_tokens"近似烧钱僵尸，并通过超时回收验证止损路径。
 
 ### 7.5 失败与重试（全局策略）
 
 - 默认重试上限：`max_retries = 2`（首次失败后最多再试两次）。
 - 可重试错误：`http_429 / timeout / http_5xx`；不可重试错误：`backend_error`（默认）。
+- 重试采用指数退避：第 `k` 次重试等待 `delay_k = base_delay_ms × 2^k`（默认 `base_delay_ms = 200`，可加 10% jitter）。
 - 每次重试都必须重新走完整流程：Admission → 排队 → 选模型 → 原子获取 → dispatch。
 - 同一 Turn 内，已失败 backend 会被临时排除；直到 Turn 终态落定后才清空该排除集合。
+- 后端熔断：某后端连续失败达到阈值后进入 `unhealthy`，冷却期内不再路由，避免故障放大。
 - 超过重试上限后终态记为 `failed`，并保留最后一次错误类型。
 
 ---
@@ -536,11 +548,11 @@ Mock/Real 的启用范围（v0）：
 
 整个实验就是一张 **workload × policy** 的矩阵。每个格子 = 一次 run = 一份可对比的实验数据：
 
-| | `raw` | `governor_only` | `baseline_A` | `baseline_B` | `agentos` |
-|---|:---:|:---:|:---:|:---:|:---:|
-| **RQ1 workload**（50 并发冲击限流） | ✓ | ✓ | | | ✓ |
-| **RQ2 workload**（50 混合任务 + 预算约束） | | | ✓ | ✓ | ✓ |
-| **RQ3 workload**（注入僵尸/慢请求/抢占场景） | | ✓ | | | ✓ on/off |
+| | `raw` | `governor_only` | `baseline_A` | `baseline_B` | `baseline_C` | `agentos` |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| **RQ1 workload**（50 并发冲击限流） | ✓ | ✓ | | | | ✓ |
+| **RQ2 workload**（50 混合任务 + 预算约束） | | | ✓ | ✓ | ✓ | ✓ |
+| **RQ3 workload**（资源霸占合并场景：慢请求 + 僵尸 + interactive 插入） | | ✓ | | | | ✓ on/off |
 
 每一行是同一份 workload，横着比不同 policy 的表现；每一列是同一个 policy，竖着看它在不同压力下的表现。Mock 输入是确定的，但在真实时间执行下，时序指标会受线程调度影响，因此要求是：核心计量（完成数、总花费、错误数）一致，延迟类指标允许小幅波动。
 
@@ -551,12 +563,13 @@ Mock/Real 的启用范围（v0）：
 | `raw` | 裸跑：无 Governor、无 Scheduler；只记录成本，不执行预算约束 | RQ1 对照组 |
 | `governor_only` | 只有 Governor，Scheduler 仍 FIFO | RQ1 对照组 / RQ3 对照组 |
 | `baseline_A_fixed_expensive` | 所有请求发贵模型，不管预算 | RQ2 对照 A |
-| `baseline_B_per_request_router` | 逐请求选性价比最高的，不看全局水位（在本实验参数下通常退化为全用便宜模型） | RQ2 对照 B |
+| `baseline_B_per_request_router` | 逐请求选性价比最高的，不看全局预算松紧度（在本实验参数下通常退化为全用便宜模型） | RQ2 对照 B |
+| `baseline_C_budget_aware_router` | 预算感知但不看 task_type：按 `available_budget_usd / budget_total_usd` 线性调节选贵模型概率（例如 `p_expensive = clamp(ratio, 0, 1)`） | RQ2 主对照组 |
 | `agentos` | 全部机制开启 | RQ1–3 实验组 |
 
 ### 8.2 Workload（实验脚本）
 
-每个 workload 是一份提前写好的 JSON 文件，定义了"什么时间来什么任务、每个任务在不同后端下的 mock 表现"。矩阵里同一行的不同 policy 跑的是同一份 workload，保证公平对比。并发槽数也放在 workload/policy 配置中显式给出（例如 `concurrency_slots: 2`），确保可复现。
+每个 workload 是一份提前写好的 JSON 文件，定义了"什么时间来什么任务、每个任务在不同后端下的 mock 表现"。矩阵里同一行的不同 policy 跑的是同一份 workload，保证公平对比。并发槽数也放在 workload/policy 配置中显式给出（例如 `concurrency_slots: 4`），确保可复现。
 
 **单条 Turn 记录**：
 
@@ -587,12 +600,12 @@ Mock/Real 的启用范围（v0）：
 }
 ```
 
-**完整 workload 示例**（覆盖三种典型情况：正常完成、429 失败、超时被回收）：
+**完整 workload 示例**（覆盖三种典型情况：正常完成、动态 429、超时被回收）：
 
 ```json
 {
   "workload_id": "toy_3turns_v1",
-  "concurrency_slots": 2,
+  "concurrency_slots": 4,
   "turns": [
     {
       "turn_id": "t001", "at_ms": 0,
@@ -606,7 +619,7 @@ Mock/Real 的启用范围（v0）：
       "turn_id": "t002", "at_ms": 50,
       "priority": "batch", "task_type": "retrieval",
       "mock": {
-        "gpt4": { "input_tokens": 80, "output_tokens": 40, "latency_ms": 300, "ttft_ms": 60, "error": "http_429", "quality_score": 0.0 },
+        "gpt4": { "input_tokens": 80, "output_tokens": 40, "latency_ms": 300, "ttft_ms": 60, "error": "none", "quality_score": 1.0 },
         "llama7b": { "input_tokens": 80, "output_tokens": 40, "latency_ms": 220, "ttft_ms": 40, "error": "none", "quality_score": 1.0 }
       }
     },
@@ -622,24 +635,27 @@ Mock/Real 的启用范围（v0）：
 }
 ```
 
-MockBackend 的读取规则：先看当前 Turn 选中的 `backend_id`，再读取 `mock[backend_id]`。这样选模策略会直接影响质量、延迟与错误结果，RQ2 的质量对比才有意义。重试时会重新选模，并跳过该 Turn 已失败过的 backend。
+MockBackend 的读取规则（v1）：
+- 先看当前 Turn 选中的 `backend_id`，并执行该后端 RPM 动态计数检查；若超限，直接返回 `http_429`；
+- 若未超限，再读取 `mock[backend_id]`；
+- `mock[backend_id].error` 仅用于非速率类错误（`timeout / http_5xx / backend_error / none`），不再用于注入 429。
+
+这样同一份 workload 就能稳定复现 RQ1：`raw` 会因突发并发触发动态 429，`governor_only` 会在 dispatch 前限速排队，后端侧 429 接近 0。重试时仍会重新选模，并跳过该 Turn 已失败过的 backend。
 
 跑这份 workload 大概会看到：
 - t001：正常完成，产生花费记录
-- t002：第一次命中 429，重试时切到另一后端后完成
+- t002：第一次因动态 RPM 超限命中 429，重试时切到另一后端后完成
 - t003：超时 → 如果开了 ZombieDetector，会被 `zombie_reaped`
 
 ### 8.3 events.jsonl 事件类型汇总
-
-events.jsonl 记录四条线的事件：
 
 **Turn 生命周期**：`created / admitted / queued / dispatched / running / completed / failed / zombie_reaped / preempted / archived / resumed`
 
 **后端调用**：backend_id、input_tokens、output_tokens、cost_usd、ttft_ms、total_latency_ms、error_type
 
-**Governor 决策**：reservation_usd、settlement_usd、admit/wait/reject、budget_factor、zombie 回收原因
+**Governor 决策**：reservation_usd、frozen_total_usd、available_budget_usd、settlement_usd、admit/wait/reject、budget_factor、zombie 回收原因
 
-**Scheduler 决策**：队列长度、选模结果与分数、抢占/存档/恢复
+**Scheduler 决策**：队列长度、选模结果、抢占/存档/恢复、aging 提级、retry_backoff_ms、circuit_breaker_state
 
 每行必带三个字段：`ts_ms`（时间戳）、`turn_id`、`event`。
 
@@ -682,24 +698,28 @@ events.jsonl 记录四条线的事件：
 - **验收**：跑 3 个 Turn，events 里完整出现 `created → admitted → queued → dispatched → running → completed`；`summary.json` 生成且字段齐全
 
 ### Phase 1：MockBackend + RateLimiter
-- **做什么**：mock 按后端分支返回（`mock[backend_id]`）；滑动窗口限流（`anyBackendAvailable/hasCapacity/acquire`）
-- **验收**：20 并发、RPM=5；无限流时 429 比例 > 20%，限流后 < 1%；同一 Turn 重试会重新选模且跳过已失败 backend；同一 Turn 换 backend_id 时质量分会变化
+- **做什么**：mock 按后端分支返回（`mock[backend_id]`）；MockBackend 内置 RPM 动态 429；滑动窗口限流（`anyBackendAvailable/hasCapacity/acquire`）
+- **验收**：20 并发、RPM=5；无限流时后端动态 429 比例 > 20%，限流后 < 1%；同一 Turn 重试会重新选模且跳过已失败 backend；同一 Turn 换 backend_id 时质量分会变化
 
 ### Phase 2：Budget + Admission（跑通 RQ1）
-- **做什么**：预算账本 + reservation/settlement；admit/wait/reject
-- **验收**：预算 $1、每次估算 $0.2；接近耗尽会 reject；`governor_only` 总花费 <= $1.00；预留归还误差 <= $0.001
+- **做什么**：预算账本 + reservation/settlement + `frozen_total_usd`；admit/wait/reject
+- **验收**：预算 $1、每次估算 $0.2；并发 10 请求同时到达时不发生超支；任意时刻满足 `available_budget_usd = budget_total_usd - actual_spent_usd - frozen_total_usd`；接近耗尽会 reject；`governor_only` 总花费 <= $1.00；预留归还误差 <= $0.001
 
 ### Phase 3：PriorityQueue
 - **做什么**：interactive 优先 + 并发槽限制
 - **验收**：先提交 batch 再来 interactive；interactive 的排队等待 P99 至少比 batch 低 50%
 
 ### Phase 4：ModelSelector（跑通 RQ2）
-- **做什么**：贵/便宜两个后端；五种 policy 全部跑通；budget_factor 驱动候选内微调
-- **验收**：`agentos` 完成数 >= `baseline_A_fixed_expensive` + 30%；`agentos` 平均质量 >= `baseline_B_per_request_router`；`agentos` 总花费在预算的 90%–100%
+- **做什么**：贵/便宜两个后端；六种 policy 全部跑通（含 baseline C）；质量及格线 + 预算松紧度选模机制
+- **验收**：`agentos` 完成数 >= `baseline_A_fixed_expensive` + 30%；`agentos` 平均质量 >= `baseline_C_budget_aware_router`；`agentos` 总花费在预算的 90%–100%
 
 ### Phase 5：Preemption + Zombie 回收（跑通 RQ3）
-- **做什么**：抢占协议（preempt → archive → resume）；Mock 下剩余时长恢复；计时器暂停/恢复；workload 注入卡死/慢请求；Governor 侧僵尸回收协议（Mock 启用超时规则，Real 启用超时+烧钱规则）
-- **验收**：events 出现 `preempted/archived/resumed`；恢复后 Turn 仅执行剩余时长且质量不降；20% 僵尸注入下 `agentos` 吞吐比 `governor_only` 至少高 30%；预算/并发槽零泄漏
+- **做什么**：抢占协议（preempt → archive → resume）；Mock 下剩余时长恢复；计时器暂停/恢复；恢复开销建模（`resume_cost_usd / resume_prefill_ms`）；aging 防饥饿；workload 注入卡死/慢请求；Governor 侧僵尸回收协议（Mock 启用超时规则，Real 启用超时+烧钱规则）
+- **验收**：events 出现 `preempted/archived/resumed`；恢复后 Turn 仅执行剩余时长且质量不降；20% 僵尸注入下 `agentos` 吞吐比 `governor_only` 至少高 30%；给出 RQ3 break-even 对比（延迟收益 vs 恢复开销）；预算/并发槽零泄漏；持续 interactive 压力下 batch 不发生无限饥饿
+
+### Phase 6：重试退避 + 熔断
+- **做什么**：指数退避重试（含 jitter）；后端健康状态机与熔断恢复
+- **验收**：后端短时全故障时不会在几秒内打满重试；熔断后错误洪峰下降；冷却期后后端可自动探测恢复
 
 ---
 
@@ -707,12 +727,12 @@ events.jsonl 记录四条线的事件：
 
 | 决策 | 选择 | 原因 |
 |---|---|---|
-| 核心系统语言 | C++ | 常驻进程，并发调度，计量逻辑单一实现 |
+| 核心系统语言 | C++ | 长生命周期服务，并发调度，计量逻辑单一实现 |
 | 实验与分析 | Python | 读 events.jsonl、算指标、出图表 |
 | 主线实验后端 | MockBackend | 可控可复现，论文数据来自它 |
 | RealBackend | 仅做验证性测试 | 验证系统能跑通，不用于主线对比 |
 | 质量指标 | mock quality_score | 使 RQ2 可稳定复现，LLM-as-judge 后置 |
-| 预算水位怎么判断"花快了" | 按已完成 Turn 占比，不按时间 | workload 里 Turn 总数已知，比"过了多久"更准——不怕任务扎堆到达 |
+| 预算松紧度怎么判断"花快了" | 按已完成 Turn 占比，对比已承诺花费（已结算+已冻结），不按时间 | workload 里 Turn 总数已知，比"过了多久"更准；把冻结额计入可避免并发超支盲区 |
 | 并发槽 | 启动时固定配置，不做运行时动态调整 | 并发上限是外部已知硬约束（云端 RPM 写在供应商文档、本地 GPU 并发取决于显存），不需要运行时探测；实验中固定 N 避免引入额外变量 |
 | 适用场景 | 通用中间件，不区分个人/企业 | 同样的四个问题（预算/限流/优先级/僵尸）在个人和企业场景都存在，架构一致，只是参数不同 |
 
