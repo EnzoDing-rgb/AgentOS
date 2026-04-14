@@ -9,8 +9,6 @@
 
 ## 1. 设计思路：把 LLM 调用当成可治理的系统资源
 
-> 问题动机（没人管钱、没人管闸、没人管顺序）和三种资源（预算/调用带宽/并发槽）的详细解释见 `paper1_concepts.md` §2–§4。
-
 ### 1.1 Turn：统一的调度单位
 
 **Turn** = 一次 `llm.call()` 的完整生命周期。从发起调用到完成（或失败），中间的排队、执行、重试、抢占、回收都属于同一个 Turn。
@@ -108,8 +106,9 @@ raw ──(+Governor)──→ governor_only（RQ1）
 - **场景**：总预算 $1.00，50 个任务（生成/检索/转换混合），两个模型可选——GPT-4（贵、质量高）和 Llama-7B（便宜、质量一般）。
 - **对照 A（只用贵的）**：所有请求发 GPT-4，$1 只够 20 个任务，剩下 30 个没钱了。
 - **对照 B（逐请求路由）**：每个请求独立选性价比最高的模型，但不看全局预算松紧度——不知道钱花快了还是慢了。这是成本下界参考线（在本实验参数下通常退化为全用便宜模型）。
-- **对照 C（预算感知路由）**：看全局剩余预算，按预算比例线性调节“选贵模型概率”，但不区分 task_type。
+- **对照 C（预算感知路由）**：看全局剩余预算，按预算比例线性调节“选贵模型概率”，但不区分 task_type。**它是 RQ2 最关键的对照**：因为它已经具备“全局预算感知”，能排除“只是因为更会控预算所以质量更高”的解释；因此把 AgentOS 和 C 对比，才能更干净地检验 AgentOS 的核心增量——**任务感知 + 把有限预算优先花在关键任务上**。
 - **AgentOS（无抢占版）**：`agentos_no_preempt` 仅开启 Governor + ModelSelector（不开抢占/僵尸回收）。预算充裕时关键任务用 GPT-4，预算紧张时自动降级，简单任务一律用便宜模型。
+- **“关键任务”是什么意思**：在 RQ2 的语境里，“关键任务/关键请求”不是指“题目更难”这种主观概念，而是指**对最终交付质量最敏感、返工成本最高**的那类步骤；系统用**显式信号**来近似这个概念（例如 `priority=interactive` 或被标注为“质量敏感”的 `task_type`），并在预算紧张时优先保障它们的模型质量。直观例子：代码补丁生成/关键决策/最终答复这类步骤通常更“关键”；而纯信息检索、格式转换、长文本摘要等步骤通常更“非关键”（更适合用便宜模型完成）。
 - **我们期望看到什么**：
   - "只用贵的"钱花光后被迫停工，完成率最低。AgentOS 把钱花在刀刃上，完成更多任务。
   - AgentOS 的花费应该接近用满预算（$0.90–1.00），说明钱没有被浪费——不是省着花到一半就停了，而是精打细算花到最后一刻。
@@ -167,6 +166,18 @@ agentos run --workload <path> --policy <policy> --out runs/<ts>/
 
 `ts_ms` 是 run 内相对时间（run 开始 = 0）。
 
+> 为什么每一行字段不一致？  
+> 这里采用的是**事件日志（event log）的稀疏记录方式**：每条记录只包含“该事件发生时才有意义”的字段，而不是强行把所有字段在每一行都填齐（否则会出现大量 `null`/冗余）。因此 **字段集合随 `event` 类型变化是刻意的设计**，不是不一致。
+
+具体约定如下：
+- **每行必备字段（所有事件都必须有）**：`ts_ms`、`turn_id`、`event`
+- **created 事件常见字段**：`priority`、`task_type`
+- **dispatched 事件常见字段**：`backend_id`
+- **completed 事件常见字段**：`settlement_usd`、`ttft_ms`（interactive 才有意义）、`quality_score`
+- **failed / zombie_reaped 事件常见字段**：`error_type`、`error_message`、`reap_reason`（视事件而定）
+
+这种“必备字段 + 事件特有字段”的写法，既方便流式追加与后续解析，也能保持日志紧凑。
+
 #### summary.json 示例
 
 ```json
@@ -187,8 +198,6 @@ agentos run --workload <path> --policy <policy> --out runs/<ts>/
 ```
 
 ### 3.2 summary.json 字段定义
-
-每个 Turn 最终只有一个终态事件：`completed`（成功）、`failed`（失败）、`zombie_reaped`（被回收）。
 
 每个 Turn 最终只有一个终态事件：`completed`（成功）、`failed`（失败）、`zombie_reaped`（被回收）。
 
@@ -368,7 +377,7 @@ BudgetGovernor 维护三个核心状态（run 级）：
 **AdmissionControl**
 - 只做模型无关的底线检查：`available_budget_usd`、并发槽、`anyBackendAvailable()`
 - 不满足时：`wait`（排队）或 `reject`（拒绝）
-- 判定规则（v0）：可恢复条件（并发槽满、频率超限）→ `wait`；不可恢复条件（`available_budget_usd` 连最便宜候选的 `cost_est` 都覆盖不了）→ `reject`
+- 判定规则：可恢复条件（并发槽满、频率超限）→ `wait`；不可恢复条件（`available_budget_usd` 连最便宜候选的 `cost_est` 都覆盖不了）→ `reject`
 
 **ZombieDetector**
 - 两条规则：超时未返回、花费异常偏高
@@ -418,11 +427,12 @@ BudgetGovernor 维护三个核心状态（run 级）：
 每个 Turn 选模型时计算一次 `budget_factor`。  
 **v1 口径（修正后）**：`budget_factor` 只比较“目标花费”与“已结算实际花费”；冻结额不参与选模信号。
 
-进度怎么量？看已完成的 Turn 占总数多少。实验中 workload 预先定义了所有 Turn，总数 `n_total` 已知：
+进度怎么量？**不再按 Turn 数均分**，而是按“任务权重”加权：实验中 workload 预先定义了所有 Turn，总数 `n_total` 已知；并为每个 Turn 预设一个权重 \(w_i\)（近似该任务“成本必要性/难度”，权重越大表示越应该为它预留预算空间）。
 
-$$\text{target\_spend}(n) = \text{budget\_total\_usd} \times \frac{n_{\text{settled}}}{n_{\text{total}}}$$
+$$\text{target\_spend}(n) = \text{budget\_total\_usd} \times \frac{\sum_{i=1}^{n_{\text{settled}}} w_i}{\sum_{i=1}^{n_{\text{total}}} w_i}$$
 
-$n_{\text{settled}}$ = 已结算的 Turn 数（completed + failed + reaped），不含还在跑的或排队的。
+$n_{\text{settled}}$ = 已结算的 Turn 数（completed + failed + reaped），不含还在跑的或排队的。  
+\(w_i\) 是 workload 给定的 `difficulty_weight`（例如 0.5=简单，1.0=普通，2.0=困难）；若未提供则默认 \(w_i=1.0\) 退化回“按 Turn 数均分”。
 
 用于预算松紧度信号的“实际花费”直接使用 `actual_spent_usd`（已结算实际花费）。
 
@@ -475,14 +485,20 @@ $$\text{required\_quality} = \text{quality\_threshold}(\text{task\_type}) \times
 
 1. 计算当前 Turn 的 `required_quality`
 2. 过滤候选后端，必须同时满足：
-   - 质量够用：`q_prior(task_type, backend) ≥ required_quality`
+   - 质量够用：`q_prior(task_type, backend) ≥ required_quality`（其中 `q_prior` 是“先验/预估质量分”：在没有真实运行结果之前，我们根据历史标定或 mock 设定，给出“某模型做某类任务大概能拿多少分”的估计，范围 0–1。例：`q_prior(generation, gpt4)≈0.90`，`q_prior(generation, llama7b)≈0.65`）
    - 买得起：`cost_est(backend) ≤ available_budget_usd`
    - 有容量：`hasCapacity(backend_id) = true` 且上下文窗口可容纳
 3. 在剩余候选里选 `cost_est` 最低者
 
-若无候选，fallback：忽略质量门槛，在满足预算/容量条件的候选里选 `q_prior` 最高者。
+如果按上述三条过滤完**一个候选模型都不剩**（常见原因：预算不够或质量门槛过高），就进入“退一步能跑就跑”的兜底策略（fallback）：
+- **先不再死卡质量门槛**（因为再卡下去就只能停工/失败）
+- 只要求“买得起 + 有容量”，在剩下的候选里选一个**预计质量最高**的（`q_prior` 最大）
 
-`cost_est` 用于候选比较；`max_cost_usd_est` 用于 reservation 上限。
+直观例子：某 Turn 的 `required_quality=0.80`，但预算只够跑 Llama-7B（其 `q_prior≈0.65`），GPT-4 虽然质量够但“买不起”。此时严格过滤会得到空集合；fallback 会选 Llama-7B，让任务至少能继续推进（哪怕质量不完美），而不是直接卡死。
+
+关于两个成本估计：
+- `cost_est`：用于在候选之间“谁更便宜”做比较（选最省钱的那个）
+- `max_cost_usd_est`：用于 Governor 的 reservation 上限（按“最坏情况可能花到多少钱”先冻结额度，避免并发时超支）
 
 **基线对齐**：
 - `baseline_B_per_request_router`：继续采用逐请求性价比路由（不设质量及格线、不看预算松紧度）
