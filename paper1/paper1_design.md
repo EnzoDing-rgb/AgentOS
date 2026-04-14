@@ -592,7 +592,7 @@ Mock/Real 的启用范围（v0）：
 | `governor_only` | 只有 Governor，Scheduler 仍 FIFO | RQ1 实验组 / RQ2 与 RQ3 的前置层 |
 | `baseline_A_fixed_expensive` | 所有请求发贵模型，不管预算 | RQ2 对照 A |
 | `baseline_B_per_request_router` | 逐请求选性价比最高的，不看全局预算松紧度（在本实验参数下通常退化为全用便宜模型） | RQ2 对照 B |
-| `baseline_C_budget_aware_router` | 预算感知但不看 task_type：按 `available_budget_usd / budget_total_usd` 线性调节选贵模型概率（例如 `p_expensive = clamp(ratio, 0, 1)`） | RQ2 主对照组 |
+| `baseline_C_budget_aware_router` | 预算感知但不看 task_type：按 `available_budget_usd / budget_total_usd` 线性调节选贵模型概率（例如 `p_expensive = clamp(ratio, 0, 1)`；其中 `clamp(x, 0, 1)` 表示把 \(x\) 限制在 \([0, 1]\) 区间内：小于 0 取 0，大于 1 取 1，例如 `clamp(1.2,0,1)=1`、`clamp(-0.1,0,1)=0`） | RQ2 主对照组 |
 | `agentos_no_preempt` | 开启 Governor + ModelSelector；关闭 Preemption + ZombieDetector | RQ2 实验组 / RQ3 对照组 |
 | `agentos` | 全部机制开启（在 `agentos_no_preempt` 基础上打开 Preemption + ZombieDetector） | RQ3 实验组 |
 
