@@ -47,3 +47,169 @@ SE 社区对“系统工具 + 扎实实验”的接受度通常高于 OS 社区�
 TSE/TOSEM 期刊篇幅更充裕，够你把 RQ1–RQ3 的完整消融实验都写清楚，不像会议容易受页数限制；ICSE/FSE 的 tool track 也明确鼓励这类工作。
 
 路线二和路线三要加的东西更重，但天花板也更高——**如果你有时间且理论功底不错，优先考虑路线二**：它能让这篇论文**同时具备系统贡献与算法贡献**，从而在投稿上**适用范围最广、选择余地最大**。
+
+## 设计取舍补充（Workload / Task / Turn）
+
+当前设计里调度与记账的锚点是 **Turn**；**Workload** 是“一次 run 吃进去的剧本”；**Task** 是上层心里的高层目标，Paper 1 里**不建 Task 实体**，这不是漏洞，而是研究边界：本文聚焦底层资源治理（预算、并发、选模、回收），不展开上层任务编排（多 Task 分预算、依赖、所有权）。
+
+实现上 workload 文件通常是 **`turns[]` 列表**——语义上等价于：把若干 Task 拆解后的 Turn **写进同一份剧本**里；Task 边界可以存在（你心里知道哪几步同属一个用户目标），但实验与调度器可以只认 Turn。
+
+后续若扩展到多租户/多团队，可显式引入 **Task 级预算与公平策略**，与路线三（多租户公平调度）衔接；Token 仍只作为 Turn 结算的计费单位，不单独成层。
+
+---
+
+## 更细的 evaluation（除 P99/TTFT 之外）
+
+`paper1_design.md` 里主线指标以 **完成数/失败率、成本、TTFT P99、平均质量**为主。为了让论证更“像 SE 实证研究”（尤其是投 ICSE/FSE/TSE/TOSEM），建议在扩展实验/附录里补三类指标：**质量加权完成、预算效率、主观体验**。
+
+### 1) Quality-weighted 完成率（不只是数量）
+
+动机：很多策略会把“完成数”做高，但如果完成的大多是低质量输出，工程意义有限。我们需要一个把**完成**与**质量**合到同一个数里的指标。
+
+建议指标（两种口径二选一，建议都报）：
+
+- **QWCR（Quality-Weighted Completion Rate）**  
+  令每个 turn 的终态质量 \(q_i \in [0,1]\)。若 turn 失败或被回收，则 \(q_i=0\)。则
+  \[
+  \text{QWCR}=\frac{1}{N}\sum_{i=1}^{N} q_i
+  \]
+  解释：如果全都高质量完成，QWCR 接近 1；如果大量失败/低质量，QWCR 降低。
+
+- **QW-Completed（质量加权完成数）**  
+  \[
+  \text{QW-Completed}=\sum_{i=1}^{N} q_i
+  \]
+  解释：把“完成数”从整数推广到“有效完成量”。当你需要对比不同 workload 大小、或做横向汇总时更直观。
+
+从日志怎么取 \(q_i\)：
+- **Mock 主线**：使用 `completed` 事件里（或该 turn 对应 backend 调用记录里）的 `quality_score`；失败/回收记为 0。
+- **RealBackend 补充实验**：按 `task_type` 用确定性 grader 得到 `quality_score`（见 `paper1_design.md §3.3`）。
+
+### 2) Budget efficiency（钱花得值不值）
+
+动机：RQ2/RQ3 里仅看 “cost_total_usd 是否接近预算” 还不够，需要衡量 **每一美元换来的有效质量产出**。
+
+建议指标：
+
+- **Quality per Dollar（Q/$）**  
+  \[
+  \text{Q/\$}=\frac{\sum_i q_i}{\text{cost\_total\_usd}}
+  \]
+  解释：单位成本换来的“有效完成量”。适合回答“钱花得值不值”。
+
+- **Weighted Quality per Dollar（WQ/$，可选）**  
+  若 workload 提供 `difficulty_weight`（见 `paper1_design.md §7.1`），令权重 \(w_i\)，则
+  \[
+  \text{WQ/\$}=\frac{\sum_i w_i q_i}{\text{cost\_total\_usd}}
+  \]
+  解释：把“关键/难任务”的质量收益放大，更贴近“把钱花在刀刃上”的论点（RQ2 叙事）。
+
+实现备注：
+- 分母 `cost_total_usd` 直接来自 `summary.json` 或从 `events.jsonl` 汇总 `settlement_usd`。
+- 如果某个 policy 因预算耗尽导致 cost 很低、但也几乎没做事，Q/$ 可能虚高；因此建议在同图里同时报告 **QWCR** 与 **Q/$**（或做 Pareto frontier：横轴 cost，纵轴 QW-Completed）。
+
+### 3) User experience（主观评分）
+
+动机：RQ3 的核心叙事是“救交互体验”（interactive 先跑、抢占、回收僵尸）。仅报 TTFT/尾延迟并不足以说服 SE 审稿人：他们更相信“用户觉得更好用”。
+
+建议在补充实验里加入小规模用户研究（轻量即可）：
+
+- **任务**：给受试者同一组交互式工作流（例如 10 个 interactive turns 插入 40 个 batch turns 的脚本），分别在 `agentos_no_preempt` 与 `agentos` 两种 policy 下体验（随机顺序/对照）。
+- **量表（Likert 1–5 或 1–7）**：
+  - **Responsiveness**：系统响应是否及时（感知延迟）
+  - **Smoothness**：是否出现“卡死/长时间无响应/突然失败”的打断
+  - **Trust/Confidence**：是否觉得系统在“合理分配资源”，不会莫名其妙停工
+  - **Overall satisfaction**：总体满意度
+- **输出指标**：
+  - 平均分与 95% CI（或配对 t-test / Wilcoxon）
+  - 与客观指标对齐：把主观 Responsiveness 与 `ttft_p99`、`zombie_reaped` 数量相关性一起报告（增强解释力）
+
+这块不要求大样本；关键是让论文能写出一句硬话：**“不仅 tail latency 更低，用户主观体验也显著更好。”**
+
+---
+
+## 叙事转向：从“资源治理”到“成本效益优化”（quality under budget）
+
+如果你担心审稿人把你归类为“另一个 AgentRM：让系统不崩”，可以把 Paper 1 的主叙事改成：
+
+> **在预算约束下最大化输出质量（并保证交互体验不崩）**  
+> 系统机制（Governor/Preemption/Zombie）是约束与实现手段；论文的“主目标函数”是 **cost-effectiveness**。
+
+这会让 RQ1–RQ3 的三层能力更像是逐步逼近同一个优化目标：
+- **RQ1**：把“外部 429/崩溃”变成“内部可控排队”，使 cost-effectiveness 可被稳定测量
+- **RQ2**：核心贡献：**质量-成本权衡**下的模型路由（在 budget 约束下把钱花在刀刃上）
+- **RQ3**：把尾部延迟与僵尸损耗纳入“有效产出”的定义（避免预算被低价值/卡死请求吞掉）
+
+### 1) Formal objective：预算约束下最大化质量
+
+把一次 run 写成一个优化问题。设 workload 有 \(N\) 个 turn，每个 turn \(i\) 可选择后端 \(a_i \in \mathcal{A}\)（例如 expensive/cheap）。
+
+- 成本：\(c_i(a_i)\)（USD）
+- 质量：\(q_i(a_i)\in[0,1]\)
+- 总预算：\(B\)
+
+最直接的形式化是 0-1 背包/多选择背包的变体：
+
+\[
+\max_{a_1,\dots,a_N}\ \sum_{i=1}^{N} w_i\,q_i(a_i)
+\quad \text{s.t.}\quad \sum_{i=1}^{N} c_i(a_i)\le B
+\]
+
+其中 \(w_i\) 是任务权重（可直接对应 `paper1_design.md §7.1` 的 `difficulty_weight`；没有就取 1）。
+
+解释（写论文时很好用）：
+- baseline A：总是选最高质量动作 → 很快触发预算约束 → 目标函数未必最大
+- baseline B：逐请求贪心性价比 → 不考虑全局预算时序 → 可能把预算花在低权重 turn
+- baseline C：全局预算感知但不看 task_type/权重 → 相当于用粗糙的 \(w_i\)（全 1）近似
+- AgentOS：显式利用 \(w_i\)（或 task_type/priority 信号）近似 “价值”，把 budget 分配给高边际收益的 turn
+
+### 2) Quality–cost tradeoff analysis：从“更多 turn”到 Pareto
+
+把论文图表从“完成率/成本”升级为“质量-成本 Pareto”：
+- 横轴：`cost_total_usd`
+- 纵轴：`QW-Completed` 或 `QWCR`
+- 画出不同 policy 的点云/均值 ± CI，并报告 Pareto frontier
+
+这样审稿人更容易接受你的 claim：
+- “我们的策略不是单纯更快/更稳，而是在同预算下把质量做得更高”
+- “在同质量目标下，我们用更少的钱（或在同钱下，我们拿到更高质量）”
+
+### 3) ModelSelector 的“最优性”怎么写（一个可证明的 setting）
+
+你现在的实现是规则路由（质量及格线 + `budget_factor` 调节门槛）。要写出“optimal”，需要一个**刻意简化但可解释**的 setting，让结论成立且可检验。
+
+推荐一个最干净、最容易写进论文的 setting（用于 theorem，不必等同真实系统）：
+
+**Setting S（两后端 + 已知先验 + 单调性）**
+- 仅两个后端：E（expensive）与 C（cheap）
+- 对每个 turn \(i\)，已知先验：\(\Delta q_i = q_i(E)-q_i(C)\ge 0\)，\(\Delta c_i = c_i(E)-c_i(C)>0\)
+- 目标：最大化 \(\sum_i w_i q_i(a_i)\) 在预算约束下
+
+则最优解等价于：在满足预算的前提下，对一部分 turn 选择 expensive，其余选择 cheap；选择集合应按“边际收益/边际成本”排序：
+
+\[
+\text{score}(i)=\frac{w_i\,\Delta q_i}{\Delta c_i}
+\]
+
+**结论（可写成定理）**：若允许对 turn 进行离线排序（workload 事先已知），选择 score 最高的若干个 turn 用 expensive（直到预算用尽）是最优（对应“fractional knapsack”时严格最优；对应 0-1 knapsack 时是经典贪心近似/在额外条件下最优）。
+
+怎么把它接回你的系统叙事：
+- 把 `task_type/priority/difficulty_weight` 当作 \(w_i\) 的显式近似
+- 把 `quality_prior` 差值当作 \(\Delta q_i\) 的估计
+- 把 token 估算与价格表当作 \(\Delta c_i\) 的估计
+- 你的 ModelSelector 可以被解释为：在在线场景里用 `budget_factor` 做一个“预算乘子/阈值”来近似上述离线最优解
+
+**写法建议（避免被抓漏洞）**
+- 主文：给出 Setting S + 一个清晰定理（或 proposition），强调“在该 setting 下我们的方法等价于/逼近最优”
+- 真实系统：承认 \(q_i,c_i\) 不可完全知道，因此使用先验估计 + 在线预算信号；用实验展示鲁棒性（RQ2 的对照 C 正是为了排除“只是控预算更好”的解释）
+
+### 4) 把“系统机制”重新定位为优化约束
+
+当主叙事换成 cost-effectiveness 后，Governor/Preemption/Zombie 的位置更自然：
+- **Governor**：保证预算约束与限流约束“硬成立”（否则优化问题本身不定义良好）
+- **Preemption**：把交互体验作为约束（例如 TTFT P99 视作 SLO）或作为目标函数中的 penalty
+- **ZombieDetector**：把“无效燃烧成本”从目标函数里剔除（否则 Q/$ 被噪声污染）
+
+一句话版结尾（可放 extended 或摘要草稿里）：
+
+> 我们将 LLM 调用治理表述为一个 **budget-constrained quality maximization** 问题；系统机制保证约束成立，而路由策略在可证明的简化 setting 下最优/近最优，并在真实 workload 上实现更好的质量-成本 Pareto。

@@ -15,12 +15,12 @@
 **核心思路**：把问题拆成三件事——**管入口（准入/排队）**、**选模型（质量-成本权衡）**、**回收资源（抢占/僵尸）**，并用统一事件日志把一切变成可度量、可复现的实验。
 
 ```text
-用户目标（1条指令）
+Workload（实验剧本：turns[] + mock + 预算/并发）
         |
+        |  语义上：若干 Task 被拆成一串 Turn（Task 不必在文件里显式出现）
         v
-  Agent / 多 Agent（把任务拆成很多 Turn）
+  每个 Turn = 一次 llm.call（priority / task_type / difficulty_weight …）
         |
-        |  每个 Turn: {priority, task_type, input} + 预算/并发约束
         v
 ======================  AgentOS（治理层）  ======================
 |  Governor（准入/排队）                                     |
@@ -53,6 +53,25 @@ events.jsonl（唯一真相源）  --->  summary.json / 指标（完成率/花�
 - 系统要同时管三种资源：预算（钱）、限流/并发（次数与槽位）、优先级（交互 vs 后台）。
 - 所有设计都落在三块：Governor 负责“能不能进、怎么排队”，ModelSelector 负责“用哪个模型”，Preemption/Zombie 负责“把被占住的资源拿回来”。
 - 结果评估完全基于 `events.jsonl`：每个 Turn 的 created/dispatch/completed/failed/reaped 都可追溯，指标可复算。
+
+---
+
+## 概念对齐：Workload → Task → Turn
+
+很多人困惑：“用户脑子里是一个 Task，文档里为什么满屏 Turn？”  
+用三层**由外到内**说清楚就顺了：
+
+| 层级 | 名称 | 是什么 | 谁管 |
+|---|---|---|---|
+| 最外 | **Workload** | 一次实验用的**剧本/负载**：里面列出（或隐含）要跑哪些 Turn、何时到、mock 怎么表现 | 实验作者 / `agentos run --workload` 指向的文件 |
+| 中间 | **Task** | **高层目标**（例如“把这个模块拆成三个文件”）；一个 Task 通常会被上层拆成多步 | 上层 Agent/工作流；Paper 1 **不**在调度器里建 Task 对象 |
+| 最小 | **Turn** | **一次** `llm.call()`；调度、记账、事件日志的**最小单位** | AgentOS（本文核心） |
+
+**Workload 文件长什么样**：主体往往是 `turns: [ ... ]`——你可以把它读成：**把若干 Task 拆解后的 Turn 序列，写进同一份剧本里**（实验里也可以刻意写成“平铺的一条龙”，不标 Task 边界）。
+
+**为什么 Paper 1 只调度 Turn**：AgentOS 只保证“每个 Turn 在预算与并发约束下跑完”，不在本文展开 Task 级编排（多 Task 分预算、跨 Task 依赖、谁抢谁的额度）。这是**研究边界**，不是概念缺失。
+
+**钱从哪算**：账单按 **Token** 进 Turn 的结算；Token 不单独占一层，只是 Turn 内部的计费粒度。
 
 ---
 
