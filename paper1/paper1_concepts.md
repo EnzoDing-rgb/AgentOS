@@ -10,9 +10,9 @@
 
 ## Big Picture：一句话 + 一张图
 
-**一句话**：AgentOS 是夹在 *Agent* 和 *LLM 后端*之间的“资源治理层”，目标是在**预算**、**限流/并发**与**交互优先级**约束下，让多 Turn、多 Agent 的调用既**不超支**、又**少失败**、还能把“好模型”用在真正关键的地方。
+**一句话**：AgentOS 是夹在 *Agent* 和 *LLM 后端*之间的“调用操作系统”，核心目标不是“系统不崩”，而是**在预算约束下最大化有效质量（quality under budget）**——让钱花得值，同时把交互体验（TTFT/P99）作为必须满足的体验底线（SLO）。
 
-**核心思路**：把问题拆成三件事——**管入口（准入/排队）**、**选模型（质量-成本权衡）**、**回收资源（抢占/僵尸）**，并用统一事件日志把一切变成可度量、可复现的实验。
+**核心思路**：把问题拆成三件事——**管入口（准入/排队）**、**选模型（质量-成本权衡）**、**回收资源（抢占/僵尸）**。系统做的每个决策都写进 `events.jsonl`，所以这不是“讲故事”，而是可度量、可复现的实验系统。
 
 ```text
 Workload（实验剧本：turns[] + mock + 预算/并发）
@@ -43,10 +43,33 @@ LLM 后端池（云端 API / 本地模型）
 events.jsonl（唯一真相源）  --->  summary.json / 指标（完成率/花费/TTFT/429…）
 ```
 
-**三条研究问题（RQ）对应三类机制**：
-- **RQ1（限流/并发）**：只开 Governor，验证“把超速请求排队”能否消灭 429、提升完成率。
-- **RQ2（预算内选模）**：开 Governor + ModelSelector，验证“在同一预算下，任务感知选模”是否优于只会按预算进度调概率的基线。
-- **RQ3（资源回收）**：在 RQ2 基础上加 Preemption + ZombieDetector，验证“抢占/回收”能否挽救尾延迟与吞吐。
+---
+
+## 问题空间重定义：从“系统稳定性”到“成本-质量优化”
+
+同类工作（例如 AgentRM）更常把问题讲成“怎么让系统稳定、不崩”。Paper 1 更适合把主问题讲成“怎么让预算花得值”：把稳定性机制（限流、准入、回收）降级为**约束与实现手段**，把“质量-成本最优化”放到叙事的正中间。
+
+| AgentRM关注 | Paper 1 应关注 |
+|---|---|
+| 系统稳定性 | **成本可控性**（budget under control） |
+| 吞吐量 | **质量/成本比**（quality per dollar） |
+| 优先级排队 | **任务价值感知**（哪些 turn 值得花贵模型） |
+| 静态约束 | **动态预算适应**（预算松紧度驱动在线决策） |
+
+把这张表接到 RQ 的表达上，会让三条 RQ 更像是在逼近同一个优化目标（cost-effectiveness）：
+- **RQ1**：把外部失败（429）变成内部可控排队，从而让 cost/quality 指标可被稳定测量
+- **RQ2**：预算约束下最大化质量（关键：任务价值感知 + budget-aware routing）
+- **RQ3**：把尾延迟与僵尸损耗视为“无效成本”，通过抢占/回收提升体验并减少浪费
+
+对应地，评估指标也应随之对齐（如果别的文档已展开公式，这里只点名口径；细节见 `paper1_extended.md`）：
+- **Quality-Weighted Completion Rate（QWCR）**：不只算完成数量，而是算“有效完成量”
+- **Cost efficiency**：例如 \( \text{USD per quality point} \) 或 \( \text{quality per dollar} \)
+- **Formal analysis**：给出一个可证明的 ModelSelector 最优/近最优结论（例如两后端 setting 下的边际收益/边际成本排序最优性，或在线情形的竞争比分析）
+
+**三条研究问题（RQ）是一条主线的三步递进**：
+- **RQ1（让约束可控）**：只开 Governor，把外部限流冲突变成内部排队，显著降低 429 与失败，让后续“质量/成本”对比有意义。
+- **RQ2（让钱花得值）**：开 Governor + ModelSelector，在同一预算下做任务感知选模，最大化有效质量（而不只是完成更多 turn）。
+- **RQ3（让浪费可回收）**：在 RQ2 基础上加 Preemption + ZombieDetector，把尾延迟与僵尸燃烧当作无效成本回收掉，提升交互体验并挽救吞吐。
 
 **你讲这页时的顺序（照着念就行）**：
 - Paper 1 关注的对象不是“单次问答”，而是 *Agent 把一次请求拆成很多 Turn* 的真实工作流。
@@ -214,7 +237,7 @@ Turn 有两种优先级，不是按"任务类型"分的，而是按**"有没有�
 2. 每次调用花真钱，跑 100 次实验就破产了
 3. 结果不可复现——同样的输入，两次调用可能返回不同长度的回答
 
-所以 workload 里每个 Turn 除了基本信息，还有一个 `mock` 字段，预设了"这个 Turn 如果被执行，会表现成什么样"：
+所以 workload 里每个 Turn 除了基本信息，还有一个 `mock` 字段，预设了“**这个 Turn 在不同后端上**会表现成什么样”（延迟/成本/质量/错误）。主线实验用它保证可控、可复现。
 
 ```json
 {
@@ -223,12 +246,22 @@ Turn 有两种优先级，不是按"任务类型"分的，而是按**"有没有�
   "priority": "interactive",
   "task_type": "generation",
   "mock": {
-    "input_tokens": 500,
-    "output_tokens": 300,
-    "latency_ms": 1200,
-    "ttft_ms": 200,
-    "error": "none",
-    "quality_score": 0.85
+    "gpt4": {
+      "input_tokens": 500,
+      "output_tokens": 300,
+      "latency_ms": 1200,
+      "ttft_ms": 200,
+      "error": "none",
+      "quality_score": 0.90
+    },
+    "llama7b": {
+      "input_tokens": 500,
+      "output_tokens": 280,
+      "latency_ms": 450,
+      "ttft_ms": 90,
+      "error": "none",
+      "quality_score": 0.65
+    }
   }
 }
 ```
@@ -237,14 +270,15 @@ Turn 有两种优先级，不是按"任务类型"分的，而是按**"有没有�
 
 | 字段 | 含义 |
 |---|---|
+| `mock[backend_id]` | 某个后端下的预设表现（例如 `gpt4`、`llama7b`） |
 | `input_tokens` | 发给模型的文本长度（500 个 token） |
 | `output_tokens` | 模型回复的文本长度（300 个 token） |
 | `latency_ms` | 这次调用总共花多长时间（1200 毫秒） |
-| `ttft_ms` | 模型吐出第一个字要等多久（200 毫秒）——衡量用户感知到的"响应速度" |
-| `error` | 会不会出错。`"none"` = 正常；`"http_429"` = 被限流；`"timeout"` = 卡死 |
-| `quality_score` | 输出质量分（0–1）。"这次 Turn 有没有达成任务目标？" Mock 实验用预设值，真实实验由 grader 计算（见下文） |
+| `ttft_ms` | 模型吐出第一个字要等多久（200 毫秒）——衡量用户感知到的“响应速度” |
+| `error` | 会不会出错。`"none"` = 正常；`"timeout"`/`"http_5xx"` 等 = 非速率类错误注入 |
+| `quality_score` | 输出质量分（0–1）。Mock 实验用预设值；真实实验由确定性 grader 计算 |
 
-MockBackend 读 `mock` 字段、等 `latency_ms` 毫秒、返回预设结果。每次运行完全一样，不同策略的差异只来自策略本身。
+MockBackend 的读取规则要点（只保留一句话，避免在概念导读里展开细节）：先做后端侧 RPM 检查，超限才返回 `http_429`；否则读取 `mock[backend_id]` 返回预设结果。这样同一份 workload 能稳定复现“raw 会打爆、governor_only 会排队消 429”的差异。
 
 **quality_score 的两种来源**：
 
