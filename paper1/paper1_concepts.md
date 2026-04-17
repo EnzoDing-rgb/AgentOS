@@ -66,6 +66,8 @@ events.jsonl（唯一真相源）  --->  summary.json / 指标（完成率/花�
 - **Cost efficiency**：例如 \( \text{USD per quality point} \) 或 \( \text{quality per dollar} \)
 - **Formal analysis**：给出一个可证明的 ModelSelector 最优/近最优结论（例如两后端 setting 下的边际收益/边际成本排序最优性，或在线情形的竞争比分析）
 
+为了避免“task_type / workload 是拍脑袋”的质疑，一个简单但很硬的做法是：引用真实端到端科研 agent 的阶段划分与阶段级成本统计，作为 workload 设计依据。比如 AgentLaboratory 明确把端到端流程拆成 **Literature Review / Experimentation / Report Writing** 三个阶段，并在论文中给出了**分阶段的平均耗时与成本**（例如其报告写作阶段在不同模型下成本差异很大，o1-preview 的 Report Writing 成本显著更高，而 Literature Review 相对便宜），这类“阶段级 cost profile”可以直接用来校准 Paper 1 的 turn mix 与难度权重（把预算优先留给高价值/高质量敏感的阶段）。参考：[Agent Laboratory: Using LLM Agents as Research Assistants（arXiv:2501.04227）](https://www.arxiv.org/abs/2501.04227v1) 与其开源实现 [AgentLaboratory](https://github.com/SamuelSchmidgall/AgentLaboratory)。
+
 **三条研究问题（RQ）是一条主线的三步递进**：
 - **RQ1（让约束可控）**：只开 Governor，把外部限流冲突变成内部排队，显著降低 429 与失败，让后续“质量/成本”对比有意义。
 - **RQ2（让钱花得值）**：开 Governor + ModelSelector，在同一预算下做任务感知选模，最大化有效质量（而不只是完成更多 turn）。
@@ -349,6 +351,7 @@ Grader 注册表——每个 task_type 对应一个 `(prompt, output) → float`
 **调度层（Scheduler）**——在红线之内做优化：
 - 谁先跑？（PriorityQueue：interactive 优先于 batch）
 - 用哪个模型？（ModelSelector：关键任务用好模型，简单任务用便宜模型，预算紧时降级）
+- 调用卡住怎么办？（Timeout + Failover：超时自动终止并切换备用模型）
 - 卡死了怎么办？（ZombieDetector：自动发现并回收僵尸调用）
 - 怎么让用户少等？（Preemption：暂停后台任务，让用户先跑）
 
@@ -364,7 +367,35 @@ Grader 注册表——每个 task_type 对应一个 `(prompt, output) → float`
 
 ---
 
-## 10. 实验的输出长什么样
+## 10. 调用卡住时，系统怎么自救（超时 + 自动切换）
+
+前面讲了抢占和僵尸回收，但线上最常见的痛点其实更直接：**模型调用卡住**。  
+表现通常有三种：请求发出去后一直没首字、中途流式输出停住、或者整次调用拖到离谱。
+
+这类问题不该让上层 Agent 自己兜底，应该由 AgentOS 统一处理。一个实用、好落地的做法是三段超时：
+
+- **首字超时（first token timeout）**：请求发出后，超过 N 秒还没收到第一个 token，判定卡住
+- **空闲超时（idle timeout）**：流式输出中，连续 M 秒没有新 token，判定卡住
+- **总时长超时（deadline timeout）**：整次调用超过 T 秒，强制终止
+
+触发任意超时后，走固定四步（不要在每个 Agent 里各写一套）：
+
+1. **立刻取消当前请求**，释放并发槽  
+2. **记录事件**（哪个模型、哪种超时、已耗时多少）  
+3. **按预设链路切换模型重试**（例如：主模型 -> 备用云模型 -> 本地快模型）  
+4. **仍失败就快速返回可读错误**，而不是无限转圈
+
+为了避免反复切回同一个坏节点，再加一个小熔断机制：
+
+- 某模型在短窗口内连续超时超过阈值，临时熔断（例如 30 秒不再分配新请求）
+- 熔断时间到后半开一次，成功则恢复，失败则继续熔断
+
+这套机制的工程价值很直接：**不会无限挂住、并发槽能自动回收、用户等待时间有上限**。  
+在评估上，也能用清晰指标衡量：超时率、自动切换率、interactive 的 TTFT/P99、任务完成率。
+
+---
+
+## 11. 实验的输出长什么样
 
 每次实验（一个 workload + 一个策略 = 一次 run）至少产出两个文件：
 
@@ -398,7 +429,7 @@ t001 创建了 → t001 被准入了 → t001 开始排队 → t001 被分配到
 
 ---
 
-## 11. 概念关系图
+## 12. 概念关系图
 
 ```
 用户请求
@@ -434,7 +465,7 @@ Run（一次实验运行）
 
 ---
 
-## 12. 术语速查（按认知顺序）
+## 13. 术语速查（按认知顺序）
 
 | 术语 | 一句话 |
 |---|---|
@@ -456,6 +487,11 @@ Run（一次实验运行）
 | **Scheduler** | 调度层：管排队顺序、选模型、抢占、回收僵尸。在治理红线内做优化 |
 | **Preemption** | 抢占：暂停低优先级 Turn，把资源让给高优先级 Turn。之后再恢复继续 |
 | **Zombie** | 僵尸 Turn：卡死或疯狂烧钱，占着资源不放 |
+| **First Token Timeout** | 首字超时：请求发出后，迟迟没有收到第一个 token |
+| **Idle Timeout** | 空闲超时：流式输出中长时间没有新 token |
+| **Deadline Timeout** | 总时长超时：一次调用总耗时超过上限，被系统强制终止 |
+| **Failover** | 故障切换：当前模型失败后自动切到备用模型继续执行 |
+| **Circuit Breaker** | 熔断器：某模型短时间频繁超时时，临时不再给它分配新请求 |
 
 ---
 
