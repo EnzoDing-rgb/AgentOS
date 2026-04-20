@@ -15,7 +15,7 @@ SE 社区对“系统工具 + 扎实实验”的接受度通常高于 OS 社区�
 
 ### 路线二：加一层学习，走 AI 系统交叉（目标 AAAI / IJCAI 的 system track，CCF-A；或期刊 TPDS，CCF-A + SCI Q1）
 
-现在的 ModelSelector 主要是规则选模（质量及格线 + `budget_factor` 三档阈值），审稿人很容易认为这是“拍脑袋”。如果把这一层换成在线学习（online learning），比如用 contextual bandit（情境多臂老虎机）做模型路由：每次决策基于 \((task\_type, budget\_factor, backend\_load)\) 等上下文，回报（reward）用质量/成本比（quality/cost）刻画，并给出 regret bound（后悔界）——你就有了更扎实的算法贡献。这时叙事可以写成：
+现在的 ModelSelector 主要是规则选模（质量及格线 + `budget_factor` 三档阈值），审稿人很容易认为这是“拍脑袋”。如果把这一层换成在线学习（online learning），比如用 contextual bandit（情境多臂老虎机）做模型路由：每次决策基于 $(task\_type, budget\_factor, backend\_load)$ 等上下文，回报（reward）用质量/成本比（quality/cost）刻画，并给出 regret bound（后悔界）——你就有了更扎实的算法贡献。这时叙事可以写成：
 
 > “LLM 调用路由是一个在线优化问题；我们形式化了带预算约束的 contextual bandit，并给出近优解。”
 
@@ -69,19 +69,19 @@ TSE/TOSEM 期刊篇幅更充裕，够你把 RQ1–RQ3 的完整消融实验都�
 建议指标（两种口径二选一，建议都报）：
 
 - **QWCR（Quality-Weighted Completion Rate）**  
-  令每个 turn 的终态质量 \(q_i \in [0,1]\)。若 turn 失败或被回收，则 \(q_i=0\)。则
-  \[
+  令每个 turn 的终态质量 $q_i \in [0,1]$。若 turn 失败或被回收，则 $q_i=0$。则
+  $$
   \text{QWCR}=\frac{1}{N}\sum_{i=1}^{N} q_i
-  \]
+  $$
   解释：如果全都高质量完成，QWCR 接近 1；如果大量失败/低质量，QWCR 降低。
 
 - **QW-Completed（质量加权完成数）**  
-  \[
+  $$
   \text{QW-Completed}=\sum_{i=1}^{N} q_i
-  \]
+  $$
   解释：把“完成数”从整数推广到“有效完成量”。当你需要对比不同 workload 大小、或做横向汇总时更直观。
 
-从日志怎么取 \(q_i\)：
+从日志怎么取 $q_i$：
 - **Mock 主线**：使用 `completed` 事件里（或该 turn 对应 backend 调用记录里）的 `quality_score`；失败/回收记为 0。
 - **RealBackend 补充实验**：按 `task_type` 用确定性 grader 得到 `quality_score`（见 `paper1_design.md §3.3`）。
 
@@ -92,16 +92,16 @@ TSE/TOSEM 期刊篇幅更充裕，够你把 RQ1–RQ3 的完整消融实验都�
 建议指标：
 
 - **Quality per Dollar（Q/$）**  
-  \[
+  $$
   \text{Q/\$}=\frac{\sum_i q_i}{\text{cost\_total\_usd}}
-  \]
+  $$
   解释：单位成本换来的“有效完成量”。适合回答“钱花得值不值”。
 
 - **Weighted Quality per Dollar（WQ/$，可选）**  
-  若 workload 提供 `difficulty_weight`（见 `paper1_design.md §7.1`），令权重 \(w_i\)，则
-  \[
+  若 workload 提供 `difficulty_weight`（见 `paper1_design.md §7.1`），令权重 $w_i$，则
+  $$
   \text{WQ/\$}=\frac{\sum_i w_i q_i}{\text{cost\_total\_usd}}
-  \]
+  $$
   解释：把“关键/难任务”的质量收益放大，更贴近“把钱花在刀刃上”的论点（RQ2 叙事）。
 
 实现备注：
@@ -142,26 +142,26 @@ TSE/TOSEM 期刊篇幅更充裕，够你把 RQ1–RQ3 的完整消融实验都�
 
 ### 1) Formal objective：预算约束下最大化质量
 
-把一次 run 写成一个优化问题。设 workload 有 \(N\) 个 turn，每个 turn \(i\) 可选择后端 \(a_i \in \mathcal{A}\)（例如 expensive/cheap）。
+把一次 run 写成一个优化问题。设 workload 有 $N$ 个 turn，每个 turn $i$ 可选择后端 $a_i \in \mathcal{A}$（例如 expensive/cheap）。
 
-- 成本：\(c_i(a_i)\)（USD）
-- 质量：\(q_i(a_i)\in[0,1]\)
-- 总预算：\(B\)
+- 成本：$c_i(a_i)$（USD）
+- 质量：$q_i(a_i)\in[0,1]$
+- 总预算：$B$
 
 最直接的形式化是 0-1 背包/多选择背包的变体：
 
-\[
+$$
 \max_{a_1,\dots,a_N}\ \sum_{i=1}^{N} w_i\,q_i(a_i)
 \quad \text{s.t.}\quad \sum_{i=1}^{N} c_i(a_i)\le B
-\]
+$$
 
-其中 \(w_i\) 是任务权重（可直接对应 `paper1_design.md §7.1` 的 `difficulty_weight`；没有就取 1）。
+其中 $w_i$ 是任务权重（可直接对应 `paper1_design.md §7.1` 的 `difficulty_weight`；没有就取 1）。
 
 解释（写论文时很好用）：
 - baseline A：总是选最高质量动作 → 很快触发预算约束 → 目标函数未必最大
 - baseline B：逐请求贪心性价比 → 不考虑全局预算时序 → 可能把预算花在低权重 turn
-- baseline C：全局预算感知但不看 task_type/权重 → 相当于用粗糙的 \(w_i\)（全 1）近似
-- AgentOS：显式利用 \(w_i\)（或 task_type/priority 信号）近似 “价值”，把 budget 分配给高边际收益的 turn
+- baseline C：全局预算感知但不看 task_type/权重 → 相当于用粗糙的 $w_i$（全 1）近似
+- AgentOS：显式利用 $w_i$（或 task_type/priority 信号）近似 “价值”，把 budget 分配给高边际收益的 turn
 
 ### 2) Quality–cost tradeoff analysis：从“更多 turn”到 Pareto
 
@@ -182,26 +182,26 @@ TSE/TOSEM 期刊篇幅更充裕，够你把 RQ1–RQ3 的完整消融实验都�
 
 **Setting S（两后端 + 已知先验 + 单调性）**
 - 仅两个后端：E（expensive）与 C（cheap）
-- 对每个 turn \(i\)，已知先验：\(\Delta q_i = q_i(E)-q_i(C)\ge 0\)，\(\Delta c_i = c_i(E)-c_i(C)>0\)
-- 目标：最大化 \(\sum_i w_i q_i(a_i)\) 在预算约束下
+- 对每个 turn $i$，已知先验：$\Delta q_i = q_i(E)-q_i(C)\ge 0$，$\Delta c_i = c_i(E)-c_i(C)>0$
+- 目标：最大化 $\sum_i w_i q_i(a_i)$ 在预算约束下
 
 则最优解等价于：在满足预算的前提下，对一部分 turn 选择 expensive，其余选择 cheap；选择集合应按“边际收益/边际成本”排序：
 
-\[
+$$
 \text{score}(i)=\frac{w_i\,\Delta q_i}{\Delta c_i}
-\]
+$$
 
 **结论（可写成定理）**：若允许对 turn 进行离线排序（workload 事先已知），选择 score 最高的若干个 turn 用 expensive（直到预算用尽）是最优（对应“fractional knapsack”时严格最优；对应 0-1 knapsack 时是经典贪心近似/在额外条件下最优）。
 
 怎么把它接回你的系统叙事：
-- 把 `task_type/priority/difficulty_weight` 当作 \(w_i\) 的显式近似
-- 把 `quality_prior` 差值当作 \(\Delta q_i\) 的估计
-- 把 token 估算与价格表当作 \(\Delta c_i\) 的估计
+- 把 `task_type/priority/difficulty_weight` 当作 $w_i$ 的显式近似
+- 把 `quality_prior` 差值当作 $\Delta q_i$ 的估计
+- 把 token 估算与价格表当作 $\Delta c_i$ 的估计
 - 你的 ModelSelector 可以被解释为：在在线场景里用 `budget_factor` 做一个“预算乘子/阈值”来近似上述离线最优解
 
 **写法建议（避免被抓漏洞）**
 - 主文：给出 Setting S + 一个清晰定理（或 proposition），强调“在该 setting 下我们的方法等价于/逼近最优”
-- 真实系统：承认 \(q_i,c_i\) 不可完全知道，因此使用先验估计 + 在线预算信号；用实验展示鲁棒性（RQ2 的对照 C 正是为了排除“只是控预算更好”的解释）
+- 真实系统：承认 $q_i,c_i$ 不可完全知道，因此使用先验估计 + 在线预算信号；用实验展示鲁棒性（RQ2 的对照 C 正是为了排除“只是控预算更好”的解释）
 
 ### 4) 把“系统机制”重新定位为优化约束
 
@@ -231,41 +231,41 @@ TSE/TOSEM 期刊篇幅更充裕，够你把 RQ1–RQ3 的完整消融实验都�
 
 LLM agent 调用的关键不同点是：**质量是连续的**，并且通常可以通过增加成本（更强模型、更长输出、更大上下文）来提高质量，形成 **质量-成本曲线**。
 
-把每个 turn \(i\) 的“决策”从选一个后端，升级为选一个**质量水平** \(q_i\in[0,1]\)（或等价地选一个“推理预算/模型强度”），并设：
-- 成本函数：\(c_i(q)\)，随 \(q\) 单调递增（更高质量更贵）
-- 价值权重：\(w_i\)（任务价值/关键性）
-- 交互约束：例如 interactive 的 TTFT P99 必须 \(\le \tau\)（SLO）
+把每个 turn $i$ 的“决策”从选一个后端，升级为选一个**质量水平** $q_i\in[0,1]$（或等价地选一个“推理预算/模型强度”），并设：
+- 成本函数：$c_i(q)$，随 $q$ 单调递增（更高质量更贵）
+- 价值权重：$w_i$（任务价值/关键性）
+- 交互约束：例如 interactive 的 TTFT P99 必须 $\le \tau$（SLO）
 
 则一次 run 的核心问题可以写成：
 
-\[
+$$
 \max_{q_1,\dots,q_N} \sum_{i=1}^{N} w_i\,q_i
 \quad \text{s.t.}\quad \sum_{i=1}^{N} c_i(q_i) \le B,\ \ \text{SLO constraints}
-\]
+$$
 
 这不是简单“调优先级”，而是把调度变成：**在预算约束下，把质量配额分配给不同 turn**。
 
 #### 定理方向（可证明、可写边界条件）
 
 在下列条件下：
-- \(c_i(q)\) 连续可微、严格凸（quality 越往上提，边际成本越高）
-- 目标是线性的 \(\sum w_i q_i\)
+- $c_i(q)$ 连续可微、严格凸（quality 越往上提，边际成本越高）
+- 目标是线性的 $\sum w_i q_i$
 - 只考虑预算约束（暂忽略 SLO/并发，或把它们写成可分解约束）
 
 则该问题是一个标准凸优化（或可转化为凸优化），满足 KKT 条件。最优解具有“水位线”结构：
 
-> 存在一个全局乘子 \(\lambda^\*\)（可解释为“当前预算的影子价格”），使得每个 turn 的最优质量满足  
-> \(w_i = \lambda^\* \, c'_i(q_i^\*)\)（在内点解时），即  
-> \(\frac{w_i}{c'_i(q_i^\*)} = \lambda^\*\) ——所有被分配到非 0/非 1 的 turn 具有相同的边际“价值/边际成本”。
+> 存在一个全局乘子 $\lambda^*$（可解释为“当前预算的影子价格”），使得每个 turn 的最优质量满足  
+> $w_i = \lambda^* \, c'_i(q_i^*)$（在内点解时），即  
+> $\frac{w_i}{c'_i(q_i^*)} = \lambda^*$ ——所有被分配到非 0/非 1 的 turn 具有相同的边际“价值/边际成本”。
 
 这条结论是一个新的“调度原则”：**预算最优不是“谁优先”，而是“把每个 turn 推到同一个边际性价比水位线”**。
 
 边界条件（必须写清楚，否则会被抓）：
-- 若某些 \(c_i(q)\) 不是凸的（例如存在跳变：从小模型到大模型是离散跃迁），则最优解会退化为“分段凸 + 离散选择”，需要用近似或 mixed-integer 方法；此时给出近似界或经验鲁棒性。
+- 若某些 $c_i(q)$ 不是凸的（例如存在跳变：从小模型到大模型是离散跃迁），则最优解会退化为“分段凸 + 离散选择”，需要用近似或 mixed-integer 方法；此时给出近似界或经验鲁棒性。
 - 若质量不可平滑控制、只有离散后端集合（现实常见），则 QCAS 给出的是一个“连续松弛”的上界；实际系统可用启发式/在线学习去逼近该上界。
 
 把它接回 AgentOS 的实现（作为“理论→系统”桥）：
-- `budget_factor` 可以被解释为对 \(\lambda^\*\) 的在线估计：花快了表示 \(\lambda^\*\) 更大（钱更贵）→ 降低目标质量门槛；花慢了 \(\lambda^\*\) 更小 → 提高目标质量。
+- `budget_factor` 可以被解释为对 $\lambda^*$ 的在线估计：花快了表示 $\lambda^*$ 更大（钱更贵）→ 降低目标质量门槛；花慢了 $\lambda^*$ 更小 → 提高目标质量。
 - “质量及格线 + budget_factor 调门槛”是对“水位线结构”的一个工程化、可解释近似。
 
 ### 2) 深层洞察：连续质量 ⇒ 调度是在线凸优化，而不只是类比 OS process
@@ -275,12 +275,12 @@ LLM agent 调用的关键不同点是：**质量是连续的**，并且通常可
 > **LLM 调用的输出质量不是 binary 的，它是连续谱；因此资源分配的核心不再是让更多 job 完成，而是决定每个 job 应该被推到多高的质量水平。**
 
 一旦接受这点，很多设计选择都会从“经验规则”变成“优化结构的近似”：
-- **为什么要区分任务价值（w_i）**：因为线性目标里 \(w_i\) 直接决定了最优分配的质量水平
-- **为什么要动态预算适应**：因为在线场景里 \(\lambda^\*\) 必须随运行进度更新（预算影子价格是动态的）
-- **为什么要把僵尸当作止损**：因为僵尸相当于把 \(c_i(\cdot)\) 的尾部推到极端高成本、但 \(q_i\) 不增长（边际收益≈0），任何合理的水位线策略都会把它截断
+- **为什么要区分任务价值（w_i）**：因为线性目标里 $w_i$ 直接决定了最优分配的质量水平
+- **为什么要动态预算适应**：因为在线场景里 $\lambda^*$ 必须随运行进度更新（预算影子价格是动态的）
+- **为什么要把僵尸当作止损**：因为僵尸相当于把 $c_i(\cdot)$ 的尾部推到极端高成本、但 $q_i$ 不增长（边际收益≈0），任何合理的水位线策略都会把它截断
 
 如果你愿意再拔高一层（可选）：
-- 把 TTFT/P99 写成 penalty（例如 \(-\alpha \cdot \text{TTFT}\)）或约束（SLO），就得到一个“质量-成本-体验”三目标问题；可以用拉格朗日松弛把它写成多乘子形式，继续得到“多水位线”结构（一个是预算影子价格，一个是交互体验影子价格）。
+- 把 TTFT/P99 写成 penalty（例如 $-\alpha \cdot \text{TTFT}$）或约束（SLO），就得到一个“质量-成本-体验”三目标问题；可以用拉格朗日松弛把它写成多乘子形式，继续得到“多水位线”结构（一个是预算影子价格，一个是交互体验影子价格）。
 
 ### 3) 怎么写进论文（避免过度承诺）
 
