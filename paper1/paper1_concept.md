@@ -8,7 +8,7 @@
 
 ## Big Picture：一句话 + 一张图
 
-**一句话**：AgentOS 是夹在 *Agent* 和 *LLM 后端* 之间的“调用操作系统”。它的主目标不是“只要不崩”，而是 **在预算硬约束下最大化有效质量产出，并在预算允许的前提下尽力满足交互体验时延目标（TTFT/P99 的 SLO）**。稳定性机制（不超支、不打爆 API、不被僵尸吃掉）是**让优化问题可定义、可测量**的前提，而不是论文唯一卖点。
+**一句话**：AgentOS 是夹在 *Agent* 和 *LLM 后端* 之间的“调用操作系统”。它的主目标不是“只要不崩”，而是 **在预算硬约束下最大化有效质量产出，并在预算允许的前提下尽力满足交互体验时延目标（TTFT/P99 latency target）**。稳定性机制（不超支、不打爆 API、不被僵尸吃掉）是**让优化问题可定义、可测量**的前提，而不是论文唯一卖点。
 
 **核心思路**：把问题拆成三件事——**管入口（准入/排队）**、**选质量水位（质量-成本权衡）**、**回收无效成本（抢占/僵尸）**。每个决策都写进 `events.jsonl`，所以这不是"讲故事"，而是可度量、可复现的实验系统。
 
@@ -29,7 +29,7 @@ Workload（实验剧本：turns[] + mock + 预算/并发）
 |  - budget_factor 作为"预算紧松"的反馈信号（理想条件下近似影子价格 λ）  |
 |                                                                  |
 |  【止损层】Preemption + ZombieDetector                            |
-|  - 交互体验 best-effort：必要时抢占 batch 提升 TTFT/P99；冲突时记录 slo_violation |
+|  - 交互体验 best-effort：必要时抢占 batch 提升 TTFT/P99；冲突时记录 latency_target_violation |
 |  - 把"烧钱但零质量收益"的调用从目标函数里剔除                        |
 ===================================================================
         |
@@ -58,7 +58,7 @@ events.jsonl（唯一真相源） -->  summary.json（QWCR、`Q/$`、Pareto 等�
 - **RQ1（让约束可控）**：只开 Governor，把外部 429 / 崩溃变成内部可控排队——**让 quality/cost 指标能被稳定测量**。
 - **RQ2（把钱花在刀刃上）**：开 Governor + ModelSelector，在同一预算下做任务价值感知的选模，**最大化 $\sum_i w_i q_i$**，而不只是完成更多 Turn。
 - **RQ3（剔除无效成本）**：加 Preemption + ZombieDetector，把尾延迟违约与僵尸燃烧视为"无效成本/无效产出"从目标函数里剔除，同时满足交互体验时延目标。
-  - 注：Paper 1 的主叙事是“预算下质量最大化”，因此预算是硬约束；交互体验时延目标在预算允许时尽力满足，冲突时允许违约但必须显式记录为 `slo_violation`（并在实验中报告违约率）。
+  - 注：Paper 1 的主叙事是“预算下质量最大化”，因此预算是硬约束；交互体验时延目标在预算允许时尽力满足，冲突时允许违约但必须显式记录为 `latency_target_violation`（并在实验中报告违约率）。
 
 ---
 
@@ -112,7 +112,7 @@ $$
 \max_{a_1,\dots,a_N}\ \sum_{i=1}^{N} w_i\,q_i(a_i)\quad \text{s.t.}\quad \sum_{i=1}^{N} c_i(a_i)\le B
 $$
 
-其中体验目标（TTFT/P99 等）不作为第二个硬约束写进可行域：当预算与 SLO 冲突时，Paper 1 **选择违反 SLO 而不突破预算**，并把该事件记录为 `slo_violation`（作为评估指标的一部分报告）。
+其中体验目标（TTFT/P99 等）不作为第二个硬约束写进可行域：当预算与**体验时延目标**冲突时，Paper 1 **选择违反体验时延目标而不突破预算**，并把该事件记录为 `latency_target_violation`（作为评估指标的一部分报告）。
 
 这是多选择背包的变体。**对照组的差异用它讲得特别清楚**：
 
@@ -125,8 +125,15 @@ $$
 
 为避免“口号式 baseline”，这里把 B/C 的决策规则固定为可复现实验定义：
 
-- **B (`per_request_greedy`)**：每个 turn 独立选择 \(a^*=\arg\max_a q_i(a)/c_i(a)\)。不使用 \(w_i\)，不使用 `budget_factor`（不做预算配速）。当剩余预算不足以选择 \(a^*\) 时，**降级到剩余预算能买得起的最便宜后端**；若连最便宜后端也买不起则该 turn 失败（与其它策略的预算兜底口径保持可比）。
-- **C (`budget_aware_uniform`)**：使用 `budget_factor` 做预算配速，但令所有 \(w_i\equiv 1\)（任务价值被夷平）；其余失败/降级逻辑与 D 保持一致。
+- **B (`per_request_greedy`)**：每个 turn 独立选择 \(a^*=\arg\max_a q_i(a)/c_i(a)\)。这里的 \(q_i(a)\) **不是**直接读取 workload 里的 `mock.<backend>.quality_score`（上帝视角），而是与 D 使用同一套 `quality_prior` 估计；\(c_i(a)\) 也与 D 一样来自 token 估算 × 价格表。B **不使用 \(w_i\)**，也**不使用 `budget_factor`**（不做预算配速 / 不看 burn-rate 反馈）。
+
+  B 仍会做一次最基本的“这次买不买得起”的预算可行性检查——当剩余预算不足以选择 \(a^*\) 时，**降级到剩余预算能买得起的最便宜后端**；若连最便宜后端也买不起则该 turn 失败。这是所有策略都必须有的兜底，不属于“预算配速”。
+
+  注（刻意不对称）：B 使用**绝对性价比** \(q/c\) 而非 D 的**边际性价比** \(\Delta q/\Delta c\)，是刻意为之。这样 B→D 的差异同时刻画了三件事的联合贡献：（i）从 \(q/c\) 升级到 \(\Delta q/\Delta c\)，（ii）引入 \(w_i\) 任务价值信号，（iii）引入 `budget_factor` 预算配速。如需单独隔离“边际化”的贡献，可在消融中加入变体 **B′**：使用 \(\Delta q/\Delta c\) 但仍不做预算配速（不使用 `budget_factor`、不使用 \(w_i\)）。
+
+- **C (`budget_aware_uniform`)**：使用 `budget_factor` 做预算配速，但令所有 \(w_i\equiv 1\)（任务价值被夷平）；其余失败/降级逻辑与 D 保持一致。C 的评分公式等价于把 D 的 \(w_i\) 固定为 1：
+
+  \(\text{score}_C(i,a)=\Delta q_i(a)/\Delta c_i(a)\)，并且 `budget_factor` 的门槛/调节方式与 D 完全一致。
 
 ### 3.2 连续版（把"选后端"推广成"选质量水位"）
 
@@ -221,7 +228,7 @@ B 的绝对提升更大，但"每 1 美元带来的加权提升"更小——**�
 |---|---|
 | **Governor** | 保证预算 $B$ 与限流约束**硬成立**——否则优化问题本身 not well-defined |
 | **ModelSelector** | 在线近似 $\max \sum w_i q_i$ s.t. budget 的求解器 |
-| **Preemption** | 交互体验 best-effort 的执行机制：在不突破预算前提下尽力降低 TTFT/P99；冲突时允许违约并记录 `slo_violation` |
+| **Preemption** | 交互体验 best-effort 的执行机制：在不突破预算前提下尽力降低 TTFT/P99；冲突时允许违约并记录 `latency_target_violation` |
 | **ZombieDetector** | 把"无效燃烧成本"从目标函数里剔除（否则 `Q/$` 被噪声污染）|
 
 这个重定位的好处：读者能清晰看到**"机制 → 约束/目标项"的映射**，而不是四个互相独立的模块堆在一起。
@@ -314,7 +321,7 @@ RPM 和并发槽约束的是两个正交维度：
 
 Turn 按"**有没有人在等**"分两种优先级：
 
-- **Interactive**：用户在屏幕前等 → TTFT/P99 是体验目标（尽力满足，冲突时记录 `slo_violation`）
+- **Interactive**：用户在屏幕前等 → TTFT/P99 是体验目标（尽力满足，冲突时记录 `latency_target_violation`）
 - **Batch**：后台任务 → 仅受预算与最终完成约束
 
 **同一种 task_type 既可以是 interactive 也可以是 batch**：
@@ -326,9 +333,9 @@ Turn 按"**有没有人在等**"分两种优先级：
 | 用户问"这 bug 怎么修？" | reasoning | **interactive** | 用户在等 |
 | 离线批量总结 200 篇文章 | summarization | **batch** | 后台任务 |
 
-**在优化框架下**：priority = interactive 表示“体验更重要”，它可以通过（i）把体验违约折算为质量扣分进入 $q_i$，或（ii）把 TTFT 作为代价指标进入评估来体现。Paper 1 选择预算为唯一硬约束：**在预算允许时尽力满足 SLO；冲突时允许违约，但必须显式记录 `slo_violation`**。Preemption 是提升体验满足率的执行机制，而不是允许突破预算的后门。
+**在优化框架下**：priority = interactive 表示“体验更重要”，它可以通过（i）把体验违约折算为质量扣分进入 $q_i$，或（ii）把 TTFT 作为代价指标进入评估来体现。Paper 1 选择预算为唯一硬约束：**在预算允许时尽力满足体验时延目标；冲突时允许违约，但必须显式记录 `latency_target_violation`**。Preemption 是提升体验满足率的执行机制，而不是允许突破预算的后门。
 
-**冲突处理（预算 vs SLO）**：当剩余预算不足以购买任何能满足 TTFT 目标的后端时，系统降级到预算内最便宜的可用后端，并记录 `slo_violation` 事件；实验中报告 `slo_violation_rate` 作为代价指标之一。
+**冲突处理（预算 vs 体验时延目标）**：当剩余预算不足以购买任何能满足 TTFT 目标的后端时，系统降级到预算内最便宜的可用后端，并记录 `latency_target_violation` 事件；实验中报告 `latency_violation_rate` 作为代价指标之一。
 
 ---
 
@@ -479,7 +486,7 @@ $$
 - C. `budget_aware_uniform`（全局预算感知，但 $w_i \equiv 1$）
 - D. `agentos_no_preempt`（Governor + ModelSelector，使用 task_type / priority / difficulty_weight）
 
-**澄清 B 在对比什么**：B 不是“知道未来 vs 不知道未来”的对比（两者都不知道未来到达）。B 的特征是**逐请求、无记忆**：每个 turn 独立做单步性价比决策，不使用“剩余预算/剩余时间”的 **budget pacing** 信号，也不利用任何统计先验或保守缓冲；AgentOS 的差别在于把预算状态折叠成 `budget_factor`（预算紧松反馈信号，理想条件下近似 $\lambda$）参与决策，使得同一个 turn 在预算紧/松时会被分配到不同质量档位。
+**澄清 B 在对比什么**：B 不是“知道未来 vs 不知道未来”的对比（两者都不知道未来到达）。B 的特征是**逐请求、无预算配速**：每个 turn 独立做单步性价比决策，不使用“烧得快不快、还剩多少时间”的 **burn-rate / pacing 反馈**（即不使用 `budget_factor`）。注意 B 仍会做一次“这次买不买得起”的预算可行性兜底检查（否则系统无法运行）；B 与 C/D 的关键差异在于**不做配速**而不是“不看预算余额”。AgentOS 的差别在于把预算状态折叠成 `budget_factor` 参与决策，使得同一个 turn 在预算紧/松时会被分配到不同质量档位。
 
 **核心图表**：质量-成本 Pareto（横轴 cost，纵轴 QW-Completed）；**D 应当在 Pareto frontier 上或在其它 policy 点云的左上方**。
 
@@ -591,7 +598,7 @@ $$
   "turn_reaped": 2,           // 僵尸回收
   "cost_total_usd": 0.87,     // 实际总花费
   "ttft_p99_ms": 1420,        // Interactive TTFT P99（体验指标）
-  "slo_violation_rate": 0.01, // SLO 违约率（预算硬约束下的代价指标）
+  "latency_violation_rate": 0.01, // 体验时延目标违约率（预算硬约束下的代价指标）
   "preemption_waste_usd": 0.03, // 抢占导致的沉没预算（不可续写后端的真实代价）
   "error_429_rate": 0.02,     // 429 占比（RQ1）
 
