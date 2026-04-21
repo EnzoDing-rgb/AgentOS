@@ -8,7 +8,7 @@
 
 ## Big Picture：一句话 + 一张图
 
-**一句话**：AgentOS 是夹在 *Agent* 和 *LLM 后端* 之间的“调用操作系统”。它的主目标不是“只要不崩”，而是 **在预算约束下最大化有效质量产出，并把交互体验（TTFT/P99）作为必须满足的 SLO 约束**。稳定性机制（不超支、不打爆 API、不被僵尸吃掉）是**让优化问题可定义、可测量**的前提，而不是论文唯一卖点。
+**一句话**：AgentOS 是夹在 *Agent* 和 *LLM 后端* 之间的“调用操作系统”。它的主目标不是“只要不崩”，而是 **在预算约束下最大化有效质量产出，并把交互体验（TTFT/P99）作为必须满足的体验时延目标（SLO）约束**。稳定性机制（不超支、不打爆 API、不被僵尸吃掉）是**让优化问题可定义、可测量**的前提，而不是论文唯一卖点。
 
 **核心思路**：把问题拆成三件事——**管入口（准入/排队）**、**选质量水位（质量-成本权衡）**、**回收无效成本（抢占/僵尸）**。每个决策都写进 `events.jsonl`，所以这不是"讲故事"，而是可度量、可复现的实验系统。
 
@@ -29,7 +29,7 @@ Workload（实验剧本：turns[] + mock + 预算/并发）
 |  - budget_factor 作为"预算影子价格"的在线估计                       |
 |                                                                  |
 |  【止损层】Preemption + ZombieDetector                            |
-|  - 交互 SLO 约束：必要时抢占 batch，保证 TTFT/P99                   |
+|  - 交互体验时延目标约束：必要时抢占 batch，保证 TTFT/P99             |
 |  - 把"烧钱但零质量收益"的调用从目标函数里剔除                        |
 ===================================================================
         |
@@ -57,7 +57,7 @@ events.jsonl（唯一真相源） -->  summary.json（QWCR、`Q/$`、Pareto 等�
 
 - **RQ1（让约束可控）**：只开 Governor，把外部 429 / 崩溃变成内部可控排队——**让 quality/cost 指标能被稳定测量**。
 - **RQ2（把钱花在刀刃上）**：开 Governor + ModelSelector，在同一预算下做任务价值感知的选模，**最大化 $\sum_i w_i q_i$**，而不只是完成更多 Turn。
-- **RQ3（剔除无效成本）**：加 Preemption + ZombieDetector，把尾延迟违约与僵尸燃烧视为"无效成本/无效产出"从目标函数里剔除，同时满足交互体验 SLO。
+- **RQ3（剔除无效成本）**：加 Preemption + ZombieDetector，把尾延迟违约与僵尸燃烧视为"无效成本/无效产出"从目标函数里剔除，同时满足交互体验时延目标。
 
 ---
 
@@ -105,10 +105,10 @@ LLM 几乎总能"给你个答案"——差别在于**答案好坏**。同样是�
 
 - 成本 $c_i(a_i)$（USD），质量 $q_i(a_i) \in [0,1]$
 - 任务权重 $w_i$（对应 workload 里的 `difficulty_weight` / `priority`；无则取 1）
-- 总预算 $B$，交互 SLO（如 TTFT P99 上限）
+- 总预算 $B$，交互体验时延目标（如 TTFT P99 上限）
 
 $$
-\max_{a_1,\dots,a_N}\ \sum_{i=1}^{N} w_i\,q_i(a_i)\quad \text{s.t.}\quad \sum_{i=1}^{N} c_i(a_i)\le B,\ \text{SLO constraints}
+\max_{a_1,\dots,a_N}\ \sum_{i=1}^{N} w_i\,q_i(a_i)\quad \text{s.t.}\quad \sum_{i=1}^{N} c_i(a_i)\le B,\ \text{experience constraints}
 $$
 
 这是多选择背包的变体。**对照组的差异用它讲得特别清楚**：
@@ -125,7 +125,7 @@ $$
 每个 turn 的决策不只是"选哪个后端"，而是"把这个 turn 推到多高的 $q_i$"（成本曲线 $c_i(q_i)$ 通常单调递增且有边际递减）：
 
 $$
-\max_{q_1,\dots,q_N}\ \sum_{i=1}^{N} w_i\,q_i \quad \text{s.t.}\quad \sum_{i=1}^{N} c_i(q_i)\le B,\ \text{SLO constraints}
+\max_{q_1,\dots,q_N}\ \sum_{i=1}^{N} w_i\,q_i \quad \text{s.t.}\quad \sum_{i=1}^{N} c_i(q_i)\le B,\ \text{experience constraints}
 $$
 
 **设计原则（直觉，非定理）**：
@@ -168,7 +168,7 @@ $$
 
 - **成本曲线形状**：需要把 $c_i(q_i)$ 视作“随质量单调递增，且边际收益递减”的可优化对象；现实里常常是离散选项（选哪个模型）+ 估算误差，因此只能近似为连续曲线。
 - **turn 近似独立**：多轮 agent 中后续 turn 的效果依赖前序 turn，严格建模会变成路径依赖优化；这里把依赖折叠进 $c_i(\cdot)$ 或 $w_i$ 的粗粒度信号里。
-- **忽略硬 SLO 的简化**：一旦加入交互 SLO 或最低质量保底（例如要求 $q_i \ge q_i^{\min}$），KKT 条件会多出下界约束项；结果是某些 turn 会被“保底钉住”，不再遵循同一条水位线。
+- **忽略硬体验时延目标的简化**：一旦加入交互体验时延目标或最低质量保底（例如要求 $q_i \ge q_i^{\min}$），KKT 条件会多出下界约束项；结果是某些 turn 会被“保底钉住”，不再遵循同一条水位线。
 
 一旦接受这点，很多设计选择就从"经验规则"变成"优化结构的自然结果"：
 
@@ -211,7 +211,7 @@ B 的绝对提升更大，但"每 1 美元带来的加权提升"更小——**�
 |---|---|
 | **Governor** | 保证预算 $B$ 与限流约束**硬成立**——否则优化问题本身 not well-defined |
 | **ModelSelector** | 在线近似 $\max \sum w_i q_i$ s.t. budget 的求解器 |
-| **Preemption** | 将交互 SLO（TTFT P99）作为硬约束或目标函数中的 penalty $-\alpha \cdot \text{TTFT}$ |
+| **Preemption** | 将交互体验时延目标（TTFT P99）作为硬约束或目标函数中的 penalty $-\alpha \cdot \text{TTFT}$ |
 | **ZombieDetector** | 把"无效燃烧成本"从目标函数里剔除（否则 `Q/$` 被噪声污染）|
 
 这个重定位的好处：读者能清晰看到**"机制 → 约束/目标项"的映射**，而不是四个互相独立的模块堆在一起。
@@ -298,11 +298,11 @@ RPM 和并发槽约束的是两个正交维度：
 
 ---
 
-## 9. Interactive 和 Batch：不是任务类型，是 SLO 约束
+## 9. Interactive 和 Batch：不是任务类型，是体验时延目标约束
 
 Turn 按"**有没有人在等**"分两种优先级：
 
-- **Interactive**：用户在屏幕前等 → TTFT P99 是硬 SLO 约束
+- **Interactive**：用户在屏幕前等 → TTFT P99 是硬体验时延目标约束
 - **Batch**：后台任务 → 仅受预算与最终完成约束
 
 **同一种 task_type 既可以是 interactive 也可以是 batch**：
@@ -314,7 +314,7 @@ Turn 按"**有没有人在等**"分两种优先级：
 | 用户问"这 bug 怎么修？" | reasoning | **interactive** | 用户在等 |
 | 离线批量总结 200 篇文章 | summarization | **batch** | 后台任务 |
 
-**在优化框架下**：priority = interactive 对应目标函数里加一项 $-\alpha \cdot \text{TTFT}_i$ 或 SLO 硬约束。Preemption 就是这个约束的执行机制。
+**在优化框架下**：priority = interactive 对应目标函数里加一项 $-\alpha \cdot \text{TTFT}_i$ 或体验时延目标硬约束。Preemption 就是这个约束的执行机制。
 
 ---
 
@@ -340,7 +340,7 @@ Turn 按"**有没有人在等**"分两种优先级：
 
 字段说明：
 - `at_ms`：到达时间（模拟请求非同时到）
-- `priority`：interactive / batch（决定 SLO 约束强度）
+- `priority`：interactive / batch（决定体验时延目标约束强度）
 - `task_type`：决定质量及格线与后端候选集
 - **`difficulty_weight`**：对应优化问题里的 $w_i$，标识"这个 turn 多重要 / 多值得被推到高质量"
 
@@ -467,20 +467,20 @@ $$
 
 **消融**：关闭 $w_i$（令所有权重=1）应当退化到接近 C——证明 **$w_i$ 信号是有效的**。
 
-### RQ3：剔除无效成本 → 满足 SLO + 提升 `Q/$`
+### RQ3：剔除无效成本 → 满足体验时延目标 + 提升 `Q/$`
 
 **对应架构**：Preemption + ZombieDetector。
 
 **问题**：
-- 交互 SLO：并发槽被 batch 占满时，interactive TTFT P99 爆炸
+- 交互体验时延目标：并发槽被 batch 占满时，interactive TTFT P99 爆炸
 - 尾部拖累：5 个异常慢 turn 拖累整体吞吐
 - 僵尸燃烧：20% 僵尸注入烧掉预算却零质量收益
 
 **做法**：固定 `Governor + ModelSelector`，切换 `agentos_no_preempt` vs `agentos`。
 
-**核心指标**：interactive TTFT P99（SLO）+ **`Q/$` 提升**（僵尸剔除带来）+ QWCR（整体）。
+**核心指标**：interactive TTFT P99（体验时延目标）+ **`Q/$` 提升**（僵尸剔除带来）+ QWCR（整体）。
 
-**主张**：动态回收不是"让系统更快"，而是**从目标函数里剔除无效成本项 + 满足 SLO 约束**。
+**主张**：动态回收不是"让系统更快"，而是**从目标函数里剔除无效成本项 + 满足体验时延目标约束**。
 
 ---
 
@@ -494,11 +494,11 @@ $$
 - 并发不能超槽（Admission）
 
 **调度层（Scheduler）**——在约束内**求解质量最大化**：
-- 谁先跑？（PriorityQueue：interactive 的 SLO 约束优先）
+- 谁先跑？（PriorityQueue：interactive 的体验时延目标约束优先）
 - **推到多高质量？**（ModelSelector：边际加权性价比 + budget_factor 影子价格）
 - 调用卡住怎么办？（Timeout + Failover）
 - 卡死了怎么办？（ZombieDetector：从目标函数剔除无效成本）
-- 怎么让用户少等？（Preemption：SLO 违约时从 batch 抢回资源）
+- 怎么让用户少等？（Preemption：体验时延目标将要违约时从 batch 抢回资源）
 
 ### 8.1 用一个场景把五件事串起来（精简版）
 
@@ -508,11 +508,20 @@ $$
 
 队列里有 3 个 interactive 和 100 个 batch，GPU/API 资源固定。一个请求从进入系统到结束，依次经过五个决策点：
 
-- **PriorityQueue（谁先跑）**：按“离 SLO 截止还剩多少时间”排序；快到期的先出队，不是固定把 batch 永远放后面。
+- **PriorityQueue（谁先跑）**：按“离体验时延目标截止还剩多少时间”排序；快到期的先出队，不是固定把 batch 永远放后面。
 - **Preemption（资源不够怎么办）**：如果没有空并发槽但 interactive 预计会超时，就暂停/取消一部分 batch 释放槽位，让 interactive 先开始执行。
 - **ModelSelector（推到多高质量）**：在可用后端集合里选质量档位，核心信号是任务权重 $w_i$、成本-质量权衡 $c_i(\cdot)$ 与全局预算乘子 $\lambda$（`budget_factor` 的在线估计）。预算紧时提高 $\lambda$，同一任务会被分配到更便宜的档位。
 - **Timeout + Failover（调用卡住怎么办）**：首字/空闲/总时长超时触发后，先中止当前后端，再切到备用后端重试，尽量不把临时故障暴露给上层。
 - **ZombieDetector（长期无进展怎么办）**：如果成本持续增加但质量信号长期不提升，判定为僵尸并止损回收，返回当前最佳可用结果。
+
+### 8.2 策略可插拔边界（简版）
+
+可以，且建议这样做：**外层 policy 可插拔，内层决策子策略也可插拔**。  
+同一套 Governor/Scheduler 框架下，策略既可以做得更简单，也可以做得更复杂。
+
+- **Policy 层可插拔**：`raw / governor_only / baseline_* / agentos*` 本质是“开关组合 + 参数配置”，可新增 policy 而不改核心执行流水线。
+- **Scheduler 子策略可插拔**：至少包含 `QueueDiscipline`（排队规则）、`ModelSelectionRule`（选模规则）、`PreemptionRule`（何时抢占）、`ZombieRule`（何时止损）四个决策点；每个点都可替换实现。
+- **不变的是系统契约**：统一输入（turn + governor 状态 + backend 状态）和统一输出（决策结果 + 事件日志）保持不变，这样才能公平复现实验并横向比较策略。
 
 **抢占的语义存档**：不是保存寄存器，而是保存 prompt + 已生成部分输出。恢复时拼回 prompt 继续生成，**避免"抢占 = 浪费已生成内容"的反效果**。
 
@@ -556,7 +565,7 @@ $$
   "turn_failed": 3,           // 失败（429 / timeout / 5xx）
   "turn_reaped": 2,           // 僵尸回收
   "cost_total_usd": 0.87,     // 实际总花费
-  "ttft_p99_ms": 1420,        // Interactive TTFT P99（SLO 指标）
+  "ttft_p99_ms": 1420,        // Interactive TTFT P99（体验指标）
   "error_429_rate": 0.02,     // 429 占比（RQ1）
 
   // ==== 路线四新增的核心指标 ====
@@ -601,7 +610,7 @@ Agent Session
   ▼
 Turn  ──────────────────────────────────────────────────────
   │  属性：                                                  │
-  │   - priority（interactive/batch）→ SLO 约束               │
+  │   - priority（interactive/batch）→ 体验时延目标约束        │
   │   - task_type → 质量及格线 & 后端候选集                   │
   │   - difficulty_weight w_i → 优化目标里的任务价值权重       │
   │   - 成本 c_i、质量 q_i（连续 [0,1]）                      │
@@ -629,7 +638,7 @@ Pareto Frontier → RQ1–RQ3 的答案
 | **Token** | LLM 处理文本的最小单位；按 token 收费 |
 | **Agent** | 自主循环调用 LLM 的程序 |
 | **Turn** | 一次完整的 LLM 调用；调度和计费的基本单位 |
-| **Interactive / Batch** | 有无用户在等；决定 SLO 约束强度 |
+| **Interactive / Batch** | 有无用户在等；决定体验时延目标约束强度 |
 | **Task Type** | generation / reasoning / retrieval / transform / summarization / conversation |
 | **Quality Score $q_i$** | Turn 的输出质量，$[0,1]$ 连续——**本文核心变量** |
 | **Difficulty Weight $w_i$** | Turn 的任务价值权重（优化目标里的系数）|
@@ -639,7 +648,7 @@ Pareto Frontier → RQ1–RQ3 的答案
 | **Policy** | 一套调度策略（如 `raw` / `governor_only` / `agentos_no_preempt` / `agentos`） |
 | **Run** | workload + policy = 一次实验运行 |
 | **429** | API 限流错误 |
-| **TTFT** | Time To First Token；interactive 的 SLO 指标 |
+| **TTFT** | Time To First Token；interactive 的体验指标 |
 | **P99** | 第 99 百分位；最差 1% 体验 |
 | **QWCR** | Quality-Weighted Completion Rate（本文核心指标） |
 | **QW-Completed** | $\sum q_i$；质量加权完成数 |
@@ -650,7 +659,7 @@ Pareto Frontier → RQ1–RQ3 的答案
 | **Governor** | 治理层；保证优化问题 well-defined 的硬约束 |
 | **Scheduler** | 调度层；在约束内近似求解质量最大化 |
 | **ModelSelector** | 在线近似边际加权性价比排序的选模器 |
-| **Preemption** | 抢占；对 interactive SLO 约束的执行机制 |
+| **Preemption** | 抢占；对 interactive 体验时延目标约束的执行机制 |
 | **Zombie** | 成本涨、质量不涨（边际收益 ≈ 0）的 Turn；从目标函数剔除 |
 | **First / Idle / Deadline Timeout** | 三段超时 |
 | **Failover / Circuit Breaker** | 故障切换 / 熔断 |
