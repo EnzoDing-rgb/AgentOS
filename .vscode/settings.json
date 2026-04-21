@@ -57,5 +57,7 @@
   "C_Cpp_Runner.useLinkTimeOptimization": false,
   "C_Cpp_Runner.msvcSecureNoWarnings": false,
   "markdown.math.enabled": true,
-  "markdown-preview-enhanced.mathRenderingOption": "KaTeX"
+  "markdown-preview-enhanced.mathRenderingOption": "KaTeX",
+  "markdown-preview-enhanced.previewTheme": "night.css",
+  "markdown-preview-enhanced.codeBlockTheme": "one-dark.css"
 }
