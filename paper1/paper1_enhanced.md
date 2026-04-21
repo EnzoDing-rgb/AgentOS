@@ -461,6 +461,8 @@ $$
 - C. `budget_aware_uniform`（全局预算感知，但 $w_i \equiv 1$）
 - D. `agentos_no_preempt`（Governor + ModelSelector，使用 task_type / priority / difficulty_weight）
 
+**澄清 B 在对比什么**：B 不是“知道未来 vs 不知道未来”的对比（两者都不知道未来到达）。B 的特征是**逐请求、无记忆**：每个 turn 独立做单步性价比决策，不使用“剩余预算/剩余时间”的 **budget pacing** 信号，也不利用任何统计先验或保守缓冲；AgentOS 的差别在于把预算状态折叠成 $\lambda$（`budget_factor` 的在线估计）参与决策，使得同一个 turn 在预算紧/松时会被分配到不同质量档位。
+
 **核心图表**：质量-成本 Pareto（横轴 cost，纵轴 QW-Completed）；**D 应当在 Pareto frontier 上或更靠右下**。
 
 **消融**：关闭 $w_i$（令所有权重=1）应当退化到接近 C——证明 **$w_i$ 信号是有效的**。
