@@ -37,7 +37,7 @@ Workload（实验剧本：turns[] + mock + 预算/并发）
 LLM 后端池（云端 API / 本地模型）
         |
         v
-events.jsonl（唯一真相源） -->  summary.json（QWCR、Q/$、Pareto 等）
+events.jsonl（唯一真相源） -->  summary.json（QWCR、`Q/$`、Pareto 等）
 ```
 
 ---
@@ -116,13 +116,13 @@ $$
 | 对照组 | 它在近似哪个最优？ | 失败模式 |
 |---|---|---|
 | **A. 总是高质量** | 忽略预算 | 很快触预算边界，后半段没钱 |
-| **B. 逐请求贪心性价比** | 忽略全局预算时序 | 把贵选项用在低 \(w_i\) turn 上 |
+| **B. 逐请求贪心性价比** | 忽略全局预算时序 | 把贵选项用在低 $w_i$ turn 上 |
 | **C. 全局预算感知 + $w_i \equiv 1$** | $w_i$ 粗糙近似 | 对“关键 vs 非关键”盲视 |
 | **D. AgentOS** | 用 task_type / priority / difficulty_weight 近似 $w_i$ | 在线近似，不做离线最优 |
 
 ### 2.2 连续版（把"选后端"推广成"选质量水位"）
 
-每个 turn 的决策不只是"选哪个后端"，而是"把这个 turn 推到多高的 \(q_i\)"（成本曲线 \(c_i(q_i)\) 通常单调递增且有边际递减）：
+每个 turn 的决策不只是"选哪个后端"，而是"把这个 turn 推到多高的 $q_i$"（成本曲线 $c_i(q_i)$ 通常单调递增且有边际递减）：
 
 $$
 \max_{q_1,\dots,q_N}\ \sum_{i=1}^{N} w_i\,q_i \quad \text{s.t.}\quad \sum_{i=1}^{N} c_i(q_i)\le B,\ \text{SLO constraints}
@@ -175,10 +175,10 @@ B 的绝对提升更大，但"每 1 美元带来的加权提升"更小——**�
 
 | 机制 | 在优化问题中的角色 |
 |---|---|
-| **Governor** | 保证预算 \(B\) 与限流约束**硬成立**——否则优化问题本身 not well-defined |
+| **Governor** | 保证预算 $B$ 与限流约束**硬成立**——否则优化问题本身 not well-defined |
 | **ModelSelector** | 在线近似 $\max \sum w_i q_i$ s.t. budget 的求解器 |
 | **Preemption** | 将交互 SLO（TTFT P99）作为硬约束或目标函数中的 penalty $-\alpha \cdot \text{TTFT}$ |
-| **ZombieDetector** | 把"无效燃烧成本"从目标函数里剔除（否则 Q/$ 被噪声污染）|
+| **ZombieDetector** | 把"无效燃烧成本"从目标函数里剔除（否则 `Q/$` 被噪声污染）|
 
 这个重定位的好处：读者能清晰看到**"机制 → 约束/目标项"的映射**，而不是四个互相独立的模块堆在一起。
 
@@ -241,10 +241,10 @@ agent 要做一连串事情：
 
 | | 个人（macOS + Cursor） | 企业（云端 50 个 agent） |
 |---|---|---|
-| 预算 | 本月剩 $10 | 团队月预算 $5000 |
+| 预算 | 本月剩 10 美元 | 团队月预算 5000 美元 |
 | 限流 | 个人 key RPM=60 | 企业 key RPM=3000，50 个 agent 还是不够 |
 | 价值差异 | 主线代码 vs 后台 lint | 老板实时请求 vs 批量报告 |
-| 僵尸 | agent 卡死占额度 | 某 agent 跑飞烧 $200 |
+| 僵尸 | agent 卡死占额度 | 某 agent 跑飞烧 200 美元 |
 
 架构一样，只是参数不同。**连续质量视角让小规模场景也有意义**——即使只有 1 个 agent，"该把这个 turn 推到多好"的决策依然存在。
 
@@ -266,7 +266,7 @@ Turn 按"**有没有人在等**"分两种优先级：
 | 用户问"这 bug 怎么修？" | reasoning | **interactive** | 用户在等 |
 | 离线批量总结 200 篇文章 | summarization | **batch** | 后台任务 |
 
-**在优化框架下**：priority = interactive 对应目标函数里加一项 \(-\alpha \cdot \text{TTFT}_i\) 或 SLO 硬约束。Preemption 就是这个约束的执行机制。
+**在优化框架下**：priority = interactive 对应目标函数里加一项 $-\alpha \cdot \text{TTFT}_i$ 或 SLO 硬约束。Preemption 就是这个约束的执行机制。
 
 ---
 
@@ -294,7 +294,7 @@ Turn 按"**有没有人在等**"分两种优先级：
 - `at_ms`：到达时间（模拟请求非同时到）
 - `priority`：interactive / batch（决定 SLO 约束强度）
 - `task_type`：决定质量及格线与后端候选集
-- **`difficulty_weight`**：对应优化问题里的 \(w_i\)，标识"这个 turn 多重要 / 多值得被推到高质量"
+- **`difficulty_weight`**：对应优化问题里的 $w_i$，标识"这个 turn 多重要 / 多值得被推到高质量"
 
 **workload 的 $w_i$ 设计应有现实依据**：可引用真实 agent 系统的阶段划分与阶段级成本统计（例如文献/开源实现中的阶段占比与成本 profile）来校准 turn mix 与 `difficulty_weight`，把预算优先留给高价值/高质量敏感阶段。（这里点到为止即可，避免喧宾夺主。）
 
@@ -350,13 +350,13 @@ Grader 注册表（每 task_type 对应一个 `(prompt, output) → float` 纯�
 
 ### 6.1 Quality-Weighted Completion Rate（QWCR）
 
-不只看完成数量，还看"有效完成量"。令 turn \(i\) 的终态质量为 \(q_i \in [0,1]\)（失败/回收记为 0）：
+不只看完成数量，还看"有效完成量"。令 turn $i$ 的终态质量为 $q_i \in [0,1]$（失败/回收记为 0）：
 
 $$
 \text{QWCR} = \frac{1}{N}\sum_{i=1}^{N} q_i
 $$
 
-**数字例子**：5 个 turn，质量 \([1.0, 0.8, 0.6, 0, 0.9]\)（第 4 个失败）→ QWCR = 3.3 / 5 = **0.66**。
+**数字例子**：5 个 turn，质量 $[1.0, 0.8, 0.6, 0, 0.9]$（第 4 个失败）→ QWCR = 3.3 / 5 = **0.66**。
 
 ### 6.2 QW-Completed（质量加权完成数）
 
@@ -372,9 +372,9 @@ $$
 \text{Q/\$} = \frac{\sum_i q_i}{\text{cost\_total\_usd}},\qquad \text{WQ/\$} = \frac{\sum_i w_i q_i}{\text{cost\_total\_usd}}
 $$
 
-**数字例子**：\(\sum q_i = 330\)、花费 55 美元 → Q/\$ = **6**（每 1 美元换到 6 单位有效质量产出）。
+**数字例子**：$\sum q_i = 330$、花费 55 美元 → `Q/$` = **6**（每 1 美元换到 6 单位有效质量产出）。
 
-**防坑**：某 policy 因预算耗尽几乎没做事会使 Q/$ 虚高——因此实验报告里**永远同时报告 QWCR 与 Q/$**。
+**防坑**：某 policy 因预算耗尽几乎没做事会使 `Q/$` 虚高——因此实验报告里**永远同时报告 QWCR 与 `Q/$`**。
 
 ### 6.4 质量-成本 Pareto
 
@@ -395,7 +395,7 @@ $$
 
 **对应架构**：Governor 治理层。
 
-**问题**：不加治理时 429 雪崩、失败率高——此时 Q/$、QWCR 根本没法稳定测量（分母都没了）。
+**问题**：不加治理时 429 雪崩、失败率高——此时 `Q/$`、QWCR 根本没法稳定测量（分母都没了）。
 
 **做法**：同 workload 跑 `raw` vs `governor_only`，比较 `error_429_rate / turn_completed / cost_total_usd`。
 
@@ -405,19 +405,19 @@ $$
 
 **对应架构**：Governor + ModelSelector。
 
-**问题**：同预算下，能否通过"把贵模型留给高 \(w_i\) 的 turn"最大化 QWCR / WQ/$？
+**问题**：同预算下，能否通过"把贵模型留给高 $w_i$ 的 turn"最大化 QWCR / `WQ/$`？
 
 **对照组（对应 §2.1 表）**：
 - A. `always_expensive`（总是高质量，不管预算）
 - B. `per_request_greedy`（逐请求贪心性价比，不看全局预算时序）
-- C. `budget_aware_uniform`（全局预算感知，但 \(w_i \equiv 1\)）
+- C. `budget_aware_uniform`（全局预算感知，但 $w_i \equiv 1$）
 - D. `agentos_no_preempt`（Governor + ModelSelector，使用 task_type / priority / difficulty_weight）
 
 **核心图表**：质量-成本 Pareto（横轴 cost，纵轴 QW-Completed）；**D 应当在 Pareto frontier 上或更靠右下**。
 
-**消融**：关闭 \(w_i\)（令所有权重=1）应当退化到接近 C——证明 **\(w_i\) 信号是有效的**。
+**消融**：关闭 $w_i$（令所有权重=1）应当退化到接近 C——证明 **$w_i$ 信号是有效的**。
 
-### RQ3：剔除无效成本 → 满足 SLO + 提升 Q/$
+### RQ3：剔除无效成本 → 满足 SLO + 提升 `Q/$`
 
 **对应架构**：Preemption + ZombieDetector。
 
@@ -428,7 +428,7 @@ $$
 
 **做法**：固定 `Governor + ModelSelector`，切换 `agentos_no_preempt` vs `agentos`。
 
-**核心指标**：interactive TTFT P99（SLO）+ **Q/\$ 提升**（僵尸剔除带来）+ QWCR（整体）。
+**核心指标**：interactive TTFT P99（SLO）+ **`Q/$` 提升**（僵尸剔除带来）+ QWCR（整体）。
 
 **主张**：动态回收不是"让系统更快"，而是**从目标函数里剔除无效成本项 + 满足 SLO 约束**。
 
@@ -473,7 +473,7 @@ $$
 
 **小熔断**：某模型短窗口内连续超时超阈值 → 临时熔断（如 30s）→ 熔断到点半开一次 → 成功恢复/失败续熔断。
 
-**评估指标**：超时率、自动切换率、interactive TTFT/P99、**Q/$ 提升（截断带来的无效成本下降）**。
+**评估指标**：超时率、自动切换率、interactive TTFT/P99、**`Q/$` 提升（截断带来的无效成本下降）**。
 
 ---
 
@@ -517,8 +517,8 @@ $$
 给自己定一个不走极端的叙事节奏：
 
 - **问题定义段（主文）**：给出连续质量模型与优化问题形式化，强调**设计原则（边际加权性价比水位线）为直觉，不强求完整定理**
-- **系统段（主文）**：说明 AgentOS 启发式如何对应在线近似（`budget_factor` ≈ 预算影子价格 \(\lambda\) 的在线估计；quality threshold ≈ 水位阈值）
-- **实证段（RQ2/RQ3）**：用 QWCR、Q/\$、Pareto frontier 证明"我们确实更接近这种最优结构"，而不是只靠类比
+- **系统段（主文）**：说明 AgentOS 启发式如何对应在线近似（`budget_factor` ≈ 预算影子价格 $\lambda$ 的在线估计；quality threshold ≈ 水位阈值）
+- **实证段（RQ2/RQ3）**：用 QWCR、`Q/$`、Pareto frontier 证明"我们确实更接近这种最优结构"，而不是只靠类比
 
 **摘要草稿（一句话版）**：
 
@@ -567,9 +567,9 @@ Pareto Frontier → RQ1–RQ3 的答案
 | **Turn** | 一次完整的 LLM 调用；调度和计费的基本单位 |
 | **Interactive / Batch** | 有无用户在等；决定 SLO 约束强度 |
 | **Task Type** | generation / reasoning / retrieval / transform / summarization / conversation |
-| **Quality Score \(q_i\)** | Turn 的输出质量，\([0,1]\) 连续——**本文核心变量** |
-| **Difficulty Weight \(w_i\)** | Turn 的任务价值权重（优化目标里的系数）|
-| **Budget \(B\)** | 本次 run 的总预算（美元） |
+| **Quality Score $q_i$** | Turn 的输出质量，$[0,1]$ 连续——**本文核心变量** |
+| **Difficulty Weight $w_i$** | Turn 的任务价值权重（优化目标里的系数）|
+| **Budget $B$** | 本次 run 的总预算（美元） |
 | **Workload** | 实验脚本；公平对比不同策略的输入 |
 | **Mock** | workload 里预设的延迟/成本/质量/错误；保证可复现 |
 | **Policy** | 一套调度策略（如 `raw` / `governor_only` / `agentos_no_preempt` / `agentos`） |
@@ -578,11 +578,11 @@ Pareto Frontier → RQ1–RQ3 的答案
 | **TTFT** | Time To First Token；interactive 的 SLO 指标 |
 | **P99** | 第 99 百分位；最差 1% 体验 |
 | **QWCR** | Quality-Weighted Completion Rate（本文核心指标） |
-| **QW-Completed** | \(\sum q_i\)；质量加权完成数 |
-| **Q/$, WQ/$** | 每美元的（加权）质量产出 |
-| **Budget Factor** | 预算影子价格 \(\lambda\) 的在线估计；驱动质量门槛动态调整 |
-| **Shadow Price \(\lambda\)** | 对应"预算的边际价值"；最优性的隐式水位线变量 |
-| **Marginal Cost-Benefit \(w_i \Delta q_i / \Delta c_i\)** | ModelSelector 的排序原则 |
+| **QW-Completed** | $\sum q_i$；质量加权完成数 |
+| **`Q/$`, `WQ/$`** | 每美元的（加权）质量产出 |
+| **Budget Factor** | 预算影子价格 $\lambda$ 的在线估计；驱动质量门槛动态调整 |
+| **Shadow Price $\lambda$** | 对应"预算的边际价值"；最优性的隐式水位线变量 |
+| **Marginal Cost-Benefit $w_i \Delta q_i / \Delta c_i$** | ModelSelector 的排序原则 |
 | **Governor** | 治理层；保证优化问题 well-defined 的硬约束 |
 | **Scheduler** | 调度层；在约束内近似求解质量最大化 |
 | **ModelSelector** | 在线近似边际加权性价比排序的选模器 |
