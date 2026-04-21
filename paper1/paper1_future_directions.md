@@ -108,23 +108,6 @@ TSE/TOSEM 期刊篇幅更充裕，够你把 RQ1–RQ3 的完整消融实验都�
 - 分母 `cost_total_usd` 直接来自 `summary.json` 或从 `events.jsonl` 汇总 `settlement_usd`。
 - 如果某个 policy 因预算耗尽导致 cost 很低、但也几乎没做事，Q/$ 可能虚高；因此建议在同图里同时报告 **QWCR** 与 **Q/$**（或做 Pareto frontier：横轴 cost，纵轴 QW-Completed）。
 
-### 3) User experience（主观评分）
-
-动机：RQ3 的核心叙事是“救交互体验”（interactive 先跑、抢占、回收僵尸）。仅报 TTFT/尾延迟并不足以说服 SE 审稿人：他们更相信“用户觉得更好用”。
-
-建议在补充实验里加入小规模用户研究（轻量即可）：
-
-- **任务**：给受试者同一组交互式工作流（例如 10 个 interactive turns 插入 40 个 batch turns 的脚本），分别在 `agentos_no_preempt` 与 `agentos` 两种 policy 下体验（随机顺序/对照）。
-- **量表（Likert 1–5 或 1–7）**：
-  - **Responsiveness**：系统响应是否及时（感知延迟）
-  - **Smoothness**：是否出现“卡死/长时间无响应/突然失败”的打断
-  - **Trust/Confidence**：是否觉得系统在“合理分配资源”，不会莫名其妙停工
-  - **Overall satisfaction**：总体满意度
-- **输出指标**：
-  - 平均分与 95% CI（或配对 t-test / Wilcoxon）
-  - 与客观指标对齐：把主观 Responsiveness 与 `ttft_p99`、`zombie_reaped` 数量相关性一起报告（增强解释力）
-
-这块不要求大样本；关键是让论文能写出一句硬话：**“不仅 tail latency 更低，用户主观体验也显著更好。”**
 
 ---
 
