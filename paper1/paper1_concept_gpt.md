@@ -28,7 +28,7 @@ $$
 
 最关键的是：论文最终不靠 $\sum_i w_iq_i$ 说服 reviewer。最终评估应该回到 workflow 级别，例如在同样预算下 SWE-bench Verified 的 resolve rate 是否更高，或者达到同样 resolve rate 是否花更少钱。
 
-**Governance**：不是只做一个 router，而是定义一套运行时治理机制：谁声明价值、谁管预算、谁选模型、谁记录每一步为什么这样花钱、最后用什么 grader 评估。
+**Governance**：不是只做一个 router，而是定义一套运行时治理机制：谁声明价值先验、谁管预算、谁选模型、谁记录每一步为什么这样花钱、最后用什么公开 benchmark 和确定性信号评估。
 
 所以这篇 paper 最稳的主张是：
 
@@ -92,7 +92,7 @@ Existing coding agents
 
 - 输入：一个已有 agent workflow、预算、模型池、policy config；
 - 运行：拦截或包装每次 LLM call，生成 `UtilityContract`，选择模型，扣预算；
-- 输出：patch / task result、per-step `UtilityLedger`、budget trace、grader score。
+- 输出：patch / task result、per-step `UtilityLedger`、budget trace，以及最终 workflow benchmark 结果。
 
 因此本文 artifact 可以同时有研究和产品雏形：
 
@@ -115,7 +115,7 @@ AgentOS governance runtime
         |
         v
 SWE-bench / deterministic tests
-  grades final patch quality and measured utility
+  grades final workflow outcome under budget
 ```
 
 对 Cursor、Claude Code 这类闭源商业 agent，本文不要承诺直接接入。更稳的边界是：
@@ -146,10 +146,10 @@ SWE-bench / deterministic tests
 | 问题 | Auto model / per-query router | 本文 |
 |---|---|---|
 | 决策对象 | 当前一次请求或子任务 | 一个 multi-step workflow |
-| 看到的信息 | prompt、上下文、复杂度、模型成本 | prompt + workflow 位置 + $w_i$ + budget + grader |
+| 看到的信息 | prompt、上下文、复杂度、模型成本 | prompt + workflow 位置 + $w_i$ + budget + benchmark-derived signals |
 | 预算 | 通常是“尽量省”或单次成本权衡 | workflow 级 hard budget |
 | 价值结构 | 多数不显式暴露 | agent framework 显式声明 |
-| 输出 | 这次用哪个模型 | 每一步为什么这样花钱、花了多少、换来多少 measured utility |
+| 输出 | 这次用哪个模型 | 每一步为什么这样花钱、花了多少、最终 workflow benchmark 结果如何 |
 
 这不是说 Cursor Auto 或云端 router 不重要。相反，它们可以成为本文系统里的底层执行器或类比对象。只是对 Cursor、Claude Code 这类闭源产品，真实接入需要 provider-side hooks、API-level routing control 或 exported call traces；本文实验应聚焦 SWE-agent、OpenHands、internal agents 这类 open or instrumentable workflows。
 
@@ -157,11 +157,11 @@ SWE-bench / deterministic tests
 
 ```text
 Agent framework
-  declares: task_type, w_i, grader, budget
+  declares: task_type, w_i, budget, observable signals
         |
         v
 Utility governance layer (本文)
-  decides and logs: budget state, model choice, utility accounting
+  decides and logs: budget state, model choice, utility signal
         |
         v
 Model selector / router
@@ -173,7 +173,7 @@ LLM backend
 
 本文的差异不是“我也会自动选模型”，而是：
 
-> **我要求 agent framework 把 workflow 的价值结构显式交出来，并让运行时按 hard budget 做可审计的 utility allocation。**
+> **我要求 agent framework 把 workflow 的价值结构显式交出来，并让运行时按 hard budget 做可审计的 allocation，最后用公开 benchmark 的 workflow outcome 检验这套 allocation 是否真的有用。**
 
 ---
 
@@ -193,8 +193,8 @@ Budget-Aware Agentic Routing 是最接近的相关工作。它也研究 multi-st
 |---|---|---|
 | 核心贡献 | 训练一个 budget-aware sequential router | 定义 workflow-level utility contract + governance + accounting |
 | 方法 | BoSFT + BoPO + budget-constrained decoding | training-free reference policy + 可插拔运行时 |
-| 任务价值 | 从轨迹和 reward 中隐式学习 | 由 agent framework 显式声明 $w_i$、`task_type`、grader |
-| 评估重点 | cost-success frontier | measured utility、WQ/$、Pareto、per-step ledger |
+| 任务价值 | 从轨迹和 reward 中隐式学习 | 由 agent framework 显式声明 `task_type`，$w_i$ 则由消融或历史对照估计 |
+| 评估重点 | cost-success frontier | workflow-level resolve rate / cost frontier + per-step ledger |
 | 可替换性 | 是一个 learned router | 可以作为本文的 `ModelSelector` 插件 |
 
 所以本文不要和 BAAR 硬拼“谁的 router 更强”。本文应该说：
@@ -211,7 +211,7 @@ Budget-Aware Agentic Routing 是最接近的相关工作。它也研究 multi-st
 
 人话定义：
 
-> `UtilityContract` 是 agent framework 在每次 LLM 调用前交给运行时的一份声明，说明这一步是什么、重要性多高、用什么 grader 评估、整个 workflow 还有多少预算。
+> `UtilityContract` 是 agent framework 在每次 LLM 调用前交给运行时的一份声明，说明这一步是什么、预算还剩多少、可以观察哪些质量信号，以及当前估计它对最终 workflow 成功有多大贡献。
 
 最小字段可以是：
 
@@ -219,38 +219,47 @@ Budget-Aware Agentic Routing 是最接近的相关工作。它也研究 multi-st
 |---|---|
 | `turn_id` | 当前 LLM 调用编号 |
 | `task_type` | 例如 planning、generation、bug_fix、validation |
-| $w_i$ | 这一步的 workflow-level utility weight |
-| `grader` | 这一步结束后如何测质量 |
+| $w_i$ | 这一步对最终 workflow 成功的估计贡献权重 |
+| `signal_source` | 这一步能接到哪些公开或确定性信号，例如 localization、patch apply、test result |
 | `priority` | interactive / batch 等体验上下文 |
 | $B$ | workflow 总预算 |
 | `spent_so_far` | 当前已经花了多少 |
 
-这里的 $w_i$ 不是系统凭空猜出来的。它来自上层 agent framework 的控制流。
+这里的 $w_i$ 不是系统凭空猜出来的，也不应该靠作者主观指定。它可以有三种来源，可信度从高到低：
+
+- 历史消融：在历史 runs 中去掉某个 step，或把这个 step 固定换成便宜模型，看最终 SWE-bench resolve rate 掉多少；
+- 对照组估计：比较 `all-one w_i`、random $w_i$、coarse high/low $w_i$、task-type default $w_i$ 等设置在同一预算下的结果；
+- 工程默认表：冷启动时按已有 workflow 经验给一个默认值，但论文必须把它当作待验证的先验，而不是客观真理。
 
 例如一个 bug-fix workflow：
 
-| 步骤 | `task_type` | 直觉 | $w_i$ |
+| 步骤 | `task_type` | 可观察信号 | $w_i$ 来源 |
 |---|---|---|---|
-| 读 issue | retrieval | 重要，但便宜模型通常够 | 1 |
-| 定位 bug | planning / reasoning | 错了会拖垮后续 | 3 |
-| 修改代码 | generation | 主产出 | 3 |
-| 写测试 | generation / validation | 影响正确性 | 2 |
-| 跑测试并总结 | validation | 需要可靠，但不一定要最贵 | 1 |
+| 读 issue | retrieval | 后续是否定位到 gold patch 文件 | 历史对照 / 默认表 |
+| 定位 bug | localization / reasoning | file-level Acc@k、MRR | 历史消融 |
+| 修改代码 | repair / generation | patch apply、FAIL_TO_PASS | 历史消融 |
+| 写测试 | validation / generation | reproduction test 是否能暴露原问题 | 对照组 |
+| 跑测试并总结 | validation | PASS_TO_PASS、测试执行结果 | 历史对照 |
 
-这个声明让运行时不用只看 prompt 猜重要性，而是直接拿到 workflow 的结构信息。
+这个声明让运行时不用只看 prompt 猜重要性，而是直接拿到 workflow 的结构信息。它不是评估结论本身，最后仍然要用 SWE-bench resolve rate、成本和消融实验来证明这些权重有没有用。
 
 ---
 
 ## 4. 最小数学：我们到底优化什么？
 
+这里要分清楚两件事：
+
+- 运行时内部怎么做预算分配；
+- 论文最终怎么向 reviewer 证明这套分配有用。
+
 设一个 workflow 有 $N$ 个 turn。每个 turn $i$ 可以选择一个后端或一个质量-花费方案 $a_i$。
 
-- $q_i(a_i)\in[0,1]$：grader 给出的质量分数；
+- $q_i(a_i)\in[0,1]$：从公开 benchmark 或确定性 harness 中提炼的可观察质量信号；
 - $c_i(a_i)$：这一步成本；
-- $w_i$：这一步的 utility weight；
+- $w_i$：这一步对最终 workflow 成功的估计贡献权重；
 - $B$：workflow 总预算。
 
-目标函数是：
+运行时内部可以用下面这个分数做分配：
 
 $$
 \max_{a_1,\dots,a_N}\sum_{i=1}^{N} w_i q_i(a_i)
@@ -261,6 +270,15 @@ $$
 这句话的人话解释是：
 
 > 在不超预算的前提下，让高价值步骤得到更高质量，让低价值步骤不要浪费钱。
+
+但这不是论文最终的主评估指标。最终主指标必须回到 workflow 级别：
+
+- 在同样 budget 下，SWE-bench Verified resolve rate 是否更高；
+- 达到同样 resolve rate，需要多少 token / dollar；
+- 成本-成功率 Pareto frontier 是否更好；
+- budget violation rate 是否更低。
+
+也就是说，$\sum_i w_iq_i$ 是 runtime 的内部决策信号，不是论文拿来自证成功的最终分数。Reviewer 不需要相信每个 step 的 utility 是“客观真理”；他只需要看这套内部信号是否让公开 benchmark 上的最终结果变好。
 
 如果 expensive model 相比 cheap model 的提升是：
 
@@ -285,7 +303,7 @@ $$
 - $\Delta q_i / \Delta c_i$：多花一美元，这一步质量能多涨多少；
 - 乘 $w_i$：如果这一步更关键，同样的质量提升更值钱。
 
-本文不需要把这个启发式包装成很重的理论。它的作用是提供一个 training-free、可解释、可审计的 baseline。未来如果有更强的 learned router，比如 BAAR，也可以替换这个 `ModelSelector`。
+本文不需要把这个启发式包装成很重的理论。它的作用是提供一个 training-free、可解释、可审计的 baseline。未来如果有更强的 learned router，比如 BAAR，也可以替换这个 `ModelSelector`。替换之后，评估口径仍然不变：看同一批公开 workflow benchmark 在同一预算下的最终结果。
 
 ---
 
@@ -295,10 +313,10 @@ $$
 
 | 组件 | 人话解释 | 作用 |
 |---|---|---|
-| `UtilityContract` | 上层 agent 声明这一步的价值和 grader | 让运行时知道“这一步为什么重要” |
+| `UtilityContract` | 上层 agent 声明这一步的类型、预算和可观察信号 | 让运行时知道“这一步为什么可能值得花钱” |
 | `Governor` | 管预算、限流、并发 | 保证 hard budget 和资源约束成立 |
 | `ModelSelector` | 选择模型或质量-花费方案 | 可以是本文启发式，也可以是 BAAR 这类 learned router |
-| `UtilityLedger` | 记账本 | 记录每一步花了多少钱、得了多少质量、产生多少 utility |
+| `UtilityLedger` | 记账本 | 记录每一步花了多少钱、观察到什么信号、最终 workflow 结果如何 |
 
 另外两个机制可以作为辅助：
 
@@ -317,15 +335,16 @@ $$
 - selected backend
 - estimated cost
 - actual cost
-- grader score $q_i$
-- measured utility $w_i q_i$
+- observable signal $q_i$
+- internal utility signal $w_i q_i$
 - budget remaining
+- final workflow outcome
 
 这样，论文才能回答：
 
-> 这一步为什么花钱？花了多少？最后换来了多少 measured utility？
+> 这一步为什么花钱？花了多少？观察到了什么中间信号？最后整个 workflow 过没过公开 benchmark？
 
-这是和纯 router paper 的差异。纯 router 重点是“选了哪个模型”；本文重点是“整个 workflow 的花费和效用是否可解释、可审计、可复现”。
+这是和纯 router paper 的差异。纯 router 重点是“选了哪个模型”；本文重点是“整个 workflow 的花费、内部决策依据和最终 benchmark 结果是否可解释、可审计、可复现”。
 
 ---
 
@@ -347,11 +366,11 @@ $$
 
 - 当前步骤是 planning 还是 validation；
 - 当前 turn 的 `task_type` 是什么；
-- 这一步的 $w_i$ 大概多高；
+- 这一步当前使用哪个 $w_i$ 先验；
 - 当前 workflow 的预算是多少；
 - 已经花了多少钱。
 
-这些信息不是从历史数据里学出来的，而是 agent framework 在执行控制流时本来就有的上下文。
+其中 `task_type` 和预算状态来自 agent framework 的控制流；$w_i$ 则来自历史消融、对照组或冷启动默认表。系统不能假装第一次运行时就知道真实权重，它只能使用一个透明的先验，然后用后续实验检验这个先验有没有用。
 
 ### 6.2 企业长期 workload 分布
 
@@ -360,7 +379,8 @@ $$
 - 每天多少 agent task；
 - planning / generation / validation 各占多少；
 - 平均 token 消耗；
-- 不同模型在不同 task type 上的质量先验。
+- 不同模型在不同 task type 上的质量先验；
+- 不同 step 权重在历史消融中的效果。
 
 这些可以先用默认表启动，再用少量历史样本校准。这里可以用很普通的方法，例如分桶均值、EWMA、简单 Bayesian update 或小样本 A/B。
 
@@ -380,7 +400,7 @@ $$
 
 一部分是。
 
-质量先验、成本估计、workload 分布估计，确实都接近传统的不确定性估计、online learning、bandit 或 Bayesian calibration。
+质量先验、成本估计、$w_i$ 估计、workload 分布估计，确实都接近传统的不确定性估计、online learning、bandit 或 Bayesian calibration。
 
 但 agent workflow 又有几个现实困难：
 
@@ -409,23 +429,25 @@ $$
 
 因为真实用户效用不是天然存在、统一、可直接测量的东西。
 
-本文应该说：
+本文也不应该说：
 
-> 我们最大化 benchmark-grounded effective utility proxy。
+> 我们自己定义每一步的 quality，然后把这些 quality 加起来证明系统更好。
 
-也就是：
+这会被 reviewer 直接质疑：你自己拆 step、自己定 $q_i$、自己定 $w_i$，最后自己证明自己。这个逻辑不够硬。
 
-$$
-\text{measured utility}_i = w_i \cdot q_i
-$$
+更稳的说法是：
 
-其中：
+> Step-level utility 是运行时的内部分配信号；论文最终评估必须落在 workflow-level public benchmark 上。
 
-- $q_i$ 是该 task type 的 deterministic grader score；
-- $w_i$ 是 workflow 里这一步的相对价值权重；
-- $\sum_i w_i q_i$ 是这个 workflow 的 measured effective utility。
+也就是说，$q_i$ 和 $w_i$ 可以帮助 runtime 决定怎么花钱，但 paper 最终要报告的是：
 
-这不是哲学意义上的用户满意度，而是软件工程任务中可复现的质量代理。
+- SWE-bench Verified resolve rate；
+- cost per resolved instance；
+- resolution-cost Pareto frontier；
+- budget violation rate；
+- 消融实验中不同 $w_i$ 设定带来的 workflow-level 结果差异。
+
+这样 reviewer 不需要先接受“每一步 utility 是否客观”。他只需要看：这套内部信号有没有让公开 benchmark 上的最终结果更好。
 
 ### 7.1 最推荐的主 benchmark：SWE-bench Verified
 
@@ -433,7 +455,7 @@ $$
 
 SWE-bench 的任务是：给一个真实 GitHub issue 和代码仓库，让系统生成 patch，然后用测试判断 patch 是否真的解决问题。
 
-SWE-agent 可以作为本文最自然的实验载体之一。它不是本文要提出的新方法，而是一个已有 coding-agent workflow：读 issue、搜索代码、编辑文件、运行测试、生成 patch。本文 runtime 可以包在它的 LLM call 外面，记录每一步的 cost、model choice、budget state 和 measured utility。
+SWE-agent 可以作为本文最自然的实验载体之一。它不是本文要提出的新方法，而是一个已有 coding-agent workflow：读 issue、搜索代码、编辑文件、运行测试、生成 patch。本文 runtime 可以包在它的 LLM call 外面，记录每一步的 cost、model choice、budget state 和中间信号。
 
 核心 grader 口径是：
 
@@ -456,7 +478,40 @@ SWE-agent 可以作为本文最自然的实验载体之一。它不是本文要�
 
 > 对 bug-fix / coding-agent workloads，本文采用 SWE-bench Verified style deterministic grading：patch applies, fail-to-pass tests pass, and pass-to-pass tests remain passing.
 
-### 7.2 HumanEval / MBPP 放在哪里？
+### 7.2 那 step-level 的 $q_i$ 从哪里来？
+
+关键原则是：$q_i$ 尽量从同一个公开 benchmark 或确定性执行结果里提炼，不另起炉灶发明主观 grader。
+
+对 SWE-bench 风格任务，可以这样定义：
+
+| Step | 可用的 $q_i$ 信号 | 来源 |
+|---|---|---|
+| localization / search | agent 找到的文件是否覆盖 gold patch 修改过的文件；Top-k accuracy、MRR、MAP | SWE-bench 的 `patch` 字段可解析出 gold files；SweRank / Agentless 已使用类似 localization 指标 |
+| repair / edit | patch 是否存在、是否能 apply、`FAIL_TO_PASS` 测试通过比例 | SWE-bench harness 的 evaluation report |
+| validation | `PASS_TO_PASS` 是否保持通过、测试是否成功执行、是否 timeout / error | SWE-bench harness 日志和 `grading.py` |
+| planning | 没有独立客观 gold label，不单独当主指标；只用 downstream proxy，例如 plan 后是否更快定位到 gold files | localization / repair 的 downstream signal |
+
+这句话很重要：
+
+> 本文不要求 reviewer 相信 planning quality 这种主观分数。没有公开 gold label 的 step 不做独立主评估，只看它是否改善后续 localization、repair 和最终 resolve rate。
+
+SWE-bench 的数据结构也支持这个设计。Verified 数据里有 `patch`、`test_patch`、`FAIL_TO_PASS`、`PASS_TO_PASS`。其中 `patch` 是 gold solution patch，可以解析出参考 PR 修改过哪些文件；`FAIL_TO_PASS` 和 `PASS_TO_PASS` 是最终确定性测试集合。SWE-bench harness 的 `grading.py` 会检查 patch 是否存在、是否成功 apply、失败测试是否转为通过、原本通过的测试是否保持通过。
+
+SWE-agent / mini-SWE-agent 的输出也支持 step-level 记录。SWE-agent 的 `.traj` 是 JSON，里面有每步的 `thought`、`action`、`observation`、`state`；mini-SWE-agent 还会记录每步 cost、timestamp、总 instance cost 和 API calls。因此本文不需要凭空发明 step trace，只需要把这些已有 trajectory 和 SWE-bench 的 gold / test signal 对齐。
+
+### 7.3 这类 step 拆分不是本文自创的
+
+这点也要写清楚，否则 reviewer 会问：为什么你有权把一个 SWE-bench task 拆成 localization、repair、validation？
+
+已有工作已经这么做了：
+
+- Agentless 把 SWE-bench issue resolution 明确拆成 localization、repair、patch validation 三个阶段；
+- SweRank 在 SWE-bench-Lite / LocBench 上做 file、module、function 三个粒度的 localization，并报告 Acc@k；
+- SWE-bench 原论文也讨论过 oracle retrieval，把 gold patch 修改过的文件作为 oracle context，用来分析 retrieval 对最终修复结果的影响。
+
+所以本文不是随便发明 workflow steps，而是复用已有 SWE-bench 生态里常见的 decomposition：先定位相关代码，再生成 patch，再用测试验证。
+
+### 7.4 HumanEval / MBPP 放在哪里？
 
 HumanEval 也可信：
 
@@ -468,20 +523,20 @@ HumanEval 也可信：
 
 MBPP 也常用，但同样更偏函数级代码生成。对本文这种 multi-step coding-agent workflow，主基准还是 SWE-bench Verified 更贴。
 
-### 7.3 决策侧和评估侧必须分开
+### 7.5 决策侧和评估侧必须分开
 
-运行时决策时，系统不能知道本次真实 $q_i$。它只能用：
+运行时决策时，系统不能偷看本次的 ground truth。它只能用：
 
 - 历史质量先验；
 - task type 默认表；
 - 小样本校准结果；
 - 模型价格表和 token 估计。
 
-评估时，才用 deterministic grader 得到真实 $q_i$。
+评估时，才用 SWE-bench harness、gold patch 解析和 trajectory 分析得到真实观察信号。
 
 所以文档里要写清楚：
 
-> 决策侧使用 estimated quality prior；评估侧使用 deterministic grader。本文不让 policy 在决策时偷看 ground truth。
+> 决策侧使用 estimated quality prior；评估侧使用 public benchmark / deterministic harness signal。本文不让 policy 在决策时偷看 ground truth。
 
 ---
 
@@ -519,7 +574,7 @@ MBPP 也常用，但同样更偏函数级代码生成。对本文这种 multi-st
 2. `Governor` 能不能守住 budget；
 3. `ModelSelector` 能不能按 utility-aware 规则分配；
 4. `UtilityLedger` 能不能记录每一步；
-5. SWE-bench style grader 能不能给出可复现的 $q_i$；
+5. SWE-bench harness / gold patch / trajectory 能不能给出可复现的 workflow outcome 和 step-level observable signals；
 6. 在 noisy prior / cold-start 下是否仍比 baseline 更稳。
 
 原型形态可以明确写成：
@@ -532,36 +587,38 @@ MBPP 也常用，但同样更偏函数级代码生成。对本文这种 multi-st
 
 三条 RQ 足够。
 
-### RQ1: Utility accounting 是否让成本-质量评估更可解释？
+### RQ1: Utility accounting 是否让成本-结果评估更可解释？
 
 问题：
 
-> 如果没有显式 `UtilityContract` 和 `UtilityLedger`，agent workflow 的质量-成本评估是否会变得不可解释、不可复现？
+> 如果没有显式 `UtilityContract` 和 `UtilityLedger`，agent workflow 的成本、模型选择和最终 benchmark 结果是否会变得不可解释、不可复现？
 
 指标：
 
 - per-step cost trace；
-- per-step $q_i$；
-- per-step $w_iq_i$；
+- per-step observable signal；
+- internal $w_iq_i$ decision signal；
+- final SWE-bench outcome；
 - budget violation rate；
 - audit completeness。
 
-### RQ2: 显式 utility contract 是否提升 measured utility？
+### RQ2: 显式 utility contract 是否提升 workflow-level benchmark outcome？
 
 问题：
 
-> 在相同预算下，使用显式 $w_i$ 和边际效用分配，是否比 uniform budget、per-request greedy 更好？
+> 在相同预算下，使用显式 $w_i$ 和边际效用分配，是否比 uniform budget、per-request greedy、random allocation 获得更高 SWE-bench resolve rate 或更低 cost per resolved instance？
 
 指标：
 
-- QWCR；
-- WQ/$；
-- utility-cost Pareto；
-- task-type breakdown。
+- resolve rate @ fixed budget；
+- cost per resolved instance；
+- resolution-cost Pareto frontier；
+- budget violation rate；
+- localization Acc@k / patch apply / FAIL_TO_PASS / PASS_TO_PASS breakdown。
 
 关键消融：
 
-- oracle / reference $w_i$；
+- ablation-derived $w_i$；
 - coarse high-low $w_i$；
 - task-type default $w_i$；
 - noisy $w_i$；
@@ -576,9 +633,9 @@ MBPP 也常用，但同样更偏函数级代码生成。对本文这种 multi-st
 
 指标：
 
-- utility degradation under noisy priors；
+- workflow outcome degradation under noisy priors；
 - budget overrun rate；
-- WQ/$；
+- cost per resolved instance；
 - 和 uniform baseline 的差距；
 - 随 calibration sample size 增加的趋势。
 
@@ -593,15 +650,15 @@ MBPP 也常用，但同样更偏函数级代码生成。对本文这种 multi-st
 | Baseline | 含义 | 回答什么问题 |
 |---|---|---|
 | `always_expensive` | 每步都用贵模型，直到预算爆 | 证明预算硬约束必要 |
-| `always_cheap` | 每步都用便宜模型 | 证明只省钱不等于高 utility |
-| `per_request_greedy` | 每步独立最大化 $q/c$ | 对比没有 workflow utility 的短视策略 |
+| `always_cheap` | 每步都用便宜模型 | 证明只省钱不等于高 resolve rate |
+| `per_request_greedy` | 每步独立最大化 estimated $q/c$ | 对比没有 workflow utility 的短视策略 |
 | `budget_uniform` | 有预算配速，但 $w_i=1$ | 排除“只是控预算更好” |
 | `agentos_reference` | $w_i\Delta q_i/\Delta c_i$ + budget feedback | 本文 training-free policy |
 | `learned_selector_optional` | BAAR 或类似 learned router，如果可用 | 说明本文框架可插拔 |
 
 注意：本文不一定要打败 BAAR。更重要的是证明：
 
-> BAAR 这类 router 可以作为 selector 插入本文框架；本文额外提供 contract、ledger、grader-grounded accounting。
+> BAAR 这类 router 可以作为 selector 插入本文框架；本文额外提供 contract、ledger、benchmark-grounded accounting。
 
 ---
 
@@ -613,13 +670,13 @@ MBPP 也常用，但同样更偏函数级代码生成。对本文这种 multi-st
 
 提出 workflow-level utility governance 问题：
 
-> coding agent 的 LLM spending 不只是 routing，也不是只看总成本，而是要把每一步的效用、预算和质量评估显式化。
+> coding agent 的 LLM spending 不只是 routing，也不是只看总成本，而是要把每一步的预算决策、价值先验和可观察信号显式化，并最终用 workflow-level public benchmark 检验。
 
 ### Contribution 2: Runtime abstraction
 
 提出 `UtilityContract + Governor + ModelSelector + UtilityLedger`。
 
-这个抽象让上层 agent、底层 router、grader、budget policy 解耦。
+这个抽象让上层 agent、底层 router、benchmark signal、budget policy 解耦。
 
 ### Contribution 3: Reference policy
 
@@ -633,13 +690,9 @@ $$
 
 ### Contribution 4: Benchmark-grounded evaluation
 
-用 SWE-bench Verified style grader，把 utility 落到可执行测试上：
+用 SWE-bench Verified style workflow benchmark 做最终评估：在固定预算下比较 resolve rate、cost per resolved instance 和 resolution-cost Pareto frontier。
 
-$$
-\text{measured utility} = \sum_i w_i q_i
-$$
-
-再用 UtilityLedger 把每一步的 cost、quality、utility 记录下来。
+Step-level 的 $q_i$ 只作为中间观察信号，来自 SWE-bench harness、gold patch localization 和 agent trajectory；$w_i$ 通过消融和对照组估计。UtilityLedger 负责把这些内部决策信号、成本和最终 benchmark outcome 记录下来。
 
 ---
 
@@ -655,21 +708,25 @@ BAAR 学 router policy。本文定义 workflow-level utility contract 和 accoun
 
 ### Q3: 你怎么知道一开始 workload 是什么？
 
-本文不假设知道未来 workload。当前 workflow 的结构由 agent framework 声明；长期分布用默认表、小样本校准和在线更新；无信息时退化到 uniform baseline。
+本文不假设知道未来 workload。当前 workflow 的结构由 agent framework 声明；长期分布、质量先验和 $w_i$ 用默认表、小样本校准、历史消融和在线更新；无信息时退化到 uniform baseline。
 
 ### Q4: 你说 utility，凭什么？
 
-本文不声称真实用户效用 oracle。本文最大化 benchmark-grounded effective utility proxy，即 $w_iq_i$。其中 $q_i$ 来自 deterministic grader，主推 SWE-bench Verified style tests。
+本文不声称真实用户效用 oracle，也不要求 reviewer 相信每个 step 的 utility 是客观真理。$w_iq_i$ 是运行时内部的预算分配信号，最终评估回到 workflow-level public benchmark：同样预算下 SWE-bench Verified resolve rate 是否更高、cost per resolved instance 是否更低。
 
-### Q5: 不同 task type 的 $q_i$ 能加吗？
+### Q5: 你的 step-level $q_i$ 会不会自说自话？
 
-不能假装完美同尺度。主指标之外要报告 per-task-type breakdown，并固定 workload mix。整体分数是 operational proxy，不是绝对真理。
+不能用作者自定义的主观 grader 当主指标。本文的 $q_i$ 尽量来自公开或确定性信号：gold patch 文件定位、patch apply、`FAIL_TO_PASS`、`PASS_TO_PASS`、测试 timeout / error、trajectory 中的 tool action。没有公开 gold label 的 planning 不单独评主观质量，只看它是否改善 downstream localization、repair 和最终 resolve rate。
 
-### Q6: 这是不是传统 ML 不确定性问题？
+### Q6: 不同 task type 的 $q_i$ 能加吗？
 
-质量先验和 workload 估计部分确实接近传统 online calibration / bandit / Bayesian estimation。但本文不把最优学习作为主贡献，而是提供 contract、governance、ledger，让不同 prior 或 learned router 都能被审计和比较。
+不能假装完美同尺度。$\sum_i w_iq_i$ 只作为内部决策和审计信号，不作为最终主评估。主指标是 workflow-level resolve rate、成本和 Pareto frontier；同时报告 task-type breakdown。
 
-### Q7: 这到底是 library、CLI，还是产品？
+### Q7: 这是不是传统 ML 不确定性问题？
+
+质量先验、$w_i$ 估计和 workload 估计部分确实接近传统 online calibration / bandit / Bayesian estimation。但本文不把最优学习作为主贡献，而是提供 contract、governance、ledger，让不同 prior 或 learned router 都能被审计和比较。
+
+### Q8: 这到底是 library、CLI，还是产品？
 
 研究原型是 Python governance runtime + CLI evaluation harness。CLI 用来运行已有 agent workflow 并记录 budget / utility ledger，不是要替代 Cursor 或 Claude Code。未来产品方向是 enterprise budget governance layer，由 platform team 接入到 SWE-agent、OpenHands 或内部 coding-agent stack。
 
@@ -679,11 +736,11 @@ BAAR 学 router policy。本文定义 workflow-level utility contract 和 accoun
 
 如果要向导师或评审介绍，建议用这段：
 
-> This paper studies utility governance for budget-constrained coding-agent workflows. Instead of proposing yet another model router or replacing IDE-based products such as Cursor and Claude Code, we define a workflow-level utility contract through which an agent framework declares each step's task type, utility weight, budget, and grader. A governance runtime then wraps open or instrumentable coding-agent workflows, enforces hard budgets, selects models through a pluggable selector, and records a utility ledger that explains how much each step costs and what measured utility it produces. We operationalize utility as `w_i × q_i`, where `q_i` is a benchmark-grounded deterministic grader score, such as SWE-bench Verified style fail-to-pass and pass-to-pass tests. The research prototype is a Python runtime and CLI evaluation harness; the product direction is an enterprise budget governance layer for teams that already use coding agents. The goal is not to predict future workloads perfectly or to learn the strongest router, but to make LLM spending in coding-agent workflows explicit, auditable, and empirically comparable under hard budgets.
+> This paper studies utility governance for budget-constrained coding-agent workflows. Instead of proposing yet another model router or replacing IDE-based products such as Cursor and Claude Code, we define a workflow-level utility contract through which an agent framework exposes each step's task type, budget state, estimated contribution weight, and observable benchmark-derived signals. A governance runtime then wraps open or instrumentable coding-agent workflows, enforces hard budgets, selects models through a pluggable selector, and records a utility ledger explaining how much each step costs and why the runtime made that allocation. Step-level utility `w_i × q_i` is used as an internal allocation signal, not as the final evaluation metric. The final evaluation is workflow-level: SWE-bench Verified resolve rate under fixed budgets, cost per resolved instance, and resolution-cost Pareto frontier. The `q_i` signals are derived from public or deterministic sources such as gold-patch localization, patch application, fail-to-pass tests, pass-to-pass tests, and agent trajectories; the `w_i` weights are estimated through historical ablations and controlled baselines. The goal is not to claim an oracle for human utility, predict future workloads perfectly, or learn the strongest router, but to make LLM spending in coding-agent workflows explicit, auditable, and empirically comparable under hard budgets.
 
 中文版本：
 
-> 这篇 paper 研究的是预算约束下 coding-agent workflow 的用户效用治理。它不是再提出一个模型 router，也不是替代 Cursor 或 Claude Code，而是定义一套 workflow-level utility contract：agent framework 声明每一步的任务类型、效用权重、预算和 grader；governance runtime 包住 SWE-agent、OpenHands 或企业内部 agent 这类可接入 workflow 的 LLM 调用，负责守住预算、选择模型，并用 utility ledger 记录每一步花了多少钱、产生了多少可测效用。本文把 utility 操作化为 `w_i × q_i`，其中 `q_i` 来自 SWE-bench Verified 风格的确定性 grader。研究原型可以是 Python runtime + CLI evaluation harness；未来产品方向是企业多团队的 budget governance layer。本文不声称能完美预测未来 workload，也不声称最大化真实人类满意度；它的贡献是让 coding-agent workflow 的 LLM 花费变得显式、可审计、可复现实证比较。
+> 这篇 paper 研究的是预算约束下 coding-agent workflow 的效用治理。它不是再提出一个模型 router，也不是替代 Cursor 或 Claude Code，而是定义一套 workflow-level utility contract：agent framework 暴露每一步的任务类型、预算状态、估计贡献权重和可观察信号；governance runtime 包住 SWE-agent、OpenHands 或企业内部 agent 这类可接入 workflow 的 LLM 调用，负责守住预算、选择模型，并用 utility ledger 记录每一步为什么这样花钱。`w_i × q_i` 不是论文最终自评指标，而是运行时内部的预算分配信号。最终评估回到 workflow 级别：固定预算下 SWE-bench Verified 的 resolve rate、cost per resolved instance 和 resolution-cost Pareto frontier。这里的 `q_i` 来自公开或确定性信号，例如 gold patch localization、patch apply、fail-to-pass、pass-to-pass 和 agent trajectory；`w_i` 通过历史消融和对照组估计。本文不声称能完美预测未来 workload，也不声称最大化真实人类满意度；它的贡献是让 coding-agent workflow 的 LLM 花费变得显式、可审计、可用公开 benchmark 复现实证比较。
 
 ---
 
