@@ -315,18 +315,18 @@ $$
 
 ### 2.2 多 workflow 场景（本文扩展）
 
-设有 $J$ 个并发 workflow，第 $j$ 个 workflow 有自己的 turn 集合 $W_j$ 和预算 $B_j$：
+设有 $J$ 个并发 workflow，第 $j$ 个 workflow 有自己的 turn 集合 $W_j$。这些 workflow 共享同一个总预算：
 
 $$
 \max \sum_{j=1}^{J} \sum_{i \in W_j} w_{j,i}\,q_{j,i}(a_{j,i}) \quad \text{s.t.}\quad
 \begin{cases}
-\sum_{i \in W_j} c_{j,i}(a_{j,i}) \le B_j & \forall\, j \\
+\sum_{j=1}^{J}\sum_{i \in W_j} c_{j,i}(a_{j,i}) \le B & \text{（全局总预算）} \\
 \text{RPM}(t) \le R_{\max} & \text{（全局每分钟请求数限制）} \\
 \text{Concurrency}(t) \le K_{\max} & \text{（全局并发槽限制）}
 \end{cases}
 $$
 
-**Scope 注**：下标 $j$ 是**同一预算主体之下**的并发 workflow——例如同一研究者跑的多个 SWE-bench 题目，或同一团队 agent 服务收到的多个用户请求。本文不建模多预算主体的 quota 仲裁，相关问题见 §12 future work。
+**Scope 注**：下标 $j$ 是**同一预算主体之下**的并发 workflow——例如同一研究者跑的多个 SWE-bench 题目，或同一团队 agent 服务收到的多个用户请求。本文不建模多预算主体的 quota 仲裁，相关问题见 §12 future work。每个 workflow 仍然有自己的 ledger，用来记录已花成本、预留成本和当前进展，但这不是独立预算。
 
 > **前置知识**：RPM = Requests Per Minute，是 API 提供商对每分钟请求数的限制。并发槽是指同时在飞的请求数上限。这两个约束意味着不同 workflow 之间在**抢共享资源**，不能各自独立优化。
 
@@ -394,7 +394,7 @@ $$
 | 量 | 人话含义 | 怎么得到 |
 |------|------|-------|
 | $w_i$ | 这一步有多关键 | 显式传入、callback 结构化推断，或从 ToolMessage / Observation 推断（见 §2.6） |
-| $\Delta \widehat{\text{progress}}_i^{(k)}$ | 升一档预计多带来多少步骤进展 | 从历史 SWE-bench 运行记录、校准集和在线 EWMA 得到（见 §3.3） |
+| $\Delta \widehat{\text{progress}}_i^{(k)}$ | 升一档预计多带来多少步骤进展 | 从历史 SWE-bench 运行记录、校准集和最近样本权重大一点的滑动更新得到（见 §3.3） |
 | $\Delta \widehat{\text{cost}}_i^{(k)}$ | 升一档预计多花多少钱 | 排序用 `expected_cost` 差值；预算安全用 `reserved_cost` 检查；评估用 `actual_cost` |
 | `budget_pressure` | 当前预算有多紧，升级门槛有多高 | 闭环反馈在线更新：花快了升高，花慢了降低 |
 
@@ -437,9 +437,8 @@ $w_i$ 不是必须由 agent 框架手写声明。AgentOS 支持从强到弱的 5
 
 这些默认值不是论文要证明的"最优常数"。它们只是一个保守的顺序先验：traceback 通常比目录列表更接近最终修复决策，所以权重更高。真正需要证明的是三件事：
 
-1. 用 held-out calibration split 校准这些权重后，是否能在另一个不参与校准的 split 上提升 fixed-budget resolved rate；
-2. 把权重范围从 `1-3` 改成 `1-2` 或 `1-4` 时，系统是否平滑退化，而不是靠某个神秘常数取胜；
-3. 当推断信号变弱（L4 显式 → L2 callback → L1 proxy → L0 budget-only）时，收益下降多少。
+1. 先拿一小批不参与最终测试的任务来估计"哪些步骤更值得花钱、哪些模型升级更有用"；然后把这套估计固定住，再拿另一批没见过的任务测试，在同样总预算下 resolved rate 是否真的更高；
+2. 当推断信号变弱（L4 显式 → L2 callback → L1 proxy → L0 budget-only）时，收益下降多少。
 
 换句话说，$w_i$ 是运行时分配预算的粗粒度信号，不是作者声称掌握了真实人类效用。默认表只负责冷启动；论文结论必须来自 held-out 和 cross-dataset 消融。
 
@@ -449,11 +448,11 @@ $w_i$ 不是必须由 agent 框架手写声明。AgentOS 支持从强到弱的 5
 
 ### 2.7 N-ary 后端的现实性检查
 
-**代价 1：先验矩阵规模从 $O(T)$ 涨到 $O(T \times N)$**。应对：静态先验表 + EWMA 在线更新 + 冷启动回退。
+**代价 1：要记的表变大了**。原来只要记一两档模型，现在要记每种任务类型在各个后端上大概能带来多少进展，所以表格会从"按任务记一份"变成"按任务 × 后端记一份"。应对：先放一张静态表能跑起来，再让新观测一点点把估计拉回真实值，没见过的组合先用保守默认，不要一开始就乱升档。
 
-**代价 2：部分后端可能被 Pareto 支配**。应对：启动期 Pareto 剪枝——按 task_type 分组，剔除被严格支配的后端。预计有效 N 在 3–5 之间。**N-ary 的价值不是"5 个后端全被用上"，而是"成本梯度够细"**——即使有效 N=3，也比二元多出一个中间档。
+**代价 2：有些后端其实没必要留着**。如果某个后端又贵又不比别的后端强，那它只会干扰决策。应对：启动时先做一轮剪枝，把明显被别的后端全方位压住的选项删掉或冻结。本文强调的不是"五个后端都要用上"，而是**后端档位要够细**；实际真正常用的可能是 3–5 个档位。
 
-**代价 3：更大的后端集合会扩大搜索空间**。应对：本文默认使用启发式边际收益排序，而不是训练一个覆盖全部 action space 的策略；action 数从 2 扩展到 N 时，学习型策略通常需要更多样本。
+**代价 3：后端越多，选择就越复杂**。应对：本文默认还是用"逐级涨价划不划算"的启发式，而不是上来就训练一个覆盖全部动作的大策略。后端从 2 个变成 N 个以后，学习型策略通常要更多样本才能学稳，这只是边界说明，不是方法负担。
 
 ---
 
@@ -515,7 +514,7 @@ $$
 
 **第二，公开运行记录。** SWE-bench 生态里已经有大量不同模型、不同 agent scaffold 的运行记录。只要记录里包含 agent 做了什么、看到了什么、最后 patch 是否 apply、测试是否通过，就能回放出步骤进展结果。这样可以在自己大规模实验前，先得到一张保守的初始表：例如过去在 debugging 步，Sonnet 比 mini 更常把后续修复带到可通过 `FAIL_TO_PASS` 的方向。
 
-**第三，在线 EWMA 更新。** 系统每跑完一个 step，就把真实观察到的步骤进展更新回历史表：
+**第三，在线滑动更新。** 系统每跑完一个 step，就把真实观察到的步骤进展更新回历史表；最近的样本权重大一点，老的样本慢慢淡出：
 
 $$
 \widehat{\text{Progress}} \leftarrow
@@ -532,7 +531,7 @@ $$
 
 成本比质量更容易客观化，但要分清楚三个时刻。
 
-**第一，决策前的 `expected_cost`。** AgentOS 选模型时还没有发起 LLM call，因此不知道真实输出 token 数。它能准确知道输入 token，因为 prompt / messages 已经组好；输出 token 只能估计，例如按 `task_type × model` 的历史均值、rolling average 或 EWMA。这个估计只用于路由排序，例如比较"升一档模型预期多花多少钱"：
+**第一，决策前的 `expected_cost`。** AgentOS 选模型时还没有发起 LLM call，因此不知道真实输出 token 数。它能准确知道输入 token，因为 prompt / messages 已经组好；输出 token 只能估计，例如按 `task_type × model` 的历史均值、滚动平均，或者最近样本权重大一点的滑动估计。这个估计只用于路由排序，例如比较"升一档模型预期多花多少钱"：
 
 $$
 \text{expected\_cost}_i(a)
@@ -587,7 +586,7 @@ $$
 | `uniform_progress_gain` | 所有模型升级的预计进展相同 | 只靠预算门槛是否已经够 |
 | `random_progress_gain` | 随机打乱历史表 | 任意历史表是否也能赢 |
 | `zero_calibration` | 只用保守默认表，不看校准数据 | 冷启动时是否仍有价值 |
-| `calibrated_progress_gain` | 使用校准集、公开运行记录和 EWMA | 本文的事前预测是否有效 |
+| `calibrated_progress_gain` | 使用校准集、公开运行记录和最近样本权重大一点的滑动更新 | 本文的事前预测是否有效 |
 | `oracle_progress_gain` | 用事后结果构造上界，只作分析 | 离理想上界还有多远 |
 
 **第三层：跨数据集是否退化？**
@@ -627,7 +626,7 @@ LLM 后端池 → events.jsonl → 指标计算
 
 **只有 ModelSelector 是 routing policy**，其余全部 policy-agnostic。任何 routing policy（包括学习型策略）都可以接入并共享所有系统机制。
 
-这里要说清楚一个容易被误解的点：AgentOS 没有声称重新发明 token bucket、reservation、WFQ、watchdog 或 EWMA。这些都是成熟机制。本文的新问题在于把它们放到 **agent workflow 的 LLM 预算治理** 这个单位上，并用同一套 ledger 追踪"每一步为什么花这笔钱、是否守住预算、是否改善最终 resolved outcome"。因此实验的关键不是证明 WFQ 本身新，而是证明 workflow-level state 加进来以后，per-call router 的 fixed-budget Pareto frontier 是否被改变。
+这里要说清楚一个容易被误解的点：AgentOS 没有声称重新发明 token bucket、reservation、WFQ、watchdog 或那种"越近样本越重要"的滑动更新。这些都是成熟机制。本文的新问题在于把它们放到 **agent workflow 的 LLM 预算治理** 这个单位上，并用同一套 ledger 追踪"每一步为什么花这笔钱、是否守住预算、是否改善最终 resolved outcome"。因此实验的关键不是证明 WFQ 本身新，而是证明 workflow-level state 加进来以后，per-call router 的 fixed-budget Pareto frontier 是否被改变。
 
 ### 4.1 ModelSelector 可插拔接口
 
@@ -671,7 +670,7 @@ per-task 路由策略本身不处理这一层——要覆盖多 workflow 并发�
 
 本文的多 workflow 调度有三个组件：
 
-1. **每 workflow 独立 budget tracker**：每个 workflow 有自己的预算 $B_j$ 和 `budget_pressure_j`
+1. **每 workflow 独立 ledger**：每个 workflow 记录自己的花费、预留和进展，用来审计和止损，但不等于独立预算
 2. **跨 workflow weighted fair queuing**：共享 RPM/并发槽按 workflow 优先级加权分配
 3. **Admission control**：资源满载时排队——不需要预测到达分布
 
@@ -683,7 +682,7 @@ per-task 路由策略本身不处理这一层——要覆盖多 workflow 并发�
 |----------|---------|
 | 并发 workflow 数量未知 | Admission control：满了就排队 |
 | 每 turn 的 cost / step progress 未知 | cost 用 `expected_cost` 排序、`reserved_cost` 保预算、`actual_cost` 结算；step progress 用历史运行记录估计 |
-| 新 task_type 的进展先验冷启动 | EWMA 在线更新 + 静态先验回退 |
+| 新 task_type 的进展先验冷启动 | 最近样本权重大一点的在线更新 + 静态先验回退 |
 
 ---
 
@@ -698,7 +697,7 @@ per-task 路由策略本身不处理这一层——要覆盖多 workflow 并发�
 | **Budget violation rate** | 约束指标 | 是否守住 hard budget |
 | **Step progress breakdown** | 诊断指标 | localization、patch apply、F2P/P2P 等中间信号如何变化 |
 
-`sum_i w_i q_i` 不作为主指标。它只帮助解释 ModelSelector 为什么把钱分给某一步。多 workflow 场景下再补充报告 Jain's Fairness Index 和队列延迟，用来说明后启动 workflow 有没有被饿死。
+`sum_i w_i q_i` 不作为主指标。它只帮助解释 ModelSelector 为什么把钱分给某一步。多 workflow 场景下再补充报告 Jain's Fairness Index 和队列延迟，用来说明后启动 workflow 有没有被饿死；这里的公平指的是**共享调度机会不被少数 workflow 吃光**，不是每个 workflow 分到同样的预算。
 
 ---
 
@@ -836,7 +835,7 @@ SE 社区缺"面向 LLM Agent 的成本治理基础设施"，对"系统工具 + 
 ## 11. 审稿人常见质疑
 
 **Q: 成本是不是你自己估的？**
-→ 分三步。路由排序用 `expected_cost`，其中输入 token 可在调用前精确计数，输出 token 用历史均值或 EWMA 估计。hard budget 不靠这个估计，而靠 provider-enforced `max_output_tokens` 计算 `reserved_cost`，调用前原子预留预算。实验报告用 `actual_cost`：真实 input/output token 数乘以公开价格；本地后端用 GPU 小时成本和吞吐摊销到 token。
+→ 分三步。路由排序用 `expected_cost`，其中输入 token 可在调用前精确计数，输出 token 用历史均值或最近样本权重大一点的滑动估计。hard budget 不靠这个估计，而靠 provider-enforced `max_output_tokens` 计算 `reserved_cost`，调用前原子预留预算。实验报告用 `actual_cost`：真实 input/output token 数乘以公开价格；本地后端用 GPU 小时成本和吞吐摊销到 token。
 
 **Q: 你的 quality 是不是自说自话？**
 → 最终质量不用作者打分，而是 SWE-bench Verified 的 resolved outcome。Step-level $q_i$ 是可机器检查的步骤进展，来自 gold patch localization、patch apply、`FAIL_TO_PASS`、`PASS_TO_PASS`、timeout/error 和 SWE-agent 运行记录。这些信号可复现，也和 Agentless、SweRank 的拆分方式一致。
@@ -859,7 +858,7 @@ SE 社区缺"面向 LLM Agent 的成本治理基础设施"，对"系统工具 + 
 **Q: "和学习型 agentic router 比呢？"**
 → 以 BoPO 为例，学习型 agentic router 训练一个 cheap / expensive 二元策略，解决 sparse terminal reward 下如何学会花预算的问题。AgentOS 的贡献不是训练最强 router，而是提供 training-free、N-ary、可审计的 workflow runtime：预算账本、`reserved_cost` 准入、RPM/concurrency 控制、多 workflow 调度和步骤级预算决策。学习型 router 可以作为 AgentOS 的 ModelSelector 插件。
 
-**Q: 这些机制不都是旧的吗？WFQ、token bucket、reservation、watchdog、EWMA 都不是新东西。**
+**Q: 这些机制不都是旧的吗？WFQ、token bucket、reservation、watchdog、滑动更新都不是新东西。**
 → 是的，本文不把这些机制包装成新算法。AgentOS 的研究贡献在更高一层：把 agent workflow 作为预算治理单位，定义一套可插拔、可审计的 runtime contract，并用实验回答"workflow-level state 是否让固定预算下的 agent 成功率更高"。类比数据库和操作系统论文，很多系统贡献并不是发明锁、队列或缓存本身，而是在新的 workload 和约束下证明一套抽象改变了性能/可靠性边界。本文必须通过机制归因实验说明收益来自 workflow-aware state 与 selector/governor/scheduler 的耦合，而不是只列组件。
 
 **Q: 你是不是应该同时覆盖客服、创意写作、长程科学推理？**
@@ -889,7 +888,7 @@ AgentOS 走同样的路径。本文（paper 1）处理 **single-budget-owner** �
 
 SWE-bench 的好处是进展信号相对清楚：文件定位、patch apply、`FAIL_TO_PASS`、`PASS_TO_PASS` 都能机器检查。客服、创意写作、长程科学推理不是这样。它们可能没有 gold patch，也没有一组确定性测试告诉系统"这一步更接近成功了"。
 
-这不是 AgentOS runtime 不能用于这些任务，而是 ModelSelector 需要换一个 progress source。例如客服可以用任务是否解决、是否升级人工、用户满意度或事后质检作为 outcome；RAG 可以用 citation correctness、answer faithfulness 或 retrieval hit rate；科学推理可以用 benchmark verifier、self-consistency 或专家评分。AgentOS 的 ledger、budget reservation、scheduler 仍然可用，但 `$q_i$` 和 `$w_i$` 的来源要由领域 evaluator 或学习型 selector 提供。
+这不是 AgentOS runtime 不能用于这些任务，而是 ModelSelector 需要换一个 progress source。后续工作可以把学习出来的 evaluator、规则加模型的混合 evaluator，或者领域特定的 verifier，作为新的 progress source 使用；但这类 evaluator 自己也要在 held-out 任务上验证，不能一边调一边报收益。举例来说，客服可以看任务是否解决、是否升级人工、用户满意度或事后质检；RAG 可以看 citation correctness、answer faithfulness 或 retrieval hit rate；科学推理可以看 benchmark verifier、self-consistency 或专家评分。AgentOS 的 ledger、budget reservation、scheduler 仍然可用，但 `$q_i$` 和 `$w_i$` 的来源要由领域 evaluator 或学习型 selector 提供。
 
 因此 paper 1 不声称一张 SWE-bench 校准表能泛化到所有 agent 任务。更合理的路线是：本文先在可复现的 coding workflow 上证明 workflow-aware budget governance 是否成立；后续工作研究不同任务域如何定义可靠的 progress signal。
 
