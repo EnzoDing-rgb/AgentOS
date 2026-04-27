@@ -5,33 +5,61 @@
 
 ---
 
-## 0. 定位：为什么这不是"又一个 LLM Router"
+## 0. 定位：Cursor Auto 已经存在，这篇论文还有意义吗？
 
-### 云端 auto-routing 已经存在，这篇论文还有意义吗？
+公平拷问。今天的开发者已经被 auto-routing 包围：
 
-OpenAI GPT-5 Auto、LiteLLM Auto Router、Cloudflare Dynamic Routing 等已提供 per-query 自动路由。但它们解决的是：
+- **Cursor Auto / OpenCode Auto**：在多步 agent workflow 中对每次 LLM 调用自动选模型
+- **OpenAI GPT-5 Auto**：聊天端在 Instant / Thinking 间切换
+- **LiteLLM Auto Router / Cloudflare Dynamic Routing**：基于 embedding/规则的 per-query 路由
+- **学术 router**：RouteLLM、CARROT、OmniRouter（per-query 性价比预测）
 
-> **"这一条 query 该发给哪个模型？"**（stateless, per-query）
+它们都在回答："**这一次** LLM 调用该用哪个模型？"——本文不和它们抢这个问题。本文回答的是更上一层的问题：
 
-本文解决的是一个根本不同的问题：
+> **在一个完整的 agent workflow（多步 LLM 调用）中，如何利用 workflow 级的结构信息（哪一步关键、剩多少预算），做整体的成本-质量分配？**
 
-> **"一个 agent workflow 有 N 个 LLM 调用步骤，总预算固定为 B 美元，如何跨步骤分配质量-成本方案？"**（stateful, budget-constrained, sequential）
+### 真正的 gap：现有 auto-router 都是 **workflow-blind** 的
 
-| 维度 | Per-query Router（RouteLLM, CARROT, 云端 Auto） | **本文（Budget-Constrained Quality Maximization）** |
-|------|-----------------------------------------------|--------------------------------------------------|
-| 决策粒度 | 单条 query，独立决策 | 整个 workflow 的 N 个 turn，联合预算约束 |
-| 状态 | 无状态 | 有状态：跟踪剩余预算、burn rate、历史消耗 |
-| 预算 | 不管预算（或仅做 per-query 成本预测） | 硬预算约束，动态配速 |
-| 任务价值 | 不区分（或仅按 query 难度路由） | 显式区分 $w_i$（规划步 > 检索步） |
-| 止损 | 无 | 僵尸检测 + 截断（成本涨、质量不涨的调用） |
-| 典型用户 | 个人开发者单次调用 | Agent 框架 / 企业 multi-step pipeline |
+| 它们看得到 | 它们看不到（但上层 agent 自己知道） |
+|-----------|----------------------------------|
+| 当前这次 prompt 的内容、长度、复杂度 | 这次调用是 6 步 refactor 的**第几步** |
+| 模型成本与能力差异 | 是 planning / generation / validation 中哪一步 |
+| 大致 latency 和 token 消耗 | 错在 planning 比错在 validation 代价大 3 倍 |
+| 用户订阅 tier | 整个 task 的预算上限是 \$0.50 |
+| | 前 3 步已花 \$0.40，剩 \$0.10 给后面 3 步 |
 
-**核心差异**：per-query router 是贪心的——每次独立选最优模型；本文是全局的——在总预算下跨步骤做 quality-cost tradeoff。这就像"每顿饭都点最好的菜" vs "一个月的伙食费要分配到 30 天"。
+**这不是 Cursor Auto 不努力，是它"看不到"**——agent workflow 的步骤价值结构（哪一步关键、哪一步不关键、错了下游代价多大）是**上层 agent 的私有信息**，闭源黑盒 router 拿不到，per-query 学术 router 也设计上不接收这个信号。
 
-**适用场景**：
-- **企业**（字节跳动、微软）：50 个 agent 共享 LLM 资源池，月预算 5000 美元
-- **个人开发者**：月预算 10 美元，一个 SWE-bench agent 跑 6 步，每步选哪个模型
-- **Agent 框架**（SWE-agent, MetaGPT, Cursor）：每个 task 是多步 workflow，成本控制是刚需
+### 本文的定位：agent 框架与 LLM 后端之间的 **workflow-aware** 治理中间层
+
+```
+Agent 框架（SWE-agent / Cursor / MetaGPT）
+    │  把 workflow 结构传下来：w_i, 预算 B, task_type, ...
+    ▼
+═══════ AgentOS（本文）═══════       workflow-aware 成本-质量分配
+    │  基于 w_i · Δq_i / Δc_i + budget_factor
+    ▼
+Per-call router（Cursor Auto / GPT-5 Auto / RouteLLM）   单次调用
+    │
+    ▼
+LLM 后端池
+```
+
+**一句话**：Cursor Auto 是 AgentOS 的**底层**（最终决定单次调用怎么发），不是竞争者。AgentOS 把上层 agent 的私有信息（workflow 价值 + 预算状态）接进来用上——这正是 per-call router 设计上做不了的事。
+
+| 维度 | Cursor Auto / GPT-5 Auto / RouteLLM / CARROT | **本文** |
+|------|---------------------------------------------|---------|
+| 路由信号 | 单次 prompt 内容 | prompt + **workflow 位置 ($w_i$)** + 预算状态 |
+| 跨步骤预算 | 无 | 可选 hard budget + 动态配速 |
+| 止损 | 无 | 僵尸检测 + 截断（成本涨、质量不涨） |
+| 开放性 | 闭源黑盒 | 开放、可测量、可解释 |
+| 谁能调用 | 终端用户 / 后端 | **agent 框架**（声明 $w_i$ 即可） |
+
+### 谁会真正用这个？
+
+- **Agent 框架开发者**（SWE-agent / MetaGPT / Cursor 自身）：在框架内集成 AgentOS，把 workflow 结构通过 $w_i$ 暴露给运行时
+- **企业多 agent 部署**：多个 agent 共享 LLM 资源池，按 task 给预算
+- **个人开发者跑 SWE-bench-style agent**：固定预算下让 agent 跑得更准
 
 ---
 
@@ -300,8 +328,8 @@ SE 社区缺"面向 LLM Agent 的成本治理基础设施"，对"系统工具 + 
 **Q: "$q$ 和 $w$ 怎么来？拍脑袋吗？"**
 → $q$ 来自确定性 grader（SE benchmark 标准）；$w$ 由调用方声明（类比 Linux `nice` / K8s `PriorityClass`）；降级路径：显式声明 → task_type 默认表 → 二元 interactive/batch → $w \equiv 1$。E1–E6 消融证明鲁棒性。
 
-**Q: "云端 auto-routing 已经解决了这个问题。"**
-→ 云端 router 是 per-query stateless 的，不管跨步骤预算分配。见 §0 对比表。
+**Q: "Cursor Auto / OpenCode Auto / GPT-5 Auto 已经解决了这个问题。"**
+→ 这些 router 是 **workflow-blind** 的：它们看每次 prompt 选模型，但 agent workflow 的步骤价值结构（哪一步是 planning、错了下游代价多大、整个 task 还剩多少预算）是上层 agent 的私有信息，闭源黑盒 router 拿不到。本文是 agent 框架与 LLM 后端之间的中间层，把这些信息接进来用上——和 Cursor Auto 不是同一层，是它的**调用方**。详见 §0。
 
 **Q: "小规模有意义吗？"**
 → 即使 1 个 agent 6 步，"该把这步推到多好"仍是核心决策。
@@ -314,18 +342,20 @@ SE 社区缺"面向 LLM Agent 的成本治理基础设施"，对"系统工具 + 
 
 ---
 
-## 附录 A：一个具体场景
+## 附录 A：一个具体场景（与 Cursor Auto 的差异）
 
-你让 AI agent 重构代码（"把这个模块拆成三个文件"）：
+让 SWE-agent / Cursor 重构代码（"把这个模块拆成三个文件"），workflow 6 步：
 
-1. 读代码 → retrieval，$w=1$，便宜模型够用
-2. 制定方案 → reasoning，$w=3$，**值得用好模型**
-3. 生成文件 A → generation，$w=3$
-4. 生成文件 B → generation，$w=3$
-5. 生成文件 C → generation，$w=3$
-6. 验证 import → transform，$w=1$，便宜模型够用
+| 步 | 任务 | task_type | $w_i$ | 备注 |
+|----|------|-----------|------|------|
+| 1 | 读代码 | retrieval | 1 | 便宜模型够用 |
+| 2 | 制定方案 | reasoning | 3 | **关键**——错了拖累后面 4 步 |
+| 3–5 | 生成文件 A/B/C | generation | 3 | 主产出 |
+| 6 | 验证 import | transform | 1 | 便宜模型够用 |
 
-预算 \$0.50。ModelSelector 把贵模型留给步骤 2–5，步骤 1、6 用便宜模型——这就是边际性价比排序的一次具体实例。
+**Cursor Auto 的做法**：每次调用独立看 prompt 选模型。它**无法区分**"这是关键的规划步 vs 不关键的验证步"，也**不知道**整个 task 的预算上限——因为这些信息只在 agent 框架的脑子里。
+
+**本文方案**：agent 框架把 $w_i$ 和预算 \$0.50 通过 API 传给 AgentOS。ModelSelector 按 $w_i \cdot \Delta q_i / \Delta c_i$ 排序，把贵模型留给 $w=3$ 的步骤（2–5），$w=1$ 的步骤（1、6）用便宜模型——这是 **workflow 价值结构 × 预算约束**下的边际性价比排序，per-call router 设计上做不了。
 
 ## 附录 B：budget_factor 不需要预测未来
 
