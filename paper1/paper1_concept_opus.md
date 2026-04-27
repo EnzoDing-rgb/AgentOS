@@ -25,15 +25,18 @@
 
 ### 真正的 gap：现有 auto-router 都是 workflow-blind 的
 
-什么叫 "workflow-blind"？它们在做每次路由决策时，**只看当前这一次调用的信息**（prompt 内容、长度、复杂度），但看不到整个 workflow 的全局状态。具体来说：
+下面给出两个可操作定义：
+
+- **workflow-aware**：路由决策会显式使用 workflow 级信息，例如：这一步是否关键（$w_i$，由 agent 每次调用时声明）、本 workflow 还剩多少预算、当前花钱速度是否合理、同一时间有多少 workflow 在共享并发/RPM 资源。**不需要提前知道 workflow 总共有多少步**——$w_i$ 是逐步声明的，budget_factor 是闭环反馈的。
+- **workflow-blind**：路由决策主要依赖本次调用的局部信息（prompt/token/延迟），不显式接收上述 workflow 级信号，因此无法做跨步骤预算配速或跨 workflow 调度。
 
 | 它们看得到 | 它们看不到（但上层 agent 自己知道） |
 |-----------|----------------------------------|
-| 当前这次 prompt 的内容、长度、复杂度 | 这次调用是 6 步 refactor 的**第几步** |
-| 模型成本与能力差异 | 是 planning / generation / validation 中哪一步 |
-| 大致 latency 和 token 消耗 | 错在 planning 比错在 validation 代价大 3 倍 |
+| 当前这次 prompt 的内容、长度、复杂度 | **这一步是 planning / generation / validation 中哪种**（agent 发起调用时声明） |
+| 模型成本与能力差异 | **这一步有多关键**（$w_i$，agent 发起调用时声明，不需要知道总步数） |
+| 大致 latency 和 token 消耗 | 错在 planning 比错在 validation 代价大——因为 planning 错了后续步骤会沿着错误方向继续 |
 | 用户订阅 tier | 整个 task 的预算上限是 \$0.50 |
-| | 前 3 步已花 \$0.40，剩 \$0.10 给后面 3 步 |
+| | 到目前为止已花 \$0.40，剩余预算只够便宜模型（budget_factor 实时追踪，不需要预测总步数） |
 | | 现在有 50 个 workflow 在并发抢 RPM 配额 |
 
 **这不是 Cursor Auto 不努力，是架构上"看不到"**——agent workflow 的步骤价值结构（哪一步关键、错了下游代价多大）和预算消耗状态，是**上层 agent 框架的私有信息**，闭源黑盒 router 拿不到，per-query 学术 router 也设计上不接收这个信号。
@@ -184,6 +187,30 @@ $$
 
 B 的绝对质量提升更大，但"每 1 美元带来的加权提升"更小——**预算紧时贵模型应该留给 A**。
 
+### 2.6 $w_i$ 如何声明？（工程实现）
+
+**$w_i$ 不是 AgentOS 硬编码的，而是 agent 框架在每次调用时通过 API 传入的**——AgentOS 不猜任务重要性，由调用方告诉系统。这个设计与 Linux `nice` 值和 K8s `PriorityClass` 同理：调度器不推断进程/Pod 重要性，由用户声明。
+
+采纳设计分 4 个渐进档位，集成程度越高收益越好，但**不集成也能跑**：
+
+| 档位 | agent 框架做的事 | $w_i$ 来源 | 集成工作量 |
+|------|----------------|-----------|----------|
+| **L4 完整** | 每次调用直接传数值 | `agentos.chat(..., w_i=3.0)` | 最精细，agent 开发者自己定 |
+| **L3 标准** | 每次调用传 `task_type` 字符串 | 系统查下方预置表 | 只需标"这是哪种步骤" |
+| **L2 最小** | 区分 interactive vs batch | `interactive→2, batch→1` | 最低集成成本 |
+| **L1 不集成** | 什么都不传 | $w_i \equiv 1$ | 退化到对照组 C，系统仍可运行 |
+
+**L3 默认 $w_i$ 表**（本工作给出，用户可扩展覆盖）：
+
+| task_type | 默认 $w_i$ | 说明 |
+|-----------|----------|------|
+| `planning`, `reasoning` | 3 | 错了则下游连错，代价最高 |
+| `generation` | 2 | 主产出步骤 |
+| `validation`, `transform`, `retrieval` | 1 | 局部影响，便宜模型通常够用 |
+| `summarization`, `classification` | 1 | 通常不需要最强模型 |
+
+**鲁棒性**：§3.5 消融实验 E1–E7 正面回答"权重不准怎么办"——粗粒度的 L3 映射仍有明显收益（E3），加噪 $\sigma=0.5$ 时收益基本保留（E4），完全无信号时退化到 C 而非崩溃（E6）。权重越精细收益越高，但"分不准"不是致命问题。
+
 ---
 
 ## 3. 质量怎么衡量？（回应导师 Challenge）
@@ -318,6 +345,8 @@ class ModelSelectorPolicy(ABC):
 ---
 
 ## 5. Multi-Workflow 并发调度
+
+**三句话定义**：一个 workflow = 一个任务从开始到结束的一串 LLM 调用步骤。multi-workflow = 同一时间有很多个 workflow 在跑，它们共享同一组资源（RPM、并发槽、后端池、甚至全局预算）。因此系统除了要在“一个 workflow 内”分配预算，还必须在“不同 workflow 之间”做调度与公平性保证。
 
 ### 5.1 为什么需要这一层
 
@@ -496,7 +525,7 @@ SE 社区缺"面向 LLM Agent 的成本治理基础设施"，对"系统工具 + 
 → 用对照组 C（$w_i \equiv 1$）排除：若 D 显著优于 C，差异来自任务价值感知，不是单纯的预算控制。
 
 **Q: "$q$ 和 $w$ 怎么来？拍脑袋吗？"**
-→ $q$ 来自社区标准 benchmark grader（SWE-bench Verified / HumanEval / GSM8K，§3.1 有完整表）；$w$ 由调用方声明（类似 Linux `nice` 值或 K8s `PriorityClass`——不是系统猜的，是用户告诉系统的）。降级路径：显式声明 → task_type 默认表 → 二元 interactive/batch → $w \equiv 1$。E1–E7 消融证明对噪声鲁棒。
+→ $q$ 来自社区标准 benchmark grader（SWE-bench Verified / HumanEval / GSM8K，§3.1 有完整表）；$w$ 由调用方在每次 LLM 调用时通过 API 传入（类似 Linux `nice` 值——不是系统猜的，是 agent 框架告诉系统的）。采纳路径 4 档渐进：L4 直接传数值 → L3 传 `task_type` 查预置表 → L2 区分 interactive/batch → L1 不传则 $w \equiv 1$ 退化到对照组 C（见 §2.6）。E1–E7 消融证明对权重噪声鲁棒，粗粒度分类也有明显收益。
 
 **Q: "Cursor Auto / OpenCode Auto / GPT-5 Auto 已经解决了这个问题。"**
 → 这些 router 是 workflow-blind 的：它们看每次 prompt 选模型，但看不到 workflow 的步骤价值结构、全局预算状态、多 workflow 竞争。本文是 agent 框架与 LLM 后端之间的中间层——和 Cursor Auto 不是同一层，是它的调用方。详见 §0。
@@ -517,7 +546,7 @@ SE 社区缺"面向 LLM Agent 的成本治理基础设施"，对"系统工具 + 
 
 ## 附录 A：一个具体场景（与 Cursor Auto 的差异）
 
-让 SWE-agent / Cursor 重构代码（"把这个模块拆成三个文件"），workflow 6 步：
+让 SWE-agent / Cursor 重构代码（"把这个模块拆成三个文件"）。假设这次 workflow 实际走了 6 步（但系统事先不知道总步数——$w_i$ 是每步调用时由 agent 框架逐步声明的）：
 
 | 步 | 任务 | task_type | $w_i$ | 备注 |
 |----|------|-----------|------|------|
