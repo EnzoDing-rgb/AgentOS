@@ -10,6 +10,7 @@
 | **xRouter** (2025, arxiv:2510.08439) | RL | Cost-aware reward | 有（episode） | Tool-calling RL router | RL 方法论对手 |
 | **CARROT** (Somerstep et al. 2025, arxiv:2502.03261) | 统计 | Per-query cost 预测 | 无 | Minimax optimal plug-in router | Per-query baseline |
 | **RouteLLM** (Ong et al. 2024) | 学习型二元 | 无 | 无 | 偏好数据训练 strong/weak 二分 | Per-query baseline |
+| **pMVX: Policy-Level Multi-Version Execution for Agentic OS Kernel Self-Tuning** (Agentic OS Workshop 2026, accepted) | Agentic OS / 内核自调优 | 未见明确 budget 优化目标 | 无（非 workflow 路由） | 多版本策略执行 + kernel policy self-tuning | 平行工作：偏 kernel 自调优，不是质量-成本分配 |
 | **AgentRM** (arxiv:2603.13110) | OS-inspired | 并发槽/RPM | 无 | MLFQ + 僵尸回收 + 上下文管理 | 平行工作：侧重稳定性 |
 | **AgentCgroup** (arxiv:2602.09345) | OS 内核级 | CPU/内存 | 无 | eBPF + cgroup | 平行工作：OS 级资源 |
 | **AIOS** (arxiv:2403.16971) | OS 架构 | 无 | 无 | 内核服务抽象 | 概念相似但更宽泛 |
@@ -36,7 +37,7 @@
 | **预算** | 不管或仅预测 per-query cost | Hard budget 硬约束 |
 | **任务价值** | 不区分 | 显式 $w_i$ |
 
-### 3. 本文 vs OS-Inspired 工作 (AgentRM, AgentCgroup, AIOS)
+### 3. 本文 vs OS-Inspired 工作 (AgentRM, AgentCgroup, AIOS, pMVX)
 
 | 维度 | OS-Inspired 工作 | 本文 |
 |------|-----------------|------|
@@ -58,7 +59,7 @@
 |----------|---------|--------|
 | **Per-query routing** | RouteLLM, CARROT, OmniRouter | 单条 query 选模型 |
 | **Agentic routing (RL)** | Budget-Aware Agentic Routing, xRouter | 学习型多步路由 |
-| **OS 资源管理** | AgentRM, AgentCgroup, AIOS | 系统稳定性/资源隔离 |
+| **OS 资源管理** | AgentRM, AgentCgroup, AIOS, pMVX | 系统稳定性/资源隔离/内核自调优 |
 | **Budget-constrained quality optimization（本文）** | AgentOS Paper 1 | **启发式**多步质量-成本优化 |
 
 本文的 niche：**不需要训练的、可解释的、基于优化原理的 budget-aware multi-step routing**。与 RL 方法互补，与 per-query router 正交。
