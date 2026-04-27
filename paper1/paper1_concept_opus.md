@@ -5,7 +5,6 @@
 ---
 
 ## 0. 定位：这篇论文在解决什么问题？
-
 ### 背景：现在已经有很多 auto-routing 了
 
 今天的开发者已经被各种"自动选模型"功能包围：
@@ -14,7 +13,7 @@
 - **OpenAI GPT-5 Auto**：在聊天端自动在 Instant / Thinking 间切换
 - **LiteLLM Auto Router / Cloudflare Dynamic Routing**：基于规则或 embedding 的 per-query 路由
 - **学术 router**：RouteLLM、CARROT、OmniRouter（训练一个预测器来估计 per-query 性价比）
-- **RL-based agentic router**：Budget-Aware Agentic Routing（BoPO）（用强化学习训练路由策略）
+- **RL-based agentic router**：把多步路由建模为 RL 策略学习问题
 
 它们都在回答同一个问题："**这一次** LLM 调用该用哪个模型？"
 
@@ -37,54 +36,113 @@
 
 **这不是 per-call router 不努力，是架构上"没有状态"**——普通 router 只处理孤立请求，而 AgentOS 维护 workflow ledger、预算水位、全局资源压力，并在可获得时使用当前调用的重要性信号。
 
-### 和 BoPO（Budget-Aware Agentic Routing）有什么不同？
-
-BoPO（Zhang et al. 2026, arxiv:2602.21227）是目前和本文最接近的工作——它也做 agent workflow 内的多步路由，也考虑预算约束。但两者在设计理念上有 4 条根本差异：
-
-> **前置知识**：BoPO 把路由问题建模为"受约束的马尔可夫决策过程"（CMDP），用强化学习（RL）去学一个路由策略。所谓"二元后端"是指它只在 cheap model 和 expensive model 之间做二选一。
-
-| 维度 | 本文（AgentOS） | BoPO |
-|------|----------------|------|
-| **后端数量** | N-ary（任意多个模型，如 GPT-5 Thinking / Instant / mini / Claude / 本地 Llama） | 二元（只在一个 cheap 和一个 expensive 之间切换） |
-| **训练需求** | **零训练**——启发式规则 + 闭环反馈，安装即可用 | 需要先 SFT（监督微调）再 RL（强化学习），训练成本不低 |
-| **Workflow 范围** | 支持**多个 workflow 并发**共享资源池 | 只处理单个 task 的路由 |
-| **路由信号** | 预算状态 + 显式/推断 $w_i$ | 稀疏 RL 奖励（只在任务结束时才知道做得好不好） |
-
-**两者是互补的，不是替代关系**。BoPO 能学到更精细的路由策略（如果愿意付训练成本），本文提供开箱即用的系统运行时。本文的 ModelSelector 接口设计上支持把 BoPO 的 RL 策略接入——详见 §4.1 和附录 C。
-
 ### 本文的定位：agent 框架与 LLM 后端之间的 workflow-aware 治理中间层
 
-```mermaid
-flowchart TD
-    Frameworks["LangChain / SWE-agent / AutoGen"] -->|"Proxy mode: LLM request messages"| Proxy["AgentOS Proxy"]
-    Frameworks -->|"Callback mode: tool events + step metadata"| Adapter["AgentOS Adapter"]
-    SelfBuilt["Self-built agent platform"] -->|"Explicit mode: task_type + w_i"| SDK["AgentOS SDK"]
-    Proxy --> Runtime["AgentOS Runtime"]
-    Adapter --> Runtime
-    SDK --> Runtime
-    Runtime --> Governor["Governor: budget + RPM + concurrency"]
-    Governor --> Selector["ModelSelector: budget_factor + importance"]
-    Selector --> Scheduler["Multi-workflow Scheduler"]
-    Scheduler --> Backends["LLM Backend Pool"]
+```text
+ +----------------------------------+       +-----------------------------+
+ | LangChain / SWE-agent / AutoGen  |       | Self-built agent platform   |
+ +----------------------------------+       +-----------------------------+
+       |                    |                         |
+       | Proxy mode:        | Callback mode:          | Explicit mode:
+       | LLM request msgs   | tool events + metadata  | task_type + w_i
+       v                    v                         v
+ +------------------+ +------------------+      +------------------+
+ |  AgentOS Proxy   | | AgentOS Adapter  |      |   AgentOS SDK    |
+ +------------------+ +------------------+      +------------------+
+          \                  |                         /
+           \                 |                        /
+            +----------------+-----------------------+
+                             |
+                             v
+                    +--------------------+
+                    |  AgentOS Runtime   |
+                    +--------------------+
+                             |
+                             v
+          +-------------------------------------+
+          | Governor: budget + RPM + concurrency |
+          +-------------------------------------+
+                             |
+                             v
+       +------------------------------------------+
+       | ModelSelector: budget_factor + importance |
+       +------------------------------------------+
+                             |
+                             v
+          +-----------------------------+
+          | Multi-workflow Scheduler    |
+          +-----------------------------+
+                             |
+                             v
+          +-----------------------------+
+          | LLM Backend Pool            |
+          +-----------------------------+
 ```
+
+**Proxy mode 的例子**：开发者原本已经在用 LangChain / SWE-agent / AutoGen 造 agent；AgentOS 只是在 **LLM API 层** 插进去：开发者把 LLM client 的 `base_url` 从 OpenAI 改成 `http://localhost:8080/v1`，框架仍然发送普通 chat completion 请求。AgentOS proxy 接住这次请求，读取 `messages` 以及其中可能包含的 ToolMessage / Observation（也就是上一步 tool output 被放回 prompt 的部分），再结合 workflow 预算状态，决定把请求转发给 GPT-5、mini、本地 Llama 或其他后端。
+
+```text
+Developer's agent code
+  -> LangChain / SWE-agent
+  -> OpenAI-compatible client
+  -> AgentOS proxy endpoint
+  -> real backend LLMs
+```
+
+**Explicit mode 的例子**：这里的"自研平台"指的是：团队没有用 LangChain 这类框架，而是自己写了 agent loop——自己决定什么时候 planning、什么时候调用 tool、什么时候再问 LLM。AgentOS 不接管这个 loop，只替换其中"调用 LLM"这一行。
+
+```python
+# 原来：平台自己直接调用某个模型
+response = openai.chat.completions.create(
+    model="gpt-5",
+    messages=messages,
+)
+```
+
+接入 AgentOS 后，改成：
+
+```python
+# 现在：把这一步的类型和重要性一起告诉 AgentOS
+response = agentos.chat(
+    messages=messages,
+    task_type="debugging",
+    w_i=3.0,
+    workflow_id=run_id,
+)
+```
+
+也可以拆得更底层：AgentOS 只负责选模型，平台仍然用自己的 LLM client 发请求。
+
+```python
+backend = agentos.select_model(task_type="planning", w_i=3.0, workflow_id=run_id)
+response = llm_client.chat(model=backend.name, messages=messages)
+agentos.record_usage(workflow_id=run_id, backend=backend, response=response)
+```
+
+所以 Explicit mode 不是让 AgentOS 变成 LangChain-like 框架；它只要求 AgentOS 提供 `chat(...)` 或 `select_model(...)` 这类 workflow-aware LLM 调用接口。上层平台显式告诉 AgentOS：这一步是什么类型、重要性多高；AgentOS 不需要从 observation 里猜 $w_i$。
 
 **一句话**：AgentOS 不依赖某一个上层 agent 框架。它可以作为 OpenAI-compatible proxy 接在 LangChain / SWE-agent / AutoGen 下面，也可以通过 callback / middleware 获取结构化工具事件，还可以被自研 agent 平台通过 SDK 显式调用。本文的核心不是重做一个 LangChain，而是把 LLM 路由从"孤立请求选择模型"提升为**有状态的 workflow 预算-质量优化**。
 
-| 维度 | Per-call router（RouteLLM / CARROT / GPT-5 Auto 等） | BoPO | **本文** |
+其中最接近的竞争工作是 **Budget-Aware Agentic Routing（BoPO, Zhang et al. 2026）**：它也关注 agent workflow 内的预算感知路由，但把问题建模为单 task 的 RL 策略学习。核心差异集中如下：
+
+| 维度 | Per-call router（RouteLLM / CARROT / GPT-5 Auto 等） | 最接近的 RL agentic router | **本文** |
 |------|---------------------------------------------|------|---------|
-| 路由信号 | 单次 prompt 内容 | RL 奖励信号 | prompt + **预算状态** + 显式/推断的重要性 $w_i$ |
-| 后端选择 | N-ary 但 per-call | 二元 | **N-ary + workflow-aware** |
-| 跨步骤预算 | 无 | 单 task 内有 | **多 workflow 跨步骤 + 跨 workflow** |
-| 训练需求 | 需训练（CARROT/RouteLLM）或无 | SFT + RL | **零训练** |
-| 止损 | 无 | 无 | 僵尸检测 + 截断 |
-| 多 workflow 并发 | 无 | 无 | **admission control + 跨 workflow 协调** |
+| **核心优化对象** | 单次 request 的模型选择 | 单个 task / episode 内的路由策略 | **全局 stateful runtime：多 workflow 共享预算下的质量-成本优化** |
+| **状态范围** | 基本无 workflow 状态 | 单 task 内状态 | **跨 step + 跨 workflow 的 ledger：已花成本、剩余预算、burn rate、并发/RPM 压力** |
+| **预算语义** | 不管预算或只做 per-query cost 估计 | 训练时 soft budget，推理时受约束 | **运行时 hard budget + 闭环配速，防止前期花光预算** |
+| **质量目标** | 局部性价比或偏好预测 | RL 奖励最大化 | **显式最大化 budget-constrained quality：把钱分给更高价值步骤** |
+| **任务价值信号** | 单次 prompt 内容 | 稀疏任务奖励 | prompt + **显式/推断的重要性 $w_i$** + 预算状态 |
+| **多 workflow 并发** | 无 | 无 | **admission control + 跨 workflow 协调，避免资源饥饿** |
+| **训练需求** | 需训练（CARROT/RouteLLM）或无 | SFT + RL | **零训练，启发式 + 在线反馈即可部署** |
+| **后端选择空间** | 可 N-ary，但仍 per-call | 通常二元 cheap / expensive | **N-ary 后端池；这是收益来源之一，但不是最核心区别** |
+| **止损机制** | 无 | 无 | 僵尸检测 + 截断 |
 
 ### 谁会真正用这个？
 
 AgentOS 的目标用户是**造 agent 的人**和**运营 agent 平台的团队**——不是终端用户。具体三类：
 
 - **Agent 框架 / agent 产品的构建者**（SWE-agent、LangChain、AutoGen、Moatless、MetaGPT 等开源框架的维护者，以及自研 agent 的创业团队和企业小队）：通过 proxy、callback/middleware 或 SDK 接入 AgentOS，把原本 workflow-blind 的 LLM 调用纳入统一预算和调度
-- **单团队 agent 平台的运营方**（持有单一预算池、对内或对外服务多并发 agent 请求的产品团队 / 平台团队 / DevOps 团队）：把 AgentOS 当作内部 LLM 网关，让多 agent 在共享预算池下不打架——具体落地场景见 §0.5.2
+- **单团队 agent 平台的运营方**（持有单一预算池、对内或对外服务多并发 agent 请求的产品团队 / 平台团队 / DevOps 团队）：把 AgentOS 当作内部 LLM 网关，让多 agent 在共享预算池下不打架
 - **研究者**：把 AgentOS 当 evaluation harness 跑 SWE-bench、HumanEval 等基准的多策略对比
 
 无论 1 个 agent 6 步还是 50 个 agent 6 步，"哪一步该推到多好"都是核心决策。**多预算主体（多团队 / 多部门 / 多 SLA 共享同一 agent 平台）的层级仲裁是 paper 边界外的问题**，留作 future work（§12）。
@@ -228,7 +286,7 @@ chk  = client.chat(messages=[...], task_type="validation",  w_i=1.0)
 
 > **预算有限时，每个步骤应该被做到多好？**
 
-这里有 5 个后端可选，不是 2 个——这就是"N-ary"。BoPO 只处理二元（cheap vs expensive），我们支持任意多个。
+这里有 5 个后端可选，不是 2 个——这就是"N-ary"。本文支持任意多个后端，因此可以利用更细的 cost-quality 梯度。
 
 ---
 
@@ -276,7 +334,7 @@ $$
 | B. `per_request_greedy` | 每步独立最大化 $q/c$ | 不做配速、不看 $w_i$，后期质量下降 |
 | C. `budget_aware_uniform` | 有预算配速，但 $w_i \equiv 1$ | 不区分任务价值——关键步和琐碎步给同样资源 |
 | **D. AgentOS** | 预算配速 + 任务价值 $w_i$ + 边际性价比 | 在线近似，非离线最优 |
-| **E. `bopo_style_binary`** | 限制为二元后端 + 不用 $w_i$ | 模拟 BoPO 的输入条件 |
+| **E. `binary_backend`** | 限制为二元后端 + 不用 $w_i$ | 检验多后端梯度和任务价值信号的贡献 |
 
 D vs E 的差异可以**直接归因于** N-ary 后端 + 显式/推断 $w_i$ 信号的贡献。
 
@@ -359,7 +417,7 @@ $w_i$ 不是必须由 agent 框架手写声明。AgentOS 支持从强到弱的 5
 
 **代价 2：部分后端可能被 Pareto 支配**。应对：启动期 Pareto 剪枝——按 task_type 分组，剔除被严格支配的后端。预计有效 N 在 3–5 之间。**N-ary 的价值不是"5 个后端全被用上"，而是"成本梯度够细"**——即使有效 N=3，也比二元多出一个中间档。
 
-**与 BoPO 的代价对照**：BoPO 限制为二元不是设计缺陷，而是 RL action space 的代价——action 从 2 扩展到 N 时 sample complexity 显著增加。**这是 trade-off，不是免费的午餐**。
+**代价 3：更大的后端集合会扩大搜索空间**。应对：本文默认使用启发式边际收益排序，而不是训练一个覆盖全部 action space 的策略；action 数从 2 扩展到 N 时，学习型策略通常需要更多样本。
 
 ---
 
@@ -404,7 +462,7 @@ $w_i$ 不是必须由 agent 框架手写声明。AgentOS 支持从强到弱的 5
 | E4 加噪 | $w_i$ + 噪声 $\sigma=0.3/0.5/1.0$ | 对权重误差鲁棒 |
 | E5 随机 | 随机 $w_i$ | 最坏情况 |
 | E6 全 1 | $w_i \equiv 1$ | 自洽检查：应退化到对照组 C |
-| **E7 binary-backend** | 限制只有 cheap/expensive 两个后端 | 在 BoPO 同等输入条件下的比较 |
+| **E7 binary-backend** | 限制只有 cheap/expensive 两个后端 | 验证 N-ary 成本梯度的贡献 |
 | **E8 proxy-inferred** | 只从 LLM request messages / Observation 文本推断 $w_i$ | 零改代码接入能拿到多少收益 |
 | **E9 callback-inferred** | 从 LangChain/SWE-agent/AutoGen 结构化 tool event 推断 $w_i$ | 轻量 adapter 比纯 proxy 提升多少 |
 
@@ -426,7 +484,7 @@ Agent Workflow（N 个 LLM 调用步骤）× J 个并发 workflow
 │                                              │
 │ 【优化层】ModelSelector（可插拔）             │  ← 唯一 routing policy
 │   本文默认：边际加权性价比 + budget_factor    │
-│   可替换为：BoPO RL policy / CARROT / ...    │
+│   可替换为：RL policy / CARROT / ...         │
 │                                              │
 │ 【止损层】ZombieDetector + Preemption        │  ← policy-agnostic
 │   僵尸截断 + 交互式任务抢占                   │
@@ -439,7 +497,7 @@ Agent Workflow（N 个 LLM 调用步骤）× J 个并发 workflow
 LLM 后端池 → events.jsonl → 指标计算
 ```
 
-**只有 ModelSelector 是 routing policy**，其余全部 policy-agnostic。任何 routing policy（含 BoPO 的 RL 策略）都可以接入并共享所有系统机制。
+**只有 ModelSelector 是 routing policy**，其余全部 policy-agnostic。任何 routing policy（包括学习型策略）都可以接入并共享所有系统机制。
 
 ### 4.1 ModelSelector 可插拔接口
 
@@ -450,7 +508,7 @@ class ModelSelectorPolicy(ABC):
                backends: list[Backend]) -> Backend: ...
 ```
 
-本工作实现了 4 个 policy：`WorkflowAwareHeuristic`（主贡献）、`PerCallGreedy`（对照组 B）、`BudgetAwareUniform`（对照组 C）、`CARROTStylePredictor`（per-call baseline）。BoPO RL 策略的接入留作 future work（接口已就绪，需要 multi-GPU 训练资源）。
+本工作实现了 4 个 policy：`WorkflowAwareHeuristic`（主贡献）、`PerCallGreedy`（对照组 B）、`BudgetAwareUniform`（对照组 C）、`CARROTStylePredictor`（per-call baseline）。学习型 agentic routing policy 的接入留作 future work（接口已就绪，需要额外训练资源）。
 
 ---
 
@@ -462,7 +520,7 @@ class ModelSelectorPolicy(ABC):
 
 50 个 SWE-agent 同时跑时，系统处于 RPM 限额的 80% 水位。如果不做调度：先到先得导致后启动 agent 被饿死、前几个 agent 把贵模型预算花光、卡死 agent 占着并发槽不释放。
 
-**BoPO 做不了这个**——它的 CMDP 是 per-task 的，要处理多 workflow 并发需要重新设计整个 RL 训练框架。
+per-task 路由策略本身不处理这一层——要覆盖多 workflow 并发，需要把共享预算、队列和 RPM/concurrency 压力纳入 runtime 级状态。
 
 ### 5.2 调度算法：Weighted Fair Queuing
 
@@ -543,18 +601,7 @@ class ModelSelectorPolicy(ABC):
 
 ## 8. Related Work
 
-### 8.1 与 BoPO 的详细对比
-
-| 维度 | 本文（AgentOS） | BoPO | 影响 |
-|------|----------------|------|------|
-| **后端** | N-ary（5+ 模型） | 二元 | N-ary 允许更精细的 cost-quality 梯度 |
-| **训练** | 零训练 | SFT + RL | 零训练意味着安装即用 |
-| **范围** | 多 workflow 并发 | 单 task | 多 workflow 是部署的基本需求 |
-| **信号** | 预算状态 + 显式/推断 $w_i$ | 稀疏 RL 奖励 | 信号可解释、可调试；不依赖任务结束后的稀疏奖励 |
-
-两者互补——BoPO 的 RL 策略可以作为 ModelSelector 的一个 policy 接入。
-
-### 8.2 Per-query LLM Routing
+### 8.1 Per-query LLM Routing
 
 | 论文 | 方法 | 与本文关系 |
 |------|------|-----------|
@@ -564,7 +611,7 @@ class ModelSelectorPolicy(ABC):
 
 这些工作优化 per-call 决策，不涉及 workflow 结构或多 workflow 调度。
 
-### 8.3 OS-Inspired Agent 系统
+### 8.2 OS-Inspired Agent 系统
 
 | 论文 | 核心问题 | 与本文差异 |
 |------|---------|-----------|
@@ -572,12 +619,12 @@ class ModelSelectorPolicy(ABC):
 | **AgentCgroup** (2026) | OS 级资源隔离 | 不涉及 LLM 调用质量 |
 | **AIOS** (2024) | 通用 Agent OS 架构 | 宽泛架构，无 cost-quality trade-off |
 
-### 8.4 定位总结
+### 8.3 定位总结
 
 | 研究类别 | 代表工作 | 本文差异 |
 |----------|---------|---------|
 | Per-query routing | RouteLLM, CARROT, OmniRouter | 本文是 workflow 级 |
-| Agentic routing (RL) | BoPO, xRouter | 本文零训练 + 多 workflow |
+| Agentic routing (RL) | xRouter 等 | 本文零训练 + 多 workflow |
 | OS 资源管理 | AgentRM, AgentCgroup, AIOS | 本文做 cost-quality 优化 |
 | **本文** | AgentOS | **workflow-aware, training-free, multi-workflow cost-quality runtime** |
 
@@ -621,14 +668,14 @@ SE 社区缺"面向 LLM Agent 的成本治理基础设施"，对"系统工具 + 
 **Q: "现有 per-call auto-router 已经解决了这个问题。"**
 → 它们是 workflow-blind 的：看不到 workflow 的步骤价值结构、全局预算状态、多 workflow 竞争。AgentOS 解决的是不同层次的问题（详见 §0）。
 
-**Q: "和 BoPO 比呢？"**
-→ 4 条差异化轴：(1) N-ary 后端 vs 二元，(2) 零训练 vs SFT+RL，(3) 多 workflow vs 单 task，(4) 显式/推断 $w_i$ + 预算状态 vs 稀疏 RL 奖励。两者互补。
+**Q: "和学习型 agentic router 比呢？"**
+→ 核心差异不是换一种 router，而是层级不同：本文是全局 stateful runtime，维护跨 workflow 的 budget ledger、RPM/concurrency 压力和 $w_i$ 信号，在运行时做 hard-budget quality maximization；学习型策略可以作为 ModelSelector 的一个可插拔 policy，但不替代 Governor / Scheduler / ZombieDetector 这些 runtime 机制。
 
 **Q: "budget_factor 怎么处理未来流量突然增加？"**
 → `budget_factor` 不是未来流量预测器，而是在线反馈控制量。突发流量由 admission control、WFQ 和 tier 降级共同处理；RQ5 用 200-workflow replay + 3x arrival burst 验证在未知 burst 下的预算超支率、队列延迟和公平性。
 
-**Q: "为什么不复现 BoPO 做端到端对比？"**
-→ BoPO 的 SFT + RL 训练 pipeline 需要 multi-GPU 资源。本工作单卡 A800 足以做推理实验但不足以复现 RL 训练。接口已预留，集成留作 future work。
+**Q: "为什么不复现 RL router 做端到端对比？"**
+→ 完整的 SFT + RL 训练 pipeline 需要 multi-GPU 资源。本工作单卡 A800 足以做推理实验但不足以复现这类训练流程。接口已预留，集成留作 future work。
 
 **Q: "N-ary 真的有用吗？"**
 → §2.7 给出了 Pareto 剪枝机制。N-ary 的价值是"成本梯度够细"——即使有效 N=3，也比二元多出一个中间档。RQ4 的"N-ary 后端使用分布"直接验证。
@@ -722,4 +769,4 @@ class GovernorState:
 | `BudgetAwareUniform` | 有配速但 $w_i \equiv 1$ | 对照组 C |
 | `CARROTStylePredictor` | per-call cost-quality predictor | Per-call baseline |
 
-BoPO RL 策略接入留作 future work——接口已就绪，需要 multi-GPU 训练资源。
+学习型 agentic routing policy 接入留作 future work——接口已就绪，需要额外训练资源。
