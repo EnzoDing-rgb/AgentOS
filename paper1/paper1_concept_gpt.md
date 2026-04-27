@@ -4,6 +4,8 @@
 
 > **建议主定位**：`workflow-level budget-constrained quality optimization for coding agents`
 
+> **Core claim (EN)**: Paper 1 studies how to maximize user utility (effective quality) under fixed budget in multi-step agent workflows.
+
 ---
 
 ## 1. 先回答最关键的问题：云端 auto-routing 已经存在，这篇 paper 还有没有意义？
@@ -35,6 +37,26 @@
 > 核心任务是在工作流级别做质量-成本分配，而不是只在单次 query 级别做模型选择。
 
 这就是它相对云端 auto-routing 的独立性。
+
+### 1.1 更强的 challenge：Cursor / opencode 也有 auto model，这还成立吗？
+
+仍然成立，但需要把对手从“云端 per-query router”扩展到“IDE / coding-agent 产品里的 auto model selection”。
+
+Cursor 的 Auto 会在请求级别或子任务级别自动选择模型，目标通常是平衡 intelligence、cost、reliability。opencode 也支持按 agent / subagent 配置模型，并且社区已经在讨论按 task type 或 model tier 做动态模型选择。这说明：**自动选模型已经是产品趋势**，不能把“会自动路由”本身当作本文贡献。
+
+因此本文的立论必须更精确：
+
+> 本文不是提出“IDE 里也要有 auto model selection”，而是研究这种 auto selection 背后缺失的一个可解释目标：**在固定预算下，跨整个 multi-step agent workflow 最大化用户有效效用。**
+
+换句话说，Cursor / opencode 的 auto model 更像一个产品策略或隐藏 heuristic；本文要研究的是它应该优化的系统问题：
+
+- 一个 agent run 里有多个步骤，而不是一次孤立请求；
+- 总预算是 hard constraint，而不是模糊的“尽量省”；
+- 不同步骤的 user utility 不同，需要显式 $w_i$；
+- 决策应该能被日志、grader、QWCR / Q/$ / Pareto 复现实证；
+- 策略不应只回答“这步用哪个模型”，还要回答“有限预算应该优先买哪几步的高质量”。
+
+所以，IDE auto model 的存在不是否定本文，反而说明这个问题已经有现实需求。本文的 niche 是把这种产品直觉形式化、可解释化、可评估化。
 
 ---
 
@@ -90,7 +112,7 @@ $$
 
 ## 4. 为什么这不是“又一个 per-query router”
 
-| 维度 | 云端 auto-routing / RouteLLM / CARROT / OmniRouter 一类 | 本文 |
+| 维度 | 云端 auto-routing / IDE auto model / RouteLLM / CARROT / OmniRouter 一类 | 本文 |
 |---|---|---|
 | 决策粒度 | 单条 query | 整个 workflow 的多个 turn |
 | 状态 | 近似无状态 | 有状态，跟踪剩余预算和 burn rate |
