@@ -156,7 +156,7 @@ AgentOS 的目标用户是**造 agent 的人**和**运营 agent 平台的团队*
 | 失败模式 | 原因 | 后果 |
 |----------|------|------|
 | RPM 雪崩 | 50 agent 同时发请求，瞬间打满 500 RPM | 大量 429 错误，约一半 agent 在关键步骤失败 |
-| 预算失控 | 没有配速——先跑的 10 个 agent 把贵模型预算花光 | 后 40 个 agent 全程只能用 mini，QWCR 严重下降 |
+| 预算失控 | 没有配速——先跑的 10 个 agent 把贵模型预算花光 | 后 40 个 agent 全程只能用 mini，resolved rate 和 cost per resolved 变差 |
 | 资源饥饿 | 跑得快的 agent 吃光并发槽和 RPM 配额 | 跑得慢或后启动的 agent 被系统性饿死 |
 | 僵尸占槽 | 卡死的 agent 占着并发槽不释放 | 健康 agent 排队等位，整体吞吐下降 |
 
@@ -165,7 +165,7 @@ AgentOS 的目标用户是**造 agent 的人**和**运营 agent 平台的团队*
 | AgentOS 机制 | 在本场景中做什么 |
 |-------------|----------------|
 | **Governor** | 顶住 400 RPM 峰值——admission control 排队而非雪崩，预算硬封顶保证 \$50 不超支 |
-| **ModelSelector** | 基于 `budget_factor` 和显式/推断 $w_i$ 决定是否升档：测试失败诊断等高风险上下文倾向好模型，目录浏览/search 等低风险上下文倾向便宜模型；从 5 个后端的成本梯度中选最佳档位，而非二选一 |
+| **ModelSelector** | 基于 `budget_factor` 和显式/推断 $w_i$ 决定是否升档：测试失败诊断等高风险上下文倾向好模型，目录浏览/search 等低风险上下文倾向便宜模型；从 5 个后端的成本梯度中选最佳档位 |
 | **WFQ Scheduler** | 50 个 agent 按 weighted fair queuing 分享 RPM/并发槽，保证后启动的 agent 不被先启动的吃光资源 |
 | **ZombieDetector** | 检测卡死 agent 并释放其并发槽和预算残值，回收给健康 agent |
 
@@ -189,7 +189,7 @@ AgentOS 的 scope 是 **"单一预算主体下的多并发 workflow"**——下�
 
 | # | 场景 | 单一预算主体 | 一个 workflow = 什么 | 论文实验是否覆盖 |
 |---|------|------------|---------------------|----------------|
-| 1 | 研究 benchmark 评估 | 研究者本人 | 一道 SWE-bench 题目 | **是**（§7 RQ4 旗舰） |
+| 1 | 研究 benchmark 评估 | 研究者本人 | 一道 SWE-bench 题目 | **是**（§7 主实验） |
 | 2 | 单团队生产 agent 服务 | 创业团队 / 产品团队 | 一次外部用户请求（如 PR review、客服会话、数据抽取） | 机制类比，不跑实验 |
 | 3 | CI / 批量评估管线 | DevOps / 数据团队 | 一次 commit 触发的 agent 任务（如 nightly 测试生成、代码审计） | 机制类比，不跑实验 |
 | 4 | 公司内部开发者工具 | 平台团队 | 一名工程师的一次请求（如"问代码库" agent、内部 RAG agent） | 机制类比，不跑实验 |
@@ -270,27 +270,27 @@ chk  = client.chat(messages=[...], task_type="validation",  w_i=1.0)
 
 ---
 
-## 1. 核心洞察：LLM 质量是连续的，调度问题变了
+## 1. 核心洞察：LLM 调用不只分"成败"，还分"值不值得花这笔钱"
 
-经典操作系统调度假设任务结果是二元的——完成或失败。LLM 不同——**几乎总能给答案，差别在于答案好坏**：
+一个 coding agent 跑 SWE-bench 任务时，不是只调用一次模型。它会先读 issue、找文件、看代码、写 patch、跑测试、再根据测试结果修补。每一步都要花 token，也都可能影响最后 patch 能不能通过测试。
 
-| 后端配置 | 质量 $q$ | 每次调用成本 |
-|---------|---------|------------|
-| GPT-5 Thinking + 长 context | $\approx 0.95$ | \$0.10 |
-| GPT-5 Instant | $\approx 0.70$ | \$0.01 |
-| Claude Sonnet | $\approx 0.80$ | \$0.03 |
-| Llama-3-70B-Int4（本地） | $\approx 0.55$ | \$0.002 |
-| GPT-5 mini | $\approx 0.40$ | \$0.001 |
+因此本文关心的问题不是"这一次请求用哪个模型最强"，而是：
 
-五种都"完成"了任务，但质量在 $[0,1]$ 上连续变化。于是调度问题从"谁先跑"变成：
+> **固定预算下，哪些步骤值得多花钱，哪些步骤应该省下来？**
 
-> **预算有限时，每个步骤应该被做到多好？**
+这里有三个量要先讲清楚：
 
-这里有 5 个后端可选，不是 2 个——这就是"N-ary"。本文支持任意多个后端，因此可以利用更细的 cost-quality 梯度。
+| 量 | 本文含义 | 可信来源 |
+|----|----------|----------|
+| 成本 $c_i$ | 第 $i$ 次 LLM 调用真实花了多少钱 | API token 账单，或本地 GPU 摊销后的 token 成本 |
+| 质量代理 $q_i$ | 第 $i$ 步产生的可验证进展，不等于"真实主观质量" | SWE-bench 测试、gold patch 解析、agent trajectory |
+| 权重 $w_i$ | 这一步对最终成功的大致重要性 | 显式声明、callback 事件、或 observation 类型推断，并用消融验证 |
+
+所以本文不声称知道"绝对真实质量"。本文只做一件更可验证的事：用公开 benchmark 能复现的代理信号指导预算分配，然后看最终 workflow 结果是否更好。
 
 ---
 
-## 2. 形式化：预算约束下的质量最大化
+## 2. 形式化：预算约束下的代理效用分配
 
 ### 2.1 单 workflow 场景
 
@@ -301,13 +301,13 @@ $$
 $$
 
 各符号含义：
-- $q_i(a_i) \in [0,1]$：turn $i$ 选后端 $a_i$ 时的输出质量（由 benchmark grader 打分，见 §3）
-- $c_i(a_i)$：对应的成本（USD / 本地 GPU 摊销 / 混合，见 §0.5.3）
-- $w_i$：任务价值权重——**由显式声明、callback/tool event 或 Observation 推断获得**（如高风险诊断 $w=3$，低风险检索 $w=1$）
+- $q_i(a_i) \in [0,1]$：turn $i$ 的可验证质量代理。它来自 SWE-bench 相关的确定性信号，例如是否定位到 gold patch 文件、patch 是否能 apply、`FAIL_TO_PASS` 是否通过、`PASS_TO_PASS` 是否保持通过。它不是作者主观打分，细节见 §3。
+- $c_i(a_i)$：turn $i$ 的成本。API 模型用真实输入/输出 token 数乘以公开价格；本地模型用 GPU 小时成本、吞吐和本次 token 数摊销。所有成本写入 ledger，评估时用实际值。
+- $w_i$：任务价值权重。它表示"同样的质量进展发生在这一步是否更关键"。权重可由显式声明、callback/tool event 或 Observation 推断获得，并通过消融验证，而不是直接当作论文结论。
 - $B$：总预算硬约束
 - $\mathcal{A}$：可用后端集合（N-ary，不限于二元）
 
-这个问题本质是"多选择背包"的变体。
+这个目标函数是运行时的内部分配规则，不是论文最终自评指标。论文最终仍看 workflow 级指标：SWE-bench Verified resolve rate、cost per resolved instance 和成本-成功率 Pareto 前沿。
 
 ### 2.2 多 workflow 场景（本文扩展）
 
@@ -328,15 +328,14 @@ $$
 
 ### 2.3 对照组
 
-| 对照组 | 策略 | 失败模式 |
-|--------|------|---------|
-| A. `always_expensive` | 每步都用最贵模型 | 很快花光预算，后半段没钱 |
-| B. `per_request_greedy` | 每步独立最大化 $q/c$ | 不做配速、不看 $w_i$，后期质量下降 |
-| C. `budget_aware_uniform` | 有预算配速，但 $w_i \equiv 1$ | 不区分任务价值——关键步和琐碎步给同样资源 |
-| **D. AgentOS** | 预算配速 + 任务价值 $w_i$ + 边际性价比 | 在线近似，非离线最优 |
-| **E. `binary_backend`** | 限制为二元后端 + 不用 $w_i$ | 检验多后端梯度和任务价值信号的贡献 |
+| 对照组 | 策略 | 回答什么 |
+|--------|------|----------|
+| `always_expensive` | 每步都用最贵模型，直到预算耗尽 | 只追求单步强模型是否会浪费预算 |
+| `per_request_greedy` | 每步独立选当下看起来性价比最高的模型 | 不看 workflow 状态会不会短视 |
+| `budget_uniform` | 有预算配速，但 $w_i \equiv 1$ | 只控预算、不区分步骤价值够不够 |
+| **AgentOS** | 预算配速 + $w_i$ + 边际性价比 | 本文方法是否改善最终 benchmark outcome |
 
-D vs E 的差异可以**直接归因于** N-ary 后端 + 显式/推断 $w_i$ 信号的贡献。
+这四组足够回答核心问题。N-ary 后端、proxy/callback 信号强弱可以作为补充敏感性分析，不需要把主实验拆得过碎。
 
 ### 2.4 最优性直觉（KKT 一阶条件）
 
@@ -367,8 +366,8 @@ $$
 | 符号 | 含义 | 怎么算 |
 |------|------|-------|
 | $w_i$ | 这一步的任务价值权重 | 显式传入、callback 结构化推断，或从 ToolMessage / Observation 推断（见 §2.6） |
-| $\Delta q_i^{(k)}$ | 从 tier $k$ 升到 tier $k+1$ 能多换多少质量 | 基于历史统计先验（EWMA 更新，按 task_type × 后端对分组） |
-| $\Delta c_i^{(k)}$ | 升一档要多花多少钱 | 按 token 单价 × 估计 token 数 |
+| $\Delta q_i^{(k)}$ | 从 tier $k$ 升到 tier $k+1$ 预计多获得多少可验证进展 | 基于历史 benchmark/trajectory 统计，按 task_type × 后端对分组，可用 EWMA 更新 |
+| $\Delta c_i^{(k)}$ | 升一档要多花多少钱 | 决策前用 token 估计，评估时用 ledger 中的真实 token 成本 |
 | $\lambda$ | budget_factor（预算紧则高、松则低） | 闭环反馈在线更新 |
 
 **数字例子**（5 个后端、两个 turn 并行竞争升级，$\lambda=0.20$）：
@@ -396,20 +395,18 @@ $w_i$ 不是必须由 agent 框架手写声明。AgentOS 支持从强到弱的 5
 | **L1 Proxy 推断** | HTTP sidecar | LLM request 中的 ToolMessage / Observation 文本 | 只改 `base_url`，零改 agent loop |
 | **L0 Budget-only** | 无可用信号 | $w_i \equiv 1$，仍使用 `budget_factor` | 退化到预算感知 baseline |
 
-**Observation-based importance 的原则**：AgentOS 不预测 agent 下一步会调用哪个工具，而是判断"当前 LLM 调用看到的上下文有多关键"。
+**Observation-based importance 的原则**：AgentOS 不预测 agent 下一步会做什么，而是看当前 LLM 输入里已经出现了什么信息。信息越接近最终修复决策，权重越高；信息越像导航和检索，权重越低。
 
 | 当前 LLM 输入包含什么 | AgentOS 的判断 | 默认 $w_i$ |
 |---------------------|---------------|------------|
-| 目录列表（如 `ls src/` 输出） | 低风险导航；选错文件通常可恢复 | 1.0 |
-| 搜索结果 / 文件列表 | 检索导航；有用但通常可继续修正 | 1.0–1.5 |
-| 源码片段 | 需要理解代码，可能影响后续编辑 | 2.0 |
-| 测试失败 / traceback | 高风险诊断；误判 root cause 会导致错误编辑和预算浪费 | 3.0 |
-| 编辑成功提示 | 中等重要性；下一步可能继续编辑或进入验证 | 1.5–2.0 |
-| 测试全部通过 | 通常进入收尾或提交 | 1.0 |
+| 目录 / 文件列表 | 低风险导航，通常可恢复 | 1.0 |
+| 搜索结果 / 源码片段 | 需要理解代码，可能影响后续编辑 | 1.5–2.0 |
+| 测试失败 / traceback | 直接影响 root cause 判断和修复方向 | 3.0 |
+| 测试通过 / 编辑完成 | 多用于验证和收尾 | 1.0–1.5 |
 
 **怎么知道上层用了哪个 tool？** Proxy mode 只能看到"最终喂给 LLM 的内容"：如果标准 tool message 带 `name` / `tool_call_id`，就结构化解析；如果只是 `Observation: ...` 文本，就用规则或小模型分类 observation 类型。Callback mode 则直接接入上层框架事件：LangChain 的 `wrap_tool_call` 可读到 `request.tool_call["name"]`，SWE-agent hook 可读到 action / step，AutoGen 的 `FunctionExecutionResult` 带有 tool name。本文把这层称为**信号抽取层**，其输出统一变成 `TurnInfo(task_type, w_i, workflow_id, step_index, ...)` 供 ModelSelector 使用。
 
-§3.4 消融实验 E1–E9 证明：权重越准收益越高；proxy / callback 的粗粒度推断也有收益；没有重要性信号时退化到 budget-only baseline，而不是依赖 oracle 标注。
+§3.4 的消融只保留少量关键对照：去掉 $w_i$、随机化 $w_i$、使用粗粒度 task_type 权重、使用完整 AgentOS。这样能直接回答"权重信号是否真的有用"，不把实验拆成难以解释的九组。
 
 ### 2.7 N-ary 后端的现实性检查
 
@@ -423,50 +420,57 @@ $w_i$ 不是必须由 agent 框架手写声明。AgentOS 支持从强到弱的 5
 
 ## 3. 质量怎么衡量？
 
-**核心原则**：不自己发明评分标准——**复用社区已经广泛认可的 benchmark grader**。
+**核心原则**：不自己发明主观评分。本文把质量分成两层：
 
-**实验场景 vs 落地场景的客观性边界**：本文实验的 quality 测量全部使用社区标准 deterministic grader。§0.5.2 的四个落地场景中，**只有场景 1（研究 benchmark 评估）直接落入这些 grader 的覆盖范围**，故 §7 RQ4 实证集中在场景 1；场景 2-4 是机制类比的可推广性主张，本文不在这些场景上跑实验。
+1. **最终质量**：一个 SWE-bench Verified 任务最后有没有 resolved。这是主指标。
+2. **步骤质量代理**：每一步是否产生了可验证进展。它只用于运行时分配预算和事后审计，不作为论文最终胜利标准。
 
-### 3.1 评估策略：使用社区标准 Benchmark
+### 3.1 最终质量：看 SWE-bench Verified 是否 resolved
 
-| task_type | Benchmark | 评分方式 |
-|-----------|-----------|---------|
-| `bug_fix`（agentic SE） | **SWE-bench Verified** | fail-to-pass 测试 |
-| `code_generation` | **HumanEval** | pass@1 |
-| `reasoning` | **GSM8K** | exact match |
-| `math` | **MATH** | exact match |
+SWE-bench 的任务来自真实 GitHub issue。系统要生成 patch，评估 harness 会把 patch 放回原仓库跑测试。对本文来说，最重要的不是"模型回答看起来好不好"，而是：
 
-全部 deterministic、全部高度采纳、全部不是我们发明的标准。
+- patch 是否存在并能 apply；
+- `FAIL_TO_PASS` 测试是否从失败变为通过；
+- `PASS_TO_PASS` 测试是否继续通过；
+- 最终状态是否为 `resolved`。
 
-### 3.2 实验中的两种模式
+这套评估是确定性的、可复现的，也已经被软件工程和 LLM agent 社区广泛使用。因此本文的主结果报告 workflow 级指标：同样预算下 resolved rate 是否更高，resolved 一个任务平均花费是否更低，成本-成功率 Pareto 前沿是否更好。
 
-| 模式 | $q_i$ 来源 | 用途 |
-|------|-----------|------|
-| **Mock 实验**（主线） | workload 预设的 `quality_score` | 控制变量：比的是"谁会分配预算"而不是"LLM 本身强不强" |
-| **真实 LLM 实验**（补充） | 调用真 LLM + benchmark grader 打分 | 验证 mock 结论在真实模型上成立 |
+### 3.2 步骤质量代理：从公开 artifact 提取，不主观打分
 
-### 3.3 决策侧 vs 评估侧（必须解耦）
+AgentOS 需要在任务还没结束时做预算决策，所以它不能等最终测试结果出来才决定前面该不该花钱。它需要 step-level proxy。本文使用的 proxy 都来自已有 artifact：
 
-- **决策时**：ModelSelector 用先验估计 $\Delta \hat{q}_i$（历史统计 / 静态表），不需要知道本次真实分数
-- **评估时**：用 benchmark grader 得到真实 $q_i$，计算 QWCR / Q/\$ 等指标
+| 代理信号 | 怎么得到 | 用在什么步骤 |
+|----------|----------|--------------|
+| 定位是否命中 | 从 gold patch 的 unified diff 解析被修改文件，计算 Acc@k / MRR | search / localization |
+| patch 是否可用 | harness 记录 patch 是否存在、是否 successfully applied | repair / generation |
+| 测试是否改善 | `FAIL_TO_PASS`、`PASS_TO_PASS` 和 timeout/error 日志 | validation / debugging |
+| 轨迹是否支持审计 | SWE-agent `.traj` 的 thought/action/observation/state；mini-SWE-agent 的 per-step cost、timestamp、model_stats | 对齐每一步的行为、成本和结果 |
 
-### 3.4 先验不准怎么办？
+这里的拆分不是本文自创。Agentless 已把 SWE-bench 任务拆成 localization、repair、patch validation；SweRank 也用 gold patch 派生的标签在 SWE-bench-Lite 上做 file/module/function 粒度的 localization 评估。本文沿用这条评估习惯，而不是另造一套"看起来质量更高"的标准。
 
-消融实验 E1–E9：
+### 3.3 成本：评估时用真实 ledger，不用估计值冒充结果
 
-| 实验 | 设置 | 回答什么 |
-|------|------|---------|
-| E1 Oracle | workload 参考权重 | 上限 |
-| E2 二档 | high/low 两档 | 粗分也有收益 |
-| E3 task_type 表 | 按类型固定权重 | 无精细标注也能落地 |
-| E4 加噪 | $w_i$ + 噪声 $\sigma=0.3/0.5/1.0$ | 对权重误差鲁棒 |
-| E5 随机 | 随机 $w_i$ | 最坏情况 |
-| E6 全 1 | $w_i \equiv 1$ | 自洽检查：应退化到对照组 C |
-| **E7 binary-backend** | 限制只有 cheap/expensive 两个后端 | 验证 N-ary 成本梯度的贡献 |
-| **E8 proxy-inferred** | 只从 LLM request messages / Observation 文本推断 $w_i$ | 零改代码接入能拿到多少收益 |
-| **E9 callback-inferred** | 从 LangChain/SWE-agent/AutoGen 结构化 tool event 推断 $w_i$ | 轻量 adapter 比纯 proxy 提升多少 |
+成本比质量更容易客观化，但也要写清楚。每次 LLM 调用都会记录输入 token、输出 token、模型名和时间戳：
 
-预期排序是：Oracle > callback-inferred > proxy-inferred > 全 1。本文不要求推断器达到 oracle 精度；只要能稳定区分"测试失败诊断"和"目录浏览/普通检索"这类明显高低价值场景，就能在相同预算下优于 $w_i \equiv 1$。
+$$
+c_i = \text{input\_tokens}_i \cdot p_{\text{in}} + \text{output\_tokens}_i \cdot p_{\text{out}}
+$$
+
+如果后端是本地模型，则先把 GPU 小时成本折算成每 token 成本，再乘以本次 token 数。决策时可以用预估 token 数做选择；实验报告必须用 ledger 里的实际 token 和实际价格重算成本。这样 `cost per resolved instance` 和 Pareto 图不会依赖作者拍脑袋。
+
+### 3.4 权重和 proxy 怎么证明有用？
+
+消融实验的作用不是发明质量标准，而是验证这些公开确定性 proxy 用来分配预算时是否有用。本文只保留四组关键对照：
+
+| 设置 | 含义 | 回答什么 |
+|------|------|----------|
+| `budget_uniform` | 有预算配速，但 $w_i=1$ | 只控预算是否已经足够 |
+| `random_weight` | 随机打乱或随机生成 $w_i$ | 任意权重是否也能带来收益 |
+| `task_type_weight` | 只用粗粒度任务类型权重 | 简单可部署信号是否有效 |
+| **AgentOS-full** | 使用 proxy/callback 提取的 $w_i$ + budget_factor | 完整设计是否带来最好 cost-success tradeoff |
+
+如果 AgentOS-full 在固定预算下取得更高 resolved rate、更低 cost per resolved instance，且优于 `budget_uniform` 和 `random_weight`，就说明质量代理和权重信号对预算分配有实际价值。本文不需要声称它们等于真实人类效用。
 
 ---
 
@@ -544,58 +548,45 @@ per-task 路由策略本身不处理这一层——要覆盖多 workflow 并发�
 
 ## 6. 评估指标
 
-### 6.1 单 workflow 指标
+指标分两类。第一类是论文主指标，用来判断系统是否真的更好；第二类是诊断指标，用来解释为什么更好或哪里失败。
 
-| 指标 | 公式 | 含义 |
+| 指标 | 类型 | 含义 |
 |------|------|------|
-| **QWCR** | $\frac{1}{N}\sum q_i$ | 平均质量（失败记 0） |
-| **Q/\$** | $\sum q_i / \text{cost}$ | 每美元质量产出 |
-| **WQ/\$** | $\sum w_i q_i / \text{cost}$ | 每美元加权质量产出 |
-| **Pareto 图** | 横轴 cost, 纵轴 QW-Completed | 核心论证图 |
+| **Resolved rate @ fixed budget** | 主指标 | 同样预算下，SWE-bench Verified 解决了多少任务 |
+| **Cost per resolved instance** | 主指标 | 平均解决一个任务花多少钱 |
+| **Cost-success Pareto frontier** | 主指标 | 不同预算下，成功率和成本的整体权衡 |
+| **Budget violation rate** | 约束指标 | 是否守住 hard budget |
+| **Step proxy breakdown** | 诊断指标 | localization、patch apply、F2P/P2P 等中间信号如何变化 |
 
-### 6.2 多 workflow 指标
-
-| 指标 | 含义 |
-|------|------|
-| **Cross-workflow QWCR 方差** | 方差越小说明 workflow 间质量越一致 |
-| **Jain's Fairness Index** | 度量后启动 workflow 是否被先启动者吃光资源（1 = 完全均等，$1/J$ = 最不均等） |
-
-三个指标联合报告：Jain's FI + QWCR 方差 + 整体 Pareto 前沿。
+`sum_i w_i q_i` 不作为主指标。它只帮助解释 ModelSelector 为什么把钱分给某一步。多 workflow 场景下再补充报告 Jain's Fairness Index 和队列延迟，用来说明后启动 workflow 有没有被饿死。
 
 ---
 
-## 7. 五条 RQ
+## 7. 三条 RQ
 
-| RQ | 问题 | 对应机制 | 核心指标 |
-|----|------|---------|---------|
-| **RQ1** | 不加治理时 429 限流雪崩 | Governor | error_429_rate, 完成率 |
-| **RQ2**（主贡献） | 同预算下，任务价值感知的模型选择是否提升质量？ | ModelSelector | QWCR, WQ/\$, Pareto |
-| **RQ3** | 僵尸调用截断后改善多少？ | Zombie + Preemption | Q/\$ 提升 |
-| **RQ4**（旗舰） | 50-agent 并发评估：固定总预算、AgentOS 能否同时维持整体 Pareto 前沿和跨 workflow 质量一致性？ | 全部机制 | Jain's FI, QWCR 方差, Pareto, 429 率, N-ary 使用分布 |
-| **RQ5** | 未来任务量未知且突发增长时，budget_factor + admission control 是否仍能控制成本和公平性？ | Governor + budget_factor + Scheduler | budget overrun, queue latency, Jain's FI, Q/\$ |
+| RQ | 问题 | 核心指标 |
+|----|------|----------|
+| **RQ1** | AgentOS 能否在 hard budget 和 RPM/concurrency 限制下稳定运行？ | budget violation rate、429 rate、queue latency |
+| **RQ2** | 使用 $w_i$ 和 step proxy 做预算分配，是否比可比 baseline 有更好的 cost-success tradeoff？ | resolved rate、cost per resolved、Pareto frontier |
+| **RQ3** | 当 $w_i$ 或 proxy 变粗、变噪、部分缺失时，系统是否平滑退化？ | resolved rate 下降幅度、与 `budget_uniform` 的差距 |
 
-**RQ4 实验设计**：
+**主实验设计**：
 
 | 维度 | 设定 |
 |------|------|
-| **Workload（mock 主线）** | SWE-bench Verified 子集 100 题 × 50 mock workflow 并发 |
-| **Workload（真实佐证）** | 4–6 个真 SWE-agent 并发 × 20 题 |
+| **Workload** | SWE-bench Verified 子集，使用 SWE-agent / mini-SWE-agent 轨迹和真实 LLM 调用 |
 | **总预算** | \$50 |
 | **后端池** | GPT-5 Thinking / Instant / mini / Claude Sonnet / 本地 Llama-3-70B-Int4（N=5） |
 | **RPM 限额** | 500 RPM |
-| **Burst 设置** | 200 个 workflow replay，中途注入 3x arrival burst；系统事先不知道 burst 到来 |
 
 | 对照组 | 策略 |
 |--------|------|
-| F1. `round_robin` | 轮流分配 RPM 槽，不看预算也不看 $w_i$ |
-| F2. `fifo` | 先到先得 |
-| F3. `wfq_no_budget` | WFQ 公平分 RPM/并发，但无 workflow 内预算配速 |
-| F4. `budget_only_agentos` | $w_i \equiv 1$，只用 `budget_factor` + WFQ |
-| F5. `proxy_inferred_agentos` | 从 LLM request / Observation 文本推断 $w_i$ |
-| F6. `callback_inferred_agentos` | 从结构化 tool event 推断 $w_i$ |
-| **F7. AgentOS-oracle** | WFQ + Governor + ModelSelector + oracle $w_i$ 上限 |
+| `per_request_greedy` | 每步独立选模型，不看 workflow 预算状态 |
+| `budget_uniform` | 有预算配速，但 $w_i=1$ |
+| `task_type_weight` | 只用 planning/debugging/validation 等粗粒度权重 |
+| **AgentOS-full** | 使用 proxy/callback 提取的 $w_i$、step proxy 和 budget_factor |
 
-**RQ5 的关键不是预测未来流量**。AgentOS 不假设知道下午会不会突然多 3 倍任务；`budget_factor` 是反馈控制量：看到花费速度、队列长度、RPM/concurrency 压力上升后，提高升级门槛，让低重要性调用降级到便宜模型，同时用 admission control 和 WFQ 防止前几个 workflow 吃光预算。实验报告 burst 前后昂贵 tier 使用比例、预算超支率、队列延迟和跨 workflow 公平性。
+突发流量作为 RQ1/RQ3 的压力测试：中途注入更高到达率，系统事先不知道 burst 到来。报告预算是否超支、排队延迟是否可控、低价值调用是否自动降级。
 
 ---
 
@@ -636,14 +627,11 @@ per-task 路由策略本身不处理这一层——要覆盖多 workflow 并发�
 |------|-------|
 | **Turn** | 一次 LLM 调用——调度和计费的最小单位 |
 | **Workflow** | 一个完整任务的 LLM 调用序列 |
-| **$w_i$** | 当前调用的任务价值权重；可显式传入，也可由 callback/tool event 或 Observation 推断 |
-| **$q_i$** | Turn 输出质量 $\in [0,1]$——由社区标准 benchmark grader 打分 |
-| **budget_factor** | 预算松紧的在线反馈信号（近似 KKT 的 $\lambda$）；花快了收紧，花慢了放宽 |
-| **Governor** | 约束层：预算 + 限流 + 并发 |
-| **ModelSelector** | 优化层：可插拔的路由策略 |
-| **ZombieDetector** | 止损层：截断"花钱但质量不涨"的调用 |
-| **QWCR** | $\frac{1}{N}\sum q_i$——平均质量 |
-| **Q/\$** | $\sum q_i / \text{cost}$——每美元质量产出 |
+| **$w_i$** | 当前调用的任务价值权重；它是预算分配信号，需要通过消融验证有效性 |
+| **$q_i$** | Step-level 质量代理；来自 SWE-bench artifact、测试结果和 agent trajectory，不是主观评分 |
+| **$c_i$** | 当前调用的真实成本；API 用 token 账单，本地模型用 GPU 成本摊销 |
+
+其他系统组件可以按一句话理解：Governor 守住预算和限流，ModelSelector 选择模型，ZombieDetector 截断无效调用，cost-success Pareto 图展示不同预算下的 resolved rate。
 
 ---
 
@@ -659,29 +647,23 @@ SE 社区缺"面向 LLM Agent 的成本治理基础设施"，对"系统工具 + 
 
 ## 11. 审稿人常见质疑
 
-**Q: "你只是预算控制做得好。"**
-→ 用 `budget_only_agentos`（$w_i \equiv 1$）和 inferred/oracle AgentOS 分开报告。若 budget-only 已优于 per-call baseline，说明 stateful budget control 本身有价值；若 inferred/oracle 进一步提升，差异来自任务价值感知。
+**Q: 成本是不是你自己估的？**
+→ 不是。API 后端用真实 input/output token 数乘以公开价格；本地后端用 GPU 小时成本和吞吐摊销到 token。决策时可以估计成本，但实验报告用 ledger 里的实际 token、模型名、时间戳和价格表重算。
 
-**Q: "$q$ 和 $w$ 怎么来？"**
-→ $q$ 来自社区标准 benchmark grader；$w$ 有三种来源：显式 SDK、callback/tool event 推断、proxy request / Observation 推断。E1–E9 消融报告 oracle、callback-inferred、proxy-inferred、全 1 的差距。
+**Q: 你的 quality 是不是自说自话？**
+→ 最终质量不用作者打分，而是 SWE-bench Verified 的 resolved outcome。Step-level $q_i$ 只是预算分配代理，来自 gold patch localization、patch apply、`FAIL_TO_PASS`、`PASS_TO_PASS`、timeout/error 和 SWE-agent trajectory。这些信号可复现，也和 Agentless、SweRank 的拆分方式一致。
+
+**Q: $w_i$ 是不是拍脑袋？**
+→ $w_i$ 是运行时的价值先验，不是最终结论。本文用 `budget_uniform`、`random_weight`、`task_type_weight` 和 AgentOS-full 做消融。如果完整权重信号不能带来更好的 resolved rate 或 cost per resolved，就说明设计无效。
+
+**Q: 你只是预算控制做得好。**
+→ 用 `budget_uniform` 单独隔离预算控制效果。若 AgentOS-full 进一步优于 `budget_uniform`，提升才归因于步骤价值信号和质量代理；否则只能说预算控制有效，不能夸大 $w_i$ 的贡献。
 
 **Q: "现有 per-call auto-router 已经解决了这个问题。"**
 → 它们是 workflow-blind 的：看不到 workflow 的步骤价值结构、全局预算状态、多 workflow 竞争。AgentOS 解决的是不同层次的问题（详见 §0）。
 
 **Q: "和学习型 agentic router 比呢？"**
-→ 核心差异不是换一种 router，而是层级不同：本文是全局 stateful runtime，维护跨 workflow 的 budget ledger、RPM/concurrency 压力和 $w_i$ 信号，在运行时做 hard-budget quality maximization；学习型策略可以作为 ModelSelector 的一个可插拔 policy，但不替代 Governor / Scheduler / ZombieDetector 这些 runtime 机制。
-
-**Q: "budget_factor 怎么处理未来流量突然增加？"**
-→ `budget_factor` 不是未来流量预测器，而是在线反馈控制量。突发流量由 admission control、WFQ 和 tier 降级共同处理；RQ5 用 200-workflow replay + 3x arrival burst 验证在未知 burst 下的预算超支率、队列延迟和公平性。
-
-**Q: "为什么不复现 RL router 做端到端对比？"**
-→ 完整的 SFT + RL 训练 pipeline 需要 multi-GPU 资源。本工作单卡 A800 足以做推理实验但不足以复现这类训练流程。接口已预留，集成留作 future work。
-
-**Q: "N-ary 真的有用吗？"**
-→ §2.7 给出了 Pareto 剪枝机制。N-ary 的价值是"成本梯度够细"——即使有效 N=3，也比二元多出一个中间档。RQ4 的"N-ary 后端使用分布"直接验证。
-
-**Q: "Jain's FI 高就一定好吗？"**
-→ 三个指标联合报告：Jain's FI（后启动者是否被饿死）+ QWCR 方差（质量一致性）+ 整体 Pareto 前沿（绝对产出）。"均等地都做不好"在 Pareto 图上会立刻露出来。
+→ 学习型 router 可以作为 AgentOS 的 ModelSelector 插件。本文主贡献不是训练最强 router，而是把预算、成本、质量代理、权重和 ledger 放进同一个可审计 workflow runtime，并用公开 benchmark outcome 评估。
 
 ---
 
@@ -731,7 +713,7 @@ AgentOS 走同样的路径。本文（paper 1）处理 **single-budget-owner** �
 | 预算使用低于水位且队列空 | 下降 | 高重要性调用更容易升档 |
 | 某 workflow 卡死或循环 | 结合 ZombieDetector 截断 | 回收预算和并发槽 |
 
-因此，真实场景里即使某天调用量突然升高，AgentOS 也不依赖提前知道 burst。它先通过 admission control 排队、WFQ 保证并发 workflow 不互相饿死，再通过 `budget_factor` 把低重要性请求降级。本文的 RQ5 用 200-workflow replay + 3x arrival burst 验证这一点：系统事先不知道 burst，只根据观测到的成本、队列和 RPM 压力做反馈。
+因此，真实场景里即使某天调用量突然升高，AgentOS 也不依赖提前知道 burst。它先通过 admission control 排队、WFQ 保证并发 workflow 不互相饿死，再通过 `budget_factor` 把低重要性请求降级。压力测试会注入突发到达率，验证系统在不知道 burst 的情况下是否仍能控制预算、队列和 RPM 压力。
 
 ## 附录 C：Pluggability 设计
 
