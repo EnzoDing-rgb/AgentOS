@@ -174,6 +174,7 @@ model:
 ```python
 class AgentOSLangChainMiddleware(AgentMiddleware):
     def wrap_tool_call(self, request, handler):
+        # LangChain 调用这个 middleware；handler 才是真正执行 tool 的函数。
         result = handler(request)
         agentos.observe_tool(
             workflow_id=runtime.run_id,
@@ -182,9 +183,11 @@ class AgentOSLangChainMiddleware(AgentMiddleware):
             tool_output=result.content,
         )
         return result
+
+agent = create_agent(..., middleware=[AgentOSLangChainMiddleware()])
 ```
 
-这个 adapter 不改变 agent 的决策逻辑，只把上层框架已经知道的 tool metadata 暴露给 AgentOS。
+方向是 **AgentOS → LangChain**：AgentOS 提供一个符合 LangChain callback / middleware 接口的类，用户注册进去；运行时 LangChain 在 tool call 前后自动调用它。这个 adapter 不改变 agent 的决策逻辑，只把上层框架已经知道的 tool metadata 暴露给 AgentOS。
 
 **SDK 形态（显式信号）**：
 
@@ -348,7 +351,7 @@ $w_i$ 不是必须由 agent 框架手写声明。AgentOS 支持从强到弱的 5
 
 **怎么知道上层用了哪个 tool？** Proxy mode 只能看到"最终喂给 LLM 的内容"：如果标准 tool message 带 `name` / `tool_call_id`，就结构化解析；如果只是 `Observation: ...` 文本，就用规则或小模型分类 observation 类型。Callback mode 则直接接入上层框架事件：LangChain 的 `wrap_tool_call` 可读到 `request.tool_call["name"]`，SWE-agent hook 可读到 action / step，AutoGen 的 `FunctionExecutionResult` 带有 tool name。本文把这层称为**信号抽取层**，其输出统一变成 `TurnInfo(task_type, w_i, workflow_id, step_index, ...)` 供 ModelSelector 使用。
 
-§3.5 消融实验 E1–E9 证明：权重越准收益越高；proxy / callback 的粗粒度推断也有收益；没有重要性信号时退化到 budget-only baseline，而不是依赖 oracle 标注。
+§3.4 消融实验 E1–E9 证明：权重越准收益越高；proxy / callback 的粗粒度推断也有收益；没有重要性信号时退化到 budget-only baseline，而不是依赖 oracle 标注。
 
 ### 2.7 N-ary 后端的现实性检查
 

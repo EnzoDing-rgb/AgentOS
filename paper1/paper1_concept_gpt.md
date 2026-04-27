@@ -1,8 +1,8 @@
 # AgentOS Paper 1 Concept (Rewrite)
 
-> **Core claim**: Paper 1 studies how agent frameworks can expose workflow-level utility contracts so that a runtime can transparently allocate LLM spending under hard budgets, maximizing benchmark-grounded effective utility without training a new router.
+> **Core claim**: Paper 1 studies how agent frameworks can expose workflow-level utility contracts so that a runtime can transparently allocate LLM spending under hard budgets, and then evaluate that allocation on public workflow-level benchmarks rather than on self-defined step scores.
 
-> **中文一句话**：这篇 paper 不是再做一个“自动选模型”的 router，而是研究 agent framework 如何把每一步的价值、预算和 grader 显式交给运行时，让系统能在固定预算下透明、可审计地花钱，并最大化可测量的有效效用。
+> **中文一句话**：这篇 paper 不是再做一个“自动选模型”的 router，而是研究 agent framework 如何把每一步的价值、预算和可验证信号显式交给运行时，让系统能在固定预算下透明、可审计地花钱，并最终用 SWE-bench 这类公开 workflow benchmark 检验是否真的更划算。
 
 > **建议定位**：`training-free, auditable utility governance for budget-constrained coding-agent workflows`
 
@@ -18,19 +18,21 @@
 
 **Workflow**：不是一次孤立的 prompt，而是一整个 agent run。例如修 bug、重构模块、生成测试，通常包含 planning、search、edit、validate 等多个步骤。
 
-**Utility**：不是抽象的“用户心里满意不满意”，而是一个可测量的代理量。本文把它写成：
+**Utility**：不是抽象的“用户心里满意不满意”，也不是论文最后拿来证明自己的主指标。它是运行时内部用来分配预算的信号，帮助系统判断“这一步值不值得花贵模型”。本文把它写成：
 
 $$
 \text{utility}_i = w_i \cdot q_i
 $$
 
-其中 $w_i$ 表示这一步在 workflow 里的相对价值，$q_i$ 表示这一步输出的可测质量。
+其中 $q_i$ 不是作者随便打分，而是从公开 benchmark 或确定性 harness 中提炼出来的可观测信号，例如 localization 是否命中 gold patch 文件、patch 是否能 apply、`FAIL_TO_PASS` 测试是否通过、`PASS_TO_PASS` 测试是否保持通过。$w_i$ 也不是拍脑袋的重要性，而是通过历史 runs、消融实验或对照组估计出来的相对贡献。
+
+最关键的是：论文最终不靠 $\sum_i w_iq_i$ 说服 reviewer。最终评估应该回到 workflow 级别，例如在同样预算下 SWE-bench Verified 的 resolve rate 是否更高，或者达到同样 resolve rate 是否花更少钱。
 
 **Governance**：不是只做一个 router，而是定义一套运行时治理机制：谁声明价值、谁管预算、谁选模型、谁记录每一步为什么这样花钱、最后用什么 grader 评估。
 
 所以这篇 paper 最稳的主张是：
 
-> **把 coding-agent workflow 的 LLM 花费变成显式、可审计、可 grader-grounded 的 utility governance problem。**
+> **把 coding-agent workflow 的 LLM 花费变成显式、可审计、可 benchmark-grounded 的 utility governance problem。**
 
 ---
 
