@@ -21,22 +21,22 @@
 
 > **在一个甚至多个完整的 agent workflow（每个 workflow 包含多步 LLM 调用）中，如何利用 workflow 级的结构信息（哪一步关键、剩多少预算、多个 workflow 怎么共享资源），做整体的成本-质量分配？**
 
-本文的研究问题是：**当优化单位从"一次 LLM 请求"变成"一个完整 agent workflow"，并且多个 workflow 共享同一个预算、RPM 和并发上限时，显式维护 workflow 状态是否会改变固定预算下的最终成功率？** 如果答案是肯定的，再进一步问：这个收益来自预算配速、步骤重要性、进展先验，还是多 workflow 调度？把 agent workflow 的 LLM 花费变成一个可审计、可消融、可复现实验的问题。
+本文的研究问题是：**当优化单位从"一次 LLM 请求"变成"一个完整 agent workflow"，并且多个 workflow 共享同一个预算池和多条后端路径的 RPM / 并发配额时，显式维护 workflow 状态是否会改变固定预算下的最终成功率？** 如果答案是肯定的，再进一步问：这个收益来自预算配速、步骤重要性、进展先验，还是多 workflow 调度？把 agent workflow 的 LLM 花费变成一个可审计、可消融、可复现实验的问题。
 
 ### 真正的 gap：现有 auto-router 都是 workflow-blind 的
 
-- **workflow-aware**：路由决策会使用 workflow 级状态，例如：这个 workflow 还剩多少预算、当前花钱速度是否合理、同一时间有多少 workflow 在共享并发/RPM 资源，以及当前 LLM 调用的决策上下文是否关键（$w_i$，可显式传入，也可由工具输出/observation 推断）。**不需要提前知道 workflow 总共有多少步**——`budget_pressure` 是闭环反馈，$w_i$ 是每次调用时从可用信号获得。
+- **workflow-aware**：路由决策会使用 workflow 级状态，例如：全局预算池还剩多少、本 workflow ledger 已花多少、当前花钱速度是否合理、同一时间有多少 workflow 在共享各后端的并发/RPM 资源，以及当前 LLM 调用的决策上下文是否关键（$w_i$，可显式传入，也可由工具输出/observation 推断）。**不需要提前知道 workflow 总共有多少步**——`budget_pressure` 是闭环反馈，$w_i$ 是每次调用时从可用信号获得。
 - **workflow-blind**：路由决策主要依赖本次调用的局部信息（prompt/token/延迟），不维护 workflow 预算状态，也不接收或推断跨步骤的重要性信号，因此无法做跨步骤预算配速或跨 workflow 调度。
 
 | Per-call router 通常看得到 | AgentOS 额外维护 / 获取的 workflow 级信号 |
 |-----------|----------------------------------|
-| 当前这次 prompt 的内容、长度、复杂度 | 本 workflow 的预算上限、已花成本、剩余预算 |
+| 当前这次 prompt 的内容、长度、复杂度 | 全局预算池水位、本 workflow 的已花成本和预留成本 |
 | 模型成本与能力差异 | `budget_pressure`：当前预算有多紧，升级门槛有多高 |
-| 大致 latency 和 token 消耗 | 当前并发 workflow 数、全局 RPM / concurrency 压力 |
+| 大致 latency 和 token 消耗 | 当前并发 workflow 数、各后端 RPM / concurrency 配额占用 |
 | 用户订阅 tier | 当前调用的决策上下文重要性 $w_i$：显式传入、callback 结构化获得，或从 LLM request 中的 ToolMessage / Observation 推断 |
 | | 例如目录列表通常是低风险导航；测试失败 traceback 通常是高风险诊断 |
 
-**这不是 per-call router 不努力，是架构上"没有状态"**——普通 router 只处理孤立请求，而 AgentOS 维护 workflow ledger、预算水位、全局资源压力，并在可获得时使用当前调用的重要性信号。
+**这不是 per-call router 不努力，是架构上"没有状态"**——普通 router 只处理孤立请求，而 AgentOS 维护 workflow ledger、预算水位、后端级资源约束，并在可获得时使用当前调用的重要性信号。
 
 ### 本文的定位：agent 框架与 LLM 后端之间的 workflow-aware 治理中间层
 
@@ -62,7 +62,7 @@
                              |
                              v
           +-------------------------------------+
-          | Governor: budget + RPM + concurrency |
+          | Governor: budget + backend quotas |
           +-------------------------------------+
                              |
                              v
@@ -151,24 +151,24 @@ AgentOS 的目标用户是**造 agent 的人**和**运营 agent 平台的团队*
 
 ### 旗舰场景：50 个 SWE-agent 并发跑 SWE-bench Verified
 
-**场景设定**：研究者用 SWE-bench Verified（500 题）评估自己的 agent 框架。开 50 个 SWE-agent 并发跑，固定**总预算 \$50**（名义人均 \$1），后端池 5 个：GPT-5 Thinking / GPT-5 Instant / GPT-5 mini / Claude Sonnet / 本地 Llama-3-70B-Int4。每个 agent 平均 6–12 个 turn，50 并发峰值产生约 400 RPM（逼近 OpenAI tier-3 的 500 RPM 限额）。
+**场景设定**：研究者用 SWE-bench Verified（500 题）评估自己的 agent 框架。开 50 个 SWE-agent 并发跑，固定**总预算 \$50**（名义人均 \$1），后端池 5 个：GPT-5 Thinking / GPT-5 Instant / GPT-5 mini / Claude Sonnet / 本地 Llama-3-70B-Int4。每个 agent 平均 6–12 个 turn，50 并发峰值产生约 400 RPM。若主实验只压测 OpenAI 路径，可把它明确标成 single-provider simplification；一般形式下，不同 provider 和本地推理服务各有自己的 RPM / 并发配额。
 
 **不上 AgentOS 会发生什么？**
 
 | 失败模式 | 原因 | 后果 |
 |----------|------|------|
-| RPM 雪崩 | 50 agent 同时发请求，瞬间打满 500 RPM | 大量 429 错误，约一半 agent 在关键步骤失败 |
+| RPM 雪崩 | 50 agent 同时发请求，瞬间打满某条后端路径的 RPM 配额 | 大量 429 错误，约一半 agent 在关键步骤失败 |
 | 预算失控 | 没有配速——先跑的 10 个 agent 把贵模型预算花光 | 后 40 个 agent 全程只能用 mini，resolved rate 变差 |
 | 资源饥饿 | 跑得快的 agent 吃光并发槽和 RPM 配额 | 跑得慢或后启动的 agent 被系统性饿死 |
-| 僵尸占槽 | 卡死的 agent 占着并发槽不释放 | 健康 agent 排队等位，整体吞吐下降 |
+| 僵尸占槽 | 卡死的 agent 占着并发槽不释放 | 健康 agent 排队等位，完成率下降 |
 
 **上 AgentOS 后四条机制如何协同？**
 
 | AgentOS 机制 | 在本场景中做什么 |
 |-------------|----------------|
-| **Governor** | 顶住 400 RPM 峰值——admission control 排队而非雪崩；每次调用先做 `reserved_cost` 原子预留，保证 \$50 hard budget 不超支 |
+| **Governor** | 顶住 400 RPM 峰值——对每条后端路径做限流和 admission control，排队而非雪崩；每次调用先做 `reserved_cost` 原子预留，保证 \$50 hard budget 不超支 |
 | **ModelSelector** | 基于 `budget_pressure`、预计进展增益和显式/推断 $w_i$ 决定是否升档：测试失败诊断等高风险上下文倾向好模型，目录浏览/search 等低风险上下文倾向便宜模型；从 5 个后端的成本梯度中选最佳档位 |
-| **WFQ Scheduler** | 50 个 agent 按 weighted fair queuing 分享 RPM/并发槽，保证后启动的 agent 不被先启动的吃光资源 |
+| **Scheduler** | 50 个 agent 共享后端 RPM/并发槽，压力下仍让健康 workflow 有机会继续推进 |
 | **ZombieDetector** | 检测卡死 agent 并释放其并发槽和预算残值，回收给健康 agent |
 
 此外，混合后端池（GPT-5 系列 + Claude + 本地 Llama-3-70B）天然演示了 §0.5.3 的 cost-model-agnostic 性质——同一算法在 USD 计价的 API 后端和本地摊销成本的本地后端上无需修改即可工作。
@@ -196,9 +196,9 @@ AgentOS 的 scope 是 **"单一预算主体下的多并发 workflow"**——下�
 | 3 | CI / 批量评估管线 | DevOps / 数据团队 | 一次 commit 触发的 agent 任务（如 nightly 测试生成、代码审计） | 机制类比，不跑实验 |
 | 4 | 公司内部开发者工具 | 平台团队 | 一名工程师的一次请求（如"问代码库" agent、内部 RAG agent） | 机制类比，不跑实验 |
 
-四个场景共同结构是 **"单一预算主体（一个钱包）+ 多并发 workflow + 共享 RPM/并发上限"**——对应 §2.2 的多 workflow 优化问题。这一结构带来两个具体好处：
+四个场景共同结构是 **"单一预算主体（一个钱包）+ 多并发 workflow + 共享后端 RPM/并发配额"**——对应 §2.2 的多 workflow 优化问题。这一结构带来两个具体好处：
 
-- **保证后启动的 workflow 不被先启动的吃光资源**：FIFO 分配下先启动的 agent 会用尽贵模型配额，后启动的 agent 在关键 planning 步只能用最便宜模型。AgentOS 通过 §5.2 的 weighted fair queuing 让每个 workflow 获得稳定的资源份额。
+- **保证后启动的 workflow 不被先启动的吃光资源**：FIFO 分配下先启动的 agent 会用尽贵模型配额，后启动的 agent 在关键 planning 步只能用最便宜模型。AgentOS 通过 §5.2 的 backend-aware dispatch scheduling 避免少数 workflow 长时间占满可调度后端槽。
 - **保证单个失控 workflow 不污染整体预算**：某个 agent 卡死或陷入循环时，AgentOS 通过 §4 的 ZombieDetector 截断它，回收并发槽和预算残值给健康 agent。
 
 > **关键说明**：即便场景 4 的 agent 服务于全公司多个工程团队，AgentOS **不需要建模这些下游团队的归属**——平台团队是预算所有者，下游用户在 AgentOS 视角里全部坍缩为"并发 workflow"。多预算主体（跨团队 quota 仲裁 + SLA 抢占）是不同问题，见 §12 future work。
@@ -320,15 +320,17 @@ $$
 $$
 \max \sum_{j=1}^{J} \sum_{i \in W_j} w_{j,i}\,q_{j,i}(a_{j,i}) \quad \text{s.t.}\quad
 \begin{cases}
-\sum_{j=1}^{J}\sum_{i \in W_j} c_{j,i}(a_{j,i}) \le B & \text{（全局总预算）} \\
-\text{RPM}(t) \le R_{\max} & \text{（全局每分钟请求数限制）} \\
-\text{Concurrency}(t) \le K_{\max} & \text{（全局并发槽限制）}
+\sum_{j=1}^{J}\sum_{i \in W_j} c_{j,i}(a_{j,i}) \le B_{\text{total}} & \text{（全局总预算）} \\
+\text{RPM}_b(t) \le R_b,\quad \forall b \in \mathcal{A} & \text{（后端级每分钟请求数限制）} \\
+\text{Conc}_b(t) \le K_b,\quad \forall b \in \mathcal{A} & \text{（后端级并发槽限制）}
 \end{cases}
 $$
 
+其中 $\text{RPM}_b(t)$ 和 $\text{Conc}_b(t)$ 分别表示后端 $b$ 在时间窗口 $t$ 内的请求数和在飞请求数。若系统还需要保护 AgentOS 网关本身，也可以额外加入 $\sum_{b \in \mathcal{A}}\text{RPM}_b(t) \le R_{\text{global}}$ 这类入口限流；但核心资源约束来自各 provider / backend 自己的配额。
+
 **Scope 注**：下标 $j$ 是**同一预算主体之下**的并发 workflow——例如同一研究者跑的多个 SWE-bench 题目，或同一团队 agent 服务收到的多个用户请求。本文不建模多预算主体的 quota 仲裁，相关问题见 §12 future work。每个 workflow 仍然有自己的 ledger，用来记录已花成本、预留成本和当前进展，但这不是独立预算。
 
-> **前置知识**：RPM = Requests Per Minute，是 API 提供商对每分钟请求数的限制。并发槽是指同时在飞的请求数上限。这两个约束意味着不同 workflow 之间在**抢共享资源**，不能各自独立优化。
+> **前置知识**：RPM = Requests Per Minute，是 provider / backend 维度上的每分钟请求数配额。并发槽是指某条后端路径上同时在飞的请求数上限。AgentOS 维护 `{backend -> rate limiter}` 和 `{backend -> concurrency semaphore}`；scheduler 只负责在多个 workflow 之间分配这些可调度机会，不把后端空闲本身当成优化目标。
 
 ### 2.3 对照组
 
@@ -352,7 +354,7 @@ AgentOS 的运行时问题可以先用一个简单例子理解：你有固定预
 
 这个思想不是本文自创。经典的 fractional knapsack 问题（Dantzig 1957）就是在容量有限时按 `value / weight` 排序，先装"单位重量价值最高"的物品。本文把同一个思想搬到 agent workflow：`expected_progress_gain / extra_cost` 就是一次模型升级的"单位成本进展"。
 
-因为不同步骤的重要性不同，AgentOS 再把这一步的进展乘上 $w_i$。同样的定位命中，如果发生在 root-cause debugging 步，通常比发生在随手浏览目录步更值钱。最后还要和当前预算状态比较：预算紧时，升级门槛高；预算松时，升级门槛低。本文把这个门槛叫 `budget_pressure`，避免使用需要优化背景知识的术语。
+因为不同步骤的重要性不同，AgentOS 再把这一步的进展乘上 $w_i$。同样的定位命中，如果发生在 root-cause debugging 步，通常比发生在随手浏览目录步更值钱。最后还要和当前预算状态比较：预算紧时，升级门槛高；预算松时，升级门槛低。本文把这个门槛叫 `budget_pressure`，避免使用需要优化背景知识的术语。它和升级分数使用同一尺度，都是 `weighted_progress_per_dollar`，因此不是任意调出来的"压力值"。
 
 ### 2.5 运行时决策公式：步骤重要性 × 预计进展增益 ÷ 多花成本
 
@@ -396,9 +398,9 @@ $$
 | $w_i$ | 这一步有多关键 | 显式传入、callback 结构化推断，或从 ToolMessage / Observation 推断（见 §2.6） |
 | $\Delta \widehat{\text{progress}}_i^{(k)}$ | 升一档预计多带来多少步骤进展 | 从历史 SWE-bench 运行记录、校准集和最近样本权重大一点的滑动更新得到（见 §3.3） |
 | $\Delta \widehat{\text{cost}}_i^{(k)}$ | 升一档预计多花多少钱 | 排序用 `expected_cost` 差值；预算安全用 `reserved_cost` 检查；评估用 `actual_cost` |
-| `budget_pressure` | 当前预算有多紧，升级门槛有多高 | 闭环反馈在线更新：花快了升高，花慢了降低 |
+| `budget_pressure` | 当前预算有多紧，升级门槛有多高；单位与升级分数一致，都是 `weighted_progress_per_dollar` | 从 calibration split 的升级分数分布取中位数或分位数初始化，再闭环更新：花快了升高，花慢了降低 |
 
-**数字例子**：当前是测试失败后的 debugging step。历史运行记录显示，在 debugging step 上，Sonnet 比 mini 更容易让后续修复进入正确方向，预计进展增益是 0.12；Thinking 比 Sonnet 还会再多 0.05。当前预算门槛是 4。
+**数字例子**：当前是测试失败后的 debugging step。历史运行记录显示，在 debugging step 上，Sonnet 比 mini 更容易让后续修复进入正确方向，预计进展增益是 0.12；Thinking 比 Sonnet 还会再多 0.05。当前预算门槛是 4，含义是"每多花 1 美元至少要买到 4 个加权进展单位才值得升级"。
 
 | 升级 | 步骤重要性 $w_i$ | 预计进展增益 | 多花成本 | 分数 | 决策 |
 |------|------------------|--------------|----------|------|------|
@@ -410,7 +412,7 @@ $$
 这个公式里的具体数值会有不确定性，这是所有运行时路由都无法避免的：调用前没人知道真实结果。但公式形式不是随机的。它来自两个标准思想：
 
 - **单位成本价值**：Dantzig 1957 的 fractional knapsack 按 `value / weight` 选择物品。这里的 `预计进展增益 / 多花成本` 就是一次模型升级的单位成本价值。
-- **预算约束下的门槛比较**：在带预算约束的优化问题里，合理策略会把资源投向"单位成本收益高于当前预算门槛"的选择。本文的 `budget_pressure` 就是这个门槛的工程实现：预算越紧，门槛越高；预算越松，门槛越低。
+- **预算约束下的门槛比较**：在带预算约束的优化问题里，合理策略会把资源投向"单位成本收益高于当前预算门槛"的选择。本文的 `budget_pressure` 就是这个门槛的工程实现：先用 calibration split 中观察到的升级分数分布确定初始尺度，再根据实际预算水位闭环微调；预算越紧，门槛越高；预算越松，门槛越低。
 
 因此，本文不要求 `expected_progress_gain` 完美预测未来，只要求它比随机表和全等表更有信息量。这个点由 §3.5 的消融实验检验。
 
@@ -607,7 +609,7 @@ Agent Workflow（N 个 LLM 调用步骤）× J 个并发 workflow
         ▼
 ═══════════════════ AgentOS ═══════════════════
 │ 【约束层】Governor                           │  ← policy-agnostic
-│   预算预留/结算 + API RPM 限流 + 并发准入     │
+│   预算预留/结算 + 后端级限流 + 并发准入       │
 │                                              │
 │ 【优化层】ModelSelector（可插拔）             │  ← 唯一 routing policy
 │   本文默认：预计进展增益 + budget_pressure    │
@@ -626,7 +628,7 @@ LLM 后端池 → events.jsonl → 指标计算
 
 **只有 ModelSelector 是 routing policy**，其余全部 policy-agnostic。任何 routing policy（包括学习型策略）都可以接入并共享所有系统机制。
 
-这里要说清楚一个容易被误解的点：AgentOS 没有声称重新发明 token bucket、reservation、WFQ、watchdog 或那种"越近样本越重要"的滑动更新。这些都是成熟机制。本文的新问题在于把它们放到 **agent workflow 的 LLM 预算治理** 这个单位上，并用同一套 ledger 追踪"每一步为什么花这笔钱、是否守住预算、是否改善最终 resolved outcome"。因此实验的关键不是证明 WFQ 本身新，而是证明 workflow-level state 加进来以后，per-call router 的 fixed-budget Pareto frontier 是否被改变。
+这里要说清楚一个容易被误解的点：AgentOS 没有声称重新发明 token bucket、reservation、队列调度、watchdog 或那种"越近样本越重要"的滑动更新。这些都是成熟机制。本文的新问题在于把它们放到 **agent workflow 的 LLM 预算治理** 这个单位上，并用同一套 ledger 追踪"每一步为什么花这笔钱、是否守住预算、是否改善最终 resolved outcome"。因此实验的关键不是证明某个调度算法本身新，而是证明 workflow-level state 加进来以后，per-call router 的 fixed-budget Pareto frontier 是否被改变。
 
 ### 4.1 ModelSelector 可插拔接口
 
@@ -641,7 +643,7 @@ class ModelSelectorPolicy(ABC):
 
 ### 4.2 ZombieDetector 的边界
 
-ZombieDetector 不是本文的主要算法贡献，作用更像 agent runtime 的保险丝：当一个 workflow 明显卡住时，释放并发槽和预留预算，避免拖累其他健康 workflow。它只管理 AgentOS 启动或登记过的 workflow / LLM call，不扫描或杀掉系统里的任意进程。
+ZombieDetector 不是本文的主要算法贡献，作用更像 agent runtime 的资源保险丝：当一个 workflow 明显卡住时，取消 in-flight call、结算 ledger、释放后端级并发槽，并把未使用的预留预算退回预算池，避免拖累其他健康 workflow。它只管理 AgentOS 启动或登记过的 workflow / LLM call，不扫描或杀掉系统里的任意进程。
 
 本文采用可审计的规则组合，而不是黑箱判断：
 
@@ -652,7 +654,7 @@ ZombieDetector 不是本文的主要算法贡献，作用更像 agent runtime �
 | 长时间无新 token、无新 tool event、无 ledger 更新 | 可能已经失去进展 |
 | 成本持续增加，但 step progress 长时间无改善 | 可能在无效消耗预算 |
 
-触发后先向上层 agent 或 provider 发 cancel / interrupt；如果无法优雅停止，再回收 AgentOS 内部的 reserved budget 和 concurrency slot。实验里不把 ZombieDetector 写成质量提升的核心来源，只报告开/关它时的资源利用率、healthy workflow completion rate，以及误杀率或人工抽样审计结果。
+触发后先向上层 agent 或 provider 发 cancel / interrupt，并在 `events.jsonl` 中记录 `zombie_cancelled` 事件；如果无法优雅停止，再回收 AgentOS 内部的 reserved budget 和 backend-specific concurrency slot。ZombieDetector 可以给后续调度提供负反馈信号，但不直接决定模型选择。实验里不把 ZombieDetector 写成质量提升的核心来源，只报告开/关它时的资源利用率、healthy workflow completion rate、queue latency，以及误杀率或人工抽样审计结果。
 
 ---
 
@@ -662,16 +664,16 @@ ZombieDetector 不是本文的主要算法贡献，作用更像 agent runtime �
 
 ### 5.1 为什么需要这一层
 
-50 个 SWE-agent 同时跑时，系统处于 RPM 限额的 80% 水位。如果不做调度：先到先得导致后启动 agent 被饿死、前几个 agent 把贵模型预算花光、卡死 agent 占着并发槽不释放。
+50 个 SWE-agent 同时跑时，某些后端路径可能接近 RPM 或并发槽上限。如果不做调度：先到先得导致后启动 agent 被饿死、前几个 agent 把贵模型预算花光、卡死 agent 占着后端槽不释放。
 
-per-task 路由策略本身不处理这一层——要覆盖多 workflow 并发，需要把共享预算、队列和 RPM/concurrency 压力纳入 runtime 级状态。
+per-task 路由策略本身不处理这一层——要覆盖多 workflow 并发，需要把共享预算、队列和后端级 RPM/concurrency 约束纳入 runtime 级状态。
 
-### 5.2 调度算法：Weighted Fair Queuing
+### 5.2 调度算法：Backend-aware Dispatch Scheduling
 
 本文的多 workflow 调度有三个组件：
 
-1. **每 workflow 独立 ledger**：每个 workflow 记录自己的花费、预留和进展，用来审计和止损，但不等于独立预算
-2. **跨 workflow weighted fair queuing**：共享 RPM/并发槽按 workflow 优先级加权分配
+1. **每 workflow ledger**：每个 workflow 记录自己的花费、预留和进展，用来审计和止损，但不等于独立预算
+2. **Backend-aware dispatch scheduling**：共享后端 RPM/并发槽在多个健康 workflow 之间分配，目标是避免少数 workflow 长时间占满可调度机会
 3. **Admission control**：资源满载时排队——不需要预测到达分布
 
 ### 5.3 Workload 不确定性处理
@@ -697,7 +699,7 @@ per-task 路由策略本身不处理这一层——要覆盖多 workflow 并发�
 | **Budget violation rate** | 约束指标 | 是否守住 hard budget |
 | **Step progress breakdown** | 诊断指标 | localization、patch apply、F2P/P2P 等中间信号如何变化 |
 
-`sum_i w_i q_i` 不作为主指标。它只帮助解释 ModelSelector 为什么把钱分给某一步。多 workflow 场景下再补充报告 Jain's Fairness Index 和队列延迟，用来说明后启动 workflow 有没有被饿死；这里的公平指的是**共享调度机会不被少数 workflow 吃光**，不是每个 workflow 分到同样的预算。
+`sum_i w_i q_i` 不作为主指标。它只帮助解释 ModelSelector 为什么把钱分给某一步。多 workflow 场景下再补充报告队列延迟、dispatch slot 分布和 starvation rate，用来说明后启动或慢启动的健康 workflow 有没有被长期饿死；这里不主张预算公平，也不要求每个 workflow 分到同样的钱。
 
 ---
 
@@ -705,7 +707,7 @@ per-task 路由策略本身不处理这一层——要覆盖多 workflow 并发�
 
 | RQ | 问题 | 核心指标 |
 |----|------|----------|
-| **RQ1** | AgentOS 能否在 hard budget 和 RPM/concurrency 限制下稳定运行？ | budget violation rate、429 rate、queue latency |
+| **RQ1** | AgentOS 能否在 hard budget 和后端级 RPM/concurrency 限制下稳定运行？ | budget violation rate、429 rate、queue latency |
 | **RQ2** | workflow-aware 决策是否比 workflow-blind per-call router 有更高 fixed-budget resolved rate？ | resolved rate、resolved-rate-vs-budget curve、cost per resolved |
 | **RQ3** | 收益来自哪一层机制：预算配速、$w_i$、进展先验，还是调度？ | component ablation、step progress breakdown |
 | **RQ4** | 当步骤重要性或预计进展增益变粗、变噪、跨数据集迁移时，系统是否平滑退化？ | cross-domain drop、与 `budget_uniform` / `random_weight` 的差距 |
@@ -718,7 +720,7 @@ per-task 路由策略本身不处理这一层——要覆盖多 workflow 并发�
 | **Calibration** | SWE-bench Lite 或 Verified held-out split；不参与主测试 |
 | **总预算** | \$50 |
 | **后端池** | GPT-5 Thinking / Instant / mini / Claude Sonnet / 本地 Llama-3-70B-Int4（N=5） |
-| **RPM 限额** | 500 RPM |
+| **后端配额** | 公式支持 per-backend quota；若主实验只压测 OpenAI，则标注为 single-provider simplification（如 OpenAI 500 RPM）。扩展压力测试可设 OpenAI: 500 RPM / Anthropic: 300 RPM / local: $K_{\text{local}}$ GPU slots |
 
 | 对照组 | 策略 |
 |--------|------|
@@ -739,7 +741,7 @@ per-task 路由策略本身不处理这一层——要覆盖多 workflow 并发�
 | `+ budget_pressure` | 增加闭环配速 | 避免前期花光预算的收益有多大 |
 | `+ w_i` | 增加步骤重要性 | 把钱留给关键步骤是否有用 |
 | `+ progress_prior` | 增加预计进展增益表 | 历史步骤进展是否提供事前信号 |
-| `+ WFQ` | 增加多 workflow 公平调度 | 并发下是否减少饥饿 |
+| `+ scheduler` | 增加多 workflow 调度 | 并发下是否减少饥饿和后端槽长期占用 |
 | `+ ZombieDetector` | 增加卡死回收 | 是否提高资源利用率和健康任务完成率 |
 
 这个表的目的不是证明每个组件都是新算法，而是回答一个更重要的问题：workflow-aware runtime 的收益到底来自哪里。如果某个组件贡献很小，正文就弱化它；如果完整组合明显优于单点 router，论文才能说 AgentOS 改变了固定预算下的 cost-quality frontier。
@@ -757,7 +759,7 @@ per-task 路由策略本身不处理这一层——要覆盖多 workflow 并发�
 
 **多 workflow 压力测试**：
 
-并发规模设为 `J=1/10/50/100`，调度策略比较 FIFO、shortest-job-first 和 WFQ。报告 Jain's Fairness Index、p50/p99 queue latency、429 rate、budget violation rate、平均完成时间和 fixed-budget resolved rate。突发流量实验在中途注入一批新 workflow，系统事先不知道 burst 到来；目标是观察预算、队列和 RPM 压力是否可控。
+并发规模设为 `J=1/10/50/100`，调度策略比较 FIFO、shortest-job-first 和 backend-aware scheduler。报告 p50/p99 queue latency、dispatch slot 分布、starvation rate、429 rate、budget violation rate、平均完成时间和 fixed-budget resolved rate。突发流量实验在中途注入一批新 workflow，系统事先不知道 burst 到来；目标是观察预算、队列和后端级 RPM / 并发压力是否可控。
 
 ---
 
@@ -858,7 +860,7 @@ SE 社区缺"面向 LLM Agent 的成本治理基础设施"，对"系统工具 + 
 **Q: "和学习型 agentic router 比呢？"**
 → 以 BoPO 为例，学习型 agentic router 训练一个 cheap / expensive 二元策略，解决 sparse terminal reward 下如何学会花预算的问题。AgentOS 的贡献不是训练最强 router，而是提供 training-free、N-ary、可审计的 workflow runtime：预算账本、`reserved_cost` 准入、RPM/concurrency 控制、多 workflow 调度和步骤级预算决策。学习型 router 可以作为 AgentOS 的 ModelSelector 插件。
 
-**Q: 这些机制不都是旧的吗？WFQ、token bucket、reservation、watchdog、滑动更新都不是新东西。**
+**Q: 这些机制不都是旧的吗？token bucket、reservation、队列调度、watchdog、滑动更新都不是新东西。**
 → 是的，本文不把这些机制包装成新算法。AgentOS 的研究贡献在更高一层：把 agent workflow 作为预算治理单位，定义一套可插拔、可审计的 runtime contract，并用实验回答"workflow-level state 是否让固定预算下的 agent 成功率更高"。类比数据库和操作系统论文，很多系统贡献并不是发明锁、队列或缓存本身，而是在新的 workload 和约束下证明一套抽象改变了性能/可靠性边界。本文必须通过机制归因实验说明收益来自 workflow-aware state 与 selector/governor/scheduler 的耦合，而不是只列组件。
 
 **Q: 你是不是应该同时覆盖客服、创意写作、长程科学推理？**
@@ -870,11 +872,11 @@ SE 社区缺"面向 LLM Agent 的成本治理基础设施"，对"系统工具 + 
 
 为帮助不熟悉 LLM systems 文献的读者理解 AgentOS 的演进规划，本节以 vLLM 作为参照点。
 
-vLLM 是 UC Berkeley 于 2023 年发布的开源 LLM 推理引擎（SOSP 2023）。其第一篇论文处理的是 single-tenant 问题：给定一台 GPU 服务器收到多个独立推理请求，引擎应如何 batch 与调度以最大化吞吐？该工作假设硬件由单一运营方拥有，未对竞争用户之间的公平性做任何主张。后续工作——包括 Andes（OSDI 2024）、SGLang router 等——把这一基础扩展到 multi-tenant 设定：多个用户、团队或服务共享同一推理基础设施，系统在 fairness、priority、SLA 约束下做仲裁。
+vLLM 是 UC Berkeley 于 2023 年发布的开源 LLM 推理引擎（SOSP 2023）。其第一篇论文处理的是 single-tenant 问题：给定一台 GPU 服务器收到多个独立推理请求，引擎应如何 batch 与调度以最大化吞吐？该工作假设硬件由单一运营方拥有，未对竞争用户之间的策略仲裁做任何主张。后续工作——包括 Andes（OSDI 2024）、SGLang router 等——把这一基础扩展到 multi-tenant 设定：多个用户、团队或服务共享同一推理基础设施，系统在 priority、quota、SLA 约束下做仲裁。
 
 **这种"先优化单决策主体、再引入多决策主体仲裁"的两阶段演进，是 systems 社区的成熟研究路径**。第一阶段建立**核心机制**（在 vLLM 的例子中是 paged KV-cache 与 continuous batching）；第二阶段在 single-tenant 案例被充分理解之后，在该机制之上叠加**政策层**。
 
-AgentOS 走同样的路径。本文（paper 1）处理 **single-budget-owner** 情形：一个实体持有固定的算力 / token 预算，在其上运行多个 agent workflow；本文的贡献是构建在该预算之上做跨 workflow 分配的 cost-model-agnostic scheduler。自然的续作是 **multi-tenant agent compute resource allocation**：多个团队、部门或外部客户各自持有独立预算、优先级与 SLA，共享同一个 agent 执行底层。这一设定引入新的问题——cross-tenant 隔离、异构 workload 混合下的 weighted fairness、budget-aware admission control——超出本文 scope，但都是本文框架的直接扩展。**重要的是，本文 scheduler 的 cost-model-agnostic 性质在 multi-tenant 扩展中得以保留**：租户可以使用不同的底层模型与成本结构，无需修改仲裁层。
+AgentOS 走同样的路径。本文（paper 1）处理 **single-budget-owner** 情形：一个实体持有固定的算力 / token 预算，在其上运行多个 agent workflow；本文的贡献是构建在该预算之上做跨 workflow 分配的 cost-model-agnostic scheduler。自然的续作是 **multi-tenant agent compute resource allocation**：多个团队、部门或外部客户各自持有独立预算、优先级与 SLA，共享同一个 agent 执行底层。这一设定引入新的问题——cross-tenant 隔离、异构 workload 混合下的 quota 仲裁、budget-aware admission control——超出本文 scope，但都是本文框架的直接扩展。**重要的是，本文 scheduler 的 cost-model-agnostic 性质在 multi-tenant 扩展中得以保留**：租户可以使用不同的底层模型与成本结构，无需修改仲裁层。
 
 我们因此把本文定位为：**不是企业规模 agent 资源管理的完整解决方案，而是开启这一研究方向的第一篇——multi-tenant agent OS 工作可以在其上构建的 single-tenant 基础**。
 
@@ -890,7 +892,11 @@ SWE-bench 的好处是进展信号相对清楚：文件定位、patch apply、`F
 
 这不是 AgentOS runtime 不能用于这些任务，而是 ModelSelector 需要换一个 progress source。后续工作可以把学习出来的 evaluator、规则加模型的混合 evaluator，或者领域特定的 verifier，作为新的 progress source 使用；但这类 evaluator 自己也要在 held-out 任务上验证，不能一边调一边报收益。举例来说，客服可以看任务是否解决、是否升级人工、用户满意度或事后质检；RAG 可以看 citation correctness、answer faithfulness 或 retrieval hit rate；科学推理可以看 benchmark verifier、self-consistency 或专家评分。AgentOS 的 ledger、budget reservation、scheduler 仍然可用，但 `$q_i$` 和 `$w_i$` 的来源要由领域 evaluator 或学习型 selector 提供。
 
-因此 paper 1 不声称一张 SWE-bench 校准表能泛化到所有 agent 任务。更合理的路线是：本文先在可复现的 coding workflow 上证明 workflow-aware budget governance 是否成立；后续工作研究不同任务域如何定义可靠的 progress signal。
+因此 paper 1 不声称一张 SWE-bench 校准表能泛化到所有 agent 任务。更合理的路线是：本文先在可复现的 coding workflow 上证明 workflow-aware budget governance 是否成立；后续工作研究不同任务域如何定义可靠的 progress signal。Learning 可以帮助 AgentOS 扩展到没有确定性 step progress 的领域，但它改变的是"证据从哪里来"这个问题，而不是把证据问题消除：learned evaluator 仍需要 held-out 验证，错误时应退回保守策略，也必须承认满意度或 LLM-as-judge 这类信号不是绝对真值。
+
+### 12.3 Future Work：交互式 workload 与 SLA 约束
+
+Paper 1 的主设定是批量评估式 workload：目标函数只看 fixed-budget weighted progress，不优化用户等待时间、响应速度或吞吐量。交互式助手是自然下一步，但应作为新的 workload extension 处理：第一层可以把 `deadline_i` 或 SLA tier 写成 hard constraint，在满足 deadline 的前提下仍最大化 weighted progress；第二层再研究质量-延迟折衷，把 latency 纳入单一标量目标；更复杂的夜间评测管线与在线聊天混部，则需要带 timestamp 的真实 traces 和新的指标体系。换句话说，SLA / interactive / throughput 是本文之后的自然延伸，不是 Paper 1 偷偷加入的目标。
 
 ---
 
@@ -905,22 +911,22 @@ SWE-bench 的好处是进展信号相对清楚：文件定位、patch apply、`F
 | 3–5 | 生成文件 A/B/C | generation | 3 | 主产出 |
 | 6 | 验证 import | transform | 1 | 便宜模型够用 |
 
-**Per-call router 的做法**：每次调用独立看 prompt 选模型。它通常不知道这个 workflow 已经花了多少钱、后面还有多少预算、当前有多少并发 workflow 在抢 RPM，也不维护跨步骤的 budget ledger。
+**Per-call router 的做法**：每次调用独立看 prompt 选模型。它通常不知道这个 workflow 已经花了多少钱、后面还有多少预算、当前有多少并发 workflow 在抢后端级 RPM / 并发配额，也不维护跨步骤的 budget ledger。
 
 **AgentOS 的做法**：AgentOS 维护 workflow 预算状态，并从三类信号中获得 $w_i$：如果是自研平台，可显式传入；如果是 LangChain / SWE-agent / AutoGen，可通过 callback/tool event 获得 tool name 和 output；如果只是 proxy 接入，则从 LLM request 中的 ToolMessage / Observation 文本推断。ModelSelector 按"步骤重要性 × 预计进展增益 ÷ 多花成本"和 `budget_pressure` 共同决定是否升档：测试失败诊断等高风险上下文优先保留好模型，目录浏览/search 等低风险上下文优先用便宜模型。从 5 个后端中选，不是二选一。
 
 ## 附录 B：budget_pressure 不需要预测未来
 
-`budget_pressure` 的核心是闭环反馈（花快了收紧、花慢了放宽），不要求准确预测未来流量。它不是"预测明天会来多少请求"，而是在每个滚动窗口内根据真实状态更新升级门槛：
+`budget_pressure` 的核心是闭环反馈（花快了收紧、花慢了放宽），不要求准确预测未来流量。它的单位和 §2.5 的升级分数一致，都是 `weighted_progress_per_dollar`。初始化时可以从 calibration split 的升级分数分布取中位数或分位数；运行时再在同一尺度上根据真实状态更新升级门槛：
 
 | 观测状态 | `budget_pressure` 变化 | 效果 |
 |----------|----------------------|------|
 | 已花预算超过当前时间水位 | 上升 | 升级到贵模型更难 |
-| 队列长度 / RPM 压力上升 | 上升 | 低重要性调用更多走便宜模型 |
+| 队列长度 / 后端级 RPM 或并发压力上升 | 上升 | 低重要性调用更多走便宜模型 |
 | 预算使用低于水位且队列空 | 下降 | 高重要性调用更容易升档 |
-| 某 workflow 卡死或循环 | 结合 ZombieDetector 截断 | 回收预算和并发槽 |
+| 某 workflow 卡死或循环 | 结合 ZombieDetector 截断 | 回收预算和后端槽 |
 
-因此，真实场景里即使某天调用量突然升高，AgentOS 也不依赖提前知道 burst。它先通过 admission control 排队、WFQ 保证并发 workflow 不互相饿死，再通过 `budget_pressure` 把低重要性请求降级。压力测试会注入突发到达率，验证系统在不知道 burst 的情况下是否仍能控制预算、队列和 RPM 压力。
+因此，真实场景里即使某天调用量突然升高，AgentOS 也不依赖提前知道 burst。它先通过 admission control 排队和 backend-aware scheduling 防止健康 workflow 长期饿死，再通过 `budget_pressure` 把低重要性请求降级。压力测试会注入突发到达率，并对 `budget_pressure` 初始分位数和更新步长做 sensitivity，验证系统在不知道 burst 的情况下是否仍能控制预算、队列和后端级 RPM / 并发压力。
 
 ## 附录 C：Pluggability 设计
 
@@ -945,8 +951,8 @@ class TurnInfo:
 class GovernorState:
     budget_remaining: float
     budget_pressure: float
-    rpm_remaining: int
-    concurrency_remaining: int
+    backend_rpm_remaining: dict[str, int]
+    backend_concurrency_remaining: dict[str, int]
 ```
 
 ### 本工作实现的 4 个 Policy
