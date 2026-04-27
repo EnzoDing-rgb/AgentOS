@@ -34,6 +34,94 @@ $$
 
 ---
 
+## 0.5 最终形态：不是替代 Cursor，而是治理已有 agent workflow
+
+这篇 paper 最容易跑偏的地方，是把系统写成另一个 Cursor / Claude Code / 通用 coding CLI。这个方向不稳，因为 Cursor 和 Claude Code 的核心价值不只是调用 LLM，而是交互体验、上下文管理、文件级 diff、编辑确认、终端集成和产品闭环。本文不应该重新实现这些能力。
+
+更稳的最终形态是：
+
+> 一个面向 coding-agent 平台的 **budget / utility governance runtime**。研究原型可以做成 Python runtime + CLI evaluation harness + UtilityLedger，而不是一个完整 IDE 或完整 coding agent 产品。
+
+也就是说，CLI 在本文里不是“用户每天使用的 Claude Code 替代品”，而是：
+
+> 用命令行跑一个已有 agent workflow，并在每次 LLM 调用外面加预算治理、模型选择和 ledger 记录。
+
+系统形态可以写成三层：
+
+```text
+Enterprise admin / platform team
+  configures budgets, teams, model pools, policies
+        |
+        v
+AgentOS governance runtime
+  UtilityContract + Governor + ModelSelector + UtilityLedger
+        |
+        v
+Existing coding agents
+  SWE-agent / OpenHands / internal agents / CLI harness
+```
+
+这里的重点是：本文不发明一个新的 coding agent，而是治理已有 agent 的 LLM spending。
+
+### 0.5.1 谁用这个系统？
+
+主场景应该是 multi-team enterprise budget governance，而不是个人开发者省钱工具。
+
+不同角色的边界可以这样定义：
+
+| 角色 | 关心什么 | 是否直接操作系统 |
+|---|---|---|
+| CFO / finance | 总预算、部门成本、超支风险 | 通常不直接操作，只看汇总报告 |
+| Engineering platform / infra team | 模型池、价格表、默认策略、审计规则、系统部署 | 是主要部署者 |
+| Team lead / EM | team/project/workflow 的预算、优先级和策略 | 会配置或审批策略 |
+| Developer | agent 是否被降级/升级、任务花了多少钱、为什么这样选模型 | 主要通过已有 agent 间接感知 |
+
+个人开发者不是不能支持，但应该作为退化场景：
+
+> 如果只有一个 user、一个 daily/monthly budget、一个可用模型池，那么 enterprise policy 退化成 personal budget policy。
+
+这样论文只需要维护一套抽象：企业是 general case，个人是 special case。
+
+### 0.5.2 Library、CLI 和产品的边界
+
+如果做成 library，它不是给普通开发者每天手动 `import` 的库，而是给 agent framework 或企业平台团队接入的 runtime SDK。类似 LangChain 的地方只在于它也是开发者框架；不同点是 LangChain 主要负责把 prompt、model、tool、retriever、agent workflow 串起来，而本文 runtime 负责预算、utility contract、model selection 和 ledger accounting。
+
+如果做成 CLI，它也不应该是完整 coding agent CLI。更合适的是 evaluation harness：
+
+- 输入：一个已有 agent workflow、预算、模型池、policy config；
+- 运行：拦截或包装每次 LLM call，生成 `UtilityContract`，选择模型，扣预算；
+- 输出：patch / task result、per-step `UtilityLedger`、budget trace、grader score。
+
+因此本文 artifact 可以同时有研究和产品雏形：
+
+> Research prototype: Python runtime + CLI harness for open or instrumentable coding-agent workflows.  
+> Product direction: enterprise budget governance layer for teams that already use coding agents.
+
+### 0.5.3 SWE-agent 和 OpenHands 在本文中的位置
+
+SWE-agent 是一个开源 research coding agent，常用来跑 SWE-bench。它会根据 GitHub issue 搜索代码、编辑文件、运行测试，并输出 patch。OpenHands 是一个开源软件工程 agent 平台，原名 OpenDevin，提供更完整的 agent execution environment。
+
+它们和本文的关系不是“被本文替代”，而是实验载体和接入对象：
+
+```text
+SWE-agent / OpenHands / internal coding agent
+  provides the existing multi-step coding workflow
+        |
+        v
+AgentOS governance runtime
+  wraps LLM calls, selects models, enforces budget, writes ledger
+        |
+        v
+SWE-bench / deterministic tests
+  grades final patch quality and measured utility
+```
+
+对 Cursor、Claude Code 这类闭源商业 agent，本文不要承诺直接接入。更稳的边界是：
+
+> Closed commercial agents would require provider-side hooks or exported call traces. This paper focuses on open or instrumentable coding-agent workflows.
+
+---
+
 ## 1. 为什么 Cursor Auto / opencode Auto / 云端 Auto 没有直接解决这个问题？
 
 现在很多系统都有 auto model selection：
@@ -61,7 +149,9 @@ $$
 | 价值结构 | 多数不显式暴露 | agent framework 显式声明 |
 | 输出 | 这次用哪个模型 | 每一步为什么这样花钱、花了多少、换来多少 measured utility |
 
-这不是说 Cursor Auto 或云端 router 不重要。相反，它们可以成为本文系统里的底层执行器。本文更像在它们上面加一层：
+这不是说 Cursor Auto 或云端 router 不重要。相反，它们可以成为本文系统里的底层执行器或类比对象。只是对 Cursor、Claude Code 这类闭源产品，真实接入需要 provider-side hooks、API-level routing control 或 exported call traces；本文实验应聚焦 SWE-agent、OpenHands、internal agents 这类 open or instrumentable workflows。
+
+本文更像在已有 agent 或 router 上面加一层：
 
 ```text
 Agent framework
@@ -341,6 +431,8 @@ $$
 
 SWE-bench 的任务是：给一个真实 GitHub issue 和代码仓库，让系统生成 patch，然后用测试判断 patch 是否真的解决问题。
 
+SWE-agent 可以作为本文最自然的实验载体之一。它不是本文要提出的新方法，而是一个已有 coding-agent workflow：读 issue、搜索代码、编辑文件、运行测试、生成 patch。本文 runtime 可以包在它的 LLM call 外面，记录每一步的 cost、model choice、budget state 和 measured utility。
+
 核心 grader 口径是：
 
 - patch 能否 apply；
@@ -405,6 +497,7 @@ MBPP 也常用，但同样更偏函数级代码生成。对本文这种 multi-st
 适合做：
 
 - SWE-bench Lite / Verified 子集实验；
+- 用 CLI harness 跑 SWE-agent / OpenHands / internal agent workflow；
 - 本地 open-weight coding model 的推理；
 - mock-to-real validation；
 - 本地模型和 API 模型的 cost-quality 对比；
@@ -426,6 +519,10 @@ MBPP 也常用，但同样更偏函数级代码生成。对本文这种 multi-st
 4. `UtilityLedger` 能不能记录每一步；
 5. SWE-bench style grader 能不能给出可复现的 $q_i$；
 6. 在 noisy prior / cold-start 下是否仍比 baseline 更稳。
+
+原型形态可以明确写成：
+
+> We implement AgentOS as a Python governance runtime and CLI evaluation harness that wraps open or instrumentable coding-agent workflows, rather than as a replacement for IDE-based products such as Cursor or Claude Code.
 
 ---
 
@@ -570,17 +667,21 @@ BAAR 学 router policy。本文定义 workflow-level utility contract 和 accoun
 
 质量先验和 workload 估计部分确实接近传统 online calibration / bandit / Bayesian estimation。但本文不把最优学习作为主贡献，而是提供 contract、governance、ledger，让不同 prior 或 learned router 都能被审计和比较。
 
+### Q7: 这到底是 library、CLI，还是产品？
+
+研究原型是 Python governance runtime + CLI evaluation harness。CLI 用来运行已有 agent workflow 并记录 budget / utility ledger，不是要替代 Cursor 或 Claude Code。未来产品方向是 enterprise budget governance layer，由 platform team 接入到 SWE-agent、OpenHands 或内部 coding-agent stack。
+
 ---
 
 ## 13. 最终推荐表述
 
 如果要向导师或评审介绍，建议用这段：
 
-> This paper studies utility governance for budget-constrained coding-agent workflows. Instead of proposing yet another model router, we define a workflow-level utility contract through which an agent framework declares each step's task type, utility weight, budget, and grader. A runtime then enforces hard budgets, selects models through a pluggable selector, and records a utility ledger that explains how much each step costs and what measured utility it produces. We operationalize utility as `w_i × q_i`, where `q_i` is a benchmark-grounded deterministic grader score, such as SWE-bench Verified style fail-to-pass and pass-to-pass tests. The goal is not to predict future workloads perfectly or to learn the strongest router, but to make LLM spending in coding-agent workflows explicit, auditable, and empirically comparable under hard budgets.
+> This paper studies utility governance for budget-constrained coding-agent workflows. Instead of proposing yet another model router or replacing IDE-based products such as Cursor and Claude Code, we define a workflow-level utility contract through which an agent framework declares each step's task type, utility weight, budget, and grader. A governance runtime then wraps open or instrumentable coding-agent workflows, enforces hard budgets, selects models through a pluggable selector, and records a utility ledger that explains how much each step costs and what measured utility it produces. We operationalize utility as `w_i × q_i`, where `q_i` is a benchmark-grounded deterministic grader score, such as SWE-bench Verified style fail-to-pass and pass-to-pass tests. The research prototype is a Python runtime and CLI evaluation harness; the product direction is an enterprise budget governance layer for teams that already use coding agents. The goal is not to predict future workloads perfectly or to learn the strongest router, but to make LLM spending in coding-agent workflows explicit, auditable, and empirically comparable under hard budgets.
 
 中文版本：
 
-> 这篇 paper 研究的是预算约束下 coding-agent workflow 的用户效用治理。它不是再提出一个模型 router，而是定义一套 workflow-level utility contract：agent framework 声明每一步的任务类型、效用权重、预算和 grader；运行时负责守住预算、选择模型，并用 utility ledger 记录每一步花了多少钱、产生了多少可测效用。本文把 utility 操作化为 `w_i × q_i`，其中 `q_i` 来自 SWE-bench Verified 风格的确定性 grader。本文不声称能完美预测未来 workload，也不声称最大化真实人类满意度；它的贡献是让 coding-agent workflow 的 LLM 花费变得显式、可审计、可复现实证比较。
+> 这篇 paper 研究的是预算约束下 coding-agent workflow 的用户效用治理。它不是再提出一个模型 router，也不是替代 Cursor 或 Claude Code，而是定义一套 workflow-level utility contract：agent framework 声明每一步的任务类型、效用权重、预算和 grader；governance runtime 包住 SWE-agent、OpenHands 或企业内部 agent 这类可接入 workflow 的 LLM 调用，负责守住预算、选择模型，并用 utility ledger 记录每一步花了多少钱、产生了多少可测效用。本文把 utility 操作化为 `w_i × q_i`，其中 `q_i` 来自 SWE-bench Verified 风格的确定性 grader。研究原型可以是 Python runtime + CLI evaluation harness；未来产品方向是企业多团队的 budget governance layer。本文不声称能完美预测未来 workload，也不声称最大化真实人类满意度；它的贡献是让 coding-agent workflow 的 LLM 花费变得显式、可审计、可复现实证比较。
 
 ---
 

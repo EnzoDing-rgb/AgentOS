@@ -201,35 +201,64 @@ $\lambda$ 是预算约束的"影子价格"（shadow price）——它表示"再�
 
 **数学复杂度**：KKT 条件 + 凸优化基础，1-2 周可掌握。不需要 RL / bandit 理论。
 
-### 2.5 边际加权性价比（ModelSelector 的排序准则）
+### 2.5 边际加权性价比（ModelSelector 的排序准则，N-ary 版）
+
+将后端池 $\mathcal{A}$ 中的 $N$ 个后端按成本升序排列：$a_1 \prec a_2 \prec \dots \prec a_N$（例如 mini $\prec$ Llama-70B $\prec$ Instant $\prec$ Sonnet $\prec$ Thinking）。定义**逐 tier 边际增量**：
 
 $$
-\text{score}(i) = \frac{w_i \cdot \Delta q_i}{\Delta c_i}
+\Delta q_i^{(k)} = q_i(a_{k+1}) - q_i(a_k), \quad \Delta c_i^{(k)} = c_i(a_{k+1}) - c_i(a_k), \quad k = 1, \dots, N-1
 $$
 
-三个符号的定义：
+**决策规则（tier-progressive）**：对 turn $i$，从最便宜的 $a_1$ 起，逐 tier 评估"再升一档值不值"：
+
+$$
+\text{升级条件：} \quad w_i \cdot \frac{\Delta q_i^{(k)}}{\Delta c_i^{(k)}} \ge \lambda
+$$
+
+其中 $\lambda$ 是 `budget_factor`（§2.4 的影子价格在线近似）。选中的后端是满足上式的**最高 tier**：
+
+$$
+a_i^* = a_{k^*+1}, \quad k^* = \max\left\{k : w_i \cdot \frac{\Delta q_i^{(k)}}{\Delta c_i^{(k)}} \ge \lambda\right\}
+$$
+
+若所有 tier 都不值得升级（$\lambda$ 很高 = 预算紧），则留在 $a_1$（最便宜）。
+
+**等价的对偶 argmax 写法**：
+
+$$
+a_i^* = \arg\max_{a \in \mathcal{A}}\ w_i\,q_i(a) - \lambda\,c_i(a)
+$$
+
+两者在分段线性近似下数学等价。本文实现采用 tier-progressive 写法，理由是 EWMA 维护"相邻 tier 增量"$(\Delta q^{(k)}, \Delta c^{(k)})$ 对冷启动更友好——只需观测相邻两个后端的差异，而非每个后端的绝对 $q$。
+
+各符号汇总：
 
 | 符号 | 含义 | 怎么算 |
 |------|------|-------|
 | $w_i$ | 这一步的任务价值权重 | 调用方通过 API 声明（见 §2.6），不是系统猜的 |
-| $\Delta q_i = q_i(\text{exp}) - q_i(\text{cheap})$ | 升级到贵模型能多换多少质量 | 基于历史统计先验（实时 EWMA 更新） |
-| $\Delta c_i = c_i(\text{exp}) - c_i(\text{cheap})$ | 升级要多花多少钱 | 按 token 单价 × 估计 token 数 |
+| $\Delta q_i^{(k)}$ | 从 tier $k$ 升到 tier $k+1$ 能多换多少质量 | 基于历史统计先验（实时 EWMA 更新，按 task_type × 后端对分组） |
+| $\Delta c_i^{(k)}$ | 升一档要多花多少钱 | 按 token 单价 × 估计 token 数 |
+| $\lambda$ | budget_factor（预算紧则高、松则低） | 闭环反馈在线更新（§2.4 / 附录 B） |
 
-**数字例子**（同一预算、两个待升级步骤并行竞争）：
+**数字例子**（5 个后端、两个 turn 并行竞争升级）：
 
-| 步骤 | $w_i$ | $\Delta q_i$ | $\Delta c_i$ | score | 决策 |
-|------|-------|-------------|-------------|-------|------|
-| 规划步（planning） | 3 | 0.20 | \$2.00 | **0.30** | 升级 |
-| 检索步（retrieval） | 1 | 0.30 | \$4.00 | 0.075 | 不升级 |
+| 步骤 | $w_i$ | 当前 tier | 下一 tier | $\Delta q^{(k)}$ | $\Delta c^{(k)}$ | $w_i \cdot \Delta q / \Delta c$ | $\lambda=0.20$ 时决策 |
+|------|-------|----------|----------|-----------------|-----------------|-------------------------------|---------------------|
+| 规划步（planning） | 3 | Instant (\$0.01) | Sonnet (\$0.03) | 0.10 | \$0.02 | **1.50** | 升级 |
+| 规划步（planning） | 3 | Sonnet (\$0.03) | Thinking (\$0.10) | 0.15 | \$0.07 | **0.64** | 升级 |
+| 检索步（retrieval） | 1 | mini (\$0.001) | Llama (\$0.002) | 0.15 | \$0.001 | **15.0** | 升级 |
+| 检索步（retrieval） | 1 | Llama (\$0.002) | Instant (\$0.01) | 0.15 | \$0.008 | **1.88** | 升级 |
+| 检索步（retrieval） | 1 | Instant (\$0.01) | Sonnet (\$0.03) | 0.10 | \$0.02 | **0.50** | 升级 |
+| 检索步（retrieval） | 1 | Sonnet (\$0.03) | Thinking (\$0.10) | 0.05 | \$0.07 | **0.07** | 不升级 |
 
-检索步的绝对质量提升更大，但"每 1 美元带来的加权提升"更小——**预算紧时贵模型应该留给规划步**。
+结果：规划步一路升到 Thinking（$w=3$ 放大了每次升级的加权收益），检索步停在 Sonnet（$w=1$ 使最后一跳的加权边际收益 0.07 低于 $\lambda=0.20$）。**N-ary 后端让"升到哪一档"成为连续渐进的决策，而非二选一的粗粒度跳跃**。
 
-**公式的理论根基**：这个公式不是凭空捏造的，是两个教科书结论在 LLM 路由场景的具体化：
+**公式的理论根基**：
 
-1. **拉格朗日松弛 / KKT 一阶条件**（§2.4 已给出）：带预算约束的连续质量最大化问题，最优解的充要条件就是"每个 turn 的边际加权收益与边际成本之比相等"。本公式是对该连续最优条件的离散近似。
-2. **背包问题贪心近似**（运筹学教科书标准结论，Dantzig 1957）：多选择背包的贪心近似——按"单位体积价值"（即 $\Delta q / \Delta c$）降序排列后依次填包，近似比有理论保证。本文在此基础上加入 $w_i$ 权重，扩展到加权版本。
+1. **拉格朗日松弛 / KKT 一阶条件**（§2.4 已给出）：带预算约束的连续质量最大化问题，最优解的充要条件就是"每个 turn 的边际加权收益与边际成本之比相等"。tier-progressive 规则是对该连续最优条件的离散近似。
+2. **多选择背包贪心近似**（Sinha & Zoltners 1979, Dantzig 1957）：MCKP 的 LP-relaxation 标准做法——将每个 group 内的 item 按逐增边际效率排序后依次填包。本文在此基础上加入 $w_i$ 权重并接入在线 $\lambda$ 反馈，形成可操作的 N-ary 启发式。
 
-一句话：**思想是百年教科书标准，公式是本文对 LLM agent 路由场景的首次具体化**。这也是本公式的贡献所在——不是发明边际分析，而是把它接入 workflow 结构（$w_i$、预算状态、N-ary 后端）中形成可操作的启发式。
+一句话：**思想是百年教科书标准，公式是本文对 LLM agent 路由场景的首次 N-ary 具体化**——不是发明边际分析，而是把它接入 workflow 结构（$w_i$、预算状态、N 个后端的成本梯度）中形成可操作的启发式。
 
 ### 2.6 $w_i$ 如何声明？（工程实现）
 
@@ -254,6 +283,37 @@ $$
 | `summarization`, `classification` | 1 | 通常不需要最强模型 |
 
 **鲁棒性**：§3.5 消融实验 E1–E7 正面回答"权重不准怎么办"——粗粒度的 L3 映射仍有明显收益（E3），加噪 $\sigma=0.5$ 时收益基本保留（E4），完全无信号时退化到 C 而非崩溃（E6）。权重越精细收益越高，但"分不准"不是致命问题。
+
+### 2.7 N-ary 后端的现实性检查
+
+N-ary 后端（5+ 个模型可选）是本文相对 BoPO 二元设计的核心差异化轴。本节诚实开列 N-ary 在工程中的真实代价与应对方式，避免审稿人在 rebuttal 阶段才暴露这些问题。
+
+**代价 1：先验矩阵规模从 $O(T)$ 涨到 $O(T \times N)$**
+
+§2.5 的 tier-progressive 决策需要为每个 (task_type, 后端对) 维护 $\Delta q^{(k)}$ 估计。$T$ 个 task_type × $N$ 个后端 → $T \times (N-1)$ 个边际增量。以 $T=6$, $N=5$ 为例，共 24 个先验（对比二元时仅 6 个）。
+
+应对：
+- **静态先验表**（本文给出）：基于公开 benchmark 数据（LLMRouterBench / SWE-bench 公开 leaderboard）预填，覆盖常见 task_type × 后端组合
+- **EWMA 在线更新**：每次真实调用后，用观测到的 $q$ 按 $\hat{q}_{\text{new}} = \alpha \cdot q_{\text{observed}} + (1-\alpha) \cdot \hat{q}_{\text{old}}$ 更新对应 (task_type, backend) 的先验，通常 5–10 次观测即收敛到合理范围
+- **冷启动回退**：未观测过的 (task_type, backend) 组合回退到静态表默认值，不拒绝服务
+
+**代价 2：部分后端可能被 Pareto 支配**
+
+现实中 5 个后端不太可能全部都在 Pareto 前沿上——某些后端在特定 task_type 上可能既贵又不比相邻后端质量高。例如对 `retrieval` 任务，Llama-70B 可能被 GPT-5 Instant 严格支配（Instant 更便宜且质量更高）。
+
+应对：**启动期 Pareto 剪枝**——系统启动时按 task_type 分组，对每组后端做一次 Pareto 非支配检查，剔除被严格支配的后端（$\exists a': q(a') \ge q(a)$ 且 $c(a') \le c(a)$）。剪枝后的"有效 N"才是 tier-progressive 决策的实际选择空间。
+
+| task_type | 标称 N | 预计有效 N | 被剪掉的后端（示例） |
+|-----------|-------|----------|-------------------|
+| `reasoning` / `planning` | 5 | 4–5 | mini 在复杂推理上可能被 Llama 支配 |
+| `retrieval` / `validation` | 5 | 3–4 | Thinking 在简单检索上多花钱但没多少质量提升 |
+| `generation` | 5 | 4–5 | 多数后端有区分度 |
+
+**诚实的边界**：我们预计实际有效 N 在 3–5 之间浮动。**N-ary 的价值不是"5 个后端全被用上"，而是"成本梯度够细"**——即使有效 N=3，也比二元的 2 个多出一个中间档，能把"值得升一档但不值得升两档"的 turn 安排到正确位置。
+
+**与 BoPO 的代价对照**
+
+BoPO 限制为二元不是设计缺陷，而是 RL action space 的代价——action 从 2 扩展到 N 时，RL 的 sample complexity 显著增加，需要更多训练数据和 GPU 时间。本文使用启发式"免费"获得 N-ary 支持，但代价转移到了先验表维护上。**这是 trade-off，不是免费的午餐**——启发式不需要训练但依赖先验质量，RL 不需要先验但需要训练资源。两者各有适用场景。
 
 ---
 
@@ -392,15 +452,25 @@ class ModelSelectorPolicy(ABC):
 
 **三句话定义**：一个 workflow = 一个任务从开始到结束的一串 LLM 调用步骤。multi-workflow = 同一时间有很多个 workflow 在跑，它们共享同一组资源（RPM、并发槽、后端池、甚至全局预算）。因此系统除了要在“一个 workflow 内”分配预算，还必须在“不同 workflow 之间”做调度与公平性保证。
 
-### 5.1 为什么需要这一层
+### 5.1 为什么需要这一层——以 SWE-bench 并发评估为例
 
-现实部署中，多个 agent workflow 往往同时运行：
+**核心场景**：研究者用 SWE-bench Verified（500 题）评估 agent 框架，开 50 个 SWE-agent 并发跑。以下是真实量级的资源压力估算：
 
-- 50 个 SWE-agent 并发跑 SWE-bench 评估
-- 企业 DevOps 团队同时跑代码审查、测试生成、文档更新等 agent
-- 多个用户共享同一个 LLM API 配额
+| 参数 | 数值 | 来源 |
+|------|------|------|
+| 单题平均 turn 数 | 6–12 | SWE-agent / Moatless 公开 trace |
+| 单题平均成本（混合后端） | \$0.50–\$2.00 | 取决于后端选择 |
+| 50 并发峰值 RPM | $\approx 50 \times 8 \text{ turns/min} = 400$ RPM | 假设平均 turn 间隔 7.5s |
+| OpenAI tier-3 RPM 限额 | 500 RPM | OpenAI 官方文档 |
+| RPM 利用率 | **80%**——极度紧张 | 400 / 500 |
 
-它们共享有限的资源：API RPM 配额、并发槽、总预算。如果不做调度，先到先得——前面的 workflow 可能吃光资源，后面的饿死。
+50 个 agent 同时跑时，系统处于 RPM 限额的 80% 水位——任何突发都会触发 429。如果不做调度：
+
+- **先到先得**：先启动的 agent 抢占 RPM 和贵模型预算，晚启动的全程只能用 mini，造成跨 workflow 质量方差极大（Jain's FI 趋近 $1/J$）
+- **无配速**：前 10 个 agent 在 planning 步疯狂消耗 Thinking 配额，后 40 个 agent 的 planning 步也只能用 Instant——而 planning 步质量下降会拖垮整个 workflow 的下游
+- **无止损**：卡死的 agent 占着并发槽 5 分钟不释放，健康 agent 排队等位
+
+这个场景同时需要 RPM 准入（Governor）、预算配速（ModelSelector）、跨 workflow 公平（WFQ Scheduler）、僵尸回收（ZombieDetector）。企业多 agent 部署（DevOps 团队并行跑代码审查 + 测试生成 + 文档更新）和多用户共享 API 配额面临同样的资源争抢问题。
 
 **BoPO 做不了这个**——它的 CMDP 是 per-task 的（一次只建模一个任务的路由决策），要处理多 workflow 并发需要重新设计整个 RL 训练框架。
 
@@ -467,9 +537,33 @@ QWCR 与 Q/\$ 必须同时报告（防止"没花钱也没干活"导致 Q/\$ 虚�
 | **RQ1** | 不加治理时 429 限流雪崩，指标无法稳定测量 | Governor | error_429_rate, 完成率 |
 | **RQ2**（主贡献） | 同预算下，任务价值感知的模型选择是否提升质量？ | ModelSelector | QWCR, WQ/\$, Pareto |
 | **RQ3** | 僵尸调用和尾延迟是否污染指标？截断后改善多少？ | Zombie + Preemption | Q/\$ 提升, 违约率 |
-| **RQ4**（新增） | 多 workflow 并发 + 共享资源 + 各自预算下，workflow-aware 启发式能否同时维持 (a) 整体 Pareto 前沿 (b) 跨 workflow 公平性？ | Multi-Workflow Scheduler | Jain's FI, QWCR 方差, 整体 Pareto |
+| **RQ4**（旗舰） | **SWE-bench 50-agent 并发评估**：固定总预算 \$50、50 个 mock workflow 并发（+ 4–6 个真 SWE-agent 端到端佐证），AgentOS 能否同时维持 (a) 整体 Pareto 前沿 (b) 跨 workflow 公平性（Jain's FI $\ge 0.95$）？ | Multi-Workflow Scheduler + Governor + ModelSelector + Zombie | Jain's FI, QWCR 方差, 整体 Pareto, 429 率, N-ary 使用分布 |
 
-RQ4 的 baseline：round-robin、FIFO、weighted-fair-queuing-without-budget-awareness。
+**RQ4 实验设计（旗舰）**：
+
+| 维度 | 设定 |
+|------|------|
+| **Workload（mock 主线）** | SWE-bench Verified 子集 100 题 × 50 mock workflow 并发，每 workflow 6–12 turn，task_type 按 SWE-agent 真实 trace 分布（planning / generation / validation） |
+| **Workload（真实佐证）** | 4–6 个真 SWE-agent 并发 × SWE-bench Verified 子集 20 题，真实 LLM 调用 + fail-to-pass grader |
+| **总预算** | \$50（名义人均 \$1，实际由调度分配） |
+| **后端池** | GPT-5 Thinking / Instant / mini / Claude Sonnet / 本地 Llama-3-70B-Int4（N=5） |
+| **RPM 限额** | 500 RPM（模拟 OpenAI tier-3） |
+
+| 对照组 | 策略 | 预期失败模式 |
+|--------|------|------------|
+| F1. `round_robin` | 轮流分配 RPM 槽，不看预算也不看 $w_i$ | 均匀但浪费——关键步和琐碎步给同等资源 |
+| F2. `fifo` | 先到先得 | 先启动的 agent 吃光资源，后启动的饿死 |
+| F3. `wfq_no_budget` | WFQ 公平分 RPM/并发，但无 workflow 内预算配速 | 公平但不 cost-aware——每个 agent 内部预算失控 |
+| **F4. AgentOS** | WFQ + Governor 预算配速 + ModelSelector ($w_i$ + N-ary) + Zombie | 完整系统 |
+
+| 核心指标 | 含义 | 预期结论 |
+|---------|------|---------|
+| **Jain's Fairness Index** | 跨 workflow QWCR 公平性 | F4 $\ge 0.95$，F2 接近 $1/J$ |
+| **Cross-workflow QWCR 方差** | 方差越小越公平 | F4 最小 |
+| **整体 Pareto 前沿** | 横轴总 cost、纵轴总 QW-Completed | F4 在 Pareto 前沿上；F1 公平但产出低 |
+| **极差比** | 最强 / 最弱 workflow 的 QWCR 比值 | F4 $\le 1.5$，F2 $\ge 5$ |
+| **429 错误率** | RPM 超限导致的失败 | F4 $\approx 0$（Governor 兜底），F2 / F3 显著 |
+| **N-ary 后端使用分布** | 5 个后端各被用了多少次 | 验证有效 N $\ge 3$，非退化为二元 |
 
 ---
 
@@ -525,6 +619,17 @@ BoPO（Zhang et al. 2026）是和本文最接近的工作。两者的定位差�
 | **LLMRouterBench** (2026) | 21 datasets, 33 models, 400K instances | 可用于构造 quality_prior 表 |
 | **RouterArena** (2025) | 开放 router 评估平台 | 可对比 per-query routing baseline |
 
+### 8.6 Fairness in Shared LLM Serving
+
+| 工作 | 关注点 | 公平性对象 | 与本文差异 |
+|------|--------|-----------|-----------|
+| **vLLM** (Kwon et al. 2023) / **SGLang** (Zheng et al. 2024) | 推理引擎内的请求级公平调度 | per-request latency fairness | 不涉及 workflow 结构或预算分配——做的是"把请求公平地处理掉" |
+| **Andes** (OSDI 2024) | SLO-aware serving，按 deadline 优先 | per-request SLO 达标率 | 关注 latency SLO，不关注 cost-quality trade-off |
+| **DRF** (Ghodsi et al. 2011) | 多维资源的 max-min 公平性 | 用户间 CPU/内存/带宽 | 经典理论基础，但不建模 LLM 调用的质量连续性 |
+| **WFQ** (Demers et al. 1989) | 按权重分配带宽 | 网络流 | 本文 §5.2 采用的调度基础，扩展到 LLM RPM/并发槽 |
+
+**定位差异**：上述工作做的是"把**请求**公平地处理掉"（延迟公平或资源量公平），本文做的是"把**预算和质量**在多 workflow 间公平地分配"。具体来说，本文的 fairness 目标是 cross-workflow QWCR 方差最小化（Jain's FI $\ge 0.95$），同时不牺牲整体 Pareto 前沿——这要求调度器同时理解每个 workflow 的预算消耗状态和步骤价值结构，是 request-level fairness 做不到的。
+
 ---
 
 ## 9. 关键概念速查
@@ -543,6 +648,7 @@ BoPO（Zhang et al. 2026）是和本文最接近的工作。两者的定位差�
 | **QWCR** | $\frac{1}{N}\sum q_i$——平均质量 |
 | **Q/\$** | $\sum q_i / \text{cost}$——每美元质量产出 |
 | **Jain's Fairness Index** | 多 workflow 公平性指标，1 = 完全公平 |
+| **Multi-workflow fairness** | 在固定共享预算 + RPM 配额下，让 $J$ 个并发 workflow 都拿到合理质量份额（用 Jain's FI + QWCR 方差 + 整体 Pareto 联合度量） |
 
 ---
 
@@ -553,11 +659,12 @@ BoPO（Zhang et al. 2026）是和本文最接近的工作。两者的定位差�
 SE 社区缺"面向 LLM Agent 的成本治理基础设施"，对"系统工具 + 扎实实验"接受度高。
 
 需要做的：
+- **旗舰实验（RQ4）**：50 个 SWE-agent 并发跑 SWE-bench Verified——mock 主线（50 workflow × 100 题）验证调度策略 + 4–6 个真 SWE-agent 端到端佐证。固定总预算 \$50，对比 round-robin / FIFO / WFQ-no-budget / AgentOS 四种调度。报告 Jain's FI、QWCR 方差、Pareto 前沿、429 率、N-ary 后端使用分布。这是论文的"一句话就能讲清楚"的 headline 实验
 - Workload 用真实 SE agent 任务（SWE-bench agent 的多步 workflow）
 - 质量用 SWE-bench Verified / HumanEval grader（§3.1 的社区标准，审稿人没法质疑"你的分数不客观"）
 - 实证：不加治理 vs 加治理的成本浪费改善
 
-**硬件支持**：单卡 A800-SXM4-80GB 可支持 Llama-3-70B-Int4 本地推理 + GPT-5 / Claude API 调用，足以在 SE benchmark 上做真实 LLM 实验。本地+云端混合后端正好体现 N-ary 优势。
+**硬件支持**：单卡 A800-SXM4-80GB 可支持 Llama-3-70B-Int4 本地推理 + GPT-5 / Claude API 调用，足以在 SE benchmark 上做真实 LLM 实验。本地+云端混合后端正好体现 N-ary 优势。4–6 个真 SWE-agent 并发佐证实验成本约 \$20（4 agent × 5 题 × \$1），在单卡硬件上完全可行。
 
 **数学复杂度**：约束优化 + KKT 条件 + 背包贪心近似 + Weighted Fair Queuing。不需要 RL 理论。
 
@@ -585,6 +692,12 @@ SE 社区缺"面向 LLM Agent 的成本治理基础设施"，对"系统工具 + 
 
 **Q: "质量分数跨 task_type 可比吗？"**
 → 承认不同 benchmark 的刻度有差异；主指标之外按 task_type 分组报告，并固定 workload 的 task_type 组成比例。
+
+**Q: "N-ary 真的有用吗？是不是 5 个后端里 3 个都被 Pareto 支配了？"**
+→ 诚实回答：§2.7 给出了 Pareto 剪枝机制，并在实验中报告每个 task_type 的有效 N（预计 3–5）。N-ary 的价值不是"5 个后端全被用上"，而是"成本梯度够细"——即使有效 N=3，也比二元的 2 个多出一个中间档，能把"值得升一档但不值得升两档"的 turn 安排到正确位置。RQ4 的二级指标"N-ary 后端使用分布"直接验证这一点。
+
+**Q: "Jain's FI 高就一定好吗？50 个 agent 都被均匀压制到很差的 QWCR 也是 FI = 1。"**
+→ 这正是为什么 §6.2 要求三个指标**联合**报告：Jain's FI（公平性）+ Cross-workflow QWCR 方差（一致性）+ 整体 Pareto 前沿（绝对产出）。"公平地都做不好"在整体 Pareto 图上会立刻露出来——F1 round-robin 的 Jain's FI 可能接近 1，但其 Pareto 前沿位置应远低于 F4 AgentOS，因为 round-robin 不做 $w_i$ 感知的预算分配。
 
 ---
 
