@@ -89,6 +89,32 @@ LLM 后端池（GPT-5 Thinking / Instant / mini / Claude / 本地 Llama）
 - **研究者跑 SWE-bench 评估**：50 个 SWE-agent 并发跑 SWE-bench Verified，固定总预算，AgentOS 确保每个 agent 都拿到合理份额
 - **个人开发者**：即使 1 个 agent 6 步，"该把哪步推到多好"仍是核心决策
 
+### 旗舰场景：50 个 SWE-agent 并发跑 SWE-bench Verified
+
+为让上述 4 类用户的诉求具体化，下面用一个完整场景展示 AgentOS 四条贡献的协同。
+
+**场景设定**：研究者用 SWE-bench Verified（500 题）评估自己的 agent 框架。开 50 个 SWE-agent 并发跑，固定**总预算 \$50**（名义人均 \$1），后端池 5 个：GPT-5 Thinking / GPT-5 Instant / GPT-5 mini / Claude Sonnet / 本地 Llama-3-70B-Int4。每个 agent 平均 6–12 个 turn，50 并发峰值产生约 400 RPM（逼近 OpenAI tier-3 的 500 RPM 限额）。
+
+**不上 AgentOS 会发生什么？**
+
+| 失败模式 | 原因 | 后果 |
+|----------|------|------|
+| RPM 雪崩 | 50 agent 同时发请求，瞬间打满 500 RPM | 大量 429 错误，约一半 agent 在关键步骤失败 |
+| 预算失控 | 没有配速——先跑的 10 个 agent 把贵模型预算花光 | 后 40 个 agent 全程只能用 mini，QWCR 严重下降 |
+| 资源饥饿 | 跑得快的 agent 吃光并发槽和 RPM 配额 | 跑得慢或后启动的 agent 被系统性饿死，Jain's FI 趋近 $1/J$ |
+| 僵尸占槽 | 卡死的 agent 占着并发槽不释放 | 健康 agent 排队等位，整体吞吐下降 |
+
+**上 AgentOS 后四条贡献如何协同？**
+
+| AgentOS 机制 | 对应贡献 | 在本场景中做什么 |
+|-------------|---------|----------------|
+| **Governor** | 约束治理 | 顶住 400 RPM 峰值——admission control 排队而非雪崩，预算硬封顶保证 \$50 不超支 |
+| **ModelSelector** | workflow-aware 路由 + N-ary 后端 | 把 GPT-5 Thinking 留给 $w=3$ 的 planning 步，retrieval/validation 步用 Instant 或 mini；从 5 个后端的成本梯度中选最佳档位，而非二选一 |
+| **WFQ Scheduler** | 多 workflow 公平调度 | 50 个 agent 按 weighted fair queuing 分享 RPM/并发槽，保证每个 agent 都拿到合理份额（目标 Jain's FI $\ge 0.95$） |
+| **ZombieDetector** | 僵尸截断 | 检测卡死 agent 并释放其并发槽和预算残值，回收给健康 agent |
+
+**这一个场景同时考验本文的全部四条贡献——workflow-aware 路由、零训练、N-ary 后端、多 workflow 公平调度。它也是 §7 RQ4 的旗舰实验。**
+
 ---
 
 ## 1. 核心洞察：LLM 质量是连续的，调度问题变了
@@ -178,14 +204,32 @@ $\lambda$ 是预算约束的"影子价格"（shadow price）——它表示"再�
 ### 2.5 边际加权性价比（ModelSelector 的排序准则）
 
 $$
-\text{score}(i) = \frac{w_i \cdot \Delta q_i}{\Delta c_i}, \quad \Delta q_i = q_i(\text{expensive}) - q_i(\text{cheap}), \quad \Delta c_i = c_i(\text{expensive}) - c_i(\text{cheap})
+\text{score}(i) = \frac{w_i \cdot \Delta q_i}{\Delta c_i}
 $$
 
-**数字例子**：
-- 任务 A（规划步）$w=3, \Delta q=0.20, \Delta c=\$2$ → score = 0.30
-- 任务 B（检索步）$w=1, \Delta q=0.30, \Delta c=\$4$ → score = 0.075
+三个符号的定义：
 
-B 的绝对质量提升更大，但"每 1 美元带来的加权提升"更小——**预算紧时贵模型应该留给 A**。
+| 符号 | 含义 | 怎么算 |
+|------|------|-------|
+| $w_i$ | 这一步的任务价值权重 | 调用方通过 API 声明（见 §2.6），不是系统猜的 |
+| $\Delta q_i = q_i(\text{exp}) - q_i(\text{cheap})$ | 升级到贵模型能多换多少质量 | 基于历史统计先验（实时 EWMA 更新） |
+| $\Delta c_i = c_i(\text{exp}) - c_i(\text{cheap})$ | 升级要多花多少钱 | 按 token 单价 × 估计 token 数 |
+
+**数字例子**（同一预算、两个待升级步骤并行竞争）：
+
+| 步骤 | $w_i$ | $\Delta q_i$ | $\Delta c_i$ | score | 决策 |
+|------|-------|-------------|-------------|-------|------|
+| 规划步（planning） | 3 | 0.20 | \$2.00 | **0.30** | 升级 |
+| 检索步（retrieval） | 1 | 0.30 | \$4.00 | 0.075 | 不升级 |
+
+检索步的绝对质量提升更大，但"每 1 美元带来的加权提升"更小——**预算紧时贵模型应该留给规划步**。
+
+**公式的理论根基**：这个公式不是凭空捏造的，是两个教科书结论在 LLM 路由场景的具体化：
+
+1. **拉格朗日松弛 / KKT 一阶条件**（§2.4 已给出）：带预算约束的连续质量最大化问题，最优解的充要条件就是"每个 turn 的边际加权收益与边际成本之比相等"。本公式是对该连续最优条件的离散近似。
+2. **背包问题贪心近似**（运筹学教科书标准结论，Dantzig 1957）：多选择背包的贪心近似——按"单位体积价值"（即 $\Delta q / \Delta c$）降序排列后依次填包，近似比有理论保证。本文在此基础上加入 $w_i$ 权重，扩展到加权版本。
+
+一句话：**思想是百年教科书标准，公式是本文对 LLM agent 路由场景的首次具体化**。这也是本公式的贡献所在——不是发明边际分析，而是把它接入 workflow 结构（$w_i$、预算状态、N-ary 后端）中形成可操作的启发式。
 
 ### 2.6 $w_i$ 如何声明？（工程实现）
 
