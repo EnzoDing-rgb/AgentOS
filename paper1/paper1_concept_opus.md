@@ -24,19 +24,18 @@
 
 ### 真正的 gap：现有 auto-router 都是 workflow-blind 的
 
-- **workflow-aware**：路由决策会显式使用 workflow 级信息，例如：这一步是否关键（$w_i$，由 agent 每次调用时声明）、本 workflow 还剩多少预算、当前花钱速度是否合理、同一时间有多少 workflow 在共享并发/RPM 资源。**不需要提前知道 workflow 总共有多少步**——$w_i$ 是逐步声明的，budget_factor 是闭环反馈的。
-- **workflow-blind**：路由决策主要依赖本次调用的局部信息（prompt/token/延迟），不显式接收上述 workflow 级信号，因此无法做跨步骤预算配速或跨 workflow 调度。
+- **workflow-aware**：路由决策会使用 workflow 级状态，例如：这个 workflow 还剩多少预算、当前花钱速度是否合理、同一时间有多少 workflow 在共享并发/RPM 资源，以及当前 LLM 调用的决策上下文是否关键（$w_i$，可显式传入，也可由工具输出/observation 推断）。**不需要提前知道 workflow 总共有多少步**——`budget_factor` 是闭环反馈，$w_i$ 是每次调用时从可用信号获得。
+- **workflow-blind**：路由决策主要依赖本次调用的局部信息（prompt/token/延迟），不维护 workflow 预算状态，也不接收或推断跨步骤的重要性信号，因此无法做跨步骤预算配速或跨 workflow 调度。
 
-| Per-call router 看得到 | Per-call router 看不到（但上层 agent 自己知道） |
+| Per-call router 通常看得到 | AgentOS 额外维护 / 获取的 workflow 级信号 |
 |-----------|----------------------------------|
-| 当前这次 prompt 的内容、长度、复杂度 | **这一步是 planning / generation / validation 中哪种**（agent 发起调用时声明） |
-| 模型成本与能力差异 | **这一步有多关键**（$w_i$，agent 发起调用时声明，不需要知道总步数） |
-| 大致 latency 和 token 消耗 | 错在 planning 比错在 validation 代价大——因为 planning 错了后续步骤会沿着错误方向继续 |
-| 用户订阅 tier | 整个 task 的预算上限是 \$0.50 |
-| | 到目前为止已花 \$0.40，剩余预算只够便宜模型（budget_factor 实时追踪，不需要预测总步数） |
-| | 现在有 50 个 workflow 在并发抢 RPM 配额 |
+| 当前这次 prompt 的内容、长度、复杂度 | 本 workflow 的预算上限、已花成本、剩余预算 |
+| 模型成本与能力差异 | `budget_factor`：花钱速度相对预算水位是偏快还是偏慢 |
+| 大致 latency 和 token 消耗 | 当前并发 workflow 数、全局 RPM / concurrency 压力 |
+| 用户订阅 tier | 当前调用的决策上下文重要性 $w_i$：显式传入、callback 结构化获得，或从 LLM request 中的 ToolMessage / Observation 推断 |
+| | 例如目录列表通常是低风险导航；测试失败 traceback 通常是高风险诊断 |
 
-**这不是 per-call router 不努力，是架构上"看不到"**——agent workflow 的步骤价值结构（哪一步关键、错了下游代价多大）和预算消耗状态，是**上层 agent 框架的私有信息**，per-call router 设计上不接收这个信号。
+**这不是 per-call router 不努力，是架构上"没有状态"**——普通 router 只处理孤立请求，而 AgentOS 维护 workflow ledger、预算水位、全局资源压力，并在可获得时使用当前调用的重要性信号。
 
 ### 和 BoPO（Budget-Aware Agentic Routing）有什么不同？
 
@@ -49,27 +48,31 @@ BoPO（Zhang et al. 2026, arxiv:2602.21227）是目前和本文最接近的工�
 | **后端数量** | N-ary（任意多个模型，如 GPT-5 Thinking / Instant / mini / Claude / 本地 Llama） | 二元（只在一个 cheap 和一个 expensive 之间切换） |
 | **训练需求** | **零训练**——启发式规则 + 闭环反馈，安装即可用 | 需要先 SFT（监督微调）再 RL（强化学习），训练成本不低 |
 | **Workflow 范围** | 支持**多个 workflow 并发**共享资源池 | 只处理单个 task 的路由 |
-| **路由信号** | 显式 $w_i$（agent 框架声明每一步的重要性） | 稀疏 RL 奖励（只在任务结束时才知道做得好不好） |
+| **路由信号** | 预算状态 + 显式/推断 $w_i$ | 稀疏 RL 奖励（只在任务结束时才知道做得好不好） |
 
 **两者是互补的，不是替代关系**。BoPO 能学到更精细的路由策略（如果愿意付训练成本），本文提供开箱即用的系统运行时。本文的 ModelSelector 接口设计上支持把 BoPO 的 RL 策略接入——详见 §4.1 和附录 C。
 
 ### 本文的定位：agent 框架与 LLM 后端之间的 workflow-aware 治理中间层
 
-```
-Agent 框架（SWE-agent / Moatless / MetaGPT）
-    │  声明 workflow 结构：w_i, 预算 B, task_type, ...
-    ▼
-═══════ AgentOS（本文）═══════       workflow-aware 成本-质量分配
-    │  基于 w_i · Δq_i / Δc_i + budget_factor
-    ▼
-LLM 后端池（GPT-5 Thinking / Instant / mini / Claude / 本地 Llama）
+```mermaid
+flowchart TD
+    Frameworks["LangChain / SWE-agent / AutoGen"] -->|"Proxy mode: LLM request messages"| Proxy["AgentOS Proxy"]
+    Frameworks -->|"Callback mode: tool events + step metadata"| Adapter["AgentOS Adapter"]
+    SelfBuilt["Self-built agent platform"] -->|"Explicit mode: task_type + w_i"| SDK["AgentOS SDK"]
+    Proxy --> Runtime["AgentOS Runtime"]
+    Adapter --> Runtime
+    SDK --> Runtime
+    Runtime --> Governor["Governor: budget + RPM + concurrency"]
+    Governor --> Selector["ModelSelector: budget_factor + importance"]
+    Selector --> Scheduler["Multi-workflow Scheduler"]
+    Scheduler --> Backends["LLM Backend Pool"]
 ```
 
-**一句话**：AgentOS 把上层 agent 的私有信息（workflow 价值 + 预算状态）接进来用上——这正是 per-call router 设计上做不了的事。本文实际集成对象是**开源 agent 框架**（SWE-agent / Moatless / MetaGPT 等）。
+**一句话**：AgentOS 不依赖某一个上层 agent 框架。它可以作为 OpenAI-compatible proxy 接在 LangChain / SWE-agent / AutoGen 下面，也可以通过 callback / middleware 获取结构化工具事件，还可以被自研 agent 平台通过 SDK 显式调用。本文的核心不是重做一个 LangChain，而是把 LLM 路由从"孤立请求选择模型"提升为**有状态的 workflow 预算-质量优化**。
 
 | 维度 | Per-call router（RouteLLM / CARROT / GPT-5 Auto 等） | BoPO | **本文** |
 |------|---------------------------------------------|------|---------|
-| 路由信号 | 单次 prompt 内容 | RL 奖励信号 | prompt + **workflow 位置 ($w_i$)** + 预算状态 |
+| 路由信号 | 单次 prompt 内容 | RL 奖励信号 | prompt + **预算状态** + 显式/推断的重要性 $w_i$ |
 | 后端选择 | N-ary 但 per-call | 二元 | **N-ary + workflow-aware** |
 | 跨步骤预算 | 无 | 单 task 内有 | **多 workflow 跨步骤 + 跨 workflow** |
 | 训练需求 | 需训练（CARROT/RouteLLM）或无 | SFT + RL | **零训练** |
@@ -80,7 +83,7 @@ LLM 后端池（GPT-5 Thinking / Instant / mini / Claude / 本地 Llama）
 
 AgentOS 的目标用户是**造 agent 的人**和**运营 agent 平台的团队**——不是终端用户。具体三类：
 
-- **Agent 框架 / agent 产品的构建者**（SWE-agent、Moatless、MetaGPT 等开源框架的维护者，以及自研 agent 的创业团队和企业小队）：在框架代码里 `import agentos`，把 workflow 结构通过 $w_i$ 暴露给运行时
+- **Agent 框架 / agent 产品的构建者**（SWE-agent、LangChain、AutoGen、Moatless、MetaGPT 等开源框架的维护者，以及自研 agent 的创业团队和企业小队）：通过 proxy、callback/middleware 或 SDK 接入 AgentOS，把原本 workflow-blind 的 LLM 调用纳入统一预算和调度
 - **单团队 agent 平台的运营方**（持有单一预算池、对内或对外服务多并发 agent 请求的产品团队 / 平台团队 / DevOps 团队）：把 AgentOS 当作内部 LLM 网关，让多 agent 在共享预算池下不打架——具体落地场景见 §0.5.2
 - **研究者**：把 AgentOS 当 evaluation harness 跑 SWE-bench、HumanEval 等基准的多策略对比
 
@@ -104,7 +107,7 @@ AgentOS 的目标用户是**造 agent 的人**和**运营 agent 平台的团队*
 | AgentOS 机制 | 在本场景中做什么 |
 |-------------|----------------|
 | **Governor** | 顶住 400 RPM 峰值——admission control 排队而非雪崩，预算硬封顶保证 \$50 不超支 |
-| **ModelSelector** | 把 GPT-5 Thinking 留给 $w=3$ 的 planning 步，retrieval/validation 步用 Instant 或 mini；从 5 个后端的成本梯度中选最佳档位，而非二选一 |
+| **ModelSelector** | 基于 `budget_factor` 和显式/推断 $w_i$ 决定是否升档：测试失败诊断等高风险上下文倾向好模型，目录浏览/search 等低风险上下文倾向便宜模型；从 5 个后端的成本梯度中选最佳档位，而非二选一 |
 | **WFQ Scheduler** | 50 个 agent 按 weighted fair queuing 分享 RPM/并发槽，保证后启动的 agent 不被先启动的吃光资源 |
 | **ZombieDetector** | 检测卡死 agent 并释放其并发槽和预算残值，回收给健康 agent |
 
@@ -114,12 +117,13 @@ AgentOS 的目标用户是**造 agent 的人**和**运营 agent 平台的团队*
 
 ## 0.5 部署形态、落地场景与成本模型
 
-### 0.5.1 形态：Python SDK + 可选 HTTP Sidecar Proxy
+### 0.5.1 形态：Proxy / Callback / SDK 三种接入
 
 AgentOS 是基础设施，不是端用户产品——使用 agent 应用的人不直接接触 AgentOS，AgentOS 在 agent 框架内部对端用户透明。
 
-- **Python SDK（主形态）**：调用方在自己的 agent 代码里 `import agentos`，把原本的 `openai.chat.completions.create(...)` 替换为 `agentos.chat(messages=[...], task_type="planning", w_i=3.0, budget=0.5)`。SWE-agent / Moatless / MetaGPT 这类**开源 agent 框架**是直接受众——它们都是 Python 写的 agent loop，集成只需替换一行 LLM 调用。
-- **HTTP sidecar proxy（可选形态）**：部署一个本地服务，agent 通过改 `base_url` 指向 `http://localhost:8080/v1` 接入。语言无关、低侵入——任何能发 HTTP 的 agent（包括非 Python 的）都能接，对应**单团队 LLM 网关**场景。
+- **HTTP sidecar proxy（零改代码主形态）**：部署一个 OpenAI-compatible 本地服务，agent 只需把 `base_url` 指向 `http://localhost:8080/v1`。AgentOS 能看到最终发给 LLM 的 `messages`：prompt、history、ToolMessage、ReAct 风格的 `Observation: ...` 等。如果 tool name 出现在标准 tool message 里，AgentOS 直接解析；如果只看到纯文本 observation，则用规则/小模型判断这是目录列表、搜索结果、测试失败还是普通命令输出。
+- **Framework adapter（轻量集成形态）**：对 LangChain / SWE-agent / AutoGen 这类框架写 callback / middleware adapter，直接接收结构化事件：tool name、tool args、tool output、step index、run id 等。LangChain middleware 有 `wrap_tool_call`，SWE-agent 有 `on_model_query` / `on_action_executed` / `on_step_done` hooks，AutoGen 的 tool agent 会返回带 `name` 的 `FunctionExecutionResult`。这一层比 proxy 更准，但仍不要求开发者逐个 LLM 调用手写权重。
+- **Python SDK（显式形态）**：自研 agent 平台可以直接 `import agentos`，把原本的 `openai.chat.completions.create(...)` 替换为 `agentos.chat(messages=[...], task_type="planning", w_i=3.0, budget=0.5)`。这是信号最干净的集成方式，也是本文用于解释 ModelSelector contract 的标准接口。
 
 ### 0.5.2 落地场景：单一预算主体 + 多并发 workflow
 
@@ -153,7 +157,36 @@ AgentOS 的 scope 是 **"单一预算主体下的多并发 workflow"**——下�
 
 **这是 paper 1 scope 内的核心性质，不是 future work**——§2.5 公式已经支持，本文以 §7 的混合后端池作为佐证。
 
-### 0.5.4 最小代码示例（SDK 形态）
+### 0.5.4 最小代码示例（三种形态）
+
+**Proxy 形态（SWE-agent / LangChain / AutoGen 零改 agent loop）**：
+
+```yaml
+model:
+  name: gpt-5
+  api_base: "http://localhost:8080/v1"  # 指向 AgentOS proxy
+```
+
+此时上层框架仍按原来的方式执行 agent loop。AgentOS 在 LLM request 进入后解析 `messages`，从 ToolMessage / Observation 中推断当前调用的重要性，并维护 workflow 预算状态。
+
+**Adapter 形态（结构化工具事件）**：
+
+```python
+class AgentOSLangChainMiddleware(AgentMiddleware):
+    def wrap_tool_call(self, request, handler):
+        result = handler(request)
+        agentos.observe_tool(
+            workflow_id=runtime.run_id,
+            tool_name=request.tool_call["name"],
+            tool_args=request.tool_call["args"],
+            tool_output=result.content,
+        )
+        return result
+```
+
+这个 adapter 不改变 agent 的决策逻辑，只把上层框架已经知道的 tool metadata 暴露给 AgentOS。
+
+**SDK 形态（显式信号）**：
 
 ```python
 import agentos
@@ -172,7 +205,7 @@ code = client.chat(messages=[...], task_type="generation",  w_i=3.0)
 chk  = client.chat(messages=[...], task_type="validation",  w_i=1.0)
 ```
 
-调用方只需声明 `task_type` 和 `w_i`；AgentOS 在内部完成路由（§2.5）、限流（§4 Governor）、僵尸检测（§4 ZombieDetector）、跨 workflow 协调（§5）。
+无论哪种接入方式，AgentOS 在内部完成路由（§2.5）、限流（§4 Governor）、僵尸检测（§4 ZombieDetector）、跨 workflow 协调（§5）。差别只在于 $w_i$ 的来源：显式传入、结构化事件推断、或从 request 文本中推断。
 
 ---
 
@@ -209,7 +242,7 @@ $$
 各符号含义：
 - $q_i(a_i) \in [0,1]$：turn $i$ 选后端 $a_i$ 时的输出质量（由 benchmark grader 打分，见 §3）
 - $c_i(a_i)$：对应的成本（USD / 本地 GPU 摊销 / 混合，见 §0.5.3）
-- $w_i$：任务价值权重——**由调用方声明**（如 planning 步 $w=3$，retrieval 步 $w=1$）
+- $w_i$：任务价值权重——**由显式声明、callback/tool event 或 Observation 推断获得**（如高风险诊断 $w=3$，低风险检索 $w=1$）
 - $B$：总预算硬约束
 - $\mathcal{A}$：可用后端集合（N-ary，不限于二元）
 
@@ -242,7 +275,7 @@ $$
 | **D. AgentOS** | 预算配速 + 任务价值 $w_i$ + 边际性价比 | 在线近似，非离线最优 |
 | **E. `bopo_style_binary`** | 限制为二元后端 + 不用 $w_i$ | 模拟 BoPO 的输入条件 |
 
-D vs E 的差异可以**直接归因于** N-ary 后端 + 显式 $w_i$ 信号的贡献。
+D vs E 的差异可以**直接归因于** N-ary 后端 + 显式/推断 $w_i$ 信号的贡献。
 
 ### 2.4 最优性直觉（KKT 一阶条件）
 
@@ -272,7 +305,7 @@ $$
 
 | 符号 | 含义 | 怎么算 |
 |------|------|-------|
-| $w_i$ | 这一步的任务价值权重 | 调用方通过 API 声明（见 §2.6） |
+| $w_i$ | 这一步的任务价值权重 | 显式传入、callback 结构化推断，或从 ToolMessage / Observation 推断（见 §2.6） |
 | $\Delta q_i^{(k)}$ | 从 tier $k$ 升到 tier $k+1$ 能多换多少质量 | 基于历史统计先验（EWMA 更新，按 task_type × 后端对分组） |
 | $\Delta c_i^{(k)}$ | 升一档要多花多少钱 | 按 token 单价 × 估计 token 数 |
 | $\lambda$ | budget_factor（预算紧则高、松则低） | 闭环反馈在线更新 |
@@ -290,22 +323,32 @@ $$
 
 **理论根基**：拉格朗日松弛 / KKT 一阶条件 + 多选择背包贪心近似（Sinha & Zoltners 1979, Dantzig 1957）。**思想是教科书标准，公式是本文对 LLM agent 路由场景的首次 N-ary 具体化**。
 
-### 2.6 $w_i$ 如何声明？
+### 2.6 $w_i$ 如何获得？
 
-$w_i$ 由 agent 框架在每次调用时通过 API 传入，AgentOS 不猜任务重要性。设计与 Linux `nice` 值和 K8s `PriorityClass` 同理。
+$w_i$ 不是必须由 agent 框架手写声明。AgentOS 支持从强到弱的 5 个信号来源；信号越强，ModelSelector 越接近 oracle；信号越弱，则更多依赖 `budget_factor` 做预算配速。
 
-采纳设计分 4 个渐进档位：
+| 档位 | 接入方式 | $w_i$ 来源 | 典型场景 |
+|------|----------|-----------|----------|
+| **L4 显式数值** | SDK / 自研平台 | `agentos.chat(..., w_i=3.0)` | 平台自己知道某一步是关键 planning / validation |
+| **L3 显式类型** | SDK / 自研平台 | `task_type` 查表 | `planning→3, generation→2, validation/retrieval→1` |
+| **L2 Callback 推断** | framework adapter | tool event + observation metadata | LangChain middleware、SWE-agent hook、AutoGen tool event |
+| **L1 Proxy 推断** | HTTP sidecar | LLM request 中的 ToolMessage / Observation 文本 | 只改 `base_url`，零改 agent loop |
+| **L0 Budget-only** | 无可用信号 | $w_i \equiv 1$，仍使用 `budget_factor` | 退化到预算感知 baseline |
 
-| 档位 | agent 框架做的事 | $w_i$ 来源 |
-|------|----------------|-----------|
-| **L4 完整** | 每次调用直接传数值 | `agentos.chat(..., w_i=3.0)` |
-| **L3 标准** | 每次调用传 `task_type` 字符串 | 系统查预置表 |
-| **L2 最小** | 区分 interactive vs batch | `interactive→2, batch→1` |
-| **L1 不集成** | 什么都不传 | $w_i \equiv 1$（退化到对照组 C） |
+**Observation-based importance 的原则**：AgentOS 不预测 agent 下一步会调用哪个工具，而是判断"当前 LLM 调用看到的上下文有多关键"。
 
-**L3 默认表**：`planning`/`reasoning` → 3, `generation` → 2, `validation`/`retrieval` → 1。
+| 当前 LLM 输入包含什么 | AgentOS 的判断 | 默认 $w_i$ |
+|---------------------|---------------|------------|
+| 目录列表（如 `ls src/` 输出） | 低风险导航；选错文件通常可恢复 | 1.0 |
+| 搜索结果 / 文件列表 | 检索导航；有用但通常可继续修正 | 1.0–1.5 |
+| 源码片段 | 需要理解代码，可能影响后续编辑 | 2.0 |
+| 测试失败 / traceback | 高风险诊断；误判 root cause 会导致错误编辑和预算浪费 | 3.0 |
+| 编辑成功提示 | 中等重要性；下一步可能继续编辑或进入验证 | 1.5–2.0 |
+| 测试全部通过 | 通常进入收尾或提交 | 1.0 |
 
-§3.5 消融实验 E1–E7 证明对权重噪声鲁棒，粗粒度分类也有明显收益，完全无信号时退化到 C 而非崩溃。
+**怎么知道上层用了哪个 tool？** Proxy mode 只能看到"最终喂给 LLM 的内容"：如果标准 tool message 带 `name` / `tool_call_id`，就结构化解析；如果只是 `Observation: ...` 文本，就用规则或小模型分类 observation 类型。Callback mode 则直接接入上层框架事件：LangChain 的 `wrap_tool_call` 可读到 `request.tool_call["name"]`，SWE-agent hook 可读到 action / step，AutoGen 的 `FunctionExecutionResult` 带有 tool name。本文把这层称为**信号抽取层**，其输出统一变成 `TurnInfo(task_type, w_i, workflow_id, step_index, ...)` 供 ModelSelector 使用。
+
+§3.5 消融实验 E1–E9 证明：权重越准收益越高；proxy / callback 的粗粒度推断也有收益；没有重要性信号时退化到 budget-only baseline，而不是依赖 oracle 标注。
 
 ### 2.7 N-ary 后端的现实性检查
 
@@ -348,7 +391,7 @@ $w_i$ 由 agent 框架在每次调用时通过 API 传入，AgentOS 不猜任务
 
 ### 3.4 先验不准怎么办？
 
-消融实验 E1–E7：
+消融实验 E1–E9：
 
 | 实验 | 设置 | 回答什么 |
 |------|------|---------|
@@ -359,8 +402,10 @@ $w_i$ 由 agent 框架在每次调用时通过 API 传入，AgentOS 不猜任务
 | E5 随机 | 随机 $w_i$ | 最坏情况 |
 | E6 全 1 | $w_i \equiv 1$ | 自洽检查：应退化到对照组 C |
 | **E7 binary-backend** | 限制只有 cheap/expensive 两个后端 | 在 BoPO 同等输入条件下的比较 |
+| **E8 proxy-inferred** | 只从 LLM request messages / Observation 文本推断 $w_i$ | 零改代码接入能拿到多少收益 |
+| **E9 callback-inferred** | 从 LangChain/SWE-agent/AutoGen 结构化 tool event 推断 $w_i$ | 轻量 adapter 比纯 proxy 提升多少 |
 
-**结论**：权重越准收益越高；很粗糙时仍有收益；无信息时退化到 C 而非崩溃。
+预期排序是：Oracle > callback-inferred > proxy-inferred > 全 1。本文不要求推断器达到 oracle 精度；只要能稳定区分"测试失败诊断"和"目录浏览/普通检索"这类明显高低价值场景，就能在相同预算下优于 $w_i \equiv 1$。
 
 ---
 
@@ -458,7 +503,7 @@ class ModelSelectorPolicy(ABC):
 
 ---
 
-## 7. 四条 RQ
+## 7. 五条 RQ
 
 | RQ | 问题 | 对应机制 | 核心指标 |
 |----|------|---------|---------|
@@ -466,6 +511,7 @@ class ModelSelectorPolicy(ABC):
 | **RQ2**（主贡献） | 同预算下，任务价值感知的模型选择是否提升质量？ | ModelSelector | QWCR, WQ/\$, Pareto |
 | **RQ3** | 僵尸调用截断后改善多少？ | Zombie + Preemption | Q/\$ 提升 |
 | **RQ4**（旗舰） | 50-agent 并发评估：固定总预算、AgentOS 能否同时维持整体 Pareto 前沿和跨 workflow 质量一致性？ | 全部机制 | Jain's FI, QWCR 方差, Pareto, 429 率, N-ary 使用分布 |
+| **RQ5** | 未来任务量未知且突发增长时，budget_factor + admission control 是否仍能控制成本和公平性？ | Governor + budget_factor + Scheduler | budget overrun, queue latency, Jain's FI, Q/\$ |
 
 **RQ4 实验设计**：
 
@@ -476,13 +522,19 @@ class ModelSelectorPolicy(ABC):
 | **总预算** | \$50 |
 | **后端池** | GPT-5 Thinking / Instant / mini / Claude Sonnet / 本地 Llama-3-70B-Int4（N=5） |
 | **RPM 限额** | 500 RPM |
+| **Burst 设置** | 200 个 workflow replay，中途注入 3x arrival burst；系统事先不知道 burst 到来 |
 
 | 对照组 | 策略 |
 |--------|------|
 | F1. `round_robin` | 轮流分配 RPM 槽，不看预算也不看 $w_i$ |
 | F2. `fifo` | 先到先得 |
 | F3. `wfq_no_budget` | WFQ 公平分 RPM/并发，但无 workflow 内预算配速 |
-| **F4. AgentOS** | WFQ + Governor + ModelSelector + Zombie |
+| F4. `budget_only_agentos` | $w_i \equiv 1$，只用 `budget_factor` + WFQ |
+| F5. `proxy_inferred_agentos` | 从 LLM request / Observation 文本推断 $w_i$ |
+| F6. `callback_inferred_agentos` | 从结构化 tool event 推断 $w_i$ |
+| **F7. AgentOS-oracle** | WFQ + Governor + ModelSelector + oracle $w_i$ 上限 |
+
+**RQ5 的关键不是预测未来流量**。AgentOS 不假设知道下午会不会突然多 3 倍任务；`budget_factor` 是反馈控制量：看到花费速度、队列长度、RPM/concurrency 压力上升后，提高升级门槛，让低重要性调用降级到便宜模型，同时用 admission control 和 WFQ 防止前几个 workflow 吃光预算。实验报告 burst 前后昂贵 tier 使用比例、预算超支率、队列延迟和跨 workflow 公平性。
 
 ---
 
@@ -495,7 +547,7 @@ class ModelSelectorPolicy(ABC):
 | **后端** | N-ary（5+ 模型） | 二元 | N-ary 允许更精细的 cost-quality 梯度 |
 | **训练** | 零训练 | SFT + RL | 零训练意味着安装即用 |
 | **范围** | 多 workflow 并发 | 单 task | 多 workflow 是部署的基本需求 |
-| **信号** | 显式 $w_i$ | 稀疏 RL 奖励 | 显式信号可解释、可调试 |
+| **信号** | 预算状态 + 显式/推断 $w_i$ | 稀疏 RL 奖励 | 信号可解释、可调试；不依赖任务结束后的稀疏奖励 |
 
 两者互补——BoPO 的 RL 策略可以作为 ModelSelector 的一个 policy 接入。
 
@@ -534,9 +586,9 @@ class ModelSelectorPolicy(ABC):
 |------|-------|
 | **Turn** | 一次 LLM 调用——调度和计费的最小单位 |
 | **Workflow** | 一个完整任务的 LLM 调用序列 |
-| **$w_i$** | 任务价值权重（调用方声明，非系统推断） |
+| **$w_i$** | 当前调用的任务价值权重；可显式传入，也可由 callback/tool event 或 Observation 推断 |
 | **$q_i$** | Turn 输出质量 $\in [0,1]$——由社区标准 benchmark grader 打分 |
-| **budget_factor** | 预算松紧的反馈信号（近似 KKT 的 $\lambda$） |
+| **budget_factor** | 预算松紧的在线反馈信号（近似 KKT 的 $\lambda$）；花快了收紧，花慢了放宽 |
 | **Governor** | 约束层：预算 + 限流 + 并发 |
 | **ModelSelector** | 优化层：可插拔的路由策略 |
 | **ZombieDetector** | 止损层：截断"花钱但质量不涨"的调用 |
@@ -558,16 +610,19 @@ SE 社区缺"面向 LLM Agent 的成本治理基础设施"，对"系统工具 + 
 ## 11. 审稿人常见质疑
 
 **Q: "你只是预算控制做得好。"**
-→ 用对照组 C（$w_i \equiv 1$）排除：若 D 显著优于 C，差异来自任务价值感知。
+→ 用 `budget_only_agentos`（$w_i \equiv 1$）和 inferred/oracle AgentOS 分开报告。若 budget-only 已优于 per-call baseline，说明 stateful budget control 本身有价值；若 inferred/oracle 进一步提升，差异来自任务价值感知。
 
 **Q: "$q$ 和 $w$ 怎么来？"**
-→ $q$ 来自社区标准 benchmark grader；$w$ 由调用方通过 API 传入。E1–E7 消融证明对权重噪声鲁棒。
+→ $q$ 来自社区标准 benchmark grader；$w$ 有三种来源：显式 SDK、callback/tool event 推断、proxy request / Observation 推断。E1–E9 消融报告 oracle、callback-inferred、proxy-inferred、全 1 的差距。
 
 **Q: "现有 per-call auto-router 已经解决了这个问题。"**
 → 它们是 workflow-blind 的：看不到 workflow 的步骤价值结构、全局预算状态、多 workflow 竞争。AgentOS 解决的是不同层次的问题（详见 §0）。
 
 **Q: "和 BoPO 比呢？"**
-→ 4 条差异化轴：(1) N-ary 后端 vs 二元，(2) 零训练 vs SFT+RL，(3) 多 workflow vs 单 task，(4) 显式 $w_i$ vs 稀疏 RL 奖励。两者互补。
+→ 4 条差异化轴：(1) N-ary 后端 vs 二元，(2) 零训练 vs SFT+RL，(3) 多 workflow vs 单 task，(4) 显式/推断 $w_i$ + 预算状态 vs 稀疏 RL 奖励。两者互补。
+
+**Q: "budget_factor 怎么处理未来流量突然增加？"**
+→ `budget_factor` 不是未来流量预测器，而是在线反馈控制量。突发流量由 admission control、WFQ 和 tier 降级共同处理；RQ5 用 200-workflow replay + 3x arrival burst 验证在未知 burst 下的预算超支率、队列延迟和公平性。
 
 **Q: "为什么不复现 BoPO 做端到端对比？"**
 → BoPO 的 SFT + RL 训练 pipeline 需要 multi-GPU 资源。本工作单卡 A800 足以做推理实验但不足以复现 RL 训练。接口已预留，集成留作 future work。
@@ -592,6 +647,12 @@ AgentOS 走同样的路径。本文（paper 1）处理 **single-budget-owner** �
 
 我们因此把本文定位为：**不是企业规模 agent 资源管理的完整解决方案，而是开启这一研究方向的第一篇——multi-tenant agent OS 工作可以在其上构建的 single-tenant 基础**。
 
+### 12.1 Future Work：AgentOS-native agent loop
+
+本文把 AgentOS 放在现有 agent 框架与 LLM 后端之间：LangChain / SWE-agent / AutoGen 可以通过 proxy、callback/middleware 或 SDK 接入。另一个自然方向是提供 **AgentOS-native agent loop**：把 tool execution、observation、budget ledger、ModelSelector 和 scheduler 都做成一套统一执行循环。
+
+这在工程上很有价值：开发者可以不再同时维护 LangChain agent loop、外部 LLM gateway、预算脚本和限流脚本，而是直接用 AgentOS 作为 agent runtime。但这不是 paper 1 的主贡献。本文的核心贡献是**有状态的 workflow-aware budget-quality optimization**；native loop 是把这套机制产品化、降低开发者接入成本的后续工程扩展。
+
 ---
 
 ## 附录 A：一个具体场景（workflow-aware vs per-call 路由的差异）
@@ -605,13 +666,22 @@ AgentOS 走同样的路径。本文（paper 1）处理 **single-budget-owner** �
 | 3–5 | 生成文件 A/B/C | generation | 3 | 主产出 |
 | 6 | 验证 import | transform | 1 | 便宜模型够用 |
 
-**Per-call router 的做法**：每次调用独立看 prompt 选模型。它无法区分"这是关键的规划步 vs 不关键的验证步"，也不知道整个 task 的预算上限——因为这些信息只在 agent 框架的脑子里。
+**Per-call router 的做法**：每次调用独立看 prompt 选模型。它通常不知道这个 workflow 已经花了多少钱、后面还有多少预算、当前有多少并发 workflow 在抢 RPM，也不维护跨步骤的 budget ledger。
 
-**AgentOS 的做法**：agent 框架把 $w_i$ 和预算 \$0.50 通过 API 传给 AgentOS。ModelSelector 按 $w_i \cdot \Delta q_i / \Delta c_i$ 排序，把贵模型留给 $w=3$ 的步骤（2–5），$w=1$ 的步骤（1、6）用最便宜的后端。从 5 个后端中选，不是二选一。
+**AgentOS 的做法**：AgentOS 维护 workflow 预算状态，并从三类信号中获得 $w_i$：如果是自研平台，可显式传入；如果是 LangChain / SWE-agent / AutoGen，可通过 callback/tool event 获得 tool name 和 output；如果只是 proxy 接入，则从 LLM request 中的 ToolMessage / Observation 文本推断。ModelSelector 按 $w_i \cdot \Delta q_i / \Delta c_i$ 和 `budget_factor` 共同决定是否升档：测试失败诊断等高风险上下文优先保留好模型，目录浏览/search 等低风险上下文优先用便宜模型。从 5 个后端中选，不是二选一。
 
 ## 附录 B：budget_factor 不需要预测未来
 
-`budget_factor` 的核心是闭环反馈（花快了收紧、花慢了放宽），不要求准确预测未来流量。即使配速粗糙，只要反馈方向正确，预算就能保持可控。
+`budget_factor` 的核心是闭环反馈（花快了收紧、花慢了放宽），不要求准确预测未来流量。它不是"预测明天会来多少请求"，而是在每个滚动窗口内根据真实状态更新升级门槛：
+
+| 观测状态 | `budget_factor` 变化 | 效果 |
+|----------|----------------------|------|
+| 已花预算超过当前时间水位 | 上升 | 升级到贵模型更难 |
+| 队列长度 / RPM 压力上升 | 上升 | 低重要性调用更多走便宜模型 |
+| 预算使用低于水位且队列空 | 下降 | 高重要性调用更容易升档 |
+| 某 workflow 卡死或循环 | 结合 ZombieDetector 截断 | 回收预算和并发槽 |
+
+因此，真实场景里即使某天调用量突然升高，AgentOS 也不依赖提前知道 burst。它先通过 admission control 排队、WFQ 保证并发 workflow 不互相饿死，再通过 `budget_factor` 把低重要性请求降级。本文的 RQ5 用 200-workflow replay + 3x arrival burst 验证这一点：系统事先不知道 burst，只根据观测到的成本、队列和 RPM 压力做反馈。
 
 ## 附录 C：Pluggability 设计
 
@@ -626,9 +696,12 @@ class ModelSelectorPolicy(ABC):
 class TurnInfo:
     task_type: str
     w_i: float
+    signal_source: Literal["explicit", "callback", "proxy", "budget_only"]
     context_len: int
     workflow_id: str
     step_index: int
+    tool_name: str | None = None
+    observation_type: str | None = None
 
 class GovernorState:
     budget_remaining: float
