@@ -12,6 +12,8 @@
 
 > **给定固定预算，能不能在 agent workflow 的每一步决定钱该不该花、花到多强的模型上，并在很多 workflow 并发时仍然守住全局预算和后端资源限制？**
 
+换句话说，已有 auto-router 多半在回答“这一次 LLM 调用该用哪个模型”。本文不和它们抢这个问题，而是把优化单位上移到完整 workflow：当一次任务包含多步 LLM 调用、多个 workflow 又共享同一个预算池和后端配额时，显式维护 workflow 状态是否会改变固定预算下的最终成功率？
+
 我们提出 **BudgetFlow**：一个 training-free 的 workflow-aware budgeting runtime。它不接管 agent loop，不重写 LangChain / SWE-agent / AutoGen，只接在 LLM 调用层，维护预算账本、后端限流和步骤重要性信号。
 
 BudgetFlow 的两个核心贡献是：
@@ -47,15 +49,44 @@ BudgetFlow 不声称这些权重是真理。它只把它们当作粗粒度预算
 BudgetFlow 位于 agent 框架和 LLM 后端之间。
 
 ```text
-LangChain / SWE-agent / AutoGen / 自研 agent loop
-        |
-        |  LLM request + messages + tool observations
-        v
-BudgetFlow Runtime
-        |
-        |  admit / queue / downgrade / switch backend / reject
-        v
-LLM backend pool
++----------------------------------+       +-----------------------------+
+| LangChain / SWE-agent / AutoGen  |       | Self-built agent platform   |
++----------------------------------+       +-----------------------------+
+      |                    |                         |
+      | Proxy mode:        | Callback mode:          | SDK mode:
+      | LLM request msgs   | tool events + metadata  | task_type + w_i
+      v                    v                         v
++------------------+ +------------------+      +------------------+
+| BudgetFlow Proxy | | BudgetFlow Adapter|     | BudgetFlow SDK   |
++------------------+ +------------------+      +------------------+
+         \                  |                         /
+          \                 |                        /
+           +----------------+-----------------------+
+                            |
+                            v
+                   +--------------------+
+                   | BudgetFlow Runtime |
+                   +--------------------+
+                            |
+                            v
+         +-------------------------------------+
+         | Governor: budget + backend quotas  |
+         +-------------------------------------+
+                            |
+                            v
+      +------------------------------------------+
+      | ModelSelector: budget_pressure + w_i     |
+      +------------------------------------------+
+                            |
+                            v
+         +-----------------------------+
+         | Multi-workflow Scheduler    |
+         +-----------------------------+
+                            |
+                            v
+         +-----------------------------+
+         | LLM Backend Pool            |
+         +-----------------------------+
 ```
 
 它可以三种方式接入：
@@ -65,6 +96,8 @@ LLM backend pool
 - **SDK mode**：自研平台显式传入 `task_type`、`w_i`、`workflow_id`。
 
 BudgetFlow 不做完整 Agent OS。它只治理 LLM 调用：选模型、守预算、限流、排队、记账、回收卡死 workflow。
+
+这里的 **workflow-aware** 指路由决策会使用 workflow 级状态：全局预算池还剩多少、本 workflow 已经花了多少和预留了多少、当前 `budget_pressure` 有多高、各后端 RPM / 并发槽是否紧张，以及当前调用是否处在关键上下文中。相对地，**workflow-blind** router 主要依赖本次 prompt、token 数、模型成本、延迟等局部信息；它可能是很好的单次请求 router，但没有 ledger 和跨 workflow 调度状态，就很难做跨步骤预算配速。
 
 ---
 
@@ -108,6 +141,8 @@ $$
 | workflow 卡死或循环 | 取消并回收预算和槽位 |
 
 注意：BudgetFlow 在调用前不知道真实输出 token 数，只能估计。它用估计成本做排序，用预留成本守预算，用真实账单做实验评估。
+
+一个简单例子：当前是测试失败后的 debugging step，默认 $w_i=3$。如果从 mini 升到 Sonnet 预计多带来 0.12 的 step progress，额外花费 \$0.04，那么升级分数是 $3 \times 0.12 / 0.04 = 9$；若当前 `budget_pressure=4`，这一步值得升级。若同样的进展增益发生在目录浏览 step，$w_i=1$，分数变成 3，就不会升级。这说明 BudgetFlow 不是“贵模型永远更好”，而是把贵模型留给更接近最终修复决策的步骤。
 
 ---
 
@@ -279,6 +314,8 @@ harness 会跑这个任务对应的 `FAIL_TO_PASS` 测试（一个专门检查�
 
 > 50 个 SWE-agent 并发跑 SWE-bench Verified，共享一个总预算，例如 \$50，同时受到 provider RPM 和并发槽限制。
 
+目标用户不是终端用户，而是造 agent 的人和运营 agent 平台的团队：开源 agent 框架维护者、自研 agent 产品团队、单团队内部 LLM 网关运营方，以及需要可复现实验 harness 的研究者。本文只处理“单一预算主体 + 多并发 workflow”的情形；多团队、多 SLA、多预算池之间的 quota 仲裁是另一个问题，放到 future work。
+
 BudgetFlow 处理的不是“谁有资格先用贵模型”这种多租户公平问题，而是每次 LLM call 到来时：
 
 1. 当前全局预算是否还能覆盖本次调用？
@@ -351,7 +388,7 @@ BoPO 说明了一件重要事实：长程 agent 的 step-level model routing 是
 
 > 不训练 learned router，而是在 SWE-bench-style coding workflow 上构建一个 training-free 的 budgeting runtime，并研究多 workflow 共享预算和后端资源时的系统行为。
 
-未来可以把 BoPO-style learned selector 接到 BudgetFlow 的 ModelSelector 位置，用学习策略替换本文的启发式策略。
+一句话说，BoPO learns an implicit routing policy；BudgetFlow exposes an auditable runtime decision rule。未来可以把 BoPO-style learned selector 接到 BudgetFlow 的 ModelSelector 位置，用学习策略替换本文的启发式策略，但 learned selector 不能替代 ledger、hard-budget reservation、backend governor 和 multi-workflow scheduler。
 
 ### Agent runtime / resource governance
 
@@ -389,6 +426,12 @@ $w_i$ 只是粗粒度预算信号，不是真实人类效用。必须通过 Budg
 
 本文只处理单一预算主体：一个研究者或一个团队持有总预算，运行多个 workflow。多团队、多 SLA、多优先级的 quota 仲裁是下一步问题。
 
+这条路线类似很多 systems 工作的演进方式：先在 single-tenant 设定下把核心机制做清楚，再叠加多租户政策层。BudgetFlow 的第一步是证明 workflow ledger、预算预留和后端调度能否改变固定预算下的质量；multi-tenant agent compute allocation 可以在这个基础上继续研究。
+
+### Agent-native loop
+
+本文把 BudgetFlow 放在现有 agent 框架和 LLM 后端之间，而不是重做一个 LangChain。后续可以提供 BudgetFlow-native agent loop，把 tool execution、observation、ledger、ModelSelector 和 scheduler 做成统一 runtime，降低接入成本；但这不是 paper 1 的核心贡献。
+
 ### Cache-aware routing
 
 如果 provider 或本地 serving 暴露 cached-token / prefix-cache 信息，BudgetFlow 可以把 cache locality 纳入 `actual_cost` 或 future selector。本文不假设能直接操控 KV cache。
@@ -396,6 +439,8 @@ $w_i$ 只是粗粒度预算信号，不是真实人类效用。必须通过 Budg
 ### Non-coding workflows
 
 客服、RAG、科学推理等任务可以复用 ledger、reservation 和 scheduler，但需要新的 step progress signal。没有可靠 evaluator 时，不应直接套用 SWE-bench 的 progress table。
+
+交互式 workload 还会引入 deadline、SLA tier、latency 和 throughput 目标。本文主实验先聚焦批量 SWE-bench 式 workload：固定预算下最大化最终 resolved rate；interactive / SLA 约束是自然扩展，不偷偷混入 paper 1 的目标函数。
 
 ---
 
@@ -410,6 +455,8 @@ $w_i$ 只是粗粒度预算信号，不是真实人类效用。必须通过 Budg
 | `expected_cost` | 调用前估计成本，用于排序 |
 | `reserved_cost` | 调用前预留成本，用于 hard-budget 安全 |
 | `actual_cost` | 调用后真实成本，用于实验报告 |
+| Workflow-aware | 维护 workflow ledger、预算水位、后端配额和 step importance 的路由 |
+| Workflow-blind | 主要看单次请求局部信息，不维护跨步骤预算状态的路由 |
 | Workflow-Level Router | workflow 开始时选一次模型或 routing profile |
 | Budget-Only Step Router | 每步决策，但只看预算水位，不看 step 重要性 |
 | BudgetFlow Full | 每步决策 + 预算压力 + step 重要性 + runtime governance |
