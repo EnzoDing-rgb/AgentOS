@@ -155,31 +155,74 @@ $$
 
 ## 5. 质量怎么衡量？
 
-本文不发明主观质量分。主指标是 SWE-bench Verified 的 `resolved`。
+### 5.1 先解释一下 SWE-bench Verified 是什么
 
-一个任务是否 resolved，由评测 harness 检查：
+SWE-bench 是一个 coding agent 评测基准：从 Django、scikit-learn、sympy 这样的真实开源 Python 项目里，挑出已经被人类修复过的 bug。每个任务给 agent 一份 GitHub issue 的描述和对应的代码仓库快照，要求 agent 自己定位问题、改代码、产出一个 patch。
 
-- patch 是否存在并能 apply；
-- `FAIL_TO_PASS` 测试是否通过；
-- `PASS_TO_PASS` 测试是否保持通过；
-- 最终状态是否为 resolved。
+**SWE-bench Verified** 是 OpenAI 在 2024 年发布的人工筛选子集，共 500 个任务，去掉了原始 SWE-bench 中描述模糊或测试不可靠的样本，是目前 coding agent 论文最常用的主指标来源。
 
-Step-level progress 只用于运行时估计和事后解释，不作为论文胜利标准。可用信号包括：
+每个任务自带一份 ground truth 信息：
 
-| 信号 | 用途 |
-|---|---|
-| 是否定位到 gold patch 文件 | localization / search |
-| patch 是否能 apply | repair / generation |
-| 测试是否改善 | validation / debugging |
-| `.traj` 中的 thought/action/observation | 对齐 step、成本和结果 |
+- **gold patch**：人类开发者当年的真实修复 diff；
+- **`FAIL_TO_PASS` 测试**：在 bug 被修之前会失败、修好之后必须通过的测试。这是判断「bug 是否真的修好了」的硬指标；
+- **`PASS_TO_PASS` 测试**：在 bug 修复前后都应该通过的测试，用来检查 agent 没有把别的功能改坏。
 
-为避免循环论证，progress table 和权重如果需要校准，必须在 held-out calibration split 上完成，主结果在不参与校准的 SWE-bench Verified split 上报告。
+### 5.2 论文的主指标：`resolved`
+
+本文不发明任何主观质量分。主指标就是 SWE-bench Verified 官方 harness 输出的 `resolved` 布尔值。
+
+一个任务被判定为 resolved，需要同时满足：
+
+1. agent 产出了一个非空 patch；
+2. 这个 patch 能在原仓库上 `git apply` 成功；
+3. apply 之后，所有 `FAIL_TO_PASS` 测试通过；
+4. apply 之后，所有 `PASS_TO_PASS` 测试仍然通过。
+
+举个具体例子。`django__django-11099` 这个任务的 issue 是「`UsernameValidator` 允许用户名末尾是换行符」。agent 需要：
+
+- 找到 `django/contrib/auth/validators.py`；
+- 把正则里的 `$` 改成 `\Z`，避免末尾换行被当成匹配结束；
+- 提交 patch。
+
+harness 会跑这个任务对应的 `FAIL_TO_PASS` 测试（一个专门检查「带换行符的用户名应该被拒绝」的测试），通过即 resolved=True，否则 resolved=False。注意：agent 用什么模型、走多少步、花多少钱，harness 完全不看，只看最终 patch 的行为。
+
+论文层面的胜利标准就只有一句话：
+
+> 在同样总预算下，BudgetFlow 比对照组让多少个 SWE-bench Verified 任务被判 resolved。
+
+### 5.3 Step-level progress：只给 runtime 用，不算胜利标准
+
+第 3 节里的 $\Delta \widehat{\text{progress}}_i$ 需要一个「这一步有没有让任务往前推进」的代理信号。
+
+| 信号 | 怎么计算 | 用途 |
+|---|---|---|
+| 是否打开了 gold patch 涉及的文件 | 拿 agent 当前轨迹里访问过的文件路径，和 gold patch 的 changed files 对比 | localization / search 阶段 |
+| patch 是否能 `git apply` | 在沙箱里 dry-run 一下 | repair / generation 阶段 |
+| 失败测试数是否减少 | 跑一个轻量子集（如只跑 `FAIL_TO_PASS`），统计通过数变化 | validation / debugging 阶段 |
+| `.traj` 文件里的 thought/action/observation | SWE-agent 默认会把每一步的思考、调用的工具、工具返回写进 `<task_id>.traj` 这个 JSON 文件，方便事后把成本、决策和结果对齐 | 调试和分析 |
+
+这些信号只用于：(a) runtime 决策时估计「升档值不值」；(b) 写 paper 时做 case study 解释 BudgetFlow 在哪一类 step 上多花了钱。**它们不进入主结果表**，主结果表只看 `resolved`。
+
+### 5.4 为什么要 held-out calibration split？
+
+这里要避免一个隐蔽的循环论证。
+
+第 1 节给了一张「step 重要性」表（traceback 高于目录浏览之类）。这些权重 $w_i$ 不是天上掉下来的，多少需要根据数据调一调，比如：「在 traceback 那一步用 GPT-4 升档到底比用 Haiku 多解出几个任务？」如果回答是 8 个，那权重就调高一点；如果只是 1 个，就调低一点。
+
+问题来了：**如果用 SWE-bench Verified 的全部 500 个任务来调 $w_i$，再用同一批 500 个任务报告 resolved rate，等于用考试答案训练，再用同一份卷子测分。** 任何看起来的提升都可能只是过拟合。
+
+解决办法是把数据切成两半：
+
+- **Calibration split**（校准集）：用来调权重。可以是 SWE-bench Verified 之外的数据，例如原始 SWE-bench 中没有进入 Verified 的样本，或 SWE-bench Lite 中和 Verified 不重叠的部分。在这一半上反复试不同的 $w_i$、不同的 progress 信号阈值，找一组合理参数。
+- **Evaluation split**（评测集）：完整的 SWE-bench Verified 500 题，**调参阶段一次都不许碰**。最终 paper 里的 resolved rate、cost per resolved 全部在这一半上报告。
+
+「held-out」就是「保留、不碰」的意思——把 evaluation split 锁起来，等所有设计决策定下来再开盒。
+
+如果某个版本的 BudgetFlow 完全不需要调参（比如 $w_i$ 全部用一个固定的 default 表，从头到尾不改），那严格来说不需要 calibration split。但本文为了诚实，假设权重总要调一点，所以预先声明这个 split 协议。
 
 ---
 
 ## 6. 三个主系统对照
-
-主文只比较三个系统，不堆 dummy baseline。
 
 ### 6.1 Workflow-Level Router
 
