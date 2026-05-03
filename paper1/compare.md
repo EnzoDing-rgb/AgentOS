@@ -1,5 +1,28 @@
 # Agent OS 论文对比分析（更新于 2026-04-27）
 
+新的任务：
+1）给你一些新增论文 对比我的系统的异同，相关的保留 不相关的告诉我为什么和本论文paper1无关（然后剔除）
+2）这些论文哪些发了顶会？（Parrent Argog） 他们的数据集是什么，提升了多少？
+3）这些论文和本文有什么异同？有没有已经覆盖了本文想解决的问题
+4）如果没有，那本文很好，如何对标顶会论文提升，然后发顶会；这些论文好像更多的优化的是吞吐量，而我的论文优化的是预算约束下的质量/吞吐量？
+5）这些论文哪些使用了强化学习/机器学习算法，哪些没有使用？我的论文没有使用，但我的论文能否把其中某些东西做成可插拔？Aragog似乎是软件硬编码，和我的论文方法论类似；我的论文在模型路由策略上，似乎可以做成RL可插拔（放到future work里， paper1主干先不实现机器学习）
+5）如果很不幸本文的idea已经被做了，如何调整？请你好好看一下scratch.md里面的内容
+6）客观回答，你是顶会审稿人，给我修改意见；你只有一个任务，给我更新compare.md
+
+
+新增论文：
+The Cost of Dynamic Reasoning: Demystifying AI Agents and Test-Time Scaling from an AI Infrastructure Perspective
+Parrot: Efficient Serving of LLM-based Applications with Semantic Variable
+Aragog: Just-in-Time Model Routing for Scalable Serving of Agentic Workflows
+Murakkab: Resource-Efficient Agentic Workflow Orchestration in Cloud Platforms
+Autellix: An Efficient Serving Engine for LLM Agents as General Programs
+
+现在 Parrot、Aragog、Murakkab 三篇论文，已经完整勾勒出了未来 Agent 服务的标准架构：
+上层用 Murakkab 做声明式工作流定义和全局 SLO 优化
+中层用 Aragog 做动态模型路由和并发调度
+下层用 Parrot 做多轮请求流水线和 KV 缓存共享
+
+
 ## 完整对比表格
 
 | 论文 | 类型 | 预算约束 | Multi-step | 方法 | 与本文关系 |
