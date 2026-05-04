@@ -8,8 +8,6 @@
 
 ## 0. 结论先行
 
-需要重写 framing，但不需要换题。
-
 最安全、最有贡献感的说法是：
 
 > BudgetFlow formulates and implements hard-spend governance for multi-step LLM agent workflows: a runtime decides where a fixed economic budget should be spent across workflow steps and concurrent tasks, with verified task success as the outcome.
@@ -93,7 +91,21 @@ ATHENA 给本文的最大提醒：
 
 > ATHENA-Serve maps predicted generation horizons to KV/compute budgets and schedules requests for tail-latency control. BudgetFlow uses budget as an economic spend cap over agent workflows; it decides which workflow steps deserve stronger model calls to improve verified task success under fixed spend. These layers are complementary: an ATHENA-like scheduler can execute admitted requests below a BudgetFlow-style spend governor.
 
-## 5. 新增论文：保留、弱化、借力
+## 5. Scratch.md 七篇论文：解决的问题、与 BudgetFlow 的关联（含链接）
+
+下面与 `paper1/scratch.md` 417–479 行对齐。每行先写该文正面要解决的问题，再写 BudgetFlow 如何把它放进 related work 或 motivation。
+
+| 论文 | 链接 | 它正面解决的问题 | 与 BudgetFlow 的关联 |
+|---|---|---|---|
+| The Cost of Dynamic Reasoning | [arXiv:2506.04301](https://arxiv.org/abs/2506.04301) | 系统级刻画 agent 多轮推理与 test-time scaling 的资源、延迟、能耗与数据中心功耗，并分析设计选择对 accuracy–cost 的影响 | 给 BudgetFlow 的 motivation：agent workflow 的成本与收益曲线值得系统研究；BudgetFlow 给出固定经济预算下的运行时 spend governance 与 SWE-bench `resolved` 证据 |
+| Parrot | [arXiv:2405.19888](https://arxiv.org/abs/2405.19888) | 让 public LLM service 看到 application-level 结构（Semantic Variable），做跨请求数据流分析与端到端优化 | 支撑 BudgetFlow 的输入信号设计：step / tool / observation 的结构化上下文可以进入预算决策；BudgetFlow 仍聚焦 hard-spend ledger 与 `resolved @ fixed budget` |
+| Aragog | [arXiv:2511.20975v1](https://arxiv.org/abs/2511.20975v1) | agentic workflow 在 scale 下很贵；在运行期根据系统观测做 just-in-time configuration，提高吞吐、降低延迟，同时保持与最贵配置相当的 accuracy | 最接近的 serving-side 邻居：共享“workflow 运行期再决策”；BudgetFlow 的主轴是 **固定 dollar/token 预算** 下的 step spend 与 verified task success，可把 Aragog 写成 backend routing 层对照 |
+| Murakkab | [arXiv:2508.18298](https://arxiv.org/abs/2508.18298) | 用 declarative 抽象解耦 workflow 与执行配置，跨层优化 accuracy、latency、energy、cost 以满足 SLO | 支撑“workflow 结构应进入系统层”的大趋势；BudgetFlow 取更窄接口：接在 LLM 调用层做 hard-spend governance，把 full-stack orchestration 留给 Murakkab 类系统 |
+| Autellix | [arXiv:2502.13965](https://arxiv.org/abs/2502.13965) | 把 agent 程序当作 first-class，利用 program 与 call 依赖减少 HoL、降低程序端到端延迟 | 支撑 stacking story：Autellix 优化程序级执行效率；BudgetFlow 优化 **在固定预算下** 的程序成功率；可画成 BudgetFlow → Autellix → vLLM 类栈 |
+| ATHENA-Serve | [OpenReview](https://openreview.net/forum?id=GULnhNbvb9) | 把预测 horizon 映射为 KV/compute budget，用 hierarchical RL 调度 admission/batching/concurrency，控制 bursty 负载下的尾延迟与 HoL | related work 中的 serving scheduler 参照；提醒 BudgetFlow 的主贡献应是 agent hard-spend formulation，Governor/Scheduler 为支撑层 |
+| Helium（论文题目在 arXiv 上为 Efficient LLM Serving for Agentic Workflows） | [arXiv:2603.16104v1](https://arxiv.org/abs/2603.16104v1) | 把 agentic workflow 建成 query plan，跨调用做 cache-aware scheduling 与重用 | 支撑 workflow-aware serving 的必要性；BudgetFlow 侧重点是 **经济预算与 step value**，缓存与算子级优化可作为 future work 或 backend 协同 |
+
+## 6. 新增论文：保留、弱化、借力（展开说明）
 
 ### The Cost of Dynamic Reasoning
 
@@ -153,7 +165,7 @@ ATHENA 说明 resource budget / horizon prediction / hierarchical RL scheduler �
 
 它强化了 BudgetFlow 的 positive framing：BudgetFlow 的问题是 agent workflow spend allocation。
 
-## 6. 旧表中的论文如何处理
+## 7. 旧表中的论文如何处理
 
 | 论文 | 是否保留 | 位置 | 理由 |
 |---|---|---|---|
@@ -167,7 +179,7 @@ ATHENA 说明 resource budget / horizon prediction / hierarchical RL scheduler �
 | AIOS | 弱保留 | broad agent OS background | 概念背景，少写 |
 | pMVX | 弱保留 | agent OS self-tuning background | 平行工作，少写 |
 
-## 7. RL / ML 使用情况
+## 8. RL / ML 使用情况
 
 | 论文类别 | 使用 RL/ML | 本文策略 |
 |---|---|---|
@@ -181,7 +193,7 @@ ATHENA 说明 resource budget / horizon prediction / hierarchical RL scheduler �
 
 > BudgetFlow's ModelSelector is a plug point. Paper 1 uses a training-free auditable rule to isolate the value of the runtime formulation. A learned selector can replace this rule later, while the ledger, reservation, settlement, and governor remain the same runtime contract.
 
-## 8. 顶会化建议
+## 9. 顶会化建议
 
 顶会审稿人更可能接受的问题定义：
 
@@ -196,10 +208,8 @@ ATHENA 说明 resource budget / horizon prediction / hierarchical RL scheduler �
 5. **Overhead**：BudgetFlow 的 routing / accounting / scheduling overhead。
 6. **Generalization note**：主实验在 SWE-bench，其他领域需要新的 progress signal；论文主张可复用的是 ledger + hard reservation + step-value formulation。
 
-## 9. 最终定位
+## 10. 最终定位
 
 本文的 niche 应写成：
 
 > BudgetFlow is a training-free runtime for hard economic budget governance in multi-step LLM agent workflows. It allocates stronger model calls across workflow steps and concurrent tasks using auditable step-value signals, while a shared ledger enforces reservation, settlement, and backend quotas. The paper evaluates whether this formulation improves verified task success under fixed spend.
-
-这比旧版“budget-aware multi-step routing”更强，因为它强调了独特的问题定义：**hard-spend governance for agent workflows**。
