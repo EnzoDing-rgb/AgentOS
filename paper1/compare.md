@@ -1,18 +1,18 @@
 # BudgetFlow: Related Work and Positioning Memo (updated 2026-05-04)
 
-This memo follows `paper1_concept_opus.md`. The core of the current paper is to propose and validate an **agent workflow hard-spend governance** problem:
+This memo follows `paper1_concept.md`. The core of the current paper is to propose and validate a **budget-governed agent execution** problem:
 
-> Given a fixed token / dollar budget, how should we allocate stronger-model calls across the steps of an agent workflow so that a batch of concurrent workflows completes more verifiable tasks under the same budget?
+> Given many concurrent LLM-agent workflows sharing a global budget, model pool, provider RPM limits, and concurrency slots, how should a runtime admit, queue, downgrade, upgrade, switch, or cancel calls while preserving hard limits and completing more verifiable tasks?
 
-The headline metrics should center on **SWE-bench Verified `resolved @ fixed budget`**. The systems contributions should center on **step-level spend allocation + `budget_pressure` + hard reservation / settlement + multi-workflow runtime governance**.
+The headline metrics should center on **SWE-bench Verified `resolved @ fixed budget`**, budget violations, 429 rate, queue latency, admission throughput, and recovered budget. The systems contributions should center on **workflow-state-aware scheduling + hard reservation / settlement + multi-workflow runtime governance**.
 
 ## 0. Bottom line first
 
 The safest, most contribution-forward statement is:
 
-> BudgetFlow formulates and implements hard-spend governance for multi-step LLM agent workflows: a runtime decides where a fixed economic budget should be spent across workflow steps and concurrent tasks, with verified task success as the outcome.
+> BudgetFlow formulates and implements workflow-aware budgeting for multi-step LLM agent workflows: a runtime uses workflow-stage signals and shared budget state to schedule model calls across concurrent tasks, while a ledger enforces hard budget, RPM, and concurrency limits.
 
-This formulation is stronger than framing the paper as only a "training-free router." `training-free` is a method property and should not be the sole contribution. The real contribution is putting budget, workflow step value, a concurrent runtime ledger, and verifiable task success into one problem statement.
+This formulation is stronger than framing the paper as only a "training-free router." `training-free` is a method property and should not be the sole contribution. The real contribution is putting budget, workflow-stage state, a concurrent runtime ledger, backend limits, and verifiable task success into one systems problem statement.
 
 ## 1. A positive problem definition for this paper
 
@@ -20,15 +20,15 @@ This formulation is stronger than framing the paper as only a "training-free rou
 |---|---|
 | Resources | token / dollar spend, plus provider RPM limits and concurrency slots |
 | Unit | one LLM step inside a workflow |
-| State | workflow ledger, global budget level, step type, backend quotas |
+| State | workflow ledger, global budget level, workflow stage, backend limits |
 | Decision | for the current step: cheap model, strong model, downgrade, queue, switch backend, or reject |
-| Method | training-free `budget_pressure` + step importance $w_i$ + estimated progress / cost |
+| Method | training-free scheduling priority using stage weight, online signal, runtime headroom, and reserved cost |
 | Hard-budget mechanism | `expected_cost` for ranking, `reserved_cost` for admission, `actual_cost` for settlement |
-| Headline metrics | SWE-bench Verified `resolved @ fixed budget`, cost per resolved, budget violations |
+| Headline metrics | SWE-bench Verified `resolved @ fixed budget`, budget violations, 429 rate, queue latency, recovered budget |
 
 One-sentence version:
 
-> BudgetFlow spends stronger model calls where they are most likely to change final task success, while a shared ledger keeps the whole batch inside a hard economic budget.
+> BudgetFlow spends stronger model calls where workflow-stage evidence suggests they matter most, while a shared ledger keeps the whole batch inside a hard budget and backend limits.
 
 ## 2. Which papers are real threats, and which are actually helpful?
 
@@ -47,26 +47,26 @@ One-sentence version:
 
 ### 3.1 Budget-Aware Agentic Routing / BoPO
 
-This is the closest research neighbor because it also frames multi-step agent routing as a cost–success tradeoff.
+This is the closest research neighbor because it also studies model routing across multi-step agent trajectories under constrained budgets.
 
 | Dimension | BoPO-style work | BudgetFlow |
 |---|---|---|
 | Approach | learned routing policy / RL | training-free runtime rule |
-| Decision object | model choice along an agent trajectory | step spend allocation + runtime admission |
-| Budget | budget-aware reward / constraints in training and inference | runtime hard economic budget with reservation |
-| Interpretability | policy comes from training | `budget_pressure`, $w_i$, and progress/cost are auditable |
+| Decision object | model choice along an agent trajectory | workflow-stage scheduling + runtime admission |
+| Budget | budget-aware reward / constraints in training and inference | runtime hard budget with reservation |
+| Interpretability | policy comes from training | stage weight, online signal, runtime headroom, and reserved cost are auditable |
 | System state | focuses on routing policy | workflow ledger, global budget, backend RPM, concurrency slots |
 | How this paper uses it | related work + future learned selector | paper-1 mainline |
 
 Concrete adjustments for this paper:
 
 - Write the contribution as **problem formulation + runtime contract**, not only as a "heuristic router."
-- Keep `Workflow-Level Router`, `Budget-Only Step Router`, and `BudgetFlow Full` in experiments; use ablations to show gains come from workflow-aware step value and hard-spend governance.
+- Keep `Workflow-Level Router`, `Budget-Only Step Scheduler`, and `BudgetFlow Full` in experiments; use ablations to show gains come from workflow-stage state and runtime budget governance.
 - Future work: a BoPO-style learned selector can replace `ModelSelector`, while ledger, reservation, settlement, and governor remain the runtime contract.
 
 ### 3.2 xRouter
 
-xRouter is an RL / tool-calling router line. The threat is mostly methodological, not at the full-system layer. BudgetFlow's line of defense is fixed economic budget, SWE-bench verified outcomes, a multi-workflow ledger, and training-free deployability.
+xRouter is an RL / tool-calling router line. The threat is mostly methodological, not at the full-system layer. BudgetFlow's line of defense is hard-budget enforcement, SWE-bench verified outcomes, a multi-workflow ledger, and training-free deployability.
 
 ## 4. ATHENA-Serve: important related work, but belongs in Related Work
 
@@ -74,22 +74,22 @@ ATHENA-Serve deserves careful writing, and it fits naturally in related work.
 
 | Dimension | ATHENA-Serve | BudgetFlow |
 |---|---|---|
-| Core problem | LLM serving under bursty traffic | agent workflow hard-spend governance |
-| Meaning of "budget" | KV-cache / compute / concurrency resource envelope | token / dollar spend cap |
-| Objective | tail latency, SLO violations, HoL blocking | verified task success under fixed spend |
-| Method | horizon-cost prediction + hierarchical RL scheduling | training-free `budget_pressure` + workflow ledger |
+| Core problem | LLM serving under bursty traffic | budget-governed agent execution |
+| Meaning of "budget" | KV-cache / compute / concurrency resource envelope | hard token / dollar budget |
+| Objective | tail latency, SLO violations, HoL blocking | verified task success under fixed budget |
+| Method | horizon-cost prediction + hierarchical RL scheduling | training-free priority rule + workflow ledger |
 | Workload | ShareGPT-like online serving traces (confirm in the paper) | SWE-bench Verified coding workflows |
 | Role in this paper | serving-layer related work / reviewer warning | paper-1 mainline |
 
 Key reminders from ATHENA for this paper:
 
 - Runtime schedulers, admission control, and concurrency governance are active systems directions.
-- Write Governor / Scheduler as necessary support for a hard-spend runtime, and put the primary novelty on the agent workflow spending formulation.
+- Write Governor / Scheduler as necessary support for a hard-budget runtime, and put the primary novelty on workflow-state-aware budget governance.
 - ATHENA-style reviews show that if you introduce RL, reviewers will ask whether RL is necessary; BudgetFlow's training-free choice can be turned into a crisp advantage.
 
 A sentence that can go into related work:
 
-> ATHENA-Serve maps predicted generation horizons to KV/compute budgets and schedules requests for tail-latency control. BudgetFlow uses budget as an economic spend cap over agent workflows; it decides which workflow steps deserve stronger model calls to improve verified task success under fixed spend. These layers are complementary: an ATHENA-like scheduler can execute admitted requests below a BudgetFlow-style spend governor.
+> ATHENA-Serve maps predicted generation horizons to KV/compute budgets and schedules requests for tail-latency control. BudgetFlow uses a hard budget over agent workflows; it decides which workflow stages should receive stronger model calls to improve verified task success under that budget. These layers are complementary: an ATHENA-like scheduler can execute admitted requests below a BudgetFlow-style runtime governor.
 
 ## 5. The seven papers in Scratch.md: what they solve, how they connect to BudgetFlow (with links)
 
@@ -97,13 +97,13 @@ Aligned with `paper1/scratch.md` lines 417–479. Each row states the problem th
 
 | Paper | Link | Problem it targets | Connection to BudgetFlow |
 |---|---|---|---|
-| The Cost of Dynamic Reasoning | [arXiv:2506.04301](https://arxiv.org/abs/2506.04301) | system-level characterization of multi-turn agent reasoning and test-time scaling across resource use, latency, energy, and datacenter power, plus design tradeoffs in accuracy vs cost | motivation for BudgetFlow: agent workflow cost–benefit curves deserve systems study; BudgetFlow supplies runtime spend governance under a fixed economic budget with SWE-bench `resolved` evidence |
-| Parrot | [arXiv:2405.19888](https://arxiv.org/abs/2405.19888) | expose application-level structure (Semantic Variables) to public LLM services and optimize end-to-end performance via cross-request dataflow analysis | supports BudgetFlow's input-signal design: structured step / tool / observation context can enter budget decisions; BudgetFlow still centers on a hard-spend ledger and `resolved @ fixed budget` |
-| Aragog | [arXiv:2511.20975v1](https://arxiv.org/abs/2511.20975v1) | agentic workflows are expensive at scale; adapt configuration across execution using fresh system observations to raise throughput and cut latency while matching the accuracy of the most expensive configuration | closest serving-side neighbor: shared intuition of "runtime re-decision inside workflows"; BudgetFlow's spine is **fixed dollar/token budget**, step spend, and verified task success—treat Aragog as a backend routing-layer contrast |
-| Murakkab | [arXiv:2508.18298](https://arxiv.org/abs/2508.18298) | declaratively decouple workflow specs from execution configs and co-optimize accuracy, latency, energy, and cost under SLOs across the stack | supports the trend that workflow structure belongs in the system layer; BudgetFlow takes a narrower interface—hard-spend governance at the LLM-call layer—while full-stack orchestration stays with Murakkab-like systems |
+| The Cost of Dynamic Reasoning | [arXiv:2506.04301](https://arxiv.org/abs/2506.04301) | system-level characterization of multi-turn agent reasoning and test-time scaling across resource use, latency, energy, and datacenter power, plus design tradeoffs in accuracy vs cost | motivation for BudgetFlow: agent workflow budget use deserves systems study; BudgetFlow supplies runtime budget governance with SWE-bench `resolved` evidence |
+| Parrot | [arXiv:2405.19888](https://arxiv.org/abs/2405.19888) | expose application-level structure (Semantic Variables) to public LLM services and optimize end-to-end performance via cross-request dataflow analysis | supports BudgetFlow's input-signal design: structured step / tool / observation context can enter budget decisions; BudgetFlow still centers on a hard-budget ledger and `resolved @ fixed budget` |
+| Aragog | [arXiv:2511.20975v1](https://arxiv.org/abs/2511.20975v1) | agentic workflows are expensive at scale; adapt configuration across execution using fresh system observations to raise throughput and cut latency while matching the accuracy of the most expensive configuration | closest serving-side neighbor: shared intuition of "runtime re-decision inside workflows"; BudgetFlow's spine is **fixed budget**, workflow-stage scheduling, and verified task success—treat Aragog as a backend routing-layer contrast |
+| Murakkab | [arXiv:2508.18298](https://arxiv.org/abs/2508.18298) | declaratively decouple workflow specs from execution configs and co-optimize accuracy, latency, energy, and cost under SLOs across the stack | supports the trend that workflow structure belongs in the system layer; BudgetFlow takes a narrower interface—budget governance at the LLM-call layer—while full-stack orchestration stays with Murakkab-like systems |
 | Autellix | [arXiv:2502.13965](https://arxiv.org/abs/2502.13965) | treat agent programs as first-class and exploit program/call dependencies to reduce HoL and end-to-end program latency | supports a stacking story: Autellix optimizes program-level execution efficiency; BudgetFlow optimizes **program success under a fixed budget**; a plausible stack is BudgetFlow → Autellix → vLLM-class backends |
-| ATHENA-Serve | [OpenReview](https://openreview.net/forum?id=GULnhNbvb9) | map predicted horizons to KV/compute budgets and schedule admission/batching/concurrency with hierarchical RL to control tail latency and HoL under bursty load | serving-scheduler related work; reminds us the headline contribution should be the agent hard-spend formulation, with Governor/Scheduler as supporting machinery |
-| Helium (arXiv title: Efficient LLM Serving for Agentic Workflows) | [arXiv:2603.16104v1](https://arxiv.org/abs/2603.16104v1) | model agentic workflows as query plans and schedule across calls with cache-aware reuse | supports the necessity of workflow-aware serving; BudgetFlow emphasizes **economic budget and step value**, while cache/operator-level optimization can be future work or backend collaboration |
+| ATHENA-Serve | [OpenReview](https://openreview.net/forum?id=GULnhNbvb9) | map predicted horizons to KV/compute budgets and schedule admission/batching/concurrency with hierarchical RL to control tail latency and HoL under bursty load | serving-scheduler related work; reminds us the headline contribution should be budget-governed agent execution, with Governor/Scheduler as supporting machinery |
+| Helium (arXiv title: Efficient LLM Serving for Agentic Workflows) | [arXiv:2603.16104v1](https://arxiv.org/abs/2603.16104v1) | model agentic workflows as query plans and schedule across calls with cache-aware reuse | supports the necessity of workflow-aware serving; BudgetFlow emphasizes **hard budget and workflow-stage state**, while cache/operator-level optimization can be future work or backend collaboration |
 
 ## 6. New papers: keep, downplay, and leverage (expanded notes)
 
@@ -111,13 +111,13 @@ Aligned with `paper1/scratch.md` lines 417–479. Each row states the problem th
 
 Role: helpful motivation paper.
 
-It stresses that agent / test-time scaling creates real infrastructure costs. This paper can cite it to argue that cost governance for agent reasoning is already a systems problem. It typically does not ship a step-level hard-spend allocation runtime, so threat level stays low.
+It stresses that agent / test-time scaling creates real infrastructure costs. This paper can cite it to argue that budget governance for agent reasoning is already a systems problem. It typically does not ship a workflow-stage-aware hard-budget runtime, so threat level stays low.
 
 ### Parrot
 
 Role: helpful programming / serving paper.
 
-Parrot's semantic variables show LLM applications are not isolated prompts; they have program structure and variable dependencies. BudgetFlow can use this to justify putting workflow steps, tool observations, tracebacks, and patch state into budget decisions. Threat level is low because the primary objective is serving / application execution efficiency rather than verified task success under fixed spend.
+Parrot's semantic variables show LLM applications are not isolated prompts; they have program structure and variable dependencies. BudgetFlow can use this to justify putting workflow steps, tool observations, tracebacks, and patch state into budget decisions. Threat level is low because the primary objective is serving / application execution efficiency rather than verified task success under a fixed budget.
 
 ### Aragog
 
@@ -128,10 +128,10 @@ Aragog's just-in-time model routing for agentic workflows shares the intuition o
 How this paper should position itself:
 
 - Aragog reads more like a serving/runtime-layer just-in-time router;
-- BudgetFlow centers on a hard economic budget, step value, ledger reservation, and `resolved @ fixed budget`;
+- BudgetFlow centers on a hard budget, workflow-stage state, ledger reservation, and `resolved @ fixed budget`;
 - if Aragog uses rule-like or hard-coded policies, that also supports a training-free story: systems papers can ship interpretable runtime policies without putting RL in paper-1 mainline.
 
-Facts to confirm: venue, benchmarks, headline gains, and whether it optimizes fixed spend.
+Facts to confirm: venue, benchmarks, headline gains, and whether it optimizes under a fixed budget.
 
 ### Murakkab
 
@@ -139,7 +139,7 @@ Role: helpful workflow orchestration paper.
 
 Murakkab shows agentic workflow orchestration in cloud platforms can improve resource efficiency. It helps because it argues workflow structure belongs in the system layer, which top venues care about.
 
-Avoid competing for the "workflow orchestration platform" headline. Paper 1 stays narrower: hard-spend governance between the existing agent loop and the LLM backend.
+Avoid competing for the "workflow orchestration platform" headline. Paper 1 stays narrower: budget governance between the existing agent loop and the LLM backend.
 
 Facts to confirm: venue, datasets, headline numbers, and whether it includes cost-under-SLO objectives.
 
@@ -147,15 +147,15 @@ Facts to confirm: venue, datasets, headline numbers, and whether it includes cos
 
 Role: helpful serving-engine paper.
 
-Autellix treats LLM agents as general programs and argues agent execution needs a program-aware serving engine. BudgetFlow can sit above it: BudgetFlow decides per-step spend / model / admission; an Autellix-class engine executes programmatic agent requests efficiently.
+Autellix treats LLM agents as general programs and argues agent execution needs a program-aware serving engine. BudgetFlow can sit above it: BudgetFlow decides per-step budget reservation / model / admission; an Autellix-class engine executes programmatic agent requests efficiently.
 
-Risk to address in related work: if Autellix also does workflow-aware routing, explain clearly that it optimizes engine efficiency / HoL / throughput, while BudgetFlow's headline metric is task success under fixed spend.
+Risk to address in related work: if Autellix also does workflow-aware routing, explain clearly that it optimizes engine efficiency / HoL / throughput, while BudgetFlow's headline metric is task success under a fixed budget.
 
 ### Helium
 
 Role: helpful workflow-aware serving paper.
 
-Helium supports the premise that workflow-aware serving is a sound direction. Use it to strengthen the "workflow state matters" premise. Threat level depends on whether it includes a hard economic budget and a task-success objective; if it mainly optimizes serving efficiency, treat it as a stackable backend layer.
+Helium supports the premise that workflow-aware serving is a sound direction. Use it to strengthen the "workflow state matters" premise. Threat level depends on whether it includes a hard budget and a task-success objective; if it mainly optimizes serving efficiency, treat it as a stackable backend layer.
 
 ### ATHENA-Serve
 
@@ -163,7 +163,7 @@ Role: important related work + reviewer-risk reminder.
 
 ATHENA shows resource budgets, horizon prediction, and hierarchical RL schedulers are already serious research. Absorb its review lessons: report p99 / violations / overhead, include strong heuristic baselines, and explain the value of a training-free policy clearly.
 
-It reinforces BudgetFlow's positive framing: BudgetFlow's question is agent workflow spend allocation.
+It reinforces BudgetFlow's positive framing: BudgetFlow's question is workflow-aware budget governance for agent execution.
 
 ## 7. What to do with papers from the old comparison table
 
@@ -197,21 +197,21 @@ A crisp sentence you can reuse:
 
 A problem definition reviewers are more likely to accept:
 
-> We identify hard-spend governance for agent workflows as a systems problem: model routing, budget accounting, and backend admission must be decided together when many agent workflows share a fixed economic budget.
+> We identify budget-governed agent execution as a systems problem: model routing, budget accounting, and backend admission must be decided together when many agent workflows share a fixed budget.
 
 Experiments to strengthen:
 
-1. **Fixed-budget curves**: `resolved`, cost per resolved, and budget violations across total budgets.
+1. **Fixed-budget curves**: `resolved`, budget violations, and efficiency metrics across total budgets.
 2. **Ablations**: Workflow-Level Router, Budget-Only Step Router, BudgetFlow Full.
 3. **Runtime stress**: concurrency `J = 1 / 10 / 50 / 100`, reporting 429 rate, queue latency, recovered budget.
 4. **Heuristic strength**: tune Budget-Only and Workflow-Level baselines strongly to avoid strawman critiques.
 5. **Overhead**: BudgetFlow routing / accounting / scheduling overhead.
-6. **Generalization note**: main results on SWE-bench; other domains need new progress signals; the reusable claim is ledger + hard reservation + step-value formulation.
+6. **Generalization note**: main results on SWE-bench; other domains need new progress signals; the reusable claim is ledger + hard reservation + workflow-stage-aware scheduling.
 
 ## 10. Final positioning
 
 The niche statement should read:
 
-> BudgetFlow is a training-free runtime for hard economic budget governance in multi-step LLM agent workflows. It allocates stronger model calls across workflow steps and concurrent tasks using auditable step-value signals, while a shared ledger enforces reservation, settlement, and backend quotas. The paper evaluates whether this formulation improves verified task success under fixed spend.
+> BudgetFlow is a training-free runtime for workflow-aware budgeting in multi-step LLM agent workflows. It schedules stronger model calls across workflow steps and concurrent tasks using auditable stage signals, while a shared ledger enforces reservation, settlement, and backend limits. The paper evaluates whether this formulation improves verified task success under a fixed budget.
 
-This is stronger than the older "budget-aware multi-step routing" tagline because it foregrounds a distinct problem definition: **hard-spend governance for agent workflows**.
+This is stronger than the older "budget-aware multi-step routing" tagline because it foregrounds a distinct problem definition: **budget-governed agent execution**.
