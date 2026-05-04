@@ -1,88 +1,205 @@
-# Agent OS 论文对比分析（更新于 2026-04-27）
+# BudgetFlow 相关工作与差异化备忘录（更新于 2026-05-04）
 
-请注意：我现在的论文是paper1_concept_opus.md，不要管别的东西
+本文以 `paper1_concept_opus.md` 为准。当前 paper 的核心是提出并验证一个 **agent workflow hard-spend governance** 问题：
 
-新的任务：
-1）给你一些新增论文 对比我的系统的异同，相关的保留 不相关的告诉我为什么和本论文paper1无关（然后剔除）
-2）这些论文哪些发了顶会？（Parrent Argog） 他们的数据集是什么，提升了多少？
-3）这些论文和本文有什么异同？有没有已经覆盖了本文想解决的问题
-4）如果没有，那本文很好，如何对标顶会论文提升，然后发顶会；这些论文好像更多的优化的是吞吐量，而我的论文优化的是预算约束下的质量/吞吐量？
-5）这些论文哪些使用了强化学习/机器学习算法，哪些没有使用？我的论文没有使用，但我的论文能否把其中某些东西做成可插拔？Aragog似乎是软件硬编码，和我的论文方法论类似；我的论文在模型路由策略上，似乎可以做成RL可插拔（放到future work里， paper1主干先不实现机器学习）
-5）如果很不幸本文的idea已经被做了，如何调整？请你好好看一下scratch.md里面的内容【最好能根据别人的审稿意见，让我的论文做出差异化，并且真正有contribution；比如说 不需要RL训练算一个，但这个contribution太minor，有没有更大的contribution，比如说提出了什么新的定义问题的方式，能否具备更好的泛化性/泛化方法是什么；我现在是SWE-bench上，这没问题，如何泛化，如何拆分到不同行业的不同任务不同领域？我没说必须要有很大的通用性，专用也是价值，但具体什么价值，得说清楚】
-6）客观回答，你是顶会审稿人，给我修改意见；给我更新compare.md，其他需要跟我确认的地方，比如说我的决策和偏好，跟我确认
-7）我的论文要解决的是独特的contribution的问题，不需要过多提及别的论文，我让你做这个任务的目的，是尽可能不要让我的论文的贡献别人已经做过了，没有差异化了
+> 给定固定 token / dollar 预算，如何在多步 agent workflow 的每一步分配强模型调用，让一批并发 workflow 在同一预算下完成更多可验证任务？
 
+主指标应围绕 **SWE-bench Verified `resolved @ fixed budget`**。系统贡献应围绕 **step-level spend allocation + `budget_pressure` + hard reservation / settlement + multi-workflow runtime governance**。
 
-新增论文：
-The Cost of Dynamic Reasoning: Demystifying AI Agents and Test-Time Scaling from an AI Infrastructure Perspective
-Parrot: Efficient Serving of LLM-based Applications with Semantic Variable
-Aragog: Just-in-Time Model Routing for Scalable Serving of Agentic Workflows
-Murakkab: Resource-Efficient Agentic Workflow Orchestration in Cloud Platforms
-Autellix: An Efficient Serving Engine for LLM Agents as General Programs
-ATHENA-Serve: An Intelligent Scheduling LLM Serving System via Horizon-Cost Prediction and Hierarchical RL 【划重点】
-Helium: Workflow-Aware LLM Serving for Agentic Applications
+## 0. 结论先行
 
+需要重写 framing，但不需要换题。
 
-## 完整对比表格
+最安全、最有贡献感的说法是：
 
-| 论文 | 类型 | 预算约束 | Multi-step | 方法 | 与本文关系 |
-|------|------|---------|-----------|------|-----------|
-| **本文** | 优化启发式 | Hard budget | 有 | 边际加权性价比 + budget_factor 配速 | — |
-| **Budget-Aware Agentic Routing** (Zhang et al. 2026, arxiv:2602.21227) | RL (BoPO) | Hard + Soft | 有（sequential） | Boundary-Guided Training + BoPO | **最直接竞争者**：RL vs 启发式 |
-| **OmniRouter** (Mei et al. 2026) | 约束优化 | 有（Lagrangian dual） | 无（独立 query） | Hybrid predictor + Lagrangian optimizer | 全局约束优化但 per-query |
-| **xRouter** (2025, arxiv:2510.08439) | RL | Cost-aware reward | 有（episode） | Tool-calling RL router | RL 方法论对手 |
-| **CARROT** (Somerstep et al. 2025, arxiv:2502.03261) | 统计 | Per-query cost 预测 | 无 | Minimax optimal plug-in router | Per-query baseline |
-| **RouteLLM** (Ong et al. 2024) | 学习型二元 | 无 | 无 | 偏好数据训练 strong/weak 二分 | Per-query baseline |
-| **pMVX: Policy-Level Multi-Version Execution for Agentic OS Kernel Self-Tuning** (Agentic OS Workshop 2026, accepted) | Agentic OS / 内核自调优 | 未见明确 budget 优化目标 | 无（非 workflow 路由） | 多版本策略执行 + kernel policy self-tuning | 平行工作：偏 kernel 自调优，不是质量-成本分配 |
-| **AgentRM** (arxiv:2603.13110) | OS-inspired | 并发槽/RPM | 无 | MLFQ + 僵尸回收 + 上下文管理 | 平行工作：侧重稳定性 |
-| **AgentCgroup** (arxiv:2602.09345) | OS 内核级 | CPU/内存 | 无 | eBPF + cgroup | 平行工作：OS 级资源 |
-| **AIOS** (arxiv:2403.16971) | OS 架构 | 无 | 无 | 内核服务抽象 | 概念相似但更宽泛 |
+> BudgetFlow formulates and implements hard-spend governance for multi-step LLM agent workflows: a runtime decides where a fixed economic budget should be spent across workflow steps and concurrent tasks, with verified task success as the outcome.
 
-## 关键差异分析
+这个 formulation 比“无需训练的 router”更强。`training-free` 是方法特点，不应成为唯一贡献。真正的贡献是把预算、workflow step value、并发 runtime ledger 和可验证任务成功放进同一个问题里。
 
-### 1. 本文 vs Budget-Aware Agentic Routing（最重要的对比）
+## 1. 本文的正面问题定义
 
-| 维度 | Budget-Aware Agentic Routing | 本文 |
-|------|----------------------------|------|
-| **方法** | RL (BoPO)：需要训练数据和 GPU 训练 | 优化启发式：无需训练，即时部署 |
-| **可解释性** | RL 策略难以解释 | 边际性价比排序 + budget_factor，完全可解释 |
-| **预算处理** | 训练时 soft-budget + 推理时 BCD | 运行时 hard budget 硬约束 |
-| **任务价值** | 隐式（RL 学出） | 显式 $w_i$（调用方声明） |
-| **止损** | 无专门机制 | ZombieDetector 截断无效调用 |
-| **互补性** | 本文启发式可作为 RL warm-start baseline | — |
+| 维度 | BudgetFlow 的选择 |
+|---|---|
+| 资源 | token / dollar spend，外加 provider RPM / 并发槽 |
+| 单位 | workflow 中的一次 LLM step |
+| 状态 | workflow ledger、全局预算水位、step type、后端配额 |
+| 决策 | 当前 step 用便宜模型、强模型、降级、排队、换后端或拒绝 |
+| 方法 | training-free `budget_pressure` + step importance $w_i$ + estimated progress / cost |
+| hard budget 机制 | `expected_cost` 用于排序，`reserved_cost` 用于准入，`actual_cost` 用于结算 |
+| 主指标 | SWE-bench Verified `resolved @ fixed budget`、cost per resolved、budget violation |
 
-### 2. 本文 vs Per-query Routers (RouteLLM, CARROT, OmniRouter)
+一句话版本：
 
-| 维度 | Per-query Routers | 本文 |
-|------|-------------------|------|
-| **决策** | 每条 query 独立最优 | 跨 N 步联合预算约束 |
-| **状态** | 无状态 | 有状态（跟踪预算 / burn rate） |
-| **预算** | 不管或仅预测 per-query cost | Hard budget 硬约束 |
-| **任务价值** | 不区分 | 显式 $w_i$ |
+> BudgetFlow spends stronger model calls where they are most likely to change final task success, while a shared ledger keeps the whole batch inside a hard economic budget.
 
-### 3. 本文 vs OS-Inspired 工作 (AgentRM, AgentCgroup, AIOS, pMVX)
+## 2. 哪些论文是真威胁，哪些反而有帮助？
 
-| 维度 | OS-Inspired 工作 | 本文 |
-|------|-----------------|------|
-| **核心问题** | 系统稳定性/资源隔离 | 质量-成本优化 |
-| **优化目标** | 延迟/吞吐量/隔离 | QWCR, Q/\$, Pareto |
-| **资源类型** | CPU/内存/并发槽/RPM | LLM 调用质量与成本 |
+| 类别 | 代表论文 | 对 BudgetFlow 的威胁 | 对 BudgetFlow 的帮助 |
+|---|---|---:|---|
+| RL agentic routing | Budget-Aware Agentic Routing / BoPO, xRouter | 高 | 证明 step-level agent routing 是真实问题；可作为 future learned selector |
+| Per-query / task router | RouteLLM, CARROT, OmniRouter | 中 | 提供 request-level router baseline；可接到 BudgetFlow 的 ModelSelector 里 |
+| Serving scheduler | ATHENA-Serve | 中 | 提醒我们别把 scheduler 本身说成新贡献；可作为 backend serving layer 对照 |
+| Workflow-aware serving | Aragog, Helium, Autellix | 低到中 | 证明 workflow-aware runtime 很重要；可与 BudgetFlow 叠加 |
+| Workflow orchestration | Murakkab | 低到中 | 证明 cloud workflow orchestration 是系统问题；帮助定位 BudgetFlow 的轻量接入层 |
+| Programming / semantic serving | Parrot | 低 | 说明 LLM app 有结构化变量和程序语义；帮助解释为什么 step context 有价值 |
+| Infrastructure measurement | The Cost of Dynamic Reasoning | 低 | 帮助 motivation：agent test-time scaling 让成本治理成为一等问题 |
+| Agent OS / resource isolation | AgentRM, AgentCgroup, AIOS, pMVX | 低 | 支撑“agent runtime 需要资源治理”的大背景 |
 
-## 本文的独特贡献
+## 3. 最接近的竞争者
 
-1. **连续质量视角**：将 LLM 质量视为 $[0,1]$ 连续变量
-2. **预算硬约束 + 动态配速**：budget_factor 近似预算边际价值 $\lambda$
-3. **显式任务价值 $w_i$**：调用方声明的可解释信号
-4. **僵尸止损**：截断"成本涨、质量不涨"的无效调用
-5. **无需训练**：优化启发式，即时部署，对比 RL 方法更轻量
+### 3.1 Budget-Aware Agentic Routing / BoPO
 
-## 定位总结
+这是最直接的研究邻居，因为它也把 agent 的多步路由看成成本-成功率权衡问题。
 
-| 研究类别 | 代表工作 | 关注点 |
-|----------|---------|--------|
-| **Per-query routing** | RouteLLM, CARROT, OmniRouter | 单条 query 选模型 |
-| **Agentic routing (RL)** | Budget-Aware Agentic Routing, xRouter | 学习型多步路由 |
-| **OS 资源管理** | AgentRM, AgentCgroup, AIOS, pMVX | 系统稳定性/资源隔离/内核自调优 |
-| **Budget-constrained quality optimization（本文）** | AgentOS Paper 1 | **启发式**多步质量-成本优化 |
+| 维度 | BoPO-style work | BudgetFlow |
+|---|---|---|
+| 路线 | learned routing policy / RL | training-free runtime rule |
+| 决策对象 | agent trajectory 中的模型选择 | agent workflow step 的 spend allocation + runtime admission |
+| 预算 | 训练和推理中的 budget-aware reward / constraint | 运行时 hard economic budget with reservation |
+| 可解释性 | 策略由训练得到 | `budget_pressure`、$w_i$、progress/cost 都可审计 |
+| 系统状态 | 主要关注 routing policy | workflow ledger、global budget、backend RPM、concurrency slots |
+| 本文处理方式 | 相关工作和 future learned selector | paper 1 主干 |
 
-本文的 niche：**不需要训练的、可解释的、基于优化原理的 budget-aware multi-step routing**。与 RL 方法互补，与 per-query router 正交。
+对本文的调整建议：
+
+- 把贡献写成 **problem formulation + runtime contract**，而不是只写“启发式 router”。
+- 实验里必须保留 `Workflow-Level Router`、`Budget-Only Step Router`、`BudgetFlow Full`，用 ablation 证明收益来自 workflow-aware step value 与 hard-spend governance。
+- Future work 可以写：BoPO-style learned selector 可以替换 `ModelSelector`，但 ledger、reservation、settlement、governor 仍是 runtime contract。
+
+### 3.2 xRouter
+
+xRouter 属于 RL / tool-calling router 路线。它的威胁在方法论，不在系统层。BudgetFlow 的防线是 fixed economic budget、SWE-bench verified outcome、multi-workflow ledger 和 training-free deployability。
+
+## 4. ATHENA-Serve：重点相关，但放在 Related Work
+
+ATHENA-Serve 值得认真写，并适合放在 related work 中处理。
+
+| 维度 | ATHENA-Serve | BudgetFlow |
+|---|---|---|
+| 核心问题 | LLM serving under bursty traffic | Agent workflow hard-spend governance |
+| budget 含义 | KV-cache / compute / concurrency resource envelope | token / dollar spend cap |
+| 目标 | tail latency、SLO violation、HoL blocking | verified task success under fixed spend |
+| 方法 | horizon-cost prediction + hierarchical RL scheduling | training-free `budget_pressure` + workflow ledger |
+| workload | ShareGPT-like online serving traces（需以原文确认） | SWE-bench Verified coding workflows |
+| 对本文角色 | serving-layer related work / reviewer warning | paper 1 主线 |
+
+ATHENA 给本文的最大提醒：
+
+- 运行时 scheduler、admission、concurrency control 已经是活跃系统方向。
+- 本文应把 Governor / Scheduler 写成 hard-spend runtime 的必要支撑，把主要新意放在 agent workflow spending formulation 上。
+- ATHENA 的评审意见说明：如果引入 RL，审稿人会问 RL 是否必要；BudgetFlow 选择 training-free，可以把这点转化为清晰优势。
+
+可写进 related work 的一句话：
+
+> ATHENA-Serve maps predicted generation horizons to KV/compute budgets and schedules requests for tail-latency control. BudgetFlow uses budget as an economic spend cap over agent workflows; it decides which workflow steps deserve stronger model calls to improve verified task success under fixed spend. These layers are complementary: an ATHENA-like scheduler can execute admitted requests below a BudgetFlow-style spend governor.
+
+## 5. 新增论文：保留、弱化、借力
+
+### The Cost of Dynamic Reasoning
+
+关系：有帮助的 motivation paper。
+
+它强调 agent / test-time scaling 会带来真实基础设施成本。本文可以借它说明：agent reasoning 的成本治理已经成为系统问题。它通常不直接给出 step-level hard-spend allocation runtime，因此威胁较低。
+
+### Parrot
+
+关系：有帮助的 programming/serving paper。
+
+Parrot 的 semantic variable 说明 LLM application 不是孤立 prompt，而是有程序结构和变量依赖。BudgetFlow 可以借这个思想解释：workflow step、tool observation、traceback、patch state 这些结构化上下文应进入预算决策。它对本文的威胁低，因为它主要优化 serving / application execution efficiency，而不是 fixed spend 下的 verified task success。
+
+### Aragog
+
+关系：有帮助，也需要认真定位。
+
+Aragog 的 just-in-time model routing for agentic workflows 与 BudgetFlow 共享“agent workflow 运行时做模型选择”的直觉。它可能是新增论文里最像 BudgetFlow 的系统之一。
+
+本文的定位应是：
+
+- Aragog 更像 serving/runtime layer 的 just-in-time routing；
+- BudgetFlow 的中心是 hard economic budget、step value、ledger reservation 和 `resolved @ fixed budget`；
+- Aragog 若采用规则式或硬编码策略，反而支持本文的 training-free 路线：系统论文可以用可解释 runtime policy，而不必把 RL 放进 paper 1 主干。
+
+需要确认的事实：venue、benchmark、headline gain、是否真的优化 fixed spend。
+
+### Murakkab
+
+关系：有帮助的 workflow orchestration paper。
+
+Murakkab 说明 cloud platform 里的 agentic workflow orchestration 可以带来资源效率提升。它对本文有帮助，因为它证明 workflow 结构进入系统层是顶会/系统社区关心的问题。
+
+本文应避免和它抢“workflow orchestration platform”这个大目标。BudgetFlow 的 paper 1 更窄：在现有 agent loop 和 LLM backend 之间做 hard-spend governance。
+
+需要确认的事实：venue、数据集、提升数字、是否有 cost under SLO 目标。
+
+### Autellix
+
+关系：有帮助的 serving engine paper。
+
+Autellix 把 LLM agents 当作 general programs 来服务，说明 agent execution 已经需要 program-aware serving engine。BudgetFlow 可以放在它上层：BudgetFlow 决定每个 step 的 spend / model / admission，Autellix 类 engine 负责高效执行程序化 agent 请求。
+
+威胁点：如果 Autellix 也做 workflow-aware routing，需要在 related work 中说明它优化的是 engine efficiency / HoL / throughput，而 BudgetFlow 的主指标是 task success under fixed spend。
+
+### Helium
+
+关系：有帮助的 workflow-aware serving paper。
+
+Helium 证明 workflow-aware serving 是合理方向。本文可以借它强化“workflow state matters”这个大前提。它的威胁取决于是否包含 hard economic budget 和 task-success objective；如果主要优化 serving efficiency，则属于可叠加 backend layer。
+
+### ATHENA-Serve
+
+关系：重要相关工作 + 审稿风险提醒。
+
+ATHENA 说明 resource budget / horizon prediction / hierarchical RL scheduler 已经被认真研究。本文应吸收它的审稿教训：报告 p99 / violation / overhead，加入强 heuristic baseline，清楚解释 training-free policy 的价值。
+
+它强化了 BudgetFlow 的 positive framing：BudgetFlow 的问题是 agent workflow spend allocation。
+
+## 6. 旧表中的论文如何处理
+
+| 论文 | 是否保留 | 位置 | 理由 |
+|---|---|---|---|
+| RouteLLM | 保留 | per-query router baseline | 强/弱模型 routing 的经典背景 |
+| CARROT | 保留 | per-query cost-aware router | cost-aware 但通常不是 workflow ledger |
+| OmniRouter | 保留 | constrained per-query / global routing | 可作为优化视角 baseline |
+| Budget-Aware Agentic Routing / BoPO | 强保留 | closest competitor | multi-step + cost/success + RL |
+| xRouter | 保留 | RL routing related work | 方法论邻居 |
+| AgentRM | 弱保留 | runtime governance background | 资源稳定性，不是 spend allocation 主线 |
+| AgentCgroup | 弱保留 | OS/resource isolation background | OS 隔离背景 |
+| AIOS | 弱保留 | broad agent OS background | 概念背景，少写 |
+| pMVX | 弱保留 | agent OS self-tuning background | 平行工作，少写 |
+
+## 7. RL / ML 使用情况
+
+| 论文类别 | 使用 RL/ML | 本文策略 |
+|---|---|---|
+| BoPO / xRouter | 是，核心方法 | 放 closest related work；future learned selector |
+| ATHENA-Serve | 是，hierarchical RL + predictor | 放 serving related work；吸收评审教训 |
+| RouteLLM / OmniRouter / CARROT | 多数使用学习器或统计预测 | 作为 per-query baseline 或组件 |
+| Aragog / Murakkab / Autellix / Helium | 需按原文确认，可能包含规则、优化或学习组件 | 作为系统层对照，不把 ML 与否作为唯一差异 |
+| BudgetFlow paper 1 | 主干 training-free | 把 learned selector 写进 future work / pluggable extension |
+
+本文可以明确写：
+
+> BudgetFlow's ModelSelector is a plug point. Paper 1 uses a training-free auditable rule to isolate the value of the runtime formulation. A learned selector can replace this rule later, while the ledger, reservation, settlement, and governor remain the same runtime contract.
+
+## 8. 顶会化建议
+
+顶会审稿人更可能接受的问题定义：
+
+> We identify hard-spend governance for agent workflows as a systems problem: model routing, budget accounting, and backend admission must be decided together when many agent workflows share a fixed economic budget.
+
+需要补强的实验：
+
+1. **Fixed-budget curves**：不同总预算下的 `resolved`、cost per resolved、budget violation。
+2. **Ablation**：Workflow-Level Router、Budget-Only Step Router、BudgetFlow Full。
+3. **Runtime stress**：并发数 `J = 1 / 10 / 50 / 100`，报告 429 rate、queue latency、recovered budget。
+4. **Heuristic strength**：给 Budget-Only 和 Workflow-Level baseline 足够强的调参，避免被审稿人说 strawman。
+5. **Overhead**：BudgetFlow 的 routing / accounting / scheduling overhead。
+6. **Generalization note**：主实验在 SWE-bench，其他领域需要新的 progress signal；论文主张可复用的是 ledger + hard reservation + step-value formulation。
+
+## 9. 最终定位
+
+本文的 niche 应写成：
+
+> BudgetFlow is a training-free runtime for hard economic budget governance in multi-step LLM agent workflows. It allocates stronger model calls across workflow steps and concurrent tasks using auditable step-value signals, while a shared ledger enforces reservation, settlement, and backend quotas. The paper evaluates whether this formulation improves verified task success under fixed spend.
+
+这比旧版“budget-aware multi-step routing”更强，因为它强调了独特的问题定义：**hard-spend governance for agent workflows**。
