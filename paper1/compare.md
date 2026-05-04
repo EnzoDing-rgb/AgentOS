@@ -6,7 +6,7 @@
 3）这些论文和本文有什么异同？有没有已经覆盖了本文想解决的问题
 4）如果没有，那本文很好，如何对标顶会论文提升，然后发顶会；这些论文好像更多的优化的是吞吐量，而我的论文优化的是预算约束下的质量/吞吐量？
 5）这些论文哪些使用了强化学习/机器学习算法，哪些没有使用？我的论文没有使用，但我的论文能否把其中某些东西做成可插拔？Aragog似乎是软件硬编码，和我的论文方法论类似；我的论文在模型路由策略上，似乎可以做成RL可插拔（放到future work里， paper1主干先不实现机器学习）
-5）如果很不幸本文的idea已经被做了，如何调整？请你好好看一下scratch.md里面的内容
+5）如果很不幸本文的idea已经被做了，如何调整？请你好好看一下scratch.md里面的内容【最好能根据别人的审稿意见，让我的论文做出差异化，并且真正有contribution；比如说 不需要RL训练算一个，但这个contribution太minor，有没有更大的contribution，比如说提出了什么新的定义问题的方式，能否具备更好的泛化性/泛化方法是什么；我现在是SWE-bench上，这没问题，如何泛化，如何拆分到不同行业的不同任务不同领域？我没说必须要有很大的通用性，专用也是价值，但具体什么价值，得说清楚】
 6）客观回答，你是顶会审稿人，给我修改意见；你只有一个任务，给我更新compare.md
 
 
@@ -18,11 +18,6 @@ Murakkab: Resource-Efficient Agentic Workflow Orchestration in Cloud Platforms
 Autellix: An Efficient Serving Engine for LLM Agents as General Programs
 ATHENA-Serve: An Intelligent Scheduling LLM Serving System via Horizon-Cost Prediction and Hierarchical RL 【划重点】
 Helium: Workflow-Aware LLM Serving for Agentic Applications
-
-现在 Parrot、Aragog、Murakkab 三篇论文，已经完整勾勒出了未来 Agent 服务的标准架构：
-上层用 Murakkab 做声明式工作流定义和全局 SLO 优化
-中层用 Aragog 做动态模型路由和并发调度
-下层用 Parrot 做多轮请求流水线和 KV 缓存共享
 
 
 ## 完整对比表格
