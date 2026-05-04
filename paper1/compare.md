@@ -86,8 +86,6 @@ xRouter is an RL / tool-calling router line. The threat is mostly methodological
 
 ## 4. ATHENA-Serve: important related work, but belongs in Related Work
 
-ATHENA-Serve deserves careful writing, and it fits naturally in related work.
-
 | Dimension | ATHENA-Serve | BudgetFlow |
 |---|---|---|
 | Core problem | LLM serving under bursty traffic | budget-governed agent execution |
@@ -95,7 +93,6 @@ ATHENA-Serve deserves careful writing, and it fits naturally in related work.
 | Objective | tail latency, SLO violations, HoL blocking | verified task success under fixed budget |
 | Method | horizon-cost prediction + hierarchical RL scheduling | training-free priority rule + workflow ledger |
 | Workload | ShareGPT-like online serving traces (confirm in the paper) | SWE-bench Verified coding workflows |
-| Role in this paper | serving-layer related work / reviewer warning | paper-1 mainline |
 
 Key reminders from ATHENA for this paper:
 

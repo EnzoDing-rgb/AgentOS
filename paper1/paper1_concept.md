@@ -625,10 +625,6 @@ This paper only claims applicability to coding-agent workflows with verifiable i
 
 Stage weight is only a coarse scheduling signal. The Budget-Only Step Scheduler ablation is required: after removing stage and observation state, does performance drop?
 
-### Estimated cost is not realized cost
-
-Before a call, output token counts are unknown, so BudgetFlow can only rank with `expected_cost`, enforce budgets with `reserved_cost`, and report experiments with `actual_cost`.
-
 ### KV / prompt caching
 
 Frequent model upgrades or downgrades can reduce prefix-cache reuse. For coding agents, prompts often carry long issue descriptions, file snippets, and previous observations, so extra prefill latency or lower cached-token reuse can offset the benefit of better model placement. BudgetFlow should therefore measure this effect rather than only list it as a threat.
