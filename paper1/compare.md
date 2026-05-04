@@ -14,6 +14,8 @@ The safest, most contribution-forward statement is:
 
 This formulation is stronger than framing the paper as only a "training-free router." `training-free` is a method property and should not be the sole contribution. The real contribution is putting budget, workflow-stage state, a concurrent runtime ledger, backend limits, and verifiable task success into one systems problem statement.
 
+The central positioning gap is not "we route better for one request." RouteLLM, CARROT, GPT-5 Auto, LiteLLM-style routing, and similar systems mainly answer: **which model should serve this request?** BudgetFlow asks: **when many workflows share one budget and the same backend limits, how should money be allocated across steps and across workflows?** That makes strong per-call routers useful baselines or plug-in selectors, but not replacements for the workflow ledger, hard reservation, backend admission, and multi-workflow scheduler.
+
 ## 1. A positive problem definition for this paper
 
 | Dimension | BudgetFlow's choice |
@@ -22,7 +24,7 @@ This formulation is stronger than framing the paper as only a "training-free rou
 | Unit | one LLM step inside a workflow |
 | State | workflow ledger, global budget level, workflow stage, backend limits |
 | Decision | for the current step: cheap model, strong model, downgrade, queue, switch backend, or reject |
-| Method | training-free scheduling priority using stage weight, online signal, runtime headroom, and reserved cost |
+| Method | training-free upgrade rule using $w_i$, `expected_progress_gain`, `extra_cost`, and `budget_pressure` |
 | Hard-budget mechanism | `expected_cost` for ranking, `reserved_cost` for admission, `actual_cost` for settlement |
 | Headline metrics | SWE-bench Verified `resolved @ fixed budget`, budget violations, 429 rate, queue latency, recovered budget |
 
@@ -41,7 +43,7 @@ One-sentence version:
 | Workflow orchestration | Murakkab | low–medium | shows cloud workflow orchestration is a systems problem; helps position BudgetFlow as a narrow integration layer |
 | Programming / semantic serving | Parrot | low | shows LLM apps have structure and program semantics; helps justify richer step context |
 | Infrastructure measurement | The Cost of Dynamic Reasoning | low | motivation: agent test-time scaling makes cost governance a first-class systems issue |
-| Agent OS / resource isolation | AgentRM, AgentCgroup, AIOS, pMVX | low | background that agent runtimes need resource governance |
+| Agent runtime / resource governance | AgentRM, AgentCgroup, AIOS, pMVX | low | background that agent runtimes need resource governance |
 
 ## 2.1 Boundary against workflow-aware systems
 
@@ -68,7 +70,7 @@ This is the closest research neighbor because it also studies model routing acro
 | Approach | learned routing policy / RL | training-free runtime rule |
 | Decision object | model choice along an agent trajectory | workflow-stage scheduling + runtime admission |
 | Budget | budget-aware reward / constraints in training and inference | runtime hard budget with reservation |
-| Interpretability | policy comes from training | stage weight, online signal, runtime headroom, and reserved cost are auditable |
+| Interpretability | policy comes from training | $w_i$, `expected_progress_gain`, `extra_cost`, `budget_pressure`, and `reserved_cost` checks are auditable |
 | System state | focuses on routing policy | workflow ledger, global budget, backend RPM, concurrency slots |
 | How this paper uses it | related work + future learned selector | paper-1 mainline |
 
@@ -206,9 +208,9 @@ Positioning sentence:
 | Budget-Aware Agentic Routing / BoPO | strong yes | closest competitor | multi-step + cost/success + RL |
 | xRouter | yes | RL routing related work | methodological neighbor |
 | AgentRM | weak yes | runtime governance background | stability resources, not the spend-allocation spine |
-| AgentCgroup | weak yes | OS / resource isolation background | OS isolation context |
-| AIOS | weak yes | broad agent OS background | conceptual background; cite lightly |
-| pMVX | weak yes | agent OS self-tuning background | parallel work; cite lightly |
+| AgentCgroup | weak yes | resource isolation background | resource-isolation context |
+| AIOS | weak yes | broad agent runtime background | conceptual background; cite lightly |
+| pMVX | weak yes | agent runtime self-tuning background | parallel work; cite lightly |
 
 ## 8. RL / ML usage snapshot
 
