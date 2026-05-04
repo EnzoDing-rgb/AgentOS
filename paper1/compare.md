@@ -43,6 +43,20 @@ One-sentence version:
 | Infrastructure measurement | The Cost of Dynamic Reasoning | low | motivation: agent test-time scaling makes cost governance a first-class systems issue |
 | Agent OS / resource isolation | AgentRM, AgentCgroup, AIOS, pMVX | low | background that agent runtimes need resource governance |
 
+## 2.1 Boundary against workflow-aware systems
+
+BudgetFlow should not sell itself as the first system to use workflow structure. The stronger claim is more specific: it uses workflow state to decide **whether a call can run under a shared budget, which model tier it should use, and how budget is reserved, settled, and recovered across many concurrent workflows**.
+
+| System line | What it mainly provides | BudgetFlow's different role |
+|---|---|---|
+| ATHENA / Helium / Autellix-style serving | batching, KV/cache reuse, tail latency, throughput, HoL reduction | BudgetFlow decides which calls are admitted and which model/backend candidates to send down |
+| Parrot / Murakkab / Aragog-style workflow systems | application structure, workflow configuration, just-in-time routing or orchestration | BudgetFlow keeps a per-workflow budget ledger and ties model choices to a hard shared budget |
+| AgentRM / AgentCgroup / AIOS-style managers | resource isolation, stability, broad agent runtime control | BudgetFlow focuses on the LLM-call boundary: reservation, settlement, backend limits, and stalled-workflow recovery |
+
+Simple positioning sentence:
+
+> BudgetFlow is the layer that checks budget and workflow state before each LLM call is sent; workflow-aware serving systems can still execute the admitted calls below it.
+
 ## 3. Closest competitors
 
 ### 3.1 Budget-Aware Agentic Routing / BoPO
@@ -60,9 +74,9 @@ This is the closest research neighbor because it also studies model routing acro
 
 Concrete adjustments for this paper:
 
-- Write the contribution as **problem formulation + runtime contract**, not only as a "heuristic router."
+- Write the contribution as **problem formulation + concrete runtime behavior**, not only as a "heuristic router."
 - Keep `Workflow-Level Router`, `Budget-Only Step Scheduler`, and `BudgetFlow Full` in experiments; use ablations to show gains come from workflow-stage state and runtime budget governance.
-- Future work: a BoPO-style learned selector can replace `ModelSelector`, while ledger, reservation, settlement, and governor remain the runtime contract.
+- Future work: a BoPO-style learned selector can replace `ModelSelector`, while ledger, reservation, settlement, and governor remain the runtime core.
 
 ### 3.2 xRouter
 
@@ -165,6 +179,23 @@ ATHENA shows resource budgets, horizon prediction, and hierarchical RL scheduler
 
 It reinforces BudgetFlow's positive framing: BudgetFlow's question is workflow-aware budget governance for agent execution.
 
+## 6.1 KV cache and model-switching risk
+
+This is a serious systems risk, not a minor caveat. Coding-agent prompts can be long and repetitive. If BudgetFlow frequently switches between model tiers or providers, it may lose prefix-cache reuse, increase prefill latency, and waste memory. A reviewer can fairly ask whether the scheduling gain survives this backend cost.
+
+Required experiments:
+
+1. Report model-switch rate per workflow and a cross-model transition matrix.
+2. Run a controlled local serving study on A800 with vLLM / SGLang / TensorRT-LLM when possible.
+3. Measure TTFT / prefill-like latency, GPU memory pressure, and cached-token ratio when the backend exposes them.
+4. Compare BudgetFlow Full with **BudgetFlow Cache-Sticky**: switch models only when `new_priority - current_priority >= switch_penalty`.
+5. Add a sensitivity curve with synthetic switching penalties when the backend hides exact cache details.
+6. Report resolved rate under fixed budget together with latency / cache overhead, not only task success.
+
+Positioning sentence:
+
+> BudgetFlow should treat cache locality as runtime state: staying on the current model can receive a small bonus, and switching models can require a higher scheduling threshold.
+
 ## 7. What to do with papers from the old comparison table
 
 | Paper | Keep? | Where | Why |
@@ -191,7 +222,7 @@ It reinforces BudgetFlow's positive framing: BudgetFlow's question is workflow-a
 
 A crisp sentence you can reuse:
 
-> BudgetFlow's ModelSelector is a plug point. Paper 1 uses a training-free auditable rule to isolate the value of the runtime formulation. A learned selector can replace this rule later, while the ledger, reservation, settlement, and governor remain the same runtime contract.
+> BudgetFlow's ModelSelector is a plug point. Paper 1 uses a training-free auditable rule to isolate the value of the runtime design. A learned selector can replace this rule later, while the ledger, reservation, settlement, and governor stay the same.
 
 ## 9. How to strengthen the paper for a top venue
 
@@ -201,11 +232,11 @@ A problem definition reviewers are more likely to accept:
 
 Experiments to strengthen:
 
-1. **Fixed-budget curves**: `resolved`, budget violations, and efficiency metrics across total budgets.
-2. **Ablations**: Workflow-Level Router, Budget-Only Step Router, BudgetFlow Full.
-3. **Runtime stress**: concurrency `J = 1 / 10 / 50 / 100`, reporting 429 rate, queue latency, recovered budget.
+1. **RQ1: Budgeted execution problem**: under concurrent agent execution, report where budget is wasted and which limits are hit: budget violations, 429s, queue latency, recovered budget, cancelled zombies.
+2. **RQ2: Workflow-stage scheduling value**: under the same budget, compare Workflow-Level Router, Budget-Only Step Scheduler, BudgetFlow Full, and BudgetFlow Cache-Sticky on `resolved @ fixed budget`.
+3. **RQ3: Cache-aware model switching**: use local A800 serving to test whether workflow-stage model switching still brings net gain after prefix-cache / prefill costs.
 4. **Heuristic strength**: tune Budget-Only and Workflow-Level baselines strongly to avoid strawman critiques.
-5. **Overhead**: BudgetFlow routing / accounting / scheduling overhead.
+5. **Overhead**: report BudgetFlow routing / accounting / scheduling overhead.
 6. **Generalization note**: main results on SWE-bench; other domains need new progress signals; the reusable claim is ledger + hard reservation + workflow-stage-aware scheduling.
 
 ## 10. Final positioning

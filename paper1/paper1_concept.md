@@ -285,7 +285,7 @@ If a BudgetFlow variant truly needs no tuning (for example, stage weights always
 
 ---
 
-## 6. Three primary system comparisons
+## 6. System comparisons and variants
 
 ### 6.1 Workflow-Level Router
 
@@ -335,6 +335,20 @@ It answers:
 
 > Under the same hard budget and backend limits, does workflow-state-aware scheduling resolve more SWE-bench tasks than workflow-level routing and budget-only step scheduling?
 
+### 6.4 BudgetFlow Cache-Sticky
+
+This variant keeps BudgetFlow's workflow-stage scheduling, but adds one cache-aware rule:
+
+```text
+Switch models only if new_priority - current_priority >= switch_penalty.
+```
+
+The `switch_penalty` is the expected cost of losing prefix-cache locality. In local A800 experiments, it can come from measured prefill overhead or cached-token loss when vLLM / SGLang / TensorRT-LLM exposes those signals. If the backend hides cache details, the paper can sweep several synthetic penalty values and show when switching still helps.
+
+It answers:
+
+> Even when switching models reduces prefix-cache locality, can workflow-stage scheduling still bring a net gain?
+
 ---
 
 ## 7. Multi-workflow runtime
@@ -381,10 +395,9 @@ Key BudgetFlow components:
 
 | RQ | Question | Metrics |
 |---|---|---|
-| RQ1 | Can BudgetFlow enforce hard budgets and backend RPM / concurrency limits? | budget violations, 429 rate, queue latency |
-| RQ2 | Does workflow-state-aware scheduling beat workflow-level routing? | resolved rate under fixed cap, admission latency |
-| RQ3 | Does workflow-stage state beat budget level alone? | BudgetFlow Full vs Budget-Only Step Scheduler |
-| RQ4 | Under many concurrent workflows, do ledger / admission / zombie recovery reduce wasted resources? | recovered budget, cancelled zombies, p99 latency |
+| RQ1 | When many agent workflows run under one fixed budget and shared backend limits, where is budget wasted and which runtime limits are hit? | budget violations, 429 rate, queue latency, recovered budget, cancelled zombies |
+| RQ2 | Under the same budget, does using workflow-stage state to choose model tiers resolve more SWE-bench tasks than workflow-level or budget-only scheduling? | resolved rate @ fixed budget, BudgetFlow Full vs Workflow-Level Router vs Budget-Only Step Scheduler |
+| RQ3 | Even when model switching reduces prefix-cache locality, can workflow-stage scheduling still bring a net gain? | model-switch rate, prefill latency, cached-token ratio, BudgetFlow Full vs BudgetFlow Cache-Sticky |
 
 ### 8.3 Primary metrics
 
@@ -397,6 +410,8 @@ Key BudgetFlow components:
 | Admission throughput | admitted calls per minute under shared backend limits |
 | Recovered budget | budget returned from stuck workflows |
 | Wasted reservation ratio | reserved budget that never becomes useful completed work |
+| Model-switch rate | how often a workflow changes model tier or backend |
+| Prefill / cache overhead | extra prefill latency or lower cached-token ratio after switching models |
 | Efficiency metric | spend per resolved task, reported as secondary context |
 
 ---
@@ -420,17 +435,17 @@ These systems mainly give BudgetFlow two classes of insight:
 1. **Serving layer can be smarter**: ATHENA-Serve maps generation horizons into KV / compute budgets and uses hierarchical RL for admission, batching, and concurrency control. Autellix and Helium likewise argue that workflow-aware serving reduces head-of-line blocking and improves throughput and tail latency.
 2. **Runtime layer should expose structure**: Parrot's semantic variables, Aragog's just-in-time routing, and Murakkab's workflow orchestration all show that structural workflow information can enter runtime decisions, so each prompt carries step context and workflow state into the system layer.
 
-BudgetFlow uses these conclusions as systems context: agent runtimes should understand workflows, and backend scheduling affects latency, throughput, and budget pressure. BudgetFlow sits above the serving engine as an agent workflow governor: it reserves budget, assigns priority, performs admission control, and selects model / backend candidates; ATHENA / Autellix / Helium-style serving systems then execute admitted requests more efficiently.
+BudgetFlow uses these conclusions as systems context: agent runtimes should understand workflows, and backend scheduling affects latency, throughput, and budget pressure. Its boundary is different. Workflow-aware serving systems mainly decide how to execute admitted requests efficiently: batch them, reuse KV cache, reduce head-of-line blocking, or meet SLOs. Workflow orchestration systems mainly decide how to configure and run a program or workflow. BudgetFlow sits one layer above the serving engine: before each LLM call is sent, it checks the shared budget, the workflow ledger, backend limits, and the current workflow stage; after the call, it settles actual usage and returns unused budget. ATHENA / Autellix / Helium-style systems can still execute the admitted requests below BudgetFlow.
 
 ### Agent runtime / resource governance
 
-AgentRM, AgentCgroup, AIOS, and related work focus on resource management, isolation, or stability for agent systems. BudgetFlow is narrower in scope and deeper at the LLM-call boundary: it governs budget reservations, backend limits, workflow-stage scheduling, and recovery for concurrent agent workflows.
+AgentRM, AgentCgroup, AIOS, and related work focus on resource management, isolation, or stability for agent systems. BudgetFlow is narrower in scope and deeper at the LLM-call boundary: it keeps a budget ledger for each workflow, reserves budget before a call, settles actual usage after the call, chooses model tiers using workflow-stage signals, and releases budget and slots from stalled workflows. The paper evaluates whether these runtime decisions improve verified task completion under the same budget.
 
 ### Learned agent routing policies
 
 BoPO establishes that step-level model routing for long-horizon agents is a real research problem. It trains a learned router with reinforcement learning and studies success under constrained model budgets on ALFWorld, SciWorld, and AppWorld.
 
-BudgetFlow treats learned selection as a policy module that can sit inside the ModelSelector. The paper's main systems question is the runtime contract around that policy: ledger state, hard reservation, backend admission, scheduling, settlement, and recovery when many workflows execute concurrently.
+BudgetFlow treats learned selection as a policy module that can sit inside the ModelSelector. The paper's main systems question is the runtime around that policy: keep ledger state, reserve budget, admit calls under backend limits, schedule model tiers, settle actual usage, and recover resources when many workflows execute concurrently.
 
 ---
 
@@ -450,7 +465,9 @@ Before a call, output token counts are unknown, so BudgetFlow can only rank with
 
 ### KV / prompt caching
 
-Cloud APIs often do not expose raw KV cache. Staying on one model may benefit from provider-side prompt caching or prefix caching, while frequent model switching may lose those benefits. Cross-model KV / cache costs are hard to quantify cleanly because tokenizers, architectures, output lengths, and billing rules differ. We treat this as a threat / future work and do not inject a synthetic switching penalty into the main experiments.
+Frequent model upgrades or downgrades can reduce prefix-cache reuse. For coding agents, prompts often carry long issue descriptions, file snippets, and previous observations, so extra prefill latency or lower cached-token reuse can offset the benefit of better model placement. BudgetFlow should therefore measure this effect rather than only list it as a threat.
+
+The main SWE-bench experiments can run on API models or another stable backend, but the cache study should use controlled local serving on an A800-class GPU when possible. With vLLM, SGLang, or TensorRT-LLM, the experiment can enable prefix caching and report model-switch rate, cross-model transition counts, TTFT / prefill-like latency, GPU memory pressure, and cached-token ratio when the backend exposes it. It should compare BudgetFlow Full with **BudgetFlow Cache-Sticky**, which stays on the current model unless the scheduling gain is large enough to pay for the expected switching penalty. If exact cache signals are unavailable, the paper should report TTFT / latency and include a sensitivity curve that adds synthetic switching penalties.
 
 ---
 
@@ -476,7 +493,7 @@ This paper places BudgetFlow between existing agent frameworks and the LLM backe
 
 ### Cache-aware routing
 
-If a provider or local serving stack exposes cached-token / prefix-cache signals, BudgetFlow can incorporate cache locality into `actual_cost` or a future selector. This paper does not assume direct control over KV cache.
+If a provider or local serving stack exposes cached-token / prefix-cache signals, BudgetFlow can feed them into the scheduler. A call that keeps cache locality can receive a small priority bonus, while a cross-model switch can require a higher threshold. This keeps the core policy simple while making cache loss visible in the decision.
 
 ### Learned selector as a plug-in
 
