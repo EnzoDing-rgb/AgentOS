@@ -16,6 +16,8 @@ Parrot: Efficient Serving of LLM-based Applications with Semantic Variable
 Aragog: Just-in-Time Model Routing for Scalable Serving of Agentic Workflows
 Murakkab: Resource-Efficient Agentic Workflow Orchestration in Cloud Platforms
 Autellix: An Efficient Serving Engine for LLM Agents as General Programs
+ATHENA-Serve: An Intelligent Scheduling LLM Serving System via Horizon-Cost Prediction and Hierarchical RL 【划重点】
+Helium: Workflow-Aware LLM Serving for Agentic Applications
 
 现在 Parrot、Aragog、Murakkab 三篇论文，已经完整勾勒出了未来 Agent 服务的标准架构：
 上层用 Murakkab 做声明式工作流定义和全局 SLO 优化
