@@ -1,31 +1,31 @@
-# BudgetFlow: Budget-Governed Runtime Scheduling for LLM Agent Workflows
+# Spend Tokens Where They Matter: Workflow-Aware Budgeting for LLM Agents
 
-> **One-liner**: BudgetFlow is a runtime layer for concurrent LLM-agent workflows that enforces hard spend caps, provider RPM limits, and concurrency slots while using workflow-stage signals to schedule scarce high-capability model calls.
+> **One-liner**: BudgetFlow is a runtime layer for concurrent LLM-agent workflows that enforces a hard budget, provider RPM limits, and concurrency slots while using workflow-stage signals to schedule scarce high-capability model calls.
 
 ---
 
 ## 0. What problem does this paper solve?
 
-Today's LLM agents are usually composed of many model calls. Take SWE-bench as an example: a coding agent reads an issue, searches files, reads code, writes a patch, runs tests, and then iterates using failure logs. Each step consumes shared runtime resources: spend budget, model slots, provider RPM quota, and queue capacity. At the same time, steps differ in how much they affect the final trajectory: a wrong directory listing is often recoverable, while a wrong root-cause judgment after a test failure can ruin the repair.
+Today's LLM agents are usually composed of many model calls. Take SWE-bench as an example: a coding agent reads an issue, searches files, reads code, writes a patch, runs tests, and then iterates using failure logs. Each step consumes shared runtime resources: budget, model slots, provider RPM limits, and queue capacity. At the same time, steps differ in how much they affect the final trajectory: a wrong directory listing is often recoverable, while a wrong root-cause judgment after a test failure can ruin the repair.
 
 We formalize this as **budget-governed agent execution**:
 
-> **Given many concurrent LLM-agent workflows sharing a global spend cap, model pool, provider quotas, and concurrency slots, how should a runtime admit, queue, downgrade, upgrade, switch, or cancel calls while preserving hard limits and completing more verifiable tasks?**
+> **Given many concurrent LLM-agent workflows sharing a global budget, model pool, provider RPM limits, and concurrency slots, how should a runtime admit, queue, downgrade, upgrade, switch, or cancel calls while preserving hard limits and completing more verifiable tasks?**
 
 This problem has three key ingredients:
 
-1. **Hard runtime limits**: the total spend cap, provider RPM limits, and concurrency slots are given up front, and the runtime must enforce them during execution.
+1. **Hard runtime limits**: the total budget, provider RPM limits, and concurrency slots are given up front, and the runtime must enforce them during execution.
 2. **Workflow-stage heterogeneity**: directory browsing, code understanding, traceback analysis, patch generation, and validation place different demands on high-capability model calls.
-3. **Shared execution state**: many workflows run concurrently, sharing a global quota pool, backend model pool, queues, reservations, and failure-recovery mechanisms.
+3. **Shared execution state**: many workflows run concurrently, sharing a global budget, backend model pool, queues, reservations, and failure-recovery mechanisms.
 
-Therefore, the core systems object of this paper is the full agent workflow and its step sequence under shared runtime constraints. Model choice for a single LLM call still matters, but BudgetFlow also tracks where that call sits in the workflow, how much budget has been reserved and settled, how tight backend quotas are, how long queues are, and whether stalled workflows should release resources.
+Therefore, the core systems object of this paper is the full agent workflow and its step sequence under shared runtime constraints. Model choice for a single LLM call still matters, but BudgetFlow also tracks where that call sits in the workflow, how much budget has been reserved and settled, how tight backend limits are, how long queues are, and whether stalled workflows should release resources.
 
-We propose **BudgetFlow**: a training-free, workflow-aware runtime governor for LLM-agent execution. It sits at the LLM-call layer, maintains per-workflow ledgers, reserves and settles spend, enforces backend quotas, schedules calls across concurrent workflows, and tracks workflow-stage signals. It integrates into existing agent loops via proxy, adapter, or SDK modes for LangChain / SWE-agent / AutoGen.
+We propose **BudgetFlow**: a training-free, workflow-aware runtime governor for LLM-agent execution. It sits at the LLM-call layer, maintains per-workflow ledgers, reserves and settles spend, enforces backend limits, schedules calls across concurrent workflows, and tracks workflow-stage signals. It integrates into existing agent loops via proxy, adapter, or SDK modes for LangChain / SWE-agent / AutoGen.
 
 The core contributions of BudgetFlow are:
 
-1. **Budget-governed agent execution**: we define a systems problem in which concurrent agent workflows share a spend cap, provider quotas, concurrency slots, and a backend model pool.
-2. **Workflow-state-aware scheduling**: BudgetFlow uses stage signals, online progress proxies, per-workflow ledger state, and global quota pressure to prioritize scarce high-capability model calls.
+1. **Budget-governed agent execution**: we define a systems problem in which concurrent agent workflows share a hard budget, provider RPM limits, concurrency slots, and a backend model pool.
+2. **Workflow-state-aware scheduling**: BudgetFlow uses stage signals, online progress proxies, per-workflow ledger state, and current budget / backend pressure to prioritize scarce high-capability model calls.
 3. **Auditable hard-limit enforcement**: BudgetFlow separates `expected_cost`, `reserved_cost`, and `actual_cost`, uses atomic reservation to prevent overspend, and settles realized usage after each call.
 4. **Multi-workflow runtime governance**: BudgetFlow admits, queues, downgrades, switches backends, rejects calls, and reclaims reservations and slots from stalled workflows under shared runtime constraints.
 
@@ -48,7 +48,7 @@ For example:
 | Test failures, tracebacks | directly affects root-cause judgment | high |
 | Simple verification after a patch is generated | mostly wrap-up or checking | low–medium |
 
-BudgetFlow uses these weights as coarse scheduling signals. The paper tests whether adding workflow-stage state to a hard-limit runtime resolves more tasks and wastes fewer resources than using quota state and reservation size alone.
+BudgetFlow uses these weights as coarse scheduling signals. The paper tests whether adding workflow-stage state to a hard-limit runtime resolves more tasks and wastes fewer resources than using budget state and reservation size alone.
 
 ---
 
@@ -78,12 +78,12 @@ BudgetFlow sits between the agent framework and the LLM backend.
                             |
                             v
          +-------------------------------------+
-         | Governor: budget + backend quotas  |
+         | Governor: budget + backend limits  |
          +-------------------------------------+
                             |
                             v
       +------------------------------------------+
-      | ModelSelector: priority + quota state    |
+      | ModelSelector: priority + runtime state  |
       +------------------------------------------+
                             |
                             v
@@ -103,9 +103,9 @@ It can integrate in three ways:
 - **Callback / adapter mode**: LangChain, SWE-agent, or AutoGen supplies structured signals such as tool name, tool output, and step index via hooks.
 - **SDK mode**: a self-built platform explicitly passes workflow stage, workflow state, and `workflow_id`.
 
-The paper scope of BudgetFlow is LLM-call runtime governance: choose models, enforce spend caps, rate limit, queue, account for reservations, and reclaim stuck workflows. As a runtime layer between the agent framework and the LLM backend, it can attach to existing LangChain / SWE-agent / AutoGen stacks, or serve as an SDK layer for a custom agent platform.
+The paper scope of BudgetFlow is LLM-call runtime governance: choose models, enforce hard budgets, rate limit, queue, account for reservations, and reclaim stuck workflows. As a runtime layer between the agent framework and the LLM backend, it can attach to existing LangChain / SWE-agent / AutoGen stacks, or serve as an SDK layer for a custom agent platform.
 
-Here, **workflow-aware** means routing and admission decisions use workflow-level state: how much remains in the global quota pool, how much this workflow has reserved and settled, how tight each backend's RPM / concurrency slots are, whether the current call sits in a critical stage, and whether the workflow is making progress. By contrast, a **workflow-blind** router mainly relies on local information for a single request—prompt text, token counts, model tier, latency—and can be an excellent one-shot request router, yet without a ledger and cross-workflow scheduling state it is hard to enforce hard limits across a batch of agents.
+Here, **workflow-aware** means routing and admission decisions use workflow-level state: how much budget remains, how much this workflow has reserved and settled, how tight each backend's RPM / concurrency slots are, whether the current call sits in a critical stage, and whether the workflow is making progress. By contrast, a **workflow-blind** router mainly relies on local information for a single request—prompt text, token counts, model tier, latency—and can be an excellent one-shot request router, yet without a ledger and cross-workflow scheduling state it is hard to enforce hard limits across a batch of agents.
 
 ---
 
@@ -116,7 +116,7 @@ For each LLM call, BudgetFlow first checks hard feasibility: remaining budget re
 Plain-language rule:
 
 ```text
-If: workflow-stage priority clears the current quota threshold
+If: workflow-stage priority clears the current scheduling threshold
 Then: admit or upgrade the call
 Else: stay on the cheaper model, queue, downgrade, or reject
 ```
@@ -128,7 +128,7 @@ $$
 \frac{
   w_{\text{stage}(i)}
   \cdot s_i
-  \cdot q_t
+  \cdot h_t
 }{
   \text{reserved\_cost}_i
 }
@@ -141,7 +141,7 @@ Meaning of each quantity:
 |---|---|
 | $w_{\text{stage}(i)}$ | coarse weight for the current workflow stage; e.g., traceback analysis ranks above directory browsing |
 | $s_i$ | online progress / urgency signal visible at runtime |
-| $q_t$ | global quota-headroom multiplier from remaining budget, RPM headroom, queue pressure, and concurrency slots |
+| $h_t$ | runtime headroom signal from remaining budget, RPM headroom, queue pressure, and concurrency slots |
 | `reserved_cost_i` | budget reservation required before issuing the call |
 | $\theta_t$ | current scheduling threshold |
 
@@ -150,7 +150,7 @@ The scheduler does not require oracle knowledge of the final answer. It uses onl
 | Observed state | Adjustment |
 |---|---|
 | budget reservations or queues grow too quickly | raise the threshold; fewer upgrades |
-| workflows progress while quota remains available | lower the threshold; critical stages upgrade more easily |
+| workflows progress while budget and backend headroom remain available | lower the threshold; critical stages upgrade more easily |
 | backend RPM / concurrency slots are tight | raise the threshold, queue, or switch backends |
 | a workflow stalls or loops | cancel and reclaim budget and slots |
 
@@ -162,7 +162,7 @@ A simple example: after a test failure, the workflow enters a debugging stage wi
 
 ---
 
-## 4. How do we enforce spend caps?
+## 4. How do we enforce hard budgets?
 
 There are three spend-accounting notions; do not mix them.
 
@@ -180,7 +180,7 @@ This is used for scheduling priority and model-tier comparison.
 
 ### 4.2 `reserved_cost`: pre-call reservation
 
-To enforce a hard spend cap, the runtime cannot rely on average output length alone. Before issuing a call, BudgetFlow reserves budget using a controllable upper bound:
+To enforce a hard budget, the runtime cannot rely on average output length alone. Before issuing a call, BudgetFlow reserves budget using a controllable upper bound:
 
 $$
 \text{reserved\_cost}
@@ -200,7 +200,7 @@ $$
 + \text{actual\_output\_tokens} \cdot p_{\text{out}}
 $$
 
-If `actual_cost < reserved_cost`, the difference is returned to the global quota pool. Under concurrency, reservation and settlement must be atomic so that 50 workflows reading the same remaining budget cannot overspend together.
+If `actual_cost < reserved_cost`, the difference is returned to the global budget. Under concurrency, reservation and settlement must be atomic so that 50 workflows reading the same remaining budget cannot overspend together.
 
 ---
 
@@ -239,7 +239,7 @@ The harness runs the task's `FAIL_TO_PASS` test (a test that specifically checks
 
 The paper-level success criterion is one sentence:
 
-> Under the same hard spend cap and backend quotas, how many more SWE-bench Verified tasks does BudgetFlow resolve compared to baselines, while avoiding budget and quota violations?
+> Under the same hard budget and backend limits, how many more SWE-bench Verified tasks does BudgetFlow resolve compared to baselines, while avoiding budget and rate-limit violations?
 
 ### 5.3 Online scheduling signals vs offline analysis signals
 
@@ -254,7 +254,7 @@ Runtime-visible signals:
 | Patch apply status | dry-run the current patch in a sandbox | repair / generation stages |
 | Test failure text | parse failing test names, traceback length, repeated failures | validation / debugging stages |
 | Retry / loop signal | count repeated actions, repeated file opens, unchanged patches, or repeated test failures | downgrade, queue, or cancel stalled workflows |
-| Ledger and queue state | read reserved budget, actual usage, queue wait, RPM headroom, concurrency slots | quota-aware admission and priority |
+| Ledger and queue state | read reserved budget, actual usage, queue wait, RPM headroom, concurrency slots | budget-aware admission and priority |
 
 Offline analysis signals are used only for calibration, ablation, and case studies:
 
@@ -270,7 +270,7 @@ Gold patches and final benchmark labels must not enter the online scheduler. The
 
 Here we must avoid a subtle circularity.
 
-Section 1 includes a stage-weight table (traceback ranks above directory browsing, and so on). These weights may need light tuning from data—for example: whether traceback stages should receive a higher scheduling priority than search stages under the same quota pressure.
+Section 1 includes a stage-weight table (traceback ranks above directory browsing, and so on). These weights may need light tuning from data—for example: whether traceback stages should receive a higher scheduling priority than search stages under the same budget and backend pressure.
 
 The problem is: **if we tune stage weights on all 500 SWE-bench Verified tasks and then report resolved rate on the same 500 tasks, that is like studying with the answer key and then taking the same exam.** Any apparent gain may be overfitting.
 
@@ -297,7 +297,7 @@ It answers:
 
 This is the most important comparison because many routing systems in practice are request-level or task-level.
 
-### 6.2 Quota-Only Step Scheduler
+### 6.2 Budget-Only Step Scheduler
 
 It also decides per step and enforces hard limits, but ignores workflow stage and observation types.
 
@@ -311,12 +311,12 @@ It only looks at:
 This is equivalent to removing stage weights and observation-aware signals from the BudgetFlow scheduler:
 
 ```text
-Only quota level and reservation size; ignore workflow stage and runtime observation type.
+Only budget level and reservation size; ignore workflow stage and runtime observation type.
 ```
 
 It answers:
 
-> Does the gain come only from quota pacing, or do we need workflow-stage state for scheduling?
+> Does the gain come only from budget pacing, or do we need workflow-stage state for scheduling?
 
 ### 6.3 BudgetFlow Full
 
@@ -333,7 +333,7 @@ The full system includes:
 
 It answers:
 
-> Under the same hard spend cap and backend quotas, does workflow-state-aware scheduling resolve more SWE-bench tasks than workflow-level routing and quota-only step scheduling?
+> Under the same hard budget and backend limits, does workflow-state-aware scheduling resolve more SWE-bench tasks than workflow-level routing and budget-only step scheduling?
 
 ---
 
@@ -341,19 +341,19 @@ It answers:
 
 The main scenario of this paper is batched SWE-bench evaluation:
 
-> 50 SWE-agent instances run SWE-bench Verified concurrently, sharing a spend cap such as \$50, while respecting provider RPM limits and concurrency slots.
+> 50 SWE-agent instances run SWE-bench Verified concurrently, sharing a budget such as \$50, while respecting provider RPM limits and concurrency slots.
 
 The target users are people who build agents and teams who operate agent platforms: maintainers of open-source agent frameworks, in-house agent product teams, internal LLM gateway operators for a single team, and researchers who need reproducible evaluation harnesses. This paper focuses on a single budget owner plus many concurrent workflows; multi-team, multi-SLA, multi-budget-pool quota arbitration is future work.
 
 Under this setting, BudgetFlow handles five runtime questions on each LLM call:
 
-1. Can the global quota pool reserve this call?
-2. What priority does this call receive under its workflow stage and current quota state?
+1. Can the global budget reserve this call?
+2. What priority does this call receive under its workflow stage and current runtime state?
 3. Does the target backend still have RPM / concurrency headroom?
 4. If there is no slot, should we queue, downgrade, switch backends, or reject?
 5. If a workflow is stuck, how do we release reserved budget and concurrency slots?
 
-This runtime governance places per-call model selection inside an executable system environment: reservations must be atomic, completed calls must settle and return unused budget, backend quotas must be honored, and stuck workflows must release resources. This keeps the main thread anchored on agent workflow runtime governance.
+This runtime governance places per-call model selection inside an executable system environment: reservations must be atomic, completed calls must settle and return unused budget, backend limits must be honored, and stuck workflows must release resources. This keeps the main thread anchored on agent workflow runtime governance.
 
 Key BudgetFlow components:
 
@@ -361,7 +361,7 @@ Key BudgetFlow components:
 |---|---|
 | Ledger | records per-workflow reservation, realized spend, and state |
 | Governor | atomic budget reservation, settlement, and backend rate limiting |
-| ModelSelector | chooses models using stage weight, online signal, and quota state |
+| ModelSelector | chooses models using stage weight, online signal, and runtime state |
 | Scheduler | admits, queues, downgrades, or switches backends under RPM / concurrency limits |
 | ZombieDetector | cancels no-progress workflows and reclaims budget and slots |
 
@@ -374,27 +374,27 @@ Key BudgetFlow components:
 - Benchmark: SWE-bench Verified;
 - Agent scaffold: SWE-agent or mini-SWE-agent; keep one choice for the whole paper;
 - Concurrency: `J = 1 / 10 / 50 / 100`;
-- Spend cap: e.g., `B_total = $50`, and report curves across caps;
+- Budget: e.g., `B_total = $50`, and report curves across budget levels;
 - Backend pool: may include API models and local models, but the claim should not hinge on specific model names.
 
 ### 8.2 Research questions
 
 | RQ | Question | Metrics |
 |---|---|---|
-| RQ1 | Can BudgetFlow enforce hard spend caps and backend RPM / concurrency limits? | budget violations, 429 rate, queue latency |
+| RQ1 | Can BudgetFlow enforce hard budgets and backend RPM / concurrency limits? | budget violations, 429 rate, queue latency |
 | RQ2 | Does workflow-state-aware scheduling beat workflow-level routing? | resolved rate under fixed cap, admission latency |
-| RQ3 | Does workflow-stage state beat quota level alone? | BudgetFlow Full vs Quota-Only Step Scheduler |
+| RQ3 | Does workflow-stage state beat budget level alone? | BudgetFlow Full vs Budget-Only Step Scheduler |
 | RQ4 | Under many concurrent workflows, do ledger / admission / zombie recovery reduce wasted resources? | recovered budget, cancelled zombies, p99 latency |
 
 ### 8.3 Primary metrics
 
 | Metric | Meaning |
 |---|---|
-| Resolved rate @ fixed cap | how many SWE-bench tasks are resolved under the same spend cap |
-| Budget violation rate | whether the hard spend cap is exceeded |
+| Resolved rate @ fixed budget | how many SWE-bench tasks are resolved under the same budget |
+| Budget violation rate | whether the hard budget is exceeded |
 | 429 rate | whether provider RPM limits are hit |
 | p50/p99 queue latency | queuing delay |
-| Admission throughput | admitted calls per minute under shared quotas |
+| Admission throughput | admitted calls per minute under shared backend limits |
 | Recovered budget | budget returned from stuck workflows |
 | Wasted reservation ratio | reserved budget that never becomes useful completed work |
 | Efficiency metric | spend per resolved task, reported as secondary context |
@@ -405,11 +405,11 @@ Key BudgetFlow components:
 
 ### Request and workflow-level model routing
 
-RouteLLM, CARROT, OmniRouter, LiteLLM auto-router, and related work choose models for a single request or for a task-level routing profile. They can be strong engineering tools, but they typically do not maintain per-workflow ledgers, coordinate a global quota pool across many concurrent agents, or use mid-trajectory observations as scheduling state.
+RouteLLM, CARROT, OmniRouter, LiteLLM auto-router, and related work choose models for a single request or for a task-level routing profile. They can be strong engineering tools, but they typically do not maintain per-workflow ledgers, coordinate a shared budget across many concurrent agents, or use mid-trajectory observations as scheduling state.
 
 The comparison question of this paper is:
 
-> For multi-step agent workflows like SWE-bench, is request- or workflow-level routing enough without runtime quota orchestration?
+> For multi-step agent workflows like SWE-bench, is request- or workflow-level routing enough without runtime budget governance?
 
 ### LLM serving and workflow orchestration
 
@@ -420,11 +420,11 @@ These systems mainly give BudgetFlow two classes of insight:
 1. **Serving layer can be smarter**: ATHENA-Serve maps generation horizons into KV / compute budgets and uses hierarchical RL for admission, batching, and concurrency control. Autellix and Helium likewise argue that workflow-aware serving reduces head-of-line blocking and improves throughput and tail latency.
 2. **Runtime layer should expose structure**: Parrot's semantic variables, Aragog's just-in-time routing, and Murakkab's workflow orchestration all show that structural workflow information can enter runtime decisions, so each prompt carries step context and workflow state into the system layer.
 
-BudgetFlow uses these conclusions as systems context: agent runtimes should understand workflows, and backend scheduling affects latency, throughput, and quota pressure. BudgetFlow sits above the serving engine as an agent workflow governor: it reserves budget, assigns priority, performs admission control, and selects model / backend candidates; ATHENA / Autellix / Helium-style serving systems then execute admitted requests more efficiently.
+BudgetFlow uses these conclusions as systems context: agent runtimes should understand workflows, and backend scheduling affects latency, throughput, and budget pressure. BudgetFlow sits above the serving engine as an agent workflow governor: it reserves budget, assigns priority, performs admission control, and selects model / backend candidates; ATHENA / Autellix / Helium-style serving systems then execute admitted requests more efficiently.
 
 ### Agent runtime / resource governance
 
-AgentRM, AgentCgroup, AIOS, and related work focus on resource management, isolation, or stability for agent systems. BudgetFlow is narrower in scope and deeper at the LLM-call boundary: it governs spend reservations, backend quotas, workflow-stage scheduling, and recovery for concurrent agent workflows.
+AgentRM, AgentCgroup, AIOS, and related work focus on resource management, isolation, or stability for agent systems. BudgetFlow is narrower in scope and deeper at the LLM-call boundary: it governs budget reservations, backend limits, workflow-stage scheduling, and recovery for concurrent agent workflows.
 
 ### Learned agent routing policies
 
@@ -442,7 +442,7 @@ This paper only claims applicability to coding-agent workflows with verifiable i
 
 ### Coarseness of stage weights
 
-Stage weight is only a coarse scheduling signal. The Quota-Only Step Scheduler ablation is required: after removing stage and observation state, does performance drop?
+Stage weight is only a coarse scheduling signal. The Budget-Only Step Scheduler ablation is required: after removing stage and observation state, does performance drop?
 
 ### Estimated cost is not realized cost
 
@@ -464,7 +464,7 @@ This mirrors a common evolution in systems work: first make the core mechanism c
 
 ### SLA-aware scheduling
 
-Interactive agent workloads introduce deadlines, SLA tiers, latency SLOs, and throughput goals. BudgetFlow can extend its scheduler to combine spend caps with latency classes, deadline-aware admission, and priority isolation across workflow groups.
+Interactive agent workloads introduce deadlines, SLA tiers, latency SLOs, and throughput goals. BudgetFlow can extend its scheduler to combine budget caps with latency classes, deadline-aware admission, and priority isolation across workflow groups.
 
 ### Workflow-stage auto-classification
 
@@ -486,7 +486,7 @@ A learned selector, for example borrowing BoPO-style boundary-guided training, c
 
 Customer support, RAG, and scientific reasoning can reuse ledger, reservation, and scheduler machinery, but need new workflow-stage signals and evaluators. Without a reliable evaluator, do not reuse the SWE-bench stage table verbatim.
 
-The main experiments in this paper focus on batched SWE-bench-style workloads: maximize final resolved rate under a fixed spend cap while enforcing quotas and concurrency limits. Interactive / SLA constraints are natural extensions and should not be silently mixed into the paper-1 objective.
+The main experiments in this paper focus on batched SWE-bench-style workloads: maximize final resolved rate under a fixed budget while enforcing provider and concurrency limits. Interactive / SLA constraints are natural extensions and should not be silently mixed into the paper-1 objective.
 
 ---
 
@@ -498,13 +498,13 @@ The main experiments in this paper focus on batched SWE-bench-style workloads: m
 | Workflow | a sequence of LLM calls from task start to finish |
 | Stage weight | coarse scheduling weight for the current workflow stage |
 | Online signal | runtime-visible signal such as observation type, patch status, retry count, queue state, or stall indicator |
-| Quota state | remaining spend cap, RPM headroom, concurrency slots, and queue pressure |
-| Scheduling threshold | current admission / upgrade threshold derived from quota state |
+| Runtime state | remaining budget, RPM headroom, concurrency slots, and queue pressure |
+| Scheduling threshold | current admission / upgrade threshold derived from runtime state |
 | `expected_cost` | pre-call estimated cost; used for ranking |
 | `reserved_cost` | pre-call reserved cost; used for hard-budget safety |
 | `actual_cost` | post-call realized cost; used for reporting experiments |
-| Workflow-aware | routing that keeps a workflow ledger, quota state, backend quotas, and stage signals |
+| Workflow-aware | routing that keeps a workflow ledger, budget state, backend limits, and stage signals |
 | Workflow-blind | routing that mostly uses local per-request information without cross-step budget state |
 | Workflow-Level Router | pick a model or routing profile once at workflow start |
-| Quota-Only Step Scheduler | decide per step using only quota state, ignoring workflow stage and observation type |
-| BudgetFlow Full | per-step decisions + stage signals + quota state + runtime governance |
+| Budget-Only Step Scheduler | decide per step using only budget state, ignoring workflow stage and observation type |
+| BudgetFlow Full | per-step decisions + stage signals + runtime state + runtime governance |
