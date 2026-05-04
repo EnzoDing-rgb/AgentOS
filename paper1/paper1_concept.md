@@ -123,9 +123,7 @@ It can integrate in three ways:
 - **Callback / adapter mode**: LangChain, SWE-agent, or AutoGen supplies structured signals such as tool name, tool output, and step index via hooks.
 - **SDK mode**: a self-built platform explicitly passes workflow stage, workflow state, and `workflow_id`.
 
-The paper scope of BudgetFlow is LLM-call runtime governance: choose models, enforce hard budgets, rate limit, queue, account for reservations, and reclaim stuck workflows. As a runtime layer between the agent framework and the LLM backend, it can attach to existing LangChain / SWE-agent / AutoGen stacks, or serve as an SDK layer for a custom agent platform.
-
-Here, **workflow-aware** means routing and admission decisions use workflow-level state: how much budget remains, how tight each backend's RPM / concurrency slots are, whether the current call sits in a critical stage, and whether the workflow is making progress. By contrast, a **workflow-blind** router mainly relies on local information for a single request—prompt text, token counts, model tier, latency—and can be an excellent one-shot request router, yet without a ledger and cross-workflow scheduling state it is hard to enforce hard limits across a batch of agents.
+The paper scope of BudgetFlow is LLM-call runtime governance: choose models, enforce hard budgets, rate limit, queue, account for reservations, and reclaim stuck workflows. **Workflow-aware** means these decisions use workflow ledger state, shared budget state, backend limits, and current step context. A workflow-blind router can still be a strong per-request model selector, but without this state it cannot pace budget or coordinate many concurrent workflows under hard limits.
 
 ---
 
@@ -519,6 +517,23 @@ Key BudgetFlow components:
 | Scheduler | admits, queues, downgrades, or switches backends under RPM / concurrency limits |
 | ZombieDetector | cancels no-progress workflows and reclaims budget and slots |
 
+### 7.1 ZombieDetector boundary
+
+ZombieDetector is not the main algorithmic contribution. It is a resource fuse for the budget runtime: when a workflow is clearly stuck, BudgetFlow cancels or interrupts the in-flight call, settles the ledger, releases backend concurrency slots, and returns unused reserved budget to the pool so healthy workflows are not dragged down.
+
+It only manages workflows and LLM calls launched through or registered with BudgetFlow. It does not scan the machine or kill arbitrary system processes.
+
+BudgetFlow uses auditable rules rather than a black-box stuckness model:
+
+| Signal | Zombie risk |
+|---|---|
+| single step exceeds a wall-clock timeout | tool call, test run, or provider stream may be stuck |
+| same tool / action repeats past a threshold | workflow may be looping |
+| no new token, tool event, or ledger update for too long | workflow may have stopped making progress |
+| cost keeps increasing while step progress does not improve | workflow may be wasting budget |
+
+On trigger, BudgetFlow first sends a cancel / interrupt to the upper agent or provider and records a `zombie_cancelled` event. If graceful cancellation is unavailable, BudgetFlow still reclaims its own `reserved_cost` remainder and backend-specific concurrency slot. Experiments should treat this as a stop-loss mechanism: report recovered budget, wasted reservation, queue latency, and resolved rate with and without ZombieDetector.
+
 ---
 
 ## 8. Experimental design
@@ -632,7 +647,7 @@ This mirrors a common evolution in systems work: first make the core mechanism c
 
 ### SLA-aware scheduling
 
-Interactive agent workloads introduce deadlines, SLA tiers, latency SLOs, and throughput goals. BudgetFlow can extend its scheduler to combine budget caps with latency classes, deadline-aware admission, and priority isolation across workflow groups.
+Interactive agent workloads introduce deadlines, SLA tiers, latency SLOs, and throughput goals. BudgetFlow can extend its scheduler to combine budget caps with latency classes and deadline-aware admission, but those objectives should be evaluated as a separate workload rather than silently mixed into the paper-1 batch setting.
 
 ### Learned selector as a plug-in
 
@@ -640,9 +655,11 @@ A learned selector, for example borrowing BoPO-style boundary-guided training, c
 
 ### Non-coding workflows
 
-Customer support, RAG, and scientific reasoning can reuse ledger, reservation, and scheduler machinery, but need new workflow-stage signals and evaluators. Without a reliable evaluator, do not reuse the SWE-bench stage table verbatim.
+Coding workflows are useful for paper 1 because progress signals are relatively concrete: file localization, patch apply, `FAIL_TO_PASS`, and `PASS_TO_PASS` can all be checked by machines. Customer support, creative writing, RAG, and long-horizon scientific reasoning usually lack gold patches and deterministic tests, so the runtime can be reused but the ModelSelector needs a different progress source.
 
-The main experiments in this paper focus on batched SWE-bench-style workloads: maximize final resolved rate under a fixed budget while enforcing provider and concurrency limits. Interactive / SLA constraints are natural extensions and should not be silently mixed into the paper-1 objective.
+Future work can plug in learned evaluators, rule-plus-model evaluators, or domain-specific verifiers as the source of $q_i$, $w_i$, and `expected_progress_gain`. For example, customer support could use issue resolution, escalation, satisfaction, or post-hoc QA; RAG could use citation correctness, answer faithfulness, or retrieval hit rate; scientific reasoning could use benchmark verifiers, self-consistency, or expert review. These evaluators must themselves be validated on held-out tasks, rather than tuned and reported on the same examples.
+
+The main experiments in this paper therefore stay with batched SWE-bench-style workloads: maximize final resolved rate under a fixed budget while enforcing provider and concurrency limits. BudgetFlow's ledger, reservation, scheduler, and stop-loss machinery can carry over to other domains; what changes is the evidence source for progress and step importance.
 
 ---
 
