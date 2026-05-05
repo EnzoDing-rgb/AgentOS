@@ -1,0 +1,18 @@
+{
+  "name": "slidev_paper1",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "slidev build",
+    "dev": "slidev --open",
+    "export": "slidev export"
+  },
+  "dependencies": {
+    "@oxc-parser/binding-linux-x64-gnu": "0.124.0",
+    "@rolldown/binding-linux-x64-gnu": "1.0.0-rc.17",
+    "@slidev/cli": "^52.15.1",
+    "@slidev/theme-default": "latest",
+    "@slidev/theme-seriph": "latest",
+    "vue": "^3.5.33"
+  }
+}
