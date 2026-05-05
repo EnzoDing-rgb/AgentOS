@@ -59,13 +59,23 @@ else
   VFILTER="fps=60"
 fi
 
-# -profile:v high -level 4.0 → broad H.264 compatibility (QuickTime, Safari, mobile)
-# -movflags +faststart        → moov atom upfront, streamable / instant-play
-ffmpeg -y -loglevel error -i "$INPUT" \
+# -profile:v high -level 4.0 → broad H.264 when libx264 exists; else mpeg4 fallback
+# (miniconda ffmpeg builds are often libopenh264-only or ABI-broken OpenH264).
+rm -f "$OUT60"
+if ffmpeg -y -loglevel warning -i "$INPUT" \
   -vf "$VFILTER" \
   -c:v libx264 -pix_fmt yuv420p -profile:v high -level 4.0 \
   -crf 18 -preset medium -movflags +faststart \
-  "$OUT60"
+  "$OUT60" 2>/dev/null; then
+  :
+elif ffmpeg -y -loglevel warning -i "$INPUT" \
+  -vf "$VFILTER" \
+  -c:v mpeg4 -pix_fmt yuv420p -q:v 3 -movflags +faststart \
+  "$OUT60" 2>/dev/null; then
+  echo "  ⚠ 60fps encode used mpeg4 fallback (no working libx264 in PATH)" >&2
+else
+  ffmpeg -y -i "$INPUT" -vf "$VFILTER" -c:v libopenh264 -pix_fmt yuv420p -b:v 9500k -movflags +faststart "$OUT60"
+fi
 MP4_SIZE=$(du -h "$OUT60" | cut -f1)
 echo "  ✓ $MP4_SIZE"
 

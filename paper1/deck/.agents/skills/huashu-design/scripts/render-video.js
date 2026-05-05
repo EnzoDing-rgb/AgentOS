@@ -264,21 +264,30 @@ console.log(`  output: ${MP4_OUT}`);
     : animationStartSec + (hasReady ? 0.05 : 0.5);
 
   console.log(`▸ ffmpeg: trim=${resolvedTrim.toFixed(2)}s${TRIM_OVERRIDE !== null ? ' (manual)' : ' (auto)'}, encode H.264…`);
-  const ffmpeg = spawnSync('ffmpeg', [
-    '-y',
-    '-ss', String(resolvedTrim),
-    '-i', webmPath,
-    '-t', String(DURATION),
-    '-c:v', 'libx264',
-    '-pix_fmt', 'yuv420p',
-    '-crf', '18',
-    '-preset', 'medium',
-    '-movflags', '+faststart',
-    MP4_OUT,
-  ], { stdio: ['ignore', 'ignore', 'pipe'] });
 
-  if (ffmpeg.status !== 0) {
-    console.error('✗ ffmpeg failed:\n' + ffmpeg.stderr.toString().slice(-2000));
+  const baseIn = ['-y', '-ss', String(resolvedTrim), '-i', webmPath, '-t', String(DURATION)];
+  const encodeAttempts = [
+    ['libx264·CRF', [...baseIn, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'medium', '-crf', '18', '-movflags', '+faststart', MP4_OUT]],
+    ['libx264·ABR', [...baseIn, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'medium', '-b:v', '9500k', '-maxrate', '9500k', '-bufsize', '19000k', '-movflags', '+faststart', MP4_OUT]],
+    ['libopenh264', [...baseIn, '-c:v', 'libopenh264', '-pix_fmt', 'yuv420p', '-b:v', '9500k', '-movflags', '+faststart', MP4_OUT]],
+    // Last resort: MPEG-4 part 2 — wide ABI support when OpenH264 .so mismatches (some conda builds).
+    ['mpeg4', [...baseIn, '-c:v', 'mpeg4', '-pix_fmt', 'yuv420p', '-q:v', '3', '-movflags', '+faststart', MP4_OUT]],
+  ];
+
+  let ffmpegOk = false;
+  let lastStderr = '';
+  for (const [label, argv] of encodeAttempts) {
+    try { fs.unlinkSync(MP4_OUT); } catch (_) {}
+    const r = spawnSync('ffmpeg', argv, { stdio: ['ignore', 'ignore', 'pipe'] });
+    lastStderr = r.stderr.toString();
+    if (r.status === 0 && fs.existsSync(MP4_OUT) && fs.statSync(MP4_OUT).size > 256) {
+      console.log(`▸ ffmpeg ok (${label})`);
+      ffmpegOk = true;
+      break;
+    }
+  }
+  if (!ffmpegOk) {
+    console.error('✗ ffmpeg failed (all attempts):\n' + lastStderr.slice(-2500));
     process.exit(1);
   }
 
