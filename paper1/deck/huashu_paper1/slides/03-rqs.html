@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>03 · 三个研究问题</title>
+<link rel="stylesheet" href="../shared/fonts.css">
+<link rel="stylesheet" href="../shared/tokens.css">
+<style>
+  h1.slide-title { font-size: 52px !important; margin-bottom: 12px !important; }
+  table.data { font-size: 18px; }
+  table.data th { font-size: 11px; }
+  table.data td { padding: 11px 12px; vertical-align: top; }
+</style>
+</head>
+<body>
+  <header class="page-header">
+    <span class="brand">BudgetFlow</span>
+    <span class="meta">Paper 1 Brief · 2026</span>
+  </header>
+
+  <div class="slide-content">
+    <p class="kicker">§2.1 · Research Questions</p>
+    <h1 class="slide-title">三个研究问题</h1>
+    <div class="table-wrap">
+      <table class="data">
+        <thead>
+          <tr>
+            <th>RQ</th>
+            <th>问题</th>
+            <th>主要指标</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="mono"><strong>RQ1</strong></td>
+            <td>多 workflow 在同一固定预算与共享后端限流下并行运行时，预算浪费在何处、哪些运行时限制最先成为瓶颈？</td>
+            <td>预算违规率、429 率、队列延迟、回收预算、僵尸取消数等</td>
+          </tr>
+          <tr>
+            <td class="mono"><strong>RQ2</strong></td>
+            <td>在相同预算下，利用 workflow 阶段状态做多步模型档位选择，是否比「仅按 workflow」或「仅按预算」调度 resolve 更多 SWE-bench 类任务？</td>
+            <td>固定预算下 resolved rate；BudgetFlow Full vs Workflow-Level Router vs Budget-Only Step Scheduler</td>
+          </tr>
+          <tr>
+            <td class="mono"><strong>RQ3</strong></td>
+            <td>当换模型削弱 prefix-cache 局部性时，workflow 阶段调度是否仍能带来净收益？</td>
+            <td>换模频率、prefill 延迟、cached-token 比例；BudgetFlow Full vs BudgetFlow Cache-Sticky</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <footer class="page-footer">
+    <span>三个 RQ</span>
+    <span>3 / 13</span>
+  </footer>
+</body>
+</html>

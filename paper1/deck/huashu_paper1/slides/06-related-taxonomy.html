@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>06 · 相关工作分类</title>
+<link rel="stylesheet" href="../shared/fonts.css">
+<link rel="stylesheet" href="../shared/tokens.css">
+<style>
+  .tax { display:grid; grid-template-columns: repeat(2, 1fr); gap: 22px 32px; flex:1; min-height:0; }
+</style>
+</head>
+<body>
+  <header class="page-header">
+    <span class="brand">BudgetFlow</span>
+    <span class="meta">Paper 1 Brief · 2026</span>
+  </header>
+
+  <div class="slide-content">
+    <p class="kicker">§4 · Literature taxonomy</p>
+    <h1 class="slide-title">相关工作分类</h1>
+    <em class="caption" style="display:block;margin-bottom:16px;">与 §5 一览表同一批工作；§5 第一列为下列聚类标签。</em>
+    <div class="tax">
+      <div class="card"><h4>操作系统资源管理</h4><p>AgentRM, AgentCgroup, AIOS, pMVX</p></div>
+      <div class="card"><h4>任务–模型路由</h4><p>RouteLLM, CARROT, OmniRouter</p></div>
+      <div class="card"><h4>分步骤 RL / 编排路由</h4><p>BoPO（同类：多步 RL / 工具编排：xRouter）</p></div>
+      <div class="card"><h4>GPU 资源预算控制</h4><p>Athena-Serve</p></div>
+      <div class="card" style="grid-column: 1 / -1;"><h4>硬件资源编排</h4><p>Murakkab</p></div>
+    </div>
+  </div>
+
+  <footer class="page-footer">
+    <span>相关工作分类</span>
+    <span>6 / 13</span>
+  </footer>
+</body>
+</html>

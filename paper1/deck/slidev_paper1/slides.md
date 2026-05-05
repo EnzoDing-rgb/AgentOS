@@ -1,662 +1,614 @@
 ---
-# try also 'default' to start simple
-theme: seriph
-# random image from a curated Unsplash collection by Anthony
-# like them? see https://unsplash.com/collections/94734566/slidev
-background: https://cover.sli.dev
-# some information about your slides (markdown enabled)
-title: Welcome to Slidev
-info: |
-  ## Slidev Starter Template
-  Presentation slides for developers.
-
-  Learn more at [Sli.dev](https://sli.dev)
-# apply UnoCSS classes to the current slide
-class: text-center
-# https://sli.dev/features/drawing
+theme: default
+title: BudgetFlow
+info: 论文大纲 · Slidev（与 paper1/deck/paper1_ppt_outline.md 对齐）
+transition: fade-out
 drawings:
   persist: false
-# slide transition: https://sli.dev/guide/animations.html#slide-transitions
-transition: slide-left
-# enable Comark Syntax: https://comark.dev/syntax/markdown
-comark: true
-# duration of the presentation
-duration: 35min
 ---
 
-# Welcome to Slidev
+<!-- ═══════════════════ COVER ═══════════════════ -->
 
-Presentation slides for developers
+<div class="bf-cover">
 
-<div @click="$slidev.nav.next" class="mt-12 py-1" hover:bg="white op-10">
-  Press Space for next page <carbon:arrow-right />
+# BudgetFlow
+
+<p class="bf-subtitle">面向 Agent 工作流的动态预算路由机制</p>
+
+<p class="bf-cover-desc">
+固定预算与共享配额下，跨多条 workflow 的成本–质量调度与可复现实验叙事
+</p>
+
+<nav class="bf-cover-nav">
+  <span @click="$slidev.nav.next" class="bf-cover-btn">开始 →</span>
+  <span class="bf-cover-hint">Space 翻页</span>
+</nav>
+
 </div>
 
-<div class="abs-br m-6 text-xl">
-  <button @click="$slidev.nav.openInEditor()" title="Open in Editor" class="slidev-icon-btn">
-    <carbon:edit />
-  </button>
-  <a href="https://github.com/slidevjs/slidev" target="_blank" class="slidev-icon-btn">
-    <carbon:logo-github />
-  </a>
-</div>
-
-<!--
-The last comment block of each slide will be treated as slide notes. It will be visible and editable in Presenter Mode along with the slide. [Read more in the docs](https://sli.dev/guide/syntax.html#notes)
--->
-
----
-transition: fade-out
----
-
-# What is Slidev?
-
-Slidev is a slides maker and presenter designed for developers, consist of the following features
-
-- 📝 **Text-based** - focus on the content with Markdown, and then style them later
-- 🎨 **Themable** - themes can be shared and re-used as npm packages
-- 🧑‍💻 **Developer Friendly** - code highlighting, live coding with autocompletion
-- 🤹 **Interactive** - embed Vue components to enhance your expressions
-- 🎥 **Recording** - built-in recording and camera view
-- 📤 **Portable** - export to PDF, PPTX, PNGs, or even a hostable SPA
-- 🛠 **Hackable** - virtually anything that's possible on a webpage is possible in Slidev
-<br>
-<br>
-
-Read more about [Why Slidev?](https://sli.dev/guide/why)
-
-<!--
-You can have `style` tag in markdown to override the style for the current page.
-Learn more: https://sli.dev/features/slide-scope-style
--->
-
-<style>
-h1 {
-  background-color: #2B90B6;
-  background-image: linear-gradient(45deg, #4EC5D4 10%, #146b8c 20%);
-  background-size: 100%;
-  -webkit-background-clip: text;
-  -moz-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  -moz-text-fill-color: transparent;
+<style scoped>
+.bf-cover {
+  display: flex; flex-direction: column; justify-content: center;
+  min-height: 100%; padding: 3rem 4rem;
+  background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%);
+  color: #f8fafc;
 }
+.bf-cover h1 { font-size: 3.2rem; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 0.5rem; }
+.bf-cover .bf-subtitle { font-size: 1.25rem; color: #94a3b8; font-weight: 500; margin-bottom: 0.75rem; }
+.bf-cover .bf-cover-desc { font-size: 0.95rem; color: #64748b; max-width: 32rem; line-height: 1.6; margin-bottom: 2.5rem; }
+.bf-cover .bf-cover-nav { display: flex; align-items: center; gap: 1.25rem; }
+.bf-cover .bf-cover-btn { cursor: pointer; padding: 0.5rem 1.5rem; border-radius: 9999px; background: #fff; color: #0f172a; font-size: 0.9rem; font-weight: 600; transition: all 0.2s; }
+.bf-cover .bf-cover-btn:hover { background: #e2e8f0; }
+.bf-cover .bf-cover-hint { font-size: 0.75rem; color: #475569; }
 </style>
-
-<!--
-Here is another comment.
--->
-
----
-transition: slide-up
-level: 2
----
-
-# Navigation
-
-Hover on the bottom-left corner to see the navigation's controls panel, [learn more](https://sli.dev/guide/ui#navigation-bar)
-
-## Keyboard Shortcuts
-
-|                                                     |                             |
-| --------------------------------------------------- | --------------------------- |
-| <kbd>right</kbd> / <kbd>space</kbd>                 | next animation or slide     |
-| <kbd>left</kbd>  / <kbd>shift</kbd><kbd>space</kbd> | previous animation or slide |
-| <kbd>up</kbd>                                       | previous slide              |
-| <kbd>down</kbd>                                     | next slide                  |
-
-<!-- https://sli.dev/guide/animations.html#click-animation -->
-<img
-  v-click
-  class="absolute -bottom-9 -left-7 w-80 opacity-50"
-  src="https://sli.dev/assets/arrow-bottom-left.svg"
-  alt=""
-/>
-<p v-after class="absolute bottom-23 left-45 opacity-30 transform -rotate-10">Here!</p>
 
 ---
 layout: two-cols
-layoutClass: gap-16
+layoutClass: gap-10
 ---
 
-# Table of contents
+# 目录
 
-You can use the `Toc` component to generate a table of contents for your slides:
-
-```html
-<Toc minDepth="1" maxDepth="1" />
-```
-
-The title will be inferred from your slide content, or you can override it with `title` and `level` in your frontmatter.
+路线图：**主线 → RQ → 架构 → 相关工作 → 差异轴 → BoPO → vLLM 叙事 → 附录**
 
 ::right::
 
-<Toc text-sm minDepth="1" maxDepth="2" />
+<div class="bf-card">
 
----
-layout: image-right
-image: https://cover.sli.dev
----
-
-# Code
-
-Use code snippets and get the highlighting directly, and even types hover!
-
-```ts [filename-example.ts] {all|4|6|6-7|9|all} twoslash
-// TwoSlash enables TypeScript hover information
-// and errors in markdown code blocks
-// More at https://shiki.style/packages/twoslash
-import { computed, ref } from 'vue'
-
-const count = ref(0)
-const doubled = computed(() => count.value * 2)
-
-doubled.value = 2
-```
-
-<arrow v-click="[4, 5]" x1="350" y1="310" x2="195" y2="342" color="#953" width="2" arrowSize="1" />
-
-<!-- This allow you to embed external code blocks -->
-<<< @/snippets/external.ts#snippet
-
-<!-- Footer -->
-
-[Learn more](https://sli.dev/features/line-highlighting)
-
-<!-- Inline style -->
-<style>
-.footnotes-sep {
-  @apply mt-5 opacity-10;
-}
-.footnotes {
-  @apply text-sm opacity-75;
-}
-.footnote-backref {
-  display: none;
-}
-</style>
-
-<!--
-Notes can also sync with clicks
-
-[click] This will be highlighted after the first click
-
-[click] Highlighted with `count = ref(0)`
-
-[click:3] Last click (skip two clicks)
--->
-
----
-level: 2
----
-
-# Shiki Magic Move
-
-Powered by [shiki-magic-move](https://shiki-magic-move.netlify.app/), Slidev supports animations across multiple code snippets.
-
-Add multiple code blocks and wrap them with <code>````md magic-move</code> (four backticks) to enable the magic move. For example:
-
-````md magic-move {lines: true}
-```ts {*|2|*}
-// step 1
-const author = reactive({
-  name: 'John Doe',
-  books: [
-    'Vue 2 - Advanced Guide',
-    'Vue 3 - Basic Guide',
-    'Vue 4 - The Mystery'
-  ]
-})
-```
-
-```ts {*|1-2|3-4|3-4,8}
-// step 2
-export default {
-  data() {
-    return {
-      author: {
-        name: 'John Doe',
-        books: [
-          'Vue 2 - Advanced Guide',
-          'Vue 3 - Basic Guide',
-          'Vue 4 - The Mystery'
-        ]
-      }
-    }
-  }
-}
-```
-
-```ts
-// step 3
-export default {
-  data: () => ({
-    author: {
-      name: 'John Doe',
-      books: [
-        'Vue 2 - Advanced Guide',
-        'Vue 3 - Basic Guide',
-        'Vue 4 - The Mystery'
-      ]
-    }
-  })
-}
-```
-
-Non-code blocks are ignored.
-
-```vue
-<!-- step 4 -->
-<script setup>
-const author = {
-  name: 'John Doe',
-  books: [
-    'Vue 2 - Advanced Guide',
-    'Vue 3 - Basic Guide',
-    'Vue 4 - The Mystery'
-  ]
-}
-</script>
-```
-````
-
----
-
-# Components
-
-<div grid="~ cols-2 gap-4">
-<div>
-
-You can use Vue components directly inside your slides.
-
-We have provided a few built-in components like `<Tweet/>`, `<BlueSky/>`, and `<Youtube/>` that you can use directly. And adding your custom components is also super easy.
-
-```html
-<Counter :count="10" />
-```
-
-<!-- ./components/Counter.vue -->
-<Counter :count="10" m="t-4" />
-
-Check out [the guides](https://sli.dev/builtin/components.html) for more.
-
-</div>
-<div>
-
-```html
-<Tweet id="1390115482657726468" />
-```
-
-<Tweet id="1390115482657726468" scale="0.65" />
-
-</div>
-</div>
-
-<!--
-Presenter note with **bold**, *italic*, and ~~striked~~ text.
-
-Also, HTML elements are valid:
-<div class="flex w-full">
-  <span style="flex-grow: 1;">Left content</span>
-  <span>Right content</span>
-</div>
--->
-
----
-class: px-20
----
-
-# Themes
-
-Slidev comes with powerful theming support. Themes can provide styles, layouts, components, or even configurations for tools. Switching between themes by just **one edit** in your frontmatter:
-
-<div grid="~ cols-2 gap-2" m="t-2">
-
-```yaml
----
-theme: default
----
-```
-
-```yaml
----
-theme: seriph
----
-```
-
-<img border="rounded" src="https://github.com/slidevjs/themes/blob/main/screenshots/theme-default/01.png?raw=true" alt="">
-
-<img border="rounded" src="https://github.com/slidevjs/themes/blob/main/screenshots/theme-seriph/01.png?raw=true" alt="">
+<Toc minDepth="1" maxDepth="2" />
 
 </div>
 
-Read more about [How to use a theme](https://sli.dev/guide/theme-addon#use-theme) and
-check out the [Awesome Themes Gallery](https://sli.dev/resources/theme-gallery).
+---
+
+<!-- ═══════════════════ PART I ═══════════════════ -->
+
+---
+layout: section
+class: bf-section text-center
+---
+
+# Part I
+## 论文主线与问题
 
 ---
 
-# Clicks Animations
+## 1. 论文主线
 
-You can add `v-click` to elements to add a click animation.
+<ul class="bf-bullets">
+
+<li>
+
+在一个甚至多个完整的 agent workflow 中，如何利用 **workflow 级的结构信息**——哪一步关键、剩多少预算、多个 workflow 如何共享资源——做整体的 **成本–质量分配**？
+
+</li>
+
+<li class="bf-bullet-indigo">
+
+当优化单位从「一次 LLM 请求」变成「一个完整 agent workflow」，且多个 workflow **共享同一预算池** 与多条后端的 **RPM / 并发配额** 时，**显式维护 workflow 状态** 是否会改变 **固定预算** 下的成功率？收益来自 **预算配速、步骤重要性、进展先验** 还是 **多 workflow 调度**？本文把 LLM 花费变成 **可审计、可消融、可复现** 的实验对象。
+
+</li>
+
+</ul>
+
+---
+
+<!-- ═══════════════════ PART II ═══════════════════ -->
+
+---
+layout: section
+class: bf-section text-center
+---
+
+# Part II
+## 研究问题与贡献
+
+---
+
+## 2.1 三个研究问题
+
+<div class="bf-table-sm">
+
+| RQ | 问题 | 主要指标 |
+|:---|:---|:---|
+| **RQ1** | 多 workflow 在同一固定预算与共享后端限流下并行运行时，预算浪费在何处、哪些运行时限制最先成为瓶颈？ | 预算违规率、429 率、队列延迟、回收预算、僵尸取消数等 |
+| **RQ2** | 相同预算下，利用 workflow 阶段状态做多步模型档位选择，是否比「仅按 workflow」或「仅按预算」的调度 resolve 更多 SWE-bench 类任务？ | 固定预算下 resolved rate；BudgetFlow Full vs Workflow-Level Router vs Budget-Only Step Scheduler |
+| **RQ3** | 换模型削弱 prefix-cache 局部性时，workflow 阶段调度是否仍能带来净收益？ | 换模频率、prefill 延迟、cached-token 比例；Full vs Cache-Sticky |
+
+</div>
+
+<div class="flex gap-4 mt-6">
+
+<span class="bf-tag bf-tag-blue">RQ1 → Runtime 画像</span>
+<span class="bf-tag bf-tag-green">RQ2 → 功效</span>
+<span class="bf-tag bf-tag-amber">RQ3 → 系统代价</span>
+
+</div>
+
+---
+
+## 2.2 独特贡献
+
+<div class="grid grid-cols-1 gap-3">
+
+<div v-click class="bf-card">
+  <span class="bf-card-label">连续质量视角</span> — LLM 质量视为 [0,1] 连续变量
+</div>
+
+<div v-click class="bf-card">
+  <span class="bf-card-label">硬预算 + 动态配速</span> — <code>budget_factor</code> 近似预算边际价值 λ
+</div>
+
+<div v-click class="bf-card">
+  <span class="bf-card-label">显式任务价值 w_i</span> — 调用方声明、可解释
+</div>
+
+<div v-click class="bf-card">
+  <span class="bf-card-label">僵尸止损</span> — 截断「成本涨、质量不涨」的无效调用
+</div>
+
+<div v-click class="bf-card">
+  <span class="bf-card-label">无需训练</span> — 启发式即时部署，较 RL 路线更轻
+</div>
+
+</div>
+
+---
+
+<!-- ═══════════════════ PART III ═══════════════════ -->
+
+---
+layout: section
+class: bf-section text-center
+---
+
+# Part III
+## 系统架构
+
+---
+layout: two-cols
+layoutClass: gap-10
+---
+
+## 3. 项目架构（分层）
+
+::left::
+
+```mermaid {theme: 'neutral', scale: 0.7}
+flowchart TB
+  WF["Agent Workflow\nN 步 × J 并发"]
+  BF["BudgetFlow"]
+  G["Governor\n账本 · 限流 · 准入"]
+  M["ModelSelector\n可插拔路由"]
+  Z["Zombie + Preemption"]
+  S["Multi-WF Scheduler"]
+  L["LLM 后端池\nevents.jsonl"]
+
+  WF --> BF
+  BF --> G --> M --> Z --> S --> L
+```
+
+::right::
+
+<div class="bf-arch">
+
+```
+Agent Workflow（N 步 LLM 调用）× J 并发
+          │
+          ▼
+╔══════════════ BudgetFlow ═══════════════╗
+║ ［约束层］Governor          policy-agnostic ║
+║ ［优化层］ModelSelector     routing policy   ║
+║ ［止损层］ZombieDetector    policy-agnostic ║
+║ ［调度层］Multi-WF Scheduler policy-agnostic ║
+╚═════════════════════════════════════════╝
+          │
+          ▼
+   LLM 后端池 → events.jsonl → 指标
+```
+
+</div>
+
+---
+
+<!-- ═══════════════════ PART IV ═══════════════════ -->
+
+---
+layout: section
+class: bf-section text-center
+---
+
+# Part IV
+## 相关工作与边界
+
+---
+
+## 4. 相关工作分类
+
+<div class="grid grid-cols-2 gap-6 mt-4">
+
+<div v-click>
+  <h3 class="bf-card-label">操作系统资源管理</h3>
+  <p class="text-slate-500 text-sm">AgentRM · AgentCgroup · AIOS · pMVX</p>
+</div>
+
+<div v-click>
+  <h3 class="bf-card-label">任务–模型路由</h3>
+  <p class="text-slate-500 text-sm">RouteLLM · CARROT · OmniRouter</p>
+</div>
+
+<div v-click>
+  <h3 class="bf-card-label">分步 RL 路由</h3>
+  <p class="text-slate-500 text-sm">BoPO · xRouter</p>
+</div>
+
+<div v-click>
+  <h3 class="bf-card-label">GPU 预算 · 硬件编排</h3>
+  <p class="text-slate-500 text-sm">Athena-Serve · Murakkab</p>
+</div>
+
+</div>
+
+---
+
+## 5 — 相关工作一览
+
+对比维度：**硬顶** = 多并发共享 USD/token 硬顶 + 预留结算 · **状态** = 同轨迹多轮 LLM 状态化选档 · **免训** = 无需域数据大规模离线训练
+
+<div class="bf-table-xs">
+
+| §4 聚类 | 工作 | 硬顶 | 状态 | 免训 | 与本文差异 |
+|:---|:---|---:|:---|
+| **（本文）** | **BudgetFlow** | ✓ | ✓ | ✓ | — |
+| 操作系统资源管理 | AgentRM (2603.13110) | ✗ | ✗ | ✓ | RPM / 稳定 / 回收；非 API 美元硬账本 |
+| 操作系统资源管理 | AgentCgroup (2602.09345) | ✗ | ✗ | ✓ | 主机 CPU / Mem cgroup |
+| 操作系统资源管理 | AIOS (2403.16971) | ✗ | ✗ | ✓ | Agent OS 抽象 |
+| 操作系统资源管理 | pMVX (Agentic OS Wkshp 2026) | ✗ | ✗ | ✗ | Kernel 多版本策略自调优 |
+| 任务-模型路由 | RouteLLM (Ong et al. 2024) | ✗ | ✗ | ✗ | 偏好学习；无运行预算账本 |
+| 任务-模型路由 | CARROT (2502.03261) | ✗ | ✗ | ✓ | Per-query minimax；无跨步联合状态 |
+| 任务-模型路由 | OmniRouter (Mei et al. 2026) | ✗ | ✗ | ✗ | Per-query Lagrangian；非多 WF 池 |
+| 分步骤 RL 路由 | **BoPO** (2602.21227) | ✗ | ✓ | ✗ | 单任务 RL step；可插 ModelSelector |
+| 分步骤 RL 路由 | xRouter (2510.08439) | ✗ | ✓ | ✗ | RL 工具 / 多模型编排；非共享池账本 |
+| GPU 预算 | ATHENA-Serve | ✗ | ✗ | ✗ | Serving 长尾与 KV / 算力 budget |
+| 硬件编排 | Murakkab（待投） | ✗ | ✗ | ✗ | 云 / WF 成本与并行；无 USD/token 硬顶账本 |
+
+</div>
+
+<p class="text-xs text-slate-500 mt-2">Murakkab、ATHENA-Serve 可与本文纵向叠放；表内仅收录 §4 已索引文献。</p>
+
+---
+layout: two-cols
+layoutClass: gap-10
+---
+
+## 论文边界
+
+::left::
+
+### ✅ 本文明确覆盖
+
+- **单一预算主体**：多 workflow 共享预算池与 RPM / 并发；账本、准入、结算、Zombie、调度均属 runtime 命题
+- **决策单位**：每一步 LLM 调用 + 全局预算池；评测对齐 SWE-bench Verified 并发与固定总预算
+
+::right::
+
+### ❌ 本文不 Claim
+
+- Multi-tenant、跨团队 SLA（§8 叙事第二阶段）
+- 不取代 KV/batch 全集最优；聚焦 workflow 花费治理
+- ZombieDetector：构件级消融，非单独 ML 方法论主贡献
+- 成本模型：抽象 dollar / token，不绑 SKU
+
+---
+
+<!-- ═══════════════════ PART V ═══════════════════ -->
+
+---
+layout: section
+class: bf-section text-center
+---
+
+# Part V
+## 差异轴 · BoPO / Router / OS
+
+---
+
+## 6.1 vs BoPO（Budget-Aware Agentic Routing）
+
+<div class="bf-table-sm">
+
+| 维度 | BoPO | **BudgetFlow（本文）** |
+|:---|:---|:---|
+| **方法** | RL（BoPO），需要训练数据与 GPU | 启发式，无需训练，即时部署 |
+| **可解释性** | 策略难解释 | 边际性价比 + `budget_factor` |
+| **预算** | 训练 soft-budget + 推理 BCD | 运行时 hard budget |
+| **任务价值** | RL 隐式 | 显式 w_i（调用方声明） |
+| **止损** | 无专门机制 | ZombieDetector |
+| **互补性** | — | 本文可作 RL warm-start |
+
+</div>
+
+---
+
+## 6.2 vs Per-query Routers
+
+<div class="bf-table-sm">
+
+| 维度 | Per-query Routers | **BudgetFlow（本文）** |
+|:---|:---|:---|
+| **决策** | 每条 query 独立最优 | 跨 N 步联合预算约束 |
+| **状态** | 无状态 | 有状态（预算 / burn rate） |
+| **预算** | 忽略或仅 per-query 预测 | Hard budget |
+| **任务价值** | 不区分 | 显式 w_i |
+
+</div>
+
+---
+
+## 6.3 vs OS-Inspired
+
+<div class="bf-table-sm">
+
+| 维度 | OS-Inspired | **BudgetFlow（本文）** |
+|:---|:---|:---|
+| **核心问题** | 稳定性 / 隔离 | 质量–成本优化 |
+| **优化目标** | 延迟 / 吞吐 / 隔离 | QWCR，Q/成本，Pareto |
+| **资源** | CPU / 内存 / 并发 / RPM | LLM 调用质量与成本 |
+
+</div>
+
+---
+
+<!-- ═══════════════════ PART VI ═══════════════════ -->
+
+---
+layout: section
+class: bf-section text-center
+---
+
+# Part VI
+## BoPO 与本文关系
+
+---
+
+## 7. BoPO 论文摘要
+
+**Budget-Aware Agentic Routing via Boundary-Guided Training**
+Zhang et al., arXiv:2602.21227, 2026
+
+**BoPO** = Boundary-Guided Policy Optimization：按 agent **step** 做 RL；训练侧含 BoSFT，在线侧 GRPO 等边界引导，缓解稀疏奖励。
+
+---
+
+### 7.1 与本文的关系
+
+<div class="grid grid-cols-3 gap-4 mt-4">
+
+<div v-click class="bf-card">
+
+##### BoPO
+
+单任务 **step 级路由**
+
+→ 对应 ModelSelector 的可插拔实现
+
+</div>
+
+<div v-click class="bf-card">
+
+##### BudgetFlow 底座
+
+全局账本 · RPM/并发准入 · 多 WF 调度 · ZombieDetector
+
+</div>
+
+<div v-click class="bf-card">
+
+##### 组合
+
+底座 **兼容 BoPO**
+
+RL 接入 ModelSelector，运行时仍保证全局硬约束
+
+</div>
+
+</div>
+
+---
+
+### 7.2 极简场景（SWE-bench 对齐）
 
 <div v-click>
 
-This shows up when you press <kbd>space</kbd> or <kbd>right</kbd>, or click outside the slide on the right.
-
-```html
-<div v-click>This shows up when you trigger a click animation.</div>
-```
+**单轨迹**：读 issue → 搜仓库 → … → 迭代；单任务预算例如 **0.5 USD**；每步强弱模型
 
 </div>
 
-<p v-click>
-You can also add modifiers to change the animation:
+<div v-click class="mt-3">
+
+**BoPO**：域内大量轨迹预训练；每步结合上下文、历史与 **该任务剩余预算**；奖励绑定 **单任务** 成败与花费；边界引导鼓励关键步用强模
+
+</div>
+
+<div v-click class="mt-3">
+
+**本文评测焦点**：多实例共享总预算；在 **全局就绪 call** 上按边际进度、budget pressure **系统级择优**，优化 **汇总完成率**
+
+</div>
+
+---
+
+### 7.3 BudgetFlow vs BoPO
+
+<div class="bf-table-sm">
+
+| 维度 | BudgetFlow | BoPO |
+|:---|:---|:---|
+| **优化目标** | 共享硬预算 + 配额下全局完成率 | 单任务预算–成功率；单轨迹局部最优 |
+| **视野** | 跨 WF 账本与就绪队列 | 单 trajectory + 该任务剩余预算 |
+| **预算 / 配额** | 预留–结算、429 / 并发准入 | soft-budget + BCD（非原子账本语义） |
+| **止损** | Zombie、抢占、回收预留 | 无对等机制 |
+| **部署** | Training-free | 域数据 + 训练 |
+| **组合** | BoPO policy 可插 ModelSelector | 不替代全局治理层 |
+
+</div>
+
+---
+
+### 7.4 BoPO 明确不覆盖（本文差分）
+
+<ul class="bf-bullets">
+
+<li>多 agent <strong>共享单一全局预算</strong> 与「前期耗光、后期饥饿」</li>
+<li>生产级 <strong>RPM / 并发</strong> 强准入与 429 治理</li>
+<li><strong>僵尸 / 无进度</strong> 占用预算与槽位回收</li>
+<li><strong>KV / 本地推理</strong> 切换代价显式建模</li>
+<li><strong>零域数据</strong> 下的免训练冷启动路由</li>
+
+</ul>
+
+---
+
+<!-- ═══════════════════ PART VII ═══════════════════ -->
+
+---
+layout: section
+class: bf-section text-center
+background: /side-flow.jpg
+class: bf-hero-img text-white
+---
+
+# Part VII
+## 叙事：参照 vLLM
+
+<p style="color: #94a3b8; font-size: 1.05rem;">
+single-tenant 机制 → multi-tenant / multi-owner 政策层
 </p>
 
-<div class="grid gap-3 mt-4 text-sm" style="grid-template-columns: repeat(3, 1fr) 1.5fr 1fr">
-  <div v-after.up class="p-3 rounded border border-primary/20 bg-primary/10">
-    <div class="font-mono text-xs opacity-60 mb-1">v-click.up</div>
-    <div>Slide from bottom</div>
-  </div>
-  <div v-click.fade-in class="p-3 rounded border border-primary/30 bg-primary/15">
-    <div class="font-mono text-xs opacity-60 mb-1">v-click.fade-in</div>
-    <div>Fade in</div>
-  </div>
-  <div v-click.fade class="p-3 rounded border border-primary/40 bg-primary/20">
-    <div class="font-mono text-xs opacity-60 mb-1">v-click.fade</div>
-    <div>Dim (0.5 opacity)</div>
-  </div>
-  <div v-click.fade.right.scale class="p-3 rounded border border-primary/50 bg-primary/25">
-    <div class="font-mono text-xs opacity-60 mb-1">v-click.fade.right.scale</div>
-    <div>Composed</div>
-  </div>
-  <div v-click.none class="p-3 rounded border border-primary/60 bg-primary/30">
-    <div class="font-mono text-xs opacity-60 mb-1">v-click.none</div>
-    <div>No transition</div>
-  </div>
+---
+
+## 8. 叙事：参照 vLLM（1 / 2）
+
+<div class="space-y-4">
+
+<div v-click>
+
+**vLLM（SOSP 2023）**：single-tenant 下 batch 与吞吐优化；单一运营方假设，未讨论竞争用户间仲裁
+
 </div>
 
-<v-click>
+<div v-click>
 
-The <span v-mark.red="7"><code>v-mark</code> directive</span>
-also allows you to add
-<span v-mark.circle.orange="8">inline marks</span>
-, powered by [Rough Notation](https://roughnotation.com/):
+**后续**（Andes OSDI 2024、SGLang router）：multi-tenant，priority / quota / SLA
 
-```html
-<span v-mark.underline.orange>inline markers</span>
-```
+</div>
 
-</v-click>
+<div v-click>
 
-<div v-click mt-12>
+**两阶段路径**：先机制（paged KV、continuous batching），再在充分理解 single-tenant 后叠加政策层
 
-[Learn more](https://sli.dev/guide/animations#click-animation)
+</div>
 
 </div>
 
 ---
 
-# Motions
+## 8. 叙事：参照 vLLM（2 / 2）
 
-Motion animations are powered by [@vueuse/motion](https://motion.vueuse.org/), triggered by `v-motion` directive.
+<div class="space-y-4">
 
-```html
-<div
-  v-motion
-  :initial="{ x: -80 }"
-  :enter="{ x: 0 }"
-  :click-3="{ x: 80 }"
-  :leave="{ x: 1000 }"
->
-  Slidev
-</div>
-```
+<div v-click>
 
-<div class="w-60 relative">
-  <div class="relative w-40 h-40">
-    <img
-      v-motion
-      :initial="{ x: 800, y: -100, scale: 1.5, rotate: -50 }"
-      :enter="final"
-      class="absolute inset-0"
-      src="https://sli.dev/logo-square.png"
-      alt=""
-    />
-    <img
-      v-motion
-      :initial="{ y: 500, x: -100, scale: 2 }"
-      :enter="final"
-      class="absolute inset-0"
-      src="https://sli.dev/logo-circle.png"
-      alt=""
-    />
-    <img
-      v-motion
-      :initial="{ x: 600, y: 400, scale: 2, rotate: 100 }"
-      :enter="final"
-      class="absolute inset-0"
-      src="https://sli.dev/logo-triangle.png"
-      alt=""
-    />
-  </div>
+**BudgetFlow**：对齐该路径；本文处理 **single-budget-owner**，贡献为 **cost-model-agnostic** 的跨 workflow 调度
 
-  <div
-    class="text-5xl absolute top-14 left-40 text-[#2B90B6] -z-1"
-    v-motion
-    :initial="{ x: -80, opacity: 0}"
-    :enter="{ x: 0, opacity: 1, transition: { delay: 2000, duration: 1000 } }">
-    Slidev
-  </div>
 </div>
 
-<!-- vue script setup scripts can be directly used in markdown, and will only affects current page -->
-<script setup lang="ts">
-const final = {
-  x: 0,
-  y: 0,
-  rotate: 0,
-  scale: 1,
-  transition: {
-    type: 'spring',
-    damping: 10,
-    stiffness: 20,
-    mass: 2
-  }
-}
-</script>
+<div v-click>
 
-<div
-  v-motion
-  :initial="{ x:35, y: 30, opacity: 0}"
-  :enter="{ y: 0, opacity: 1, transition: { delay: 3500 } }">
+**续作**：multi-tenant agent 计算分配 — cross-tenant 隔离、异构 quota、budget-aware admission
 
-[Learn more](https://sli.dev/guide/animations.html#motion)
+</div>
+
+<div v-click>
+
+**cost-model-agnostic 保留**：租户可用不同模型与成本结构，仲裁层无需重写
+
+</div>
+
+<div v-click>
+
+**定位**：未来 multi-tenant workflow 工作可构建其上的 **single-tenant 基础**
+
+</div>
 
 </div>
 
 ---
 
-# $\LaTeX$
+<!-- ═══════════════════ APPENDIX ═══════════════════ -->
 
-$\LaTeX$ is supported out-of-box. Powered by [$\KaTeX$](https://katex.org/).
+---
+layout: section
+class: bf-section text-center
+---
 
-<div h-3 />
-
-Inline $\sqrt{3x-1}+(1+x)^2$
-
-Block
-$$ {1|3|all}
-\begin{aligned}
-\nabla \cdot \vec{E} &= \frac{\rho}{\varepsilon_0} \\
-\nabla \cdot \vec{B} &= 0 \\
-\nabla \times \vec{E} &= -\frac{\partial\vec{B}}{\partial t} \\
-\nabla \times \vec{B} &= \mu_0\vec{J} + \mu_0\varepsilon_0\frac{\partial\vec{E}}{\partial t}
-\end{aligned}
-$$
-
-[Learn more](https://sli.dev/features/latex)
+# Appendix
+## 集成与栈位
 
 ---
 
-# Diagrams
+### A.1 集成架构
 
-You can create diagrams / graphs from textual descriptions, directly in your Markdown.
+<div class="bf-arch">
 
-<div class="grid grid-cols-4 gap-5 pt-4 -mb-6">
-
-```mermaid {scale: 0.5, alt: 'A simple sequence diagram'}
-sequenceDiagram
-    Alice->John: Hello John, how are you?
-    Note over Alice,John: A typical interaction
 ```
-
-```mermaid {theme: 'neutral', scale: 0.8}
-graph TD
-B[Text] --> C{Decision}
-C -->|One| D[Result 1]
-C -->|Two| E[Result 2]
-```
-
-```mermaid
-mindmap
-  root((mindmap))
-    Origins
-      Long history
-      ::icon(fa fa-book)
-      Popularisation
-        British popular psychology author Tony Buzan
-    Research
-      On effectiveness<br/>and features
-      On Automatic creation
-        Uses
-            Creative techniques
-            Strategic planning
-            Argument mapping
-    Tools
-      Pen and paper
-      Mermaid
-```
-
-```plantuml {scale: 0.7}
-@startuml
-
-package "Some Group" {
-  HTTP - [First Component]
-  [Another Component]
-}
-
-node "Other Groups" {
-  FTP - [Second Component]
-  [First Component] --> FTP
-}
-
-cloud {
-  [Example 1]
-}
-
-database "MySql" {
-  folder "This is my folder" {
-    [Folder 3]
-  }
-  frame "Foo" {
-    [Frame 4]
-  }
-}
-
-[Another Component] --> [Example 1]
-[Example 1] --> [Folder 3]
-[Folder 3] --> [Frame 4]
-
-@enduml
+LangChain / SWE-agent / AutoGen  +  自建平台
+  Proxy / Adapter / SDK  →  BudgetFlow Runtime
+  → Governor → ModelSelector → Scheduler → Backend Pool
 ```
 
 </div>
 
-Learn more: [Mermaid Diagrams](https://sli.dev/features/mermaid) and [PlantUML Diagrams](https://sli.dev/features/plantuml)
-
----
-foo: bar
-dragPos:
-  square: 691,32,167,_,-16
----
-
-# Draggable Elements
-
-Double-click on the draggable elements to edit their positions.
-
-<br>
-
-###### Directive Usage
-
-```md
-<img v-drag="'square'" src="https://sli.dev/logo.png">
-```
-
-<br>
-
-###### Component Usage
-
-```md
-<v-drag text-3xl>
-  <div class="i-carbon:arrow-up" />
-  Use the `v-drag` component to have a draggable container!
-</v-drag>
-```
-
-<v-drag pos="663,206,261,_,-15">
-  <div text-center text-3xl border border-main rounded>
-    Double-click me!
-  </div>
-</v-drag>
-
-<img v-drag="'square'" src="https://sli.dev/logo.png">
-
-###### Draggable Arrow
-
-```md
-<v-drag-arrow two-way />
-```
-
-<v-drag-arrow pos="67,452,253,46" two-way op70 />
-
----
-src: ./pages/imported-slides.md
-hide: false
----
+<p class="text-xs text-slate-500 mt-4">ASCII 完整版见论文大纲原文</p>
 
 ---
 
-# Monaco Editor
+### A.2 计算栈分层
 
-Slidev provides built-in Monaco Editor support.
+<div class="bf-arch">
 
-Add `{monaco}` to the code block to turn it into an editor:
-
-```ts {monaco}
-import { ref } from 'vue'
-import { emptyArray } from './external'
-
-const arr = ref(emptyArray(10))
+```
+Murakkab      云硬件成本 / SLO · 无 USD 硬顶
+     ↓
+BudgetFlow    固定预算 · 硬上限 · 步骤 + 全局池
+     ↓
+Aragog/Parrot 吞吐与流水线（与 §5 正交）
+     ↓
+Hardware
 ```
 
-Use `{monaco-run}` to create an editor that can execute the code directly in the slide:
+</div>
 
-```ts {monaco-run}
-import { version } from 'vue'
-import { emptyArray, sayHello } from './external'
+---
 
-sayHello()
-console.log(`vue ${version}`)
-console.log(emptyArray<number>(10).reduce(fib => [...fib, fib.at(-1)! + fib.at(-2)!], [1, 1]))
-```
+<!-- ═══════════════════ THANKS ═══════════════════ -->
 
 ---
 layout: center
 class: text-center
 ---
 
-# Learn More
+# 谢谢
 
-[Documentation](https://sli.dev) · [GitHub](https://github.com/slidevjs/slidev) · [Showcases](https://sli.dev/resources/showcases)
+<p style="font-size: 1.1rem; color: #64748b; margin-top: 0.75rem;">BudgetFlow · 论文大纲汇报</p>
 
-<PoweredBySlidev mt-10 />
+<button
+  style="margin-top: 2rem; padding: 0.6rem 2rem; border-radius: 9999px; background: #0f172a; color: #fff; border: none; font-size: 0.9rem; cursor: pointer;"
+  @click="$slidev.nav.go(2)">
+  回到目录
+</button>
+
+<p style="margin-top: 1.5rem; font-size: 0.7rem; color: #94a3b8;">
+  配图：public/cover-datacenter.jpg · side-network.jpg · side-flow.jpg（Unsplash）
+</p>
+

@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>10 · BoPO 对比</title>
+<link rel="stylesheet" href="../shared/fonts.css">
+<link rel="stylesheet" href="../shared/tokens.css">
+<style>
+  h1.slide-title { font-size: 48px !important; margin-bottom: 10px !important; }
+  .bopo-top { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 28px; flex: 0 0 auto; margin-bottom: 14px; }
+  .bopo-top p { font-size: 21px; line-height: 1.55; margin: 0 0 12px; color: var(--ink); }
+  .bopo-top .tag { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); margin-bottom: 6px; }
+  table.bopo { font-size: 15px; width: 100%; border-collapse: collapse; }
+  table.bopo th, table.bopo td { border-bottom: 1px solid var(--hair); padding: 8px 10px; vertical-align: top; }
+  table.bopo th { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; color: var(--muted); background: rgba(14,27,44,0.04); }
+  ul.tight { margin: 0; padding-left: 1.05em; font-size: 20px; line-height: 1.45; }
+  ul.tight li { margin-bottom: 6px; }
+</style>
+</head>
+<body>
+  <header class="page-header">
+    <span class="brand">BudgetFlow</span>
+    <span class="meta">Paper 1 Brief · 2026</span>
+  </header>
+
+  <div class="slide-content">
+    <p class="kicker">§7 · Closest prior</p>
+    <h1 class="slide-title" style="font-size:56px;">BoPO · 层级与互补</h1>
+
+    <div class="bopo-top">
+      <div>
+        <p class="tag">定义</p>
+        <p><em>Budget-Aware Agentic Routing via Boundary-Guided Training</em>（Zhang et al., arXiv:2602.21227, 2026）。<strong>BoPO</strong> = Boundary-Guided Policy Optimization：按 agent step 做 RL 路由；训练 BoSFT，在线边界引导（如 GRPO）缓解稀疏奖励。</p>
+        <p class="tag">7.1 与本文的关系</p>
+        <p>BoPO 是<strong>单任务 step 级路由策略</strong>，在 BudgetFlow 中对应 <strong>ModelSelector 的可插拔实现</strong>。本文底座：全局账本（预留/结算）、硬预算与 RPM/并发准入、多 WF 调度、ZombieDetector。BoPO 脱离底座难解「多并发 + 同一全局预算」；底座可托管 RL，并保证硬约束。</p>
+      </div>
+      <div>
+        <p class="tag">7.2 SWE-bench 对齐场景</p>
+        <p>单轨迹：读 issue → 搜仓库 → … → 迭代；单任务预算如 $0.5，每步强/弱模型。BoPO：域内预训练，逐步按<strong>该任务剩余预算</strong>输出档位，奖励绑定<strong>该任务</strong>成败与花费。<strong>本文评测</strong>常为多实例并发（共享 B<sub>total</sub>），在<strong>全局就绪 call</strong>上系统级择优，优化汇总完成率。</p>
+      </div>
+    </div>
+
+    <div class="table-wrap" style="flex: 0 1 auto; margin-bottom: 10px;">
+      <p class="tag" style="margin-bottom:6px;">7.3 BudgetFlow vs BoPO</p>
+      <table class="bopo">
+        <thead>
+          <tr><th>维度</th><th>BudgetFlow（本文）</th><th>BoPO</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>优化目标</strong></td><td>共享硬预算 + 配额下<strong>全局</strong>任务完成率</td><td><strong>单任务</strong>预算–成功率 trade-off</td></tr>
+          <tr><td><strong>决策视野</strong></td><td>全局账本 + <strong>跨 workflow</strong> 就绪/排队</td><td>单轨迹 + <strong>该任务</strong>剩余预算</td></tr>
+          <tr><td><strong>预算与配额</strong></td><td>预留—结算、硬上限、429/并发准入</td><td>训练 soft-budget + 推理 BCD（非原子账本语义）</td></tr>
+          <tr><td><strong>止损</strong></td><td>ZombieDetector、抢占、回收</td><td>无对等机制</td></tr>
+          <tr><td><strong>部署</strong></td><td>Training-free · 跨框架</td><td>域专属训练 · 换域重训成本高</td></tr>
+          <tr><td><strong>组合</strong></td><td colspan="2"><strong>BoPO policy 可作 ModelSelector plug-in</strong>；BoPO 不替代全局治理层</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div style="flex:0 0 auto;">
+      <p class="tag">7.4 BoPO 明确不覆盖（本文差分）</p>
+      <ul class="tight">
+        <li>多 agent <strong>共享单一全局预算</strong>的跨任务分配与饥饿</li>
+        <li>生产级 <strong>RPM / 并发</strong> 准入与 429 治理</li>
+        <li><strong>僵尸 / 无进度</strong>占用预算与槽位回收</li>
+        <li><strong>本地推理 / KV</strong>切换代价显式建模</li>
+        <li><strong>零域数据</strong>下免训练冷启动路由</li>
+      </ul>
+    </div>
+  </div>
+
+  <footer class="page-footer">
+    <span>BoPO 对比</span>
+    <span>10 / 13</span>
+  </footer>
+</body>
+</html>

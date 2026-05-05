@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>08 · 论文边界</title>
+<link rel="stylesheet" href="../shared/fonts.css">
+<link rel="stylesheet" href="../shared/tokens.css">
+<style>
+  .scope-h { font-family: var(--font-display); font-weight: 700; font-size: 26px; margin: 0 0 14px; color: var(--accent); }
+  .scope-list { font-size: 22px; line-height: 1.55; margin: 0; padding-left: 1.1em; }
+  .scope-list li { margin-bottom: 10px; }
+</style>
+</head>
+<body>
+  <header class="page-header">
+    <span class="brand">BudgetFlow</span>
+    <span class="meta">Paper 1 Brief · 2026</span>
+  </header>
+
+  <div class="slide-content">
+    <p class="kicker">§5 · Paper scope</p>
+    <h1 class="slide-title">论文边界</h1>
+    <div class="grid-2">
+      <div>
+        <p class="scope-h">本文明确覆盖</p>
+        <ul class="scope-list">
+          <li><strong>单一预算主体</strong>：多路并发 workflow 共享一池预算与后端 RPM / 并发配额；账本、准入、结算、ZombieDetector、多 WF 调度属本文 runtime 命题。</li>
+          <li><strong>决策单位</strong>：每步 LLM 调用 + 全局预算池状态；评测常以 SWE-bench Verified 批量并发 + 固定总预算等为场景。</li>
+        </ul>
+      </div>
+      <div>
+        <p class="scope-h">本文不 Claim / 留作扩展</p>
+        <ul class="scope-list">
+          <li><strong>Multi-tenant</strong>：跨团队预算与 SLA — 自然续作（对齐 §8 叙事第二阶段）。</li>
+          <li><strong>非 GPU serving 独占</strong>：不取代 Athena-Serve / vLLM 侧 KV / batch 全集最优；本文为 workflow 花费治理与步骤配额。</li>
+          <li><strong>ZombieDetector</strong>：运行时止损构件，可做消融；非独立 RL/ML 主贡献。</li>
+          <li><strong>成本模型</strong>：不绑定 SKU；抽象 dollar / token 计价即可复现结论。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <footer class="page-footer">
+    <span>论文边界</span>
+    <span>8 / 13</span>
+  </footer>
+</body>
+</html>

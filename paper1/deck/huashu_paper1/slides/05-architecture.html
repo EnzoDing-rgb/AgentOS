@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>05 · 项目架构</title>
+<link rel="stylesheet" href="../shared/fonts.css">
+<link rel="stylesheet" href="../shared/tokens.css">
+<style>
+  .flow { display:flex; flex-direction:column; gap:8px; flex:1; min-height:0; }
+  .four { display:grid; grid-template-columns: 1fr 1fr; gap: 12px 18px; }
+  .arch-box { padding: 14px 18px !important; }
+  .arch-box .title { font-size: 22px !important; margin-bottom: 4px !important; }
+  .arch-box .detail { font-size: 17px !important; }
+  .arch-box .label { font-size: 11px !important; margin-bottom: 4px !important; }
+  h1.slide-title { font-size: 54px !important; margin-bottom: 10px !important; }
+</style>
+</head>
+<body>
+  <header class="page-header">
+    <span class="brand">BudgetFlow</span>
+    <span class="meta">Paper 1 Brief · 2026</span>
+  </header>
+
+  <div class="slide-content">
+    <p class="kicker">§3 · System architecture</p>
+    <h1 class="slide-title">项目架构 · BudgetFlow 分层</h1>
+    <p class="body" style="margin-bottom:8px; font-size:24px;"><strong>输入</strong>：每 workflow 含 N 次 LLM 调用 × J 路并发。</p>
+
+    <div class="flow">
+      <div class="arch-box" style="padding:10px 18px !important;"><p class="body" style="margin:0; font-family:var(--font-mono); font-size:17px;">Agent Workflow（N LLM calls / WF）× J concurrent WF</p></div>
+      <div class="flow-arrow" style="padding:2px 0;">↓</div>
+
+      <div class="arch-box" style="border-color:var(--accent); background:var(--accent-soft); padding:10px 18px !important;">
+        <div class="label">BudgetFlow · 分层运行时</div>
+        <div class="title" style="font-size:22px !important;">Governor / ModelSelector / ZombieDetector / Scheduler</div>
+      </div>
+
+      <div class="four">
+        <div class="arch-box">
+          <div class="label">约束层 · policy-agnostic</div>
+          <div class="title">Governor</div>
+          <p class="detail">预留/结算 · 后端限流 · 并发准入</p>
+        </div>
+        <div class="arch-box">
+          <div class="label">优化层 · routing policy</div>
+          <div class="title">ModelSelector</div>
+          <p class="detail">进展增益 + <code>budget_pressure</code>；可插 RL / CARROT …</p>
+        </div>
+        <div class="arch-box">
+          <div class="label">止损层 · policy-agnostic</div>
+          <div class="title">ZombieDetector</div>
+          <p class="detail">僵尸截断 · 交互式抢占（Preemption）</p>
+        </div>
+        <div class="arch-box">
+          <div class="label">调度层 · policy-agnostic</div>
+          <div class="title">Multi-WF Scheduler</div>
+          <p class="detail">跨 WF 协调 · admission control</p>
+        </div>
+      </div>
+
+      <div class="flow-arrow" style="padding:2px 0;">↓</div>
+      <div class="arch-box" style="padding:10px 18px !important;"><p class="body" style="margin:0; font-family:var(--font-mono); font-size:17px;">LLM Backend Pool → events.jsonl → 指标计算</p></div>
+    </div>
+  </div>
+
+  <footer class="page-footer">
+    <span>项目架构</span>
+    <span>5 / 13</span>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>07 · 相关工作一览 · 科学红预览</title>
+<link rel="stylesheet" href="../shared/fonts.css">
+<link rel="stylesheet" href="../shared/tokens.css">
+</head>
+<body class="accent-red">
+  <header class="page-header">
+    <span class="brand">BudgetFlow</span>
+    <span class="meta">Accent preview · default: slides/07-related-landscape.html</span>
+  </header>
+
+  <div class="slide-content">
+    <p class="kicker">§5 · Related work landscape</p>
+    <h1 class="slide-title">相关工作一览（红高亮预览）</h1>
+    <em class="caption" style="display:block;margin-bottom:10px;line-height:1.35;"><strong>①</strong> 共享硬顶 · <strong>②</strong> 状态选档 · <strong>③</strong> 免训 · <strong>④</strong> 与本文差异（一句话）</em>
+    <div class="table-wrap">
+      <table class="data dense">
+        <thead>
+          <tr>
+            <th>§4 聚类</th>
+            <th>工作</th>
+            <th>①</th>
+            <th>②</th>
+            <th>③</th>
+            <th>④ 与本文差异</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>（本文）</strong></td>
+            <td><strong>BudgetFlow</strong></td>
+            <td class="mono">✓</td><td class="mono">✓</td><td class="mono">✓</td>
+            <td>—</td>
+          </tr>
+          <tr>
+            <td>操作系统资源管理</td>
+            <td><strong>AgentRM</strong> (arxiv:2603.13110)</td>
+            <td class="mono">✗</td><td class="mono">✗</td><td class="mono">✓</td>
+            <td>RPM / 稳定 / 回收；非 API <strong>$</strong> 硬账本</td>
+          </tr>
+          <tr>
+            <td>操作系统资源管理</td>
+            <td><strong>AgentCgroup</strong> (arxiv:2602.09345)</td>
+            <td class="mono">✗</td><td class="mono">✗</td><td class="mono">✓</td>
+            <td>主机 CPU / Mem cgroup</td>
+          </tr>
+          <tr>
+            <td>操作系统资源管理</td>
+            <td><strong>AIOS</strong> (arxiv:2403.16971)</td>
+            <td class="mono">✗</td><td class="mono">✗</td><td class="mono">✓</td>
+            <td>Agent OS 抽象</td>
+          </tr>
+          <tr>
+            <td>操作系统资源管理</td>
+            <td><strong>pMVX</strong> (Agentic OS Wkshp 2026)</td>
+            <td class="mono">✗</td><td class="mono">✗</td><td class="mono">✗</td>
+            <td>Kernel 多版本策略自调优</td>
+          </tr>
+          <tr>
+            <td>任务–模型路由</td>
+            <td><strong>RouteLLM</strong> (Ong et al. 2024)</td>
+            <td class="mono">✗</td><td class="mono">✗</td><td class="mono">✗</td>
+            <td>Strong / weak 偏好学习；无运行预算账本</td>
+          </tr>
+          <tr>
+            <td>任务–模型路由</td>
+            <td><strong>CARROT</strong> (Somerstep et al. 2025, arxiv:2502.03261)</td>
+            <td class="mono">✗</td><td class="mono">✗</td><td class="mono">✓</td>
+            <td>Per-query minimax；无跨步联合状态</td>
+          </tr>
+          <tr>
+            <td>任务–模型路由</td>
+            <td><strong>OmniRouter</strong> (Mei et al. 2026)</td>
+            <td class="mono">✗</td><td class="mono">✗</td><td class="mono">✗</td>
+            <td>Per-query Lagrangian；非多 WF 池</td>
+          </tr>
+          <tr>
+            <td>分步骤 RL 路由</td>
+            <td><strong>BoPO</strong> / Budget-Aware Agentic Routing (Zhang et al., arxiv:2602.21227)</td>
+            <td class="mono">✗</td><td class="mono">✓</td><td class="mono">✗</td>
+            <td>单任务 RL step；可插 ModelSelector；无共享硬顶</td>
+          </tr>
+          <tr>
+            <td>分步骤 RL 路由</td>
+            <td><strong>xRouter</strong> (arxiv:2510.08439)</td>
+            <td class="mono">✗</td><td class="mono">✓</td><td class="mono">✗</td>
+            <td>RL 工具 / 多模型编排；非多 agent 共享池账本</td>
+          </tr>
+          <tr>
+            <td>GPU 资源预算</td>
+            <td><strong>ATHENA-Serve</strong> (Liang &amp; Wu；ICLR 2026 投稿 OR #10330)</td>
+            <td class="mono">✗</td><td class="mono">✗</td><td class="mono">✗</td>
+            <td>Serving 长尾与 KV / 算力 budget；非 agent 计价共享硬顶</td>
+          </tr>
+          <tr>
+            <td>硬件资源编排</td>
+            <td><strong>Murakkab</strong>（待投）</td>
+            <td class="mono">✗</td><td class="mono">✗</td><td class="mono">✗</td>
+            <td>云 / WF 成本与并行；无 $ / token 硬顶账本</td>
+          </tr>
+        </tbody>
+      </table>
+      <em class="caption" style="display:block;margin-top:10px;">与 07 页内容一致；仅 <code>body.accent-red</code> 更换主高亮色。</em>
+    </div>
+  </div>
+
+  <footer class="page-footer">
+    <span>相关工作一览 · 预览</span>
+    <span>—</span>
+  </footer>
+</body>
+</html>

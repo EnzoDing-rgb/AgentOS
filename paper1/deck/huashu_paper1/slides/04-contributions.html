@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>04 · 独特贡献</title>
+<link rel="stylesheet" href="../shared/fonts.css">
+<link rel="stylesheet" href="../shared/tokens.css">
+<style>
+  .contrib-top { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; flex: 0 0 auto; }
+  .contrib-bot { display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px; flex: 1 1 auto; margin-top: 22px; max-width: 1320px; }
+</style>
+</head>
+<body>
+  <header class="page-header">
+    <span class="brand">BudgetFlow</span>
+    <span class="meta">Paper 1 Brief · 2026</span>
+  </header>
+
+  <div class="slide-content">
+    <p class="kicker">§2.2 · Contributions</p>
+    <h1 class="slide-title">独特贡献</h1>
+    <div class="contrib-top">
+      <div class="card"><h4>① 连续质量视角</h4><p>将 LLM 质量视为 [0,1] 连续变量</p></div>
+      <div class="card"><h4>② 硬预算 + 动态配速</h4><p><code>budget_factor</code> 近似预算边际价值 λ</p></div>
+      <div class="card"><h4>③ 显式任务价值</h4><p>调用方声明的可解释信号 w<sub>i</sub></p></div>
+    </div>
+    <div class="contrib-bot">
+      <div class="card"><h4>④ 僵尸止损</h4><p>截断「成本涨、质量不涨」的无效调用</p></div>
+      <div class="card"><h4>⑤ 无需训练</h4><p>优化启发式即时部署；相对 RL 路线更轻量</p></div>
+    </div>
+  </div>
+
+  <footer class="page-footer">
+    <span>独特贡献</span>
+    <span>4 / 13</span>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>02 · 论文主线</title>
+<link rel="stylesheet" href="../shared/fonts.css">
+<link rel="stylesheet" href="../shared/tokens.css">
+<style>
+  h1.slide-title { font-size: 56px !important; }
+  .big-quote { font-size: 30px !important; line-height: 1.6 !important; }
+</style>
+</head>
+<body>
+  <header class="page-header">
+    <span class="brand">BudgetFlow</span>
+    <span class="meta">Paper 1 Brief · 2026</span>
+  </header>
+
+  <div class="slide-content">
+    <p class="kicker">§1 · 论文主线</p>
+    <h1 class="slide-title">Workflow 级成本–质量分配</h1>
+    <p class="lead">在一个甚至多个完整的 agent workflow（每步多 LLM 调用）中，如何用 workflow 结构信号（关键步骤、剩余预算、多 WF 共享资源）做整体分配？</p>
+    <blockquote class="big-quote">
+      当优化单位从「单次 LLM 请求」变为「完整 agent workflow」，并在共享预算池与多端后端 RPM / 并发配额下并行时：显式维护 workflow 状态是否会改变固定预算下的最终成功率？若是，收益来自预算配速、步骤重要性、进展先验还是多 workflow 调度？本文把 agent workflow 的 LLM 花费落成可审计、可消融、可复现的实验问题。
+    </blockquote>
+  </div>
+
+  <footer class="page-footer">
+    <span>论文主线</span>
+    <span>2 / 13</span>
+  </footer>
+</body>
+</html>

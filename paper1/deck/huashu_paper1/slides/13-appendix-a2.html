@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>13 · 附录 A.2</title>
+<link rel="stylesheet" href="../shared/fonts.css">
+<link rel="stylesheet" href="../shared/tokens.css">
+<style>
+  .tier-stack { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
+  .tier-band { margin-bottom: 0 !important; }
+  .tier-band .tier-meta { grid-template-columns: 1fr; font-size: 17px; }
+</style>
+</head>
+<body>
+  <header class="page-header">
+    <span class="brand">BudgetFlow</span>
+    <span class="meta">Paper 1 Brief · 2026</span>
+  </header>
+
+  <div class="slide-content">
+    <p class="kicker">Appendix A.2 · Stack placement</p>
+    <h1 class="slide-title" style="font-size:52px;">Agent 计算栈分层</h1>
+
+    <div class="tier-stack">
+      <div class="tier-band">
+        <div class="tier-head">Murakkab（Top）</div>
+        <p class="tier-sub">全栈 SLO 编排：云侧最小化硬件成本、按时完成。</p>
+        <div class="tier-meta">
+          <div><span class="k">核心</span> 云如何用最少的 GPU 跑完所有 agent</div>
+          <div><span class="k">目标</span> 最小化云硬件成本</div>
+          <div><span class="k">单位</span> 整个工作流</div>
+          <div><span class="k">预算</span> 否 — 无 $ / token 硬顶，仅单位成本</div>
+        </div>
+      </div>
+
+      <div class="flow-arrow">↓</div>
+
+      <div class="tier-band" style="border-color: var(--accent); background: var(--accent-soft);">
+        <div class="tier-head">BudgetFlow（Upper）</div>
+        <p class="tier-sub">固定预算下最大化任务成功率；步骤 + 全局预算池联合决策。</p>
+        <div class="tier-meta">
+          <div><span class="k">核心</span> 固定金额如何解最多任务</div>
+          <div><span class="k">目标</span> 固定预算下最大化成功率</div>
+          <div><span class="k">单位</span> 单步 + 全局预算池</div>
+          <div><span class="k">预算</span> 是 — 硬顶是核心约束</div>
+        </div>
+      </div>
+
+      <div class="flow-arrow">↓</div>
+
+      <div class="tier-band">
+        <div class="tier-head">Aragog（Middle）</div>
+        <p class="tier-sub">动态模型路由：让 GPU 持续忙碌、提高吞吐。</p>
+        <div class="tier-meta">
+          <div><span class="k">核心</span> GPU 不闲置</div>
+          <div><span class="k">目标</span> 系统吞吐极大化</div>
+          <div><span class="k">单位</span> 单步</div>
+          <div><span class="k">预算</span> 否 — 忙即调度，成本弱约束</div>
+        </div>
+      </div>
+
+      <div class="flow-arrow">↓</div>
+
+      <div class="tier-band">
+        <div class="tier-head">Parrot（Bottom）</div>
+        <p class="tier-sub">多轮请求流水线：降低单 agent 多轮等待。</p>
+        <div class="tier-meta">
+          <div><span class="k">核心</span> 单轮请求更快</div>
+          <div><span class="k">目标</span> 单请求延迟</div>
+          <div><span class="k">单位</span> 单请求 token 流</div>
+          <div><span class="k">预算</span> 否</div>
+        </div>
+      </div>
+
+      <div class="flow-arrow">↓</div>
+
+      <div class="arch-box" style="text-align:center; padding:16px;">
+        <div class="title" style="margin:0; font-size:24px;">LLM Backends + GPU/CPU Hardware</div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="page-footer">
+    <span>附录 A.2</span>
+    <span>13 / 13</span>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,379 @@
+/* BudgetFlow deck — Fathom / scientific journal tokens */
+:root {
+  --ink: #0e1b2c;
+  --paper: #f5f2ec;
+  --muted: #5a6573;
+  --hair: #b8bcc4;
+  --accent: #1d7a8c;
+  --accent-soft: rgba(29, 122, 140, 0.12);
+  --noise: rgba(33, 33, 33, 0.015);
+  --pad-x: 120px;
+  --pad-y: 72px;
+  --font-display: "Inter Tight", "Noto Sans SC", system-ui, sans-serif;
+  --font-serif-cn: "Noto Serif SC", "Inter Tight", serif;
+  --font-body: "Inter", "Noto Sans SC", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+html {
+  font-size: 16px;
+}
+
+body {
+  width: 1920px;
+  height: 1080px;
+  margin: 0;
+  padding: var(--pad-y) var(--pad-x);
+  box-sizing: border-box;
+  background-color: var(--paper);
+  background-image: radial-gradient(ellipse 120% 80% at 50% 0%, var(--noise), transparent 55%);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 28px;
+  line-height: 1.55;
+  position: relative;
+  overflow: hidden;
+}
+
+/* optional accent override: add class accent-red on <body> */
+body.accent-red {
+  --accent: #c0392b;
+  --accent-soft: rgba(192, 57, 43, 0.12);
+}
+
+.page-header {
+  position: absolute;
+  top: 40px;
+  left: var(--pad-x);
+  right: var(--pad-x);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 1px solid var(--hair);
+  padding-bottom: 14px;
+}
+
+.page-header .brand {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.page-header .meta {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.page-footer {
+  position: absolute;
+  bottom: 40px;
+  left: var(--pad-x);
+  right: var(--pad-x);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--muted);
+  border-top: 1px solid var(--hair);
+  padding-top: 14px;
+}
+
+.slide-content {
+  position: absolute;
+  top: 120px;
+  bottom: 100px;
+  left: var(--pad-x);
+  right: var(--pad-x);
+  display: flex;
+  flex-direction: column;
+}
+
+.kicker {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 16px;
+}
+
+h1.slide-title {
+  font-family: var(--font-serif-cn);
+  font-weight: 700;
+  font-size: 72px;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  margin: 0 0 24px;
+  max-width: 1600px;
+}
+
+h2.slide-h2 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 44px;
+  line-height: 1.2;
+  margin: 0 0 20px;
+}
+
+h3.slide-h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 32px;
+  margin: 0 0 16px;
+}
+
+p.lead {
+  font-size: 30px;
+  line-height: 1.65;
+  color: var(--muted);
+  max-width: 1480px;
+  margin: 0 0 20px;
+}
+
+p.body {
+  font-size: 26px;
+  line-height: 1.65;
+  margin: 0 0 16px;
+  max-width: 1520px;
+}
+
+ul.compact {
+  margin: 0;
+  padding-left: 1.1em;
+}
+
+ul.compact li {
+  margin-bottom: 12px;
+}
+
+em.caption {
+  font-family: var(--font-body);
+  font-style: italic;
+  font-size: 22px;
+  color: var(--muted);
+}
+
+.table-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin-top: 8px;
+}
+
+table.data {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 15px;
+  font-family: var(--font-body);
+}
+
+table.data th,
+table.data td {
+  border-bottom: 1px solid var(--hair);
+  padding: 10px 12px;
+  vertical-align: top;
+  text-align: left;
+}
+
+table.data th {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: rgba(14, 27, 44, 0.04);
+}
+
+table.data td.mono {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  text-align: center;
+}
+
+/* Dense landscape tables (相关工作一览 · 并排三表页) */
+table.data.dense {
+  font-size: 13px;
+}
+table.data.dense th,
+table.data.dense td {
+  padding: 6px 8px;
+}
+table.data.dense th {
+  font-size: 11px;
+}
+table.data.dense td.mono {
+  font-size: 12px;
+}
+
+.tier-band {
+  border: 1px solid var(--hair);
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin-bottom: 12px;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.tier-band .tier-head {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 22px;
+  margin-bottom: 8px;
+  color: var(--ink);
+}
+
+.tier-band .tier-sub {
+  font-size: 18px;
+  color: var(--muted);
+  line-height: 1.45;
+  margin-bottom: 10px;
+}
+
+.tier-meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 20px;
+  font-size: 16px;
+  color: var(--ink);
+}
+.tier-meta .k {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.big-quote {
+  font-family: var(--font-serif-cn);
+  font-size: 36px;
+  line-height: 1.65;
+  border-left: 4px solid var(--accent);
+  padding-left: 32px;
+  margin: 0;
+  max-width: 1520px;
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 40px;
+  flex: 1;
+  min-height: 0;
+}
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 28px;
+}
+
+.card {
+  border: 1px solid var(--hair);
+  background: rgba(255, 255, 255, 0.55);
+  padding: 24px 28px;
+  border-radius: 4px;
+}
+
+.card h4 {
+  font-family: var(--font-display);
+  font-size: 22px;
+  margin: 0 0 12px;
+  color: var(--accent);
+}
+
+.card p {
+  font-size: 22px;
+  line-height: 1.55;
+  margin: 0;
+  color: var(--ink);
+}
+
+.stack-v {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.cover-hero {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding-bottom: 40px;
+}
+
+.cover-hero h1 {
+  font-family: var(--font-serif-cn);
+  font-weight: 700;
+  font-size: 96px;
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+  margin: 0 0 28px;
+  max-width: 1680px;
+}
+
+.cover-hero .subtitle {
+  font-family: var(--font-body);
+  font-size: 32px;
+  color: var(--muted);
+  max-width: 1200px;
+  line-height: 1.5;
+  margin: 0 0 36px;
+}
+
+.cover-hero .thesis-line {
+  font-size: 28px;
+  line-height: 1.65;
+  max-width: 1480px;
+  border-top: 1px solid var(--hair);
+  padding-top: 28px;
+  margin: 0;
+}
+
+.cover-meta {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  color: var(--muted);
+}
+
+.arch-box {
+  border: 1px solid var(--hair);
+  border-radius: 6px;
+  padding: 20px 24px;
+  background: rgba(255, 255, 255, 0.65);
+}
+
+.arch-box .label {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+
+.arch-box .title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 26px;
+  margin-bottom: 10px;
+}
+
+.arch-box .detail {
+  font-size: 20px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.flow-arrow {
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 22px;
+  color: var(--muted);
+  padding: 6px 0;
+}

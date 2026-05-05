@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>09 · 关键差异</title>
+<link rel="stylesheet" href="../shared/fonts.css">
+<link rel="stylesheet" href="../shared/tokens.css">
+<style>
+  .tri { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px 18px; flex: 1; min-height: 0; align-content: start; }
+  .tri h3 { font-size: 21px !important; margin-bottom: 10px !important; line-height: 1.25; }
+  table.data.mini { font-size: 11px; }
+  table.data.mini th { font-size: 10px; padding: 5px 6px; }
+  table.data.mini td { padding: 5px 6px; }
+</style>
+</head>
+<body>
+  <header class="page-header">
+    <span class="brand">BudgetFlow</span>
+    <span class="meta">Paper 1 Brief · 2026</span>
+  </header>
+
+  <div class="slide-content">
+    <p class="kicker">§6 · Axial contrasts</p>
+    <h1 class="slide-title">关键差异 · 三轴对照</h1>
+    <em class="caption" style="display:block;margin-bottom:10px;">列含义（共享硬顶 / 状态选档 / 免训）见 §5 符号表。</em>
+
+    <div class="tri">
+      <div class="stack-v" style="min-width:0;">
+        <h3 class="slide-h3">6.1 vs Budget-Aware Agentic Routing</h3>
+        <div class="table-wrap" style="overflow:visible;">
+          <table class="data dense mini">
+            <thead><tr><th>维度</th><th>BoAR</th><th>本文</th></tr></thead>
+            <tbody>
+              <tr><td>方法</td><td>RL（BoPO）</td><td>启发式 · 免训</td></tr>
+              <tr><td>可解释性</td><td>难解释</td><td>边际性价比 + budget_factor</td></tr>
+              <tr><td>预算</td><td>soft + BCD</td><td>运行时 hard budget</td></tr>
+              <tr><td>任务价值</td><td>隐式</td><td>显式 w<sub>i</sub></td></tr>
+              <tr><td>止损</td><td>无</td><td>ZombieDetector</td></tr>
+              <tr><td>互补</td><td colspan="2">本文可作 RL warm-start baseline</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="stack-v" style="min-width:0;">
+        <h3 class="slide-h3">6.2 vs Per-query Routers</h3>
+        <div class="table-wrap" style="overflow:visible;">
+          <table class="data dense mini">
+            <thead><tr><th>维度</th><th>Per-query</th><th>本文</th></tr></thead>
+            <tbody>
+              <tr><td>决策</td><td>每条 query 独立最优</td><td>跨 N 步联合预算约束</td></tr>
+              <tr><td>状态</td><td>无状态</td><td>预算 / burn rate</td></tr>
+              <tr><td>预算</td><td>弱或 per-query</td><td>Hard budget</td></tr>
+              <tr><td>任务价值</td><td>不区分</td><td>显式 w<sub>i</sub></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="stack-v" style="min-width:0;">
+        <h3 class="slide-h3">6.3 vs OS-Inspired</h3>
+        <div class="table-wrap" style="overflow:visible;">
+          <table class="data dense mini">
+            <thead><tr><th>维度</th><th>OS-like</th><th>本文</th></tr></thead>
+            <tbody>
+              <tr><td>核心问题</td><td>稳定 / 隔离</td><td>质量–成本</td></tr>
+              <tr><td>优化目标</td><td>延迟 · 吞吐 · 隔离</td><td>QWCR · Q/$ · Pareto</td></tr>
+              <tr><td>资源类型</td><td>CPU / Mem / RPM…</td><td>LLM 质量与成本</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="page-footer">
+    <span>关键差异</span>
+    <span>9 / 13</span>
+  </footer>
+</body>
+</html>

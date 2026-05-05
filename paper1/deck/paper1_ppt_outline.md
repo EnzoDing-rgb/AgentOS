@@ -74,9 +74,9 @@ LLM 后端池 → events.jsonl → 指标计算
 
 下表 **「§4 聚类」列** 与 **§4** 五条索引一一对应；**未在 §4 列名中出现的工作不入表**（Aragog、Parrot 等推理栈仅见 **Appendix A.2**）。
 
-**①～③**：**①** 多并发 agent WF 共享 **$ / token 硬顶** + 预留–结算；**②** **同一条** agent 轨迹上多轮 LLM **状态化**选档；**③** **无任务域**大规模离线训练 / RL 即可跑（仅有小表标定仍记 ✓）。**④** 一句话差分。
+**①** 共享硬顶 · **②** 状态选档 · **③** 免训 · **④** 与本文差异（一句话差分）。
 
-| §4 聚类 | 工作 | ① | ② | ③ | ④ 与本文 |
+| §4 聚类 | 工作 | ① 共享硬顶 | ② 状态选档 | ③ 免训 | ④ 与本文差异 |
 | :--- | :--- | :---: | :---: | :---: | :--- |
 | **（本文）** | **BudgetFlow** | ✓ | ✓ | ✓ | — |
 | 操作系统资源管理 | **AgentRM** (arxiv:2603.13110) | ✗ | ✗ | ✓ | RPM / 稳定 / 回收；非 API **$** 硬账本 |
@@ -86,9 +86,9 @@ LLM 后端池 → events.jsonl → 指标计算
 | 任务-模型路由 | **RouteLLM** (Ong et al. 2024) | ✗ | ✗ | ✗ | Strong / weak **偏好学习**；无运行预算账本 |
 | 任务-模型路由 | **CARROT** (Somerstep et al. 2025, arxiv:2502.03261) | ✗ | ✗ | ✓ | **Per-query** minimax；无跨步联合状态 |
 | 任务-模型路由 | **OmniRouter** (Mei et al. 2026) | ✗ | ✗ | ✗ | **Per-query** Lagrangian；非多 WF **池** |
-| 分步骤强化学习的模型路由策略 | **BoPO** / Budget-Aware Agentic Routing (Zhang et al. 2026, arxiv:2602.21227) | ✗ | ✓ | ✗ | **单任务** RL step 路由；可插 **ModelSelector**；无 **①** |
+| 分步骤强化学习的模型路由策略 | **BoPO** / Budget-Aware Agentic Routing (Zhang et al. 2026, arxiv:2602.21227) | ✗ | ✓ | ✗ | **单任务** RL step 路由；可插 **ModelSelector**；无共享硬顶 |
 | 分步骤强化学习的模型路由策略 | **xRouter** (arxiv:2510.08439；*Training Cost-Aware LLMs Orchestration via RL*) | ✗ | ✓ | ✗ | RL **工具 / 多模型编排**；非多 agent **共享池**账本 |
-| GPU资源预算控制 | **ATHENA-Serve** (Liang & Wu；ICLR 2026 投稿，OpenReview #10330；Serving 侧 horizon–cost + 分层 RL) | ✗ | ✗ | ✗ | **Serving** 长尾延迟与 KV / 算力 **budget**；非 agent **计价** **①** |
+| GPU资源预算控制 | **ATHENA-Serve** (Liang & Wu；ICLR 2026 投稿，OpenReview #10330；Serving 侧 horizon–cost + 分层 RL) | ✗ | ✗ | ✗ | **Serving** 长尾延迟与 KV / 算力 **budget**；非 agent 计价共享硬顶 |
 | 硬件资源编排 | **Murakkab**（待投） | ✗ | ✗ | ✗ | **云 / WF** 级成本与并行；无 **$ / token 硬顶** 账本 |
 
 **Murakkab**、**ATHENA-Serve** 等可与本文在工程上纵向叠放；表内仅收录 §4 已索引文献。
@@ -111,7 +111,7 @@ LLM 后端池 → events.jsonl → 指标计算
 
 ## 6. 关键差异分析
 
-以下为 **轴向对照**（BoPO / per-query router / OS-inspired）；**①②③** 与 §4 **聚类** 见 §5。
+以下为 **轴向对照**（BoPO / per-query router / OS-inspired）；列含义（共享硬顶 / 状态选档 / 免训）见 §5 表头。
 
 ### 6.1 本文 vs Budget-Aware Agentic Routing（最重要的对比）
 

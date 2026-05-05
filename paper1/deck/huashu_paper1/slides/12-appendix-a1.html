@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>12 · 附录 A.1</title>
+<link rel="stylesheet" href="../shared/fonts.css">
+<link rel="stylesheet" href="../shared/tokens.css">
+<style>
+  .row { display: flex; gap: 12px; justify-content: center; align-items: stretch; }
+  .entry { border: 1px solid var(--hair); border-radius: 8px; padding: 10px 12px; background: rgba(255,255,255,0.65); font-size: 16px; line-height: 1.25; }
+  .entry .t { font-weight: 700; margin-bottom: 2px; font-size: 17px; }
+  .modes { font-family: var(--font-mono); font-size: 12px; color: var(--muted); text-align: center; padding: 4px 0; line-height: 1.35; }
+  .core3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .core3 .arch-box { padding: 10px 12px !important; }
+  .core3 .title { font-size: 18px !important; margin: 0 !important; }
+  .core3 .label { margin-bottom: 2px !important; }
+  h1.slide-title { font-size: 46px !important; margin-bottom: 8px !important; }
+</style>
+</head>
+<body>
+  <header class="page-header">
+    <span class="brand">BudgetFlow</span>
+    <span class="meta">Paper 1 Brief · 2026</span>
+  </header>
+
+  <div class="slide-content">
+    <p class="kicker">Appendix A.1 · Integration</p>
+    <h1 class="slide-title">BudgetFlow 集成架构</h1>
+
+    <div class="stack-v" style="flex:1; gap:8px; min-height:0;">
+      <div class="row">
+        <div class="entry" style="flex:1;"><div class="t">LangChain / SWE-agent / AutoGen</div></div>
+        <div class="entry" style="flex:1;"><div class="t">Self-built agent platform</div></div>
+      </div>
+
+      <p class="modes">Proxy · LLM msgs &nbsp;|&nbsp; Callback · tool events + meta &nbsp;|&nbsp; Explicit · task_type + w<sub>i</sub></p>
+
+      <div class="row">
+        <div class="entry" style="flex:1;"><div class="t">BudgetFlow Proxy</div></div>
+        <div class="entry" style="flex:1;"><div class="t">BudgetFlow Adapter</div></div>
+        <div class="entry" style="flex:1;"><div class="t">BudgetFlow SDK</div></div>
+      </div>
+
+      <div class="flow-arrow" style="padding:0;">∨</div>
+
+      <div class="arch-box" style="padding:12px !important;"><div class="title" style="text-align:center; font-size:22px !important;">BudgetFlow Runtime</div></div>
+
+      <div class="flow-arrow" style="padding:0;">∨</div>
+
+      <div class="core3">
+        <div class="arch-box"><div class="label">Governor</div><p class="title">budget + backend quotas</p></div>
+        <div class="arch-box"><div class="label">ModelSelector</div><p class="title">budget_pressure + importance</p></div>
+        <div class="arch-box"><div class="label">Scheduler</div><p class="title">Multi-workflow</p></div>
+      </div>
+
+      <div class="flow-arrow" style="padding:0;">∨</div>
+
+      <div class="arch-box" style="padding:12px !important; text-align:center;"><div class="title" style="font-size:20px !important;">LLM Backend Pool</div></div>
+    </div>
+  </div>
+
+  <footer class="page-footer">
+    <span>附录 A.1</span>
+    <span>12 / 13</span>
+  </footer>
+</body>
+</html>

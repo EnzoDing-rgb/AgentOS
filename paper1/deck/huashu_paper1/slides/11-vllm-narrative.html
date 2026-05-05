@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>11 · vLLM 叙事</title>
+<link rel="stylesheet" href="../shared/fonts.css">
+<link rel="stylesheet" href="../shared/tokens.css">
+<style>
+  .col h3 { font-family: var(--font-display); font-weight: 700; font-size: 28px; margin: 0 0 14px; color: var(--accent); }
+  .col ul { margin: 0; padding-left: 1.05em; font-size: 22px; line-height: 1.55; }
+  .col li { margin-bottom: 12px; }
+</style>
+</head>
+<body>
+  <header class="page-header">
+    <span class="brand">BudgetFlow</span>
+    <span class="meta">Paper 1 Brief · 2026</span>
+  </header>
+
+  <div class="slide-content">
+    <p class="kicker">§8 · Narrative</p>
+    <h1 class="slide-title">参照 vLLM 的两阶段演进</h1>
+
+    <div class="grid-2">
+      <div class="col">
+        <h3>vLLM / serving 栈</h3>
+        <ul>
+          <li>vLLM（SOSP 2023）：<strong>single-tenant</strong> — 单运营方 GPU 上 batch/调度极大化吞吐；不涉及多用户仲裁。</li>
+          <li>后续 Andes（OSDI 2024）、SGLang router 等：扩展到 <strong>multi-tenant</strong>，在 priority、quota、SLA 下仲裁。</li>
+          <li>成熟路径：先在单决策主体建立核心机制（paged KV-cache、continuous batching），再在之上叠加政策层。</li>
+        </ul>
+      </div>
+      <div class="col">
+        <h3>BudgetFlow 对齐与续作</h3>
+        <ul>
+          <li>本文（paper 1）：<strong>single-budget-owner</strong> — 固定算力/token 预算上多 agent workflow；贡献是跨 WF 的 cost-model-agnostic scheduler。</li>
+          <li>续作：multi-tenant agent compute — cross-tenant 隔离、异构 workload 的 quota 仲裁、budget-aware admission；超出本文 scope。</li>
+          <li>scheduler 的 cost-model-agnostic 在 multi-tenant 中保留：租户可有不同模型与成本结构，无需改仲裁层。</li>
+          <li><strong>定位</strong>：multi-tenant workflows 可以在其上构建的 single-tenant 基础。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <footer class="page-footer">
+    <span>vLLM 叙事</span>
+    <span>11 / 13</span>
+  </footer>
+</body>
+</html>
