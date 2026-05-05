@@ -195,20 +195,6 @@ Positioning sentence:
 
 > BudgetFlow should treat cache locality as runtime state: staying on the current model can receive a small bonus, and switching models can require a higher scheduling threshold.
 
-## 7. What to do with papers from the old comparison table
-
-| Paper | Keep? | Where | Why |
-|---|---|---|---|
-| RouteLLM | yes | per-query router baseline | classic strong/weak routing background |
-| CARROT | yes | per-query cost-aware router | cost-aware, but usually not a workflow ledger |
-| OmniRouter | yes | constrained per-query / global routing | useful optimization-view baseline |
-| Budget-Aware Agentic Routing / BoPO | strong yes | closest competitor | multi-step + cost/success + RL |
-| xRouter | yes | RL routing related work | methodological neighbor |
-| AgentRM | weak yes | runtime governance background | stability resources, not the spend-allocation spine |
-| AgentCgroup | weak yes | resource isolation background | resource-isolation context |
-| AIOS | weak yes | broad agent runtime background | conceptual background; cite lightly |
-| pMVX | weak yes | agent runtime self-tuning background | parallel work; cite lightly |
-
 ## 8. RL / ML usage snapshot
 
 | Paper bucket | Uses RL/ML? | This paper's stance |
