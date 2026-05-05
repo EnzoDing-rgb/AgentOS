@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BudgetFlow 手绘稿 — 翻页浏览</title>
+  <style>
+    :root {
+      --bg: #1a1a1c;
+      --fg: #e8e6e3;
+      --accent: #7eb8da;
+      --hint: rgba(255, 255, 255, 0.35);
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      height: 100%;
+      width: 100%;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+      overflow: hidden;
+    }
+    .deck {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      height: 100dvh;
+      margin: 0;
+      padding: 0;
+    }
+    .stage {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      background: var(--bg);
+      overflow: hidden;
+    }
+    .stage img {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: center;
+      border-radius: 0;
+      box-shadow: none;
+      user-select: none;
+      -webkit-user-drag: none;
+    }
+    .hit {
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: 20%;
+      max-height: 140px;
+      cursor: pointer;
+      z-index: 1;
+      border: 0;
+      padding: 0;
+      margin: 0;
+      background: transparent;
+    }
+    .hit--prev { top: 0; }
+    /* 底栏之上一条带，避免与控件叠放抢不到点击 */
+    .hit--next {
+      bottom: 3.25rem;
+      max-height: 120px;
+    }
+    .hit:focus { outline: none; }
+    .bar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 2;
+      padding: 0.45rem 1rem 0.55rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      background: linear-gradient(to top, rgba(0, 0, 0, 0.72), rgba(0, 0, 0, 0.35), transparent);
+      flex-wrap: wrap;
+      pointer-events: none;
+    }
+    .bar .counter,
+    .bar .hints {
+      pointer-events: none;
+    }
+    .bar button {
+      pointer-events: auto;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
+      color: var(--fg);
+      padding: 0.35rem 0.75rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.875rem;
+    }
+    .bar button:hover { background: rgba(255,255,255,0.14); }
+    .bar button:active { transform: scale(0.98); }
+    .counter {
+      font-size: 0.8rem;
+      color: var(--hint);
+      min-width: 6.5rem;
+      text-align: center;
+    }
+    .hints {
+      font-size: 0.72rem;
+      color: var(--hint);
+      width: 100%;
+      text-align: center;
+      margin-top: 0.15rem;
+    }
+    @media (max-width: 520px) {
+      .hints span { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="deck">
+    <div class="stage" id="stage" aria-live="polite">
+      <button type="button" class="hit hit--prev" id="hitPrev" aria-label="上一页（点按上边缘）"></button>
+      <button type="button" class="hit hit--next" id="hitNext" aria-label="下一页（点按下边缘）"></button>
+      <img id="slide" alt="当前页" />
+    </div>
+  </div>
+  <div class="bar">
+    <button type="button" id="btnPrev">上一页</button>
+    <span class="counter" id="counter">1 / 6</span>
+    <button type="button" id="btnNext">下一页</button>
+    <div class="hints">
+      <span>↑ ↓ 翻页 · Home / End 首尾 · 点按上/下边缘翻页</span>
+    </div>
+  </div>
+  <script>
+    const SLIDES = [
+      "budgetflow-paper1-cover-21x9.png",
+      "budgetflow-paper1-01-body.png",
+      "budgetflow-paper1-02-body.png",
+      "budgetflow-paper1-03-body.png",
+      "budgetflow-paper1-04-body.png",
+      "budgetflow-paper1-05-body.png"
+    ];
+
+    const img = document.getElementById("slide");
+    const counter = document.getElementById("counter");
+    let i = 0;
+
+    function show() {
+      img.src = SLIDES[i];
+      img.alt = "第 " + (i + 1) + " 页：" + SLIDES[i];
+      counter.textContent = (i + 1) + " / " + SLIDES.length;
+      const u = new URL(window.location.href);
+      u.hash = String(i + 1);
+      history.replaceState(null, "", u.pathname + u.search + "#" + (i + 1));
+    }
+
+    function prev() {
+      i = (i - 1 + SLIDES.length) % SLIDES.length;
+      show();
+    }
+    function next() {
+      i = (i + 1) % SLIDES.length;
+      show();
+    }
+
+    document.getElementById("btnPrev").addEventListener("click", prev);
+    document.getElementById("btnNext").addEventListener("click", next);
+    document.getElementById("hitPrev").addEventListener("click", prev);
+    document.getElementById("hitNext").addEventListener("click", next);
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowUp") prev();
+      else if (e.key === "ArrowDown") next();
+      else if (e.key === "Home") { i = 0; show(); }
+      else if (e.key === "End") { i = SLIDES.length - 1; show(); }
+    });
+
+    (function initHash() {
+      const h = parseInt(location.hash.slice(1), 10);
+      if (h >= 1 && h <= SLIDES.length) i = h - 1;
+      show();
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>BudgetFlow · 动态预算路由</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Noto+Sans+SC:wght@300;400;500;700;900&family=Noto+Serif+SC:wght@300;400;500;600;700;900&family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --primary:#2563EB; --primary-soft:rgba(37,99,235,0.10);
+  --bg:#F8FAFC; --surface:#FFFFFF; --text:#1E293B; --muted:#64748B;
+  --hair:#CBD5E1; --border:#E2E8F0; --success:#10B981; --error:#EF4444;
+  --font-display:"Crimson Pro","Noto Serif SC",serif;
+  --font-body:"Atkinson Hyperlegible","Noto Sans SC",system-ui,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,monospace;
+  --sw:#fff; --pad:72px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{
+  width:100%;height:100%;overflow:hidden;
+  font-family:var(--font-body);background:#0f172a;color:var(--text);
+  -webkit-font-smoothing:antialiased;
+}
+#deck{
+  position:fixed;top:0;left:0;width:100%;height:100%;
+  transition:transform .7s cubic-bezier(.65,0,.35,1);
+  will-change:transform;
+}
+.slide{
+  position:absolute;top:0;left:0;
+  width:1920px;height:1080px;
+  transform-origin:top left;
+  background:var(--bg);
+  background-image:radial-gradient(ellipse 130% 70% at 50% 0%, rgba(37,99,235,0.04), transparent 60%);
+  padding:var(--pad) 100px;
+  display:flex;flex-direction:column;
+  overflow:hidden;
+}
+.slide.cover{
+  background:linear-gradient(160deg,#EFF6FF 0%,var(--bg) 50%,var(--bg) 100%);
+  justify-content:center;align-items:center;text-align:center;
+}
+/* ---- Header / Footer ---- */
+.chr{
+  display:flex;justify-content:space-between;align-items:center;
+  font-family:var(--font-mono);font-size:13px;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--muted);flex-shrink:0;
+}
+.chr-top{border-bottom:1px solid var(--border);padding-bottom:14px;margin-bottom:16px}
+.chr-bot{border-top:1px solid var(--border);padding-top:14px;margin-top:auto}
+.chr .brand{color:var(--text);font-weight:600}
+/* ---- Typography ---- */
+h1{
+  font-family:var(--font-display);font-weight:700;font-size:72px;
+  line-height:1.12;letter-spacing:-.015em;margin:0 0 20px;
+}
+.cover h1{font-size:84px;margin-bottom:12px}
+.cover .kicker{
+  font-family:var(--font-mono);font-size:14px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--primary);margin-bottom:20px;
+}
+.cover .sub{
+  font-family:"Noto Serif SC",serif;font-size:22px;color:var(--muted);
+  max-width:1000px;line-height:1.7;
+}
+.cover .meta{
+  margin-top:40px;display:flex;gap:32px;justify-content:center;
+  font-family:var(--font-mono);font-size:12px;letter-spacing:.12em;
+  color:var(--muted);text-transform:uppercase;
+}
+.cover .meta .dot{width:6px;height:6px;border-radius:50%;background:var(--primary);display:inline-block;margin-right:6px}
+h2{font-family:var(--font-display);font-weight:600;font-size:48px;line-height:1.2;margin:0 0 12px}
+h3{font-family:var(--font-display);font-weight:600;font-size:32px;margin:0 0 10px}
+p{font-size:24px;line-height:1.6;margin-bottom:10px}
+p.sm{font-size:20px;color:var(--muted)}
+code{
+  font-family:var(--font-mono);font-size:.85em;
+  background:var(--primary-soft);color:var(--primary);
+  padding:1px 6px;border-radius:3px;
+}
+pre{
+  background:#1E293B;color:#E2E8F0;font-family:var(--font-mono);
+  font-size:15px;line-height:1.5;padding:20px;border-radius:8px;
+  overflow:auto;white-space:pre;flex:1;min-height:0;
+}
+ul{padding-left:1.2em;margin-bottom:8px}
+li{font-size:23px;line-height:1.55;margin-bottom:6px}
+/* ---- RQ cards ---- */
+.rq-list{display:flex;flex-direction:column;gap:10px;flex:1;min-height:0;margin-top:8px}
+.rq{display:flex;gap:16px;align-items:flex-start;padding:16px 20px;
+    background:var(--surface);border:1px solid var(--border);border-radius:8px;
+    transition:border-color .2s}
+.rq:hover{border-color:var(--primary)}
+.rq-badge{
+  font-family:var(--font-mono);font-size:12px;font-weight:700;letter-spacing:.08em;
+  color:#fff;background:var(--primary);padding:4px 12px;border-radius:4px;white-space:nowrap;flex-shrink:0;
+}
+.rq-body h4{font-size:20px;font-weight:600;margin:0 0 2px}
+.rq-body .met{font-size:14px;color:var(--muted);font-family:var(--font-mono)}
+/* ---- Contribution cards ---- */
+.card-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;flex:1;min-height:0;margin-top:8px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px;
+      transition:border-color .2s,box-shadow .2s}
+.card:hover{border-color:var(--primary);box-shadow:0 2px 12px rgba(37,99,235,.12)}
+.card .num{font-family:var(--font-display);font-size:36px;font-weight:700;color:var(--primary);line-height:1;margin-bottom:6px}
+.card h4{font-family:var(--font-display);font-size:20px;font-weight:600;margin-bottom:4px}
+.card p{font-size:16px;color:var(--muted);line-height:1.5;margin:0}
+/* ---- Tables ---- */
+.tw{overflow:auto;flex:1;min-height:0;border:1px solid var(--border);border-radius:8px;background:var(--surface);margin-top:8px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{font-family:var(--font-mono);font-size:11px;font-weight:600;letter-spacing:.06em;
+   text-transform:uppercase;color:var(--muted);background:#F1F5F9;
+   padding:10px 12px;text-align:left;border-bottom:2px solid var(--border);position:sticky;top:0;z-index:2}
+td{padding:8px 12px;border-bottom:1px solid var(--border);vertical-align:top}
+tr:last-child td{border:none}
+tr:hover{background:#F8FAFC}
+.chk{color:var(--success);font-weight:700}
+.cross{color:var(--error)}
+.highlight-row{background:#EFF6FF!important}
+/* ---- Comparison boxes side by side ---- */
+.comp-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;flex:1;min-height:0;margin-top:8px}
+.comp-box{border:1px solid var(--border);border-radius:8px;background:var(--surface);display:flex;flex-direction:column}
+.comp-box h4{font-family:var(--font-display);font-size:15px;padding:10px 14px;background:#F1F5F9;border-bottom:1px solid var(--border);margin:0;flex-shrink:0}
+.comp-box .inner{overflow:auto;flex:1}
+.comp-box table{font-size:12px;min-width:auto}
+.comp-box th{font-size:10px;padding:6px 8px}
+.comp-box td{font-size:11px;padding:5px 8px}
+/* ---- Scope ---- */
+.scope-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;flex:1;min-height:0;margin-top:8px}
+.scope-col{padding:20px;border-radius:8px;border:1px solid var(--border);display:flex;flex-direction:column}
+.scope-col.in{background:#F0FDF4;border-color:#BBF7D0}
+.scope-col.out{background:#FFF7ED;border-color:#FED7AA}
+.scope-col h4{font-size:18px;margin-bottom:8px;flex-shrink:0}
+.scope-col ul{font-size:16px;padding-left:18px}
+.scope-col li{font-size:16px}
+/* ---- Stack layers ---- */
+.stacks{flex:1;min-height:0;display:flex;flex-direction:column;gap:4px;margin-top:6px}
+.sl{border:1px solid var(--border);border-radius:6px;padding:8px 16px;flex-shrink:0;background:var(--surface)}
+.sl .name{font-family:var(--font-mono);font-size:11px;font-weight:600;letter-spacing:.06em;color:var(--primary);margin-bottom:1px}
+.sl .desc{font-size:13px;color:var(--muted);line-height:1.4}
+.sl.current{background:#EFF6FF;border-color:var(--primary)}
+.sl.hw{background:#F1F5F9}
+.sarr{text-align:center;font-size:14px;color:var(--hair);flex-shrink:0;line-height:1}
+/* ---- Navigation ---- */
+#navL,#navR{position:fixed;top:50%;transform:translateY(-50%);z-index:100;
+  width:48px;height:48px;border-radius:50%;background:rgba(15,23,42,.4);
+  color:#fff;display:flex;align-items:center;justify-content:center;
+  font-size:22px;cursor:pointer;transition:background .2s;
+  user-select:none;border:none;backdrop-filter:blur(4px);
+}
+#navL:hover,#navR:hover{background:rgba(37,99,235,.7)}
+#navL{left:20px}#navR{right:20px}
+#ctr{
+  position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:100;
+  background:rgba(15,23,42,.6);color:#fff;padding:6px 18px;border-radius:999px;
+  font-family:var(--font-mono);font-size:13px;letter-spacing:.04em;
+  backdrop-filter:blur(6px);user-select:none;white-space:nowrap;
+}
+#ctr .lb{color:rgba(255,255,255,.6);margin-left:8px}
+/* ---- Progress bar ---- */
+#prog{position:fixed;top:0;left:0;height:3px;background:var(--primary);z-index:200;transition:width .5s ease}
+/* ---- Responsive ---- */
+@media(max-width:768px){
+  :root{--pad:24px}
+  .cover h1{font-size:40px}
+  h1{font-size:36px}h2{font-size:28px}h3{font-size:22px}
+  p,li{font-size:16px}
+  .card-grid{grid-template-columns:1fr 1fr}
+  .comp-grid{grid-template-columns:1fr}
+  .rq-body h4{font-size:16px}
+  pre{font-size:11px;padding:12px}
+  #navL,#navR{width:36px;height:36px;font-size:16px}
+}
+</style>
+</head>
+<body>
+
+<div id="prog"></div>
+<div id="deck">
+<!-- ====================== SLIDE 1: COVER ====================== -->
+<div class="slide cover" style="top:0">
+  <div style="flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center">
+    <p class="kicker">Agent Workflow · Dynamic Budget Routing</p>
+    <h1>BudgetFlow</h1>
+    <h1 style="font-size:48px;color:var(--muted);margin-top:-8px">面向 Agent 工作流的动态预算路由机制</h1>
+    <p class="sub">当优化单位从「单次 LLM 请求」变为「完整 agent workflow」，<br>并在共享预算池与后端限流下并行运行时——<br><strong>显式 workflow 状态能否在固定预算内改变最终成功率？</strong></p>
+    <div class="meta">
+      <span><span class="dot"></span> Paper 1 Brief</span>
+      <span>2026</span>
+      <span>Single Budget Owner</span>
+      <span>Training-Free</span>
+    </div>
+  </div>
+  <div class="chr chr-bot"><span>封面</span><span>1 / 14</span></div>
+</div>
+
+<!-- ====================== SLIDE 2: THESIS ====================== -->
+<div class="slide" style="top:1080px">
+  <div class="chr chr-top"><span class="brand">BudgetFlow</span><span>Paper 1 · 2026</span></div>
+  <p class="kicker" style="font-family:var(--font-mono);font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--primary);margin-bottom:4px;flex-shrink:0">§1 · 论文主线</p>
+  <h1 style="font-size:56px">Workflow 级成本–质量分配</h1>
+  <p style="font-size:26px;color:var(--muted);flex-shrink:0">在一个甚至多个完整的 <strong>agent workflow</strong>（每步多 LLM 调用）中，如何利用 workflow 级结构信号（关键步骤、剩余预算、多 WF 共享资源）做整体分配？</p>
+  <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:20px 40px">
+    <blockquote style="font-size:28px;line-height:1.65;color:var(--text);padding:28px 36px;background:var(--surface);border-left:5px solid var(--primary);border-radius:0 8px 8px 0;max-width:1600px">
+      当优化单位从「一次 LLM 请求」变成「一个完整 agent workflow」，并且多个 workflow 共享同一预算池和多条后端路径的 RPM / 并发配额时，<strong>显式维护 workflow 状态是否会改变固定预算下的最终成功率？</strong> 若肯定，再问：收益来自<em>预算配速</em>、<em>步骤重要性</em>、<em>进展先验</em>，还是<em>多 workflow 调度</em>？把 agent workflow 的 LLM 花费变成一个<strong>可审计、可消融、可复现实验</strong>的问题。
+    </blockquote>
+  </div>
+  <div class="chr chr-bot"><span>论文主线</span><span>2 / 14</span></div>
+</div>
+
+<!-- ====================== SLIDE 3: RQs ====================== -->
+<div class="slide" style="top:2160px">
+  <div class="chr chr-top"><span class="brand">BudgetFlow</span><span>Paper 1 · 2026</span></div>
+  <p class="kicker" style="font-family:var(--font-mono);font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--primary);margin-bottom:4px;flex-shrink:0">§2 · 研究问题</p>
+  <h1>三个研究问题</h1>
+  <div class="rq-list">
+    <div class="rq"><span class="rq-badge">RQ1</span>
+      <div class="rq-body">
+        <h4>多 workflow 在同一固定预算与共享后端限流下并行时，预算浪费在何处？哪些限制最先成为瓶颈？</h4>
+        <span class="met">指标：预算违规率 · 429 率 · 队列延迟 · 回收预算 · 僵尸取消数</span>
+      </div>
+    </div>
+    <div class="rq"><span class="rq-badge">RQ2</span>
+      <div class="rq-body">
+        <h4>利用 workflow 阶段状态做多步模型档位选择，是否比「仅按 workflow」或「仅按预算」调度 resolve 更多任务？</h4>
+        <span class="met">指标：固定预算下 resolved rate；BudgetFlow Full vs Workflow-Level Router vs Budget-Only Step Scheduler</span>
+      </div>
+    </div>
+    <div class="rq"><span class="rq-badge">RQ3</span>
+      <div class="rq-body">
+        <h4>换模型削弱 prefix-cache 局部性时，workflow 阶段调度是否仍能带来净收益？</h4>
+        <span class="met">指标：换模频率 · prefill 延迟 · cached-token 比例；BudgetFlow Full vs Cache-Sticky</span>
+      </div>
+    </div>
+  </div>
+  <div class="chr chr-bot"><span>三个研究问题</span><span>3 / 14</span></div>
+</div>
+
+<!-- ====================== SLIDE 4: CONTRIBUTIONS ====================== -->
+<div class="slide" style="top:3240px">
+  <div class="chr chr-top"><span class="brand">BudgetFlow</span><span>Paper 1 · 2026</span></div>
+  <p class="kicker" style="font-family:var(--font-mono);font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--primary);margin-bottom:4px;flex-shrink:0">§2 · 独特贡献</p>
+  <h1>五项独特贡献</h1>
+  <div class="card-grid">
+    <div class="card"><div class="num">1</div><h4>连续质量视角</h4><p>将 LLM 质量视为 [0,1] 连续变量，而非离散档位。</p></div>
+    <div class="card"><div class="num">2</div><h4>预算硬约束 + 动态配速</h4><p><code>budget_factor</code> 近似预算边际价值 λ，硬上限保证不超支。</p></div>
+    <div class="card"><div class="num">3</div><h4>显式任务价值 wᵢ</h4><p>调用方声明的可解释信号，驱动调度优先级。</p></div>
+    <div class="card"><div class="num">4</div><h4>僵尸止损</h4><p>截断「成本涨、质量不涨」的无效调用，回收预算与槽位。</p></div>
+    <div class="card"><div class="num">5</div><h4>无需训练</h4><p>优化启发式，即时部署，对比 RL 方法更轻量。</p></div>
+  </div>
+  <div class="chr chr-bot"><span>独特贡献</span><span>4 / 14</span></div>
+</div>
+
+<!-- ====================== SLIDE 5: ARCHITECTURE ====================== -->
+<div class="slide" style="top:4320px">
+  <div class="chr chr-top"><span class="brand">BudgetFlow</span><span>Paper 1 · 2026</span></div>
+  <p class="kicker" style="font-family:var(--font-mono);font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--primary);margin-bottom:4px;flex-shrink:0">§3 · 项目架构</p>
+  <h1>BudgetFlow 分层运行时</h1>
+  <pre style="flex:none;font-size:14px;padding:16px">Agent Workflow（N 个 LLM 调用步骤）× J 个并发 workflow
+        │
+        ▼
+═══════════════════ BudgetFlow ═══════════════════
+│ 【约束层】Governor                           │  ← policy-agnostic
+│   预算预留/结算 + 后端级限流 + 并发准入       │
+│                                              │
+│ 【优化层】ModelSelector（可插拔）             │  ← 唯一 routing policy
+│   本文默认：预计进展增益 + budget_pressure    │
+│   可替换为：RL policy / CARROT / ...         │
+│                                              │
+│ 【止损层】ZombieDetector + Preemption        │  ← policy-agnostic
+│   僵尸截断 + 交互式任务抢占                   │
+│                                              │
+│ 【调度层】Multi-Workflow Scheduler           │  ← policy-agnostic
+│   跨 workflow 协调 + admission control       │
+═══════════════════════════════════════════════
+        │
+        ▼
+LLM 后端池 → events.jsonl → 指标计算</pre>
+  <p style="font-size:18px;color:var(--muted);flex-shrink:0;margin-top:6px">仅 <strong>ModelSelector</strong> 承载 routing policy（可插拔），其余三层均为 policy-agnostic 运行时治理底座。</p>
+  <div class="chr chr-bot"><span>项目架构</span><span>5 / 14</span></div>
+</div>
+
+<!-- ====================== SLIDE 6: RELATED TAXONOMY ====================== -->
+<div class="slide" style="top:5400px">
+  <div class="chr chr-top"><span class="brand">BudgetFlow</span><span>Paper 1 · 2026</span></div>
+  <p class="kicker" style="font-family:var(--font-mono);font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--primary);margin-bottom:4px;flex-shrink:0">§4 · 相关工作分类</p>
+  <h1>五条聚类索引</h1>
+  <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:18px;padding:0 40px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div class="card" style="border-left:4px solid var(--primary)"><h4 style="font-size:20px">🖥 操作系统资源管理</h4><p>AgentRM · AgentCgroup · AIOS · pMVX</p></div>
+      <div class="card" style="border-left:4px solid #F97316"><h4 style="font-size:20px">🔀 任务-模型路由</h4><p>RouteLLM · CARROT · OmniRouter</p></div>
+      <div class="card" style="border-left:4px solid #10B981"><h4 style="font-size:20px">🧠 分步 RL 路由策略</h4><p><strong>BoPO</strong>（Budget-Aware Agentic Routing）· xRouter</p></div>
+      <div class="card" style="border-left:4px solid #8B5CF6"><h4 style="font-size:20px">🎯 GPU / 硬件资源编排</h4><p>ATHENA-Serve · Murakkab</p></div>
+    </div>
+    <p style="font-size:18px;color:var(--muted);text-align:center">（与 §5 一览表同一批工作）</p>
+  </div>
+  <div class="chr chr-bot"><span>相关工作分类</span><span>6 / 14</span></div>
+</div>
+
+<!-- ====================== SLIDE 7: RELATED LANDSCAPE ====================== -->
+<div class="slide" style="top:6480px">
+  <div class="chr chr-top"><span class="brand">BudgetFlow</span><span>Paper 1 · 2026</span></div>
+  <p class="kicker" style="font-family:var(--font-mono);font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--primary);margin-bottom:4px;flex-shrink:0">§5 · 相关工作一览</p>
+  <h2 style="font-size:32px">共享硬顶 · 状态选档 · 免训 · 差分</h2>
+  <div class="tw">
+    <table>
+      <thead><tr><th>聚类</th><th>工作</th><th>①共享硬顶</th><th>②状态选档</th><th>③免训</th><th>④与本文差异</th></tr></thead>
+      <tbody>
+        <tr class="highlight-row"><td><strong>（本文）</strong></td><td><strong>BudgetFlow</strong></td><td class="chk">✓</td><td class="chk">✓</td><td class="chk">✓</td><td>—</td></tr>
+        <tr><td>操作系统</td><td>AgentRM</td><td class="cross">✗</td><td class="cross">✗</td><td class="chk">✓</td><td>RPM/稳定/回收；非 API $ 硬账本</td></tr>
+        <tr><td>操作系统</td><td>AgentCgroup</td><td class="cross">✗</td><td class="cross">✗</td><td class="chk">✓</td><td>主机 CPU / Mem cgroup</td></tr>
+        <tr><td>操作系统</td><td>AIOS</td><td class="cross">✗</td><td class="cross">✗</td><td class="chk">✓</td><td>Agent OS 抽象</td></tr>
+        <tr><td>操作系统</td><td>pMVX</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td><td>Kernel 多版本策略自调优</td></tr>
+        <tr><td>任务路由</td><td>RouteLLM</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td><td>Strong/weak 偏好学习；无运行预算账本</td></tr>
+        <tr><td>任务路由</td><td>CARROT</td><td class="cross">✗</td><td class="cross">✗</td><td class="chk">✓</td><td>Per-query minimax；无跨步联合状态</td></tr>
+        <tr><td>任务路由</td><td>OmniRouter</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td><td>Per-query Lagrangian；非多 WF 池</td></tr>
+        <tr><td>分步 RL</td><td><strong>BoPO</strong></td><td class="cross">✗</td><td class="chk">✓</td><td class="cross">✗</td><td>单任务 RL step 路由；可插 ModelSelector；无共享硬顶</td></tr>
+        <tr><td>分步 RL</td><td>xRouter</td><td class="cross">✗</td><td class="chk">✓</td><td class="cross">✗</td><td>RL 工具/多模型编排；非多 agent 共享池账本</td></tr>
+        <tr><td>GPU 预算</td><td>ATHENA-Serve</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td><td>Serving 长尾延迟 + KV/算力 budget</td></tr>
+        <tr><td>硬件编排</td><td>Murakkab</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td><td>云/WF 级成本与并行；无 $/token 硬顶账本</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p style="font-size:13px;color:var(--muted);margin-top:4px;flex-shrink:0">Murakkab、ATHENA-Serve 可与本文纵向叠放；Aragog、Parrot 见 Appendix A.2。</p>
+  <div class="chr chr-bot"><span>相关工作一览</span><span>7 / 14</span></div>
+</div>
+
+<!-- ====================== SLIDE 8: SCOPE ====================== -->
+<div class="slide" style="top:7560px">
+  <div class="chr chr-top"><span class="brand">BudgetFlow</span><span>Paper 1 · 2026</span></div>
+  <p class="kicker" style="font-family:var(--font-mono);font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--primary);margin-bottom:4px;flex-shrink:0">§5 · 论文边界</p>
+  <h1>Scope · 覆盖与扩展</h1>
+  <div class="scope-grid">
+    <div class="scope-col in">
+      <h4>✅ 本文明确覆盖</h4>
+      <ul>
+        <li><strong>单一预算主体</strong>：多个并发 workflow 共享一池预算与后端 RPM / 并发配额</li>
+        <li><strong>决策单位</strong>：workflow 内每一步 LLM 调用 + 全局预算池状态</li>
+        <li>评测：SWE-bench Verified 批量并发 + 固定总预算</li>
+      </ul>
+    </div>
+    <div class="scope-col out">
+      <h4>🔮 不 Claim / 留作扩展</h4>
+      <ul>
+        <li><strong>Multi-tenant</strong>：跨团队预算与 SLA（自然续作，与 §8 一致）</li>
+        <li><strong>非 GPU serving 独占</strong>：不取代 vLLM / Athena-Serve 侧 KV/batch 最优</li>
+        <li><strong>ZombieDetector</strong>：运行时止损构件，可消融；非独立方法论主贡献</li>
+        <li><strong>成本模型</strong>：不绑定具体 SKU；用抽象 $/token 计价即可复现</li>
+      </ul>
+    </div>
+  </div>
+  <div class="chr chr-bot"><span>论文边界</span><span>8 / 14</span></div>
+</div>
+
+<!-- ====================== SLIDE 9: KEY DIFFERENCES ====================== -->
+<div class="slide" style="top:8640px">
+  <div class="chr chr-top"><span class="brand">BudgetFlow</span><span>Paper 1 · 2026</span></div>
+  <p class="kicker" style="font-family:var(--font-mono);font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--primary);margin-bottom:4px;flex-shrink:0">§6 · 关键差异分析</p>
+  <h2 style="font-size:32px">三大轴向对比</h2>
+  <div class="comp-grid">
+    <div class="comp-box"><h4>vs Budget-Aware Agentic Routing</h4>
+      <div class="inner"><table>
+        <thead><tr><th>维度</th><th>BoPO</th><th>本文</th></tr></thead>
+        <tbody>
+          <tr><td>方法</td><td>RL：需 GPU 训练</td><td><strong>启发式，免训练</strong></td></tr>
+          <tr><td>可解释性</td><td>难以解释</td><td><strong>边际性价比排序</strong></td></tr>
+          <tr><td>预算处理</td><td>训练 soft + 推理 BCD</td><td><strong>运行时 hard 硬约束</strong></td></tr>
+          <tr><td>任务价值</td><td>隐式（RL 学出）</td><td><strong>显式 wᵢ</strong></td></tr>
+          <tr><td>止损</td><td>无专门机制</td><td><strong>ZombieDetector</strong></td></tr>
+        </tbody>
+      </table></div>
+    </div>
+    <div class="comp-box"><h4>vs Per-query Routers</h4>
+      <div class="inner"><table>
+        <thead><tr><th>维度</th><th>Per-query</th><th>本文</th></tr></thead>
+        <tbody>
+          <tr><td>决策</td><td>每条 query 独立</td><td><strong>跨 N 步联合约束</strong></td></tr>
+          <tr><td>状态</td><td>无状态</td><td><strong>有状态（burn rate）</strong></td></tr>
+          <tr><td>预算</td><td>仅预测 per-query</td><td><strong>Hard budget 硬约束</strong></td></tr>
+          <tr><td>任务价值</td><td>不区分</td><td><strong>显式 wᵢ</strong></td></tr>
+        </tbody>
+      </table></div>
+    </div>
+    <div class="comp-box"><h4>vs OS-Inspired</h4>
+      <div class="inner"><table>
+        <thead><tr><th>维度</th><th>OS-Inspired</th><th>本文</th></tr></thead>
+        <tbody>
+          <tr><td>核心问题</td><td>稳定性/资源隔离</td><td><strong>质量-成本优化</strong></td></tr>
+          <tr><td>优化目标</td><td>延迟/吞吐量</td><td><strong>QWCR · Q/$ · Pareto</strong></td></tr>
+          <tr><td>资源类型</td><td>CPU/内存/RPM</td><td><strong>LLM 质量与成本</strong></td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </div>
+  <div class="chr chr-bot"><span>关键差异分析</span><span>9 / 14</span></div>
+</div>
+
+<!-- ====================== SLIDE 10: BoPO DEEP DIVE ====================== -->
+<div class="slide" style="top:9720px">
+  <div class="chr chr-top"><span class="brand">BudgetFlow</span><span>Paper 1 · 2026</span></div>
+  <p class="kicker" style="font-family:var(--font-mono);font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--primary);margin-bottom:4px;flex-shrink:0">§7 · 最接近的工作</p>
+  <h2 style="font-size:32px">BoPO: Budget-Aware Agentic Routing</h2>
+  <p style="font-size:18px;color:var(--muted);flex-shrink:0">Zhang et al., arXiv:2602.21227, 2026 · Boundary-Guided Policy Optimization</p>
+  <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:6px;min-height:0">
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div class="card" style="flex:1"><h4>🔗 与本文的关系</h4><p style="font-size:15px">BoPO 产出<strong>单任务 step 级路由策略</strong>，在 BudgetFlow 里对应 <strong>ModelSelector 的可插拔实现</strong>。本文是运行时治理底座；底座与 BoPO 兼容——可将 RL 策略接入 ModelSelector。</p></div>
+      <div class="card" style="flex:1"><h4>📌 BoPO 明确不覆盖</h4><ul style="font-size:14px"><li>多 agent 共享全局预算的跨任务分配</li><li>生产级 RPM/并发强准入与 429 治理</li><li>僵尸任务占用的预算与槽位回收</li><li>本地推理/KV 切换代价建模</li><li>零域数据下的免训练冷启动路由</li></ul></div>
+    </div>
+    <div class="comp-box"><h4>BudgetFlow vs BoPO</h4>
+      <div class="inner"><table>
+        <thead><tr><th>维度</th><th>BudgetFlow</th><th>BoPO</th></tr></thead>
+        <tbody>
+          <tr><td>优化目标</td><td><strong>全局</strong>任务完成率</td><td>单任务 trade-off</td></tr>
+          <tr><td>决策视野</td><td><strong>跨 WF</strong> 就绪/排队</td><td>单 trajectory + 剩余预算</td></tr>
+          <tr><td>预算与配额</td><td><strong>预留—结算</strong>硬上限</td><td>soft-budget + BCD</td></tr>
+          <tr><td>止损回收</td><td><strong>ZombieDetector</strong></td><td>无对等机制</td></tr>
+          <tr><td>部署</td><td><strong>Training-free</strong></td><td>域专属轨迹与训练</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </div>
+  <div class="chr chr-bot"><span>BoPO 对比</span><span>10 / 14</span></div>
+</div>
+
+<!-- ====================== SLIDE 11: vLLM NARRATIVE ====================== -->
+<div class="slide" style="top:10800px">
+  <div class="chr chr-top"><span class="brand">BudgetFlow</span><span>Paper 1 · 2026</span></div>
+  <p class="kicker" style="font-family:var(--font-mono);font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--primary);margin-bottom:4px;flex-shrink:0">§8 · 叙事</p>
+  <h2 style="font-size:36px">参照 vLLM：Single → Multi-Tenant 两阶段</h2>
+  <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:12px;padding:0 20px">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px 24px;border-left:4px solid var(--primary)">
+      <p style="font-size:20px"><strong>vLLM (SOSP 2023)</strong> — 第一阶段处理 <strong>single-tenant</strong>：一台 GPU 服务器，如何 batch 与调度最大化吞吐？第二阶段（Andes OSDI 2024, SGLang router）扩展到 <strong>multi-tenant</strong>，做 priority / quota / SLA 仲裁。</p>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div class="card" style="border-left:4px solid var(--primary);background:#EFF6FF">
+        <h4>本文（Paper 1）· Single-Budget-Owner</h4>
+        <p style="font-size:16px">一个实体持有固定预算，在其上运行多个 agent workflow。贡献：跨 workflow 分配 cost-model-agnostic scheduler。</p>
+      </div>
+      <div class="card" style="border-left:4px solid #F97316">
+        <h4>续作 · Multi-Tenant</h4>
+        <p style="font-size:16px">多团队/部门/客户独立预算、优先级与 SLA。新问题：cross-tenant 隔离、quota 仲裁、budget-aware admission control。</p>
+      </div>
+    </div>
+    <p style="font-size:18px;color:var(--muted);text-align:center">scheduler 的 <strong>cost-model-agnostic</strong> 性质在 multi-tenant 扩展中保留——租户可用不同模型与成本结构，无需修改仲裁层。</p>
+  </div>
+  <div class="chr chr-bot"><span>vLLM 叙事</span><span>11 / 14</span></div>
+</div>
+
+<!-- ====================== SLIDE 12: APPENDIX A.1 ====================== -->
+<div class="slide" style="top:11880px">
+  <div class="chr chr-top"><span class="brand">BudgetFlow</span><span>Paper 1 · 2026</span></div>
+  <p class="kicker" style="font-family:var(--font-mono);font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--primary);margin-bottom:4px;flex-shrink:0">Appendix A.1</p>
+  <h2 style="font-size:34px">BudgetFlow 集成架构</h2>
+  <pre style="font-size:13px;padding:16px;flex:1;min-height:0">+----------------------------------+       +-----------------------------+
+| LangChain / SWE-agent / AutoGen  |       | Self-built agent platform   |
++----------------------------------+       +-----------------------------+
+       |                    |                         |
+       | Proxy mode:        | Callback mode:          | Explicit mode:
+       | LLM request msgs   | tool events + metadata  | task_type + w_i
+       v                    v                         v
++------------------+ +------------------+      +------------------+
+|  BudgetFlow Proxy   | | BudgetFlow Adapter  |      |   BudgetFlow SDK    |
++------------------+ +------------------+      +------------------+
+          \                  |                         /
+           \                 |                        /
+            +----------------+-----------------------+
+                             |
+                             v
+                    +--------------------+
+                    |  BudgetFlow Runtime   |
+                    +--------------------+
+                             |
+                             v
+          +-------------------------------------+
+          | Governor: budget + backend quotas |
+          +-------------------------------------+
+                             |
+                             v
+       +------------------------------------------+
+       | ModelSelector: budget_pressure + importance |
+       +------------------------------------------+
+                             |
+                             v
+          +-----------------------------+
+          | Multi-workflow Scheduler    |
+          +-----------------------------+
+                             |
+                             v
+          +-----------------------------+
+          | LLM Backend Pool            |
+          +-----------------------------+</pre>
+  <div class="chr chr-bot"><span>附录 A.1 · 集成架构</span><span>12 / 14</span></div>
+</div>
+
+<!-- ====================== SLIDE 13: APPENDIX A.2 ====================== -->
+<div class="slide" style="top:12960px">
+  <div class="chr chr-top"><span class="brand">BudgetFlow</span><span>Paper 1 · 2026</span></div>
+  <p class="kicker" style="font-family:var(--font-mono);font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--primary);margin-bottom:4px;flex-shrink:0">Appendix A.2</p>
+  <h2 style="font-size:34px">Agent 计算栈分层对比</h2>
+  <div class="stacks">
+    <div class="sl" style="border-left:4px solid #F97316">
+      <div class="name">Murakkab (Top Layer)</div>
+      <div class="desc">全栈 SLO 编排 · 最小化云硬件成本 · 预算约束: ❌</div>
+    </div>
+    <div class="sarr">↓</div>
+    <div class="sl current" style="border-left:4px solid var(--primary)">
+      <div class="name">BudgetFlow (Upper Layer) ← 本文</div>
+      <div class="desc">全局预算控制 · 固定 $ 最大化成功率 · 预算约束: ✅ 硬上限</div>
+    </div>
+    <div class="sarr">↓</div>
+    <div class="sl" style="border-left:4px solid #8B5CF6">
+      <div class="name">Aragog (Middle Layer)</div>
+      <div class="desc">动态模型路由 · 最大化系统吞吐量 · 预算约束: ❌</div>
+    </div>
+    <div class="sarr">↓</div>
+    <div class="sl" style="border-left:4px solid #10B981">
+      <div class="name">Parrot (Bottom Layer)</div>
+      <div class="desc">多轮请求流水线 · 最小化单请求延迟 · 预算约束: ❌</div>
+    </div>
+    <div class="sarr">↓</div>
+    <div class="sl hw">
+      <div class="name">LLM Backends + GPU/CPU Hardware</div>
+      <div class="desc">底层推理基础设施</div>
+    </div>
+  </div>
+  <div class="chr chr-bot"><span>附录 A.2 · 计算栈</span><span>13 / 14</span></div>
+</div>
+
+<!-- ====================== SLIDE 14: END ====================== -->
+<div class="slide cover" style="top:14040px">
+  <div style="flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center">
+    <p class="kicker" style="font-size:16px">Paper 1 Brief</p>
+    <h1 style="font-size:72px">Thank You</h1>
+    <p style="font-size:28px;color:var(--muted);margin-top:12px">BudgetFlow · 面向 Agent 工作流的动态预算路由机制</p>
+    <div style="margin-top:48px;display:flex;gap:24px;font-family:var(--font-mono);font-size:14px;color:var(--muted)">
+      <span>Training-Free</span><span>Single Budget Owner</span><span>2026</span>
+    </div>
+  </div>
+  <div class="chr chr-bot"><span>结束</span><span>14 / 14</span></div>
+</div>
+</div><!-- /#deck -->
+
+<div id="navL" onclick="prev()">↑</div>
+<div id="navR" onclick="next()">↓</div>
+<div id="ctr"><span id="cN">1</span> / 14 <span class="lb" id="cLabel">封面</span></div>
+
+<script>
+const SLIDES = 14;
+const labels = ["封面","论文主线","三个研究问题","独特贡献","项目架构","相关工作分类","相关工作一览","论文边界","关键差异分析","BoPO 对比","vLLM 叙事","附录 A.1","附录 A.2","结束"];
+let idx = 0;
+
+function fit(){
+  const w=1920,h=1080;
+  const s=Math.min(window.innerWidth/w,window.innerHeight/h);
+  const deck=document.getElementById('deck');
+  deck.style.transform=`translateY(${-idx*1080}px)`;
+  document.querySelectorAll('.slide').forEach(el=>{
+    const x=(window.innerWidth-w*s)/2;
+    const y=(window.innerHeight-h*s)/2;
+    el.style.transform=`translate(${x}px,${y}px) scale(${s})`;
+  });
+  document.getElementById('cN').textContent=idx+1;
+  document.getElementById('cLabel').textContent=labels[idx];
+  document.getElementById('prog').style.width=((idx+1)/SLIDES*100)+'%';
+}
+
+function next(){if(idx<SLIDES-1){idx++;fit()}}
+function prev(){if(idx>0){idx--;fit()}}
+
+document.addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')return;
+  switch(e.key){
+    case 'ArrowDown':case ' ':case 'PageDown':e.preventDefault();next();break;
+    case 'ArrowUp':case 'PageUp':e.preventDefault();prev();break;
+    case 'Home':e.preventDefault();idx=0;fit();break;
+    case 'End':e.preventDefault();idx=SLIDES-1;fit();break;
+    default:const n=parseInt(e.key,10);if(n>0&&n<=9&&n<=SLIDES){idx=n-1;fit()}
+  }
+});
+
+let wheelTimer;
+document.addEventListener('wheel',e=>{
+  clearTimeout(wheelTimer);
+  wheelTimer=setTimeout(()=>{
+    if(e.deltaY>0)next();else prev();
+  },50);
+},{passive:true});
+
+window.addEventListener('resize',fit);
+fit();
+</script>
+</body>
+</html>
