@@ -1,0 +1,5 @@
+node_modules
+dist
+
+# pnpm-only workspace (avoid npm lockfile / mixed installs)
+package-lock.json

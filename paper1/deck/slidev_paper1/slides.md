@@ -2,7 +2,8 @@
 theme: default
 title: BudgetFlow
 info: 论文大纲 · Slidev（与 paper1/deck/paper1_ppt_outline.md 对齐）
-transition: fade-out
+canvasWidth: 1100
+aspectRatio: 16/9
 drawings:
   persist: false
 ---
@@ -26,47 +27,35 @@ drawings:
 
 </div>
 
-<style scoped>
-.bf-cover {
-  display: flex; flex-direction: column; justify-content: center;
-  min-height: 100%; padding: 3rem 4rem;
-  background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%);
-  color: #f8fafc;
-}
-.bf-cover h1 { font-size: 3.2rem; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 0.5rem; }
-.bf-cover .bf-subtitle { font-size: 1.25rem; color: #94a3b8; font-weight: 500; margin-bottom: 0.75rem; }
-.bf-cover .bf-cover-desc { font-size: 0.95rem; color: #64748b; max-width: 32rem; line-height: 1.6; margin-bottom: 2.5rem; }
-.bf-cover .bf-cover-nav { display: flex; align-items: center; gap: 1.25rem; }
-.bf-cover .bf-cover-btn { cursor: pointer; padding: 0.5rem 1.5rem; border-radius: 9999px; background: #fff; color: #0f172a; font-size: 0.9rem; font-weight: 600; transition: all 0.2s; }
-.bf-cover .bf-cover-btn:hover { background: #e2e8f0; }
-.bf-cover .bf-cover-hint { font-size: 0.75rem; color: #475569; }
-</style>
-
 ---
 layout: two-cols
 layoutClass: gap-10
 ---
 
-# 目录
+## 主线速览
 
-路线图：**主线 → RQ → 架构 → 相关工作 → 差异轴 → BoPO → vLLM 叙事 → 附录**
+<div class="bf-toc-roadmap text-lg text-slate-700 leading-relaxed dark:text-slate-200">
 
-::right::
-
-<div class="bf-card">
-
-<Toc minDepth="1" maxDepth="2" />
+**主线 → RQ → 架构 → 相关工作 → 差异轴 → BoPO → vLLM 叙事 → 附录**
 
 </div>
 
----
+::right::
 
-<!-- ═══════════════════ PART I ═══════════════════ -->
+<div class="bf-card bf-toc-card">
+
+<p class="bf-toc-card-label">章节目录</p>
+
+<Toc minDepth="1" maxDepth="1" />
+
+</div>
 
 ---
 layout: section
 class: bf-section text-center
 ---
+
+<!-- ═══════════════════ PART I ═══════════════════ -->
 
 # Part I
 ## 论文主线与问题
@@ -92,13 +81,11 @@ class: bf-section text-center
 </ul>
 
 ---
-
-<!-- ═══════════════════ PART II ═══════════════════ -->
-
----
 layout: section
 class: bf-section text-center
 ---
+
+<!-- ═══════════════════ PART II ═══════════════════ -->
 
 # Part II
 ## 研究问题与贡献
@@ -154,13 +141,11 @@ class: bf-section text-center
 </div>
 
 ---
-
-<!-- ═══════════════════ PART III ═══════════════════ -->
-
----
 layout: section
 class: bf-section text-center
 ---
+
+<!-- ═══════════════════ PART III ═══════════════════ -->
 
 # Part III
 ## 系统架构
@@ -174,7 +159,7 @@ layoutClass: gap-10
 
 ::left::
 
-```mermaid {theme: 'neutral', scale: 0.7}
+```mermaid {theme: 'neutral', scale: 0.82}
 flowchart TB
   WF["Agent Workflow\nN 步 × J 并发"]
   BF["BudgetFlow"]
@@ -190,33 +175,31 @@ flowchart TB
 
 ::right::
 
-<div class="bf-arch">
+<div class="bf-arch bf-arch-compact">
 
 ```
-Agent Workflow（N 步 LLM 调用）× J 并发
-          │
-          ▼
-╔══════════════ BudgetFlow ═══════════════╗
-║ ［约束层］Governor          policy-agnostic ║
-║ ［优化层］ModelSelector     routing policy   ║
-║ ［止损层］ZombieDetector    policy-agnostic ║
-║ ［调度层］Multi-WF Scheduler policy-agnostic ║
-╚═════════════════════════════════════════╝
-          │
-          ▼
-   LLM 后端池 → events.jsonl → 指标
+Agent Workflow（N 步 LLM）× J 并发
+        │
+        ▼
+┌────────── BudgetFlow 四层 ──────────┐
+│ [约束] Governor      policy-agnostic │
+│ [优化] ModelSelector routing policy   │
+│ [止损] ZombieDetector policy-agnostic │
+│ [调度] Multi-WF Sched. policy-agnostic│
+└──────────────────────────────────────┘
+        │
+        ▼
+ LLM 后端池 → events.jsonl → 指标
 ```
 
 </div>
 
 ---
-
-<!-- ═══════════════════ PART IV ═══════════════════ -->
-
----
 layout: section
 class: bf-section text-center
 ---
+
+<!-- ═══════════════════ PART IV ═══════════════════ -->
 
 # Part IV
 ## 相关工作与边界
@@ -255,10 +238,10 @@ class: bf-section text-center
 
 对比维度：**硬顶** = 多并发共享 USD/token 硬顶 + 预留结算 · **状态** = 同轨迹多轮 LLM 状态化选档 · **免训** = 无需域数据大规模离线训练
 
-<div class="bf-table-xs">
+<div class="bf-table-scroll bf-table-xs">
 
 | §4 聚类 | 工作 | 硬顶 | 状态 | 免训 | 与本文差异 |
-|:---|:---|---:|:---|
+| :--- | :--- | :---: | :---: | :---: | :--- |
 | **（本文）** | **BudgetFlow** | ✓ | ✓ | ✓ | — |
 | 操作系统资源管理 | AgentRM (2603.13110) | ✗ | ✗ | ✓ | RPM / 稳定 / 回收；非 API 美元硬账本 |
 | 操作系统资源管理 | AgentCgroup (2602.09345) | ✗ | ✗ | ✓ | 主机 CPU / Mem cgroup |
@@ -274,7 +257,7 @@ class: bf-section text-center
 
 </div>
 
-<p class="text-xs text-slate-500 mt-2">Murakkab、ATHENA-Serve 可与本文纵向叠放；表内仅收录 §4 已索引文献。</p>
+<p class="text-sm text-slate-500 mt-2">Murakkab、ATHENA-Serve 可与本文纵向叠放；表内仅收录 §4 已索引文献。</p>
 
 ---
 layout: two-cols
@@ -300,13 +283,11 @@ layoutClass: gap-10
 - 成本模型：抽象 dollar / token，不绑 SKU
 
 ---
-
-<!-- ═══════════════════ PART V ═══════════════════ -->
-
----
 layout: section
 class: bf-section text-center
 ---
+
+<!-- ═══════════════════ PART V ═══════════════════ -->
 
 # Part V
 ## 差异轴 · BoPO / Router / OS
@@ -358,13 +339,11 @@ class: bf-section text-center
 </div>
 
 ---
-
-<!-- ═══════════════════ PART VI ═══════════════════ -->
-
----
 layout: section
 class: bf-section text-center
 ---
+
+<!-- ═══════════════════ PART VI ═══════════════════ -->
 
 # Part VI
 ## BoPO 与本文关系
@@ -468,20 +447,17 @@ RL 接入 ModelSelector，运行时仍保证全局硬约束
 </ul>
 
 ---
+layout: section
+class: bf-section bf-hero-img text-center text-white
+background: /side-flow.jpg
+---
 
 <!-- ═══════════════════ PART VII ═══════════════════ -->
-
----
-layout: section
-class: bf-section text-center
-background: /side-flow.jpg
-class: bf-hero-img text-white
----
 
 # Part VII
 ## 叙事：参照 vLLM
 
-<p style="color: #94a3b8; font-size: 1.05rem;">
+<p class="text-slate-300 mt-2" style="font-size: clamp(1.05rem, 0.4vw + 0.95rem, 1.25rem); line-height: 1.5;">
 single-tenant 机制 → multi-tenant / multi-owner 政策层
 </p>
 
@@ -544,13 +520,11 @@ single-tenant 机制 → multi-tenant / multi-owner 政策层
 </div>
 
 ---
-
-<!-- ═══════════════════ APPENDIX ═══════════════════ -->
-
----
 layout: section
 class: bf-section text-center
 ---
+
+<!-- ═══════════════════ APPENDIX ═══════════════════ -->
 
 # Appendix
 ## 集成与栈位
@@ -569,7 +543,7 @@ LangChain / SWE-agent / AutoGen  +  自建平台
 
 </div>
 
-<p class="text-xs text-slate-500 mt-4">ASCII 完整版见论文大纲原文</p>
+<p class="text-sm text-slate-500 mt-4">ASCII 完整版见论文大纲原文</p>
 
 ---
 
@@ -590,13 +564,11 @@ Hardware
 </div>
 
 ---
-
-<!-- ═══════════════════ THANKS ═══════════════════ -->
-
----
 layout: center
 class: text-center
 ---
+
+<!-- ═══════════════════ THANKS ═══════════════════ -->
 
 # 谢谢
 
@@ -608,7 +580,7 @@ class: text-center
   回到目录
 </button>
 
-<p style="margin-top: 1.5rem; font-size: 0.7rem; color: #94a3b8;">
+<p style="margin-top: 1.5rem; font-size: 0.85rem; color: #94a3b8;">
   配图：public/cover-datacenter.jpg · side-network.jpg · side-flow.jpg（Unsplash）
 </p>
 

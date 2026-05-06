@@ -5,7 +5,10 @@
   "scripts": {
     "build": "slidev build",
     "dev": "slidev --open",
-    "export": "slidev export"
+    "export": "slidev export",
+    "test": "bash scripts/run-slidev-e2e.sh",
+    "test:e2e": "bash scripts/run-slidev-e2e.sh",
+    "test:e2e-only": "SKIP_BUILD=1 bash scripts/run-slidev-e2e.sh"
   },
   "dependencies": {
     "@oxc-parser/binding-linux-x64-gnu": "0.124.0",

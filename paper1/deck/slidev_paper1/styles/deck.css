@@ -1,29 +1,187 @@
-/* BudgetFlow deck — global typography & tables (Slidev + default theme) */
+/* BudgetFlow deck — typography, tables, cards (Slidev + default theme) */
 
-/* ── Layout helpers ── */
-.slidev-page .slidev-layout {
-  box-sizing: border-box;
-  padding-bottom: 3.25rem;
+/* No between-slide transition (avoid motion fatigue) */
+:root {
+  --slidev-transition-duration: 0ms;
 }
 
-/* ── Cover slide ── */
+/* ── Readable base (Latin + CJK) ── */
+.slidev-layout {
+  box-sizing: border-box;
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    'Helvetica Neue',
+    Arial,
+    'PingFang SC',
+    'Hiragino Sans GB',
+    'Microsoft YaHei',
+    'Noto Sans CJK SC',
+    sans-serif;
+  font-size: clamp(1.05rem, 0.35vw + 1rem, 1.2rem);
+  line-height: 1.52;
+  letter-spacing: 0.01em;
+  color: #0f172a;
+}
+
+.dark .slidev-layout {
+  color: #f1f5f9;
+}
+
+.slidev-page .slidev-layout {
+  box-sizing: border-box;
+  padding-bottom: 2.5rem;
+}
+
+/* Slide titles (markdown # / ##) */
+.slidev-layout h1 {
+  font-size: clamp(1.85rem, 1.2vw + 1.5rem, 2.35rem) !important;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  margin-bottom: 0.35em;
+}
+
+.slidev-layout h2 {
+  font-size: clamp(1.35rem, 0.9vw + 1.1rem, 1.75rem) !important;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+  margin-top: 0.15em;
+  margin-bottom: 0.4em;
+  color: #1e293b;
+}
+
+.dark .slidev-layout h2 {
+  color: #e2e8f0;
+}
+
+.slidev-layout h3 {
+  font-size: clamp(1.12rem, 0.5vw + 1rem, 1.35rem) !important;
+  font-weight: 650;
+  line-height: 1.3;
+  margin: 0.4em 0 0.35em;
+}
+
+.slidev-layout h4,
+.slidev-layout h5 {
+  font-size: 1.05rem !important;
+  font-weight: 600;
+  margin: 0.35em 0 0.25em;
+}
+
+/* Lists */
+.slidev-layout ul:not(.bf-bullets),
+.slidev-layout ol {
+  font-size: 1em;
+  line-height: 1.55;
+}
+
+.slidev-layout li {
+  margin: 0.2em 0;
+}
+
+/* Cover must stay inside fixed Slidev canvas — never use 100vh */
+.slidev-layout.default:has(.bf-cover) {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  height: 100%;
+}
+
+/* ── Cover (inner .bf-cover on default layout) ── */
+.slidev-layout .bf-cover {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  flex: 1;
+  min-height: 0;
+  box-sizing: border-box;
+  padding: clamp(1.25rem, 3vw, 2.5rem) clamp(1.5rem, 4vw, 3.25rem);
+  border-radius: 0.75rem;
+  background: linear-gradient(135deg, #0b1220 0%, #1e3a5f 48%, #0f172a 100%);
+  color: #f8fafc;
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.06) inset,
+    0 24px 48px rgb(0 0 0 / 0.25);
+}
+
+.slidev-layout .bf-cover h1 {
+  font-size: clamp(2rem, 2vw + 1.5rem, 3rem) !important;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  margin-bottom: 0.4rem;
+  line-height: 1.08;
+}
+
+.slidev-layout .bf-cover .bf-subtitle {
+  font-size: clamp(1.15rem, 0.6vw + 1rem, 1.45rem);
+  color: #cbd5e1;
+  font-weight: 500;
+  margin-bottom: 0.85rem;
+  max-width: 36rem;
+}
+
+.slidev-layout .bf-cover .bf-cover-desc {
+  font-size: clamp(1rem, 0.35vw + 0.92rem, 1.12rem);
+  color: #94a3b8;
+  max-width: 38rem;
+  line-height: 1.65;
+  margin-bottom: 2.25rem;
+}
+
+.slidev-layout .bf-cover .bf-cover-nav {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.slidev-layout .bf-cover .bf-cover-btn {
+  cursor: pointer;
+  padding: 0.55rem 1.65rem;
+  border-radius: 9999px;
+  background: #f8fafc;
+  color: #0f172a;
+  font-size: 1rem;
+  font-weight: 600;
+  transition: background 0.2s, transform 0.15s;
+  border: none;
+}
+
+.slidev-layout .bf-cover .bf-cover-btn:hover {
+  background: #e2e8f0;
+  transform: translateY(-1px);
+}
+
+.slidev-layout .bf-cover .bf-cover-hint {
+  font-size: 0.9rem;
+  color: #64748b;
+}
+
+/* Legacy: cover as layout root class */
 .slidev-layout.bf-cover {
   background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
   color: #f8fafc;
 }
+
 .slidev-layout.bf-cover h1 {
   font-size: 3.5rem !important;
   letter-spacing: -0.025em;
 }
+
 .slidev-layout.bf-cover .bf-subtitle {
   color: #94a3b8;
-  font-size: 1.25rem;
+  font-size: 1.35rem;
   font-weight: 500;
 }
 
 /* ── Section dividers ── */
 .slidev-layout.bf-section {
-  background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+  background: linear-gradient(145deg, #172033 0%, #2d3a52 55%, #1e293b 100%);
   color: #f1f5f9;
   display: flex;
   flex-direction: column;
@@ -31,87 +189,186 @@
   justify-content: center;
   text-align: center;
 }
+
 .slidev-layout.bf-section h1 {
-  font-size: 2.5rem !important;
-  font-weight: 700;
-  margin-bottom: 0.5rem;
+  font-size: clamp(2rem, 1.5vw + 1.5rem, 2.85rem) !important;
+  font-weight: 800;
+  margin-bottom: 0.35rem;
+  letter-spacing: -0.02em;
 }
+
+.slidev-layout.bf-section h2,
 .slidev-layout.bf-section p {
-  color: #94a3b8;
-  font-size: 1.1rem;
+  color: #cbd5e1;
+}
+
+.slidev-layout.bf-section h2 {
+  font-size: clamp(1.2rem, 0.8vw + 1rem, 1.55rem) !important;
+  font-weight: 600;
+  margin-top: 0.25rem;
+}
+
+.slidev-layout.bf-section p {
+  font-size: clamp(1rem, 0.4vw + 0.9rem, 1.15rem);
+  line-height: 1.5;
+  max-width: 42rem;
+  margin: 0.5rem auto 0;
 }
 
 /* Hero section with background image */
 .slidev-layout.bf-hero-img {
   position: relative;
 }
+
 .slidev-layout.bf-hero-img::before {
   content: '';
   position: absolute;
   inset: 0;
-  background: rgb(15 23 42 / 0.78);
+  background: rgb(15 23 42 / 0.72);
   z-index: 1;
 }
+
 .slidev-layout.bf-hero-img > * {
   position: relative;
   z-index: 2;
 }
 
 /* ── TOC ── */
+.slidev-layout .slidev-toc {
+  font-size: 1.02rem;
+  line-height: 1.45;
+}
+
 .slidev-layout .slidev-toc .slidev-toc-list {
   list-style: none;
   margin: 0;
   padding-left: 0.85rem;
 }
+
 .slidev-layout .slidev-toc .slidev-toc-list .slidev-toc-list {
-  margin-top: 0.2rem;
+  margin-top: 0.25rem;
   padding-left: 0.85rem;
-  border-left: 1px solid rgb(226 232 240 / 0.9);
+  border-left: 2px solid rgb(226 232 240 / 0.95);
 }
+
 .dark .slidev-layout .slidev-toc .slidev-toc-list .slidev-toc-list {
-  border-left-color: rgb(51 65 85 / 0.8);
+  border-left-color: rgb(71 85 105 / 0.85);
+}
+
+.slidev-layout .slidev-toc a {
+  color: #334155;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.slidev-layout .slidev-toc a:hover {
+  color: #1d4ed8;
+  border-bottom-color: #93c5fd;
+}
+
+.dark .slidev-layout .slidev-toc a {
+  color: #e2e8f0;
+}
+
+.dark .slidev-layout .slidev-toc a:hover {
+  color: #93c5fd;
+  border-bottom-color: rgb(147 197 253 / 0.5);
+}
+
+.bf-toc-card-label {
+  margin: 0 0 0.65rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.dark .bf-toc-card-label {
+  color: #94a3b8;
+}
+
+/* TOC slide: keep card within half-canvas height */
+.slidev-layout.two-columns .bf-toc-card {
+  padding: 0.65rem 0.8rem;
+}
+
+.slidev-layout.two-columns .bf-toc-card .slidev-toc {
+  font-size: 0.86rem;
+  line-height: 1.32;
+}
+
+.slidev-layout.two-columns .bf-toc-card .slidev-toc .slidev-toc-list {
+  padding-left: 0.6rem;
+}
+
+.slidev-layout.two-columns .bf-toc-card .slidev-toc .slidev-toc-list .slidev-toc-list {
+  margin-top: 0.12rem;
+  padding-left: 0.6rem;
 }
 
 /* ── Cards ── */
 .bf-card {
-  border-radius: 0.75rem;
+  border-radius: 0.85rem;
   border: 1px solid #e2e8f0;
-  background: #fff;
-  padding: 1rem 1.25rem;
-  box-shadow: 0 1px 3px rgb(0 0 0 / 0.06);
-  transition: all 0.2s;
+  background: linear-gradient(180deg, #fff 0%, #f8fafc 100%);
+  padding: 1.15rem 1.35rem;
+  box-shadow: 0 2px 8px rgb(15 23 42 / 0.06);
+  transition:
+    box-shadow 0.2s,
+    border-color 0.2s;
+  font-size: 1em;
+  line-height: 1.5;
 }
+
+.dark .bf-card {
+  background: linear-gradient(180deg, rgb(30 41 59 / 0.95) 0%, rgb(15 23 42 / 0.98) 100%);
+  border-color: rgb(51 65 85 / 0.9);
+}
+
 .bf-card:hover {
-  box-shadow: 0 4px 12px rgb(0 0 0 / 0.08);
+  box-shadow: 0 8px 24px rgb(15 23 42 / 0.1);
   border-color: #cbd5e1;
 }
+
 .bf-card .bf-card-label {
-  color: #1e40af;
-  font-weight: 600;
-  font-size: 0.95rem;
+  color: #1d4ed8;
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: 0.01em;
+}
+
+.dark .bf-card .bf-card-label {
+  color: #93c5fd;
 }
 
 /* ── Bullet lists ── */
 .bf-bullets {
   list-style: none;
   padding-left: 0;
+  font-size: 1.02em;
+  line-height: 1.55;
 }
+
 .bf-bullets li {
   display: flex;
-  gap: 0.75rem;
+  gap: 0.85rem;
   align-items: flex-start;
-  padding: 0.35rem 0;
+  padding: 0.45rem 0;
 }
+
 .bf-bullets li::before {
   content: '';
   display: block;
-  width: 0.5rem;
-  height: 0.5rem;
+  width: 0.55rem;
+  height: 0.55rem;
   border-radius: 9999px;
   background: #3b82f6;
   flex-shrink: 0;
   margin-top: 0.55rem;
 }
+
 .bf-bullets li.bf-bullet-indigo::before {
   background: #6366f1;
 }
@@ -121,72 +378,168 @@
   border-collapse: collapse;
   width: 100%;
 }
+
 .slidev-layout th,
 .slidev-layout td {
   border-bottom: 1px solid rgb(226 232 240);
-  padding: 0.5rem 0.65rem;
+  padding: 0.55rem 0.7rem;
   vertical-align: top;
 }
+
+.dark .slidev-layout th,
+.dark .slidev-layout td {
+  border-bottom-color: rgb(51 65 85);
+}
+
 .slidev-layout th {
-  background: rgb(30 41 59);
-  color: rgb(248 250 252);
-  font-weight: 600;
+  background: #1e293b;
+  color: #f8fafc;
+  font-weight: 650;
   text-align: left;
+  font-size: 0.95em;
 }
+
 .slidev-layout tr:nth-child(even) td {
-  background: rgb(248 250 252 / 0.85);
+  background: rgb(248 250 252 / 0.92);
 }
+
+.dark .slidev-layout tr:nth-child(even) td {
+  background: rgb(30 41 59 / 0.45);
+}
+
+/* Standard comparison tables — readable, not poster-sized */
 .bf-table-sm table {
-  font-size: 0.68rem;
-  line-height: 1.35;
+  font-size: clamp(0.82rem, 0.25vw + 0.78rem, 0.98rem);
+  line-height: 1.45;
 }
+
 .bf-table-sm th,
 .bf-table-sm td {
-  padding: 0.35rem 0.45rem;
+  padding: 0.45rem 0.55rem;
 }
+
+/* Wide literature table: scroll + still legible */
+.bf-table-scroll {
+  overflow-x: auto;
+  margin: 0.5rem 0;
+  padding-bottom: 0.35rem;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 0.5rem;
+  scrollbar-color: #94a3b8 #f1f5f9;
+}
+
+.bf-table-scroll::-webkit-scrollbar {
+  height: 8px;
+}
+
+.bf-table-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+
 .bf-table-xs table {
-  font-size: 0.62rem;
-  line-height: 1.3;
+  font-size: clamp(0.78rem, 0.2vw + 0.74rem, 0.9rem);
+  line-height: 1.42;
+  min-width: 52rem;
 }
+
 .bf-table-xs th,
 .bf-table-xs td {
-  padding: 0.3rem 0.4rem;
+  padding: 0.4rem 0.5rem;
 }
 
-/* ── Code & pre ── */
-.slidev-layout pre {
-  border-radius: 0.5rem;
+/* Skill catalog: multi-line cells via <br> */
+.bf-skill-catalog td {
+  vertical-align: top;
+}
+
+.bf-skill-catalog td:nth-child(2) {
+  font-size: 0.88em;
+  word-break: break-word;
+}
+
+/* ── ASCII / architecture blocks ── */
+.bf-arch {
+  font-family:
+    ui-monospace,
+    'Cascadia Code',
+    'Source Code Pro',
+    Menlo,
+    Consolas,
+    monospace;
+  font-size: clamp(0.82rem, 0.2vw + 0.78rem, 0.95rem);
+  line-height: 1.45;
+  background: #f8fafc;
   border: 1px solid #e2e8f0;
-  font-size: 0.72rem;
+  border-radius: 0.65rem;
+  padding: 1rem 1.15rem;
+  overflow-x: auto;
+}
+
+.dark .bf-arch {
+  background: rgb(15 23 42 / 0.6);
+  border-color: rgb(51 65 85);
+  color: #e2e8f0;
+}
+
+.bf-arch pre {
+  margin: 0;
+  background: transparent !important;
+  border: none !important;
+  font-size: inherit !important;
+  line-height: inherit !important;
+  padding: 0 !important;
+}
+
+/* Narrower ASCII in two-column layout */
+.slidev-layout.two-columns .bf-arch-compact {
+  font-size: clamp(0.68rem, 0.12vw + 0.64rem, 0.8rem);
+  line-height: 1.32;
+  padding: 0.65rem 0.75rem;
+}
+
+/* ── Code blocks (Shiki) ── */
+.slidev-layout pre {
+  border-radius: 0.55rem;
+  border: 1px solid #e2e8f0;
+  font-size: clamp(0.78rem, 0.15vw + 0.74rem, 0.88rem);
+  line-height: 1.45;
+}
+
+.bf-pre-sm pre {
+  font-size: clamp(0.72rem, 0.12vw + 0.7rem, 0.82rem);
   line-height: 1.4;
 }
-.bf-pre-sm pre {
-  font-size: 0.65rem;
-  line-height: 1.35;
-}
 
-/* ── Misc ── */
+/* ── Tags ── */
 .bf-tag {
   display: inline-block;
-  padding: 0.15rem 0.6rem;
+  padding: 0.25rem 0.75rem;
   border-radius: 9999px;
-  font-size: 0.75rem;
-  font-weight: 600;
+  font-size: 0.88rem;
+  font-weight: 650;
 }
+
 .bf-tag-blue {
   background: #dbeafe;
   color: #1e40af;
 }
+
 .bf-tag-green {
   background: #dcfce7;
   color: #166534;
 }
+
 .bf-tag-amber {
   background: #fef3c7;
   color: #92400e;
 }
 
 .text-shadow {
-  text-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
+  text-shadow: 0 1px 4px rgb(0 0 0 / 0.35);
 }
 
+/* Mermaid in slides */
+.slidev-layout .mermaid {
+  font-size: 1rem !important;
+}

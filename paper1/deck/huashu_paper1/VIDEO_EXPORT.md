@@ -24,10 +24,10 @@ python -m http.server 8080
 
 ## 导出命令（技能包脚本路径）
 
-将 `SKILL` 换成本机实际路径（以下为仓库内默认位置）：
+将 `SKILL` 换成本机实际路径（以下为 Cursor 全局技能目录，与 `~/.cursor/skills/huashu-design` 等价）：
 
 ```bash
-SKILL=/Lishun/_archive/.local_env_bak/research/AgentOS/paper1/deck/.agents/skills/huashu-design
+SKILL=/root/.cursor/skills/huashu-design
 REEL=/Lishun/_archive/.local_env_bak/research/AgentOS/paper1/deck/huashu_paper1/motion/budgetflow-reel.html
 ```
 
