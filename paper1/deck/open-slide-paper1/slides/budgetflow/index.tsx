@@ -630,7 +630,103 @@ const VLLMNarrative: Page = () => (
   </div>
 );
 
-// ─── 09: Closing ───
+// ─── 09: Appendix A.1 Integration ───
+
+const AppendixIntegration: Page = () => (
+  <div style={{ ...fill, background: 'var(--osd-bg)', color: 'var(--osd-text)', padding }}>
+    <h2 style={{ fontFamily: 'var(--osd-font-display)', fontSize: 56, fontWeight: 800, margin: 0 }}>
+      Appendix A.1 集成架构
+    </h2>
+    <div style={{ marginTop: 24, fontSize: 22, fontFamily: 'var(--osd-font-display)' }}>
+      {/* Top boxes */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+        <div style={{ padding: 10, border: `2px solid ${border}`, borderRadius: 4, width: '45%', textAlign: 'center' }}>
+          LangChain / SWE-agent / AutoGen
+        </div>
+        <div style={{ padding: 10, border: `2px solid ${border}`, borderRadius: 4, width: '45%', textAlign: 'center' }}>
+          Self-built agent platform
+        </div>
+      </div>
+      {/* Arrows and modes */}
+      <div style={{ display: 'flex', justifyContent: 'space-around', color: muted, fontSize: 18 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <span style={{ fontSize: 24 }}>↓</span><span>Proxy mode</span><span>LLM request msgs</span>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <span style={{ fontSize: 24 }}>↓</span><span>Callback mode</span><span>tool events + metadata</span>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <span style={{ fontSize: 24 }}>↓</span><span>Explicit mode</span><span>task_type + w_i</span>
+        </div>
+      </div>
+      {/* Connectors */}
+      <div style={{ display: 'flex', justifyContent: 'space-around', margin: '8px 0' }}>
+        <div style={{ width: '28%', borderBottom: `2px solid ${border}` }} />
+        <div style={{ width: '28%', borderBottom: `2px solid ${border}` }} />
+        <div style={{ width: '28%', borderBottom: `2px solid ${border}` }} />
+      </div>
+      {/* Middle boxes */}
+      <div style={{ display: 'flex', justifyContent: 'space-around' }}>
+        <div style={{ padding: 10, border: `2px solid ${border}`, borderRadius: 4, width: '26%', textAlign: 'center', color: 'var(--osd-accent)' }}>
+          BudgetFlow Proxy
+        </div>
+        <div style={{ padding: 10, border: `2px solid ${border}`, borderRadius: 4, width: '26%', textAlign: 'center', color: 'var(--osd-accent)' }}>
+          BudgetFlow Adapter
+        </div>
+        <div style={{ padding: 10, border: `2px solid ${border}`, borderRadius: 4, width: '26%', textAlign: 'center', color: 'var(--osd-accent)' }}>
+          BudgetFlow SDK
+        </div>
+      </div>
+      {/* Merge arrow */}
+      <div style={{ textAlign: 'center', fontSize: 28, color: 'var(--osd-accent)', margin: '8px 0' }}>↓</div>
+      {/* Runtime */}
+      <div style={{ padding: 12, border: `2px solid var(--osd-accent)`, borderRadius: 6, background: accentBg, textAlign: 'center', margin: '4px 60px', color: 'var(--osd-accent)', fontWeight: 600, fontSize: 24 }}>
+        BudgetFlow Runtime
+      </div>
+      <div style={{ textAlign: 'center', fontSize: 28, color: 'var(--osd-accent)', margin: '4px 0' }}>↓</div>
+      {/* Bottom layers */}
+      {[
+        'Governor: budget + backend quotas',
+        'ModelSelector: budget_pressure + importance',
+        'Multi-workflow Scheduler',
+        'LLM Backend Pool',
+      ].map((label, i) => (
+        <div key={i} style={{ padding: 8, border: `2px solid ${border}`, borderRadius: 4, textAlign: 'center', margin: '4px 80px', color: i < 3 ? 'var(--osd-text)' : muted, fontSize: 20 }}>
+          {label}
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+// ─── 10: Appendix A.2 Stack Layers ───
+
+const AppendixStack: Page = () => (
+  <div style={{ ...fill, background: 'var(--osd-bg)', color: 'var(--osd-text)', padding }}>
+    <h2 style={{ fontFamily: 'var(--osd-font-display)', fontSize: '49px', fontWeight: 800, margin: 0 }}>{'Appendix A.2 可与其他论文结合，不同抽象层 '}</h2>
+    <div style={{ marginTop: 36, display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {[
+        { name: 'Murakkab (Top Layer)', color: muted, problem: '云怎么用最少的 GPU 跑所有 agent', goal: '最小化云的硬件成本', unit: '整个工作流', budget: '❌ 只优化单位成本，无硬上限' },
+        { name: 'BudgetFlow (Upper Layer)', color: 'var(--osd-accent)', problem: '用户怎么用固定的钱完成最多任务', goal: '固定预算下最大化成功率', unit: '单个步骤 + 全局预算池', budget: '✅ 核心就是硬预算上限' },
+        { name: 'Aragog (Middle Layer)', color: muted, problem: '怎么让 GPU 一直忙，不闲着', goal: '最大化系统吞吐量', unit: '单个步骤', budget: '❌ 只要 GPU 闲着就用，不管多贵' },
+        { name: 'Parrot (Bottom Layer)', color: muted, problem: '单轮请求怎么跑更快', goal: '最小化单请求延迟', unit: '单请求内部的 token 流', budget: '❌ 完全不考虑钱' },
+      ].map((layer, i) => (
+        <div key={i} style={{ padding: '12px 24px', border: `2px solid ${i === 1 ? 'var(--osd-accent)' : border}`, borderRadius: 6, background: i === 1 ? accentBg : 'transparent', fontSize: 24 }}>
+          <div style={{ fontFamily: 'var(--osd-font-display)', fontSize: 28, fontWeight: 600, color: layer.color, marginBottom: 8 }}>{layer.name}</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 16 }}>
+            <div><span style={{ color: muted }}>核心问题：</span>{layer.problem}</div>
+            <div><span style={{ color: muted }}>优化目标：</span>{layer.goal}</div>
+            <div><span style={{ color: muted }}>决策单位：</span>{layer.unit}</div>
+            <div><span style={{ color: muted }}>预算约束：</span>{layer.budget}</div>
+          </div>
+        </div>
+      ))}
+      <div style={{ textAlign: 'center', color: muted, marginTop: 12, fontSize: 24 }}>↓ LLM Backends + GPU/CPU Hardware ↓</div>
+    </div>
+  </div>
+);
+
+// ─── 11: Closing ───
 
 const Closing: Page = () => (
   <div
@@ -691,4 +787,6 @@ export default [
   Differentiation,
   VLLMNarrative,
   Closing,
+  AppendixIntegration,
+  AppendixStack,
 ] satisfies Page[];
