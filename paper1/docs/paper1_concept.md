@@ -72,6 +72,30 @@ BudgetFlow uses these weights as coarse scheduling signals. The paper tests whet
 
 ---
 
+## 1.5 Stage backbone: a three-phase view of one SWE-bench task
+
+Before we talk about per-step routing, we need a vocabulary for "what kind of step this is". A reasonable choice is to follow the three-phase view that the SWE-bench community has converged on:
+
+| Stage | What the agent is doing | A turn typically looks like |
+|---|---|---|
+| **Localization** | finding which files / classes / functions are relevant to the issue | listing directories, reading file contents, searching for symbols, opening related code |
+| **Repair** | proposing a code change that should fix the bug | writing diffs, editing files, choosing what to change |
+| **Validation** | checking the proposed change is correct and does not break other things | running the failing test, running the broader test suite, reading tracebacks, iterating on the patch |
+
+This is the **Agentless decomposition**. We borrow it for one reason only: to give every turn a name from a short, widely accepted list, so the paper does not have to invent a new taxonomy.
+
+**Plain-English glossary** of the three names we will mention from time to time:
+
+- **Agentless** (Xia et al., NeurIPS 2024): a SWE-bench solver that runs **Localization → Repair → Validation** as a fixed three-phase pipeline, no autonomous tool calls. Its main contribution is *the pipeline*. We do not adopt the pipeline; we adopt **the names** of its three phases as our stage backbone. Why borrow it: it is the most widely cited SWE-bench task decomposition, so reviewers do not need to be convinced the boundaries make sense.
+- **SweRank** (Salesforce, ICLR 2026 poster): a *localization-only* tool. It retrieves and re-ranks candidate **files / classes / functions** for a given issue, and ships with ground-truth labels derived from gold patches. It does **not** speak to repair or validation. For us it is one possible source of an **objective signal** inside the Localization stage: "did the agent open the right file?"
+- **SWE-agent `.traj`**: a JSON log emitted by the SWE-agent scaffold. Each step records `thought / action / observation / state`. The `action` field is a concrete shell-like command (e.g., `ls`, `open file.py`, `edit ...`, `python test.py`). This is the **mechanism** we use to tag every turn with a stage at runtime: a small rule reads `action` and outputs `Localization`, `Repair`, or `Validation`.
+
+The split between these three is not "what step number this is". A workflow can loop (search → read → patch → test fail → search again → patch again), and BudgetFlow tags each turn independently based on what that turn is actually doing.
+
+**One honest caveat**: a fixed three-phase view is a convenience, not a law of nature. Some turns will be ambiguous (e.g., reading a file right before patching it). BudgetFlow handles this with one fixed rule (`classify(messages, last_tool, last_observation) -> stage`) and uses the **same** rule both at runtime and in offline analysis. The paper reports the rule's classification agreement (e.g., on a sample of turns hand-labeled by the authors) as a sanity check.
+
+---
+
 ## 2. Where does BudgetFlow sit?
 
 BudgetFlow sits between the agent framework and the LLM backend.
@@ -296,6 +320,25 @@ Progress <- (1 - alpha) * Progress + alpha * observed_progress
 
 Cold start uses a conservative default table: more expensive models are assumed to be no worse than cheaper models, but only slightly better. This prevents the system from upgrading aggressively when it has no evidence. A `zero_calibration` setting should use only this weak default table, so the paper can separate gains from workflow-aware budget pacing and gains from calibrated progress estimates.
 
+### 3.5 Where do the four critical inputs come from?
+
+The decision rule in §3.1 needs four inputs: a **dataset** to run on, a **stage weight** $w_i$ per turn, an **expected progress gain** table, and a **cost**. Cost is the easy one; the rest are where the paper can quietly cheat or quietly fall apart.
+
+This subsection lays out, for each input, the cheapest legitimate source (good enough to validate the idea) and the strongest legitimate source (good enough to defend in a paper).
+
+| Input | Tier 1 source — cheapest defensible | Tier 2 source — paper-grade |
+|---|---|---|
+| **Dataset** | a 20-50-task warm-up subset of SWE-bench Lite (cheap to run, lots of public traces) | full SWE-bench Verified (500 tasks) for the main table, with a disjoint calibration subset drawn from SWE-bench Lite or non-Verified original SWE-bench |
+| **Stage weight $w_i$** | a fixed default table (Localization=1, Repair=2 or 3, Validation=2 or 3) plus a `w_i=1` ablation to prove the table earns its keep | the same defaults *plus* sensitivity sweeps (1-2 / 1-3 / 1-4), plus an L4/L2/L1/L0 signal-degradation curve, plus a small classification-agreement check |
+| **Expected progress gain $\widehat{\text{Progress}}[\text{stage}, \text{model}]$** | a fixed default table with the rule "every tier up adds a small constant per stage, repair gets a slightly bigger constant"; this is `zero_calibration` (§3.4) | (a) replay public `.traj` from `SWE-bench/experiments` to estimate the table offline; (b) borrow SweRank gold labels to get an objective progress signal for the **Localization** stage; (c) run a small calibration sweep of `(stage, model)` on the disjoint calibration split |
+| **Cost** | OpenAI / Anthropic list prices for API tiers, plus a published GPU-hour amortization for local backends | the same, plus reporting `expected / reserved / actual` separately and a sanity check on a few invoices |
+
+A few honest notes:
+
+- **The progress table never needs ground truth.** It only needs to be "more informative than random or uniform". The Tier 1 default table is a guess; the Tier 2 calibrated table is a better guess. The ablations in §8.4 (random table, uniform table, calibrated table) are what tells the reader whether the guess earned its keep.
+- **Objective `q_i` exists only for the Localization stage.** SweRank gold (file/class/function) and gold-patch file paths give a clean per-turn signal: did this turn open / read / mention a file the gold patch later changes? For **Repair**, the closest objective signal is `patch applies cleanly` or `failing-test count drops on a small re-run`. For **Validation**, only the final `resolved` is fully objective. The paper should be explicit that Localization is the only stage with a third-party gold signal.
+- **Online updates must not touch the evaluation split.** The sliding update in §3.4 runs only on calibration / replay data, never on tasks that contribute to the final resolved-rate table. This avoids the subtle leak in which the benchmark itself trains the table.
+
 ---
 
 ## 4. How do we enforce hard budgets?
@@ -412,12 +455,12 @@ Section 1 includes a stage-weight table (traceback ranks above directory browsin
 
 The problem is: **if we tune stage weights on all 500 SWE-bench Verified tasks and then report resolved rate on the same 500 tasks, that is like studying with the answer key and then taking the same exam.** Any apparent gain may be overfitting.
 
-The fix is to split data:
+The fix is to split data. The paper supports two equally valid setups; the main result uses **one** of them and reports both:
 
-- **Calibration split**: used to tune stage weights, estimate `expected_progress_gain`, and initialize `budget_pressure`. This can be data outside SWE-bench Verified, for example samples from the original SWE-bench that never entered Verified, or the non-overlapping portion of SWE-bench Lite relative to Verified.
-- **Evaluation split**: the full SWE-bench Verified 500 tasks, **never touched during tuning**. Final paper numbers for resolved rate, budget violations, quota violations, queue latency, and recovery metrics are reported only on this half.
+- **Setup A — calibration from outside SWE-bench Verified.** Calibration uses SWE-bench Lite tasks that do not overlap with Verified, or original SWE-bench tasks that never made it into Verified. **Evaluation uses the full Verified 500.** This setup gives the largest evaluation surface but assumes Lite-style tasks transfer to Verified-style tasks.
+- **Setup B — disjoint split inside SWE-bench Verified.** Calibration uses a fixed subset of Verified (e.g., 100 tasks). Evaluation uses the remaining 400. This setup is most defensible against domain-shift complaints, at the cost of a smaller test set.
 
-"Held-out" means "set aside and untouched"—lock the evaluation split until all design decisions are finalized, then open the box.
+In both setups the evaluation split is **frozen before any tuning** and the calibration split is the **only** data that drives stage weights, `expected_progress_gain`, or `budget_pressure` updates. The frozen evaluation split is opened once, after all design decisions are final.
 
 If a BudgetFlow variant truly needs no tuning (for example, stage weights always follow a fixed default table end-to-end), then strictly speaking no calibration split is required. For honesty, this paper assumes some tuning is likely and declares this split protocol up front.
 
@@ -579,6 +622,42 @@ The ablations should stay focused on where the gain comes from:
 4. **Signal robustness and transfer**: compare SDK / explicit signals, callback inference, proxy inference, and budget-only fallback; calibrate on one split or benchmark and test on a disjoint domain such as SWE-bench Verified or RepoBench.
 
 If calibrated progress gain beats uniform and random tables under the same fixed budget, the result supports the claim that historical step progress is useful for runtime budget allocation. If `zero_calibration` is close to calibrated performance, the gain mainly comes from workflow-aware budget pacing rather than the progress table.
+
+### 8.5 Two-tier execution plan: validate first, scale later
+
+The system has many moving parts. To avoid getting stuck building all of them before knowing whether the idea is worth defending, the work is staged in two tiers. Tier 1 exists to answer "does this even work?". Tier 2 exists to produce paper-grade numbers.
+
+**Tier 1 — Validate the idea (a few days of work, ≤ a few dollars).**
+
+| Component | Tier 1 choice | Why this is enough |
+|---|---|---|
+| Dataset | 20-50 task subset of SWE-bench Lite | small enough to iterate quickly, public enough to be reproducible |
+| Agent scaffold | mini-SWE-agent (single fixed prompt, deterministic tools) | smallest scaffold whose `.traj` still has clear `action` strings |
+| Stage classifier | regex/lookup on `action` field of `.traj`: `ls`/`open`/`find` → Localization; `edit`/diff → Repair; `python`/test commands → Validation | works because mini-SWE-agent's action vocabulary is tiny |
+| Stage weight $w_i$ | fixed default: Localization=1, Repair=3, Validation=2 | matches the paper's runtime intuition; ablation against $w_i=1$ already shows whether the table earns its keep |
+| Expected progress table | `zero_calibration` default: every tier-up adds +0.05 progress, repair adds +0.10 | no data needed, no calibration needed |
+| Backend pool | 2 tiers only (one cheap API model, one expensive API model) | binary upgrade decisions are easier to debug; matches BoPO setup for any cross-paper sanity checks |
+| Concurrency | J=1 to J=5 | enough to exercise Governor / Ledger; not yet a stress test |
+| Hard budget | a small absolute cap per task and a small total cap | makes hard-budget behavior visible without burning money |
+
+Tier 1's only job is to answer **"under a fixed budget on a small Lite subset, does BudgetFlow Full resolve more tasks than (a) Workflow-Level Router and (b) Budget-Only Step Scheduler?"** A directional positive answer (even small, even noisy) means the idea is worth scaling. A flat result means the idea needs rethinking before any more infrastructure work.
+
+**Tier 2 — Paper-grade scale-up (commits to infrastructure).**
+
+| Component | Tier 2 upgrade | What it buys |
+|---|---|---|
+| Dataset | full SWE-bench Verified evaluation split + a calibration split (Setup A or B in §5.4) | the headline `resolved @ fixed budget` number lives here |
+| Agent scaffold | same mini-SWE-agent, frozen at the Tier-1 version | reproducibility |
+| Stage classifier | same regex rules + a hand-labeled sample (~200 turns) to measure classification agreement | a defensible classifier rather than a hidden assumption |
+| Stage weight $w_i$ | same defaults; *plus* L4/L2/L1/L0 signal-degradation ablation; *plus* a sensitivity sweep on the value range | what the ablation tables in §8.4 actually need |
+| Expected progress table | replay public `.traj` from `SWE-bench/experiments` to populate the table offline; optionally use SweRank gold for an objective Localization-stage signal; run a small calibration sweep over `(stage, model)` pairs on the calibration split | turns the default table into a defensible calibrated table; the random / uniform / zero_calibration baselines in §8.4 become meaningful contrasts |
+| Backend pool | 3-5 tiers including at least one local backend | enables the N-ary cost gradient claim and the cache-sticky variant |
+| Concurrency | J=1, 10, 50, 100 with the multi-workflow stress tests in §7 | makes RQ1 and the Scheduler/ZombieDetector story testable |
+| Hard budget | the full \$50 / 50-agent scenario plus a budget-vs-resolved curve | the headline systems-paper figure |
+
+The two tiers share **the same code**. The only differences are configuration, dataset size, and which calibration signals are turned on. Concretely, Tier 1 runs with `progress_table=default`, `w_i=defaults`, `backends=[cheap, expensive]`, `dataset=lite_subset`; Tier 2 flips these to `progress_table=calibrated`, runs the full ablation grid, expands the backend pool, and switches to the SWE-bench Verified evaluation split.
+
+**Decision rule for moving from Tier 1 to Tier 2.** Move on if all three are true: (i) Tier 1 shows BudgetFlow Full beats both Workflow-Level Router and Budget-Only Step Scheduler in resolved rate under the same Tier-1 budget; (ii) Tier 1 shows no hard-budget violations; (iii) the stage classifier hits at least a reasonable agreement rate (e.g., 85%) on a small hand-labeled sanity sample. If any of these fail, the design changes before any more infrastructure work.
 
 ---
 
