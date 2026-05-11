@@ -69,6 +69,8 @@ BudgetFlow Runtime
 LLM backend pool
 ```
 
+**Tier-1 minimal backend pool (two tiers).** A cheap paper prototype can pair **local Qwen 2.5-32B** (GPU-hour amortized cost) with **DeepSeek API** (e.g., V3-class tier) as `a_1 < a_2`. That still exercises tier jumps, ledger settlement, and the same routing math as in `paper1_concept.md` §8.5 without a large N-ary pool.
+
 ### 2.1 Proxy Mode
 
 开发者把 OpenAI-compatible client 的 `base_url` 指向 BudgetFlow proxy：
@@ -109,7 +111,7 @@ class BudgetFlowLangChainMiddleware(AgentMiddleware):
 ```python
 response = budgetflow.chat(
     messages=messages,
-    task_type="debugging",
+    stage="repair",
     w_i=3.0,
     workflow_id=run_id,
 )
@@ -119,7 +121,7 @@ response = budgetflow.chat(
 
 ```python
 backend = budgetflow.select_model(
-    task_type="planning",
+    stage="localization",
     w_i=3.0,
     workflow_id=run_id,
 )
@@ -127,7 +129,7 @@ response = llm_client.chat(model=backend.name, messages=messages)
 budgetflow.record_usage(workflow_id=run_id, backend=backend, response=response)
 ```
 
-SDK mode 的信号最干净，但需要上层平台主动标注 `task_type` 和 $w_i$。
+SDK mode 的信号最干净，但需要上层平台主动标注 `stage`（Localization / Repair / Validation，与 `paper1_concept.md` §1.5 对齐）和 $w_i$。
 
 ---
 
@@ -137,7 +139,7 @@ SDK mode 的信号最干净，但需要上层平台主动标注 `task_type` 和 
 
 ```python
 class TurnInfo:
-    task_type: str
+    stage: str
     w_i: float
     signal_source: Literal["explicit", "callback", "proxy", "budget_only"]
     context_len: int
@@ -270,7 +272,7 @@ Step-level progress 只给 runtime 和 case study 使用，不进入主结果表
 预计进展增益来自历史表：
 
 $$
-\widehat{\text{Progress}}[\text{task\_type}, \text{backend}]
+\widehat{\text{Progress}}[\text{stage}, \text{backend}]
 = \text{mean step progress outcome}
 $$
 
@@ -278,8 +280,8 @@ $$
 
 $$
 \Delta \widehat{\text{progress}}^{(k)}
-= \widehat{\text{Progress}}[\text{task\_type}, a_{k+1}]
-- \widehat{\text{Progress}}[\text{task\_type}, a_k]
+= \widehat{\text{Progress}}[\text{stage}, a_{k+1}]
+- \widehat{\text{Progress}}[\text{stage}, a_k]
 $$
 
 历史表可以来自 held-out calibration split、公开运行记录，或在线滑动更新。主实验要避免用 evaluation split 调参。
