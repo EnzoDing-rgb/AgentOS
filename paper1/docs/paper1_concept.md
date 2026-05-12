@@ -744,7 +744,17 @@ Stage weight is only a coarse scheduling signal. The Budget-Only Step Scheduler 
 
 Frequent model upgrades or downgrades can reduce prefix-cache reuse. For coding agents, prompts often carry long issue descriptions, file snippets, and previous observations, so extra prefill latency or lower cached-token reuse can offset the benefit of better model placement. BudgetFlow should therefore measure this effect rather than only list it as a threat.
 
-The main SWE-bench experiments can run on API models or another stable backend, but the cache study should use controlled local serving on an A800-class GPU when possible. With vLLM, SGLang, or TensorRT-LLM, the experiment can enable prefix caching and report model-switch rate, cross-model transition counts, TTFT / prefill-like latency, GPU memory pressure, and cached-token ratio when the backend exposes it. It should compare BudgetFlow Full with **BudgetFlow Cache-Sticky**, which stays on the current model unless the scheduling gain is large enough to pay for the expected switching penalty. If exact cache signals are unavailable, the paper should report TTFT / latency and include a sensitivity curve that adds synthetic switching penalties.
+**Minimal cache experiment (same budget, handicap framing).** Fix a task slice and a total dollar budget on one local stack with prefix caching on (vLLM / SGLang / TensorRT-LLM; A800-class GPU when possible). **Baseline:** one model tier for the whole workflow so the long shared prefix stays hot and prefill spend per step is minimal. **BudgetFlow:** per-step tier changes; each switch drops prefix reuse and burns extra prefill tokens from the *same* budget. **Report:** extra prefill (or uncached-token) spend versus baseline and resolved-task count. If BudgetFlow still resolves more tasks while paying that KV tax, workflow-aware placement outweighs the cache loss. **Refinement:** compare BudgetFlow Full with **BudgetFlow Cache-Sticky** (§6.4); log model-switch rate, TTFT / prefill-like latency, GPU memory pressure, and cached-token ratio when the backend exposes them; if not, report TTFT / latency and sweep synthetic `switch_penalty` values.
+
+The main SWE-bench experiments can run on API models or another stable backend, but the 
+cache study should use controlled local serving on an A800-class GPU when possible. 
+With vLLM, SGLang, or TensorRT-LLM, the experiment can enable prefix caching and report 
+model-switch rate, cross-model transition counts, TTFT / prefill-like latency, GPU 
+memory pressure, and cached-token ratio when the backend exposes it. It should compare 
+BudgetFlow Full with **BudgetFlow Cache-Sticky**, which stays on the current model 
+unless the scheduling gain is large enough to pay for the expected switching penalty. 
+If exact cache signals are unavailable, the paper should report TTFT / latency and 
+include a sensitivity curve that adds synthetic switching penalties.
 
 ---
 
