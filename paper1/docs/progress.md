@@ -45,11 +45,11 @@ Build minimum BudgetFlow runtime that can answer one question clearly:
 ### Current accepted architecture
 
 ```text
-mini scaffold / SWE-agent-like loop
+minimal agent loop
         -> TurnInfo
         -> BudgetFlow runtime
         -> 2-tier backend pool
-        -> evaluator / harness
+        -> result checker / comparison runner
 ```
 
 ### Current working assumptions
@@ -167,7 +167,12 @@ Acceptance:
 - Stuck workflow no longer holds slot forever.
 - Recovered budget visible in state/logs.
 
-#### [ ] Step 6. Build tiny explicit scaffold
+#### [ ] Step 6. Build minimal explicit agent loop
+
+What this means in plain language:
+- write smallest possible agent loop that can drive BudgetFlow
+- loop can look like stripped-down ReAct, but does not need full LangChain or full SWE-agent behavior
+- its job is to produce a sequence of steps like Localization -> Repair -> Validation and send explicit `TurnInfo` into BudgetFlow
 
 Goal:
 - feed explicit `TurnInfo`
@@ -175,11 +180,16 @@ Goal:
 - simulate Localization / Repair / Validation turns
 
 Acceptance:
-- Scaffold can produce multi-step workflows.
+- Minimal agent loop can produce multi-step workflows.
 - Runtime receives explicit stage labels.
-- End-to-end call path exists from scaffold -> runtime -> backend stub.
+- End-to-end call path exists from loop -> runtime -> backend stub.
+- We can inspect one workflow trace and see why each step got cheap or strong model.
 
-#### [ ] Step 7. Add Tier 1 baselines
+#### [ ] Step 7. Add Tier 1 comparison modes
+
+What this means in plain language:
+- run same task with three different decision rules
+- this is how we know BudgetFlow helps, not just runs
 
 Need:
 - Workflow-Level Router
@@ -189,8 +199,14 @@ Need:
 Acceptance:
 - Same task input can run under all three policies.
 - Output metrics comparable under same budget / backend config.
+- One comparison table shows policy differences clearly.
 
-#### [ ] Step 8. Run smallest end-to-end experiment
+#### [ ] Step 8. Run smallest full comparison experiment
+
+What this means in plain language:
+- take a few tiny workflows
+- run them from start to finish
+- collect result numbers in one place
 
 Target first:
 - very small Lite-style subset
@@ -198,7 +214,8 @@ Target first:
 
 Acceptance:
 - One reproducible run script/config exists.
-- Metrics emitted: resolved/success proxy, total spend, budget violations, queue stats, backend 429-like pressure stats if simulated.
+- Metrics emitted: resolved/success proxy, total spend, budget violations, queue stats, backend pressure stats if simulated.
+- Results are readable enough to decide whether Tier 1 idea is promising.
 
 ---
 
@@ -278,4 +295,4 @@ Do not prioritize before Tier 1 answer exists:
 
 ## Current next move
 
-**Next build step = Step 6: build tiny explicit scaffold that feeds `TurnInfo` into current runtime and makes policy comparison runnable.**
+**Next build step = Step 6: build minimal explicit agent loop that acts like a tiny ReAct-style workflow driver, feeds `TurnInfo` into current runtime, and makes policy comparison runnable.**
