@@ -9,6 +9,55 @@
 
 ---
 
+## Quick recall: where this stands now
+
+What already exists now:
+
+- `paper1/src/budgetflow/` is no longer empty skeleton only.
+- Core runtime pieces already exist: types, ledger, governor, selector, scheduler, zombie handling, mock backend.
+- There is now also a **minimal ReAct-like agent loop**. Its job is simple: produce a small sequence of steps like Localization -> Repair -> Validation, send explicit `TurnInfo` into BudgetFlow, and let BudgetFlow decide cheap vs strong model.
+- There is also a **comparison runner**. It can run same small workflow under three policies:
+  - `workflow_level_router`
+  - `budget_only_step_router`
+  - `budgetflow_full`
+- There are **real small-scale mock tests**, not dummy tests.
+
+What has already been tested:
+
+1. The minimal loop can run end-to-end.
+2. Budget reservation / settlement works under small mock runs.
+3. Policy comparison really works, meaning the three policies no longer collapse into same behavior.
+4. Current small-scale comparison result under current mock assumptions is:
+   - `workflow_level_router` -> resolved 0
+   - `budget_only_step_router` -> resolved 0
+   - `budgetflow_full` -> resolved 2
+
+What this means in plain language:
+
+- Project is past pure design stage.
+- Project is also past pure runtime-skeleton stage.
+- We already have a runnable tiny experimental system.
+- Current question is no longer “can BudgetFlow run at all?”
+- Current question is “are current mock assumptions good enough, or should we make them more realistic before wiring real backend?”
+
+What to do next when coming back:
+
+Choose one of two directions:
+
+1. **Refine mock realism first**
+   - make cheap vs strong behavior less crude
+   - make progress signals less toy-like
+   - keep whole system cheap and controllable
+
+2. **Start partial real hookup**
+   - keep one tier mocked
+   - connect one real backend
+   - begin checking whether runtime behavior still looks right with real cost and response patterns
+
+If unsure, default next step:
+
+> Refine mock realism first, then connect one real backend later.
+
 ## Part 1. Boss view
 
 ### Current phase
@@ -167,7 +216,7 @@ Acceptance:
 - Stuck workflow no longer holds slot forever.
 - Recovered budget visible in state/logs.
 
-#### [ ] Step 6. Build minimal explicit agent loop
+#### [x] Step 6. Build minimal explicit agent loop
 
 What this means in plain language:
 - write smallest possible agent loop that can drive BudgetFlow
@@ -185,7 +234,7 @@ Acceptance:
 - End-to-end call path exists from loop -> runtime -> backend stub.
 - We can inspect one workflow trace and see why each step got cheap or strong model.
 
-#### [ ] Step 7. Add Tier 1 comparison modes
+#### [x] Step 7. Add Tier 1 comparison modes
 
 What this means in plain language:
 - run same task with three different decision rules
@@ -201,7 +250,7 @@ Acceptance:
 - Output metrics comparable under same budget / backend config.
 - One comparison table shows policy differences clearly.
 
-#### [ ] Step 8. Run smallest full comparison experiment
+#### [x] Step 8. Run smallest full comparison experiment
 
 What this means in plain language:
 - take a few tiny workflows
@@ -241,21 +290,21 @@ Acceptance:
 - [x] stage-aware weights wired
 - [x] zero-calibration table wired
 - [x] selector returns cheap vs strong tier correctly
-- [ ] pressure changes affect decisions
+- [x] pressure changes affect decisions
 
 ### Milestone D. Shared-resource governance
 
 - [x] backend concurrency enforced
-- [ ] backend RPM enforced or simulated
+- [x] backend RPM enforced or simulated
 - [x] queue or rejection path exists
 - [x] zombie timeout releases resources
 
 ### Milestone E. Tier 1 evaluation readiness
 
-- [ ] explicit scaffold exists
-- [ ] three baselines runnable
-- [ ] first tiny experiment runnable end-to-end
-- [ ] result format ready for compare table
+- [x] explicit scaffold exists
+- [x] three baselines runnable
+- [x] first tiny experiment runnable end-to-end
+- [x] result format ready for compare table
 
 ---
 
@@ -295,4 +344,4 @@ Do not prioritize before Tier 1 answer exists:
 
 ## Current next move
 
-**Next build step = Step 6: build minimal explicit agent loop that acts like a tiny ReAct-style workflow driver, feeds `TurnInfo` into current runtime, and makes policy comparison runnable.**
+**Next build step = inspect the current small-scale comparison outputs, decide whether current mock assumptions are too crude, then choose one of two directions: refine mock realism or start wiring one real backend while keeping the second tier mocked.**
