@@ -60,6 +60,8 @@ Paper 1 只处理 **single-budget-owner + multi-workflow**：
 
 ## 2. Tier 1：当前主实现路径
 
+当前目录约定已经简化为 `paper1/{data,src,docs,misc}`，不再保留中间 `dev/` 层。本文后续如果提到代码或数据路径，默认分别指向 `paper1/src/` 与 `paper1/data/`。
+
 Tier 1 的目标不是做成完整通用中间层，而是先用最小可验证系统回答：
 
 > workflow-aware budgeting 在固定预算下，是否比 workflow-level routing 或 budget-only step routing 更有效。

@@ -5,7 +5,7 @@
 > Update rule:
 > - Follow current highest-priority phase.
 > - Earlier phase details may be removed after project focus fully shifts.
-> - Code root stays `paper1/dev/src/budgetflow/`.
+> - Code root stays `paper1/src/budgetflow/`.
 
 ---
 
@@ -24,7 +24,7 @@ Build minimum BudgetFlow runtime that can answer one question clearly:
 ### What Tier 1 must contain
 
 - Runtime governor, not full agent framework.
-- Code root under `paper1/dev/src/budgetflow/`.
+- Code root under `paper1/src/budgetflow/`.
 - Two-tier backend pool.
 - Multi-workflow budget accounting.
 - Step-level routing using `stage`, `w_i`, `budget_pressure`.
@@ -81,7 +81,7 @@ Tier 1 succeeds if all below become true:
 Target dir:
 
 ```text
-paper1/dev/src/budgetflow/
+paper1/src/budgetflow/
 ```
 
 Planned files:
@@ -206,7 +206,7 @@ Acceptance:
 
 ### Milestone A. Runtime foundation
 
-- [ ] `paper1/dev/src/budgetflow/` exists
+- [ ] `paper1/src/budgetflow/` exists
 - [ ] package imports cleanly
 - [ ] core objects defined: `TurnInfo`, `Backend`, `WorkflowLedger`, governor state
 - [ ] no framework dependency required
@@ -278,4 +278,4 @@ Do not prioritize before Tier 1 answer exists:
 
 ## Current next move
 
-**Next build step = Step 1: create `paper1/dev/src/budgetflow/` runtime skeleton and core file layout.**
+**Next build step = Step 1: create `paper1/src/budgetflow/` runtime skeleton and core file layout.**
