@@ -76,7 +76,7 @@ Tier 1 succeeds if all below become true:
 
 ### Immediate execution order
 
-#### [ ] Step 1. Create runtime skeleton
+#### [x] Step 1. Create runtime skeleton
 
 Target dir:
 
@@ -106,7 +106,7 @@ Acceptance:
 - Core datatypes exist.
 - File boundaries roughly match design responsibilities.
 
-#### [ ] Step 2. Implement accounting core
+#### [x] Step 2. Implement accounting core
 
 Must implement:
 - `expected_cost`
@@ -123,7 +123,7 @@ Acceptance:
 - Settlement returns unused reserved cost.
 - Concurrent reserve path protected by atomic lock or equivalent.
 
-#### [ ] Step 3. Implement model selection rule
+#### [x] Step 3. Implement model selection rule
 
 Must implement:
 
@@ -143,7 +143,7 @@ Acceptance:
 - Higher `budget_pressure` reduces upgrades.
 - Higher `w_i` increases chance of upgrade.
 
-#### [ ] Step 4. Implement scheduler + backend limits
+#### [x] Step 4. Implement scheduler + backend limits
 
 Must implement:
 - backend RPM cap
@@ -155,7 +155,7 @@ Acceptance:
 - Runtime never dispatches beyond configured backend concurrency.
 - Queue behavior observable in tests or simulation.
 
-#### [ ] Step 5. Implement minimal zombie recovery
+#### [x] Step 5. Implement minimal zombie recovery
 
 Tier 1 minimum:
 - timeout detection
@@ -206,32 +206,32 @@ Acceptance:
 
 ### Milestone A. Runtime foundation
 
-- [ ] `paper1/src/budgetflow/` exists
-- [ ] package imports cleanly
-- [ ] core objects defined: `TurnInfo`, `Backend`, `WorkflowLedger`, governor state
-- [ ] no framework dependency required
+- [x] `paper1/src/budgetflow/` exists
+- [x] package imports cleanly
+- [x] core objects defined: `TurnInfo`, `Backend`, `WorkflowLedger`, governor state
+- [x] no framework dependency required
 
 ### Milestone B. Hard budget core
 
-- [ ] reserve path implemented
-- [ ] settle path implemented
-- [ ] release path implemented
-- [ ] concurrent reserve cannot exceed budget
-- [ ] accounting distinguishes expected / reserved / actual
+- [x] reserve path implemented
+- [x] settle path implemented
+- [x] release path implemented
+- [x] concurrent reserve cannot exceed budget
+- [x] accounting distinguishes expected / reserved / actual
 
 ### Milestone C. Routing core
 
-- [ ] stage-aware weights wired
-- [ ] zero-calibration table wired
-- [ ] selector returns cheap vs strong tier correctly
+- [x] stage-aware weights wired
+- [x] zero-calibration table wired
+- [x] selector returns cheap vs strong tier correctly
 - [ ] pressure changes affect decisions
 
 ### Milestone D. Shared-resource governance
 
-- [ ] backend concurrency enforced
+- [x] backend concurrency enforced
 - [ ] backend RPM enforced or simulated
-- [ ] queue or rejection path exists
-- [ ] zombie timeout releases resources
+- [x] queue or rejection path exists
+- [x] zombie timeout releases resources
 
 ### Milestone E. Tier 1 evaluation readiness
 
@@ -278,4 +278,4 @@ Do not prioritize before Tier 1 answer exists:
 
 ## Current next move
 
-**Next build step = Step 1: create `paper1/src/budgetflow/` runtime skeleton and core file layout.**
+**Next build step = Step 6: build tiny explicit scaffold that feeds `TurnInfo` into current runtime and makes policy comparison runnable.**
