@@ -25,11 +25,16 @@ class ComparisonRunner:
 
     def run_workflow_level_router(self, workflows: list[WorkflowSpec], budget_pressure: float) -> PolicyRunSummary:
         router = WorkflowLevelRouter()
-        chosen_by_workflow: dict[str, Backend] = {}
+        chosen_by_workflow = {
+            workflow.workflow_id: router.choose_backend(
+                sum(step.w_i for step in workflow.steps) / len(workflow.steps),
+                self.backends,
+                budget_pressure,
+            )
+            for workflow in workflows
+        }
 
         def backend_picker(turn: TurnInfo, backends: list[Backend], *_args) -> Backend:
-            if turn.workflow_id not in chosen_by_workflow:
-                chosen_by_workflow[turn.workflow_id] = router.choose_backend(turn, backends)
             return chosen_by_workflow[turn.workflow_id]
 
         ledger = WorkflowLedgerStore()

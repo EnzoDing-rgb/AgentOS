@@ -15,15 +15,29 @@ class PolicyRunSummary:
 
 
 class WorkflowLevelRouter:
-    def choose_backend(self, turn_info: TurnInfo, backends: list[Backend]) -> Backend:
+    def choose_backend(self, average_w_i: float, backends: list[Backend], budget_pressure: float) -> Backend:
         ordered = sorted(backends, key=lambda backend: backend.tier)
-        return ordered[-1] if turn_info.w_i >= 2.5 else ordered[0]
+        if budget_pressure <= 0.2:
+            return ordered[-1]
+        if budget_pressure <= 0.45:
+            if average_w_i >= 2.1:
+                return ordered[2] if len(ordered) >= 3 else ordered[-1]
+            return ordered[1] if len(ordered) >= 2 else ordered[0]
+        if average_w_i >= 2.4:
+            return ordered[1] if len(ordered) >= 2 else ordered[0]
+        return ordered[0]
 
 
 class BudgetOnlyStepRouter:
     def choose_backend(self, turn_info: TurnInfo, backends: list[Backend], budget_pressure: float) -> Backend:
         ordered = sorted(backends, key=lambda backend: backend.tier)
-        return ordered[0] if budget_pressure > 2.0 else ordered[-1]
+        if budget_pressure >= 1.4:
+            return ordered[0]
+        if budget_pressure >= 0.8:
+            return ordered[1] if len(ordered) >= 2 else ordered[0]
+        if budget_pressure >= 0.4:
+            return ordered[2] if len(ordered) >= 3 else ordered[-1]
+        return ordered[-1]
 
 
 def summarize_policy_run(policy_name: str, results: list[WorkflowResult]) -> PolicyRunSummary:

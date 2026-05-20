@@ -782,6 +782,79 @@ Future work can plug in learned evaluators, rule-plus-model evaluators, or domai
 
 The main experiments in this paper therefore stay with batched SWE-bench-style workloads: maximize final resolved rate under a fixed budget while enforcing provider and concurrency limits. BudgetFlow's ledger, reservation, scheduler, and stop-loss machinery can carry over to other domains; what changes is the evidence source for progress and step importance.
 
+### Long-range direction: BudgetFlow as an RLB-style continual-learning system
+
+A useful long-range extension is to make BudgetFlow part of a **continually maintained heuristic system**, in the spirit of Jiayi Weng's 2026 "Learning Beyond Gradients": the thing that improves over time is not a black-box policy network, but a software system with rules, logs, tests, memory, and update loops.
+
+Here **RLB** means **Rules, Logs, Benchmarks** — not reinforcement learning.
+
+- **Rules**: stage classifier rules, routing thresholds, stop-loss rules, downgrade rules, backend-choice heuristics, progress-table construction rules.
+- **Logs**: per-turn traces, reservation/settlement records, queue events, timeout events, failure summaries, step-level replay artifacts.
+- **Benchmarks**: fixed regression tasks, held-out workflow slices, budget-stress suites, and policy-comparison suites.
+
+The key idea is simple:
+
+> BudgetFlow should not only route today's calls; it should also leave behind structured evidence that helps tomorrow's BudgetFlow become more maintainable, more calibrated, and harder to fool.
+
+This remains different from RL in three ways.
+
+1. The updated object is mainly **code, config, tests, tables, and memory**, not neural-network weights.
+2. The feedback channel is mainly **logs, replays, regression failures, and benchmark outcomes**, not a single scalar reward.
+3. The safety boundary is mainly **regression checks and held-out evaluation**, not unconstrained online self-modification.
+
+One plausible future architecture is:
+
+```text
+agent workflows
+    -> BudgetFlow runtime
+    -> structured traces / ledgers / failures
+    -> RLB maintenance loop
+    -> edits rules / tables / tests / memories
+    -> rerun regression and held-out benchmark suites
+    -> accept only changes that improve robustness under fixed budgets
+```
+
+In this setup, BudgetFlow becomes the runtime substrate of a larger maintained system.
+
+- The **runtime** still does the online job: reserve budget, select backend tier, queue, downgrade, cancel zombies, and settle actual cost.
+- The **RLB maintenance loop** does the offline continual-learning job: inspect failures, compress brittle local patches into simpler rules, strengthen tests, update calibration tables, and remove heuristics that only win on narrow cases.
+
+Concretely, the most natural objects for continual improvement are:
+
+1. **Stage mapping**
+   - improve how turns are classified into Localization / Repair / Validation
+   - add better detection of ambiguous or mixed turns
+
+2. **Progress estimation**
+   - replace crude default tables with replay-derived or held-out-calibrated estimates
+   - track when a progress table becomes stale under new workloads
+
+3. **Stop-loss and scheduling rules**
+   - improve queue / downgrade / cancel logic from observed failure patterns
+   - add better detection for wasted spend and repeated unproductive loops
+
+4. **Regression surface**
+   - convert past BudgetFlow failures into fixed replay cases and benchmark slices
+   - make old mistakes hard to reintroduce
+
+5. **Heuristic compression**
+   - when local fixes pile up, rewrite them into simpler rules or table forms
+   - keep the maintained system from turning into a brittle ball of mud
+
+This direction is promising for BudgetFlow because the project already naturally produces the right artifacts: workflow traces, budget ledgers, backend events, stage labels, and resolved/failure outcomes. These are exactly the kinds of explicit records that a coding agent can inspect and turn into new rules, new tests, and cleaner maintenance logic.
+
+But this must be done carefully. A legitimate continual-learning version of BudgetFlow should follow three hard rules:
+
+1. **Never tune on the same benchmark slice used for final reporting.**
+2. **Prefer replay, regression, and held-out calibration over online reward chasing.**
+3. **Report whole curves and robustness checks, not only the best-looking point.**
+
+So the long-range vision is not "train BudgetFlow with RL." It is:
+
+> Build BudgetFlow into a runtime-centered heuristic system that keeps absorbing failures, replay evidence, and benchmark feedback, then improves itself through explicit rules, tests, and calibration artifacts.
+
+This is outside the scope of Tier 1, but it is a natural Tier 2+ or Paper 2 direction.
+
 ---
 
 ## 12. Quick glossary
