@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from .governor import BudgetGovernor
 from .ledger import WorkflowLedgerStore
-from .mock_backend import MockBackend
+from .mock_backend import MockBackend, STAGE_OUTPUT_MULTIPLIER
 from .scheduler import SchedulerDecision, WorkflowScheduler
 from .selector import BudgetFlowSelector, SelectionDecision, build_zero_calibration_progress_table
 from .types import Backend, Stage, TurnInfo, WorkflowStatus
@@ -97,7 +97,11 @@ class MinimalAgentLoop:
 
     def _run_step(self, turn: TurnInfo, input_tokens: int) -> StepTrace:
         expected_costs = {
-            backend.name: self.governor.estimate_cost(backend, input_tokens=input_tokens).expected_cost
+            backend.name: self.governor.estimate_cost(
+                backend,
+                input_tokens=input_tokens,
+                expected_output_tokens=max(8, round(backend.mean_output_tokens * STAGE_OUTPUT_MULTIPLIER[turn.stage])),
+            ).expected_cost
             for backend in self.backends
         }
         if self.backend_picker is None:

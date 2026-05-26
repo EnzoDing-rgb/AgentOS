@@ -10,6 +10,7 @@ sys.path.insert(0, str(SRC))
 from budgetflow.compare import ComparisonRunner
 from budgetflow.governor import BudgetGovernor
 from budgetflow.ledger import WorkflowLedgerStore
+from budgetflow.lite_tasks import load_swebench_lite_tasks
 from budgetflow.loop import WorkflowSpec, WorkflowStep, build_default_loop
 from budgetflow.types import Backend, GovernorConfig, Stage
 
@@ -127,3 +128,15 @@ def test_policy_comparison_runs_small_scale() -> None:
     assert workflow_level.total_cost > 0
     assert budget_only.total_cost > 0
     assert full.policy_name == "budgetflow_full"
+
+
+def test_load_swebench_lite_tasks_builds_real_workflows() -> None:
+    tasks = load_swebench_lite_tasks(limit=2)
+
+    assert len(tasks) == 2
+    assert all(task.instance_id for task in tasks)
+    assert all(task.workflow.workflow_id == task.instance_id for task in tasks)
+    assert all(len(task.workflow.steps) == 3 for task in tasks)
+    assert all(task.workflow.steps[0].stage == Stage.LOCALIZATION for task in tasks)
+    assert all(task.workflow.steps[1].stage == Stage.REPAIR for task in tasks)
+    assert all(task.workflow.steps[2].stage == Stage.VALIDATION for task in tasks)

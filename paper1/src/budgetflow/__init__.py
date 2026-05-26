@@ -1,6 +1,7 @@
 from .compare import ComparisonRunner
 from .governor import BudgetGovernor
 from .ledger import WorkflowLedgerStore
+from .lite_tasks import LiteTaskRecord, load_swebench_lite_tasks
 from .loop import MinimalAgentLoop, StepTrace, WorkflowResult, WorkflowSpec, WorkflowStep, build_default_loop
 from .mock_backend import MockBackend
 from .policies import PolicyRunSummary
@@ -32,6 +33,8 @@ __all__ = [
     "CostEstimate",
     "GovernorConfig",
     "LedgerEntry",
+    "LiteTaskRecord",
+    "load_swebench_lite_tasks",
     "MinimalAgentLoop",
     "MockBackend",
     "PolicyRunSummary",
