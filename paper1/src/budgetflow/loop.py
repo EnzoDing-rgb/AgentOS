@@ -35,6 +35,7 @@ class StepTrace:
     progress_made: bool
     actual_cost: float
     status: str
+    response_text: str = ""
 
 
 @dataclass(frozen=True)
@@ -188,6 +189,7 @@ class MinimalAgentLoop:
             progress_made=result.progress_made,
             actual_cost=actual_cost,
             status=WorkflowStatus.COMPLETED.value,
+            response_text=result.response_text,
         )
 
     def _fallback_backend(self, backend: Backend) -> Backend | None:

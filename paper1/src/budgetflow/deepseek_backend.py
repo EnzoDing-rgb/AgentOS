@@ -58,7 +58,7 @@ def evaluate_step_progress(stage: Stage, text: str) -> bool:
     if stage is Stage.LOCALIZATION:
         return ".py" in lower or "/" in cleaned or "file" in lower
     if stage is Stage.REPAIR:
-        return any(token in lower for token in ("fix", "patch", "change", "bug", "cause", "def ", "class "))
+        return any(token in lower for token in ("fix", "patch", "change", "bug", "cause", "def ", "class ")) or "diff --git" in lower or "--- a/" in cleaned
     return any(token in lower for token in ("test", "verify", "valid", "assert", "pass", "fail"))
 
 
@@ -71,6 +71,9 @@ class DeepSeekBackend:
     enable_thinking: bool | None = None
     reasoning_effort: str | None = None
     get_task: Callable[[str], LiteTaskRecord | None] | None = None
+    prompt_builder: Callable[[TurnInfo, int], str] | None = None
+    stage_max_tokens: dict[Stage, int] | None = None
+    stage_enable_thinking: dict[Stage, bool] | None = None
 
     def run(self, turn_info: TurnInfo, input_tokens: int, forced_timeout: bool = False) -> BackendCallResult:
         if forced_timeout:
@@ -90,7 +93,7 @@ class DeepSeekBackend:
 
         client = OpenAI(api_key=api_key, base_url=self.base_url)
         user_prompt = self._build_user_prompt(turn_info, input_tokens)
-        request_kwargs = self._build_request_kwargs(user_prompt)
+        request_kwargs = self._build_request_kwargs(user_prompt, turn_info.stage)
         response = client.chat.completions.create(**request_kwargs)
 
         message = response.choices[0].message
@@ -106,31 +109,40 @@ class DeepSeekBackend:
             progress_made=progress_made,
             latency_ms=self.backend.latency_ms,
             timed_out=False,
+            response_text=text,
         )
 
     def _build_user_prompt(self, turn_info: TurnInfo, input_tokens: int) -> str:
+        if self.prompt_builder is not None:
+            return self.prompt_builder(turn_info, input_tokens)
         if self.get_task is not None:
             task = self.get_task(turn_info.workflow_id)
             if task is not None:
                 return build_lite_stage_prompt(task, turn_info.stage)
         return default_stage_prompt(turn_info, input_tokens)
 
-    def _build_request_kwargs(self, user_prompt: str) -> dict:
-        thinking_enabled = self._thinking_enabled()
+    def _build_request_kwargs(self, user_prompt: str, stage: Stage) -> dict:
+        thinking_enabled = self._thinking_enabled_for_stage(stage)
+        system_content = (
+            "You are a software repair agent working on a real bug report. "
+            "Answer concisely and concretely."
+        )
+        if stage is Stage.REPAIR:
+            system_content = (
+                "You are a software repair agent. Output ONLY one valid unified diff "
+                "inside a ```diff code block. No explanation outside the diff."
+            )
         kwargs: dict = {
             "model": self.model_name,
             "messages": [
                 {
                     "role": "system",
-                    "content": (
-                        "You are a software repair agent working on a real bug report. "
-                        "Answer concisely and concretely."
-                    ),
+                    "content": system_content,
                 },
                 {"role": "user", "content": user_prompt},
             ],
             "stream": False,
-            "max_tokens": self.backend.mean_output_tokens,
+            "max_tokens": self._max_tokens_for_stage(stage),
             "extra_body": {"thinking": {"type": "enabled" if thinking_enabled else "disabled"}},
         }
         if thinking_enabled:
@@ -143,3 +155,15 @@ class DeepSeekBackend:
         if self.model_name.endswith("-pro"):
             return True
         return False
+
+    def _thinking_enabled_for_stage(self, stage: Stage) -> bool:
+        if self.stage_enable_thinking and stage in self.stage_enable_thinking:
+            return self.stage_enable_thinking[stage]
+        if stage is Stage.REPAIR:
+            return False
+        return self._thinking_enabled()
+
+    def _max_tokens_for_stage(self, stage: Stage) -> int:
+        if self.stage_max_tokens and stage in self.stage_max_tokens:
+            return self.stage_max_tokens[stage]
+        return self.backend.mean_output_tokens

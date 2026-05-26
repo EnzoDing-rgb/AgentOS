@@ -112,6 +112,7 @@ class BackendCallResult:
     progress_made: bool
     latency_ms: int
     timed_out: bool = False
+    response_text: str = ""
 
     @property
     def total_tokens(self) -> int:

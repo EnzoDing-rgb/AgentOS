@@ -2,12 +2,11 @@
 
 ## 一句话结论
 
-现在有两层结果，要分开看：
+1. **Mock 20-task**：`budgetflow_full` 高 pressure 比 budget-only 稳（selector 方向信号，mock backend）。
+2. **DeepSeek 10-task compare 已跑完**：routing/cost baseline 成立 — BudgetFlow **flash/pro/flash**，cost ≈ all_pro 的 48%。
+3. **E2E 2-task 首跑**：链路通，**0/2 harness_resolved**；gold 2/2 证明 harness 可信。
 
-1. **Mock backend + 20 Lite tasks**：`budgetflow_full` 在高 pressure 下比弱 baseline 更稳（方向性证据）。
-2. **DeepSeek 真 API**：call path 已通，但 **20-task 三策略 compare 还没跑完**；旧 smoke 跑（20/20 全 Pro）**不能当 paper 证据**。
-
-> 当前最诚实说法：真实 task 分布 + mock 有信号；真 backend 有连通性，但还缺 **held-out 校准 + 三策略 20-task compare + harness resolved** 才能谈 paper 结论。
+> routing baseline 成立；E2E 通但 model patch 质量不够 — **不能 claim 修 bug**。
 
 ---
 
@@ -16,7 +15,7 @@
 | 维度 | 指标 | 现在能说什么 |
 |---|---|---|
 | 工作流层 | `workflow_steps_ok` | API 成功 + stage keyword rubric（弱） |
-| 修复层 | `harness_resolved` | **N/A** — 无 patch 生成 / 无 SWE harness |
+| 修复层 | `harness_resolved` | git apply + pytest（local harness；gold 2/2 校验过） |
 
 **不能**把 `workflow_steps_ok` 当成 bug 修好了。
 
@@ -24,121 +23,108 @@
 
 ## A. Mock backend — 20 Lite tasks（仍有效）
 
-- 数据：20 个 SWE-bench Lite 真实任务
-- backend：4 档 mock
 - runner：`run_lite_smoke.py`
+- backend：4 档 mock
 
 | budget_pressure | workflow_level | budget_only | budgetflow_full |
 |---|---|---|---|
 | 0.22 | 1 / 50.29 | 9 / 79.30 | 9 / 79.30 |
 | 0.45 | 1 / 50.29 | 1 / 50.29 | **9 / 70.50** |
 
-格式：`resolved / total_cost`（mock governor units）
-
-**读法：** pressure 升高 → budget-only 塌，`budgetflow_full` 仍 9/20。仅 mock，非真模型。
+格式：`workflow_steps_ok / total_cost`（mock governor units）
 
 ---
 
-## B. DeepSeek 真 API — 当前状态
+## B. DeepSeek 真 API — 10-task 三策略 compare（2026-05-26）
 
-### B1. 已落地代码
+### 设置
 
-| 文件 | 作用 |
-|---|---|
-| `deepseek_backend.py` | Flash/Pro 真调用；`.env` 读 key；stage keyword rubric |
-| `lite_tasks.py` | 真实 issue → L/R/V prompt |
-| `selector.py` | `build_deepseek_progress_table()` — 手设 2-tier priors，**未 tune eval 20** |
-| `loop.py` | `backend_runner` + 可选 `progress_table` |
-| `run_deepseek_compare.py` | 三策略：`all_flash` / `all_pro` / `budgetflow_full` |
+- runner：`python src/budgetflow/run_deepseek_compare.py 10`
+- tasks：SWE-bench Lite 前 10 个（astropy×6 + django×4）
+- strategies：`all_flash` / `all_pro` / `budgetflow_full`
+- frozen：`FROZEN_BUDGET_PRESSURE=0.35`，progress table 手设未 tune
+- cost：mock-scale governor units（跨策略公平），非精确 API USD
+- elapsed：**575.3s**
 
-冻结超参（未在 eval 20 上 tune）：
+### Summary
 
-- `FROZEN_BUDGET_PRESSURE = 0.35`
-- governor `total_budget = 20.0`（mock-scale cost，否则 reserve 被拒）
-- cost 报告 = mock-scale governor units（跨策略公平），**非精确 API USD**
-
-### B2. 旧 smoke run — **作废，仅连通性**
-
-`run_deepseek_smoke.py`，20 tasks，`pressure=0.3`，旧 4-tier zero calibration + 真实 tiny token cost：
-
-```
-workflow_steps_ok = 20/20
-backend_picks: flash=0, pro=60
-total_cost ≈ $0.07 (真实 token 价)
-elapsed ≈ 696s
-```
-
-**问题（故意暴露）：**
-
-- 100% Pro → selector 对 2-tier DeepSeek 无意义
-- `resolved` = rubric `len≥20` 时代 → 全 OK 不代表修 bug
-- **不能**证明 BudgetFlow 有用
-
-### B3. 新 compare — 1-task probe（2026-05-24）
-
-`run_deepseek_compare.py 1`，`pressure=0.35`：
-
-| strategy | steps_ok | picks | cost (gov units) | elapsed |
+| strategy | workflow_steps_ok | total cost | flash steps | pro steps |
 |---|---|---|---|---|
-| all_flash | 1/1 | flash/flash/flash | 2.48 | ~8s |
-| all_pro | 1/1 | pro/pro/pro | 10.98 | ~31s |
-| budgetflow_full | 1/1 | **flash/pro/flash** | 5.78 | ~18s |
+| all_flash | **10/10** | 22.93 | 30 | 0 |
+| all_pro | **10/10** | 109.63 | 0 | 30 |
+| budgetflow_full | **10/10** | 52.23 | 20 | 10 |
 
-**读法：**
+### Per-task picks（budgetflow_full）
 
-- BudgetFlow 已能 Flash+Pro 混选（非全 Pro）
-- 三策略 cost 梯度合理：flash < budgetflow < pro
-- **仅 1 task** — 不能外推 20 task；rubric 仍弱
+全部 10 task：**flash / pro / flash**（Repair 步升 Pro，L/V 用 Flash）
 
-### B4. 20-task 三策略 compare — **未跑完**
+### 读法
 
-- 计划：20 tasks × 3 strategies × 3 steps = 180 API calls
-- 估算：~30–60 min
-- 上次 2-task 被中断；**完整 summary 表暂无**
+**能说的：**
+
+- 真 DeepSeek API + 真 Lite issue 上，三策略可复现跑完
+- BudgetFlow 有稳定 Flash/Pro mix（对比旧 smoke 100% Pro）
+- cost 梯度：flash (22.9) < budgetflow (52.2, **47.6% of pro**) < pro (109.6)
+
+**不能说的：**
+
+- 10/10 workflow_steps_ok **不代表** 10 bug 修好 — rubric 弱（keyword + len≥20），三策略全满
+- 不能 claim BudgetFlow 修 bug 更好/更差 — 还没 harness
+- 不能当 paper 主结果 — 这是 routing baseline
+
+### 旧 smoke（作废）
+
+20-task 全 Pro、`workflow_steps_ok=20/20` — 仅连通性，eval 价值为零。
+
+---
+
+## C. E2E patch + harness — 2 sympy tasks（2026-05-26）
+
+### 设置
+
+- runner: `run_e2e_smoke.py budgetflow_full`
+- tasks: `sympy__sympy-24152`, `sympy__sympy-24213`
+- harness: local（无 Docker）— `local_harness.py`
+- 新代码: `patch_agent.py`, `patch_utils.py`, `run_e2e_smoke.py`
+
+### 结果
+
+| instance | workflow_steps_ok | patch_extracted | patch_applied | harness_resolved | picks |
+|---|---|---|---|---|---|
+| sympy-24152 | ✓ | ✓ | ✗ | ✗ | flash/pro/flash |
+| sympy-24213 | ✓ | ✓ | ✗ | ✗ | flash/pro/flash |
+
+- **gold sanity: 2/2 resolved**（同 harness）
+- model: **0/2 resolved** — patch corrupt，`git apply` 失败
+- elapsed ≈ 68s
+
+### 读法
+
+- E2E 链路通；`workflow_steps_ok` 与 `harness_resolved` 可分离（workflow 全 OK，harness 全 fail）
+- 失败原因：issue-only prompt，无 repo 文件 → patch 缺 context/格式错
 
 ---
 
 ## 当前最诚实结论
 
-1. **Mock 路径**：真实 Lite task 分布上，`budgetflow_full` 在高 pressure 比 budget-only 稳 — 方向对，backend 假。
-2. **DeepSeek 路径**：真 API + 分策略 compare 框架就绪；1-task 证明路由 mix 可行。
-3. **旧 20/20 全 Pro smoke**：连通性 OK，**eval 价值为零**。
-4. **Bug 是否修好**：全程 **unknown** — 无 harness。
+| 问题 | 答案 |
+|---|---|
+| BudgetFlow 路由 work？ | 是 — 10/10 task flash/pro/flash |
+| 比 all_flash 省多少 cost？ | budgetflow 52 vs flash 23 — **更贵**（买 Repair 步 Pro） |
+| 比 all_pro 省多少 cost？ | 52 vs 110 — **省 ~52%**（同 rubric 全 OK 前提下） |
+| bug 修好了吗？ | **0/2** — patch 不能 apply；gold 2/2 说明 harness OK |
 
 ---
 
-## 下一步（优先级）
+## 下一步
 
-### P0 — 跑完 20×3 compare
+### P0 — patch 质量
 
-```bash
-cd paper1 && python src/budgetflow/run_deepseek_compare.py 20
-```
-
-产出：`all_flash` vs `all_pro` vs `budgetflow_full` 的 steps_ok / cost / flash-pro mix。
-
-**不在 eval 20 上 tune** pressure 或 progress table。
-
-### P1 — Held-out 校准（非 eval 20）
-
-- 用 tasks 20–24 或 mock replay 扫 `budget_pressure`
-- 或 public `.traj` → stage progress 估计
-- 目标：frozen hyperparam 有出处，非 hand-wavy
-
-### P2 — 指标诚实化
-
-- rubric 加 stage 输出样例 / 失败 case 日志
-- 分报 `api_ok` vs `rubric_ok`
-- 可选：记录真实 API USD（与 governor units 分开）
-
-### P3 — Harness `resolved`（paper 门槛）
-
-- patch 生成（至少 unified diff 格式）
-- SWE-bench Lite harness 子集
-- 只有这时才能 claim「修 bug」
+- repair 步加 repo 文件 snippet
+- 2-task × 三策略 E2E compare
 
 ### 现在不要做
 
-- 在 eval 20 上 tune calibration / pressure
-- 用旧 smoke 20/20 写进 paper
-- 把 `workflow_steps_ok` 当 `resolved`
+- 在 eval 10 上 tune pressure / progress_table
+- 把 workflow_steps_ok 当 resolved 写进 paper
+- continual learning / trajectory / SweLoc / SweRank（除非 held-out 校准）

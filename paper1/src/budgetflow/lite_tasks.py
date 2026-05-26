@@ -18,22 +18,32 @@ LOCAL_EXPORT_DIR = Path("/Lishun/_archive/.local_env_bak/research/AgentOS/paper1
 class LiteTaskRecord:
     instance_id: str
     repo: str
+    base_commit: str
     problem_statement: str
     patch: str
+    test_patch: str
     fail_to_pass: tuple[str, ...]
     pass_to_pass: tuple[str, ...]
     gold_files: tuple[str, ...]
     workflow: WorkflowSpec
 
 
-def load_swebench_lite_tasks(limit: int = 8, offset: int = 0) -> list[LiteTaskRecord]:
+def load_swebench_lite_tasks(
+    limit: int = 8,
+    offset: int = 0,
+    instance_ids: tuple[str, ...] | None = None,
+) -> list[LiteTaskRecord]:
     items = load_local_swebench_lite_export()
     if items is None:
         items = load_local_swebench_lite_parquet()
     if items is None:
         dataset = load_dataset("princeton-nlp/SWE-bench_Lite", split="test")
         items = list(dataset)
-    selected_items = items[offset : offset + limit]
+    if instance_ids:
+        lookup = {item["instance_id"]: item for item in items}
+        selected_items = [lookup[instance_id] for instance_id in instance_ids]
+    else:
+        selected_items = items[offset : offset + limit]
     return [build_lite_task_record(item) for item in selected_items]
 
 
@@ -52,12 +62,28 @@ def load_local_swebench_lite_parquet() -> list[dict] | None:
     return frame.to_dict(orient="records")
 
 
+def parse_test_list(value) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        value = value.strip()
+        if not value:
+            return ()
+        if value.startswith("["):
+            parsed = json.loads(value)
+            return tuple(parsed)
+        return (value,)
+    if isinstance(value, (list, tuple)):
+        return tuple(value)
+    return ()
+
+
 def build_lite_task_record(item: dict) -> LiteTaskRecord:
     instance_id = item["instance_id"]
     problem_statement = item.get("problem_statement", "")
     patch = item.get("patch", "")
-    fail_to_pass = tuple(item.get("FAIL_TO_PASS", []) or [])
-    pass_to_pass = tuple(item.get("PASS_TO_PASS", []) or [])
+    fail_to_pass = parse_test_list(item.get("FAIL_TO_PASS"))
+    pass_to_pass = parse_test_list(item.get("PASS_TO_PASS"))
     gold_files = extract_gold_files(patch)
     workflow = WorkflowSpec(
         workflow_id=instance_id,
@@ -82,8 +108,10 @@ def build_lite_task_record(item: dict) -> LiteTaskRecord:
     return LiteTaskRecord(
         instance_id=instance_id,
         repo=item.get("repo", ""),
+        base_commit=item.get("base_commit", ""),
         problem_statement=problem_statement,
         patch=patch,
+        test_patch=item.get("test_patch", "") or "",
         fail_to_pass=fail_to_pass,
         pass_to_pass=pass_to_pass,
         gold_files=gold_files,
@@ -151,4 +179,26 @@ def build_lite_stage_prompt(task: LiteTaskRecord, stage: Stage) -> str:
         f"Bug report:\n{issue}\n\n"
         f"Validation step: explain how to verify the fix using tests such as: {tests}. "
         "Return a short validation plan."
+    )
+
+
+def build_repair_patch_prompt(task: LiteTaskRecord, localization_text: str) -> str:
+    issue = task.problem_statement.strip()
+    if len(issue) > 1200:
+        issue = issue[:1200] + "\n...[truncated]"
+    loc = localization_text.strip() or "No localization notes."
+    if len(loc) > 800:
+        loc = loc[:800] + "\n...[truncated]"
+    return (
+        f"Repository: {task.repo}\n"
+        f"Instance: {task.instance_id}\n"
+        f"Base commit: {task.base_commit}\n\n"
+        f"Bug report:\n{issue}\n\n"
+        f"Localization notes:\n{loc}\n\n"
+        "Repair step: produce a minimal unified diff patch that fixes the bug.\n"
+        "Requirements:\n"
+        "- Output ONLY one ```diff ... ``` block\n"
+        "- Patch must apply with `git apply`\n"
+        "- Modify source files only (no test files)\n"
+        "- Keep the change minimal\n"
     )
