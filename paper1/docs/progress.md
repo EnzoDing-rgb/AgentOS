@@ -4,29 +4,43 @@
 
 ### 现在到哪了
 
-- **E2E patch + local harness 已通**（2 sympy tasks，budgetflow_full）
-- **gold patch 验证**：2/2 `harness_resolved=True`（harness 本身可信）
-- **DeepSeek 生成 patch**：2/2 提取成功，**0/2 resolved**（patch corrupt，不能 apply）
-- Docker SWE harness 不可用 → 用 `local_harness.py`（git checkout + pytest）
+- **通用 edit IR 已落地**：JSON `edits` → workspace apply → `git diff` → harness
+- ops: `replace`, `anchor_replace`, `insert_before/after`, `line_replace`
+- 结构化 failure: `parse_error`, `target_not_found`, `ambiguous_anchor`, `empty_diff`, `harness_fail`
+- **gold patch**：2/2 `harness_resolved=True`（harness 可信）
+- Docker SWE harness 不可用 → `local_harness.py`
 
-### E2E 2-task 结果（2026-05-26）
+### 通用 edit IR E2E（2026-05-26，budgetflow_full，5 repair rounds）
 
-runner: `run_e2e_smoke.py budgetflow_full`  
+| task | patch_extracted | harness_resolved | last_failure |
+|---|---|---|---|
+| sympy__sympy-24213 | 1/1 | 0/1 | **harness_fail**（语义，非 exact-match） |
+| sympy__sympy-24152 | 1/1 | 0/1 | harness_fail（patch apply OK，pytest fail） |
+
+- task2 失败从 `target_not_found` → `harness_fail` — IR 目标达成
+- repair prompt 已从 stale ````diff```` 改回 JSON multi-op（含 `line_replace`）
+- 单元测试 `test_repair_workspace.py` 5/5 pass
+
+### E2E 2-task × 三策略 compare（旧路线，direct diff + file context）
+
+runner: `run_e2e_compare.py`  
 tasks: `sympy__sympy-24152`, `sympy__sympy-24213`
 
-| instance | workflow_steps_ok | patch_extracted | patch_applied | harness_resolved | picks |
-|---|---|---|---|---|---|
-| sympy-24152 | True | True | False | False | flash/pro/flash |
-| sympy-24213 | True | True | False | False | flash/pro/flash |
+| strategy | harness_resolved | patch_extracted | total cost |
+|---|---|---|---|
+| all_flash | 0/2 | 2/2 | 4.79 |
+| all_pro | 0/2 | 2/2 | 18.12 |
+| budgetflow_full | 0/2 | 2/2 | 8.18 |
 
-- gold sanity：**2/2 resolved**（同 harness）
-- model：**0/2 resolved** — patch 格式/内容不对，`git apply` 失败
-- elapsed ≈ 68s
+- repair prompt 已加 **repo 文件 snippet**（localization 路径 → checkout 读文件）
+- localization 不再 leak gold_files
+- **仍 0/2 resolved** — patch 能抽出，但 hunk 行号/格式 corrupt → `git apply` 失败
+- budgetflow picks 仍 **flash/pro/flash**；cost 梯度 flash < budgetflow < pro
+- elapsed ≈ 333s
 
-**指标边界：**
+### E2E 首跑（无 file context，budgetflow only）
 
-- `workflow_steps_ok` = API + rubric（弱，两 task 全 OK）
-- `harness_resolved` = test_patch + model_patch apply + FAIL_TO_PASS pass + PASS_TO_PASS 子集 pass
+- patch_extracted 2/2，harness_resolved 0/2（同上根因）
 
 ### 10-task routing compare（仍有效）
 
@@ -55,8 +69,8 @@ runner: `run_deepseek_compare.py 10`
 
 ### 下一步（P0）
 
-1. **提升 patch 质量** — repo context、更长 repair prompt、失败 retry；仍用 BudgetFlow 选档
-2. **三策略 E2E compare** — all_flash / all_pro / budgetflow on 2–10 tasks
+1. **语义 repair 质量** — failure 已在 harness 层；加 harness 失败摘要进 retry prompt
+2. resolved>0 后再扩 2-task / 10-task E2E
 3. Docker 可用时切官方 SWE harness
 
 ### 现在不要做什么
