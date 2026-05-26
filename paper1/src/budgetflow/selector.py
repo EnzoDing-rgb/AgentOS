@@ -53,15 +53,13 @@ class BudgetFlowSelector:
 
 def build_zero_calibration_progress_table(backends: list[Backend]) -> ProgressTable:
     ordered = sorted(backends, key=lambda backend: backend.tier)
-    stage_bases = {
-        Stage.LOCALIZATION: 0.15,
-        Stage.REPAIR: 0.12,
-        Stage.VALIDATION: 0.14,
-    }
-    stage_gains = {
-        Stage.LOCALIZATION: (0.0, 0.035, 0.055, 0.068),
-        Stage.REPAIR: (0.0, 0.045, 0.095, 0.145),
-        Stage.VALIDATION: (0.0, 0.04, 0.078, 0.115),
+    localization_bases = 0.15
+    localization_gains = (0.0, 0.035, 0.055, 0.068)
+    # Mock-aligned success probabilities at representative token lengths
+    # (repair ~135 tokens, validation ~109 tokens); localization unchanged.
+    mock_calibrated_progress = {
+        Stage.REPAIR: (0.0509, 0.1497, 0.4263, 0.7414),
+        Stage.VALIDATION: (0.1026, 0.2586, 0.5292, 0.8014),
     }
     table: ProgressTable = {
         Stage.LOCALIZATION: {},
@@ -69,7 +67,9 @@ def build_zero_calibration_progress_table(backends: list[Backend]) -> ProgressTa
         Stage.VALIDATION: {},
     }
     for index, backend in enumerate(ordered):
-        gain_index = min(index, len(stage_gains[Stage.LOCALIZATION]) - 1)
-        for stage in table:
-            table[stage][backend.name] = stage_bases[stage] + stage_gains[stage][gain_index]
+        gain_index = min(index, len(localization_gains) - 1)
+        table[Stage.LOCALIZATION][backend.name] = localization_bases + localization_gains[gain_index]
+        for stage in (Stage.REPAIR, Stage.VALIDATION):
+            tier_index = min(index, len(mock_calibrated_progress[stage]) - 1)
+            table[stage][backend.name] = mock_calibrated_progress[stage][tier_index]
     return table

@@ -4,75 +4,52 @@
 
 ### 现在到哪了
 
-- Tier-1 最小系统已经能跑通：runtime / ledger / governor / selector / scheduler / mock backend / minimal loop / compare runner 都有了。
-- 现在不是“能不能跑”的问题。
-- 现在的问题是：**在更真实的 mock 世界里，BudgetFlow 是否还能稳定优于更强 baseline。**
+- Tier-1 最小系统已跑通。
+- 刚完成一轮：**step trace → Repair/Validation calibration → 重跑 sweep**。
+- 低/中 pressure（0.10~0.22）BudgetFlow **已稳定优于** budget-only baseline（solved 更高 + cost 更低）。
+- 0.30 仍掉点，根因已定位：**Localization 被过早降档**（本轮按指令未动）。
 
 ### 这轮刚做完什么
 
-- mock backend 从 **2 档** 改成 **4 档**。
-- mock progress 从二元规则改成了 **更连续的 deterministic 概率模型**。
-- baseline 加强了：
-  - `workflow_level_router`
-  - `budget_only_step_router`
-- 重跑了系统 `budget_pressure` sweep。
-- `paper1/docs/result.md` 已更新。
+1. **Step trace**（pressure=0.22 / 0.30）
+   - 校准前 @0.30：Localization→cheap、Validation→strong（非 elite）
+   - Repair 始终 elite，不是主因
+   - 校准后 @0.30：Validation 已升到 elite；Localization 仍→cheap，5/6 workflow 因此 FAIL
+
+2. **Calibration**（只动 Repair/Validation）
+   - `Progress[repair/validation, tier]` 对齐 mock backend 在代表性 token 长度下的 success prob
+   - Localization 未改
+
+3. **重跑 sweep**（6 workflows, budget=40）
+   - 见 `paper1/docs/result.md`
 
 ### 当前最重要结果
 
-低 pressure 区间（`0.10 ~ 0.18`）：
-
-- `workflow_level_router`: `6 / 21.7644`
-- `budget_only_step_router`: `6 / 21.7644`
-- `budgetflow_full`: `6 / 17.9964 ~ 18.3448`
+| pressure | budget_only | budgetflow_full |
+|---|---|---|
+| 0.10~0.18 | 4 / 15.83 | **5 / 13.10~13.45** |
+| 0.22 | 4 / 15.83 | **5 / 13.10** |
+| 0.30 | 4 / 15.83 | 1 / 12.35 |
 
 含义：
-
-- BudgetFlow 还能做到 **same solved, lower cost**。
-- 相对 `budget_only_step_router`，当前省钱约 **15.7% ~ 17.3%**。
+- 0.22 区间已稳住，且 **solved 5 > 4**
+- 0.30 仍崩，但 R/V 校准有效（Validation 不再卡在 strong）
 
 ### 当前最关键问题
 
-不是 baseline 太弱了。
-现在真正的问题是：
+> **Localization 的 Progress table 与 mock 世界不匹配**，pressure≥0.30 时被降到 cheap，5/6 workflow 第一步就 FAIL。
 
-> `budgetflow_full` 对 `budget_pressure` 太敏感。
-
-现象：
-
-- `0.10 ~ 0.18` 结果不错
-- `0.22` 开始掉 solved
-- `0.30` 掉得很明显
-
-这说明：
-
-- 当前 `stage-aware` 思路还在
-- 但当前 calibration 还不稳
-- 尤其是 `Repair / Validation` 的升级边界可能太保守
-
-### 当前最诚实结论
-
-- 现在已经证明：BudgetFlow 在更真实四档 mock 里，**有能力**做到 same solved, lower cost。
-- 但还没证明：它能在更宽 pressure 区间里稳定压过强化后的 step-level baseline。
+Repair/Validation 校准已完成；下一步若继续，应修 Localization tier gain（本轮刻意跳过）。
 
 ### 下一步只做什么
 
-1. 看 step-level trace
-   - 重点看 `0.22` 和 `0.30`
-   - 找出到底是哪一类 step 被过早降档
-
-2. 调 `budgetflow_full` 的 calibration
-   - 先查 `Progress[stage, tier]`
-   - 重点修 `Repair / Validation`
-   - 不要乱调别的地方
-
-3. 重跑 sweep
-   - 看中间区间能不能稳住
-   - 继续报告整体现象，不报单点胜利
+1. 修 Localization calibration（对齐 mock，同 Repair/Validation 做法）
+2. 重跑 sweep，看 0.30 区间能否稳住
+3. 继续报整体曲线，不挑单点
 
 ### 现在不要做什么
 
 - 不接真实 backend
 - 不上 RL
-- 不扩到 5 个以上 backend
+- 不扩第 5 档
 - 不为了结果好看只挑一个 pressure 点
