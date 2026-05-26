@@ -232,6 +232,66 @@ def summarize_repair_error(error_message: str, max_len: int = 600) -> str:
     return err[:max_len]
 
 
+def build_react_system_prompt(stage: Stage, tool_schema_text: str) -> str:
+    if stage is Stage.LOCALIZATION:
+        return (
+            "You are a software repair agent in the LOCALIZATION stage.\n"
+            "Explore the repository with read-only tools to find likely bug locations.\n"
+            "Respond with ONE JSON object per turn:\n"
+            '{"action": "<tool_name>", "args": {...}}\n'
+            "When done exploring, use:\n"
+            '{"action": "finish_localization", "args": {"summary": "files and symbols to fix"}}\n'
+            "Do not emit line numbers from memory; read files first.\n"
+            "Available tools:\n"
+            f"{tool_schema_text}"
+        )
+    return (
+        "You are a software repair agent in the REPAIR stage.\n"
+        "Read source files, then apply minimal structured edits.\n"
+        "Respond with ONE JSON object per turn:\n"
+        '{"action": "<tool_name>", "args": {...}}\n'
+        "For edits use apply_edits with an edits array (replace, line_replace, anchor_replace).\n"
+        "When ready, use submit_patch with empty args to export the fix.\n"
+        "Copy exact anchor/old text from read_file output; do not guess.\n"
+        "Available tools:\n"
+        f"{tool_schema_text}"
+    )
+
+
+def build_react_monolithic_system_prompt(tool_schema_text: str) -> str:
+    return (
+        "You are a software repair agent fixing a real bug.\n"
+        "Explore with read-only tools, then apply minimal edits and submit_patch.\n"
+        "Respond with ONE JSON object per turn:\n"
+        '{"action": "<tool_name>", "args": {...}}\n'
+        "Available tools:\n"
+        f"{tool_schema_text}"
+    )
+
+
+def build_react_issue_prompt(task: LiteTaskRecord, extra: str = "") -> str:
+    issue = task.problem_statement.strip()
+    if len(issue) > 1500:
+        issue = issue[:1500] + "\n...[truncated]"
+    block = (
+        f"Repository: {task.repo}\n"
+        f"Instance: {task.instance_id}\n"
+        f"Base commit: {task.base_commit}\n\n"
+        f"Bug report:\n{issue}\n"
+    )
+    if extra.strip():
+        block += f"\n{extra.strip()}\n"
+    return block
+
+
+def format_tool_schema(tools: list[dict]) -> str:
+    lines: list[str] = []
+    for tool in tools:
+        args = ", ".join(f"{key}: {typ}" for key, typ in tool.get("args", {}).items())
+        lines.append(f"- {tool['name']}({args}): {tool['description']}")
+    return "\n".join(lines)
+
+
 def build_repair_retry_prompt(
     task: LiteTaskRecord,
     localization_text: str,

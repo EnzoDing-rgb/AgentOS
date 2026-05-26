@@ -50,6 +50,16 @@ def default_stage_prompt(turn_info: TurnInfo, input_tokens: int) -> str:
     )
 
 
+def evaluate_react_progress(stage: Stage, action: str | None, tool_ok: bool) -> bool:
+    if not action:
+        return False
+    if stage is Stage.LOCALIZATION:
+        return tool_ok and action in {"read_file", "grep", "glob", "search_defs", "finish_localization"}
+    if stage is Stage.REPAIR:
+        return tool_ok and action in {"apply_edits", "submit_patch"}
+    return tool_ok
+
+
 def evaluate_step_progress(stage: Stage, text: str) -> bool:
     cleaned = text.strip()
     if len(cleaned) < 20:
@@ -76,6 +86,39 @@ class DeepSeekBackend:
     prompt_builder: Callable[[TurnInfo, int], str] | None = None
     stage_max_tokens: dict[Stage, int] | None = None
     stage_enable_thinking: dict[Stage, bool] | None = None
+
+    def complete_chat(self, messages: list[dict[str, str]], stage: Stage) -> BackendCallResult:
+        load_env_file()
+        api_key = self.api_key or os.environ.get("DEEPSEEK_API_KEY")
+        if not api_key:
+            raise RuntimeError("DEEPSEEK_API_KEY is missing. Add it to the repo root .env file.")
+
+        client = OpenAI(api_key=api_key, base_url=self.base_url)
+        thinking_enabled = self._thinking_enabled_for_stage(stage)
+        kwargs: dict = {
+            "model": self.model_name,
+            "messages": messages,
+            "stream": False,
+            "max_tokens": self._max_tokens_for_stage(stage),
+            "extra_body": {"thinking": {"type": "enabled" if thinking_enabled else "disabled"}},
+        }
+        if thinking_enabled:
+            kwargs["reasoning_effort"] = self.reasoning_effort or "high"
+        response = client.chat.completions.create(**kwargs)
+        message = response.choices[0].message
+        text = extract_message_text(message)
+        usage = response.usage
+        output_tokens = getattr(usage, "completion_tokens", None) or self.backend.mean_output_tokens
+        prompt_tokens = getattr(usage, "prompt_tokens", None) or 1
+        return BackendCallResult(
+            backend_name=self.backend.name,
+            input_tokens=prompt_tokens,
+            output_tokens=output_tokens,
+            progress_made=False,
+            latency_ms=self.backend.latency_ms,
+            timed_out=False,
+            response_text=text,
+        )
 
     def run(self, turn_info: TurnInfo, input_tokens: int, forced_timeout: bool = False) -> BackendCallResult:
         if forced_timeout:
