@@ -1,4 +1,5 @@
 from .compare import ComparisonRunner
+from .deepseek_backend import DeepSeekBackend
 from .governor import BudgetGovernor
 from .ledger import WorkflowLedgerStore
 from .lite_tasks import LiteTaskRecord, load_swebench_lite_tasks
@@ -28,6 +29,7 @@ __all__ = [
     "BackendPressure",
     "BudgetFlowSelector",
     "ComparisonRunner",
+    "DeepSeekBackend",
     "BudgetGovernor",
     "BudgetState",
     "CostEstimate",

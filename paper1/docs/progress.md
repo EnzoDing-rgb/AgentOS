@@ -4,52 +4,62 @@
 
 ### 现在到哪了
 
-- Tier-1 最小系统已跑通。
-- 刚完成一轮：**step trace → Repair/Validation calibration → 重跑 sweep**。
-- 低/中 pressure（0.10~0.22）BudgetFlow **已稳定优于** budget-only baseline（solved 更高 + cost 更低）。
-- 0.30 仍掉点，根因已定位：**Localization 被过早降档**（本轮按指令未动）。
+- Tier-1 已经不再是 mock-only workflow。
+- 现在已经进入 **真实 task + mock backend** 阶段。
+- SWE-bench Lite 真实任务已经接进 BudgetFlow。
 
 ### 这轮刚做完什么
 
-1. **Step trace**（pressure=0.22 / 0.30）
-   - 校准前 @0.30：Localization→cheap、Validation→strong（非 elite）
-   - Repair 始终 elite，不是主因
-   - 校准后 @0.30：Validation 已升到 elite；Localization 仍→cheap，5/6 workflow 因此 FAIL
-
-2. **Calibration**（只动 Repair/Validation）
-   - `Progress[repair/validation, tier]` 对齐 mock backend 在代表性 token 长度下的 success prob
-   - Localization 未改
-
-3. **重跑 sweep**（6 workflows, budget=40）
-   - 见 `paper1/docs/result.md`
+- 加了真实 Lite task adapter：`paper1/src/budgetflow/lite_tasks.py`
+- 加了 Lite smoke runner：`paper1/src/budgetflow/run_lite_smoke.py`
+- 本地数据目录已接好：`paper1/data/swebench_lite_export/`
+- loader 已支持：
+  1. 本地 `test.jsonl`
+  2. 本地 `test.parquet`
+  3. 在线 HF 回退
+- tests 现在是 `4 passed`
 
 ### 当前最重要结果
 
-| pressure | budget_only | budgetflow_full |
-|---|---|---|
-| 0.10~0.18 | 4 / 15.83 | **5 / 13.10~13.45** |
-| 0.22 | 4 / 15.83 | **5 / 13.10** |
-| 0.30 | 4 / 15.83 | 1 / 12.35 |
+20 个 SWE-bench Lite 真实任务，mock backend：
+
+- `pressure = 0.22`
+  - `workflow_level_router`: `1 / 50.2880`
+  - `budget_only_step_router`: `9 / 79.2960`
+  - `budgetflow_full`: `9 / 79.2960`
+
+- `pressure = 0.45`
+  - `workflow_level_router`: `1 / 50.2880`
+  - `budget_only_step_router`: `1 / 50.2880`
+  - `budgetflow_full`: `9 / 70.5040`
 
 含义：
-- 0.22 区间已稳住，且 **solved 5 > 4**
-- 0.30 仍崩，但 R/V 校准有效（Validation 不再卡在 strong）
 
-### 当前最关键问题
+- `workflow_level_router` 很弱
+- `budget_only_step_router` 在低 pressure 还能撑住
+- `budgetflow_full` 在更高 pressure 下更稳
 
-> **Localization 的 Progress table 与 mock 世界不匹配**，pressure≥0.30 时被降到 cheap，5/6 workflow 第一步就 FAIL。
+### 当前最诚实结论
 
-Repair/Validation 校准已完成；下一步若继续，应修 Localization tier gain（本轮刻意跳过）。
+- 真实 task 数据路径已经打通
+- BudgetFlow 已经能在真实 Lite task 分布上跑 compare
+- 但 backend 还是 mock
+- 所以现在这是方向性证据，不是最终 paper 结果
 
 ### 下一步只做什么
 
-1. 修 Localization calibration（对齐 mock，同 Repair/Validation 做法）
-2. 重跑 sweep，看 0.30 区间能否稳住
-3. 继续报整体曲线，不挑单点
+1. 接最小真实 backend
+   - 两档就够：`deepseek-v4-flash` / `deepseek-v4-pro`
+
+2. 跑极小真实 execution pass
+   - 先不追求大规模
+   - 先验证真调用、真成本、真选档是否通
+
+3. 如果真 backend 稳，再接 harness `resolved`
 
 ### 现在不要做什么
 
-- 不接真实 backend
-- 不上 RL
-- 不扩第 5 档
-- 不为了结果好看只挑一个 pressure 点
+- 不做持续学习
+- 不先接 full Verified
+- 不先扩复杂 trajectory 管线
+- 不先做大规模 paper-grade calibration

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Iterable
 
 from datasets import load_dataset
+import pandas as pd
 
 from .loop import WorkflowSpec, WorkflowStep
 from .types import Stage
@@ -28,9 +29,10 @@ class LiteTaskRecord:
 def load_swebench_lite_tasks(limit: int = 8, offset: int = 0) -> list[LiteTaskRecord]:
     items = load_local_swebench_lite_export()
     if items is None:
+        items = load_local_swebench_lite_parquet()
+    if items is None:
         dataset = load_dataset("princeton-nlp/SWE-bench_Lite", split="test")
-        selected = dataset.select(range(offset, min(offset + limit, len(dataset))))
-        items = list(selected)
+        items = list(dataset)
     selected_items = items[offset : offset + limit]
     return [build_lite_task_record(item) for item in selected_items]
 
@@ -40,6 +42,14 @@ def load_local_swebench_lite_export() -> list[dict] | None:
     if not test_jsonl.exists():
         return None
     return [json.loads(line) for line in test_jsonl.read_text().splitlines() if line.strip()]
+
+
+def load_local_swebench_lite_parquet() -> list[dict] | None:
+    test_parquet = LOCAL_EXPORT_DIR / "test.parquet"
+    if not test_parquet.exists():
+        return None
+    frame = pd.read_parquet(test_parquet)
+    return frame.to_dict(orient="records")
 
 
 def build_lite_task_record(item: dict) -> LiteTaskRecord:
