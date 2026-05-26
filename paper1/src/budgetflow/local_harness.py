@@ -61,16 +61,22 @@ def apply_patch(repo_dir: Path, patch_text: str, label: str) -> tuple[bool, str]
             patch_text = f"diff --git a/{first_file} b/{first_file}\n{patch_text}"
     patch_file = repo_dir / f".budgetflow_{label}.patch"
     patch_file.write_text(patch_text)
-    result = subprocess.run(
+    commands = [
         ["git", "apply", "--verbose", str(patch_file)],
-        cwd=repo_dir,
-        capture_output=True,
-        text=True,
-    )
-    patch_file.unlink(missing_ok=True)
-    if result.returncode != 0:
-        return False, result.stderr.strip() or result.stdout.strip()
-    return True, "ok"
+        ["git", "apply", "--verbose", "--reject", str(patch_file)],
+        ["patch", "--batch", "--fuzz=5", "-p1", "-i", str(patch_file)],
+    ]
+    last_detail = ""
+    try:
+        for command in commands:
+            result = subprocess.run(command, cwd=repo_dir, capture_output=True, text=True)
+            if result.returncode == 0:
+                return True, "ok"
+            detail = result.stderr.strip() or result.stdout.strip()
+            last_detail = f"{' '.join(command)} => {detail}"
+        return False, f"patch apply failed: {last_detail}"
+    finally:
+        patch_file.unlink(missing_ok=True)
 
 
 def test_paths_for(task: LiteTaskRecord) -> list[str]:

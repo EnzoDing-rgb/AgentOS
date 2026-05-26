@@ -154,13 +154,12 @@ def build_lite_stage_prompt(task: LiteTaskRecord, stage: Stage) -> str:
         issue = issue[:1200] + "\n...[truncated]"
 
     if stage is Stage.LOCALIZATION:
-        hint = ", ".join(task.gold_files[:5]) if task.gold_files else "unknown"
         return (
             f"Repository: {task.repo}\n"
             f"Instance: {task.instance_id}\n\n"
             f"Bug report:\n{issue}\n\n"
-            "Localization step: identify the most likely files to inspect first. "
-            "Return a short answer listing candidate file paths."
+            "Localization step: identify the most likely source files to inspect first. "
+            "Return concrete repo-relative .py file paths."
         )
 
     if stage is Stage.REPAIR:
@@ -182,23 +181,61 @@ def build_lite_stage_prompt(task: LiteTaskRecord, stage: Stage) -> str:
     )
 
 
-def build_repair_patch_prompt(task: LiteTaskRecord, localization_text: str) -> str:
+def build_repair_patch_prompt(task: LiteTaskRecord, localization_text: str, file_context: str = "") -> str:
     issue = task.problem_statement.strip()
     if len(issue) > 1200:
         issue = issue[:1200] + "\n...[truncated]"
     loc = localization_text.strip() or "No localization notes."
     if len(loc) > 800:
         loc = loc[:800] + "\n...[truncated]"
+    context_block = file_context.strip() or "No source files loaded."
+    if len(context_block) > 8000:
+        context_block = context_block[:8000] + "\n...[truncated]"
     return (
         f"Repository: {task.repo}\n"
         f"Instance: {task.instance_id}\n"
         f"Base commit: {task.base_commit}\n\n"
         f"Bug report:\n{issue}\n\n"
         f"Localization notes:\n{loc}\n\n"
-        "Repair step: produce a minimal unified diff patch that fixes the bug.\n"
+        f"Source files:\n{context_block}\n\n"
+        "Repair step: propose concrete source edits that fix the bug.\n"
+        "Output ONLY one ```json ... ``` block with this schema:\n"
+        "{\n"
+        '  "edits": [\n'
+        '    {"file": "path.py", "old": "exact old text", "new": "replacement text"}\n'
+        "  ]\n"
+        "}\n"
         "Requirements:\n"
-        "- Output ONLY one ```diff ... ``` block\n"
-        "- Patch must apply with `git apply`\n"
+        "- Use repo-relative file paths\n"
+        "- `old` must match exact file text from the source files above\n"
+        "- `new` is the replacement text for that exact block\n"
         "- Modify source files only (no test files)\n"
-        "- Keep the change minimal\n"
+        "- Keep edits minimal\n"
+        "- No prose outside JSON\n"
+    )
+
+
+def build_repair_retry_prompt(
+    task: LiteTaskRecord,
+    localization_text: str,
+    file_context: str,
+    previous_patch: str,
+    error_message: str,
+    attempt: int,
+) -> str:
+    base = build_repair_patch_prompt(task, localization_text, file_context)
+    prev = previous_patch.strip() or "<empty>"
+    if len(prev) > 1500:
+        prev = prev[:1500] + "\n...[truncated]"
+    err = error_message.strip() or "unknown error"
+    if len(err) > 1200:
+        err = err[:1200] + "\n...[truncated]"
+    return (
+        f"{base}\n\n"
+        f"Previous attempt #{attempt - 1} failed.\n"
+        f"Edit/apply/test error:\n{err}\n\n"
+        f"Previous output:\n```json\n{prev}\n```\n\n"
+        "Regenerate the ENTIRE edits JSON from scratch.\n"
+        "Do not describe the fix. Do not emit partial JSON.\n"
+        "Correct file paths and ensure each `old` block matches exact file text from the provided source files."
     )

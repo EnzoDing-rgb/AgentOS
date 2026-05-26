@@ -129,8 +129,8 @@ class DeepSeekBackend:
         )
         if stage is Stage.REPAIR:
             system_content = (
-                "You are a software repair agent. Output ONLY one valid unified diff "
-                "inside a ```diff code block. No explanation outside the diff."
+                "You are a software repair agent. Output ONLY one valid JSON object "
+                "inside a ```json code block. No explanation outside the JSON."
             )
         kwargs: dict = {
             "model": self.model_name,
