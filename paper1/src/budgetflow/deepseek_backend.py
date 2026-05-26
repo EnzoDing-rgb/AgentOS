@@ -2,10 +2,30 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
 from openai import OpenAI
 
 from .types import Backend, BackendCallResult, TurnInfo
+
+
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[3]
+
+
+def load_env_file() -> None:
+    env_path = _repo_root() / ".env"
+    if not env_path.exists():
+        return
+    for line in env_path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
 
 
 @dataclass(frozen=True)
@@ -26,6 +46,7 @@ class DeepSeekBackend:
                 timed_out=True,
             )
 
+        load_env_file()
         client = OpenAI(
             api_key=self.api_key or os.environ.get("DEEPSEEK_API_KEY"),
             base_url=self.base_url,
