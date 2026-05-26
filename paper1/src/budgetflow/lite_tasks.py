@@ -118,3 +118,37 @@ def estimate_validation_tokens(problem_statement: str, fail_to_pass: tuple[str, 
 
 def clamp_tokens(value: int) -> int:
     return max(60, min(value, 220))
+
+
+def build_lite_stage_prompt(task: LiteTaskRecord, stage: Stage) -> str:
+    issue = task.problem_statement.strip()
+    if len(issue) > 1200:
+        issue = issue[:1200] + "\n...[truncated]"
+
+    if stage is Stage.LOCALIZATION:
+        hint = ", ".join(task.gold_files[:5]) if task.gold_files else "unknown"
+        return (
+            f"Repository: {task.repo}\n"
+            f"Instance: {task.instance_id}\n\n"
+            f"Bug report:\n{issue}\n\n"
+            "Localization step: identify the most likely files to inspect first. "
+            "Return a short answer listing candidate file paths."
+        )
+
+    if stage is Stage.REPAIR:
+        return (
+            f"Repository: {task.repo}\n"
+            f"Instance: {task.instance_id}\n\n"
+            f"Bug report:\n{issue}\n\n"
+            "Repair step: propose the minimal code change needed to fix the bug. "
+            "Return a short explanation of the root cause and the fix."
+        )
+
+    tests = ", ".join(task.fail_to_pass[:5]) if task.fail_to_pass else "relevant regression tests"
+    return (
+        f"Repository: {task.repo}\n"
+        f"Instance: {task.instance_id}\n\n"
+        f"Bug report:\n{issue}\n\n"
+        f"Validation step: explain how to verify the fix using tests such as: {tests}. "
+        "Return a short validation plan."
+    )

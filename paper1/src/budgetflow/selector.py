@@ -70,3 +70,22 @@ def build_zero_calibration_progress_table(backends: list[Backend]) -> ProgressTa
             tier_index = min(index, len(mock_calibrated_progress[stage]) - 1)
             table[stage][backend.name] = mock_calibrated_progress[stage][tier_index]
     return table
+
+
+def build_deepseek_progress_table(backends: list[Backend]) -> ProgressTable:
+    """Conservative 2-tier table for Flash/Pro routing.
+
+    Hand-set from stage importance priors, not tuned on eval tasks.
+    """
+    defaults = {
+        Stage.LOCALIZATION: (0.32, 0.44),
+        Stage.REPAIR: (0.08, 0.45),
+        Stage.VALIDATION: (0.22, 0.42),
+    }
+    ordered = sorted(backends, key=lambda backend: backend.tier)
+    table: ProgressTable = {stage: {} for stage in defaults}
+    for index, backend in enumerate(ordered):
+        gain_index = min(index, 1)
+        for stage, values in defaults.items():
+            table[stage][backend.name] = values[gain_index]
+    return table

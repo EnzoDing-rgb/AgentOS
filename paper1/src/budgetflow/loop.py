@@ -8,7 +8,7 @@ from .ledger import WorkflowLedgerStore
 from .mock_backend import MockBackend, STAGE_OUTPUT_MULTIPLIER
 from .scheduler import SchedulerDecision, WorkflowScheduler
 from .selector import BudgetFlowSelector, SelectionDecision, build_zero_calibration_progress_table
-from .types import Backend, BackendCallResult, Stage, TurnInfo, WorkflowStatus
+from .types import Backend, BackendCallResult, ProgressTable, Stage, TurnInfo, WorkflowStatus
 from .zombie import ZombieDetector
 
 
@@ -67,7 +67,7 @@ class MinimalAgentLoop:
         self.budget_pressure = budget_pressure
         self.mock_backends = {backend.name: MockBackend(backend) for backend in self.backends}
         self.backend_picker = backend_picker
-        self.backend_runner = backend_runner or self._run_mock_backend
+        self.backend_runner = backend_runner
 
     def run_workflow(self, spec: WorkflowSpec) -> WorkflowResult:
         traces: list[StepTrace] = []
@@ -159,7 +159,10 @@ class MinimalAgentLoop:
             )
 
         self.ledger.start_step(turn.workflow_id, turn.step_index, backend.name, reservation.reservation_id)
-        result = self.backend_runner(backend, turn, input_tokens)
+        if self.backend_runner is not None:
+            result = self.backend_runner(backend, turn, input_tokens)
+        else:
+            result = self.mock_backends[backend.name].run(turn, input_tokens=input_tokens)
         actual_cost = backend.cost_per_input_token * result.input_tokens + backend.cost_per_output_token * result.output_tokens
 
         if result.timed_out:
@@ -187,9 +190,6 @@ class MinimalAgentLoop:
             status=WorkflowStatus.COMPLETED.value,
         )
 
-    def _run_mock_backend(self, backend: Backend, turn: TurnInfo, input_tokens: int) -> BackendCallResult:
-        return self.mock_backends[backend.name].run(turn, input_tokens=input_tokens)
-
     def _fallback_backend(self, backend: Backend) -> Backend | None:
         lower_tiers = [candidate for candidate in self.backends if candidate.tier < backend.tier]
         if not lower_tiers:
@@ -206,9 +206,10 @@ def build_default_loop(
     zombie_timeout_seconds: float = 5.0,
     backend_picker: Callable[[TurnInfo, list[Backend], BudgetFlowSelector, float, dict[str, float]], Backend] | None = None,
     backend_runner: Callable[[Backend, TurnInfo, int], BackendCallResult] | None = None,
+    progress_table: ProgressTable | None = None,
 ) -> MinimalAgentLoop:
-    progress_table = build_zero_calibration_progress_table(backends)
-    selector = BudgetFlowSelector(progress_table)
+    table = progress_table or build_zero_calibration_progress_table(backends)
+    selector = BudgetFlowSelector(table)
     scheduler = WorkflowScheduler(queue_limit=queue_limit)
     zombie_detector = ZombieDetector(timeout_seconds=zombie_timeout_seconds)
     return MinimalAgentLoop(

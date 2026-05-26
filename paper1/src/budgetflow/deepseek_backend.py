@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
 from openai import OpenAI
 
-from .types import Backend, BackendCallResult, TurnInfo
+from .lite_tasks import LiteTaskRecord, build_lite_stage_prompt
+from .types import Backend, BackendCallResult, Stage, TurnInfo
 
 
 def _repo_root() -> Path:
@@ -28,12 +30,47 @@ def load_env_file() -> None:
             os.environ[key] = value
 
 
+def extract_message_text(message) -> str:
+    content = (getattr(message, "content", None) or "").strip()
+    if content:
+        return content
+    reasoning = getattr(message, "reasoning_content", None)
+    if reasoning:
+        return str(reasoning).strip()
+    return ""
+
+
+def default_stage_prompt(turn_info: TurnInfo, input_tokens: int) -> str:
+    return (
+        f"Stage={turn_info.stage.value}\n"
+        f"Workflow={turn_info.workflow_id}\n"
+        f"Step={turn_info.step_index}\n"
+        f"ApproxInputTokens={input_tokens}\n"
+        "Reply with one short sentence describing the most important next action."
+    )
+
+
+def evaluate_step_progress(stage: Stage, text: str) -> bool:
+    cleaned = text.strip()
+    if len(cleaned) < 20:
+        return False
+    lower = cleaned.lower()
+    if stage is Stage.LOCALIZATION:
+        return ".py" in lower or "/" in cleaned or "file" in lower
+    if stage is Stage.REPAIR:
+        return any(token in lower for token in ("fix", "patch", "change", "bug", "cause", "def ", "class "))
+    return any(token in lower for token in ("test", "verify", "valid", "assert", "pass", "fail"))
+
+
 @dataclass(frozen=True)
 class DeepSeekBackend:
     backend: Backend
     model_name: str
     api_key: str | None = None
     base_url: str = "https://api.deepseek.com"
+    enable_thinking: bool | None = None
+    reasoning_effort: str | None = None
+    get_task: Callable[[str], LiteTaskRecord | None] | None = None
 
     def run(self, turn_info: TurnInfo, input_tokens: int, forced_timeout: bool = False) -> BackendCallResult:
         if forced_timeout:
@@ -47,33 +84,21 @@ class DeepSeekBackend:
             )
 
         load_env_file()
-        client = OpenAI(
-            api_key=self.api_key or os.environ.get("DEEPSEEK_API_KEY"),
-            base_url=self.base_url,
-        )
-        response = client.chat.completions.create(
-            model=self.model_name,
-            messages=[
-                {"role": "system", "content": "You are helping evaluate BudgetFlow routing decisions."},
-                {
-                    "role": "user",
-                    "content": (
-                        f"Stage={turn_info.stage.value}\n"
-                        f"Workflow={turn_info.workflow_id}\n"
-                        f"Step={turn_info.step_index}\n"
-                        f"ApproxInputTokens={input_tokens}\n"
-                        "Reply with one short sentence describing the most important next action."
-                    ),
-                },
-            ],
-            stream=False,
-            max_tokens=self.backend.mean_output_tokens,
-        )
+        api_key = self.api_key or os.environ.get("DEEPSEEK_API_KEY")
+        if not api_key:
+            raise RuntimeError("DEEPSEEK_API_KEY is missing. Add it to the repo root .env file.")
+
+        client = OpenAI(api_key=api_key, base_url=self.base_url)
+        user_prompt = self._build_user_prompt(turn_info, input_tokens)
+        request_kwargs = self._build_request_kwargs(user_prompt)
+        response = client.chat.completions.create(**request_kwargs)
+
+        message = response.choices[0].message
+        text = extract_message_text(message)
         usage = response.usage
         output_tokens = getattr(usage, "completion_tokens", None) or self.backend.mean_output_tokens
         prompt_tokens = getattr(usage, "prompt_tokens", None) or input_tokens
-        content = response.choices[0].message.content or ""
-        progress_made = bool(content.strip())
+        progress_made = evaluate_step_progress(turn_info.stage, text)
         return BackendCallResult(
             backend_name=self.backend.name,
             input_tokens=prompt_tokens,
@@ -82,3 +107,39 @@ class DeepSeekBackend:
             latency_ms=self.backend.latency_ms,
             timed_out=False,
         )
+
+    def _build_user_prompt(self, turn_info: TurnInfo, input_tokens: int) -> str:
+        if self.get_task is not None:
+            task = self.get_task(turn_info.workflow_id)
+            if task is not None:
+                return build_lite_stage_prompt(task, turn_info.stage)
+        return default_stage_prompt(turn_info, input_tokens)
+
+    def _build_request_kwargs(self, user_prompt: str) -> dict:
+        thinking_enabled = self._thinking_enabled()
+        kwargs: dict = {
+            "model": self.model_name,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a software repair agent working on a real bug report. "
+                        "Answer concisely and concretely."
+                    ),
+                },
+                {"role": "user", "content": user_prompt},
+            ],
+            "stream": False,
+            "max_tokens": self.backend.mean_output_tokens,
+            "extra_body": {"thinking": {"type": "enabled" if thinking_enabled else "disabled"}},
+        }
+        if thinking_enabled:
+            kwargs["reasoning_effort"] = self.reasoning_effort or "high"
+        return kwargs
+
+    def _thinking_enabled(self) -> bool:
+        if self.enable_thinking is not None:
+            return self.enable_thinking
+        if self.model_name.endswith("-pro"):
+            return True
+        return False
