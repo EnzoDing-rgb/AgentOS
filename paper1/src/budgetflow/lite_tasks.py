@@ -202,17 +202,34 @@ def build_repair_patch_prompt(task: LiteTaskRecord, localization_text: str, file
         "Output ONLY one ```json ... ``` block with this schema:\n"
         "{\n"
         '  "edits": [\n'
-        '    {"file": "path.py", "old": "exact old text", "new": "replacement text"}\n'
+        '    {"op": "replace", "file": "path.py", "old": "exact old text", "new": "replacement text"},\n'
+        '    {"op": "anchor_replace", "file": "path.py", "anchor": "nearby exact text", "old": "target text", "new": "replacement text"},\n'
+        '    {"op": "insert_after", "file": "path.py", "anchor": "exact existing text", "new": "text to insert after anchor"},\n'
+        '    {"op": "line_replace", "file": "path.py", "anchor": "exact single source line", "new": "full replacement line"}\n'
         "  ]\n"
         "}\n"
         "Requirements:\n"
         "- Use repo-relative file paths\n"
-        "- `old` must match exact file text from the source files above\n"
-        "- `new` is the replacement text for that exact block\n"
         "- Modify source files only (no test files)\n"
+        "- Prefer `line_replace` for single-line fixes\n"
+        "- Prefer `replace` when exact multi-line old text is visible in source files\n"
+        "- Use `anchor_replace` when exact full block may drift but nearby anchor is stable\n"
+        "- For `line_replace`, copy the anchor line exactly from numbered source; `new` is replacement code (indent is applied automatically)\n"
         "- Keep edits minimal\n"
         "- No prose outside JSON\n"
     )
+
+
+def summarize_repair_error(error_message: str, max_len: int = 600) -> str:
+    err = error_message.strip()
+    if "IndentationError" in err or "SyntaxError" in err or "parse_error:syntax" in err:
+        for line in err.splitlines():
+            if "Error" in line or "syntax" in line.lower():
+                return line[:max_len]
+    if "fail_after=fail" in err:
+        tail = err.split("fail_after=fail", 1)[-1]
+        return ("harness_fail:" + tail.strip())[:max_len]
+    return err[:max_len]
 
 
 def build_repair_retry_prompt(
@@ -227,9 +244,7 @@ def build_repair_retry_prompt(
     prev = previous_patch.strip() or "<empty>"
     if len(prev) > 1500:
         prev = prev[:1500] + "\n...[truncated]"
-    err = error_message.strip() or "unknown error"
-    if len(err) > 1200:
-        err = err[:1200] + "\n...[truncated]"
+    err = summarize_repair_error(error_message)
     return (
         f"{base}\n\n"
         f"Previous attempt #{attempt - 1} failed.\n"
@@ -237,5 +252,8 @@ def build_repair_retry_prompt(
         f"Previous output:\n```json\n{prev}\n```\n\n"
         "Regenerate the ENTIRE edits JSON from scratch.\n"
         "Do not describe the fix. Do not emit partial JSON.\n"
-        "Correct file paths and ensure each `old` block matches exact file text from the provided source files."
+        "If error starts with `target_not_found`, try `line_replace` with one exact source line.\n"
+        "If error starts with `parse_error:syntax`, fix indentation and use `line_replace` with exact anchor line.\n"
+        "If error starts with `harness_fail`, the edit applied but tests failed — try a different minimal fix.\n"
+        "Correct file paths and ensure anchors/old blocks match provided source files."
     )

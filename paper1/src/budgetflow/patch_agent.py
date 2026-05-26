@@ -10,11 +10,12 @@ from .lite_tasks import (
     build_lite_stage_prompt,
     build_repair_patch_prompt,
     build_repair_retry_prompt,
+    summarize_repair_error,
 )
 from .local_harness import clone_or_checkout, evaluate_local_harness
 from .loop import WorkflowSpec, WorkflowStep, build_default_loop
 from .repo_context import build_repair_file_context
-from .repair_workspace import apply_repair_edits, export_workspace_patch, parse_repair_edits
+from .repair_workspace import failure_class, realize_repair_edits
 from .run_deepseek_compare import FROZEN_BUDGET_PRESSURE, build_backends, fixed_backend_picker
 from .selector import build_deepseek_progress_table
 from .types import Backend, GovernorConfig, Stage, TurnInfo
@@ -36,6 +37,7 @@ class PatchRunResult:
     repair_text: str
     repair_attempts: int
     harness_resolved: bool
+    last_failure_class: str
 
 
 def _strategy_kwargs(strategy: str, backends: list[Backend]) -> dict:
@@ -108,7 +110,7 @@ def _run_stage(
     w_i: float,
 ) -> tuple[str, str, float]:
     ledger = WorkflowLedgerStore()
-    governor = BudgetGovernor(GovernorConfig(total_budget=50.0, default_max_output_tokens=2048), ledger)
+    governor = BudgetGovernor(GovernorConfig(total_budget=50.0, default_max_output_tokens=4096), ledger)
 
     def runner(backend: Backend, turn: TurnInfo, tokens: int):
         return clients[backend.name].run(turn, tokens)
@@ -130,7 +132,7 @@ def run_patch_agent(
     budget_pressure: float = FROZEN_BUDGET_PRESSURE,
     max_repair_attempts: int = MAX_REPAIR_ATTEMPTS,
 ) -> PatchRunResult:
-    del budget_pressure  # frozen constant used in _run_stage
+    del budget_pressure
     backends = build_backends()
     loc_step = task.workflow.steps[0]
     repair_step = task.workflow.steps[1]
@@ -156,10 +158,12 @@ def run_patch_agent(
     last_repair_text = ""
     resolved = False
     attempts_used = 0
+    last_failure = "unknown"
 
     for attempt in range(1, max_repair_attempts + 1):
         attempts_used = attempt
         repair_feedback["attempt"] = attempt
+        print(f"  [repair] attempt {attempt}/{max_repair_attempts} ...", flush=True)
         repair_backend, repair_text, repair_cost = _run_stage(
             task,
             Stage.REPAIR,
@@ -172,33 +176,27 @@ def run_patch_agent(
         picks.append(repair_backend)
         total_cost += repair_cost
         last_repair_text = repair_text
-        edits, edit_error = parse_repair_edits(repair_text)
-        if edits is None:
-            repair_feedback["error"] = edit_error or "invalid repair edits"
-            repair_feedback["previous_patch"] = repair_text[:1500]
-            continue
 
         repo_dir = clone_or_checkout(task)
-        ok, apply_error = apply_repair_edits(repo_dir, edits)
-        if not ok:
-            repair_feedback["error"] = apply_error or "failed to apply repair edits"
+        model_patch, pipeline_error = realize_repair_edits(repo_dir, repair_text)
+        if model_patch is None:
+            last_failure = failure_class(pipeline_error)
+            repair_feedback["error"] = pipeline_error or "invalid repair edits"
             repair_feedback["previous_patch"] = repair_text[:1500]
+            print(f"  [repair] attempt {attempt} failed: {last_failure}", flush=True)
             continue
 
-        workspace_patch = export_workspace_patch(repo_dir)
-        if workspace_patch.patch_text is None:
-            repair_feedback["error"] = workspace_patch.error or "git diff produced no patch"
-            repair_feedback["previous_patch"] = repair_text[:1500]
-            continue
-
-        model_patch = workspace_patch.patch_text
         harness = evaluate_local_harness(task, model_patch)
         best_patch = model_patch
         if harness.harness_resolved:
             resolved = True
+            last_failure = "resolved"
+            print(f"  [repair] attempt {attempt} resolved", flush=True)
             break
-        repair_feedback["error"] = harness.detail
+        last_failure = failure_class(harness.detail)
+        repair_feedback["error"] = summarize_repair_error(harness.detail)
         repair_feedback["previous_patch"] = repair_text[:1500]
+        print(f"  [repair] attempt {attempt} harness: {last_failure}", flush=True)
 
     return PatchRunResult(
         instance_id=task.instance_id,
@@ -212,4 +210,5 @@ def run_patch_agent(
         repair_text=last_repair_text,
         repair_attempts=attempts_used,
         harness_resolved=resolved,
+        last_failure_class=last_failure,
     )

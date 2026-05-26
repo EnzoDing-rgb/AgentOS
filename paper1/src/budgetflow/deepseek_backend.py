@@ -58,7 +58,9 @@ def evaluate_step_progress(stage: Stage, text: str) -> bool:
     if stage is Stage.LOCALIZATION:
         return ".py" in lower or "/" in cleaned or "file" in lower
     if stage is Stage.REPAIR:
-        return any(token in lower for token in ("fix", "patch", "change", "bug", "cause", "def ", "class ")) or "diff --git" in lower or "--- a/" in cleaned
+        if '"edits"' in cleaned and "{" in cleaned:
+            return True
+        return any(token in lower for token in ("fix", "patch", "change", "bug", "cause", "def ", "class "))
     return any(token in lower for token in ("test", "verify", "valid", "assert", "pass", "fail"))
 
 
@@ -130,7 +132,7 @@ class DeepSeekBackend:
         if stage is Stage.REPAIR:
             system_content = (
                 "You are a software repair agent. Output ONLY one valid JSON object "
-                "inside a ```json code block. No explanation outside the JSON."
+                "inside a ```json code block with an `edits` array. No prose outside JSON."
             )
         kwargs: dict = {
             "model": self.model_name,

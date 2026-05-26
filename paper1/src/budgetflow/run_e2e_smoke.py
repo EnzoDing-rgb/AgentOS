@@ -56,7 +56,7 @@ def main() -> None:
 
     tasks = load_swebench_lite_tasks(instance_ids=tuple(instance_ids))
     report(f"E2E smoke: strategy={strategy} tasks={len(tasks)} pressure={FROZEN_BUDGET_PRESSURE}")
-    report("workflow_steps_ok = API+rubric. harness_resolved = local git apply + pytest.")
+    report("Multi-round repair: JSON edits -> workspace diff -> harness.")
     report("Docker SWE harness unavailable here; using local repo checkout fallback.")
     report("")
 
@@ -69,7 +69,11 @@ def main() -> None:
         picks = "/".join(name.replace("deepseek_", "") for name in patch_result.backend_picks)
         report(
             f"  patch_agent workflow_steps_ok={patch_result.workflow_steps_ok} "
-            f"patch_extracted={patch_result.patch_extracted} cost={patch_result.total_cost:.4f} "
+            f"patch_extracted={patch_result.patch_extracted} "
+            f"harness_resolved={patch_result.harness_resolved} "
+            f"attempts={patch_result.repair_attempts} "
+            f"failure={patch_result.last_failure_class} "
+            f"cost={patch_result.total_cost:.4f} "
             f"picks={picks} elapsed={time.time() - patch_started:.1f}s"
         )
         if patch_result.model_patch:
@@ -79,6 +83,11 @@ def main() -> None:
                 report(f"    {line}")
         else:
             report("  patch_preview: <empty>")
+        if patch_result.repair_text:
+            raw_preview = patch_result.repair_text.splitlines()[:12]
+            report("  repair_preview:")
+            for line in raw_preview:
+                report(f"    {line}")
 
         harness_started = time.time()
         harness = evaluate_local_harness(task, patch_result.model_patch)

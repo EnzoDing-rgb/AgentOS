@@ -61,22 +61,16 @@ def apply_patch(repo_dir: Path, patch_text: str, label: str) -> tuple[bool, str]
             patch_text = f"diff --git a/{first_file} b/{first_file}\n{patch_text}"
     patch_file = repo_dir / f".budgetflow_{label}.patch"
     patch_file.write_text(patch_text)
-    commands = [
+    result = subprocess.run(
         ["git", "apply", "--verbose", str(patch_file)],
-        ["git", "apply", "--verbose", "--reject", str(patch_file)],
-        ["patch", "--batch", "--fuzz=5", "-p1", "-i", str(patch_file)],
-    ]
-    last_detail = ""
-    try:
-        for command in commands:
-            result = subprocess.run(command, cwd=repo_dir, capture_output=True, text=True)
-            if result.returncode == 0:
-                return True, "ok"
-            detail = result.stderr.strip() or result.stdout.strip()
-            last_detail = f"{' '.join(command)} => {detail}"
-        return False, f"patch apply failed: {last_detail}"
-    finally:
-        patch_file.unlink(missing_ok=True)
+        cwd=repo_dir,
+        capture_output=True,
+        text=True,
+    )
+    patch_file.unlink(missing_ok=True)
+    if result.returncode != 0:
+        return False, result.stderr.strip() or result.stdout.strip()
+    return True, "ok"
 
 
 def test_paths_for(task: LiteTaskRecord) -> list[str]:
@@ -93,12 +87,19 @@ def test_paths_for(task: LiteTaskRecord) -> list[str]:
 def run_pytest(repo_dir: Path, test_names: tuple[str, ...], test_paths: list[str]) -> tuple[bool, str]:
     if not test_names:
         return False, "no test names"
-    node_ids = []
+    node_ids: list[str] = []
+    missing: list[str] = []
     for path in test_paths:
+        full = repo_dir / path
+        text = full.read_text() if full.is_file() else ""
         for name in test_names:
-            node_ids.append(f"{path}::{name}")
+            if f"def {name}(" in text:
+                node_ids.append(f"{path}::{name}")
+            else:
+                missing.append(f"{path}::{name}")
     if not node_ids:
-        return False, "no pytest node ids"
+        detail = ", ".join(missing[:6]) if missing else "none"
+        return False, f"no pytest node ids: {detail}"
     cmd = ["python", "-m", "pytest", "-x", *node_ids]
     result = subprocess.run(cmd, cwd=repo_dir, capture_output=True, text=True)
     output = (result.stdout + "\n" + result.stderr).strip()

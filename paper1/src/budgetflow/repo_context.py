@@ -32,6 +32,18 @@ def module_guess_paths(task: LiteTaskRecord) -> list[str]:
     return guesses
 
 
+def extract_symbol_hints(*texts: str) -> list[str]:
+    hints: list[str] = []
+    for text in texts:
+        hints.extend(re.findall(r"\bdef\s+([A-Za-z_][\w]*)", text))
+        hints.extend(re.findall(r"\bclass\s+([A-Za-z_][\w]*)", text))
+        hints.extend(re.findall(r"`([A-Za-z_][\w.]+)`", text))
+        for token in re.findall(r"\b([A-Za-z_][\w]{2,})\b", text):
+            if token[0].isupper() or "_" in token:
+                hints.append(token)
+    return list(dict.fromkeys(hints))
+
+
 def resolve_repo_paths(repo_dir: Path, candidates: list[str]) -> list[str]:
     resolved: list[str] = []
     for candidate in candidates:
@@ -49,30 +61,43 @@ def resolve_repo_paths(repo_dir: Path, candidates: list[str]) -> list[str]:
     return resolved
 
 
-def _anchor_line(lines: list[str], task: LiteTaskRecord) -> int:
-    statement = task.problem_statement.lower()
-    candidates: list[int] = []
+def _anchor_line(lines: list[str], hints: list[str]) -> int:
+    lowered_hints = [hint.lower() for hint in hints if hint.strip()]
+    for hint in lowered_hints:
+        for index, line in enumerate(lines, start=1):
+            lower = line.lower()
+            if hint in lower and ("def " in line or "class " in line or hint in lower):
+                return index
+    body_tokens = (
+        "_collect_factor_and_dimension",
+        "equivalent_dims",
+        "_eval_expand_tensorproduct",
+        "TensorProduct",
+        "raise ValueError",
+    )
+    for token in body_tokens:
+        for index, line in enumerate(lines, start=1):
+            if token.lower() in line.lower():
+                return index
     for index, line in enumerate(lines, start=1):
-        lower = line.lower()
-        if "tensorproduct" in statement and "tensorproduct" in lower:
-            candidates.append(index)
-        if "expand" in statement and "expand" in lower:
-            candidates.append(index)
-        if "trace" in statement and "trace" in lower:
-            candidates.append(index)
-    if candidates:
-        return candidates[0]
+        if line.strip().startswith(("def ", "class ")):
+            return index
     return 1
 
 
-def read_file_snippets(repo_dir: Path, task: LiteTaskRecord, paths: list[str], max_lines: int = 120) -> str:
+def read_file_snippets(
+    repo_dir: Path,
+    paths: list[str],
+    hints: list[str],
+    max_lines: int = 120,
+) -> str:
     blocks: list[str] = []
     for path in paths[:3]:
         full = repo_dir / path
         if not full.is_file():
             continue
         lines = full.read_text(errors="replace").splitlines()
-        anchor = _anchor_line(lines, task)
+        anchor = _anchor_line(lines, hints)
         start = max(1, anchor - 40)
         end = min(len(lines), start + max_lines - 1)
         if end - start + 1 < max_lines and len(lines) > max_lines:
@@ -93,5 +118,11 @@ def build_repair_file_context(task: LiteTaskRecord, localization_text: str) -> t
     if not candidates:
         candidates = module_guess_paths(task)
     paths = resolve_repo_paths(repo_dir, candidates)
-    snippets = read_file_snippets(repo_dir, task, paths)
+    hints = extract_symbol_hints(
+        localization_text,
+        task.problem_statement,
+        " ".join(task.fail_to_pass),
+        " ".join(task.pass_to_pass[:8]),
+    )
+    snippets = read_file_snippets(repo_dir, paths, hints)
     return snippets, paths
