@@ -32,6 +32,7 @@
   "C_Cpp_Runner.useLeakSanitizer": false,
   "C_Cpp_Runner.showCompilationTime": false,
   "C_Cpp_Runner.useLinkTimeOptimization": false,
+  "C_Cpp_Runner.msvcSecureNoWarnings": false,
   "python.defaultInterpreterPath": "/root/anaconda3/bin/python3",
   "python.analysis.extraPaths": [
     "${workspaceFolder}/paper1/src"
@@ -48,6 +49,12 @@
   "cursorpyright.analysis.exclude": [
     "paper1/data/**"
   ],
+  "cursorpyright.analysis.typeCheckingMode": "strict",
+  "editor.inlayHints.enabled": "on",
+  "cursorpyright.analysis.inlayHints.variableTypes": true,
+  "cursorpyright.analysis.inlayHints.functionReturnTypes": true,
+  "cursorpyright.analysis.inlayHints.callArgumentNames": true,
+  "cursorpyright.analysis.inlayHints.pytestParameters": true,
   "markdown.math.enabled": true,
   "slidev.include": [
     "**/slides.md",

@@ -1,7 +1,17 @@
 .env
+.env.*
+!.env.example
+
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*.pyo
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.venv/
+venv/
 
 # IDE / agent tooling
 .cursor/
@@ -10,14 +20,27 @@ __pycache__/
 # External deps (clone separately; see external/PINNED_COMMIT)
 external/mini-swe-agent/
 
-# SWE-bench clones & experiment artifacts
+# Local data & experiment artifacts
+paper1/data/
+paper1/src/data/
+
+# SWE-bench clones (legacy explicit paths kept for clarity)
 paper1/data/SWE-bench/
 paper1/data/experiments/
 paper1/data/repo_cache/
 paper1/data/runs/
 paper1/data/swebench_lite_export/
-paper1/data/*.log
 
 # Generated outputs
 *.jsonl
 *.log
+
+# Node / slide decks
+node_modules/
+.pnpm-store/
+dist/
+.netlify/
+
+# OS
+.DS_Store
+Thumbs.db
