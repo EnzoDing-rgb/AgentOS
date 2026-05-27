@@ -30,20 +30,33 @@ def repo_dir_for(task: LiteTaskRecord) -> Path:
     return CACHE_DIR / repo_slug(task.repo)
 
 
+def _pip_marker_path(task: LiteTaskRecord) -> Path:
+    return CACHE_DIR / f"{repo_slug(task.repo)}.pip_ok"
+
+
 def clone_or_checkout(task: LiteTaskRecord) -> Path:
     repo_dir = repo_dir_for(task)
     repo_url = f"https://github.com/{task.repo}.git"
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     if not repo_dir.exists():
+        print(f"[prep] git clone {task.repo} ...", flush=True)
         subprocess.run(
             ["git", "clone", "--filter=blob:none", repo_url, str(repo_dir)],
             check=True,
             capture_output=True,
             text=True,
         )
+    print(f"[prep] checkout {task.instance_id} @ {task.base_commit[:8]} ...", flush=True)
     subprocess.run(["git", "fetch", "origin", task.base_commit], cwd=repo_dir, check=True, capture_output=True, text=True)
     subprocess.run(["git", "checkout", "--force", task.base_commit], cwd=repo_dir, check=True, capture_output=True, text=True)
     subprocess.run(["git", "clean", "-fdx"], cwd=repo_dir, check=True, capture_output=True, text=True)
+
+    marker = _pip_marker_path(task)
+    if marker.exists() and marker.read_text().strip() == task.base_commit:
+        print(f"[prep] pip skip (cached for {task.base_commit[:8]})", flush=True)
+        return repo_dir
+
+    print(f"[prep] pip install -e . (first time at this commit, sympy can take several min) ...", flush=True)
     install = subprocess.run(
         ["pip", "install", "-e", ".", "-q"],
         cwd=repo_dir,
@@ -52,6 +65,12 @@ def clone_or_checkout(task: LiteTaskRecord) -> Path:
     )
     if install.returncode != 0 and "sympy" not in task.repo:
         install.check_returncode()
+    if install.returncode == 0:
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(task.base_commit)
+        print("[prep] pip done", flush=True)
+    else:
+        print("[prep] pip failed (non-fatal for sympy)", flush=True)
     return repo_dir
 
 

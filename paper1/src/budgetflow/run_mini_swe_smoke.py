@@ -11,7 +11,7 @@ if str(SRC) not in sys.path:
 
 from budgetflow.adapter.runner import run_mini_swe_task
 from budgetflow.deepseek_backend import load_env_file
-from budgetflow.lite_tasks import load_swebench_lite_tasks
+from budgetflow.lite_tasks import load_smoke_tasks
 
 RUNS_DIR = Path("/Lishun/_archive/.local_env_bak/research/AgentOS/paper1/data/runs")
 
@@ -24,10 +24,7 @@ def main() -> None:
     load_env_file()
     limit = int(sys.argv[1]) if len(sys.argv) > 1 else 3
     strategy = sys.argv[2] if len(sys.argv) > 2 else "all_pro"
-    pool = load_swebench_lite_tasks(limit=300)
-    tasks = [task for task in pool if task.repo.startswith("sympy/")][:limit]
-    if not tasks:
-        tasks = load_swebench_lite_tasks(limit=limit)
+    tasks = load_smoke_tasks(limit)
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
     out_path = RUNS_DIR / f"mini_swe_smoke_{strategy}_n{limit}.jsonl"
 

@@ -156,7 +156,7 @@ Lite 数据本地目录：
 - HF 下载
 - GitHub 外网抓取
 - 公开 calibration 数据下载
-
+****
 如果正在跑下载，千万别先关 main Mac 上那个 `ssh -R ...` 窗口。
 
 ---

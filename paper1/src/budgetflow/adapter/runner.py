@@ -16,6 +16,7 @@ from minisweagent.exceptions import Submitted  # noqa: E402
 from minisweagent.utils.serialize import recursive_merge  # noqa: E402
 
 from ..governor import BudgetGovernor, GovernorConfig
+from ..heartbeat import run_with_heartbeat
 from ..ledger import WorkflowLedgerStore
 from ..lite_tasks import LiteTaskRecord
 from ..local_harness import clone_or_checkout, evaluate_local_harness
@@ -88,7 +89,12 @@ def run_mini_swe_task(
     patch_text: str | None = None
     exit_status = "unknown"
     try:
-        exit_info = agent.run(task.problem_statement)
+        exit_info = run_with_heartbeat(
+            task.instance_id,
+            lambda: agent.run(task.problem_statement),
+            interval_s=30.0,
+            status_fn=lambda: f"llm_turns={model.step_index}",
+        )
         exit_status = str(exit_info.get("exit_status", "unknown"))
         patch_text = exit_info.get("submission") or None
     except Submitted as submitted:

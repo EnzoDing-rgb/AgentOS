@@ -1,0 +1,5 @@
+{
+  "include": ["paper1/src", "paper1/tests"],
+  "extraPaths": ["paper1/src"],
+  "exclude": ["paper1/data", "**/__pycache__", "**/node_modules"]
+}

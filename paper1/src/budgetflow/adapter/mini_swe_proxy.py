@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from typing import Any
 
@@ -21,6 +22,8 @@ from ..types import Backend, TurnInfo, WorkflowStatus
 from .bash_stage import classify_bash_stage
 from .message_utils import estimate_input_tokens, extract_bash_context
 from .strategies import RoutingContext, choose_backend, stage_weight
+
+logger = logging.getLogger("budgetflow_litellm_model")
 
 
 class BudgetFlowLitellmModel:
@@ -151,7 +154,7 @@ class BudgetFlowLitellmModel:
                 **(model_kwargs | kwargs),
             )
 
-        for attempt in retry(abort_exceptions=[KeyboardInterrupt]):
+        for attempt in retry(logger=logger, abort_exceptions=[KeyboardInterrupt]):
             with attempt:
                 return _query()
 

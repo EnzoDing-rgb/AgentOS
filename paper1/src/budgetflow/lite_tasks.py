@@ -47,6 +47,19 @@ def load_swebench_lite_tasks(
     return [build_lite_task_record(item) for item in selected_items]
 
 
+# Pipeline smoke: 1 fail_to_pass test, tiny gold patch (not sympy-11400 ccode/sinc).
+SMOKE_INSTANCE_IDS: tuple[str, ...] = (
+    "sympy__sympy-20212",  # 0**-oo -> ComplexInfinity; ~4 lines in sympy/core/power.py
+    "sympy__sympy-12171",  # mathematica Derivative printer; problem states fix
+    "sympy__sympy-21614",  # Derivative.kind delegates to expr.kind
+)
+
+
+def load_smoke_tasks(limit: int = 1) -> list[LiteTaskRecord]:
+    """Load easiest lite sympy tasks for mini-SWE / Step A smoke."""
+    return load_swebench_lite_tasks(instance_ids=SMOKE_INSTANCE_IDS[:limit])
+
+
 def load_local_swebench_lite_export() -> list[dict] | None:
     test_jsonl = LOCAL_EXPORT_DIR / "test.jsonl"
     if not test_jsonl.exists():
