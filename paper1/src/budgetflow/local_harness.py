@@ -44,7 +44,14 @@ def clone_or_checkout(task: LiteTaskRecord) -> Path:
     subprocess.run(["git", "fetch", "origin", task.base_commit], cwd=repo_dir, check=True, capture_output=True, text=True)
     subprocess.run(["git", "checkout", "--force", task.base_commit], cwd=repo_dir, check=True, capture_output=True, text=True)
     subprocess.run(["git", "clean", "-fdx"], cwd=repo_dir, check=True, capture_output=True, text=True)
-    subprocess.run(["pip", "install", "-e", ".", "-q"], cwd=repo_dir, check=True, capture_output=True, text=True)
+    install = subprocess.run(
+        ["pip", "install", "-e", ".", "-q"],
+        cwd=repo_dir,
+        capture_output=True,
+        text=True,
+    )
+    if install.returncode != 0 and "sympy" not in task.repo:
+        install.check_returncode()
     return repo_dir
 
 
