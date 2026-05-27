@@ -11,7 +11,8 @@ import pandas as pd
 from .loop import WorkflowSpec, WorkflowStep
 from .types import Stage
 
-LOCAL_EXPORT_DIR = Path("/Lishun/_archive/.local_env_bak/research/AgentOS/paper1/data/swebench_lite_export")
+PAPER1_ROOT = Path(__file__).resolve().parents[2]
+LOCAL_EXPORT_DIR = PAPER1_ROOT / "data" / "swebench_lite_export"
 
 
 @dataclass(frozen=True)

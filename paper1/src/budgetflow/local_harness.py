@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 from .lite_tasks import LiteTaskRecord
+from .console_log import dim, paint, tag
 
-REPO_ROOT = Path("/Lishun/_archive/.local_env_bak/research/AgentOS/paper1")
-CACHE_DIR = REPO_ROOT / "data" / "repo_cache"
+PAPER1_ROOT = Path(__file__).resolve().parents[2]
+CACHE_DIR = PAPER1_ROOT / "data" / "repo_cache"
 
 
 @dataclass(frozen=True)
@@ -20,6 +22,12 @@ class HarnessResult:
     pass_to_pass_passed: bool
     detail: str
     repo_dir: str
+    test_patch_ok: bool | None = None
+    fail_before: bool | None = None
+    model_patch_ok: bool | None = None
+    fail_after: bool | None = None
+    fail_to_pass: tuple[str, ...] = ()
+    pass_to_pass: tuple[str, ...] = ()
 
 
 def repo_slug(repo: str) -> str:
@@ -39,26 +47,26 @@ def clone_or_checkout(task: LiteTaskRecord) -> Path:
     repo_url = f"https://github.com/{task.repo}.git"
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     if not repo_dir.exists():
-        print(f"[prep] git clone {task.repo} ...", flush=True)
+        print(f"{tag('prep')} git clone {paint(task.repo, '\033[96m')} ...", flush=True)
         subprocess.run(
             ["git", "clone", "--filter=blob:none", repo_url, str(repo_dir)],
             check=True,
             capture_output=True,
             text=True,
         )
-    print(f"[prep] checkout {task.instance_id} @ {task.base_commit[:8]} ...", flush=True)
+    print(f"{tag('prep')} checkout {paint(task.instance_id, '\033[1m', '\033[96m')} @ {task.base_commit[:8]} ...", flush=True)
     subprocess.run(["git", "fetch", "origin", task.base_commit], cwd=repo_dir, check=True, capture_output=True, text=True)
     subprocess.run(["git", "checkout", "--force", task.base_commit], cwd=repo_dir, check=True, capture_output=True, text=True)
     subprocess.run(["git", "clean", "-fdx"], cwd=repo_dir, check=True, capture_output=True, text=True)
 
     marker = _pip_marker_path(task)
     if marker.exists() and marker.read_text().strip() == task.base_commit:
-        print(f"[prep] pip skip (cached for {task.base_commit[:8]})", flush=True)
+        print(f"{tag('prep')} pip skip {dim('(cached)')}", flush=True)
         return repo_dir
 
-    print(f"[prep] pip install -e . (first time at this commit, sympy can take several min) ...", flush=True)
+    print(f"{tag('prep')} pip install -e . {dim('(sympy may take several min)')} ...", flush=True)
     install = subprocess.run(
-        ["pip", "install", "-e", ".", "-q"],
+        [sys.executable, "-m", "pip", "install", "-e", ".", "-q"],
         cwd=repo_dir,
         capture_output=True,
         text=True,
@@ -68,7 +76,7 @@ def clone_or_checkout(task: LiteTaskRecord) -> Path:
     if install.returncode == 0:
         marker.parent.mkdir(parents=True, exist_ok=True)
         marker.write_text(task.base_commit)
-        print("[prep] pip done", flush=True)
+        print(f"{tag('prep')} pip {paint('done', '\033[92m')}", flush=True)
     else:
         print("[prep] pip failed (non-fatal for sympy)", flush=True)
     return repo_dir
@@ -145,6 +153,8 @@ def evaluate_local_harness(task: LiteTaskRecord, model_patch: str | None) -> Har
             pass_to_pass_passed=False,
             detail="no model patch extracted",
             repo_dir=str(repo_dir),
+            fail_to_pass=task.fail_to_pass,
+            pass_to_pass=task.pass_to_pass,
         )
 
     try:
@@ -162,11 +172,23 @@ def evaluate_local_harness(task: LiteTaskRecord, model_patch: str | None) -> Har
         )
 
     test_paths = test_paths_for(task)
+    test_patch_ok: bool | None = None
     if task.test_patch:
-        ok, msg = apply_patch(repo_dir, task.test_patch, "test_patch")
-        detail_parts.append(f"test_patch={'ok' if ok else msg}")
-        if not ok:
-            return HarnessResult(task.instance_id, False, False, False, False, "; ".join(detail_parts), str(repo_dir))
+        test_patch_ok, msg = apply_patch(repo_dir, task.test_patch, "test_patch")
+        detail_parts.append(f"test_patch={'ok' if test_patch_ok else msg}")
+        if not test_patch_ok:
+            return HarnessResult(
+                task.instance_id,
+                False,
+                False,
+                False,
+                False,
+                "; ".join(detail_parts),
+                str(repo_dir),
+                test_patch_ok=False,
+                fail_to_pass=task.fail_to_pass,
+                pass_to_pass=task.pass_to_pass,
+            )
 
     fail_before, fail_before_log = run_pytest(repo_dir, task.fail_to_pass, test_paths)
     detail_parts.append(f"fail_before={'pass' if fail_before else 'fail'}")
@@ -174,7 +196,20 @@ def evaluate_local_harness(task: LiteTaskRecord, model_patch: str | None) -> Har
     ok, msg = apply_patch(repo_dir, model_patch, "model_patch")
     detail_parts.append(f"model_patch={'ok' if ok else msg}")
     if not ok:
-        return HarnessResult(task.instance_id, False, False, False, False, "; ".join(detail_parts), str(repo_dir))
+        return HarnessResult(
+            task.instance_id,
+            False,
+            False,
+            False,
+            False,
+            "; ".join(detail_parts),
+            str(repo_dir),
+            test_patch_ok=test_patch_ok,
+            fail_before=fail_before,
+            model_patch_ok=False,
+            fail_to_pass=task.fail_to_pass,
+            pass_to_pass=task.pass_to_pass,
+        )
 
     fail_after, fail_after_log = run_pytest(repo_dir, task.fail_to_pass, test_paths)
     detail_parts.append(f"fail_after={'pass' if fail_after else 'fail'}")
@@ -196,6 +231,12 @@ def evaluate_local_harness(task: LiteTaskRecord, model_patch: str | None) -> Har
         pass_to_pass_passed=pass_ok,
         detail="; ".join(detail_parts),
         repo_dir=str(repo_dir),
+        test_patch_ok=test_patch_ok,
+        fail_before=fail_before,
+        model_patch_ok=True,
+        fail_after=fail_after,
+        fail_to_pass=task.fail_to_pass,
+        pass_to_pass=task.pass_to_pass,
     )
 
 

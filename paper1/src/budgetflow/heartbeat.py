@@ -5,6 +5,7 @@ import time
 from collections.abc import Callable
 from typing import Any
 
+from .console_log import dim, ok_label, paint, tag
 
 def run_with_heartbeat(
     label: str,
@@ -19,11 +20,15 @@ def run_with_heartbeat(
 
     def _loop() -> None:
         while not stop.wait(interval_s):
-            extra = f" {status_fn()}" if status_fn else ""
-            print(
-                f"[heartbeat] {label} alive elapsed={time.time() - started:.0f}s{extra}",
-                flush=True,
-            )
+            elapsed = time.time() - started
+            extra = status_fn() if status_fn else ""
+            pulse = ok_label("● ALIVE")
+            header = tag("heartbeat", color="\033[96m") + " " + paint(label, "\033[1m", "\033[97m")
+            elapsed_s = paint(f"{elapsed:.0f}s", "\033[93m", "\033[1m")
+            line = f"{header} {pulse} elapsed={elapsed_s}"
+            if extra:
+                line += " " + extra
+            print(line, flush=True)
 
     thread = threading.Thread(target=_loop, daemon=True)
     thread.start()

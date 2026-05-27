@@ -13,7 +13,8 @@ from budgetflow.adapter.runner import run_mini_swe_task
 from budgetflow.deepseek_backend import load_env_file
 from budgetflow.lite_tasks import load_smoke_tasks
 
-RUNS_DIR = Path("/Lishun/_archive/.local_env_bak/research/AgentOS/paper1/data/runs")
+PAPER1_ROOT = Path(__file__).resolve().parents[2]
+RUNS_DIR = PAPER1_ROOT / "data" / "runs"
 
 
 def report(message: str) -> None:

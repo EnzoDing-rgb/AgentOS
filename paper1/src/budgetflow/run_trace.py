@@ -10,6 +10,8 @@ from pathlib import Path
 
 from minisweagent.agents.default import DefaultAgent
 
+from .console_log import dim, fail_label, ok_label, paint, phase_label, tag, warn_label
+
 
 def patch_local_swebench_config(config: dict, repo_dir: Path) -> dict:
     """Map Docker /testbed paths to the real local checkout."""
@@ -139,14 +141,25 @@ class RunTraceLogger:
         self._steps_logged += 1
 
         line = (
-            f"step={agent.n_calls} phase={phase} changed={len(changed)} "
-            f"hit_target={bool(hit_target)} repeat={repeat_score}"
+            f"step={paint(str(agent.n_calls), '\033[1m', '\033[97m')} "
+            f"phase={phase_label(phase)} "
+            f"changed={paint(str(len(changed)), '\033[93m')} "
+            f"hit_target={ok_label('YES') if hit_target else dim('no')}"
+            f" repeat={repeat_score}"
         )
         if commands:
-            line += f" cmd={commands[-1][:100]!r}"
+            cmd = commands[-1][:100]
+            line += f" cmd={dim(repr(cmd))}"
         if changed:
-            line += f" files={','.join(changed[:3])}"
-        print(f"[trace] {self.instance_id} {line}", flush=True)
+            files = ",".join(changed[:3])
+            if hit_target:
+                line += f" files={ok_label(files)}"
+            elif phase == "edit_other":
+                line += f" files={warn_label(files)}"
+            else:
+                line += f" files={paint(files, '\033[93m')}"
+        header = tag("trace") + " " + paint(self.instance_id, "\033[1m", "\033[96m")
+        print(f"{header} {line}", flush=True)
         return record
 
     def heartbeat_status(self, agent: DefaultAgent, *, elapsed_s: float) -> str:
@@ -156,12 +169,18 @@ class RunTraceLogger:
         if self._recent_commands:
             last = self._recent_commands[-1]
             repeat = sum(1 for c in self._recent_commands if c == last)
-        warn = " STUCK?" if repeat >= 3 and not hit else ""
-        off = " OFF_TARGET" if changed and not hit and self.target_files else ""
-        return (
-            f"llm_turns={agent.n_calls} phase={self._last_phase(changed, hit)} "
-            f"changed={','.join(changed[:2]) or '-'} hit_target={bool(hit)}{warn}{off}"
-        )
+        phase = self._last_phase(changed, hit)
+        parts = [
+            f"llm_turns={paint(str(agent.n_calls), '\033[1m', '\033[97m')}",
+            f"phase={phase_label(phase)}",
+            f"changed={paint(','.join(changed[:2]) or '-', '\033[93m')}",
+            f"hit_target={ok_label('YES') if hit else dim('no')}",
+        ]
+        if repeat >= 3 and not hit:
+            parts.append(warn_label("STUCK?"))
+        if changed and not hit and self.target_files:
+            parts.append(warn_label("OFF_TARGET"))
+        return " ".join(parts)
 
     def _last_phase(self, changed: list[str], hit: list[str]) -> str:
         if hit:
