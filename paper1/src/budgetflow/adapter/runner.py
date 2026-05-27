@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -9,7 +10,6 @@ MINI_SWE_SRC = REPO_ROOT / "external" / "mini-swe-agent" / "src"
 if str(MINI_SWE_SRC) not in sys.path:
     sys.path.insert(0, str(MINI_SWE_SRC))
 
-from minisweagent.agents.default import DefaultAgent  # noqa: E402
 from minisweagent.config import get_config_from_spec  # noqa: E402
 from minisweagent.environments.local import LocalEnvironment  # noqa: E402
 from minisweagent.exceptions import Submitted  # noqa: E402
@@ -20,11 +20,13 @@ from ..heartbeat import run_with_heartbeat
 from ..ledger import WorkflowLedgerStore
 from ..lite_tasks import LiteTaskRecord
 from ..local_harness import clone_or_checkout, evaluate_local_harness
+from ..run_trace import RunTraceLogger, TracedDefaultAgent, patch_local_swebench_config
 from .backends import build_deepseek_backends
 from .mini_swe_proxy import BudgetFlowLitellmModel
 from .strategies import build_routing_context
 
 SWEBENCH_CONFIG = REPO_ROOT / "external" / "mini-swe-agent" / "src" / "minisweagent" / "config" / "benchmarks" / "swebench.yaml"
+RUNS_DIR = REPO_ROOT / "paper1" / "data" / "runs"
 
 
 @dataclass(frozen=True)
@@ -66,7 +68,14 @@ def run_mini_swe_task(
     budget_pressure: float | None = None,
 ) -> MiniSweRunResult:
     repo_dir = clone_or_checkout(task)
-    config = _load_agent_config()
+    trace_dir = RUNS_DIR / f"trace_{task.instance_id}_{strategy}"
+    trace = RunTraceLogger(
+        instance_id=task.instance_id,
+        repo_dir=repo_dir,
+        trace_dir=trace_dir,
+        target_files=task.gold_files,
+    )
+    config = patch_local_swebench_config(_load_agent_config(), repo_dir)
     backends = build_deepseek_backends()
     ledger = WorkflowLedgerStore()
     cap = budget_per_task if budget_per_task is not None else 1_000_000.0
@@ -84,7 +93,10 @@ def run_mini_swe_task(
         format_error_template=model_cfg.get("format_error_template"),
     )
     env = LocalEnvironment(cwd=str(repo_dir), timeout=config.get("environment", {}).get("timeout", 120))
-    agent = DefaultAgent(model, env, **config.get("agent", {}))
+    agent_cfg = dict(config.get("agent", {}))
+    agent_cfg["output_path"] = trace_dir / "trajectory.json"
+    run_started = time.time()
+    agent = TracedDefaultAgent(model, env, trace=trace, run_started=run_started, **agent_cfg)
 
     patch_text: str | None = None
     exit_status = "unknown"
@@ -93,7 +105,7 @@ def run_mini_swe_task(
             task.instance_id,
             lambda: agent.run(task.problem_statement),
             interval_s=30.0,
-            status_fn=lambda: f"llm_turns={model.step_index}",
+            status_fn=lambda: trace.heartbeat_status(agent, elapsed_s=time.time() - run_started),
         )
         exit_status = str(exit_info.get("exit_status", "unknown"))
         patch_text = exit_info.get("submission") or None
