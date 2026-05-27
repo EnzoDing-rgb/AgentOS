@@ -1,7 +1,7 @@
 # BudgetFlow Refactor — 进度
 
-> 测什么：**同一 mini-SWE agent、同一 batch 预算，BF 路由是否比 Budget-Only 更省、batch 是否更稳。**  
-> 不测什么：自建 agent、改 mini-SWE prompt、在 eval 上调参。
+> **Vision：** BudgetFlow 是 agentic SWE 的 **runtime economic layer** — 在固定 batch 预算下，用 reserve/settle hard cap + progress-aware routing，比 budget-only 换更多 **harness resolved**，且不修改 agent scaffold。  
+> **Empirical hook：** mini-SWE-agent + local harness + shared batch pool（RQ2）；mock batch governance（RQ1）。
 
 ---
 
@@ -11,11 +11,54 @@
 |---|---|
 | Scaffold | mini-SWE-agent，commit pin `adfe2023…`，只 bash |
 | BF 接入点 | LLM 边界 wrapper，不动 agent 循环 |
-| Harness | 现用 `local_harness.py`（非 Docker leaderboard 口径，论文须 disclaimer） |
-| Backend | 仅 DeepSeek Flash / Pro |
-| 预算 | **每 policy 一个共享 batch pool**；policy 内 task **串行**；policy 间 `--jobs N` 并行 + worktree |
-| Cap 公式 | pilot 得 `M` → `loose_batch = 2×M×n`，`tight_batch = 0.5×M×n` |
-| 路由表 | `defaults.py` 写死，不校准 |
+| Harness | `local_harness.py`（非 Docker leaderboard；论文 disclaimer） |
+| Backend | DeepSeek Flash / Pro |
+| 预算 | **每 policy 一个 shared batch pool**；policy 内 task **串行**；policy 间 `--jobs N` + worktree |
+| Cap 公式 | `loose_batch = 2×M×n`，`tight_batch = 0.5×M×n`；M = pilot median all_pro |
+| Hard cap | settle clamp；`batch_spent ≤ cap` |
+| 路由表 | `defaults.py` 写死，eval 不调 |
+
+---
+
+## Cap 校准（论文冻结数据 — 详见 `docs/protocol.md`）
+
+**M 的定义：** pilot 中 uncapped all_pro 每题 cost 的 **median**（governor units）。
+
+**为何重要：** RQ2 的 loose/tight 两档必须来自 **同一 pre-registered 公式**，不能 hand-tune。否则 reviewer 质疑 cap 凑结果。
+
+**当前可用估计（compare_3x5 easy-3，2026-05-27）：**
+
+| 指标 | 值 | 用途 |
+|---|---:|---|
+| all_pro costs | 113, 573, 88 | 13647 拉高方差 |
+| **M_median** | **113** | **推荐进 protocol** |
+| M_mean | 258 | 敏感性分析 / upper bound |
+| BF full_loose batch | 139 / 500 cap | smoke 偏松（28% 利用率） |
+
+**n=3 batch caps（公式）：**
+
+| 基准 | loose_batch | tight_batch |
+|---|---:|---:|
+| M=113 | 680 | 170 |
+| M=258 | 1550 | 387 |
+| 应力参考 ~300/150 | ~300 | ~150 | 比 smoke 500/200 更紧；正式值以 B.0 重跑为准 |
+
+**B.0 旧跑 INVALID：** 题单含 21614 → M=1951（median），21614 单题 47571/236 turns。**禁止**用于主表。
+
+**Pilot 题单（待改代码）：** `13480`, `13647`, `14774`（compare_easy），**非** `SMOKE_INSTANCE_IDS`（含 21614）。
+
+---
+
+## Pilot 叙事（B.0）
+
+| 问题 | 答案 |
+|---|---|
+| Pilot 测什么？ | Uncapped all_pro cost → M → batch cap 公式 |
+| Pilot 不测什么？ | 策略对比、BF vs Only |
+| 题怎么选？ | Representative **easy**（小 patch、单 gold、harness 稳） |
+| 21614 角色？ | Stress / case study；**不进 M** |
+| 产出？ | `pilot_b0_summary.json` + **`protocol.md`（冻结）** |
+| 旧 protocol？ | 2026-05-27 版标 INVALID，compare 主表不得用 |
 
 ---
 
@@ -23,59 +66,99 @@
 
 | 步 | 状态 | 说明 |
 |---|---|---|
-| **A** Adapter | ✅ | adapter、baseline/compare runner、harness、worktree 隔离；runtime 单测过 |
-| 归档旧 scaffold | ✅ | `archive/staged_react_v1` 已推；main 已删旧 ReAct/tool_sandbox |
-| **B.smoke** 5×5 | 🏃 | `run_mini_swe_compare --limit 5 --jobs 5`；手填 cap 试管道，**非论文主表** |
-| **B.0** Pilot | ⏳ | `run_pilot.py` 有，**未跑**；`protocol.md` **未生成** |
-| **B.1–3** 正式 RQ2 | ⏳ | n=20、cap 来自 pilot、iter 递进（Full/Only → +workflow → +anchors） |
-| **C** RQ1 mock batch | ⏳ | `run_batch_governance.py` 未建 |
-| **D** 文档 | ⏳ | concept/design/result 未同步 |
+| **A** Adapter | ✅ | runner、harness、worktree；hard cap；**dynamic pressure** |
+| trace submit fix | ✅ | `run_trace.py` + `test_run_trace.py` |
+| pilot 题单代码 | ✅ | `PILOT_INSTANCE_IDS`；batch cap 输出 |
+| **B.0 Pilot** | ✅ | M=187.15；protocol **FROZEN** |
+| **5×5 compare** | ✅ | Full 3/5 tight > Only 2/5；protocol caps |
+| **B.1–3** RQ2 | ⏳ | n=20、cap 读 protocol |
+| **C** RQ1 mock batch | ⏳ | `run_batch_governance.py` |
+| **D** 文档 | 🏃 | progress + refactor 已更；concept/result 待同步 |
+
+---
+
+## 3×5 结果摘要（paper seed）
+
+```
+full_loose   3/3  batch_spent=139/500
+full_tight   3/3  batch_spent=180/200
+only_loose   1/3  batch_spent=500/500  (13647 吃池)
+only_tight   1/3  batch_spent=199/200
+all_pro      3/3  batch_spent=774
+```
+
+Artifacts: `data/runs/compare_3x5.{jsonl,summary.log}`，`trace_*` 目录。
+
+---
+
+## 5×5 结果摘要（2026-05-27，FROZEN caps + dynamic pressure）
+
+```
+full_loose   3/5  batch_spent=1871/1871
+full_tight   3/5  batch_spent=468/468
+only_loose   3/5  batch_spent=1871/1871  flash=3%
+only_tight   2/5  batch_spent=468/468   flash=41%
+all_pro      5/5  batch_spent=6707
+```
+
+Artifacts: `data/runs/compare_5x5.{jsonl,summary.log}`
 
 ---
 
 ## 下一步（按顺序）
 
-1. **等 5×5 smoke 跑完** → 看 summary 里各 strategy 的 `resolved/n`、`batch_spent`（Full vs Only 有无信号）
-2. **跑 B.0 pilot**（3 task × all_pro 无 cap）→ 出 `M`，写 `protocol.md` 冻 batch 公式
-3. **改 `run_pilot.py`**：输出 `loose_batch`/`tight_batch`（别再用 `*_per_task` 字段名）
-4. **B.1**：20 task，仅 Full vs Only，cap 读 protocol，`--jobs` 并行 policy
-5. **并行或之后**：Step C mock batch（不依赖 mini-SWE）
+1. **B.1** — n=20 iter-1（Full vs Only，caps 读 protocol）
+2. Step C mock batch（可并行）
+
+## Dynamic budget_pressure（已落地）
+
+```
+used_frac = (spent + reserved) / total
+pressure = BUDGET_PRESSURE_INIT + used_frac × (PRESSURE_MAX - init)   # PRESSURE_MAX=1.5
+```
+
+- 接线：`mini_swe_proxy.query()`、`loop._run_step()`
+- uncapped（total ≥ 1e6）→ 保持 init
+- **不做：** PROGRESS_TABLE 在线更新（iter-3）
 
 ---
 
-## 跑实验怎么记
+## 跑实验
 
-**一个 batch** = 一个 strategy × 一个 budget 档 × 一个 governor × n 题串行。
-
-主表看：**resolved/n、batch_spent、batch_cap、violations**。  
-早题花光预算 → 后面题 `budget_exhausted`，**正常**，要写在论文里。
-
-**Smoke 命令（占位 cap）：**
+**3×5 smoke（占位 cap，验管道）：**
 ```bash
-cd paper1 && PYTHONPATH=src:../external/mini-swe-agent/src \
-python -u -m budgetflow.run_mini_swe_compare --limit 5 --loose 500 --tight 200 --jobs 5
+cd paper1 && FORCE_COLOR=1 PYTHONPATH=src:../external/mini-swe-agent/src \
+python -u -m budgetflow.run_mini_swe_compare --preset 3x5 --loose 500 --tight 200 --jobs 5
 ```
 
-**Pilot：**
+**5×5（stress + wander 题，读 FROZEN protocol）：**
 ```bash
-python -m budgetflow.run_pilot
+python -u -m budgetflow.run_mini_swe_compare --preset 5x5 --read-protocol --jobs 5
 ```
+
+**Pilot（重跑后）：**
+```bash
+python -m budgetflow.run_pilot   # 题单改 compare_easy 后
+```
+
+**主表指标：** resolved/n、batch_spent、batch_cap、violations、flash%。  
+早题花光池 → 后题 `budget_exhausted` = **正常 batch 竞争**，写进 paper。
 
 ---
 
 ## 禁做
 
-- per-task 独立 governor cap（与 batch 设计冲突）
-- 改 mini-SWE prompt / fork scaffold
-- eval 上调 routing 或 progress table
-- smoke 手填 cap 当论文最终结果
-- iter-3 完成前扩到 n=50
+- 用 INVALID protocol（M=1951）或 21614 估 M
+- per-task 独立 cap
+- smoke hand cap 当论文最终结果
+- eval 上调 routing / progress table
+- 改 mini-SWE prompt
 
 ---
 
-## Paper-ready 还差
+## Paper-ready checklist
 
-- [ ] `protocol.md`（M + batch cap 公式 + task list hash）
-- [ ] RQ2 主表（`rq2_iter*.jsonl` + summary）
-- [ ] RQ1 主表（`result_batch.md`）
-- [ ] 三份设计/结果文档同步 + 旧 E2E 标 superseded
+- [ ] `protocol.md` 有效版（M + batch caps + task list hash）
+- [ ] RQ2 主表（iter-1 n=20）
+- [ ] RQ1 mock batch 表
+- [ ] concept/design/result 同步；旧 E2E 标 superseded

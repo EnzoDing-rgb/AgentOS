@@ -1,14 +1,17 @@
-"""Compare 5 tasks × 5 strategies: shared batch budget per policy.
+"""Compare N tasks × 5 strategies: shared batch budget per policy.
 
 Each policy runs its task list serially on one BudgetGovernor (shared pool).
 Different policies may run in parallel (--jobs) using git worktrees for repo isolation.
 
 Usage (from paper1/):
-  PYTHONPATH=src:../external/mini-swe-agent/src python -u -m budgetflow.run_mini_swe_compare
+  # fast smoke (default 3 tasks)
+  PYTHONPATH=src:../external/mini-swe-agent/src python -u -m budgetflow.run_mini_swe_compare --preset 3x5 --jobs 5
+  # full 5-task compare
+  PYTHONPATH=src:../external/mini-swe-agent/src python -u -m budgetflow.run_mini_swe_compare --preset 5x5 --jobs 5
 
 Outputs:
-  data/runs/compare_5x5.jsonl
-  data/runs/compare_5x5.summary.log
+  data/runs/compare_3x5.jsonl  (or compare_5x5.jsonl)
+  data/runs/compare_3x5.summary.log
 """
 
 from __future__ import annotations
@@ -36,6 +39,7 @@ from budgetflow.governor import BudgetGovernor, GovernorConfig  # noqa: E402
 from budgetflow.heartbeat import run_with_heartbeat  # noqa: E402
 from budgetflow.ledger import WorkflowLedgerStore  # noqa: E402
 from budgetflow.lite_tasks import load_compare_easy_tasks  # noqa: E402
+from budgetflow.protocol_caps import read_protocol_caps  # noqa: E402
 from budgetflow.run_trace import TraceConsoleLevel  # noqa: E402
 
 RUNS_DIR = REPO_ROOT / "data" / "runs"
@@ -209,11 +213,14 @@ def _format_strategy_totals(
         batch_spent = batch_spent_by_strategy.get(key, 0.0)
         cap = batch_caps.get(key)
         cap_s = f"{cap:.1f}" if cap is not None else "uncapped"
+        cap_flag = ""
+        if cap is not None and batch_spent > cap + 0.01:
+            cap_flag = " OVER_CAP"
         avg_cost = sum(costs) / len(costs) if costs else 0.0
         avg_turns = sum(turns) / len(turns) if turns else 0.0
         avg_flash = sum(flash) / len(flash) if flash else 0.0
         lines.append(
-            f"{key:<28} {resolved_n}/{len(flags):<7} {batch_spent:11.2f} {cap_s:>10} "
+            f"{key:<28} {resolved_n}/{len(flags):<7} {batch_spent:11.2f} {cap_s:>10}{cap_flag} "
             f"{avg_cost:9.2f} {avg_turns:10.1f} {avg_flash * 100:6.0f}%"
         )
     return lines
@@ -398,13 +405,42 @@ def _ingest_batch(
         )
 
 
+PRESET_TASKS = {"3x5": 3, "5x5": 5}
+
+
+def _compare_paths(tasks_n: int) -> tuple[Path, Path]:
+    stem = f"compare_{tasks_n}x5"
+    return RUNS_DIR / f"{stem}.jsonl", RUNS_DIR / f"{stem}.summary.log"
+
+
 def main() -> None:
     load_env_file()
-    parser = argparse.ArgumentParser(description="5 tasks × 5 strategies — shared batch budget per policy")
-    parser.add_argument("--limit", type=int, default=5)
-    parser.add_argument("--loose", type=float, default=400.0, help="shared batch budget for *_loose strategies")
-    parser.add_argument("--tight", type=float, default=100.0, help="shared batch budget for *_tight strategies")
-    parser.add_argument("--step-limit", type=int, default=250)
+    parser = argparse.ArgumentParser(description="N tasks × 5 strategies — shared batch budget per policy")
+    parser.add_argument(
+        "--preset",
+        choices=sorted(PRESET_TASKS),
+        default="3x5",
+        help="3x5=3 tasks (fast smoke), 5x5=5 tasks (full compare); sets --limit unless overridden",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="task count (default from --preset: 3x5→3, 5x5→5)",
+    )
+    parser.add_argument("--loose", type=float, default=None, help="shared batch budget for *_loose strategies")
+    parser.add_argument("--tight", type=float, default=None, help="shared batch budget for *_tight strategies")
+    parser.add_argument(
+        "--read-protocol",
+        action="store_true",
+        help="read loose/tight batch caps from docs/protocol.md for current task count",
+    )
+    parser.add_argument(
+        "--step-limit",
+        type=int,
+        default=80,
+        help="agent step cap per task (smoke default 80; formal runs may raise after pilot)",
+    )
     parser.add_argument("--heartbeat", type=float, default=30.0)
     parser.add_argument(
         "--jobs",
@@ -423,6 +459,23 @@ def main() -> None:
         help="print every agent step (default: milestones on gold/submit/test phase changes)",
     )
     args = parser.parse_args()
+    tasks_n = args.limit if args.limit is not None else PRESET_TASKS[args.preset]
+
+    loose = args.loose
+    tight = args.tight
+    if args.read_protocol:
+        caps = read_protocol_caps(tasks_n)
+        loose = caps.loose_batch
+        tight = caps.tight_batch
+        print(
+            f"{tag('protocol', bold=False)} read n={tasks_n} M={caps.m:.4f} "
+            f"loose={loose:.4f} tight={tight:.4f}",
+            flush=True,
+        )
+    if loose is None:
+        loose = 400.0
+    if tight is None:
+        tight = 100.0
 
     if args.trace_verbose:
         trace_console: TraceConsoleLevel = "verbose"
@@ -432,11 +485,10 @@ def main() -> None:
         trace_console = "milestones"
 
     strategies = DEFAULT_STRATEGIES
-    budget_caps = {"loose": args.loose, "tight": args.tight}
-    tasks = load_compare_easy_tasks(args.limit)
+    budget_caps = {"loose": loose, "tight": tight}
+    tasks = load_compare_easy_tasks(tasks_n)
     total_runs = len(tasks) * len(strategies)
-    out_path = RUNS_DIR / "compare_5x5.jsonl"
-    summary_path = RUNS_DIR / "compare_5x5.summary.log"
+    out_path, summary_path = _compare_paths(len(tasks))
     strategy_names = [s.name for s in strategies]
     batch_caps: dict[str, float | None] = {
         s.name: None if s.budget_tier is None else budget_caps[s.budget_tier] for s in strategies
@@ -444,9 +496,9 @@ def main() -> None:
 
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
     print(
-        f"{tag('compare', bold=False)} tasks={len(tasks)} strategies={len(strategies)} "
-        f"batches={len(strategies)} runs={total_runs} loose={args.loose} tight={args.tight} "
-        f"policy_jobs={args.jobs} heartbeat={args.heartbeat}s",
+        f"{tag('compare', bold=False)} preset={args.preset} tasks={len(tasks)} strategies={len(strategies)} "
+        f"batches={len(strategies)} runs={total_runs} loose={loose} tight={tight} "
+        f"policy_jobs={args.jobs} heartbeat={args.heartbeat}s hard_cap=settle_clamp",
         flush=True,
     )
     print(f"{dim('tasks=' + ','.join(t.instance_id for t in tasks))}", flush=True)
@@ -459,8 +511,8 @@ def main() -> None:
 
     state = _CompareState(
         summary_lines=[
-            f"compare_5x5 tasks={len(tasks)} strategies={strategy_names}",
-            f"shared_batch_budget loose={args.loose} tight={args.tight} policy_jobs={args.jobs}",
+            f"compare_{len(tasks)}x5 preset={args.preset} tasks={len(tasks)} strategies={strategy_names}",
+            f"shared_batch_budget loose={loose} tight={tight} policy_jobs={args.jobs} hard_cap=settle_clamp",
             f"tasks={[t.instance_id for t in tasks]}",
             "",
         ],

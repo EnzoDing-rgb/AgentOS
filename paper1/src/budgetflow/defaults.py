@@ -16,6 +16,8 @@ PROGRESS_TABLE: dict[Stage, dict[str, float]] = {
 }
 
 BUDGET_PRESSURE_INIT = 0.35
+PRESSURE_MAX = 1.5
+UNCAPPED_BUDGET_THRESHOLD = 1_000_000.0
 
 DEEPSEEK_FLASH_MODEL = "openai/deepseek-v4-flash"
 DEEPSEEK_PRO_MODEL = "openai/deepseek-v4-pro"

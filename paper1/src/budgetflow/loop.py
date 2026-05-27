@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from .budget_pressure import live_budget_pressure
 from .governor import BudgetGovernor
 from .ledger import WorkflowLedgerStore
 from .mock_backend import MockBackend, STAGE_OUTPUT_MULTIPLIER
@@ -65,6 +66,7 @@ class MinimalAgentLoop:
         self.selector = selector
         self.scheduler = scheduler
         self.zombie_detector = zombie_detector
+        self._pressure_init = budget_pressure
         self.budget_pressure = budget_pressure
         self.mock_backends = {backend.name: MockBackend(backend) for backend in self.backends}
         self.backend_picker = backend_picker
@@ -99,6 +101,7 @@ class MinimalAgentLoop:
         )
 
     def _run_step(self, turn: TurnInfo, input_tokens: int) -> StepTrace:
+        self.budget_pressure = live_budget_pressure(self.governor, init=self._pressure_init)
         expected_costs = {
             backend.name: self.governor.estimate_cost(
                 backend,

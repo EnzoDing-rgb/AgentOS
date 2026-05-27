@@ -26,6 +26,9 @@ from .console_log import (
 
 TraceConsoleLevel = Literal["quiet", "milestones", "verbose"]
 
+# mini-SWE local env treats stdout first line == this marker as task submit.
+SUBMIT_MARKER = "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"
+
 
 def patch_local_swebench_config(config: dict, repo_dir: Path) -> dict:
     """Map Docker /testbed paths to the real local checkout."""
@@ -139,8 +142,10 @@ class RunTraceLogger:
         changed: list[str],
         gold_edited: list[str],
     ) -> str:
-        if any("COMPLETE_TASK" in c or "patch.txt" in c for c in commands):
+        if any(SUBMIT_MARKER in c for c in commands):
             return "submit"
+        if any("patch.txt" in c for c in commands):
+            return "patch_prep"
         if any(_is_pytest_command(c) for c in commands):
             return "test"
         if gold_edited:
@@ -213,16 +218,12 @@ class RunTraceLogger:
 
     def _detect_submitted(self, commands: list[str]) -> None:
         for cmd in commands:
-            lowered = cmd.lower()
-            if "complete_task" in lowered:
-                self._submitted = True
-                return
-            if "patch.txt" in lowered or "git diff" in lowered:
+            if SUBMIT_MARKER in cmd:
                 self._submitted = True
                 return
 
     def finalize_agent(self, *, submitted: bool, patch_extracted: bool) -> None:
-        if submitted or patch_extracted:
+        if submitted:
             self._submitted = True
 
     def _print_milestones(
@@ -282,8 +283,6 @@ class RunTraceLogger:
         for cmd in commands:
             self._recent_commands.append(cmd)
         self._detect_submitted(commands)
-        if any("COMPLETE_TASK" in c for c in commands):
-            self._submitted = True
 
         changed = git_changed_files(self.repo_dir)
         self._last_changed = changed

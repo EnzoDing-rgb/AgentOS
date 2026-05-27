@@ -8,11 +8,14 @@ SRC = ROOT / "src"
 sys.path.insert(0, str(SRC))
 
 from budgetflow.compare import ComparisonRunner
+from budgetflow.budget_pressure import live_budget_pressure
+from budgetflow.defaults import BUDGET_PRESSURE_INIT, PRESSURE_MAX, UNCAPPED_BUDGET_THRESHOLD
 from budgetflow.governor import BudgetGovernor
 from budgetflow.ledger import WorkflowLedgerStore
 from budgetflow.lite_tasks import load_swebench_lite_tasks
 from budgetflow.loop import WorkflowSpec, WorkflowStep, build_default_loop
-from budgetflow.types import Backend, GovernorConfig, Stage
+from budgetflow.policies import BudgetOnlyStepRouter
+from budgetflow.types import Backend, GovernorConfig, Stage, TurnInfo, WorkflowStatus
 
 
 def build_backends() -> list[Backend]:
@@ -125,6 +128,27 @@ def test_budget_violation_is_blocked() -> None:
     assert governor.state.spent_budget <= governor.state.total_budget
 
 
+def test_settle_never_exceeds_total_budget() -> None:
+    backends = build_backends()
+    ledger = WorkflowLedgerStore()
+    governor = BudgetGovernor(GovernorConfig(total_budget=100.0, default_max_output_tokens=100), ledger)
+    backend = backends[0]
+    estimate = governor.estimate_cost(backend, input_tokens=50, reserve_output_tokens=100)
+
+    reservation = governor.reserve("wf-1", backend, estimate)
+    assert reservation is not None
+    # Actual overshoots both reserve estimate and total budget (hard cap on settle).
+    governor.settle(reservation.reservation_id, actual_cost=150.0, status=WorkflowStatus.RUNNING)
+
+    assert governor.state.spent_budget == 100.0
+    assert governor.state.available_budget == 0.0
+    assert governor.state.spent_budget <= governor.state.total_budget
+
+    follow_up = governor.estimate_cost(backend, input_tokens=10, reserve_output_tokens=50)
+    assert governor.reserve("wf-1", backend, follow_up) is None
+    assert governor.last_reserve_failure == "budget_exhausted"
+
+
 def test_policy_comparison_runs_small_scale() -> None:
     runner = ComparisonRunner(build_backends(), total_budget=40.0, default_max_output_tokens=100)
     workflows = build_workflows()
@@ -151,3 +175,39 @@ def test_load_swebench_lite_tasks_builds_real_workflows() -> None:
     assert all(task.workflow.steps[0].stage == Stage.LOCALIZATION for task in tasks)
     assert all(task.workflow.steps[1].stage == Stage.REPAIR for task in tasks)
     assert all(task.workflow.steps[2].stage == Stage.VALIDATION for task in tasks)
+
+
+def test_live_budget_pressure_empty_pool() -> None:
+    ledger = WorkflowLedgerStore()
+    governor = BudgetGovernor(GovernorConfig(total_budget=100.0, default_max_output_tokens=100), ledger)
+    assert live_budget_pressure(governor) == BUDGET_PRESSURE_INIT
+
+
+def test_live_budget_pressure_exhausted_pool() -> None:
+    ledger = WorkflowLedgerStore()
+    governor = BudgetGovernor(GovernorConfig(total_budget=100.0, default_max_output_tokens=100), ledger)
+    governor.state.spent_budget = 100.0
+    assert live_budget_pressure(governor) == PRESSURE_MAX
+
+
+def test_live_budget_pressure_uncapped() -> None:
+    ledger = WorkflowLedgerStore()
+    governor = BudgetGovernor(
+        GovernorConfig(total_budget=UNCAPPED_BUDGET_THRESHOLD, default_max_output_tokens=100),
+        ledger,
+    )
+    assert live_budget_pressure(governor) == BUDGET_PRESSURE_INIT
+
+
+def test_budget_only_picks_flash_at_high_pressure() -> None:
+    router = BudgetOnlyStepRouter()
+    backends = build_backends()
+    turn = TurnInfo(
+        workflow_id="wf-1",
+        step_index=1,
+        stage=Stage.REPAIR,
+        w_i=3.0,
+        context_len=100,
+    )
+    backend = router.choose_backend(turn, backends, budget_pressure=1.45)
+    assert backend.name == "tier1_cheap"

@@ -15,6 +15,7 @@ from minisweagent.models.utils.cache_control import set_cache_control
 from minisweagent.models.utils.openai_multimodal import expand_multimodal_content
 from minisweagent.models.utils.retry import retry
 
+from ..budget_pressure import live_budget_pressure
 from ..deepseek_backend import ensure_direct_api, load_env_file
 from ..defaults import DEEPSEEK_API_BASE, DEEPSEEK_FLASH_MODEL, DEEPSEEK_PRO_MODEL
 from ..governor import BudgetGovernor
@@ -47,6 +48,7 @@ class BudgetFlowLitellmModel:
         self.workflow_id = workflow_id
         self.governor = governor
         self.routing = routing
+        self._pressure_init = routing.budget_pressure
         self.default_max_output_tokens = default_max_output_tokens
         self.cost_tracking = cost_tracking
         self.observation_template = observation_template or (
@@ -86,6 +88,7 @@ class BudgetFlowLitellmModel:
             ).expected_cost
             for backend in self.routing.backends
         }
+        self.routing.budget_pressure = live_budget_pressure(self.governor, init=self._pressure_init)
         backend = choose_backend(self.routing, turn, expected_costs)
         backend = self._reserve_with_downgrade(backend, input_tokens)
         self.backend_picks.append(backend.name)
@@ -100,19 +103,31 @@ class BudgetFlowLitellmModel:
             + completion_tokens * backend.cost_per_output_token
         )
         reservation_id = self._last_reservation_id
+        snap = self.governor.budget_snapshot()
+        spend_headroom = max(0.0, snap["total_budget"] - snap["spent_budget"])
+        billable = min(actual_cost, spend_headroom)
         self.governor.settle(reservation_id, actual_cost, WorkflowStatus.RUNNING)
         message["extra"] = {
             "actions": self._parse_actions(response),
             "response": response.model_dump(),
-            "cost": actual_cost,
+            "cost": billable,
             "backend": backend.name,
             "stage": stage.value,
         }
         return message
 
-    def _reserve_output_tokens(self, backend: Backend) -> int:
-        # Reserve against expected output + headroom, not full 4096 max.
-        return min(1024, max(backend.mean_output_tokens * 2, 256))
+    def _reserve_output_tokens(self, backend: Backend, input_tokens: int) -> int:
+        # Fit reserve estimate into remaining pool so routing/downgrade still works near cap.
+        remaining = self.governor.remaining_budget()
+        if remaining <= 0:
+            return 64
+        input_cost = input_tokens * backend.cost_per_input_token
+        output_budget = remaining - input_cost
+        if output_budget <= 0:
+            return 64
+        affordable_tokens = output_budget / backend.cost_per_output_token
+        headroom = min(1024, max(backend.mean_output_tokens * 2, 256))
+        return max(64, min(headroom, int(affordable_tokens * 0.95)))
 
     def _reserve_with_downgrade(self, backend: Backend, input_tokens: int) -> Backend:
         ordered = self.routing.backends
@@ -120,7 +135,7 @@ class BudgetFlowLitellmModel:
         reserve_out = None
         last_reason: str | None = None
         for candidate in ordered[start_index::-1]:
-            reserve_out = self._reserve_output_tokens(candidate)
+            reserve_out = self._reserve_output_tokens(candidate, input_tokens)
             estimate = self.governor.estimate_cost(
                 candidate,
                 input_tokens=input_tokens,

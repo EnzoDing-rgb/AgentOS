@@ -74,11 +74,22 @@ class BudgetGovernor:
             concurrency_limit=backend.concurrency_limit,
         )
 
+    def remaining_budget(self) -> float:
+        return max(0.0, self.state.total_budget - self.state.spent_budget - self.state.reserved_budget)
+
+    def _remaining_budget(self) -> float:
+        return self.remaining_budget()
+
+    def _sync_available(self) -> None:
+        self.state.available_budget = self._remaining_budget()
+
     def can_dispatch(self, backend: Backend) -> bool:
-        return self.state.available_budget > 0
+        return self._remaining_budget() > 0
 
     def _reserve_block_reason(self, reserved_cost: float) -> str | None:
-        if reserved_cost > self.state.available_budget:
+        if self.state.spent_budget >= self.state.total_budget:
+            return "budget_exhausted"
+        if reserved_cost > self._remaining_budget():
             return "budget_exhausted"
         return None
 
@@ -90,7 +101,6 @@ class BudgetGovernor:
                 return None
             self.last_reserve_failure = None
 
-            self.state.available_budget -= estimate.reserved_cost
             self.state.reserved_budget += estimate.reserved_cost
 
             reservation = Reservation(
@@ -101,19 +111,22 @@ class BudgetGovernor:
             )
             self._active_reservations[reservation.reservation_id] = reservation
             self.ledger.apply_reservation(workflow_id, estimate.reserved_cost)
+            self._sync_available()
             return reservation
 
     def settle(self, reservation_id: str, actual_cost: float, status: WorkflowStatus) -> Reservation:
         with self._lock:
             reservation = self._active_reservations.pop(reservation_id)
-            refund = max(0.0, reservation.reserved_cost - actual_cost)
             self.state.reserved_budget -= reservation.reserved_cost
-            self.state.available_budget += refund
-            self.state.spent_budget += actual_cost
+
+            remaining = self.state.total_budget - self.state.spent_budget
+            billable = min(actual_cost, max(0.0, remaining))
+            self.state.spent_budget += billable
+            self._sync_available()
             self.ledger.settle(
                 workflow_id=reservation.workflow_id,
                 reserved_cost=reservation.reserved_cost,
-                actual_cost=actual_cost,
+                actual_cost=billable,
                 status=status,
             )
             return reservation
@@ -122,7 +135,7 @@ class BudgetGovernor:
         with self._lock:
             reservation = self._active_reservations.pop(reservation_id)
             self.state.reserved_budget -= reservation.reserved_cost
-            self.state.available_budget += reservation.reserved_cost
+            self._sync_available()
             self.ledger.release(
                 workflow_id=reservation.workflow_id,
                 reserved_cost=reservation.reserved_cost,

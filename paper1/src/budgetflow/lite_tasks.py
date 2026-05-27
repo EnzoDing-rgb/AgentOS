@@ -48,7 +48,7 @@ def load_swebench_lite_tasks(
     return [build_lite_task_record(item) for item in selected_items]
 
 
-# Pipeline smoke: 1 fail_to_pass test, tiny gold patch (not sympy-11400 ccode/sinc).
+# Pipeline smoke: stress / wander cases (not used for B.0 M estimation).
 SMOKE_INSTANCE_IDS: tuple[str, ...] = (
     "sympy__sympy-20212",  # 0**-oo -> ComplexInfinity; ~4 lines in sympy/core/power.py
     "sympy__sympy-12171",  # mathematica Derivative printer; problem states fix
@@ -64,10 +64,18 @@ COMPARE_EASY_INSTANCE_IDS: tuple[str, ...] = (
     "sympy__sympy-20212",
 )
 
+# B.0 budget pilot: first 3 compare_easy tasks (stable M, no 21614 outlier).
+PILOT_INSTANCE_IDS: tuple[str, ...] = COMPARE_EASY_INSTANCE_IDS[:3]
+
 
 def load_smoke_tasks(limit: int = 1) -> list[LiteTaskRecord]:
-    """Load easiest lite sympy tasks for mini-SWE / Step A smoke."""
+    """Load stress smoke tasks (may include wander cases like 21614)."""
     return load_swebench_lite_tasks(instance_ids=SMOKE_INSTANCE_IDS[:limit])
+
+
+def load_pilot_tasks(limit: int = 3) -> list[LiteTaskRecord]:
+    """Load B.0 budget pilot tasks (compare_easy prefix, stable M)."""
+    return load_swebench_lite_tasks(instance_ids=PILOT_INSTANCE_IDS[:limit])
 
 
 def load_compare_easy_tasks(limit: int = 5) -> list[LiteTaskRecord]:
