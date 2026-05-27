@@ -80,9 +80,21 @@ def run_mini_swe_task(
     trace_console: TraceConsoleLevel = "quiet",
     progress_box: dict[str, str] | None = None,
     agent_heartbeat: bool = True,
+    governor: BudgetGovernor | None = None,
+    ledger: WorkflowLedgerStore | None = None,
+    workspace_key: str | None = None,
 ) -> MiniSweRunResult:
     label = strategy_label or strategy
-    repo_dir = clone_or_checkout(task)
+    ledger = ledger or WorkflowLedgerStore()
+    if governor is None:
+        cap = budget_per_task if budget_per_task is not None else 1_000_000.0
+        governor = BudgetGovernor(
+            GovernorConfig(total_budget=cap, default_max_output_tokens=4096),
+            ledger,
+        )
+    else:
+        cap = governor.config.total_budget
+    repo_dir = clone_or_checkout(task, workspace_key=workspace_key)
     compat_files = get_last_compat_files()
     trace_dir = RUNS_DIR / f"trace_{task.instance_id}_{label}"
     trace = RunTraceLogger(
@@ -97,12 +109,6 @@ def run_mini_swe_task(
     )
     config = patch_local_swebench_config(_load_agent_config(step_limit=step_limit), repo_dir)
     backends = build_deepseek_backends()
-    ledger = WorkflowLedgerStore()
-    cap = budget_per_task if budget_per_task is not None else 1_000_000.0
-    governor = BudgetGovernor(
-        GovernorConfig(total_budget=cap, default_max_output_tokens=4096),
-        ledger,
-    )
     routing = build_routing_context(strategy, backends, budget_pressure=budget_pressure)
     model_cfg = config.get("model", {})
     model = BudgetFlowLitellmModel(
@@ -159,7 +165,7 @@ def run_mini_swe_task(
             flush=True,
         )
 
-    harness = evaluate_local_harness(task, patch_text)
+    harness = evaluate_local_harness(task, patch_text, workspace_key=workspace_key)
     trace.log_harness_result(
         resolved=harness.harness_resolved,
         detail=harness.detail,
@@ -170,6 +176,7 @@ def run_mini_swe_task(
     if governor.state.available_budget < 0:
         violations.append("budget_violation")
     snapshot = model.last_budget_snapshot or governor.budget_snapshot()
+    task_cost = ledger.get(task.instance_id).actual_cost
     return MiniSweRunResult(
         instance_id=task.instance_id,
         strategy=strategy,
@@ -177,7 +184,7 @@ def run_mini_swe_task(
         patch_text=patch_text,
         exit_status=exit_status,
         exit_reason=exit_reason,
-        total_cost=governor.state.spent_budget,
+        total_cost=task_cost,
         budget_cap=cap,
         budget_snapshot=snapshot,
         backend_picks=tuple(model.backend_picks),

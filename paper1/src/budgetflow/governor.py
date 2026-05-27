@@ -5,7 +5,7 @@ import uuid
 from dataclasses import dataclass
 
 from .ledger import WorkflowLedgerStore
-from .types import Backend, BudgetState, CostEstimate, GovernorConfig, WorkflowStatus
+from .types import Backend, BackendPressure, BudgetState, CostEstimate, GovernorConfig, WorkflowStatus
 
 
 @dataclass(frozen=True)
@@ -17,6 +17,8 @@ class Reservation:
 
 
 class BudgetGovernor:
+    """Hard budget reserve/settle. Provider RPM/concurrency left to the real API (Tier 1)."""
+
     def __init__(self, config: GovernorConfig, ledger: WorkflowLedgerStore) -> None:
         self.config = config
         self.ledger = ledger
@@ -26,8 +28,7 @@ class BudgetGovernor:
         )
         self._lock = threading.Lock()
         self._active_reservations: dict[str, Reservation] = {}
-        self._backend_rpm: dict[str, int] = {}
-        self._backend_concurrency: dict[str, int] = {}
+        self.last_reserve_failure: str | None = None
 
     def estimate_cost(
         self,
@@ -65,22 +66,32 @@ class BudgetGovernor:
             "spent_budget": self.state.spent_budget,
         }
 
+    def backend_pressure(self, backend: Backend) -> BackendPressure:
+        return BackendPressure(
+            rpm_used=0,
+            rpm_limit=backend.rpm_limit,
+            concurrency_used=0,
+            concurrency_limit=backend.concurrency_limit,
+        )
+
     def can_dispatch(self, backend: Backend) -> bool:
-        rpm_used = self._backend_rpm.get(backend.name, 0)
-        concurrency_used = self._backend_concurrency.get(backend.name, 0)
-        return rpm_used < backend.rpm_limit and concurrency_used < backend.concurrency_limit
+        return self.state.available_budget > 0
+
+    def _reserve_block_reason(self, reserved_cost: float) -> str | None:
+        if reserved_cost > self.state.available_budget:
+            return "budget_exhausted"
+        return None
 
     def reserve(self, workflow_id: str, backend: Backend, estimate: CostEstimate) -> Reservation | None:
         with self._lock:
-            if estimate.reserved_cost > self.state.available_budget:
+            block_reason = self._reserve_block_reason(estimate.reserved_cost)
+            if block_reason is not None:
+                self.last_reserve_failure = block_reason
                 return None
-            if not self.can_dispatch(backend):
-                return None
+            self.last_reserve_failure = None
 
             self.state.available_budget -= estimate.reserved_cost
             self.state.reserved_budget += estimate.reserved_cost
-            self._backend_rpm[backend.name] = self._backend_rpm.get(backend.name, 0) + 1
-            self._backend_concurrency[backend.name] = self._backend_concurrency.get(backend.name, 0) + 1
 
             reservation = Reservation(
                 reservation_id=str(uuid.uuid4()),
@@ -99,10 +110,6 @@ class BudgetGovernor:
             self.state.reserved_budget -= reservation.reserved_cost
             self.state.available_budget += refund
             self.state.spent_budget += actual_cost
-            self._backend_concurrency[reservation.backend_name] = max(
-                0,
-                self._backend_concurrency.get(reservation.backend_name, 0) - 1,
-            )
             self.ledger.settle(
                 workflow_id=reservation.workflow_id,
                 reserved_cost=reservation.reserved_cost,
@@ -116,10 +123,6 @@ class BudgetGovernor:
             reservation = self._active_reservations.pop(reservation_id)
             self.state.reserved_budget -= reservation.reserved_cost
             self.state.available_budget += reservation.reserved_cost
-            self._backend_concurrency[reservation.backend_name] = max(
-                0,
-                self._backend_concurrency.get(reservation.backend_name, 0) - 1,
-            )
             self.ledger.release(
                 workflow_id=reservation.workflow_id,
                 reserved_cost=reservation.reserved_cost,

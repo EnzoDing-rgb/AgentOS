@@ -86,6 +86,17 @@ def build_workflows() -> list[WorkflowSpec]:
     ]
 
 
+def test_reserve_reports_budget_exhausted() -> None:
+    backends = build_backends()
+    ledger = WorkflowLedgerStore()
+    governor = BudgetGovernor(GovernorConfig(total_budget=0.05, default_max_output_tokens=100), ledger)
+    backend = backends[0]
+    estimate = governor.estimate_cost(backend, input_tokens=100, max_output_tokens=100)
+
+    assert governor.reserve("wf-1", backend, estimate) is None
+    assert governor.last_reserve_failure == "budget_exhausted"
+
+
 def test_minimal_loop_runs_end_to_end() -> None:
     backends = build_backends()
     ledger = WorkflowLedgerStore()

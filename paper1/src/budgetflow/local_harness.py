@@ -5,6 +5,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,6 +15,7 @@ from .console_log import dim, paint, tag
 
 PAPER1_ROOT = Path(__file__).resolve().parents[2]
 CACHE_DIR = PAPER1_ROOT / "data" / "repo_cache"
+WORKTREE_ROOT = CACHE_DIR / "worktrees"
 LEGACY_CACHE_DIR = PAPER1_ROOT / "src" / "data" / "repo_cache"
 
 _COLLECTIONS_ABC = frozenset(
@@ -132,6 +134,17 @@ def apply_python_compat(repo_dir: Path) -> tuple[str, ...]:
 
 
 _LAST_COMPAT_FILES: tuple[str, ...] = ()
+_MAIN_REPO_LOCKS: dict[str, threading.Lock] = {}
+_MAIN_REPO_LOCKS_GUARD = threading.Lock()
+
+
+def _main_repo_lock(slug: str) -> threading.Lock:
+    with _MAIN_REPO_LOCKS_GUARD:
+        lock = _MAIN_REPO_LOCKS.get(slug)
+        if lock is None:
+            lock = threading.Lock()
+            _MAIN_REPO_LOCKS[slug] = lock
+        return lock
 
 
 def get_last_compat_files() -> tuple[str, ...]:
@@ -239,8 +252,7 @@ def _pip_install_editable(repo_dir: Path, *, task: LiteTaskRecord) -> subprocess
     return subprocess.CompletedProcess(cmd, rc, "", "")
 
 
-def clone_or_checkout(task: LiteTaskRecord) -> Path:
-    global _LAST_COMPAT_FILES
+def _ensure_main_repo(task: LiteTaskRecord) -> Path:
     repo_dir = repo_dir_for(task)
     repo_url = f"https://github.com/{task.repo}.git"
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -252,10 +264,62 @@ def clone_or_checkout(task: LiteTaskRecord) -> Path:
             capture_output=True,
             text=True,
         )
-    print(f"{tag('prep')} checkout {paint(task.instance_id, '\033[1m', '\033[96m')} @ {task.base_commit[:8]} ...", flush=True)
     _checkout_commit(repo_dir, task.base_commit)
-    subprocess.run(["git", "reset", "--hard", task.base_commit], cwd=repo_dir, check=True, capture_output=True, text=True)
-    subprocess.run(["git", "clean", "-fdx"], cwd=repo_dir, check=True, capture_output=True, text=True)
+    return repo_dir
+
+
+def _remove_worktree(main_repo: Path, worktree_path: Path) -> None:
+    if worktree_path.exists():
+        subprocess.run(
+            ["git", "worktree", "remove", "--force", str(worktree_path)],
+            cwd=main_repo,
+            capture_output=True,
+            text=True,
+        )
+    if worktree_path.exists():
+        import shutil
+
+        shutil.rmtree(worktree_path, ignore_errors=True)
+    subprocess.run(
+        ["git", "worktree", "prune"],
+        cwd=main_repo,
+        capture_output=True,
+        text=True,
+    )
+
+
+def _prepare_worktree(task: LiteTaskRecord, workspace_key: str) -> Path:
+    slug = repo_slug(task.repo)
+    with _main_repo_lock(slug):
+        main_repo = _ensure_main_repo(task)
+        worktree_path = WORKTREE_ROOT / slug / workspace_key
+        worktree_path.parent.mkdir(parents=True, exist_ok=True)
+        _remove_worktree(main_repo, worktree_path)
+        print(
+            f"{tag('prep')} worktree {paint(task.instance_id, '\033[1m', '\033[96m')} "
+            f"key={workspace_key} @ {task.base_commit[:8]} ...",
+            flush=True,
+        )
+        subprocess.run(
+            ["git", "worktree", "add", "--force", str(worktree_path), task.base_commit],
+            cwd=main_repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["git", "reset", "--hard", task.base_commit],
+            cwd=worktree_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(["git", "clean", "-fdx"], cwd=worktree_path, check=True, capture_output=True, text=True)
+    return worktree_path
+
+
+def _finalize_repo_workspace(repo_dir: Path, task: LiteTaskRecord) -> Path:
+    global _LAST_COMPAT_FILES
     _LAST_COMPAT_FILES = apply_python_compat(repo_dir)
 
     marker = _pip_marker_path(repo_dir)
@@ -273,6 +337,24 @@ def clone_or_checkout(task: LiteTaskRecord) -> Path:
     else:
         print("[prep] pip failed (non-fatal for sympy)", flush=True)
     return repo_dir
+
+
+def clone_or_checkout(task: LiteTaskRecord, *, workspace_key: str | None = None) -> Path:
+    if workspace_key:
+        repo_dir = _prepare_worktree(task, workspace_key)
+        return _finalize_repo_workspace(repo_dir, task)
+
+    slug = repo_slug(task.repo)
+    with _main_repo_lock(slug):
+        global _LAST_COMPAT_FILES
+        repo_dir = _ensure_main_repo(task)
+        print(
+            f"{tag('prep')} checkout {paint(task.instance_id, '\033[1m', '\033[96m')} @ {task.base_commit[:8]} ...",
+            flush=True,
+        )
+        subprocess.run(["git", "reset", "--hard", task.base_commit], cwd=repo_dir, check=True, capture_output=True, text=True)
+        subprocess.run(["git", "clean", "-fdx"], cwd=repo_dir, check=True, capture_output=True, text=True)
+        return _finalize_repo_workspace(repo_dir, task)
 
 
 def apply_patch(repo_dir: Path, patch_text: str, label: str) -> tuple[bool, str]:
@@ -334,7 +416,12 @@ def run_pytest(repo_dir: Path, test_names: tuple[str, ...], test_paths: list[str
     return result.returncode == 0, tail
 
 
-def evaluate_local_harness(task: LiteTaskRecord, model_patch: str | None) -> HarnessResult:
+def evaluate_local_harness(
+    task: LiteTaskRecord,
+    model_patch: str | None,
+    *,
+    workspace_key: str | None = None,
+) -> HarnessResult:
     repo_dir = repo_dir_for(task)
     detail_parts: list[str] = []
     if model_patch is None:
@@ -351,7 +438,7 @@ def evaluate_local_harness(task: LiteTaskRecord, model_patch: str | None) -> Har
         )
 
     try:
-        repo_dir = clone_or_checkout(task)
+        repo_dir = clone_or_checkout(task, workspace_key=workspace_key)
     except subprocess.CalledProcessError as exc:
         output = (exc.stderr or exc.stdout or str(exc)).strip()
         return HarnessResult(

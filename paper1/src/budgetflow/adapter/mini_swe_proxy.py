@@ -118,6 +118,7 @@ class BudgetFlowLitellmModel:
         ordered = self.routing.backends
         start_index = ordered.index(backend)
         reserve_out = None
+        last_reason: str | None = None
         for candidate in ordered[start_index::-1]:
             reserve_out = self._reserve_output_tokens(candidate)
             estimate = self.governor.estimate_cost(
@@ -130,12 +131,14 @@ class BudgetFlowLitellmModel:
             if reservation is not None:
                 self._last_reservation_id = reservation.reservation_id
                 return candidate
+            last_reason = self.governor.last_reserve_failure
         snapshot = self.governor.budget_snapshot()
-        self.last_exit_reason = "budget_exhausted"
+        exit_reason = last_reason or "budget_exhausted"
+        self.last_exit_reason = exit_reason
         self.last_budget_snapshot = snapshot
         raise BudgetFlowBudgetError(
             self.workflow_id,
-            exit_reason="budget_exhausted",
+            exit_reason=exit_reason,
             budget_snapshot=snapshot,
             step_index=self.step_index,
             backend=backend.name,
