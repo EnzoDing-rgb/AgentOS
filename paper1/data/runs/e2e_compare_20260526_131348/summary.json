@@ -1,0 +1,98 @@
+[
+  {
+    "instance_id": "sympy__sympy-24152",
+    "strategy": "all_flash",
+    "workflow_steps_ok": true,
+    "patch_extracted": true,
+    "patch_applied": false,
+    "harness_resolved": false,
+    "total_cost": 2.27,
+    "backend_picks": [
+      "deepseek_flash",
+      "deepseek_flash",
+      "deepseek_flash"
+    ],
+    "model_patch": "--- a/sympy/physics/quantum/tensorproduct.py\n+++ b/sympy/physics/quantum/tensorproduct.py\n@@ -228,2 +228,2 @@\n-            if isinstance(args[i], Add):\n+            if any(isinstance(arg, Add) for arg in args):\n                 # Focus on the i-th factor, split the sum and call",
+    "detail": "test_patch=ok; fail_before=fail; model_patch=error: corrupt patch at line 7"
+  },
+  {
+    "instance_id": "sympy__sympy-24152",
+    "strategy": "all_pro",
+    "workflow_steps_ok": true,
+    "patch_extracted": true,
+    "patch_applied": false,
+    "harness_resolved": false,
+    "total_cost": 8.587599999999998,
+    "backend_picks": [
+      "deepseek_pro",
+      "deepseek_pro",
+      "deepseek_pro"
+    ],
+    "model_patch": "--- a/sympy/physics/quantum/tensorproduct.py\n+++ b/sympy/physics/quantum/tensorproduct.py\n@@ -218,2 +218,2 @@\n-                if not add_item.is_commutative:\n+                if not all(c.is_commutative for c in add_item.args):\n                     return TensorProduct(*args)",
+    "detail": "test_patch=ok; fail_before=fail; model_patch=error: corrupt patch at line 7"
+  },
+  {
+    "instance_id": "sympy__sympy-24152",
+    "strategy": "budgetflow_full",
+    "workflow_steps_ok": true,
+    "patch_extracted": true,
+    "patch_applied": false,
+    "harness_resolved": false,
+    "total_cost": 4.0618,
+    "backend_picks": [
+      "deepseek_flash",
+      "deepseek_pro",
+      "deepseek_flash"
+    ],
+    "model_patch": "--- a/sympy/physics/quantum/tensorproduct.py\n+++ b/sympy/physics/quantum/tensorproduct.py\n@@ -216,5 +216,10 @@\n-                args = (a, *e.args)\n-                tp = TensorProduct(*args)\n-            add_args.append(tp)\n-        return Add(*add_args)\n+                tp = e.func(*e.args)\n+            if isinstance(tp, TensorProduct):\n+                args = (a, *tp.args)\n+                tp = TensorProduct(*args)\n+                add_args.append(tp)\n+            else:\n+                c_part, nc_part = tp.args_cnc()\n+                add_args.append(Mul._from_args([*c_part, TensorProduct(a, *nc_part)]))\n+        return Add._from_args(add_args)",
+    "detail": "test_patch=ok; fail_before=fail; model_patch=error: corrupt patch at line 17"
+  },
+  {
+    "instance_id": "sympy__sympy-24213",
+    "strategy": "all_flash",
+    "workflow_steps_ok": true,
+    "patch_extracted": true,
+    "patch_applied": false,
+    "harness_resolved": false,
+    "total_cost": 2.52,
+    "backend_picks": [
+      "deepseek_flash",
+      "deepseek_flash",
+      "deepseek_flash"
+    ],
+    "model_patch": "--- a/sympy/physics/units/unitsystem.py\n+++ b/sympy/physics/units/unitsystem.py\n@@ -192,3 +192,7 @@\n-                        if not self.get_dimension_system().equivalent_dims(\n-                            dim, dim2):\n+                        if dim != dim2 and not self.get_dimension_system().equivalent_dims(dim, dim2):\n+                            # Equivalent dimensions may differ in base representation\n+                            # due to simplification, so compare after simplifying\n+                            if self.get_dimension_system().equivalent_dims(\n+                                dim, dim2):\n+                                dim = self.get_dimension_system().canonical_basis[dim]\n                             raise TypeError(",
+    "detail": "test_patch=ok; fail_before=fail; model_patch=error: corrupt patch at line 13"
+  },
+  {
+    "instance_id": "sympy__sympy-24213",
+    "strategy": "all_pro",
+    "workflow_steps_ok": false,
+    "patch_extracted": true,
+    "patch_applied": false,
+    "harness_resolved": false,
+    "total_cost": 9.5368,
+    "backend_picks": [
+      "deepseek_pro",
+      "deepseek_pro",
+      "deepseek_pro"
+    ],
+    "model_patch": "--- a/sympy/physics/units/unitsystem.py\n+++ b/sympy/physics/units/unitsystem.py\n@@ -172,1 +172,8 @@\n+                        # equivalent dimensions can compare differently\n+                        # because of how Dimension is structured.\n+                        # Compare dimensions via their SI dependencies.\n+                        def _dim_si_deps(d):\n+                            dim_sys = self.get_dimension_system()\n+                            return dim_sys.get_dimensional_dependencies(d)\n+                        if _dim_si_deps(dim) != _dim_si_deps(add_dimension):\n                             raise ValueError(",
+    "detail": "test_patch=ok; fail_before=fail; model_patch=error: corrupt patch at line 12"
+  },
+  {
+    "instance_id": "sympy__sympy-24213",
+    "strategy": "budgetflow_full",
+    "workflow_steps_ok": true,
+    "patch_extracted": true,
+    "patch_applied": false,
+    "harness_resolved": false,
+    "total_cost": 4.1186,
+    "backend_picks": [
+      "deepseek_flash",
+      "deepseek_pro",
+      "deepseek_flash"
+    ],
+    "model_patch": "--- a/sympy/physics/units/unitsystem.py\n+++ b/sympy/physics/units/unitsystem.py\n@@ -164,2 +164,2 @@\n-                if dimension != addend_dim:\n+                if not self.get_dimension_system().equivalent_dims(dimension, addend_dim):\n                     raise ValueError(\n@@ -172,1 +172,3 @@\n+            if factor != 0:\n+                factor = factor\n             return factor, addend_dim, count",
+    "detail": "test_patch=ok; fail_before=fail; model_patch=error: corrupt patch at line 11"
+  }
+]

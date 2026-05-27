@@ -1,0 +1,20 @@
+[
+  {
+    "instance_id": "sympy__sympy-24152",
+    "strategy": "budgetflow_full",
+    "workflow_steps_ok": false,
+    "patch_extracted": false,
+    "patch_applied": false,
+    "harness_resolved": false,
+    "total_cost": 23.569000000000003,
+    "backend_picks": [
+      "deepseek_flash",
+      "deepseek_pro",
+      "deepseek_pro",
+      "deepseek_pro",
+      "deepseek_pro",
+      "deepseek_pro"
+    ],
+    "detail": "no model patch extracted"
+  }
+]

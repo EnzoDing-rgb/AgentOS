@@ -1,0 +1,20 @@
+[
+  {
+    "instance_id": "sympy__sympy-24152",
+    "strategy": "budgetflow_full",
+    "workflow_steps_ok": true,
+    "patch_extracted": true,
+    "patch_applied": true,
+    "harness_resolved": false,
+    "total_cost": 22.8974,
+    "backend_picks": [
+      "deepseek_flash",
+      "deepseek_pro",
+      "deepseek_pro",
+      "deepseek_pro",
+      "deepseek_pro",
+      "deepseek_pro"
+    ],
+    "detail": "test_patch=ok; fail_before=fail; model_patch=ok; fail_after=fail; ============================= test session starts ==============================\nplatform linux -- Python 3.11.5, pytest-7.4.0, pluggy-1.0.0\narchitecture: 64-bit\ncache:        yes\nground types: gmpy 2.1.2\n\nrootdir: /Lishun/_archive/.local_env_bak/research/AgentOS/paper1/data/repo_cache/sympy__sympy\nconfigfile: pytest.ini\nplugins: anyio-3.7.1\ncollected 1 item\n\nsympy/physics/quantum/tests/test_tensorproduct.py F                      [100%]\n\n=================================== FAILURES ===================================\n__________________________ test_tensor_product_expand __________________________\n\n    def test_tensor_product_expand():\n>       assert TP(A + B, B + C).expand(tensorproduct=True) == \\\n            TP(A, B) + TP(A, C) + TP(B, B) + TP(B, C)\nE       assert A*B + A*C + B*C + B**2 == (((AxB + AxC) + BxB) + BxC)\nE        +  where A*B + A*C + B*C + B**2 = <bound method Expr.expand of (A + B)x(B + C)>(tensorproduct=True)\nE        +    where <bound method Expr.expand of (A + B)x(B + C)> = (A + B)x(B + C).expand\nE        +      where (A + B)x(B + C) = TP((A + B), (B + C))\nE        +  and   AxB = TP(A, B)\nE        +  and   AxC = TP(A, C)\nE        +  and   BxB = TP(B, B)\nE        +  and   BxC = TP(B, C)\n\nsympy/physics/quantum/tests/test_tensorproduct.py:45: AssertionError\n                                DO *NOT* COMMIT!                                \n=========================== short test summary info ============================\nFAILED sympy/physics/quantum/tests/test_tensorproduct.py::test_tensor_product_expand\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n============================== 1 failed in 0.54s ===============================; pass_to_pass=fail; ============================= test session starts ==============================\nplatform linux -- Python 3.11.5, pytest-7.4.0, pluggy-1.0.0\narchitecture: 64-bit\ncache:        yes\nground types: gmpy 2.1.2\n\nrootdir: /Lishun/_archive/.local_env_bak/research/AgentOS/paper1/data/repo_cache/sympy__sympy\nconfigfile: pytest.ini\nplugins: anyio-3.7.1\ncollected 5 items\n\nsympy/physics/quantum/tests/test_tensorproduct.py ...F\n\n=================================== FAILURES ===================================\n________________________ test_tensor_product_commutator ________________________\n\n    def test_tensor_product_commutator():\n>       assert TP(Comm(A, B), C).doit().expand(tensorproduct=True) == \\\n            TP(A*B, C) - TP(B*A, C)\nE       assert A*B*C - B*A*C == ((A*B)xC - (B*A)xC)\nE        +  where A*B*C - B*A*C = <bound method Expr.expand of (A*B - B*A)xC>(tensorproduct=True)\nE        +    where <bound method Expr.expand of (A*B - B*A)xC> = (A*B - B*A)xC.expand\nE        +      where (A*B - B*A)xC = <bound method TensorProduct.doit of [A,B]xC>()\nE        +        where <bound method TensorProduct.doit of [A,B]xC> = [A,B]xC.doit\nE        +          where [A,B]xC = TP([A,B], C)\nE        +            where [A,B] = Comm(A, B)\nE        +  and   (A*B)xC = TP((A * B), C)\nE        +  and   (B*A)xC = TP((B * A), C)\n\nsympy/physics/quantum/tests/test_tensorproduct.py:57: AssertionError\n                                DO *NOT* COMMIT!                                \n=========================== short test summary info ============================\nFAILED sympy/physics/quantum/tests/test_tensorproduct.py::test_tensor_product_commutator\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n========================= 1 failed, 3 passed in 0.43s =========================="
+  }
+]

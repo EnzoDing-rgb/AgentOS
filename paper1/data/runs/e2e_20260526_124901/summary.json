@@ -1,0 +1,32 @@
+[
+  {
+    "instance_id": "sympy__sympy-24152",
+    "strategy": "budgetflow_full",
+    "workflow_steps_ok": true,
+    "patch_extracted": false,
+    "patch_applied": false,
+    "harness_resolved": false,
+    "total_cost": 14.19,
+    "backend_picks": [
+      "deepseek_flash",
+      "deepseek_pro",
+      "deepseek_flash"
+    ],
+    "detail": "no model patch extracted"
+  },
+  {
+    "instance_id": "sympy__sympy-24213",
+    "strategy": "budgetflow_full",
+    "workflow_steps_ok": true,
+    "patch_extracted": false,
+    "patch_applied": false,
+    "harness_resolved": false,
+    "total_cost": 14.464399999999998,
+    "backend_picks": [
+      "deepseek_flash",
+      "deepseek_pro",
+      "deepseek_flash"
+    ],
+    "detail": "no model patch extracted"
+  }
+]
