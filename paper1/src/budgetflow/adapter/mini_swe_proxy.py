@@ -15,7 +15,7 @@ from minisweagent.models.utils.cache_control import set_cache_control
 from minisweagent.models.utils.openai_multimodal import expand_multimodal_content
 from minisweagent.models.utils.retry import retry
 
-from ..deepseek_backend import load_env_file
+from ..deepseek_backend import ensure_direct_api, load_env_file
 from ..defaults import DEEPSEEK_API_BASE, DEEPSEEK_FLASH_MODEL, DEEPSEEK_PRO_MODEL
 from ..governor import BudgetGovernor
 from ..types import Backend, TurnInfo, WorkflowStatus
@@ -147,6 +147,7 @@ class BudgetFlowLitellmModel:
         prepared = set_cache_control(prepared, mode=self.set_cache_control)
 
         def _query():
+            ensure_direct_api()
             return litellm.completion(
                 model=model_name,
                 messages=prepared,

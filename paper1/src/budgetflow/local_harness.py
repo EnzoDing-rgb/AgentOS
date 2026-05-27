@@ -5,6 +5,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -187,6 +188,39 @@ def _checkout_commit(repo_dir: Path, commit: str) -> None:
     subprocess.run(["git", "checkout", "--force", commit], cwd=repo_dir, check=True, capture_output=True, text=True)
 
 
+def _pip_install_editable(repo_dir: Path, *, task: LiteTaskRecord) -> subprocess.CompletedProcess:
+    cmd = [harness_python(), "-m", "pip", "install", "-e", "."]
+    print(f"{tag('prep')} pip install -e . {dim('(sympy ~3-8 min, streaming below)')}", flush=True)
+    started = time.time()
+    last_pulse = started
+    proc = subprocess.Popen(
+        cmd,
+        cwd=repo_dir,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    assert proc.stdout is not None
+    for raw in proc.stdout:
+        line = raw.rstrip()
+        if not line:
+            continue
+        # pip progress: "Collecting...", "Installing...", "Building wheel..."
+        if any(token in line for token in ("Collecting", "Installing", "Building", "Preparing", "Successfully")):
+            print(f"  {tag('pip', color='\033[94m')} {line[:140]}", flush=True)
+        now = time.time()
+        if now - last_pulse >= 20:
+            elapsed = paint(f"{now - started:.0f}s", "\033[93m", "\033[1m")
+            print(f"{tag('prep')} pip running elapsed={elapsed} ...", flush=True)
+            last_pulse = now
+    proc.wait()
+    elapsed = time.time() - started
+    rc = proc.returncode if proc.returncode is not None else 1
+    print(f"{tag('prep')} pip finished rc={rc} elapsed={elapsed:.0f}s", flush=True)
+    return subprocess.CompletedProcess(cmd, rc, "", "")
+
+
 def clone_or_checkout(task: LiteTaskRecord) -> Path:
     repo_dir = repo_dir_for(task)
     repo_url = f"https://github.com/{task.repo}.git"
@@ -209,13 +243,7 @@ def clone_or_checkout(task: LiteTaskRecord) -> Path:
         print(f"{tag('prep')} pip skip {dim('(cached)')}", flush=True)
         return repo_dir
 
-    print(f"{tag('prep')} pip install -e . {dim('(sympy may take several min)')} ...", flush=True)
-    install = subprocess.run(
-        [harness_python(), "-m", "pip", "install", "-e", ".", "-q"],
-        cwd=repo_dir,
-        capture_output=True,
-        text=True,
-    )
+    install = _pip_install_editable(repo_dir, task=task)
     if install.returncode != 0 and "sympy" not in task.repo:
         install.check_returncode()
     if install.returncode == 0:

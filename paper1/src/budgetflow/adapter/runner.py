@@ -64,17 +64,20 @@ def run_mini_swe_task(
     task: LiteTaskRecord,
     *,
     strategy: str = "all_pro",
+    strategy_label: str | None = None,
     budget_per_task: float | None = None,
     budget_pressure: float | None = None,
     step_limit: int = 250,
 ) -> MiniSweRunResult:
+    label = strategy_label or strategy
     repo_dir = clone_or_checkout(task)
-    trace_dir = RUNS_DIR / f"trace_{task.instance_id}_{strategy}"
+    trace_dir = RUNS_DIR / f"trace_{task.instance_id}_{label}"
     trace = RunTraceLogger(
         instance_id=task.instance_id,
         repo_dir=repo_dir,
         trace_dir=trace_dir,
         target_files=task.gold_files,
+        strategy_label=label,
     )
     config = patch_local_swebench_config(_load_agent_config(step_limit=step_limit), repo_dir)
     backends = build_deepseek_backends()
@@ -118,6 +121,7 @@ def run_mini_swe_task(
         exit_status = type(exc).__name__
 
     harness = evaluate_local_harness(task, patch_text)
+    trace.log_harness_result(resolved=harness.harness_resolved, detail=harness.detail)
     violations: list[str] = []
     if governor.state.available_budget < 0:
         violations.append("budget_violation")

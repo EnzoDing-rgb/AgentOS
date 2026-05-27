@@ -53,13 +53,31 @@ def paint(text: str, *styles: str) -> str:
 
 
 def tag(label: str, *, color: str = _CYAN, bold: bool = True) -> str:
-    styles = (color, _BOLD) if bold else (color,)
+    if bold:
+        styles = (color, _BOLD)
+    else:
+        styles = (_DIM,)
     return paint(f"[{label}]", *styles)
 
 
+def bold(text: str) -> str:
+    return paint(text, _BOLD)
+
+
+def status_pass(text: str = "PASS") -> str:
+    return bold(text)
+
+
+def status_fail(text: str = "FAIL") -> str:
+    return bold(text)
+
+
+def status_pending(text: str = "pending") -> str:
+    return text
+
+
 def phase_label(phase: str) -> str:
-    color = PHASE_COLORS.get(phase, _WHITE)
-    return paint(phase, color, _BOLD)
+    return phase
 
 
 def warn_label(text: str) -> str:

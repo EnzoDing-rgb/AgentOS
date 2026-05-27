@@ -15,19 +15,35 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
 
+_PROXY_KEYS = (
+    "http_proxy",
+    "https_proxy",
+    "all_proxy",
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+)
+
+
+def ensure_direct_api() -> None:
+    """DeepSeek API 直连；shell SOCKS proxy 会让 httpx/litellm 报 socksio 缺失."""
+    for key in _PROXY_KEYS:
+        os.environ.pop(key, None)
+
+
 def load_env_file() -> None:
     env_path = _repo_root() / ".env"
-    if not env_path.exists():
-        return
-    for line in env_path.read_text().splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, _, value = line.partition("=")
-        key = key.strip()
-        value = value.strip().strip('"').strip("'")
-        if key and key not in os.environ:
-            os.environ[key] = value
+    if env_path.exists():
+        for line in env_path.read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = value
+    ensure_direct_api()
 
 
 def extract_message_text(message) -> str:

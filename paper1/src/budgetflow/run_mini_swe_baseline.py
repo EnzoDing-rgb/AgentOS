@@ -32,7 +32,7 @@ from minisweagent.exceptions import Submitted  # noqa: E402
 from minisweagent.models import get_model  # noqa: E402
 from minisweagent.utils.serialize import recursive_merge  # noqa: E402
 
-from budgetflow.deepseek_backend import load_env_file  # noqa: E402
+from budgetflow.deepseek_backend import ensure_direct_api, load_env_file  # noqa: E402
 from budgetflow.console_log import dim, fail_label, ok_label, paint, tag  # noqa: E402
 from budgetflow.defaults import DEEPSEEK_API_BASE, DEEPSEEK_PRO_MODEL  # noqa: E402
 from budgetflow.heartbeat import run_with_heartbeat  # noqa: E402
@@ -117,6 +117,8 @@ def _load_agent_config(*, step_limit: int) -> dict:
 
 
 def run_baseline_task(task, *, step_limit: int = 250) -> dict:
+    ensure_direct_api()
+
     def _prep_repo():
         return clone_or_checkout(task)
 
@@ -129,12 +131,9 @@ def run_baseline_task(task, *, step_limit: int = 250) -> dict:
         repo_dir=repo_dir,
         trace_dir=trace_dir,
         target_files=task.gold_files,
+        strategy_label="baseline_all_pro",
     )
-    print(
-        f"{tag('trace')} steps={dim(str(trace.steps_path))} "
-        f"target={ok_label(','.join(task.gold_files))}",
-        flush=True,
-    )
+    print(f"{tag('trace', bold=False)} steps={dim(str(trace.steps_path))}", flush=True)
 
     config = patch_local_swebench_config(_load_agent_config(step_limit=step_limit), repo_dir)
     agent_cfg = dict(config.get("agent", {}))
@@ -169,6 +168,7 @@ def run_baseline_task(task, *, step_limit: int = 250) -> dict:
         exit_status = type(exc).__name__
 
     harness = evaluate_local_harness(task, patch_text)
+    trace.log_harness_result(resolved=harness.harness_resolved, detail=harness.detail)
     record = _harness_record(task, harness, patch_text=patch_text, trace_dir=trace_dir)
     record["exit_status"] = exit_status
     record["llm_turns"] = agent.n_calls
