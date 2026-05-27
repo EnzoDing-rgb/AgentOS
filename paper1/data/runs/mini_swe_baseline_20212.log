@@ -1,5 +1,0 @@
-👋 This is mini-swe-agent version 2.3.0.
-Check the v2 migration guide at https://klieret.short.gy/mini-v2-migration
-Loading global config from '/root/.config/mini-swe-agent/.env'
-mini-SWE baseline: n=1 model=openai/deepseek-v4-pro cost_limit=0 step_limit=250
-[1/1] START sympy__sympy-20212

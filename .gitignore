@@ -2,3 +2,22 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# IDE / agent tooling
+.cursor/
+.claude/
+
+# External deps (clone separately; see external/PINNED_COMMIT)
+external/mini-swe-agent/
+
+# SWE-bench clones & experiment artifacts
+paper1/data/SWE-bench/
+paper1/data/experiments/
+paper1/data/repo_cache/
+paper1/data/runs/
+paper1/data/swebench_lite_export/
+paper1/data/*.log
+
+# Generated outputs
+*.jsonl
+*.log
