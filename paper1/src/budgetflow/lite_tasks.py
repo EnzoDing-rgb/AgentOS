@@ -55,10 +55,24 @@ SMOKE_INSTANCE_IDS: tuple[str, ...] = (
     "sympy__sympy-21614",  # Derivative.kind delegates to expr.kind
 )
 
+# 5-task compare pilot: smallest gold patches in sympy lite (12-line patches).
+COMPARE_EASY_INSTANCE_IDS: tuple[str, ...] = (
+    "sympy__sympy-13480",
+    "sympy__sympy-13647",
+    "sympy__sympy-14774",
+    "sympy__sympy-16988",
+    "sympy__sympy-20212",
+)
+
 
 def load_smoke_tasks(limit: int = 1) -> list[LiteTaskRecord]:
     """Load easiest lite sympy tasks for mini-SWE / Step A smoke."""
     return load_swebench_lite_tasks(instance_ids=SMOKE_INSTANCE_IDS[:limit])
+
+
+def load_compare_easy_tasks(limit: int = 5) -> list[LiteTaskRecord]:
+    """Load 5 easy sympy bug-fix tasks for BF vs no-BF compare."""
+    return load_swebench_lite_tasks(instance_ids=COMPARE_EASY_INSTANCE_IDS[:limit])
 
 
 def load_local_swebench_lite_export() -> list[dict] | None:

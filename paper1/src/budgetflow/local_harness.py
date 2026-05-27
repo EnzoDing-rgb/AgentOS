@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -11,6 +13,110 @@ from .console_log import dim, paint, tag
 
 PAPER1_ROOT = Path(__file__).resolve().parents[2]
 CACHE_DIR = PAPER1_ROOT / "data" / "repo_cache"
+LEGACY_CACHE_DIR = PAPER1_ROOT / "src" / "data" / "repo_cache"
+
+_COLLECTIONS_ABC = frozenset(
+    {
+        "Mapping",
+        "MutableMapping",
+        "MutableSet",
+        "Iterable",
+        "Hashable",
+        "Callable",
+        "Sequence",
+        "Container",
+        "Iterator",
+        "Generator",
+    }
+)
+
+
+def harness_python() -> str:
+    return os.environ.get("BUDGETFLOW_HARNESS_PYTHON", sys.executable)
+
+
+def _split_collections_import_line(line: str) -> list[str] | None:
+    match = re.match(r"^(\s*)from collections import (.+)$", line)
+    if not match:
+        return None
+    indent, tail = match.group(1), match.group(2).strip()
+    if tail.startswith("("):
+        return None
+    names = [part.strip() for part in tail.split(",") if part.strip()]
+    abc = [name for name in names if name in _COLLECTIONS_ABC]
+    std = [name for name in names if name not in _COLLECTIONS_ABC]
+    if not abc:
+        return None
+    out: list[str] = []
+    if std:
+        out.append(f"{indent}from collections import {', '.join(std)}")
+    out.append(f"{indent}from collections.abc import {', '.join(abc)}")
+    return out
+
+
+def _split_collections_import_block(block_lines: list[str]) -> list[str] | None:
+    indent = re.match(r"^(\s*)", block_lines[0]).group(1)
+    joined = " ".join(line.strip() for line in block_lines)
+    inner = re.search(r"from collections import \((.+)\)", joined, re.DOTALL)
+    if not inner:
+        return None
+    names = [part.strip() for part in inner.group(1).replace("\n", " ").split(",") if part.strip()]
+    abc = [name for name in names if name in _COLLECTIONS_ABC]
+    std = [name for name in names if name not in _COLLECTIONS_ABC]
+    if not abc:
+        return None
+    out: list[str] = []
+    if std:
+        out.append(f"{indent}from collections import {', '.join(std)}")
+    out.append(f"{indent}from collections.abc import {', '.join(abc)}")
+    return out
+
+
+def _patch_collections_import_block(text: str) -> str:
+    lines = text.splitlines()
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if re.match(r"^\s*from collections import \(", line):
+            block = [line]
+            i += 1
+            while i < len(lines) and ")" not in block[-1]:
+                block.append(lines[i])
+                i += 1
+            split = _split_collections_import_block(block)
+            if split:
+                out.extend(split)
+                continue
+            out.extend(block)
+            continue
+        split = _split_collections_import_line(line)
+        if split:
+            out.extend(split)
+        else:
+            out.append(line)
+        i += 1
+    return "\n".join(out) + ("\n" if text.endswith("\n") else "")
+
+
+def apply_python_compat(repo_dir: Path) -> int:
+    """Patch legacy `collections.Mapping` imports for Python 3.10+."""
+    if sys.version_info < (3, 10):
+        return 0
+    changed = 0
+    for path in repo_dir.rglob("*.py"):
+        original = path.read_text(encoding="utf-8", errors="ignore")
+        patched = _patch_collections_import_block(original)
+        if patched != original:
+            path.write_text(patched)
+            changed += 1
+    if changed:
+        print(
+            f"{tag('prep')} py{sys.version_info.major}.{sys.version_info.minor} "
+            f"collections compat {paint(str(changed), '\033[92m')} files",
+            flush=True,
+        )
+    return changed
 
 
 @dataclass(frozen=True)
@@ -35,11 +141,50 @@ def repo_slug(repo: str) -> str:
 
 
 def repo_dir_for(task: LiteTaskRecord) -> Path:
-    return CACHE_DIR / repo_slug(task.repo)
+    slug = repo_slug(task.repo)
+    primary = CACHE_DIR / slug
+    legacy = LEGACY_CACHE_DIR / slug
+    if primary.exists():
+        return primary
+    if legacy.exists():
+        return legacy
+    return primary
 
 
-def _pip_marker_path(task: LiteTaskRecord) -> Path:
-    return CACHE_DIR / f"{repo_slug(task.repo)}.pip_ok"
+def _pip_marker_path(repo_dir: Path) -> Path:
+    return repo_dir.parent / f"{repo_dir.name}.pip_ok"
+
+
+def _checkout_commit(repo_dir: Path, commit: str) -> None:
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo_dir,
+        capture_output=True,
+        text=True,
+    )
+    if head.returncode == 0 and head.stdout.strip() == commit:
+        return
+    has_commit = subprocess.run(
+        ["git", "cat-file", "-e", commit],
+        cwd=repo_dir,
+        capture_output=True,
+        text=True,
+    ).returncode == 0
+    if not has_commit:
+        fetch_attempts = (
+            ["git", "fetch", "--depth", "1", "origin", commit],
+            ["git", "fetch", "origin", commit],
+            ["git", "fetch", "origin"],
+        )
+        last_error = ""
+        for cmd in fetch_attempts:
+            result = subprocess.run(cmd, cwd=repo_dir, capture_output=True, text=True)
+            if result.returncode == 0:
+                break
+            last_error = (result.stderr or result.stdout or "").strip()
+        else:
+            raise subprocess.CalledProcessError(1, fetch_attempts[-1], last_error)
+    subprocess.run(["git", "checkout", "--force", commit], cwd=repo_dir, check=True, capture_output=True, text=True)
 
 
 def clone_or_checkout(task: LiteTaskRecord) -> Path:
@@ -55,18 +200,18 @@ def clone_or_checkout(task: LiteTaskRecord) -> Path:
             text=True,
         )
     print(f"{tag('prep')} checkout {paint(task.instance_id, '\033[1m', '\033[96m')} @ {task.base_commit[:8]} ...", flush=True)
-    subprocess.run(["git", "fetch", "origin", task.base_commit], cwd=repo_dir, check=True, capture_output=True, text=True)
-    subprocess.run(["git", "checkout", "--force", task.base_commit], cwd=repo_dir, check=True, capture_output=True, text=True)
+    _checkout_commit(repo_dir, task.base_commit)
     subprocess.run(["git", "clean", "-fdx"], cwd=repo_dir, check=True, capture_output=True, text=True)
+    apply_python_compat(repo_dir)
 
-    marker = _pip_marker_path(task)
+    marker = _pip_marker_path(repo_dir)
     if marker.exists() and marker.read_text().strip() == task.base_commit:
         print(f"{tag('prep')} pip skip {dim('(cached)')}", flush=True)
         return repo_dir
 
     print(f"{tag('prep')} pip install -e . {dim('(sympy may take several min)')} ...", flush=True)
     install = subprocess.run(
-        [sys.executable, "-m", "pip", "install", "-e", ".", "-q"],
+        [harness_python(), "-m", "pip", "install", "-e", ".", "-q"],
         cwd=repo_dir,
         capture_output=True,
         text=True,
@@ -134,7 +279,7 @@ def run_pytest(repo_dir: Path, test_names: tuple[str, ...], test_paths: list[str
     if not node_ids:
         detail = ", ".join(missing[:6]) if missing else "none"
         return False, f"no pytest node ids: {detail}"
-    cmd = ["python", "-m", "pytest", "-x", *node_ids]
+    cmd = [harness_python(), "-m", "pytest", "-x", *node_ids]
     result = subprocess.run(cmd, cwd=repo_dir, capture_output=True, text=True)
     output = (result.stdout + "\n" + result.stderr).strip()
     tail = output[-2000:] if len(output) > 2000 else output

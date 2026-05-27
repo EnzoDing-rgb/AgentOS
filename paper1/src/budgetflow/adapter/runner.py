@@ -43,13 +43,13 @@ class MiniSweRunResult:
     violations: tuple[str, ...]
 
 
-def _load_agent_config() -> dict:
+def _load_agent_config(*, step_limit: int = 250) -> dict:
     config = recursive_merge(
         get_config_from_spec(SWEBENCH_CONFIG),
         {
             "agent": {
                 "cost_limit": 0.0,
-                "step_limit": 80,
+                "step_limit": step_limit,
                 "confirm_exit": False,
             },
             "environment": {
@@ -66,6 +66,7 @@ def run_mini_swe_task(
     strategy: str = "all_pro",
     budget_per_task: float | None = None,
     budget_pressure: float | None = None,
+    step_limit: int = 250,
 ) -> MiniSweRunResult:
     repo_dir = clone_or_checkout(task)
     trace_dir = RUNS_DIR / f"trace_{task.instance_id}_{strategy}"
@@ -75,7 +76,7 @@ def run_mini_swe_task(
         trace_dir=trace_dir,
         target_files=task.gold_files,
     )
-    config = patch_local_swebench_config(_load_agent_config(), repo_dir)
+    config = patch_local_swebench_config(_load_agent_config(step_limit=step_limit), repo_dir)
     backends = build_deepseek_backends()
     ledger = WorkflowLedgerStore()
     cap = budget_per_task if budget_per_task is not None else 1_000_000.0
