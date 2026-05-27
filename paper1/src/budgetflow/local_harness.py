@@ -100,24 +100,42 @@ def _patch_collections_import_block(text: str) -> str:
     return "\n".join(out) + ("\n" if text.endswith("\n") else "")
 
 
-def apply_python_compat(repo_dir: Path) -> int:
-    """Patch legacy `collections.Mapping` imports for Python 3.10+."""
+def _patch_collections_attr_usage(text: str) -> str:
+    """Rewrite `collections.Mapping` style attribute refs for Python 3.10+."""
+    names = "|".join(sorted(_COLLECTIONS_ABC, key=len, reverse=True))
+    pattern = rf"\bcollections\.(?!abc\.)({names})\b"
+    return re.sub(pattern, r"collections.abc.\1", text)
+
+
+def _patch_python_compat_text(text: str) -> str:
+    return _patch_collections_attr_usage(_patch_collections_import_block(text))
+
+
+def apply_python_compat(repo_dir: Path) -> tuple[str, ...]:
+    """Patch legacy collections ABC usage for Python 3.10+."""
     if sys.version_info < (3, 10):
-        return 0
-    changed = 0
+        return ()
+    changed_paths: list[str] = []
     for path in repo_dir.rglob("*.py"):
         original = path.read_text(encoding="utf-8", errors="ignore")
-        patched = _patch_collections_import_block(original)
+        patched = _patch_python_compat_text(original)
         if patched != original:
             path.write_text(patched)
-            changed += 1
-    if changed:
+            changed_paths.append(str(path.relative_to(repo_dir)))
+    if changed_paths:
         print(
             f"{tag('prep')} py{sys.version_info.major}.{sys.version_info.minor} "
-            f"collections compat {paint(str(changed), '\033[92m')} files",
+            f"collections compat {paint(str(len(changed_paths)), '\033[92m')} files",
             flush=True,
         )
-    return changed
+    return tuple(changed_paths)
+
+
+_LAST_COMPAT_FILES: tuple[str, ...] = ()
+
+
+def get_last_compat_files() -> tuple[str, ...]:
+    return _LAST_COMPAT_FILES
 
 
 @dataclass(frozen=True)
@@ -222,6 +240,7 @@ def _pip_install_editable(repo_dir: Path, *, task: LiteTaskRecord) -> subprocess
 
 
 def clone_or_checkout(task: LiteTaskRecord) -> Path:
+    global _LAST_COMPAT_FILES
     repo_dir = repo_dir_for(task)
     repo_url = f"https://github.com/{task.repo}.git"
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -235,8 +254,9 @@ def clone_or_checkout(task: LiteTaskRecord) -> Path:
         )
     print(f"{tag('prep')} checkout {paint(task.instance_id, '\033[1m', '\033[96m')} @ {task.base_commit[:8]} ...", flush=True)
     _checkout_commit(repo_dir, task.base_commit)
+    subprocess.run(["git", "reset", "--hard", task.base_commit], cwd=repo_dir, check=True, capture_output=True, text=True)
     subprocess.run(["git", "clean", "-fdx"], cwd=repo_dir, check=True, capture_output=True, text=True)
-    apply_python_compat(repo_dir)
+    _LAST_COMPAT_FILES = apply_python_compat(repo_dir)
 
     marker = _pip_marker_path(repo_dir)
     if marker.exists() and marker.read_text().strip() == task.base_commit:

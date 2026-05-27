@@ -65,11 +65,36 @@ def bold(text: str) -> str:
 
 
 def status_pass(text: str = "PASS") -> str:
-    return bold(text)
+    return paint(text, _BRIGHT_GREEN, _BOLD)
 
 
 def status_fail(text: str = "FAIL") -> str:
-    return bold(text)
+    return paint(text, _BRIGHT_RED, _BOLD)
+
+
+def status_yes(text: str = "YES") -> str:
+    return paint(text, _BRIGHT_GREEN, _BOLD)
+
+
+def status_no(text: str = "NO") -> str:
+    return paint(text, _BRIGHT_YELLOW, _BOLD)
+
+
+def harness_stage(stage: str, value: str | None) -> str:
+    if not value:
+        return status_pending("?")
+    lowered = value.lower()
+    if stage == "fail_before":
+        return status_pass("OK") if lowered == "fail" else status_fail("BAD")
+    if stage in {"test_patch", "model_patch"}:
+        return status_pass("OK") if lowered == "ok" else status_fail("FAIL")
+    if stage in {"fail_after", "pass_to_pass"}:
+        return status_pass("OK") if lowered == "pass" else status_fail("FAIL")
+    if lowered in {"ok", "pass", "yes"}:
+        return status_pass("OK")
+    if lowered.startswith("fail") or lowered in {"no", "error"}:
+        return status_fail("FAIL")
+    return status_pending(value[:12])
 
 
 def status_pending(text: str = "pending") -> str:
@@ -94,3 +119,44 @@ def fail_label(text: str) -> str:
 
 def dim(text: str) -> str:
     return paint(text, _DIM)
+
+
+def parse_harness_detail(detail: str) -> dict[str, str]:
+    stages: dict[str, str] = {}
+    for part in detail.split(";"):
+        chunk = part.strip()
+        if "=" not in chunk:
+            continue
+        key, value = chunk.split("=", 1)
+        stages[key.strip()] = value.strip()
+    return stages
+
+
+def format_harness_board(detail: str) -> str:
+    stages = parse_harness_detail(detail)
+    parts = [
+        f"test_patch={harness_stage('test_patch', stages.get('test_patch'))}",
+        f"fail_before={harness_stage('fail_before', stages.get('fail_before'))}",
+        f"model_patch={harness_stage('model_patch', stages.get('model_patch'))}",
+        f"fail_after={harness_stage('fail_after', stages.get('fail_after'))}",
+        f"pass_to_pass={harness_stage('pass_to_pass', stages.get('pass_to_pass'))}",
+    ]
+    return " ".join(parts)
+
+
+def format_run_verdict(
+    *,
+    harness_resolved: bool,
+    patch_extracted: bool,
+    gold_edited: bool,
+    gold_file: str = "-",
+    detail: str = "",
+) -> str:
+    if not patch_extracted:
+        verdict = status_fail("NO PATCH")
+    elif harness_resolved:
+        verdict = status_pass("PATCH PASSED HARNESS")
+    else:
+        verdict = status_fail("PATCH FAILED HARNESS")
+    gold = status_yes(gold_file) if gold_edited else status_no("none")
+    return f"verdict={verdict} | gold={gold} | {format_harness_board(detail)}"

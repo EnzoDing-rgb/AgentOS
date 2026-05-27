@@ -19,6 +19,7 @@ from ..deepseek_backend import ensure_direct_api, load_env_file
 from ..defaults import DEEPSEEK_API_BASE, DEEPSEEK_FLASH_MODEL, DEEPSEEK_PRO_MODEL
 from ..governor import BudgetGovernor
 from ..types import Backend, TurnInfo, WorkflowStatus
+from .errors import BudgetFlowBudgetError
 from .bash_stage import classify_bash_stage
 from .message_utils import estimate_input_tokens, extract_bash_context
 from .strategies import RoutingContext, choose_backend, stage_weight
@@ -60,6 +61,8 @@ class BudgetFlowLitellmModel:
             raise RuntimeError("DEEPSEEK_API_KEY is missing. Add it to the repo root .env file.")
         self.step_index = 0
         self.backend_picks: list[str] = []
+        self.last_exit_reason: str | None = None
+        self.last_budget_snapshot: dict[str, float] | None = None
         self.config = type("Config", (), {"model_name": DEEPSEEK_PRO_MODEL})()
 
     def query(self, messages: list[dict[str, str]], **kwargs) -> dict:
@@ -107,20 +110,36 @@ class BudgetFlowLitellmModel:
         }
         return message
 
+    def _reserve_output_tokens(self, backend: Backend) -> int:
+        # Reserve against expected output + headroom, not full 4096 max.
+        return min(1024, max(backend.mean_output_tokens * 2, 256))
+
     def _reserve_with_downgrade(self, backend: Backend, input_tokens: int) -> Backend:
         ordered = self.routing.backends
         start_index = ordered.index(backend)
+        reserve_out = None
         for candidate in ordered[start_index::-1]:
+            reserve_out = self._reserve_output_tokens(candidate)
             estimate = self.governor.estimate_cost(
                 candidate,
                 input_tokens=input_tokens,
-                max_output_tokens=self.default_max_output_tokens,
+                expected_output_tokens=candidate.mean_output_tokens,
+                reserve_output_tokens=reserve_out,
             )
             reservation = self.governor.reserve(self.workflow_id, candidate, estimate)
             if reservation is not None:
                 self._last_reservation_id = reservation.reservation_id
                 return candidate
-        raise RuntimeError(f"budget exhausted for workflow {self.workflow_id}")
+        snapshot = self.governor.budget_snapshot()
+        self.last_exit_reason = "budget_exhausted"
+        self.last_budget_snapshot = snapshot
+        raise BudgetFlowBudgetError(
+            self.workflow_id,
+            exit_reason="budget_exhausted",
+            budget_snapshot=snapshot,
+            step_index=self.step_index,
+            backend=backend.name,
+        )
 
     def _model_config_for(self, backend: Backend) -> tuple[str, dict[str, Any]]:
         if backend.name == "deepseek_flash":

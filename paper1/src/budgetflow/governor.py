@@ -35,16 +35,20 @@ class BudgetGovernor:
         input_tokens: int,
         max_output_tokens: int | None = None,
         expected_output_tokens: int | None = None,
+        reserve_output_tokens: int | None = None,
     ) -> CostEstimate:
         bounded_max_output = max_output_tokens or self.config.default_max_output_tokens
         bounded_expected_output = expected_output_tokens or backend.mean_output_tokens
+        bounded_reserve_output = (
+            reserve_output_tokens if reserve_output_tokens is not None else bounded_max_output
+        )
         expected_cost = (
             input_tokens * backend.cost_per_input_token
             + bounded_expected_output * backend.cost_per_output_token
         )
         reserved_cost = (
             input_tokens * backend.cost_per_input_token
-            + bounded_max_output * backend.cost_per_output_token
+            + bounded_reserve_output * backend.cost_per_output_token
         )
         return CostEstimate(
             expected_cost=expected_cost,
@@ -52,6 +56,14 @@ class BudgetGovernor:
             expected_output_tokens=bounded_expected_output,
             max_output_tokens=bounded_max_output,
         )
+
+    def budget_snapshot(self) -> dict[str, float]:
+        return {
+            "total_budget": self.state.total_budget,
+            "available_budget": self.state.available_budget,
+            "reserved_budget": self.state.reserved_budget,
+            "spent_budget": self.state.spent_budget,
+        }
 
     def can_dispatch(self, backend: Backend) -> bool:
         rpm_used = self._backend_rpm.get(backend.name, 0)
