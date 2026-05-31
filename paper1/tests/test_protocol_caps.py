@@ -16,7 +16,7 @@ def test_read_protocol_caps(tmp_path: Path) -> None:
         """# protocol
 | Key | Value |
 |---|---|
-| M (median per-task cost) | 113.0000 |
+| pilot per-task costs (governor units) | 113.0000, 120.0000 |
 | loose_batch_n5 | 1130.0000 |
 | tight_batch_n5 | 282.5000 |
 | PRESSURE_MAX | 1.5000 |
@@ -24,7 +24,6 @@ def test_read_protocol_caps(tmp_path: Path) -> None:
 """
     )
     caps = read_protocol_caps(5, path=protocol)
-    assert caps.m == 113.0
     assert caps.loose_batch == 1130.0
     assert caps.tight_batch == 282.5
     assert caps.pressure_max == 1.5

@@ -12,7 +12,6 @@ DEFAULT_PROTOCOL_PATH = PAPER1_ROOT / "docs" / "protocol.md"
 
 @dataclass(frozen=True)
 class ProtocolCaps:
-    m: float
     loose_batch: float
     tight_batch: float
     n_tasks: int
@@ -38,21 +37,17 @@ def read_protocol_caps(
         raise FileNotFoundError(f"protocol not found: {protocol_path}")
 
     text = protocol_path.read_text()
-    m = _parse_float_table_row(text, "M (median per-task cost)")
-    if m is None:
-        raise ValueError("protocol missing M (median per-task cost)")
 
     loose_key = f"loose_batch_n{n_tasks}"
     tight_key = f"tight_batch_n{n_tasks}"
     loose = _parse_float_table_row(text, loose_key)
     tight = _parse_float_table_row(text, tight_key)
     if loose is None or tight is None:
-        raise ValueError(f"protocol missing batch caps for n={n_tasks}")
+        raise ValueError(f"protocol missing batch caps for n={n_tasks} ({loose_key}, {tight_key})")
 
     pressure_max = _parse_float_table_row(text, "PRESSURE_MAX") or 1.5
     pressure_init = _parse_float_table_row(text, "BUDGET_PRESSURE_INIT") or 0.35
     return ProtocolCaps(
-        m=m,
         loose_batch=loose,
         tight_batch=tight,
         n_tasks=n_tasks,

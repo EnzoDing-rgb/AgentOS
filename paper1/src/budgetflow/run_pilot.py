@@ -1,4 +1,4 @@
-"""Step B.0 budget pilot: 3 compare_easy tasks × all_pro (uncapped) → M, batch caps.
+"""Step B.0 budget pilot: uncapped all_pro on pilot tasks → freeze batch caps in protocol.
 
 Usage:
   cd paper1 && PYTHONPATH=src:../external/mini-swe-agent/src python -m budgetflow.run_pilot
@@ -6,16 +6,18 @@ Usage:
 Writes:
   data/runs/pilot_b0.jsonl
   data/runs/pilot_b0_summary.json
-  docs/protocol.md  (FROZEN caps — do not edit after compare runs)
+  docs/protocol.md  (FROZEN batch caps — do not edit after compare runs)
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import statistics
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -52,13 +54,17 @@ from budgetflow.defaults import (  # noqa: E402
     TIER2_MODEL,
     TIER3_MODEL,
 )
-from budgetflow.lite_tasks import COMPARE_EASY_INSTANCE_IDS, PILOT_INSTANCE_IDS, load_pilot_tasks  # noqa: E402
+from budgetflow.lite_tasks import (  # noqa: E402
+    COMPARE_EASY_INSTANCE_IDS,
+    load_pilot_tasks,
+    load_swebench_lite_tasks,
+)
 
 RUNS_DIR = REPO_ROOT / "data" / "runs"
 PROTOCOL_PATH = REPO_ROOT / "docs" / "protocol.md"
 PINNED_COMMIT_PATH = REPO_ROOT.parent / "external" / "PINNED_COMMIT"
 UNCAPPED_BUDGET = 1_000_000.0
-PILOT_STEP_LIMIT = 80
+PILOT_STEP_LIMIT = 150
 PILOT_STRATEGY = "all_pro"
 PILOT_STRATEGY_LABEL = "all_pro → T3 (strongest tier)"
 
@@ -74,25 +80,29 @@ def _read_pinned_commit() -> str:
     return "unknown"
 
 
-def _batch_caps(m: float, n: int) -> tuple[float, float]:
-    return 2.0 * m * n, 0.5 * m * n
+def _derive_batch_caps(per_task_costs: list[float], n: int) -> tuple[float, float]:
+    """Map pilot per-task costs to shared batch caps for n serial tasks."""
+    if not per_task_costs:
+        return 0.0, 0.0
+    # Internal scale from pilot observations; compare only reads loose_batch_n* / tight_batch_n*.
+    unit = statistics.median(per_task_costs)
+    return 2.0 * unit * n, 0.5 * unit * n
 
 
-def _write_protocol(*, m: float, pilot_records: list[dict]) -> None:
+def _write_protocol(*, per_task_costs: list[float], pilot_records: list[dict]) -> None:
     pinned = _read_pinned_commit()
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     pilot_ids = [r["instance_id"] for r in pilot_records]
     compare_ids = list(COMPARE_EASY_INSTANCE_IDS)
-    loose_per_task = 2.0 * m
-    tight_per_task = 0.5 * m
-    loose_n3, tight_n3 = _batch_caps(m, 3)
-    loose_n5, tight_n5 = _batch_caps(m, 5)
-    costs = [float(r["total_cost"]) for r in pilot_records]
+    loose_n3, tight_n3 = _derive_batch_caps(per_task_costs, 3)
+    loose_n5, tight_n5 = _derive_batch_caps(per_task_costs, 5)
+    costs_display = ", ".join(f"{c:.4f}" for c in per_task_costs)
     outlier_note = ""
-    if costs and m > 0:
-        outliers = [r["instance_id"] for r in pilot_records if float(r["total_cost"]) > 3 * m]
+    if per_task_costs and tight_n3 > 0:
+        scale = tight_n3 / (0.5 * 3)
+        outliers = [r["instance_id"] for r in pilot_records if float(r["total_cost"]) > 3 * scale]
         if outliers:
-            outlier_note = f"\nOutlier tasks (>3×M, not excluded): {outliers}\n"
+            outlier_note = f"\nHigh-cost pilot tasks (not excluded from caps): {outliers}\n"
 
     body = f"""# BudgetFlow frozen experiment protocol
 
@@ -120,16 +130,14 @@ Cost unit: **governor units** (mock token costs in `adapter/backends.py`, same�
 | Key | Value |
 |---|---|
 | pilot tasks | {pilot_ids} |
-| M (median per-task cost) | {m:.4f} |
-| loose_per_task | {loose_per_task:.4f} |
-| tight_per_task | {tight_per_task:.4f} |
+| pilot per-task costs (governor units) | {costs_display} |
 | loose_batch_n3 | {loose_n3:.4f} |
 | tight_batch_n3 | {tight_n3:.4f} |
 | loose_batch_n5 | {loose_n5:.4f} |
 | tight_batch_n5 | {tight_n5:.4f} |
 
-Per-task formula: `loose = 2 × M`, `tight = 0.5 × M`.  
-Batch formula: `loose_batch = 2 × M × n`, `tight_batch = 0.5 × M × n`.
+Compare runs use **shared batch budget** per policy: `loose_batch_n*` / `tight_batch_n*` for `n` serial tasks.
+Calibrated from uncapped all_pro pilot costs above; frozen here — do not recompute at compare time.
 {outlier_note}
 ## Dynamic budget_pressure (frozen)
 
@@ -143,7 +151,7 @@ Formula: `pressure = init + used_frac × (PRESSURE_MAX - init)` where
 
 ## Eval task lists
 
-**Pilot (3):** `{", ".join(pilot_ids)}` (same as `PILOT_INSTANCE_IDS = compare_easy[:3]`)
+**Pilot (3):** `{", ".join(pilot_ids)}`
 
 **Compare easy (5):** `{", ".join(compare_ids)}`
 
@@ -167,8 +175,28 @@ Path: `paper1/src/budgetflow/defaults.py` — `PROGRESS_TABLE`, `W_I`, `BUDGET_P
     PROTOCOL_PATH.write_text(body)
 
 
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="B.0 budget pilot (all_pro, uncapped)")
+    parser.add_argument("--jobs", type=int, default=3, help="parallel pilot tasks/worktrees (default: 3)")
+    parser.add_argument("--limit", type=int, default=3, help="pilot task count when --instance-ids omitted")
+    parser.add_argument("--step-limit", type=int, default=PILOT_STEP_LIMIT, help="agent step limit per task")
+    parser.add_argument(
+        "--instance-ids",
+        type=str,
+        default="",
+        help="comma-separated instance ids (overrides default pilot task set)",
+    )
+    return parser.parse_args()
+
+
 def main() -> None:
-    tasks = load_pilot_tasks(3)
+    args = _parse_args()
+    if args.instance_ids.strip():
+        task_ids = tuple(x.strip() for x in args.instance_ids.split(",") if x.strip())
+        tasks = load_swebench_lite_tasks(instance_ids=task_ids)
+    else:
+        tasks = load_pilot_tasks(args.limit)
+
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
     out_path = RUNS_DIR / "pilot_b0.jsonl"
     summary_path = RUNS_DIR / "pilot_b0_summary.json"
@@ -176,69 +204,79 @@ def main() -> None:
     print(f"{tag('pilot')} B.0 budget pilot — {len(tasks)} tasks × {bold(PILOT_STRATEGY)}", flush=True)
     print(f"  strategy: {bold(PILOT_STRATEGY_LABEL)}  model: {bold(TIER3_MODEL)}", flush=True)
     print(f"  pool: {format_tier_pool_line()}", flush=True)
-    print(f"  budget: uncapped  step_limit={PILOT_STEP_LIMIT}  heartbeat=30s", flush=True)
+    print(
+        f"  budget: uncapped  step_limit={args.step_limit}  heartbeat=30s  jobs={max(1, args.jobs)} (worktree)",
+        flush=True,
+    )
     print(f"  tasks: {dim(', '.join(t.instance_id for t in tasks))}", flush=True)
     records: list[dict] = []
     started = time.time()
 
+    def _run_one(index: int, task):
+        run_started = time.time()
+        result = run_mini_swe_task(
+            task,
+            strategy=PILOT_STRATEGY,
+            strategy_label=PILOT_STRATEGY_LABEL,
+            budget_per_task=UNCAPPED_BUDGET,
+            step_limit=args.step_limit,
+            trace_console="heartbeat",
+            workspace_key=f"pilot_{index}_{task.instance_id}",
+        )
+        return {
+            "instance_id": result.instance_id,
+            "strategy": result.strategy,
+            "strategy_label": PILOT_STRATEGY_LABEL,
+            "model": TIER3_MODEL,
+            "harness_resolved": result.harness_resolved,
+            "total_cost": result.total_cost,
+            "llm_turns": result.llm_turns,
+            "backend_picks": list(result.backend_picks),
+            "exit_status": result.exit_status,
+            "detail": result.harness_detail,
+            "elapsed_s": round(time.time() - run_started, 1),
+            "patch_extracted": bool(result.patch_text),
+            "gold_edited": result.agent_gold_edited,
+            "gold_file": (result.agent_gold_files[0] if result.agent_gold_files else "-"),
+        }
+
     with out_path.open("w") as handle:
+        total = len(tasks)
         for index, task in enumerate(tasks, start=1):
             print(
-                f"\n{tag('start', bold=False)} [{index}/{len(tasks)}] {bold(task.instance_id)} "
+                f"\n{tag('start', bold=False)} [{index}/{total}] {bold(task.instance_id)} "
                 f"strategy={PILOT_STRATEGY} model={TIER3_MODEL}",
                 flush=True,
             )
-            run_started = time.time()
-            result = run_mini_swe_task(
-                task,
-                strategy=PILOT_STRATEGY,
-                strategy_label=PILOT_STRATEGY_LABEL,
-                budget_per_task=UNCAPPED_BUDGET,
-                step_limit=PILOT_STEP_LIMIT,
-                trace_console="heartbeat",
-            )
-            record = {
-                "instance_id": result.instance_id,
-                "strategy": result.strategy,
-                "strategy_label": PILOT_STRATEGY_LABEL,
-                "model": TIER3_MODEL,
-                "harness_resolved": result.harness_resolved,
-                "total_cost": result.total_cost,
-                "llm_turns": result.llm_turns,
-                "backend_picks": list(result.backend_picks),
-                "exit_status": result.exit_status,
-                "detail": result.harness_detail,
-                "elapsed_s": round(time.time() - run_started, 1),
-            }
-            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
-            handle.flush()
-            records.append(record)
-            banner = status_pass(f"PASS [{index}/{len(tasks)}]") if result.harness_resolved else status_fail(
-                f"FAIL [{index}/{len(tasks)}]"
-            )
-            print(
-                f"{banner} {task.instance_id} {PILOT_STRATEGY_LABEL} "
-                f"cost={result.total_cost:.2f} turns={result.llm_turns} elapsed={record['elapsed_s']}s",
-                flush=True,
-            )
-            print(
-                f"  {format_run_verdict(harness_resolved=result.harness_resolved, patch_extracted=bool(result.patch_text), gold_edited=result.agent_gold_edited, gold_file=(result.agent_gold_files[0] if result.agent_gold_files else '-'), detail=result.harness_detail)}",
-                flush=True,
-            )
+        completed = 0
+        with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
+            futures = {pool.submit(_run_one, idx, task): task for idx, task in enumerate(tasks, start=1)}
+            for future in as_completed(futures):
+                record = future.result()
+                completed += 1
+                handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+                handle.flush()
+                records.append(record)
+                banner = status_pass(f"PASS [{completed}/{total}]") if record["harness_resolved"] else status_fail(
+                    f"FAIL [{completed}/{total}]"
+                )
+                print(
+                    f"{banner} {record['instance_id']} {PILOT_STRATEGY_LABEL} "
+                    f"cost={record['total_cost']:.2f} turns={record['llm_turns']} elapsed={record['elapsed_s']}s",
+                    flush=True,
+                )
+                print(
+                    f"  {format_run_verdict(harness_resolved=record['harness_resolved'], patch_extracted=record['patch_extracted'], gold_edited=record['gold_edited'], gold_file=record['gold_file'], detail=record['detail'])}",
+                    flush=True,
+                )
 
     costs = [float(r["total_cost"]) for r in records]
-    m = statistics.median(costs) if costs else 0.0
-    loose_per_task = 2.0 * m
-    tight_per_task = 0.5 * m
-    loose_n3, tight_n3 = _batch_caps(m, 3)
-    loose_n5, tight_n5 = _batch_caps(m, 5)
+    loose_n3, tight_n3 = _derive_batch_caps(costs, 3)
+    loose_n5, tight_n5 = _derive_batch_caps(costs, 5)
     summary = {
         "pilot_task_ids": [t.instance_id for t in tasks],
-        "pilot_instance_ids": list(PILOT_INSTANCE_IDS[:3]),
-        "costs": costs,
-        "M": m,
-        "loose_per_task": loose_per_task,
-        "tight_per_task": tight_per_task,
+        "pilot_instance_ids": [t.instance_id for t in tasks],
+        "per_task_costs": costs,
         "loose_batch_n3": loose_n3,
         "tight_batch_n3": tight_n3,
         "loose_batch_n5": loose_n5,
@@ -249,9 +287,14 @@ def main() -> None:
         "jsonl": str(out_path),
     }
     summary_path.write_text(json.dumps(summary, indent=2) + "\n")
-    _write_protocol(m=m, pilot_records=records)
+    _write_protocol(per_task_costs=costs, pilot_records=records)
 
-    print(f"\n{tag('pilot', bold=False)} FINAL M={bold(f'{m:.4f}')} loose_batch_n5={loose_n5:.4f} tight_batch_n5={tight_n5:.4f} elapsed={summary['elapsed_s']}s")
+    print(
+        f"\n{tag('pilot', bold=False)} FROZEN "
+        f"loose_batch_n5={bold(f'{loose_n5:.4f}')} tight_batch_n5={bold(f'{tight_n5:.4f}')} "
+        f"elapsed={summary['elapsed_s']}s",
+        flush=True,
+    )
     print(f"jsonl={out_path}")
     print(f"summary={summary_path}")
     print(f"protocol={PROTOCOL_PATH} (FROZEN)")

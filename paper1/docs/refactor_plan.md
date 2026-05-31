@@ -14,7 +14,7 @@
 | Harness | `local_harness.py`（非 Docker leaderboard；论文 disclaimer） |
 | Backend | DeepSeek Flash / Pro |
 | 预算 | **每 policy 一个 shared batch pool**；policy 内 task **串行**；policy 间 `--jobs N` + worktree |
-| Cap 公式 | `loose_batch = 2×M×n`，`tight_batch = 0.5×M×n`；M = pilot median all_pro |
+| Cap | pilot 测 uncapped all_pro per-task costs → 冻结 **`loose_batch_n*` / `tight_batch_n*`**；compare 只读 batch cap |
 | Hard cap | settle clamp；`batch_spent ≤ cap` |
 | 路由表 | `defaults.py` 写死，eval 不调 |
 
@@ -22,28 +22,11 @@
 
 ## Cap 校准（论文冻结数据 — 详见 `docs/protocol.md`）
 
-**M 的定义：** pilot 中 uncapped all_pro 每题 cost 的 **median**（governor units）。
+**Runtime 单位：** 每个 policy 一个 **shared batch budget**（`tight_batch_n5=5271` 等），不是 per-task cap。
 
-**为何重要：** RQ2 的 loose/tight 两档必须来自 **同一 pre-registered 公式**，不能 hand-tune。否则 reviewer 质疑 cap 凑结果。
+**Pilot 产出：** uncapped all_pro 每题 governor units → 写入 protocol 的 `loose_batch_n*` / `tight_batch_n*`。
 
-**当前可用估计（compare_3x5 easy-3，2026-05-27）：**
-
-| 指标 | 值 | 用途 |
-|---|---:|---|
-| all_pro costs | 113, 573, 88 | 13647 拉高方差 |
-| **M_median** | **113** | **推荐进 protocol** |
-| M_mean | 258 | 敏感性分析 / upper bound |
-| BF full_loose batch | 139 / 500 cap | smoke 偏松（28% 利用率） |
-
-**n=3 batch caps（公式）：**
-
-| 基准 | loose_batch | tight_batch |
-|---|---:|---:|
-| M=113 | 680 | 170 |
-| M=258 | 1550 | 387 |
-| 应力参考 ~300/150 | ~300 | ~150 | 比 smoke 500/200 更紧；正式值以 B.0 重跑为准 |
-
-**B.0 旧跑 INVALID：** 题单含 21614 → M=1951（median），21614 单题 47571/236 turns。**禁止**用于主表。
+**当前 FROZEN（2026-05-31）：** per-task costs 995/2108/2992 → `tight_batch_n5=5271`，`loose_batch_n5=21082`。
 
 **Pilot 题单（待改代码）：** `13480`, `13647`, `14774`（compare_easy），**非** `SMOKE_INSTANCE_IDS`（含 21614）。
 
@@ -53,10 +36,10 @@
 
 | 问题 | 答案 |
 |---|---|
-| Pilot 测什么？ | Uncapped all_pro cost → M → batch cap 公式 |
+| Pilot 测什么？ | Uncapped all_pro per-task costs → **batch caps** 写入 protocol |
 | Pilot 不测什么？ | 策略对比、BF vs Only |
 | 题怎么选？ | Representative **easy**（小 patch、单 gold、harness 稳） |
-| 21614 角色？ | Stress / case study；**不进 M** |
+| 21614 角色？ | Stress / case study；**不进 pilot 题单** |
 | 产出？ | `pilot_b0_summary.json` + **`protocol.md`（冻结）** |
 | 旧 protocol？ | 2026-05-27 版标 INVALID，compare 主表不得用 |
 
@@ -69,7 +52,7 @@
 | **A** Adapter | ✅ | runner、harness、worktree；hard cap；**dynamic pressure** |
 | trace submit fix | ✅ | `run_trace.py` + `test_run_trace.py` |
 | pilot 题单代码 | ✅ | `PILOT_INSTANCE_IDS`；batch cap 输出 |
-| **B.0 Pilot** | ✅ | M=187.15；protocol **FROZEN** |
+| **B.0 Pilot** | ✅ | tight_batch_n5=5271；protocol **FROZEN** |
 | **5×5 compare** | ✅ | Full 3/5 tight > Only 2/5；protocol caps |
 | **B.1–3** RQ2 | ⏳ | n=20、cap 读 protocol |
 | **C** RQ1 mock batch | ⏳ | `run_batch_governance.py` |

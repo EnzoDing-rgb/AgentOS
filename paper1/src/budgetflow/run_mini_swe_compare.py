@@ -496,8 +496,8 @@ def main() -> None:
     parser.add_argument(
         "--step-limit",
         type=int,
-        default=80,
-        help="agent step cap per task (smoke default 80; formal runs may raise after pilot)",
+        default=150,
+        help="agent step cap per task (default 150; raise for hard localization tasks)",
     )
     parser.add_argument("--heartbeat", type=float, default=30.0)
     parser.add_argument(
@@ -542,8 +542,8 @@ def main() -> None:
         loose = caps.loose_batch
         tight = caps.tight_batch
         print(
-            f"{tag('protocol', bold=False)} read n={tasks_n} M={caps.m:.4f} "
-            f"loose={loose:.4f} tight={tight:.4f}",
+            f"{tag('protocol', bold=False)} read n={tasks_n} "
+            f"loose_batch={loose:.4f} tight_batch={tight:.4f}",
             flush=True,
         )
     if loose is None:

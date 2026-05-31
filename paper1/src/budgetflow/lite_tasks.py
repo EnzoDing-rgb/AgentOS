@@ -48,7 +48,7 @@ def load_swebench_lite_tasks(
     return [build_lite_task_record(item) for item in selected_items]
 
 
-# Pipeline smoke: stress / wander cases (not used for B.0 M estimation).
+# Pipeline smoke: stress / wander cases (not used for B.0 batch cap calibration).
 SMOKE_INSTANCE_IDS: tuple[str, ...] = (
     "sympy__sympy-20212",  # 0**-oo -> ComplexInfinity; ~4 lines in sympy/core/power.py
     "sympy__sympy-12171",  # mathematica Derivative printer; problem states fix
@@ -64,8 +64,13 @@ COMPARE_EASY_INSTANCE_IDS: tuple[str, ...] = (
     "sympy__sympy-20212",
 )
 
-# B.0 budget pilot: first 3 compare_easy tasks (stable M, no 21614 outlier).
-PILOT_INSTANCE_IDS: tuple[str, ...] = COMPARE_EASY_INSTANCE_IDS[:3]
+# B.0 budget pilot: stable task set for batch cap calibration.
+# Avoid 13647 here since it is a frequent localization outlier for some models.
+PILOT_INSTANCE_IDS: tuple[str, ...] = (
+    "sympy__sympy-13480",
+    "sympy__sympy-14774",
+    "sympy__sympy-16988",
+)
 
 
 def load_smoke_tasks(limit: int = 1) -> list[LiteTaskRecord]:
@@ -74,7 +79,7 @@ def load_smoke_tasks(limit: int = 1) -> list[LiteTaskRecord]:
 
 
 def load_pilot_tasks(limit: int = 3) -> list[LiteTaskRecord]:
-    """Load B.0 budget pilot tasks (compare_easy prefix, stable M)."""
+    """Load B.0 budget pilot tasks (compare_easy prefix, stable calibration set)."""
     return load_swebench_lite_tasks(instance_ids=PILOT_INSTANCE_IDS[:limit])
 
 
