@@ -35,7 +35,8 @@ from ..defaults import (
 from ..console_log import backend_tier_label, bold, dim, routing_stage_label, tag
 from ..governor import BudgetGovernor
 from ..types import Backend, TurnInfo, WorkflowStatus
-from .errors import BudgetFlowBudgetError, BudgetFlowStagnationError
+from .errors import BudgetFlowBudgetError, BudgetFlowStagnationError, BudgetFlowUpstreamError
+from ..run_guards import record_upstream_error
 from .bash_stage import bash_has_progress, classify_routing_stage
 from .stall_guard import check_stagnation, normalize_bash_command
 from .message_utils import estimate_input_tokens, extract_bash_context
@@ -313,9 +314,21 @@ class BudgetFlowLitellmModel:
                 **(model_kwargs | kwargs),
             )
 
-        for attempt in retry(logger=logger, abort_exceptions=[KeyboardInterrupt]):
-            with attempt:
-                return _query()
+        try:
+            for attempt in retry(logger=logger, abort_exceptions=[KeyboardInterrupt]):
+                with attempt:
+                    return _query()
+        except Exception as exc:  # noqa: BLE001
+            action = record_upstream_error(str(exc), backend=backend_name)
+            if action.halt_all:
+                raise BudgetFlowUpstreamError(
+                    self.workflow_id,
+                    exit_reason=action.reason or "upstream_guard",
+                    step_index=self.step_index,
+                    backend=backend_name,
+                    sample=str(exc),
+                ) from exc
+            raise
 
     def _parse_actions(self, response) -> list[dict]:
         tool_calls = response.choices[0].message.tool_calls or []

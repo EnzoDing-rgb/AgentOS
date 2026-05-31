@@ -51,3 +51,26 @@ def test_read_repo_frozen_caps() -> None:
     caps = read_protocol_caps(5)
     assert caps.tight_batch == 5270.595
     assert caps.loose_batch == 21082.38
+
+
+def test_read_protocol_caps_derives_missing_n_from_pilot(tmp_path: Path) -> None:
+    caps_file = tmp_path / "frozen_caps.json"
+    caps_file.write_text(
+        json.dumps(
+            {
+                "batch_caps": {"5": {"loose_batch": 100.0, "tight_batch": 25.0}},
+                "pilot": {"per_task_costs_governor_units": [100.0, 200.0, 300.0]},
+                "pressure": {"BUDGET_PRESSURE_INIT": 0.01, "PRESSURE_MAX": 1.5},
+            }
+        )
+    )
+    caps = read_protocol_caps(15, path=caps_file)
+    # median=200 → loose=2*200*15=6000, tight=0.5*200*15=1500
+    assert caps.loose_batch == 6000.0
+    assert caps.tight_batch == 1500.0
+
+
+def test_read_repo_frozen_caps_n15() -> None:
+    caps = read_protocol_caps(15)
+    assert caps.tight_batch == 15811.785
+    assert caps.loose_batch == 63247.14

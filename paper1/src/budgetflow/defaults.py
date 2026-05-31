@@ -48,7 +48,8 @@ DEEPSEEK_API_BASE = "https://api.deepseek.com"
 DEEPSEEK_V4_FLASH_MODEL = "deepseek/deepseek-chat"
 DEEPSEEK_V4_PRO_MODEL = "deepseek/deepseek-reasoner"
 
-TIER1_MODEL = "openai/gpt-5.3-codex-spark"
+# AICode007 expects raw model id (without provider prefix).
+TIER1_MODEL = "gpt-5.3-codex-spark"
 TIER2_MODEL = DEEPSEEK_V4_FLASH_MODEL
 TIER3_MODEL = DEEPSEEK_V4_PRO_MODEL
 

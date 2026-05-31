@@ -42,6 +42,7 @@ from budgetflow.adapter.runner import run_mini_swe_task  # noqa: E402
 from budgetflow.compare_checkpoint import (  # noqa: E402
     CompareCheckpointStore,
     GlobalRunProgress,
+    StrategyScoreboard,
     checkpoint_path_for,
 )
 from budgetflow.console_log import backend_tier_label, dim, format_run_verdict, status_fail, status_pass, tag  # noqa: E402
@@ -52,6 +53,7 @@ from budgetflow.heartbeat import run_with_heartbeat  # noqa: E402
 from budgetflow.ledger import WorkflowLedgerStore  # noqa: E402
 from budgetflow.lite_tasks import load_compare_easy_tasks, load_compare_medium_tasks  # noqa: E402
 from budgetflow.protocol_caps import read_protocol_caps  # noqa: E402
+from budgetflow.run_guards import CompareRunGuards, set_active_guard  # noqa: E402
 from budgetflow.run_series import allocate_series_stem  # noqa: E402
 from budgetflow.run_trace import TraceConsoleLevel  # noqa: E402
 
@@ -320,12 +322,14 @@ def _run_strategy_batch(
     trace_console: TraceConsoleLevel,
     heartbeat: float,
     global_progress: GlobalRunProgress,
+    scoreboard: StrategyScoreboard | None,
     print_lock: threading.Lock | None,
     budget_pressure: float | None = None,
     pressure_max: float | None = None,
     initial_spent: float = 0.0,
     checkpoint: CompareCheckpointStore | None = None,
     on_task_complete: Callable[[dict], None] | None = None,
+    run_guards: CompareRunGuards | None = None,
 ) -> tuple[list[dict], float]:
     ledger = WorkflowLedgerStore()
     governor = BudgetGovernor(
@@ -350,11 +354,19 @@ def _run_strategy_batch(
 
     records: list[dict] = []
     for task_index, task in enumerate(tasks, start=1):
+        if run_guards is not None and run_guards.is_strategy_halted(cfg.name):
+            _log(f"{tag('guard', bold=False)} skip strategy={cfg.name} task={task.instance_id} (policy halted)")
+            continue
+        if run_guards is not None and run_guards.is_aborted():
+            _log(f"{tag('guard', bold=False)} skip strategy={cfg.name} (global halt: {run_guards.abort_reason()})")
+            break
+
         global_progress.start_task()
         if checkpoint is not None:
             checkpoint.mark_in_flight(cfg.name, task.instance_id, batch_budget_cap)
+        banner = global_progress.format_banner(scoreboard)
         _log(
-            f"\n======== {global_progress.format_global()} ========\n"
+            f"\n======== {banner} ========\n"
             f"{tag('start', bold=False)} task={task.instance_id} strategy={cfg.name}"
         )
 
@@ -366,7 +378,7 @@ def _run_strategy_batch(
 
         def _status() -> str:
             base = status_box.get("status", f"strategy={cfg.name} phase={status_box['phase']}")
-            return f"{global_progress.format_global()} | {base}"
+            return f"{global_progress.format_global(scoreboard)} | {base}"
 
         def _execute() -> dict:
             status_box["phase"] = "agent"
@@ -407,6 +419,12 @@ def _run_strategy_batch(
             )
         if on_task_complete is not None:
             on_task_complete(record)
+
+        if run_guards is not None:
+            action = run_guards.record_task(record)
+            run_guards.log_action(action)
+            if action.halt_all:
+                break
 
     return records, governor.state.spent_budget
 
@@ -465,6 +483,7 @@ def _persist_task_record(
     io_lock: threading.Lock,
     total_runs: int,
     global_progress: GlobalRunProgress,
+    scoreboard: StrategyScoreboard | None,
     summary_path: Path,
     strategy_names: list[str],
     batch_caps: dict[str, float | None],
@@ -486,6 +505,8 @@ def _persist_task_record(
         state.flash_by_strategy.setdefault(name, []).append(_tier_ratio(picks, 2))
         state.pro_by_strategy.setdefault(name, []).append(_tier_ratio(picks, 3))
         state.batch_spent_by_strategy[name] = float(record.get("batch_spent") or 0.0)
+        if scoreboard is not None:
+            scoreboard.record(name, resolved=bool(record.get("harness_resolved")))
         _write_summary_file(
             summary_path,
             summary_lines=state.summary_lines,
@@ -502,7 +523,7 @@ def _persist_task_record(
             out_path=out_path,
             runs_done=state.runs_done,
             total_runs=total_runs,
-            global_line=global_progress.format_global(),
+            global_line=global_progress.format_global(scoreboard),
         )
 
 
@@ -690,6 +711,11 @@ def main() -> None:
         default=1.0,
         help="multiply loose batch cap after --read-protocol or --loose",
     )
+    parser.add_argument(
+        "--no-run-guards",
+        action="store_true",
+        help="disable global/policy/upstream auto-halt guards",
+    )
     args = parser.parse_args()
     if args.resume:
         args.append = True
@@ -822,10 +848,23 @@ def main() -> None:
     io_lock = threading.Lock()
     print_lock = threading.Lock() if args.jobs > 1 else None
     global_progress = GlobalRunProgress(total_runs)
+    scoreboard = StrategyScoreboard(strategy_names)
     if completed:
         global_progress.seed_done(len(completed))
+    if args.append and state.resolved_by_strategy:
+        scoreboard.seed_from_resolved(state.resolved_by_strategy)
+
+    run_guards: CompareRunGuards | None = None if args.no_run_guards else CompareRunGuards()
+    set_active_guard(run_guards)
 
     def _run_one_batch(cfg: CompareStrategy) -> tuple[CompareStrategy, list[dict], float, float]:
+        if run_guards is not None and run_guards.is_aborted():
+            print(
+                f"{tag('guard', bold=False)} skip strategy={cfg.name} batch (global halt: {run_guards.abort_reason()})",
+                flush=True,
+            )
+            batch_cap = _batch_budget_cap(cfg, budget_caps)
+            return cfg, [], checkpoint.initial_spent(cfg.name) if args.resume else 0.0, batch_cap
         batch_cap = _batch_budget_cap(cfg, budget_caps)
         batch_tasks = list(tasks)
         if completed:
@@ -843,6 +882,7 @@ def main() -> None:
                 io_lock=io_lock,
                 total_runs=total_runs,
                 global_progress=global_progress,
+                scoreboard=scoreboard,
                 summary_path=summary_path,
                 strategy_names=strategy_names,
                 batch_caps=batch_caps,
@@ -858,40 +898,25 @@ def main() -> None:
             trace_console=trace_console,
             heartbeat=args.heartbeat,
             global_progress=global_progress,
+            scoreboard=scoreboard,
             print_lock=print_lock,
             budget_pressure=pressure_init,
             pressure_max=pressure_max,
             initial_spent=initial_spent,
             checkpoint=checkpoint,
             on_task_complete=_on_task,
+            run_guards=run_guards,
         )
         return cfg, records, batch_spent, batch_cap
 
     file_mode = "a" if args.append else "w"
-    with out_path.open(file_mode) as handle:
-        if args.jobs <= 1:
-            for cfg in strategies:
-                cfg, batch_records, batch_spent, batch_cap = _run_one_batch(cfg)
-                _ingest_batch_footer(
-                    state,
-                    cfg,
-                    batch_records,
-                    batch_spent,
-                    batch_cap,
-                    strategy_names=strategy_names,
-                    batch_caps=batch_caps,
-                    summary_path=summary_path,
-                    started=started,
-                    out_path=out_path,
-                    total_runs=total_runs,
-                    io_lock=io_lock,
-                    global_progress=global_progress,
-                )
-        else:
-            with ThreadPoolExecutor(max_workers=min(args.jobs, len(strategies))) as pool:
-                futures = {pool.submit(_run_one_batch, cfg): cfg for cfg in strategies}
-                for future in as_completed(futures):
-                    cfg, batch_records, batch_spent, batch_cap = future.result()
+    try:
+        with out_path.open(file_mode) as handle:
+            if args.jobs <= 1:
+                for cfg in strategies:
+                    if run_guards is not None and run_guards.is_aborted():
+                        break
+                    cfg, batch_records, batch_spent, batch_cap = _run_one_batch(cfg)
                     _ingest_batch_footer(
                         state,
                         cfg,
@@ -907,6 +932,35 @@ def main() -> None:
                         io_lock=io_lock,
                         global_progress=global_progress,
                     )
+            else:
+                with ThreadPoolExecutor(max_workers=min(args.jobs, len(strategies))) as pool:
+                    futures = {pool.submit(_run_one_batch, cfg): cfg for cfg in strategies}
+                    for future in as_completed(futures):
+                        cfg, batch_records, batch_spent, batch_cap = future.result()
+                        if run_guards is not None and run_guards.is_aborted():
+                            for pending in futures:
+                                pending.cancel()
+                            break
+                        _ingest_batch_footer(
+                            state,
+                            cfg,
+                            batch_records,
+                            batch_spent,
+                            batch_cap,
+                            strategy_names=strategy_names,
+                            batch_caps=batch_caps,
+                            summary_path=summary_path,
+                            started=started,
+                            out_path=out_path,
+                            total_runs=total_runs,
+                            io_lock=io_lock,
+                            global_progress=global_progress,
+                        )
+    finally:
+        set_active_guard(None)
+
+    if run_guards is not None and run_guards.is_aborted():
+        print(f"\n{tag('guard', bold=False)} run stopped early: {run_guards.abort_reason()}", flush=True)
 
     _write_summary_file(
         summary_path,
@@ -927,7 +981,11 @@ def main() -> None:
         global_line=global_progress.format_global(),
     )
 
-    print(f"\n{tag('final', bold=False)} {global_progress.format_global()} elapsed={time.time() - started:.1f}s")
+    print(
+        f"\n{tag('final', bold=False)}\n{global_progress.format_banner(scoreboard)}\n"
+        f"elapsed={time.time() - started:.1f}s",
+        flush=True,
+    )
     for line in _format_strategy_totals(
         strategy_names=strategy_names,
         resolved_by_strategy=state.resolved_by_strategy,

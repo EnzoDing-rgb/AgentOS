@@ -23,7 +23,7 @@ from ..lite_tasks import LiteTaskRecord
 from ..local_harness import clone_or_checkout, evaluate_local_harness, get_last_compat_files
 from ..run_trace import RunTraceLogger, TracedDefaultAgent, TraceConsoleLevel, patch_local_swebench_config
 from .backends import build_compare_backends
-from .errors import BudgetFlowBudgetError, BudgetFlowStagnationError, BudgetFlowStagnationError
+from .errors import BudgetFlowBudgetError, BudgetFlowStagnationError, BudgetFlowUpstreamError
 from .mini_swe_proxy import BudgetFlowLitellmModel
 from .strategies import build_routing_context
 
@@ -165,6 +165,10 @@ def run_mini_swe_task(
         model.last_budget_snapshot = exc.budget_snapshot
     except BudgetFlowStagnationError as exc:
         exit_status = "StagnationExit"
+        exit_reason = exc.exit_reason
+        model.last_exit_reason = exc.exit_reason
+    except BudgetFlowUpstreamError as exc:
+        exit_status = "UpstreamExit"
         exit_reason = exc.exit_reason
         model.last_exit_reason = exc.exit_reason
     except Exception as exc:  # noqa: BLE001

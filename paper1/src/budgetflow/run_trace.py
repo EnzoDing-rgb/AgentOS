@@ -159,6 +159,8 @@ class RunTraceLogger:
         self._submitted = False
         self._last_agent_pytest: str | None = None
         self._harness_resolved: bool | None = None
+        self._harness_detail: str = ""
+        self._patch_extracted: bool | None = None
         self._last_printed_phase: str | None = None
         self.last_agent_phase: str | None = None
         self._gold_milestone_printed = False
@@ -223,19 +225,28 @@ class RunTraceLogger:
         gold = status_yes() if (gold_edited or self._gold_files_edited) else status_no()
         submitted = status_yes() if self._submitted else status_no()
         agent_test = _format_agent_pytest(self._last_agent_pytest)
+        if self._patch_extracted is None:
+            patch = status_pending("?")
+        elif self._patch_extracted:
+            patch = status_pass("yes")
+        else:
+            patch = status_fail("NO")
         if self._harness_resolved is None:
             harness = status_pending("pending")
         elif self._harness_resolved:
             harness = status_pass("PASS")
         else:
             harness = status_fail("FAIL")
-        gold_files = ",".join(sorted(self._gold_files_edited)[:1]) or "-"
+        gold_files = ",".join(sorted(self._gold_files_edited)[:1]) or "none"
         llm_step = _live_llm_step(agent)
+        from .console_log import format_harness_board_pending
+
+        board = format_harness_board_pending(self._harness_detail or None)
         return (
             f"llm={llm_step} agent={phase_label(phase)} "
             f"route={routing_stage_label(route_stage)} model={backend_tier_label(route_backend)} "
-            f"gold={gold} file={dim(gold_files)} submit={submitted} "
-            f"agent_test={agent_test} harness={harness} elapsed={elapsed_s:.0f}s"
+            f"patch={patch} gold={gold} file={dim(gold_files)} submit={submitted} "
+            f"agent_test={agent_test} harness={harness} | {board} elapsed={elapsed_s:.0f}s"
         )
 
     def publish_live_progress(self, agent: DefaultAgent, *, elapsed_s: float) -> None:
@@ -266,6 +277,7 @@ class RunTraceLogger:
     def finalize_agent(self, *, submitted: bool, patch_extracted: bool) -> None:
         if submitted:
             self._submitted = True
+        self._patch_extracted = patch_extracted
 
     def _print_milestones(
         self,
@@ -380,6 +392,8 @@ class RunTraceLogger:
         patch_extracted: bool = True,
     ) -> None:
         self._harness_resolved = resolved
+        self._harness_detail = detail
+        self._patch_extracted = patch_extracted
         gold_file = next(iter(self._gold_files_edited), "-")
         verdict = format_run_verdict(
             harness_resolved=resolved,

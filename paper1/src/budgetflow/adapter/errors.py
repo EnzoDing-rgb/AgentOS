@@ -47,3 +47,24 @@ class BudgetFlowStagnationError(RuntimeError):
             f"streak={no_progress_streak} repeat={repeat_command!r}"
         )
         super().__init__(detail)
+
+
+class BudgetFlowUpstreamError(RuntimeError):
+    """Raised when consecutive upstream/provider errors suggest infra misconfiguration."""
+
+    def __init__(
+        self,
+        workflow_id: str,
+        *,
+        exit_reason: str = "upstream_guard",
+        step_index: int = 0,
+        backend: str | None = None,
+        sample: str = "",
+    ) -> None:
+        self.workflow_id = workflow_id
+        self.exit_reason = exit_reason
+        self.step_index = step_index
+        self.backend = backend
+        self.sample = sample[:200]
+        detail = f"{exit_reason} workflow={workflow_id} step={step_index} backend={backend} {self.sample}"
+        super().__init__(detail)

@@ -89,6 +89,52 @@ class CompareCheckpointStore:
         self.path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
 
 
+_STRATEGY_ABBREV: dict[str, str] = {
+    "all_flash_tight": "af-T",
+    "all_flash_loose": "af-L",
+    "budget_only_tight": "bo-T",
+    "budget_only_loose": "bo-L",
+    "budgetflow_full_tight": "bf-T",
+    "budgetflow_full_loose": "bf-L",
+    "all_pro": "apro",
+}
+
+
+def strategy_abbrev(name: str) -> str:
+    return _STRATEGY_ABBREV.get(name, name[:10])
+
+
+class StrategyScoreboard:
+    """Live resolved/done counts per compare policy (thread-safe)."""
+
+    def __init__(self, strategy_names: list[str]) -> None:
+        self._lock = threading.Lock()
+        self._names = list(strategy_names)
+        self._resolved: dict[str, int] = {n: 0 for n in strategy_names}
+        self._done: dict[str, int] = {n: 0 for n in strategy_names}
+
+    def record(self, strategy: str, *, resolved: bool) -> None:
+        with self._lock:
+            self._done[strategy] = self._done.get(strategy, 0) + 1
+            if resolved:
+                self._resolved[strategy] = self._resolved.get(strategy, 0) + 1
+
+    def seed_from_resolved(self, resolved_by_strategy: dict[str, list[bool]]) -> None:
+        with self._lock:
+            for name in self._names:
+                flags = resolved_by_strategy.get(name, [])
+                self._done[name] = len(flags)
+                self._resolved[name] = sum(1 for f in flags if f)
+
+    def format_line(self) -> str:
+        with self._lock:
+            parts = [
+                f"{strategy_abbrev(name)} {self._resolved.get(name, 0)}/{self._done.get(name, 0)}"
+                for name in self._names
+            ]
+        return "strategies: " + " | ".join(parts)
+
+
 class GlobalRunProgress:
     """Thread-safe global (policy×task) progress for heartbeats and PASS/FAIL lines."""
 
@@ -116,6 +162,17 @@ class GlobalRunProgress:
         with self._lock:
             self._done = max(0, min(count, self.total))
 
-    def format_global(self) -> str:
+    def format_global(self, scoreboard: StrategyScoreboard | None = None) -> str:
         total, done, running = self.snapshot()
-        return f"global total={total} done={done} running={running}"
+        base = f"global total={total} done={done} running={running}"
+        if scoreboard is None:
+            return base
+        return f"{base} | {scoreboard.format_line()}"
+
+    def format_banner(self, scoreboard: StrategyScoreboard | None = None) -> str:
+        """Two-line banner: global counts + per-strategy resolved/done."""
+        total, done, running = self.snapshot()
+        lines = [f"global total={total} done={done} running={running}"]
+        if scoreboard is not None:
+            lines.append(scoreboard.format_line())
+        return "\n".join(lines)

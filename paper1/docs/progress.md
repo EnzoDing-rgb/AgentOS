@@ -38,7 +38,7 @@ compare 加 **`--read-protocol`** 时从 JSON 读（`protocol_caps.py`），**�
 
 | Tier | 终端 `model=` | litellm id |
 |---|---|---|
-| T1 | `gpt-5.3-codex-spark` | `openai/gpt-5.3-codex-spark` (AICode007) |
+| T1 | `gpt-5.3-codex-spark` | `gpt-5.3-codex-spark` (AICode007) |
 | T2 | `deepseek-v4-flash` | `deepseek/deepseek-chat` |
 | T3 | `deepseek-v4-pro` | `deepseek/deepseek-reasoner` |
 

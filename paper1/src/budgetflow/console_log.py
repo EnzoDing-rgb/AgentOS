@@ -197,6 +197,15 @@ def format_harness_board(detail: str) -> str:
     return " ".join(parts)
 
 
+def format_harness_board_pending(detail: str | None = None) -> str:
+    """Harness pipeline preview for heartbeats (unknown stages show ?)."""
+    if detail and detail.strip():
+        return format_harness_board(detail)
+    return (
+        "test_patch=? fail_before=? model_patch=? fail_after=? pass_to_pass=?"
+    )
+
+
 def format_run_verdict(
     *,
     harness_resolved: bool,
@@ -206,10 +215,14 @@ def format_run_verdict(
     detail: str = "",
 ) -> str:
     if not patch_extracted:
-        verdict = status_fail("NO PATCH")
+        patch = status_fail("NO PATCH")
+        verdict = status_fail("FAIL")
     elif harness_resolved:
-        verdict = status_pass("PATCH PASSED HARNESS")
+        patch = status_pass("PATCH")
+        verdict = status_pass("PASS")
     else:
-        verdict = status_fail("PATCH FAILED HARNESS")
+        patch = status_pass("PATCH")
+        verdict = status_fail("FAIL")
     gold = status_yes(gold_file) if gold_edited else status_no("none")
-    return f"verdict={verdict} | gold={gold} | {format_harness_board(detail)}"
+    board = format_harness_board(detail) if detail else format_harness_board_pending()
+    return f"patch={patch} gold={gold} harness={verdict} | {board}"

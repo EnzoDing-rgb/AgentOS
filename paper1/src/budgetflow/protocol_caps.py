@@ -55,11 +55,26 @@ def _read_protocol_caps_md(n_tasks: int, path: Path) -> ProtocolCaps:
     )
 
 
+def _pilot_costs_from_frozen(raw: dict) -> list[float] | None:
+    costs = (raw.get("pilot") or {}).get("per_task_costs_governor_units")
+    if not costs:
+        return None
+    return [float(c) for c in costs]
+
+
 def _read_protocol_caps_json(n_tasks: int, path: Path) -> ProtocolCaps:
     raw = json.loads(path.read_text())
     batch = (raw.get("batch_caps") or {}).get(str(n_tasks))
     if not batch:
-        raise ValueError(f"frozen_caps.json missing batch_caps[{n_tasks!r}]")
+        pilot_costs = _pilot_costs_from_frozen(raw)
+        if pilot_costs:
+            loose, tight = derive_batch_caps(pilot_costs, n_tasks)
+            batch = {"loose_batch": loose, "tight_batch": tight}
+        else:
+            raise ValueError(
+                f"frozen_caps.json missing batch_caps[{n_tasks!r}] "
+                "and no pilot.per_task_costs_governor_units to derive from"
+            )
     pressure = raw.get("pressure") or {}
     return ProtocolCaps(
         loose_batch=float(batch["loose_batch"]),
@@ -103,8 +118,14 @@ def write_frozen_caps(
 ) -> Path:
     """Write data/frozen_caps.json after B.0 pilot (sole cap artifact for compare)."""
     pilot_ids = [r["instance_id"] for r in pilot_records]
-    loose_n3, tight_n3 = derive_batch_caps(per_task_costs, 3)
-    loose_n5, tight_n5 = derive_batch_caps(per_task_costs, 5)
+    cap_ns = (3, 5, 7, 10, 15)
+    batch_caps = {
+        str(n): {
+            "loose_batch": round(derive_batch_caps(per_task_costs, n)[0], 4),
+            "tight_batch": round(derive_batch_caps(per_task_costs, n)[1], 4),
+        }
+        for n in cap_ns
+    }
     outliers: list[str] = []
     if per_task_costs and tight_n3 > 0:
         scale = tight_n3 / (0.5 * 3)
@@ -134,10 +155,8 @@ def write_frozen_caps(
             "per_task_costs_governor_units": [round(c, 4) for c in per_task_costs],
             "high_cost_tasks": outliers,
         },
-        "batch_caps": {
-            "3": {"loose_batch": round(loose_n3, 4), "tight_batch": round(tight_n3, 4)},
-            "5": {"loose_batch": round(loose_n5, 4), "tight_batch": round(tight_n5, 4)},
-        },
+        "batch_caps": batch_caps,
+        "batch_cap_formula": "loose=2*median(pilot_costs)*n; tight=0.5*median(pilot_costs)*n",
         "task_lists": {
             "compare_easy_5": list(compare_easy_ids),
         },
