@@ -35,7 +35,7 @@ PROGRESS_TABLE: dict[Stage, dict[str, float]] = {
 
 # Scale factor converting progress deltas (0-1 probabilities) to cost-comparable units.
 # Lower = more conservative about upgrading to expensive models.
-PROGRESS_SCALE: float = 15.0
+PROGRESS_SCALE: float = 18.0
 
 # Progress-based escalation (budgetflow_full only): consecutive read-only steps.
 ESCALATION_THRESHOLD = 20
