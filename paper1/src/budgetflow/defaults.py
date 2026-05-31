@@ -36,7 +36,7 @@ PROGRESS_TABLE: dict[Stage, dict[str, float]] = {
 # Scale factor converting progress deltas (0-1 probabilities) to cost-comparable units.
 # delta_cost T2→T3 ≈ 20 governor units; delta_progress ≈ 0.10-0.20.
 # With SCALE=50: score = w_i * (0.15*50) / 20 ≈ 0.375-1.5, comparable to budget_pressure.
-PROGRESS_SCALE: float = 50.0
+PROGRESS_SCALE: float = 25.0
 
 # Progress-based escalation (budgetflow_full only): consecutive read-only steps.
 ESCALATION_THRESHOLD = 5
@@ -52,7 +52,7 @@ ADAPTIVE_TTL_STEPS = 15
 
 # Anti-stall: all strategies share same no-progress streak.
 STAGNATION_REPEAT_CMD_LIMIT = 6
-STAGNATION_NO_PROGRESS_STEPS = 30
+STAGNATION_NO_PROGRESS_STEPS = 40
 
 BUDGET_PRESSURE_INIT = 0.01
 PRESSURE_MAX = 1.5
