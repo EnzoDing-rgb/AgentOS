@@ -36,6 +36,15 @@ PROGRESS_TABLE: dict[Stage, dict[str, float]] = {
 # Progress-based escalation (budgetflow_full only): consecutive read-only steps.
 ESCALATION_THRESHOLD = 5
 
+# Adaptive routing (budgetflow_full only): rolling task feedback + in-run recovery.
+ADAPTIVE_WINDOW = 5
+ADAPTIVE_MIN_SAMPLES = 2
+ADAPTIVE_WEAK_RESOLVE_MAX = 0.25
+ADAPTIVE_STAGNATION_FRAC = 0.5
+ADAPTIVE_PRESSURE_BOOST = 0.18
+ADAPTIVE_PRESSURE_BOOST_STRONG = 0.32
+ADAPTIVE_TTL_STEPS = 15
+
 # Anti-stall: all strategies share same no-progress streak.
 STAGNATION_REPEAT_CMD_LIMIT = 6
 STAGNATION_NO_PROGRESS_STEPS = 30

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ..adaptive_routing import AdaptiveRoutingState
 from ..defaults import BUDGET_PRESSURE_INIT, PROGRESS_TABLE, W_I
 from ..policies import BudgetOnlyStepRouter, WorkflowLevelRouter
 from ..selector import BudgetFlowSelector
@@ -16,6 +17,7 @@ class RoutingContext:
     budget_pressure: float
     expected_costs: dict[str, float]
     pressure_max: float | None = None
+    adaptive: AdaptiveRoutingState | None = None
     workflow_level_backend: Backend | None = None
     budget_only_router: BudgetOnlyStepRouter | None = None
     workflow_router: WorkflowLevelRouter | None = None
@@ -36,6 +38,7 @@ def build_routing_context(
     budget_pressure: float | None = None,
     *,
     pressure_max: float | None = None,
+    adaptive: AdaptiveRoutingState | None = None,
 ) -> RoutingContext:
     ordered = sorted(backends, key=lambda backend: backend.tier)
     pressure = BUDGET_PRESSURE_INIT if budget_pressure is None else budget_pressure
@@ -47,6 +50,7 @@ def build_routing_context(
         budget_pressure=pressure,
         expected_costs={},
         pressure_max=pressure_max,
+        adaptive=adaptive,
     )
     if strategy == "workflow_level":
         ctx.workflow_router = WorkflowLevelRouter()

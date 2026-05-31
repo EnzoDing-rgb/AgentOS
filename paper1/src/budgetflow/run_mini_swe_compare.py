@@ -53,8 +53,9 @@ from budgetflow.heartbeat import run_with_heartbeat  # noqa: E402
 from budgetflow.ledger import WorkflowLedgerStore  # noqa: E402
 from budgetflow.lite_tasks import load_compare_easy_tasks, load_compare_medium_tasks  # noqa: E402
 from budgetflow.protocol_caps import read_protocol_caps  # noqa: E402
+from budgetflow.adaptive_routing import AdaptiveRoutingRegistry  # noqa: E402
 from budgetflow.run_guards import CompareRunGuards, set_active_guard  # noqa: E402
-from budgetflow.run_series import allocate_series_stem  # noqa: E402
+from budgetflow.run_series import default_series_base, resolve_compare_stem  # noqa: E402
 from budgetflow.run_trace import TraceConsoleLevel  # noqa: E402
 
 RUNS_DIR = REPO_ROOT / "data" / "runs"
@@ -134,9 +135,13 @@ def _run_one(
     progress_box: dict[str, str] | None = None,
     budget_pressure: float | None = None,
     pressure_max: float | None = None,
+    adaptive_registry: AdaptiveRoutingRegistry | None = None,
 ) -> dict:
     started = time.time()
     workspace_key = _workspace_key(cfg, task.instance_id)
+    adaptive = None
+    if adaptive_registry is not None:
+        adaptive = adaptive_registry.for_strategy(cfg.name, cfg.routing)
     result = run_mini_swe_task(
         task,
         strategy=cfg.routing,
@@ -150,6 +155,7 @@ def _run_one(
         workspace_key=workspace_key,
         budget_pressure=budget_pressure,
         pressure_max=pressure_max,
+        adaptive=adaptive,
     )
     batch_snapshot = governor.budget_snapshot()
     return {
@@ -298,6 +304,44 @@ def _format_strategy_totals(
     return lines
 
 
+def _format_live_snapshot(
+    *,
+    strategy_names: list[str],
+    resolved_by_strategy: dict[str, list[bool]],
+    runs_done: int,
+    total_runs: int,
+    tasks_per_strategy: int,
+    started: float,
+    out_path: Path,
+    global_line: str | None = None,
+) -> list[str]:
+    """Top-of-file dashboard: always rewrite so `head` shows current pass/fail."""
+    total_pass = sum(sum(1 for flag in flags if flag) for flags in resolved_by_strategy.values())
+    total_fail = runs_done - total_pass
+    running = max(0, total_runs - runs_done)
+    lines = [
+        "=== LIVE SNAPSHOT (read this block first) ===",
+        f"elapsed_s={time.time() - started:.1f}",
+        f"GLOBAL done={runs_done}/{total_runs} running={running} PASS={total_pass} FAIL={total_fail}",
+    ]
+    if global_line:
+        lines.append(global_line)
+    lines.append(
+        f"{'strategy':<28} {'done':>4} {'plan':>4} {'PASS':>5} {'FAIL':>5}"
+    )
+    lines.append("-" * 52)
+    for name in strategy_names:
+        flags = resolved_by_strategy.get(name, [])
+        done_n = len(flags)
+        pass_n = sum(1 for flag in flags if flag)
+        fail_n = done_n - pass_n
+        lines.append(f"{name:<28} {done_n:>4} {tasks_per_strategy:>4} {pass_n:>5} {fail_n:>5}")
+    lines.append(f"jsonl={out_path}")
+    lines.append("=== event log (newest near bottom) ===")
+    lines.append("")
+    return lines
+
+
 def _write_summary_file(
     path: Path,
     *,
@@ -315,9 +359,20 @@ def _write_summary_file(
     out_path: Path,
     runs_done: int,
     total_runs: int,
+    tasks_per_strategy: int,
     global_line: str | None = None,
 ) -> None:
-    lines = list(summary_lines)
+    live = _format_live_snapshot(
+        strategy_names=strategy_names,
+        resolved_by_strategy=resolved_by_strategy,
+        runs_done=runs_done,
+        total_runs=total_runs,
+        tasks_per_strategy=tasks_per_strategy,
+        started=started,
+        out_path=out_path,
+        global_line=global_line,
+    )
+    lines = live + list(summary_lines)
     lines.append("")
     lines.extend(
         _format_strategy_totals(
@@ -332,9 +387,8 @@ def _write_summary_file(
             batch_caps=batch_caps,
         )
     )
-    progress = global_line or f"total={total_runs} done={runs_done} running=0"
+    progress = global_line or f"total={total_runs} done={runs_done} running={max(0, total_runs - runs_done)}"
     lines.append(f"PROGRESS {progress} elapsed={time.time() - started:.1f}s")
-    lines.append(f"jsonl={out_path}")
     path.write_text("\n".join(lines) + "\n")
 
 
@@ -361,6 +415,7 @@ def _run_strategy_batch(
     checkpoint: CompareCheckpointStore | None = None,
     on_task_complete: Callable[[dict], None] | None = None,
     run_guards: CompareRunGuards | None = None,
+    adaptive_registry: AdaptiveRoutingRegistry | None = None,
 ) -> tuple[list[dict], float]:
     ledger = WorkflowLedgerStore()
     governor = BudgetGovernor(
@@ -425,6 +480,7 @@ def _run_strategy_batch(
                 progress_box=status_box,
                 budget_pressure=budget_pressure,
                 pressure_max=pressure_max,
+                adaptive_registry=adaptive_registry,
             )
 
         try:
@@ -450,6 +506,8 @@ def _run_strategy_batch(
             )
         if on_task_complete is not None:
             on_task_complete(record)
+        if adaptive_registry is not None:
+            adaptive_registry.record_task(cfg.name, cfg.routing, record)
 
         if run_guards is not None:
             action = run_guards.record_task(record)
@@ -513,6 +571,7 @@ def _persist_task_record(
     handle,
     io_lock: threading.Lock,
     total_runs: int,
+    tasks_per_strategy: int,
     global_progress: GlobalRunProgress,
     scoreboard: StrategyScoreboard | None,
     summary_path: Path,
@@ -554,6 +613,7 @@ def _persist_task_record(
             out_path=out_path,
             runs_done=state.runs_done,
             total_runs=total_runs,
+            tasks_per_strategy=tasks_per_strategy,
             global_line=global_progress.format_global(scoreboard),
         )
 
@@ -589,6 +649,7 @@ def _ingest_batch_footer(
     started: float,
     out_path: Path,
     total_runs: int,
+    tasks_per_strategy: int,
     io_lock: threading.Lock,
     global_progress: GlobalRunProgress,
 ) -> None:
@@ -619,6 +680,7 @@ def _ingest_batch_footer(
             out_path=out_path,
             runs_done=state.runs_done,
             total_runs=total_runs,
+            tasks_per_strategy=tasks_per_strategy,
             global_line=global_progress.format_global(),
         )
 
@@ -709,14 +771,14 @@ def main() -> None:
         "--out-stem",
         type=str,
         default=None,
-        help="output basename under data/runs/ (default compare_<tasks>x<strategies>; required with --resume)",
+        help="optional explicit basename (overrides auto series); refuses overwrite unless --resume",
     )
     parser.add_argument(
         "--run-series",
         type=str,
         default=None,
         metavar="BASE",
-        help="auto stem BASE-0, BASE-1, ... (e.g. policy_5x7). Do not combine with --out-stem unless --resume",
+        help="series prefix for auto IDs (default policy_15x7 / compare_5x7 from task×strategy shape)",
     )
     parser.add_argument(
         "--pressure-init",
@@ -812,14 +874,18 @@ def main() -> None:
         tasks = load_compare_easy_tasks(tasks_n)
     tasks = _order_tasks_easy_first(tasks, task_set=args.task_set)
     total_runs = len(tasks) * len(strategies)
-    if args.resume and not args.out_stem:
-        raise SystemExit("--resume requires --out-stem (e.g. policy_5x7-0)")
-    if args.run_series and args.out_stem and not args.resume:
-        raise SystemExit("use --run-series OR --out-stem, not both")
-    if args.run_series:
-        out_stem = args.out_stem if args.resume else allocate_series_stem(RUNS_DIR, args.run_series)
-    else:
-        out_stem = args.out_stem or f"compare_{len(tasks)}x{len(strategies)}"
+    series = args.run_series or default_series_base(
+        tasks_n=len(tasks),
+        strategies_n=len(strategies),
+        task_set=args.task_set,
+    )
+    out_stem, stem_mode = resolve_compare_stem(
+        RUNS_DIR,
+        series=series,
+        resume=args.resume,
+        total_runs=total_runs,
+        explicit_stem=args.out_stem,
+    )
     out_path, summary_path = _compare_paths(len(tasks), len(strategies), stem=out_stem)
     checkpoint_path = checkpoint_path_for(out_stem, RUNS_DIR)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -833,7 +899,12 @@ def main() -> None:
     }
 
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
-    print(f"{tag('run_id', bold=False)} {out_stem}", flush=True)
+    print(
+        f"{tag('run_id', bold=False)} {out_stem} "
+        f"series={series} mode={stem_mode}"
+        + (" (resume latest)" if stem_mode == "resume" else " (new run)"),
+        flush=True,
+    )
     from budgetflow.console_log import format_tier_pool_line  # noqa: E402
 
     print(
@@ -855,6 +926,10 @@ def main() -> None:
     print(f"{dim('trace= data/runs/trace_<id>_<strategy>/steps.jsonl')}", flush=True)
     print(f"{dim('FORCE_COLOR=1 if piping to tee/nohup for ANSI colors')}", flush=True)
 
+    adaptive_registry = AdaptiveRoutingRegistry()
+    if args.append and out_path.is_file():
+        adaptive_registry.rebuild_from_jsonl(out_path)
+
     header_lines = [
         f"compare_{len(tasks)}x{len(strategies)} task_set={args.task_set} preset={args.preset} "
         f"tasks={len(tasks)} strategies={strategy_names}",
@@ -863,8 +938,13 @@ def main() -> None:
         f"policy_jobs={args.jobs} hard_cap=settle_clamp",
         f"tasks={[t.instance_id for t in tasks]}",
         f"task_order={[_task_descriptor(t) for t in tasks]}",
+        "adaptive_routing=always_on_for_budgetflow_full",
         "",
     ]
+    adapt_summary = adaptive_registry.summary_lines()
+    header_lines.extend(adapt_summary)
+    if adapt_summary:
+        header_lines.append("")
     if args.append and out_path.is_file():
         state = _rebuild_state_from_jsonl(out_path, header_lines)
         print(f"{tag('resume', bold=False)} rebuilt state from jsonl runs={state.runs_done}", flush=True)
@@ -888,6 +968,26 @@ def main() -> None:
         global_progress.seed_done(len(completed))
     if args.append and state.resolved_by_strategy:
         scoreboard.seed_from_resolved(state.resolved_by_strategy)
+
+    _write_summary_file(
+        summary_path,
+        summary_lines=state.summary_lines,
+        strategy_names=strategy_names,
+        resolved_by_strategy=state.resolved_by_strategy,
+        task_cost_by_strategy=state.task_cost_by_strategy,
+        batch_spent_by_strategy=state.batch_spent_by_strategy,
+        turns_by_strategy=state.turns_by_strategy,
+        spark_by_strategy=state.spark_by_strategy,
+        flash_by_strategy=state.flash_by_strategy,
+        pro_by_strategy=state.pro_by_strategy,
+        batch_caps=batch_caps,
+        started=started,
+        out_path=out_path,
+        runs_done=state.runs_done,
+        total_runs=total_runs,
+        tasks_per_strategy=len(tasks),
+        global_line=global_progress.format_global(scoreboard),
+    )
 
     run_guards: CompareRunGuards | None = None if args.no_run_guards else CompareRunGuards()
     set_active_guard(run_guards)
@@ -916,6 +1016,7 @@ def main() -> None:
                 handle=handle,
                 io_lock=io_lock,
                 total_runs=total_runs,
+                tasks_per_strategy=len(tasks),
                 global_progress=global_progress,
                 scoreboard=scoreboard,
                 summary_path=summary_path,
@@ -941,6 +1042,7 @@ def main() -> None:
             checkpoint=checkpoint,
             on_task_complete=_on_task,
             run_guards=run_guards,
+            adaptive_registry=adaptive_registry,
         )
         return cfg, records, batch_spent, batch_cap
 
@@ -964,6 +1066,7 @@ def main() -> None:
                         started=started,
                         out_path=out_path,
                         total_runs=total_runs,
+                        tasks_per_strategy=len(tasks),
                         io_lock=io_lock,
                         global_progress=global_progress,
                     )
@@ -988,6 +1091,7 @@ def main() -> None:
                             started=started,
                             out_path=out_path,
                             total_runs=total_runs,
+                            tasks_per_strategy=len(tasks),
                             io_lock=io_lock,
                             global_progress=global_progress,
                         )
@@ -1013,7 +1117,8 @@ def main() -> None:
         out_path=out_path,
         runs_done=state.runs_done,
         total_runs=total_runs,
-        global_line=global_progress.format_global(),
+        tasks_per_strategy=len(tasks),
+        global_line=global_progress.format_global(scoreboard),
     )
 
     print(

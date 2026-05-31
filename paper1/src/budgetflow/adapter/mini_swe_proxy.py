@@ -126,11 +126,17 @@ class BudgetFlowLitellmModel:
             ).expected_cost
             for backend in self.routing.backends
         }
-        self.routing.budget_pressure = live_budget_pressure(
+        base_pressure = live_budget_pressure(
             self.governor,
             init=self._pressure_init,
             pressure_max=self._pressure_max,
         )
+        adaptive = self.routing.adaptive
+        if adaptive is not None:
+            adaptive.on_step()
+            self.routing.budget_pressure = adaptive.effective_pressure(base_pressure)
+        else:
+            self.routing.budget_pressure = base_pressure
         phase = (self.agent_phase or "").strip()
         if bash_has_progress(bash_command) or phase in _REPAIR_AGENT_PHASES or phase in _VALIDATION_AGENT_PHASES:
             self._no_progress_streak = 0
@@ -245,9 +251,16 @@ class BudgetFlowLitellmModel:
     def _reserve_with_downgrade(self, backend: Backend, input_tokens: int) -> Backend:
         ordered = self.routing.backends
         start_index = ordered.index(backend)
+        min_tier = 1
+        adaptive = self.routing.adaptive
+        if adaptive is not None and self.routing.strategy == "budgetflow_full":
+            min_tier = adaptive.min_tier_for_reserve()
         reserve_out = None
         last_reason: str | None = None
-        for candidate in ordered[start_index::-1]:
+        candidates = [c for c in ordered[start_index::-1] if c.tier >= min_tier]
+        if not candidates:
+            candidates = [c for c in ordered if c.tier >= min_tier]
+        for candidate in candidates:
             reserve_out = self._reserve_output_tokens(candidate, input_tokens)
             estimate = self.governor.estimate_cost(
                 candidate,

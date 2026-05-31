@@ -31,6 +31,7 @@ from ..run_trace import (
 from .backends import build_compare_backends
 from .errors import BudgetFlowBudgetError, BudgetFlowStagnationError, BudgetFlowUpstreamError
 from .mini_swe_proxy import BudgetFlowLitellmModel
+from ..adaptive_routing import AdaptiveRoutingState
 from .strategies import build_routing_context
 
 SWEBENCH_CONFIG = REPO_ROOT / "external" / "mini-swe-agent" / "src" / "minisweagent" / "config" / "benchmarks" / "swebench.yaml"
@@ -90,6 +91,7 @@ def run_mini_swe_task(
     governor: BudgetGovernor | None = None,
     ledger: WorkflowLedgerStore | None = None,
     workspace_key: str | None = None,
+    adaptive: AdaptiveRoutingState | None = None,
 ) -> MiniSweRunResult:
     label = strategy_label or strategy
     ledger = ledger or WorkflowLedgerStore()
@@ -121,6 +123,7 @@ def run_mini_swe_task(
         backends,
         budget_pressure=budget_pressure,
         pressure_max=pressure_max,
+        adaptive=adaptive,
     )
     model_cfg = config.get("model", {})
     model = BudgetFlowLitellmModel(

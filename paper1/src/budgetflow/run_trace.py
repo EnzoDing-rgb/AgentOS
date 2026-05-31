@@ -277,11 +277,16 @@ class RunTraceLogger:
         from .console_log import format_harness_board_pending
 
         board = format_harness_board_pending(self._harness_detail or None)
+        adapt = ""
+        routing = getattr(agent.model, "routing", None)
+        adaptive = getattr(routing, "adaptive", None) if routing is not None else None
+        if adaptive is not None:
+            adapt = f" {adaptive.status_snippet()}"
         return (
             f"llm={llm_step} agent={phase_label(phase)} "
             f"route={routing_stage_label(route_stage)} model={backend_tier_label(route_backend)} "
             f"patch={patch} gold={gold} file={dim(gold_files)} submit={submitted} "
-            f"agent_test={agent_test} harness={harness} | {board} elapsed={elapsed_s:.0f}s"
+            f"agent_test={agent_test} harness={harness} | {board}{adapt} elapsed={elapsed_s:.0f}s"
         )
 
     def publish_live_progress(self, agent: DefaultAgent, *, elapsed_s: float) -> None:
