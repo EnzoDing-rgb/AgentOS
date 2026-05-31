@@ -15,11 +15,11 @@ from minisweagent.models.utils.cache_control import set_cache_control
 from minisweagent.models.utils.openai_multimodal import expand_multimodal_content
 from minisweagent.models.utils.retry import retry
 
+from ..litellm_quiet import configure_litellm_quiet
 from ..budget_pressure import live_budget_pressure
-from ..deepseek_backend import ensure_aicode007_proxy, ensure_direct_api, load_env_file
+from ..deepseek_backend import ensure_aicode007_proxy, load_env_file
 from ..defaults import (
     AICODE007_API_BASE,
-    DEEPSEEK_API_BASE,
     TIER1_BACKEND,
     TIER1_MODEL,
     TIER2_BACKEND,
@@ -27,7 +27,7 @@ from ..defaults import (
     TIER3_BACKEND,
     TIER3_MODEL,
 )
-from ..console_log import backend_tier_label, routing_stage_label, tag
+from ..console_log import backend_tier_label, bold, dim, routing_stage_label, tag
 from ..governor import BudgetGovernor
 from ..types import Backend, TurnInfo, WorkflowStatus
 from .errors import BudgetFlowBudgetError
@@ -37,11 +37,13 @@ from .strategies import RoutingContext, choose_backend, stage_weight
 
 logger = logging.getLogger("budgetflow_litellm_model")
 
-_AICODE_BACKENDS = frozenset({TIER1_BACKEND, TIER3_BACKEND})
+configure_litellm_quiet()
+
+_AICODE_BACKENDS = frozenset({TIER1_BACKEND, TIER2_BACKEND, TIER3_BACKEND})
 
 
 class BudgetFlowLitellmModel:
-    """mini-SWE-agent Model: BudgetFlow governor + 3-tier pool (gpt-5.2 / deepseek-pro / gpt-5.4-mini)."""
+    """mini-SWE-agent Model: BudgetFlow governor + 3-tier AICode pool (spark / mini / codex)."""
 
     def __init__(
         self,
@@ -70,10 +72,7 @@ class BudgetFlowLitellmModel:
         self.format_error_template = format_error_template or "{{ error }}"
         self.set_cache_control = set_cache_control
         self.multimodal_regex = multimodal_regex
-        self.deepseek_api_key = os.environ.get("DEEPSEEK_API_KEY")
         self.aicode_api_key = os.environ.get("AICODE007_API_KEY")
-        if not self.deepseek_api_key:
-            raise RuntimeError("DEEPSEEK_API_KEY is missing. Add it to the repo root .env file.")
         if not self.aicode_api_key:
             raise RuntimeError("AICODE007_API_KEY is missing. Add it to the repo root .env file.")
         self.step_index = 0
@@ -114,9 +113,10 @@ class BudgetFlowLitellmModel:
         self.last_backend_name = backend.name
         print(
             f"{tag('route', bold=False)} #{self.step_index} "
-            f"stage={routing_stage_label(stage.value)} "
+            f"{dim(self.workflow_id)} "
+            f"strategy={bold(self.routing.strategy)} "
             f"model={backend_tier_label(backend.name)} "
-            f"strategy={self.routing.strategy}",
+            f"stage={routing_stage_label(stage.value)}",
             flush=True,
         )
 
@@ -196,26 +196,15 @@ class BudgetFlowLitellmModel:
             "temperature": 0.0,
             "parallel_tool_calls": True,
             "drop_params": True,
+            "api_base": AICODE007_API_BASE,
+            "api_key": self.aicode_api_key,
         }
         if backend.name == TIER1_BACKEND:
-            return TIER1_MODEL, {
-                **common,
-                "api_base": AICODE007_API_BASE,
-                "api_key": self.aicode_api_key,
-            }
+            return TIER1_MODEL, common
         if backend.name == TIER2_BACKEND:
-            return TIER2_MODEL, {
-                **common,
-                "api_base": DEEPSEEK_API_BASE,
-                "api_key": self.deepseek_api_key,
-                "extra_body": {"thinking": {"type": "disabled"}},
-            }
+            return TIER2_MODEL, common
         if backend.name == TIER3_BACKEND:
-            return TIER3_MODEL, {
-                **common,
-                "api_base": AICODE007_API_BASE,
-                "api_key": self.aicode_api_key,
-            }
+            return TIER3_MODEL, common
         raise ValueError(f"unknown backend: {backend.name}")
 
     def _completion(
@@ -232,10 +221,7 @@ class BudgetFlowLitellmModel:
         prepared = set_cache_control(prepared, mode=self.set_cache_control)
 
         def _query():
-            if backend_name in _AICODE_BACKENDS:
-                ensure_aicode007_proxy()
-            else:
-                ensure_direct_api()
+            ensure_aicode007_proxy()
             return litellm.completion(
                 model=model_name,
                 messages=prepared,

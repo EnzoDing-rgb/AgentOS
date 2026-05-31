@@ -8,7 +8,7 @@ _UNLIMITED = 0
 
 
 def build_compare_backends() -> list[Backend]:
-    """Three-tier pool: gpt-5.2 (T1) < deepseek-v4-pro (T2) < gpt-5.4-mini (T3).
+    """Three-tier pool: codex-spark (T1) < gpt-5.4-mini (T2) < gpt-5.3-codex (T3).
 
     Costs are governor mock units (not USD). Ratio ~ 1 : 2.5 : 6.
     """

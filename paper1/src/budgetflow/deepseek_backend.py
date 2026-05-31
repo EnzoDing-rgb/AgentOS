@@ -32,7 +32,10 @@ def ensure_direct_api() -> None:
 
 
 def ensure_aicode007_proxy() -> None:
-    """aicode007 走 HTTP 代理：优先 shell http_proxy，否则 .env 的 AICODE007_HTTP_PROXY。"""
+    """aicode007 走 HTTP 代理：优先 shell http_proxy，否则 .env 的 AICODE007_HTTP_PROXY。
+
+    Clears ALL_PROXY/all_proxy so httpx/litellm do not pick up SOCKS (needs socksio).
+    """
     proxy = (
         os.environ.get("http_proxy")
         or os.environ.get("HTTP_PROXY")
@@ -44,6 +47,8 @@ def ensure_aicode007_proxy() -> None:
     os.environ["https_proxy"] = proxy
     os.environ["HTTP_PROXY"] = proxy
     os.environ["HTTPS_PROXY"] = proxy
+    for key in ("all_proxy", "ALL_PROXY"):
+        os.environ.pop(key, None)
 
 
 def load_env_file() -> None:

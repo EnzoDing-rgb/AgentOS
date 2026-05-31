@@ -175,7 +175,7 @@ def _print_run_done(record: dict, *, index: int, total: int, strategy: str) -> N
 def _flash_ratio(picks: list[str]) -> float:
     if not picks:
         return 0.0
-    tier1 = sum(1 for p in picks if "tier1" in p or "flash" in p.lower() or "gpt52" in p)
+    tier1 = sum(1 for p in picks if "tier1" in p or "flash" in p.lower() or "spark" in p.lower() or "gpt52" in p)
     return tier1 / len(picks)
 
 

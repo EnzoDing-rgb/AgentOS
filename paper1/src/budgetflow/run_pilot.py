@@ -12,6 +12,7 @@ Writes:
 from __future__ import annotations
 
 import json
+import os
 import statistics
 import sys
 import time
@@ -25,7 +26,25 @@ for path in (str(SRC), str(MINI_SWE_SRC)):
     if path not in sys.path:
         sys.path.insert(0, path)
 
+from budgetflow.deepseek_backend import ensure_aicode007_proxy, load_env_file  # noqa: E402
+from budgetflow.litellm_quiet import configure_litellm_quiet  # noqa: E402
+
+load_env_file()
+ensure_aicode007_proxy()
+configure_litellm_quiet()
+if not os.environ.get("NO_COLOR"):
+    os.environ.setdefault("FORCE_COLOR", "1")
+
 from budgetflow.adapter.runner import run_mini_swe_task  # noqa: E402
+from budgetflow.console_log import (  # noqa: E402
+    bold,
+    dim,
+    format_run_verdict,
+    format_tier_pool_line,
+    status_fail,
+    status_pass,
+    tag,
+)
 from budgetflow.defaults import (  # noqa: E402
     BUDGET_PRESSURE_INIT,
     PRESSURE_MAX,
@@ -33,13 +52,15 @@ from budgetflow.defaults import (  # noqa: E402
     TIER2_MODEL,
     TIER3_MODEL,
 )
-from budgetflow.deepseek_backend import load_env_file  # noqa: E402
 from budgetflow.lite_tasks import COMPARE_EASY_INSTANCE_IDS, PILOT_INSTANCE_IDS, load_pilot_tasks  # noqa: E402
 
 RUNS_DIR = REPO_ROOT / "data" / "runs"
 PROTOCOL_PATH = REPO_ROOT / "docs" / "protocol.md"
 PINNED_COMMIT_PATH = REPO_ROOT.parent / "external" / "PINNED_COMMIT"
 UNCAPPED_BUDGET = 1_000_000.0
+PILOT_STEP_LIMIT = 80
+PILOT_STRATEGY = "all_pro"
+PILOT_STRATEGY_LABEL = "all_pro → T3 (strongest tier)"
 
 
 def _read_pinned_commit() -> str:
@@ -147,29 +168,40 @@ Path: `paper1/src/budgetflow/defaults.py` — `PROGRESS_TABLE`, `W_I`, `BUDGET_P
 
 
 def main() -> None:
-    load_env_file()
     tasks = load_pilot_tasks(3)
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
     out_path = RUNS_DIR / "pilot_b0.jsonl"
     summary_path = RUNS_DIR / "pilot_b0_summary.json"
 
-    print(f"pilot B.0: n={len(tasks)} strategy=all_pro uncapped budget", flush=True)
-    print(f"tasks={[t.instance_id for t in tasks]}", flush=True)
+    print(f"{tag('pilot')} B.0 budget pilot — {len(tasks)} tasks × {bold(PILOT_STRATEGY)}", flush=True)
+    print(f"  strategy: {bold(PILOT_STRATEGY_LABEL)}  model: {bold(TIER3_MODEL)}", flush=True)
+    print(f"  pool: {format_tier_pool_line()}", flush=True)
+    print(f"  budget: uncapped  step_limit={PILOT_STEP_LIMIT}  heartbeat=30s", flush=True)
+    print(f"  tasks: {dim(', '.join(t.instance_id for t in tasks))}", flush=True)
     records: list[dict] = []
     started = time.time()
 
     with out_path.open("w") as handle:
         for index, task in enumerate(tasks, start=1):
-            print(f"[{index}/{len(tasks)}] START {task.instance_id}", flush=True)
+            print(
+                f"\n{tag('start', bold=False)} [{index}/{len(tasks)}] {bold(task.instance_id)} "
+                f"strategy={PILOT_STRATEGY} model={TIER3_MODEL}",
+                flush=True,
+            )
             run_started = time.time()
             result = run_mini_swe_task(
                 task,
-                strategy="all_pro",
+                strategy=PILOT_STRATEGY,
+                strategy_label=PILOT_STRATEGY_LABEL,
                 budget_per_task=UNCAPPED_BUDGET,
+                step_limit=PILOT_STEP_LIMIT,
+                trace_console="heartbeat",
             )
             record = {
                 "instance_id": result.instance_id,
                 "strategy": result.strategy,
+                "strategy_label": PILOT_STRATEGY_LABEL,
+                "model": TIER3_MODEL,
                 "harness_resolved": result.harness_resolved,
                 "total_cost": result.total_cost,
                 "llm_turns": result.llm_turns,
@@ -181,10 +213,16 @@ def main() -> None:
             handle.write(json.dumps(record, ensure_ascii=False) + "\n")
             handle.flush()
             records.append(record)
-            status = "OK" if result.harness_resolved else "FAIL"
+            banner = status_pass(f"PASS [{index}/{len(tasks)}]") if result.harness_resolved else status_fail(
+                f"FAIL [{index}/{len(tasks)}]"
+            )
             print(
-                f"[{index}/{len(tasks)}] DONE {task.instance_id} {status} "
-                f"cost={result.total_cost:.4f} turns={result.llm_turns}",
+                f"{banner} {task.instance_id} {PILOT_STRATEGY_LABEL} "
+                f"cost={result.total_cost:.2f} turns={result.llm_turns} elapsed={record['elapsed_s']}s",
+                flush=True,
+            )
+            print(
+                f"  {format_run_verdict(harness_resolved=result.harness_resolved, patch_extracted=bool(result.patch_text), gold_edited=result.agent_gold_edited, gold_file=(result.agent_gold_files[0] if result.agent_gold_files else '-'), detail=result.harness_detail)}",
                 flush=True,
             )
 
@@ -213,7 +251,7 @@ def main() -> None:
     summary_path.write_text(json.dumps(summary, indent=2) + "\n")
     _write_protocol(m=m, pilot_records=records)
 
-    print(f"\nFINAL M={m:.4f} loose_batch_n5={loose_n5:.4f} tight_batch_n5={tight_n5:.4f} elapsed={summary['elapsed_s']}s")
+    print(f"\n{tag('pilot', bold=False)} FINAL M={bold(f'{m:.4f}')} loose_batch_n5={loose_n5:.4f} tight_batch_n5={tight_n5:.4f} elapsed={summary['elapsed_s']}s")
     print(f"jsonl={out_path}")
     print(f"summary={summary_path}")
     print(f"protocol={PROTOCOL_PATH} (FROZEN)")

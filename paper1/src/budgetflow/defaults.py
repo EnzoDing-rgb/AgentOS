@@ -9,9 +9,9 @@ W_I: dict[Stage, float] = {
     Stage.VALIDATION: 2.5,
 }
 
-TIER1_BACKEND = "tier1_gpt52"
-TIER2_BACKEND = "tier2_deepseek_pro"
-TIER3_BACKEND = "tier3_gpt54_mini"
+TIER1_BACKEND = "tier1_codex_spark"
+TIER2_BACKEND = "tier2_gpt54_mini"
+TIER3_BACKEND = "tier3_codex"
 
 PROGRESS_TABLE: dict[Stage, dict[str, float]] = {
     Stage.LOCALIZATION: {
@@ -36,15 +36,13 @@ BUDGET_PRESSURE_INIT = 0.01
 PRESSURE_MAX = 1.5
 UNCAPPED_BUDGET_THRESHOLD = 1_000_000.0
 
-# Tier 1 / 3 — aicode007 (OpenAI-compatible)
-TIER1_MODEL = "gpt-5.2"
-TIER3_MODEL = "gpt-5.4-mini"
+# All tiers — AICode007 (OpenAI-compatible). openai/ prefix avoids litellm provider spam.
+TIER1_MODEL = "openai/gpt-5.3-codex-spark"
+TIER2_MODEL = "openai/gpt-5.4-mini"
+TIER3_MODEL = "openai/gpt-5.3-codex"
 AICODE007_API_BASE = "https://api.aicode007.com/v1"
 
-# Tier 2 — DeepSeek official
-TIER2_MODEL = "deepseek/deepseek-v4-pro"
-DEEPSEEK_API_BASE = "https://api.deepseek.com"
-
 # Legacy aliases (baseline runner / docs)
-DEEPSEEK_FLASH_MODEL = TIER2_MODEL
+DEEPSEEK_API_BASE = "https://api.deepseek.com"
+DEEPSEEK_FLASH_MODEL = TIER1_MODEL
 DEEPSEEK_PRO_MODEL = TIER3_MODEL

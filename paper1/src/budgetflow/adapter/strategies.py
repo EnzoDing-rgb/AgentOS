@@ -53,6 +53,8 @@ def choose_backend(ctx: RoutingContext, turn: TurnInfo, expected_costs: dict[str
     ctx.expected_costs = expected_costs
     if ctx.strategy == "all_flash":
         return ctx.backends[0]
+    if ctx.strategy == "all_tier2":
+        return ctx.backends[1]
     if ctx.strategy == "all_pro":
         return ctx.backends[-1]
     if ctx.strategy == "workflow_level":

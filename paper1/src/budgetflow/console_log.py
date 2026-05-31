@@ -132,12 +132,12 @@ def backend_tier_label(backend_name: str) -> str:
     if not backend_name or backend_name == "-":
         return dim("-")
     lowered = backend_name.lower()
-    if "tier1" in lowered or "gpt52" in lowered:
-        tier, label = "tier1", "T1/gpt-5.2"
-    elif "tier2" in lowered or "deepseek" in lowered:
-        tier, label = "tier2", "T2/deepseek-pro"
-    elif "tier3" in lowered or "gpt54" in lowered or "mini" in lowered:
-        tier, label = "tier3", "T3/gpt-5.4-mini"
+    if "tier1" in lowered or "spark" in lowered:
+        tier, label = "tier1", "T1/codex-spark"
+    elif "tier2" in lowered or "gpt54" in lowered or "mini" in lowered:
+        tier, label = "tier2", "T2/gpt-5.4-mini"
+    elif "tier3" in lowered or "codex" in lowered:
+        tier, label = "tier3", "T3/gpt-5.3-codex"
     else:
         return paint(backend_name, _DIM)
     return paint(label, BACKEND_TIER_COLORS[tier], _BOLD)
@@ -157,6 +157,17 @@ def fail_label(text: str) -> str:
 
 def dim(text: str) -> str:
     return paint(text, _DIM)
+
+
+def format_tier_pool_line() -> str:
+    """One-line tier → model_id summary for run banners."""
+    from .defaults import TIER1_MODEL, TIER2_MODEL, TIER3_MODEL
+
+    return (
+        f"T1={dim(TIER1_MODEL)}  "
+        f"T2={dim(TIER2_MODEL)}  "
+        f"T3={bold(TIER3_MODEL)}"
+    )
 
 
 def parse_harness_detail(detail: str) -> dict[str, str]:
