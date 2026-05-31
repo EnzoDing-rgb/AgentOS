@@ -11,13 +11,13 @@ from typing import Any
 from .console_log import tag
 
 # Defaults tuned for 15×7 (105 runs); override via CompareRunGuards config.
-GLOBAL_WINDOW = 30
-GLOBAL_MIN_SAMPLES = 20
+GLOBAL_WINDOW = 200
+GLOBAL_MIN_SAMPLES = 200
 # Legacy name kept for CompareRunGuards field; global halt uses resolved count only.
 GLOBAL_PATCH_RATE_MIN = 0.20
 POLICY_CONSECUTIVE_FAIL = 8
 POLICY_PIPELINE_FAIL_MIN = 6
-UPSTREAM_CONSECUTIVE = 8
+UPSTREAM_CONSECUTIVE = 100
 
 _PIPELINE_EXIT_REASONS = frozenset(
     {
