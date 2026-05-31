@@ -37,6 +37,7 @@ from budgetflow.adapter.runner import run_mini_swe_task  # noqa: E402
 from budgetflow.console_log import backend_tier_label, dim, format_run_verdict, status_fail, status_pass, tag  # noqa: E402
 from budgetflow.deepseek_backend import load_env_file  # noqa: E402
 from budgetflow.governor import BudgetGovernor, GovernorConfig  # noqa: E402
+from budgetflow.defaults import BUDGET_PRESSURE_INIT, PRESSURE_MAX  # noqa: E402
 from budgetflow.heartbeat import run_with_heartbeat  # noqa: E402
 from budgetflow.ledger import WorkflowLedgerStore  # noqa: E402
 from budgetflow.lite_tasks import load_compare_easy_tasks  # noqa: E402
@@ -91,6 +92,8 @@ def _run_one(
     step_limit: int,
     trace_console: TraceConsoleLevel = "quiet",
     progress_box: dict[str, str] | None = None,
+    budget_pressure: float | None = None,
+    pressure_max: float | None = None,
 ) -> dict:
     started = time.time()
     workspace_key = _workspace_key(cfg, task.instance_id)
@@ -105,6 +108,8 @@ def _run_one(
         governor=governor,
         ledger=ledger,
         workspace_key=workspace_key,
+        budget_pressure=budget_pressure,
+        pressure_max=pressure_max,
     )
     batch_snapshot = governor.budget_snapshot()
     return {
@@ -308,6 +313,8 @@ def _run_strategy_batch(
     heartbeat: float,
     total_runs: int,
     print_lock: threading.Lock | None,
+    budget_pressure: float | None = None,
+    pressure_max: float | None = None,
 ) -> tuple[list[dict], float]:
     ledger = WorkflowLedgerStore()
     governor = BudgetGovernor(
@@ -354,6 +361,8 @@ def _run_strategy_batch(
                 step_limit=step_limit,
                 trace_console=trace_console,
                 progress_box=status_box,
+                budget_pressure=budget_pressure,
+                pressure_max=pressure_max,
             )
 
         if heartbeat > 0:
@@ -464,9 +473,9 @@ def _ingest_batch(
 PRESET_TASKS = {"3x5": 3, "5x5": 5}
 
 
-def _compare_paths(tasks_n: int, strategies_n: int) -> tuple[Path, Path]:
-    stem = f"compare_{tasks_n}x{strategies_n}"
-    return RUNS_DIR / f"{stem}.jsonl", RUNS_DIR / f"{stem}.summary.log"
+def _compare_paths(tasks_n: int, strategies_n: int, *, stem: str | None = None) -> tuple[Path, Path]:
+    base = stem or f"compare_{tasks_n}x{strategies_n}"
+    return RUNS_DIR / f"{base}.jsonl", RUNS_DIR / f"{base}.summary.log"
 
 
 def main() -> None:
@@ -532,20 +541,65 @@ def main() -> None:
         action="store_true",
         help="with --append, skip (strategy,task) pairs already in jsonl",
     )
+    parser.add_argument(
+        "--out-stem",
+        type=str,
+        default=None,
+        help="output basename under data/runs/ (default compare_<tasks>x<strategies>)",
+    )
+    parser.add_argument(
+        "--pressure-init",
+        type=float,
+        default=None,
+        help=f"override BUDGET_PRESSURE_INIT (default {BUDGET_PRESSURE_INIT}; protocol used when --read-protocol)",
+    )
+    parser.add_argument(
+        "--pressure-max",
+        type=float,
+        default=None,
+        help=f"override PRESSURE_MAX ceiling (default {PRESSURE_MAX}; protocol used when --read-protocol)",
+    )
+    parser.add_argument(
+        "--tight-scale",
+        type=float,
+        default=1.0,
+        help="multiply tight batch cap after --read-protocol or --tight (diagnostic sweeps)",
+    )
+    parser.add_argument(
+        "--loose-scale",
+        type=float,
+        default=1.0,
+        help="multiply loose batch cap after --read-protocol or --loose",
+    )
     args = parser.parse_args()
     tasks_n = args.limit if args.limit is not None else PRESET_TASKS[args.preset]
 
     loose = args.loose
     tight = args.tight
+    pressure_init = args.pressure_init
+    pressure_max = args.pressure_max
     if args.read_protocol:
         caps = read_protocol_caps(tasks_n)
         loose = caps.loose_batch
         tight = caps.tight_batch
+        if pressure_init is None:
+            pressure_init = caps.pressure_init
+        if pressure_max is None:
+            pressure_max = caps.pressure_max
         print(
             f"{tag('protocol', bold=False)} read n={tasks_n} "
-            f"loose_batch={loose:.4f} tight_batch={tight:.4f}",
+            f"loose_batch={loose:.4f} tight_batch={tight:.4f} "
+            f"pressure_init={pressure_init:.4f} pressure_max={pressure_max:.4f}",
             flush=True,
         )
+    if pressure_init is None:
+        pressure_init = BUDGET_PRESSURE_INIT
+    if pressure_max is None:
+        pressure_max = PRESSURE_MAX
+    if args.tight_scale != 1.0:
+        tight = (tight or 100.0) * args.tight_scale
+    if args.loose_scale != 1.0:
+        loose = (loose or 400.0) * args.loose_scale
     if loose is None:
         loose = 400.0
     if tight is None:
@@ -572,7 +626,8 @@ def main() -> None:
     budget_caps = {"loose": loose, "tight": tight}
     tasks = load_compare_easy_tasks(tasks_n)
     total_runs = len(tasks) * len(strategies)
-    out_path, summary_path = _compare_paths(len(tasks), len(strategies))
+    out_path, summary_path = _compare_paths(len(tasks), len(strategies), stem=args.out_stem)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     strategy_names = [s.name for s in strategies]
     completed = _completed_keys(out_path) if args.skip_completed else set()
     if args.skip_completed and completed:
@@ -585,6 +640,7 @@ def main() -> None:
     print(
         f"{tag('compare', bold=False)} preset={args.preset} tasks={len(tasks)} strategies={len(strategies)} "
         f"batches={len(strategies)} runs={total_runs} loose={loose} tight={tight} "
+        f"pressure_init={pressure_init} pressure_max={pressure_max} "
         f"policy_jobs={args.jobs} heartbeat={args.heartbeat}s hard_cap=settle_clamp",
         flush=True,
     )
@@ -599,7 +655,9 @@ def main() -> None:
     state = _CompareState(
         summary_lines=[
             f"compare_{len(tasks)}x{len(strategies)} preset={args.preset} tasks={len(tasks)} strategies={strategy_names}",
-            f"shared_batch_budget loose={loose} tight={tight} policy_jobs={args.jobs} hard_cap=settle_clamp",
+            f"shared_batch_budget loose={loose} tight={tight} "
+            f"pressure_init={pressure_init} pressure_max={pressure_max} "
+            f"policy_jobs={args.jobs} hard_cap=settle_clamp",
             f"tasks={[t.instance_id for t in tasks]}",
             "",
         ],
@@ -633,6 +691,8 @@ def main() -> None:
             heartbeat=args.heartbeat,
             total_runs=total_runs,
             print_lock=print_lock,
+            budget_pressure=pressure_init,
+            pressure_max=pressure_max,
         )
         return cfg, records, batch_spent, batch_cap
 

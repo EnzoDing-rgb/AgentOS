@@ -20,6 +20,7 @@ from ..budget_pressure import live_budget_pressure
 from ..deepseek_backend import ensure_aicode007_proxy, load_env_file
 from ..defaults import (
     AICODE007_API_BASE,
+    PRESSURE_MAX,
     TIER1_BACKEND,
     TIER1_MODEL,
     TIER2_BACKEND,
@@ -63,6 +64,7 @@ class BudgetFlowLitellmModel:
         self.governor = governor
         self.routing = routing
         self._pressure_init = routing.budget_pressure
+        self._pressure_max = routing.pressure_max if routing.pressure_max is not None else PRESSURE_MAX
         self.default_max_output_tokens = default_max_output_tokens
         self.cost_tracking = cost_tracking
         self.observation_template = observation_template or (
@@ -105,7 +107,11 @@ class BudgetFlowLitellmModel:
             ).expected_cost
             for backend in self.routing.backends
         }
-        self.routing.budget_pressure = live_budget_pressure(self.governor, init=self._pressure_init)
+        self.routing.budget_pressure = live_budget_pressure(
+            self.governor,
+            init=self._pressure_init,
+            pressure_max=self._pressure_max,
+        )
         backend = choose_backend(self.routing, turn, expected_costs)
         backend = self._reserve_with_downgrade(backend, input_tokens)
         self.backend_picks.append(backend.name)

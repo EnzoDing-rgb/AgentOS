@@ -34,12 +34,14 @@ from minisweagent.utils.serialize import recursive_merge  # noqa: E402
 
 from budgetflow.deepseek_backend import ensure_direct_api, load_env_file  # noqa: E402
 from budgetflow.console_log import dim, fail_label, ok_label, paint, tag  # noqa: E402
-from budgetflow.defaults import DEEPSEEK_API_BASE, DEEPSEEK_PRO_MODEL  # noqa: E402
+from budgetflow.defaults import DEEPSEEK_API_BASE, DEEPSEEK_FLASH_MODEL, DEEPSEEK_PRO_MODEL  # noqa: E402
+from budgetflow.litellm_quiet import configure_litellm_quiet  # noqa: E402
 from budgetflow.heartbeat import run_with_heartbeat  # noqa: E402
 from budgetflow.lite_tasks import load_smoke_tasks, load_swebench_lite_tasks  # noqa: E402
 from budgetflow.local_harness import clone_or_checkout, evaluate_local_harness  # noqa: E402
 from budgetflow.run_trace import (  # noqa: E402
     RunTraceLogger,
+    TraceConsoleLevel,
     TracedDefaultAgent,
     patch_local_swebench_config,
 )
@@ -84,7 +86,7 @@ def _append_summary_line(lines: list[str], record: dict, *, index: int, total: i
     lines.append("")
 
 
-def _load_agent_config(*, step_limit: int) -> dict:
+def _load_agent_config(*, step_limit: int, model_name: str) -> dict:
     api_key = os.environ.get("DEEPSEEK_API_KEY")
     if not api_key:
         raise RuntimeError("DEEPSEEK_API_KEY missing — add to repo root .env")
@@ -100,7 +102,7 @@ def _load_agent_config(*, step_limit: int) -> dict:
                 "timeout": 120,
             },
             "model": {
-                "model_name": DEEPSEEK_PRO_MODEL,
+                "model_name": model_name,
                 "model_kwargs": {
                     "api_base": DEEPSEEK_API_BASE,
                     "api_key": api_key,
@@ -116,26 +118,41 @@ def _load_agent_config(*, step_limit: int) -> dict:
     )
 
 
-def run_baseline_task(task, *, step_limit: int = 250) -> dict:
+def run_baseline_task(
+    task,
+    *,
+    step_limit: int = 250,
+    model_name: str | None = None,
+    strategy_label: str | None = None,
+    trace_console: TraceConsoleLevel = "milestones",
+    heartbeat_s: float = 30.0,
+    workspace_key: str | None = None,
+) -> dict:
+    configure_litellm_quiet()
     ensure_direct_api()
+    model = model_name or DEEPSEEK_PRO_MODEL
+    label = strategy_label or f"deepseek_{model.split('/')[-1]}"
+    ws_key = workspace_key or f"{label}_{task.instance_id}"
 
     def _prep_repo():
-        return clone_or_checkout(task)
+        return clone_or_checkout(task, workspace_key=ws_key)
 
-    repo_dir = run_with_heartbeat(f"{task.instance_id}/prep", _prep_repo, interval_s=30.0)
+    repo_dir = run_with_heartbeat(f"{task.instance_id}/prep", _prep_repo, interval_s=heartbeat_s)
     print(f"{tag('prep')} repo ready {dim(str(repo_dir))}", flush=True)
 
-    trace_dir = RUNS_DIR / f"trace_{task.instance_id}"
+    safe_label = label.replace("/", "_")
+    trace_dir = RUNS_DIR / f"trace_{task.instance_id}_{safe_label}"
     trace = RunTraceLogger(
         instance_id=task.instance_id,
         repo_dir=repo_dir,
         trace_dir=trace_dir,
         target_files=task.gold_files,
-        strategy_label="baseline_all_pro",
+        strategy_label=label,
+        console_level=trace_console,
     )
     print(f"{tag('trace', bold=False)} steps={dim(str(trace.steps_path))}", flush=True)
 
-    config = patch_local_swebench_config(_load_agent_config(step_limit=step_limit), repo_dir)
+    config = patch_local_swebench_config(_load_agent_config(step_limit=step_limit, model_name=model), repo_dir)
     agent_cfg = dict(config.get("agent", {}))
     agent_cfg["output_path"] = trace_dir / "trajectory.json"
 
@@ -153,9 +170,9 @@ def run_baseline_task(task, *, step_limit: int = 250) -> dict:
 
     try:
         exit_info = run_with_heartbeat(
-            task.instance_id,
+            f"{task.instance_id} [{label}]",
             _agent_run,
-            interval_s=30.0,
+            interval_s=heartbeat_s,
             status_fn=lambda: trace.heartbeat_status(agent, elapsed_s=time.time() - run_started),
         )
         exit_status = str(exit_info.get("exit_status", "unknown"))
@@ -167,12 +184,14 @@ def run_baseline_task(task, *, step_limit: int = 250) -> dict:
     except Exception as exc:  # noqa: BLE001
         exit_status = type(exc).__name__
 
-    harness = evaluate_local_harness(task, patch_text)
+    harness = evaluate_local_harness(task, patch_text, workspace_key=ws_key)
     trace.log_harness_result(resolved=harness.harness_resolved, detail=harness.detail)
     record = _harness_record(task, harness, patch_text=patch_text, trace_dir=trace_dir)
     record["exit_status"] = exit_status
     record["llm_turns"] = agent.n_calls
     record["total_cost"] = agent.cost
+    record["model"] = model
+    record["strategy_label"] = label
     return record
 
 
@@ -184,6 +203,7 @@ def _select_tasks(limit: int, instance_id: str | None):
 
 def main() -> None:
     load_env_file()
+    configure_litellm_quiet()
     parser = argparse.ArgumentParser(description="mini-SWE baseline (no BudgetFlow)")
     parser.add_argument("limit", nargs="?", type=int, default=1)
     parser.add_argument("instance_id", nargs="?", default=None)

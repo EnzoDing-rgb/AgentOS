@@ -15,6 +15,7 @@ class RoutingContext:
     selector: BudgetFlowSelector
     budget_pressure: float
     expected_costs: dict[str, float]
+    pressure_max: float | None = None
     workflow_level_backend: Backend | None = None
     budget_only_router: BudgetOnlyStepRouter | None = None
     workflow_router: WorkflowLevelRouter | None = None
@@ -29,7 +30,13 @@ def build_progress_table_from_defaults(backends: list[Backend]) -> ProgressTable
     return table
 
 
-def build_routing_context(strategy: str, backends: list[Backend], budget_pressure: float | None = None) -> RoutingContext:
+def build_routing_context(
+    strategy: str,
+    backends: list[Backend],
+    budget_pressure: float | None = None,
+    *,
+    pressure_max: float | None = None,
+) -> RoutingContext:
     ordered = sorted(backends, key=lambda backend: backend.tier)
     pressure = BUDGET_PRESSURE_INIT if budget_pressure is None else budget_pressure
     selector = BudgetFlowSelector(build_progress_table_from_defaults(backends))
@@ -39,6 +46,7 @@ def build_routing_context(strategy: str, backends: list[Backend], budget_pressur
         selector=selector,
         budget_pressure=pressure,
         expected_costs={},
+        pressure_max=pressure_max,
     )
     if strategy == "workflow_level":
         ctx.workflow_router = WorkflowLevelRouter()

@@ -42,7 +42,7 @@ TIER2_MODEL = "openai/gpt-5.4-mini"
 TIER3_MODEL = "openai/gpt-5.3-codex"
 AICODE007_API_BASE = "https://api.aicode007.com/v1"
 
-# Legacy aliases (baseline runner / docs)
+# DeepSeek official API — litellm requires provider prefix (deepseek/...).
 DEEPSEEK_API_BASE = "https://api.deepseek.com"
-DEEPSEEK_FLASH_MODEL = TIER1_MODEL
-DEEPSEEK_PRO_MODEL = TIER3_MODEL
+DEEPSEEK_FLASH_MODEL = "deepseek/deepseek-chat"
+DEEPSEEK_PRO_MODEL = "deepseek/deepseek-reasoner"

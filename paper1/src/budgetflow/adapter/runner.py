@@ -76,6 +76,7 @@ def run_mini_swe_task(
     strategy_label: str | None = None,
     budget_per_task: float | None = None,
     budget_pressure: float | None = None,
+    pressure_max: float | None = None,
     step_limit: int = 250,
     trace_console: TraceConsoleLevel = "quiet",
     progress_box: dict[str, str] | None = None,
@@ -109,7 +110,12 @@ def run_mini_swe_task(
     )
     config = patch_local_swebench_config(_load_agent_config(step_limit=step_limit), repo_dir)
     backends = build_compare_backends()
-    routing = build_routing_context(strategy, backends, budget_pressure=budget_pressure)
+    routing = build_routing_context(
+        strategy,
+        backends,
+        budget_pressure=budget_pressure,
+        pressure_max=pressure_max,
+    )
     model_cfg = config.get("model", {})
     model = BudgetFlowLitellmModel(
         workflow_id=task.instance_id,
