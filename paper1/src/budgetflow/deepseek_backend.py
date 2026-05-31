@@ -31,6 +31,24 @@ def ensure_direct_api() -> None:
         os.environ.pop(key, None)
 
 
+def ensure_aicode007_http_proxy() -> None:
+    """aicode007 需 HTTP 代理；保留 http(s)_proxy，去掉 SOCKS all_proxy."""
+    proxy = (
+        os.environ.get("AICODE007_HTTP_PROXY")
+        or os.environ.get("HTTPS_PROXY")
+        or os.environ.get("https_proxy")
+        or os.environ.get("HTTP_PROXY")
+        or os.environ.get("http_proxy")
+    )
+    os.environ.pop("all_proxy", None)
+    os.environ.pop("ALL_PROXY", None)
+    if proxy:
+        os.environ["http_proxy"] = proxy
+        os.environ["https_proxy"] = proxy
+        os.environ["HTTP_PROXY"] = proxy
+        os.environ["HTTPS_PROXY"] = proxy
+
+
 def load_env_file() -> None:
     env_path = _repo_root() / ".env"
     if env_path.exists():
@@ -43,7 +61,6 @@ def load_env_file() -> None:
             value = value.strip().strip('"').strip("'")
             if key and key not in os.environ:
                 os.environ[key] = value
-    ensure_direct_api()
 
 
 def extract_message_text(message) -> str:

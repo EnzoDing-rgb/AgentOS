@@ -55,6 +55,8 @@ class CompareStrategy:
 
 DEFAULT_STRATEGIES: tuple[CompareStrategy, ...] = (
     CompareStrategy("all_pro", "all_pro", None),
+    CompareStrategy("all_flash_tight", "all_flash", "tight"),
+    CompareStrategy("all_flash_loose", "all_flash", "loose"),
     CompareStrategy("budgetflow_full_loose", "budgetflow_full", "loose"),
     CompareStrategy("budgetflow_full_tight", "budgetflow_full", "tight"),
     CompareStrategy("budget_only_loose", "budget_only", "loose"),
@@ -161,8 +163,15 @@ def _print_run_done(record: dict, *, index: int, total: int, strategy: str) -> N
 def _flash_ratio(picks: list[str]) -> float:
     if not picks:
         return 0.0
-    flash = sum(1 for p in picks if "flash" in p.lower())
-    return flash / len(picks)
+    tier1 = sum(1 for p in picks if "tier1" in p or "flash" in p.lower() or "gpt52" in p)
+    return tier1 / len(picks)
+
+
+def _tier_ratio(picks: list[str], tier: int) -> float:
+    if not picks:
+        return 0.0
+    needle = f"tier{tier}_"
+    return sum(1 for p in picks if needle in p) / len(picks)
 
 
 def _append_summary(lines: list[str], record: dict, *, index: int, total: int) -> None:
@@ -195,12 +204,14 @@ def _format_strategy_totals(
     batch_spent_by_strategy: dict[str, float],
     turns_by_strategy: dict[str, list[int]],
     flash_by_strategy: dict[str, list[float]],
+    tier2_by_strategy: dict[str, list[float]],
+    tier3_by_strategy: dict[str, list[float]],
     batch_caps: dict[str, float | None],
 ) -> list[str]:
     lines = ["=== BATCH RESOLVED + COST BY STRATEGY (governor units, shared pool) ==="]
     header = (
         f"{'strategy':<28} {'resolved':>8} {'batch_spent':>11} {'batch_cap':>10} "
-        f"{'avg_task':>9} {'avg_turns':>10} {'flash%':>7}"
+        f"{'avg_task':>9} {'avg_turns':>10} {'t1%':>5} {'t2%':>5} {'t3%':>5}"
     )
     lines.append(header)
     lines.append("-" * len(header))
@@ -209,6 +220,8 @@ def _format_strategy_totals(
         costs = task_cost_by_strategy.get(key, [])
         turns = turns_by_strategy.get(key, [])
         flash = flash_by_strategy.get(key, [])
+        tier2 = tier2_by_strategy.get(key, [])
+        tier3 = tier3_by_strategy.get(key, [])
         resolved_n = sum(1 for f in flags if f)
         batch_spent = batch_spent_by_strategy.get(key, 0.0)
         cap = batch_caps.get(key)
@@ -219,9 +232,11 @@ def _format_strategy_totals(
         avg_cost = sum(costs) / len(costs) if costs else 0.0
         avg_turns = sum(turns) / len(turns) if turns else 0.0
         avg_flash = sum(flash) / len(flash) if flash else 0.0
+        avg_t2 = sum(tier2) / len(tier2) if tier2 else 0.0
+        avg_t3 = sum(tier3) / len(tier3) if tier3 else 0.0
         lines.append(
             f"{key:<28} {resolved_n}/{len(flags):<7} {batch_spent:11.2f} {cap_s:>10}{cap_flag} "
-            f"{avg_cost:9.2f} {avg_turns:10.1f} {avg_flash * 100:6.0f}%"
+            f"{avg_cost:9.2f} {avg_turns:10.1f} {avg_flash * 100:4.0f}% {avg_t2 * 100:4.0f}% {avg_t3 * 100:4.0f}%"
         )
     return lines
 
@@ -236,6 +251,8 @@ def _write_summary_file(
     batch_spent_by_strategy: dict[str, float],
     turns_by_strategy: dict[str, list[int]],
     flash_by_strategy: dict[str, list[float]],
+    tier2_by_strategy: dict[str, list[float]],
+    tier3_by_strategy: dict[str, list[float]],
     batch_caps: dict[str, float | None],
     started: float,
     out_path: Path,
@@ -252,6 +269,8 @@ def _write_summary_file(
             batch_spent_by_strategy=batch_spent_by_strategy,
             turns_by_strategy=turns_by_strategy,
             flash_by_strategy=flash_by_strategy,
+            tier2_by_strategy=tier2_by_strategy,
+            tier3_by_strategy=tier3_by_strategy,
             batch_caps=batch_caps,
         )
     )
@@ -348,7 +367,27 @@ class _CompareState:
     batch_spent_by_strategy: dict[str, float]
     turns_by_strategy: dict[str, list[int]]
     flash_by_strategy: dict[str, list[float]]
+    tier2_by_strategy: dict[str, list[float]]
+    tier3_by_strategy: dict[str, list[float]]
     runs_done: int = 0
+
+
+def _completed_keys(jsonl_path: Path) -> set[tuple[str, str]]:
+    if not jsonl_path.is_file():
+        return set()
+    done: set[tuple[str, str]] = set()
+    for line in jsonl_path.read_text().splitlines():
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        strategy = record.get("strategy")
+        task = record.get("instance_id")
+        if strategy and task:
+            done.add((strategy, task))
+    return done
 
 
 def _ingest_batch(
@@ -386,6 +425,9 @@ def _ingest_batch(
             state.task_cost_by_strategy.setdefault(name, []).append(float(record.get("task_cost") or 0.0))
             state.turns_by_strategy.setdefault(name, []).append(int(record.get("llm_turns") or 0))
             state.flash_by_strategy.setdefault(name, []).append(_flash_ratio(record.get("backend_picks") or []))
+            picks = record.get("backend_picks") or []
+            state.tier2_by_strategy.setdefault(name, []).append(_tier_ratio(picks, 2))
+            state.tier3_by_strategy.setdefault(name, []).append(_tier_ratio(picks, 3))
 
         handle.flush()
         _write_summary_file(
@@ -397,6 +439,8 @@ def _ingest_batch(
             batch_spent_by_strategy=state.batch_spent_by_strategy,
             turns_by_strategy=state.turns_by_strategy,
             flash_by_strategy=state.flash_by_strategy,
+            tier2_by_strategy=state.tier2_by_strategy,
+            tier3_by_strategy=state.tier3_by_strategy,
             batch_caps=batch_caps,
             started=started,
             out_path=out_path,
@@ -408,8 +452,8 @@ def _ingest_batch(
 PRESET_TASKS = {"3x5": 3, "5x5": 5}
 
 
-def _compare_paths(tasks_n: int) -> tuple[Path, Path]:
-    stem = f"compare_{tasks_n}x5"
+def _compare_paths(tasks_n: int, strategies_n: int) -> tuple[Path, Path]:
+    stem = f"compare_{tasks_n}x{strategies_n}"
     return RUNS_DIR / f"{stem}.jsonl", RUNS_DIR / f"{stem}.summary.log"
 
 
@@ -458,6 +502,22 @@ def main() -> None:
         action="store_true",
         help="print every agent step (default: milestones on gold/submit/test phase changes)",
     )
+    parser.add_argument(
+        "--strategies",
+        type=str,
+        default=None,
+        help="comma-separated strategy names subset (e.g. all_flash_tight,budget_only_loose,budgetflow_full_tight)",
+    )
+    parser.add_argument(
+        "--append",
+        action="store_true",
+        help="append to existing jsonl instead of overwriting",
+    )
+    parser.add_argument(
+        "--skip-completed",
+        action="store_true",
+        help="with --append, skip (strategy,task) pairs already in jsonl",
+    )
     args = parser.parse_args()
     tasks_n = args.limit if args.limit is not None else PRESET_TASKS[args.preset]
 
@@ -484,12 +544,25 @@ def main() -> None:
     else:
         trace_console = "milestones"
 
-    strategies = DEFAULT_STRATEGIES
+    all_strategies = DEFAULT_STRATEGIES
+    if args.strategies:
+        wanted = {s.strip() for s in args.strategies.split(",") if s.strip()}
+        strategies = tuple(s for s in all_strategies if s.name in wanted)
+        missing = wanted - {s.name for s in strategies}
+        if missing:
+            raise SystemExit(f"unknown strategies: {sorted(missing)}")
+        if not strategies:
+            raise SystemExit("no strategies selected")
+    else:
+        strategies = all_strategies
     budget_caps = {"loose": loose, "tight": tight}
     tasks = load_compare_easy_tasks(tasks_n)
     total_runs = len(tasks) * len(strategies)
-    out_path, summary_path = _compare_paths(len(tasks))
+    out_path, summary_path = _compare_paths(len(tasks), len(strategies))
     strategy_names = [s.name for s in strategies]
+    completed = _completed_keys(out_path) if args.skip_completed else set()
+    if args.skip_completed and completed:
+        print(f"{tag('resume', bold=False)} skip {len(completed)} completed (strategy,task) pairs", flush=True)
     batch_caps: dict[str, float | None] = {
         s.name: None if s.budget_tier is None else budget_caps[s.budget_tier] for s in strategies
     }
@@ -521,6 +594,8 @@ def main() -> None:
         batch_spent_by_strategy={},
         turns_by_strategy={},
         flash_by_strategy={},
+        tier2_by_strategy={},
+        tier3_by_strategy={},
     )
     started = time.time()
     io_lock = threading.Lock()
@@ -528,9 +603,15 @@ def main() -> None:
 
     def _run_one_batch(strategy_index: int, cfg: CompareStrategy) -> tuple[CompareStrategy, list[dict], float, float]:
         batch_cap = _batch_budget_cap(cfg, budget_caps)
+        batch_tasks = tasks
+        if completed:
+            batch_tasks = [t for t in tasks if (cfg.name, t.instance_id) not in completed]
+            if not batch_tasks:
+                print(f"{tag('skip', bold=False)} strategy={cfg.name} all tasks already done", flush=True)
+                return cfg, [], 0.0, batch_cap
         records, batch_spent = _run_strategy_batch(
             cfg,
-            tasks,
+            batch_tasks,
             strategy_index=strategy_index,
             batch_budget_cap=batch_cap,
             step_limit=args.step_limit,
@@ -541,7 +622,8 @@ def main() -> None:
         )
         return cfg, records, batch_spent, batch_cap
 
-    with out_path.open("w") as handle:
+    file_mode = "a" if args.append else "w"
+    with out_path.open(file_mode) as handle:
         if args.jobs <= 1:
             for strategy_index, cfg in enumerate(strategies):
                 cfg, batch_records, batch_spent, batch_cap = _run_one_batch(strategy_index, cfg)
@@ -593,6 +675,8 @@ def main() -> None:
         batch_spent_by_strategy=state.batch_spent_by_strategy,
         turns_by_strategy=state.turns_by_strategy,
         flash_by_strategy=state.flash_by_strategy,
+        tier2_by_strategy=state.tier2_by_strategy,
+        tier3_by_strategy=state.tier3_by_strategy,
         batch_caps=batch_caps,
         started=started,
         out_path=out_path,
@@ -608,6 +692,8 @@ def main() -> None:
         batch_spent_by_strategy=state.batch_spent_by_strategy,
         turns_by_strategy=state.turns_by_strategy,
         flash_by_strategy=state.flash_by_strategy,
+        tier2_by_strategy=state.tier2_by_strategy,
+        tier3_by_strategy=state.tier3_by_strategy,
         batch_caps=batch_caps,
     ):
         print(f"  {line}", flush=True)

@@ -22,7 +22,7 @@ from ..ledger import WorkflowLedgerStore
 from ..lite_tasks import LiteTaskRecord
 from ..local_harness import clone_or_checkout, evaluate_local_harness, get_last_compat_files
 from ..run_trace import RunTraceLogger, TracedDefaultAgent, TraceConsoleLevel, patch_local_swebench_config
-from .backends import build_deepseek_backends
+from .backends import build_compare_backends
 from .errors import BudgetFlowBudgetError
 from .mini_swe_proxy import BudgetFlowLitellmModel
 from .strategies import build_routing_context
@@ -108,7 +108,7 @@ def run_mini_swe_task(
         progress_box=progress_box,
     )
     config = patch_local_swebench_config(_load_agent_config(step_limit=step_limit), repo_dir)
-    backends = build_deepseek_backends()
+    backends = build_compare_backends()
     routing = build_routing_context(strategy, backends, budget_pressure=budget_pressure)
     model_cfg = config.get("model", {})
     model = BudgetFlowLitellmModel(

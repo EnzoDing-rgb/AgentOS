@@ -16,8 +16,17 @@ from minisweagent.models.utils.openai_multimodal import expand_multimodal_conten
 from minisweagent.models.utils.retry import retry
 
 from ..budget_pressure import live_budget_pressure
-from ..deepseek_backend import ensure_direct_api, load_env_file
-from ..defaults import DEEPSEEK_API_BASE, DEEPSEEK_FLASH_MODEL, DEEPSEEK_PRO_MODEL
+from ..deepseek_backend import ensure_aicode007_http_proxy, ensure_direct_api, load_env_file
+from ..defaults import (
+    AICODE007_API_BASE,
+    DEEPSEEK_API_BASE,
+    TIER1_BACKEND,
+    TIER1_MODEL,
+    TIER2_BACKEND,
+    TIER2_MODEL,
+    TIER3_BACKEND,
+    TIER3_MODEL,
+)
 from ..governor import BudgetGovernor
 from ..types import Backend, TurnInfo, WorkflowStatus
 from .errors import BudgetFlowBudgetError
@@ -27,9 +36,11 @@ from .strategies import RoutingContext, choose_backend, stage_weight
 
 logger = logging.getLogger("budgetflow_litellm_model")
 
+_AICODE_BACKENDS = frozenset({TIER1_BACKEND, TIER3_BACKEND})
+
 
 class BudgetFlowLitellmModel:
-    """mini-SWE-agent Model that routes each query through BudgetFlow governor + DeepSeek Flash/Pro."""
+    """mini-SWE-agent Model: BudgetFlow governor + 3-tier pool (gpt-5.2 / deepseek-pro / gpt-5.4-mini)."""
 
     def __init__(
         self,
@@ -58,14 +69,17 @@ class BudgetFlowLitellmModel:
         self.format_error_template = format_error_template or "{{ error }}"
         self.set_cache_control = set_cache_control
         self.multimodal_regex = multimodal_regex
-        self.api_key = os.environ.get("DEEPSEEK_API_KEY")
-        if not self.api_key:
+        self.deepseek_api_key = os.environ.get("DEEPSEEK_API_KEY")
+        self.aicode_api_key = os.environ.get("AICODE007_API_KEY")
+        if not self.deepseek_api_key:
             raise RuntimeError("DEEPSEEK_API_KEY is missing. Add it to the repo root .env file.")
+        if not self.aicode_api_key:
+            raise RuntimeError("AICODE007_API_KEY is missing. Add it to the repo root .env file.")
         self.step_index = 0
         self.backend_picks: list[str] = []
         self.last_exit_reason: str | None = None
         self.last_budget_snapshot: dict[str, float] | None = None
-        self.config = type("Config", (), {"model_name": DEEPSEEK_PRO_MODEL})()
+        self.config = type("Config", (), {"model_name": TIER3_MODEL})()
 
     def query(self, messages: list[dict[str, str]], **kwargs) -> dict:
         self.step_index += 1
@@ -94,7 +108,13 @@ class BudgetFlowLitellmModel:
         self.backend_picks.append(backend.name)
 
         model_name, model_kwargs = self._model_config_for(backend)
-        response = self._completion(messages, model_name=model_name, model_kwargs=model_kwargs, **kwargs)
+        response = self._completion(
+            messages,
+            backend_name=backend.name,
+            model_name=model_name,
+            model_kwargs=model_kwargs,
+            **kwargs,
+        )
         message = response.choices[0].message.model_dump()
         prompt_tokens = getattr(response.usage, "prompt_tokens", None) or input_tokens
         completion_tokens = getattr(response.usage, "completion_tokens", None) or backend.mean_output_tokens
@@ -117,7 +137,6 @@ class BudgetFlowLitellmModel:
         return message
 
     def _reserve_output_tokens(self, backend: Backend, input_tokens: int) -> int:
-        # Fit reserve estimate into remaining pool so routing/downgrade still works near cap.
         remaining = self.governor.remaining_budget()
         if remaining <= 0:
             return 64
@@ -160,31 +179,50 @@ class BudgetFlowLitellmModel:
         )
 
     def _model_config_for(self, backend: Backend) -> tuple[str, dict[str, Any]]:
-        if backend.name == "deepseek_flash":
-            return DEEPSEEK_FLASH_MODEL, {
-                "api_base": DEEPSEEK_API_BASE,
-                "api_key": self.api_key,
-                "temperature": 0.0,
-                "parallel_tool_calls": True,
-                "drop_params": True,
-                "extra_body": {"thinking": {"type": "disabled"}},
-            }
-        return DEEPSEEK_PRO_MODEL, {
-            "api_base": DEEPSEEK_API_BASE,
-            "api_key": self.api_key,
+        common = {
             "temperature": 0.0,
             "parallel_tool_calls": True,
             "drop_params": True,
-            "extra_body": {"thinking": {"type": "enabled"}, "reasoning_effort": "high"},
         }
+        if backend.name == TIER1_BACKEND:
+            return TIER1_MODEL, {
+                **common,
+                "api_base": AICODE007_API_BASE,
+                "api_key": self.aicode_api_key,
+            }
+        if backend.name == TIER2_BACKEND:
+            return TIER2_MODEL, {
+                **common,
+                "api_base": DEEPSEEK_API_BASE,
+                "api_key": self.deepseek_api_key,
+                "extra_body": {"thinking": {"type": "disabled"}},
+            }
+        if backend.name == TIER3_BACKEND:
+            return TIER3_MODEL, {
+                **common,
+                "api_base": AICODE007_API_BASE,
+                "api_key": self.aicode_api_key,
+            }
+        raise ValueError(f"unknown backend: {backend.name}")
 
-    def _completion(self, messages: list[dict], *, model_name: str, model_kwargs: dict[str, Any], **kwargs):
+    def _completion(
+        self,
+        messages: list[dict],
+        *,
+        backend_name: str,
+        model_name: str,
+        model_kwargs: dict[str, Any],
+        **kwargs,
+    ):
         prepared = [{k: v for k, v in msg.items() if k != "extra"} for msg in messages]
         prepared = _reorder_anthropic_thinking_blocks(prepared)
         prepared = set_cache_control(prepared, mode=self.set_cache_control)
 
         def _query():
-            ensure_direct_api()
+            if backend_name in _AICODE_BACKENDS:
+                ensure_aicode007_http_proxy()
+            else:
+                ensure_direct_api()
             return litellm.completion(
                 model=model_name,
                 messages=prepared,

@@ -31,12 +31,17 @@ class WorkflowLevelRouter:
 class BudgetOnlyStepRouter:
     def choose_backend(self, turn_info: TurnInfo, backends: list[Backend], budget_pressure: float) -> Backend:
         ordered = sorted(backends, key=lambda backend: backend.tier)
-        if budget_pressure >= 1.4:
+        n = len(ordered)
+        if n <= 1:
             return ordered[0]
-        if budget_pressure >= 0.8:
-            return ordered[1] if len(ordered) >= 2 else ordered[0]
-        if budget_pressure >= 0.4:
-            return ordered[2] if len(ordered) >= 3 else ordered[-1]
+        if budget_pressure >= 1.2:
+            return ordered[0]
+        if n == 2:
+            return ordered[1] if budget_pressure < 0.5 else ordered[0]
+        if budget_pressure >= 0.7:
+            return ordered[0]
+        if budget_pressure >= 0.35:
+            return ordered[1]
         return ordered[-1]
 
 
