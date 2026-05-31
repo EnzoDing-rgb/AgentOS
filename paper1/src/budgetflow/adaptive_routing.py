@@ -127,10 +127,17 @@ class AdaptiveRoutingState:
             self.min_tier_floor = 1
             return
 
-        boost = ADAPTIVE_PRESSURE_BOOST
-        if resolve_rate == 0 or rep_weak or val_weak:
-            boost = ADAPTIVE_PRESSURE_BOOST_STRONG
-        self.pressure_boost = min(PRESSURE_MAX * 0.85, max(self.pressure_boost, boost))
+        # When stagnation dominates, boosting pressure makes upgrades HARDER,
+        # which keeps the agent on cheap models → more stagnation → death spiral.
+        # Instead, keep pressure neutral and rely on min_tier_floor to prevent T1.
+        dominated_by_stagnation = stagnation_frac >= ADAPTIVE_STAGNATION_FRAC
+        if dominated_by_stagnation:
+            self.pressure_boost = 0.0
+        else:
+            boost = ADAPTIVE_PRESSURE_BOOST
+            if resolve_rate == 0 or rep_weak or val_weak:
+                boost = ADAPTIVE_PRESSURE_BOOST_STRONG
+            self.pressure_boost = min(PRESSURE_MAX * 0.85, max(self.pressure_boost, boost))
         self.ttl_steps_remaining = max(self.ttl_steps_remaining, ADAPTIVE_TTL_STEPS)
         self.min_tier_floor = 2
 
