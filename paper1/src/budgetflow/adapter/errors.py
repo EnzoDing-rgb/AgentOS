@@ -23,3 +23,27 @@ class BudgetFlowBudgetError(RuntimeError):
             f"budget={self.budget_snapshot}"
         )
         super().__init__(detail)
+
+
+class BudgetFlowStagnationError(RuntimeError):
+    """Raised when the agent loops without material progress (repeat cmds or read-only streak)."""
+
+    def __init__(
+        self,
+        workflow_id: str,
+        *,
+        exit_reason: str = "stagnation_no_progress",
+        step_index: int = 0,
+        repeat_command: str | None = None,
+        no_progress_streak: int = 0,
+    ) -> None:
+        self.workflow_id = workflow_id
+        self.exit_reason = exit_reason
+        self.step_index = step_index
+        self.repeat_command = repeat_command
+        self.no_progress_streak = no_progress_streak
+        detail = (
+            f"{exit_reason} workflow={workflow_id} step={step_index} "
+            f"streak={no_progress_streak} repeat={repeat_command!r}"
+        )
+        super().__init__(detail)

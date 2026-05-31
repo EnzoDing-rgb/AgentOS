@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 import os
+from collections import deque
+from collections.abc import Callable
 from typing import Any
 
 import litellm
@@ -17,9 +19,11 @@ from minisweagent.models.utils.retry import retry
 
 from ..litellm_quiet import configure_litellm_quiet
 from ..budget_pressure import live_budget_pressure
-from ..deepseek_backend import ensure_aicode007_proxy, load_env_file
+from ..deepseek_backend import ensure_aicode007_proxy, ensure_direct_api, load_env_file
 from ..defaults import (
     AICODE007_API_BASE,
+    DEEPSEEK_API_BASE,
+    ESCALATION_THRESHOLD,
     PRESSURE_MAX,
     TIER1_BACKEND,
     TIER1_MODEL,
@@ -31,8 +35,9 @@ from ..defaults import (
 from ..console_log import backend_tier_label, bold, dim, routing_stage_label, tag
 from ..governor import BudgetGovernor
 from ..types import Backend, TurnInfo, WorkflowStatus
-from .errors import BudgetFlowBudgetError
-from .bash_stage import classify_routing_stage
+from .errors import BudgetFlowBudgetError, BudgetFlowStagnationError
+from .bash_stage import bash_has_progress, classify_routing_stage
+from .stall_guard import check_stagnation, normalize_bash_command
 from .message_utils import estimate_input_tokens, extract_bash_context
 from .strategies import RoutingContext, choose_backend, stage_weight
 
@@ -40,11 +45,12 @@ logger = logging.getLogger("budgetflow_litellm_model")
 
 configure_litellm_quiet()
 
-_AICODE_BACKENDS = frozenset({TIER1_BACKEND, TIER2_BACKEND, TIER3_BACKEND})
+_DEEPSEEK_BACKENDS = frozenset({TIER2_BACKEND, TIER3_BACKEND})
+_AICODE_BACKENDS = frozenset({TIER1_BACKEND})
 
 
 class BudgetFlowLitellmModel:
-    """mini-SWE-agent Model: BudgetFlow governor + 3-tier AICode pool (spark / mini / codex)."""
+    """mini-SWE-agent Model: BudgetFlow governor + spark/flash/pro tier pool."""
 
     def __init__(
         self,
@@ -58,6 +64,7 @@ class BudgetFlowLitellmModel:
         format_error_template: str | None = None,
         set_cache_control: str | None = None,
         multimodal_regex: str = "",
+        progress_refresh: Callable[[], None] | None = None,
     ) -> None:
         load_env_file()
         self.workflow_id = workflow_id
@@ -74,10 +81,16 @@ class BudgetFlowLitellmModel:
         self.format_error_template = format_error_template or "{{ error }}"
         self.set_cache_control = set_cache_control
         self.multimodal_regex = multimodal_regex
+        self.deepseek_api_key = os.environ.get("DEEPSEEK_API_KEY")
+        if not self.deepseek_api_key:
+            raise RuntimeError("DEEPSEEK_API_KEY is missing. Add it to the repo root .env file.")
         self.aicode_api_key = os.environ.get("AICODE007_API_KEY")
         if not self.aicode_api_key:
             raise RuntimeError("AICODE007_API_KEY is missing. Add it to the repo root .env file.")
         self.step_index = 0
+        self._no_progress_streak = 0
+        self._recent_commands: deque[str] = deque(maxlen=16)
+        self._progress_refresh = progress_refresh
         self.backend_picks: list[str] = []
         self.last_routing_stage: str = "localization"
         self.last_backend_name: str = "-"
@@ -112,7 +125,35 @@ class BudgetFlowLitellmModel:
             init=self._pressure_init,
             pressure_max=self._pressure_max,
         )
+        if bash_has_progress(bash_command):
+            self._no_progress_streak = 0
+        else:
+            self._no_progress_streak += 1
+        norm_cmd = normalize_bash_command(bash_command)
+        if norm_cmd:
+            self._recent_commands.append(norm_cmd)
+        should_stop, stall_reason, repeat_cmd = check_stagnation(
+            strategy=self.routing.strategy,
+            no_progress_streak=self._no_progress_streak,
+            recent_commands=self._recent_commands,
+        )
+        if should_stop:
+            print(
+                f"{tag('stall', bold=False)} #{self.step_index} "
+                f"reason={stall_reason} streak={self._no_progress_streak} "
+                f"repeat={repeat_cmd or '-'}",
+                flush=True,
+            )
+            raise BudgetFlowStagnationError(
+                self.workflow_id,
+                exit_reason=stall_reason,
+                step_index=self.step_index,
+                repeat_command=repeat_cmd,
+                no_progress_streak=self._no_progress_streak,
+            )
+
         backend = choose_backend(self.routing, turn, expected_costs)
+        backend = self._apply_progress_escalation(backend)
         backend = self._reserve_with_downgrade(backend, input_tokens)
         self.backend_picks.append(backend.name)
         self.last_routing_stage = stage.value
@@ -125,6 +166,7 @@ class BudgetFlowLitellmModel:
             f"stage={routing_stage_label(stage.value)}",
             flush=True,
         )
+        self._refresh_progress()
 
         model_name, model_kwargs = self._model_config_for(backend)
         response = self._completion(
@@ -155,6 +197,10 @@ class BudgetFlowLitellmModel:
         }
         return message
 
+    def _refresh_progress(self) -> None:
+        if self._progress_refresh is not None:
+            self._progress_refresh()
+
     def _reserve_output_tokens(self, backend: Backend, input_tokens: int) -> int:
         remaining = self.governor.remaining_budget()
         if remaining <= 0:
@@ -166,6 +212,28 @@ class BudgetFlowLitellmModel:
         affordable_tokens = output_budget / backend.cost_per_output_token
         headroom = min(1024, max(backend.mean_output_tokens * 2, 256))
         return max(64, min(headroom, int(affordable_tokens * 0.95)))
+
+    def _apply_progress_escalation(self, backend: Backend) -> Backend:
+        if self.routing.strategy != "budgetflow_full":
+            return backend
+        ordered = self.routing.backends
+        if len(ordered) < 2:
+            return backend
+        if self._no_progress_streak >= ESCALATION_THRESHOLD * 2:
+            floor = ordered[-1]
+        elif self._no_progress_streak >= ESCALATION_THRESHOLD:
+            floor = ordered[1]
+        else:
+            return backend
+        if backend.tier >= floor.tier:
+            return backend
+        print(
+            f"{tag('escalate', bold=False)} #{self.step_index} "
+            f"streak={self._no_progress_streak} "
+            f"{backend_tier_label(backend.name)} -> {backend_tier_label(floor.name)}",
+            flush=True,
+        )
+        return floor
 
     def _reserve_with_downgrade(self, backend: Backend, input_tokens: int) -> Backend:
         ordered = self.routing.backends
@@ -198,19 +266,26 @@ class BudgetFlowLitellmModel:
         )
 
     def _model_config_for(self, backend: Backend) -> tuple[str, dict[str, Any]]:
-        common = {
-            "temperature": 0.0,
-            "parallel_tool_calls": True,
-            "drop_params": True,
-            "api_base": AICODE007_API_BASE,
-            "api_key": self.aicode_api_key,
-        }
-        if backend.name == TIER1_BACKEND:
-            return TIER1_MODEL, common
-        if backend.name == TIER2_BACKEND:
-            return TIER2_MODEL, common
-        if backend.name == TIER3_BACKEND:
+        if backend.name in _DEEPSEEK_BACKENDS:
+            common = {
+                "temperature": 0.0,
+                "parallel_tool_calls": True,
+                "drop_params": True,
+                "api_base": DEEPSEEK_API_BASE,
+                "api_key": self.deepseek_api_key,
+            }
+            if backend.name == TIER2_BACKEND:
+                return TIER2_MODEL, common
             return TIER3_MODEL, common
+        if backend.name in _AICODE_BACKENDS:
+            common = {
+                "temperature": 0.0,
+                "parallel_tool_calls": True,
+                "drop_params": True,
+                "api_base": AICODE007_API_BASE,
+                "api_key": self.aicode_api_key,
+            }
+            return TIER1_MODEL, common
         raise ValueError(f"unknown backend: {backend.name}")
 
     def _completion(
@@ -227,7 +302,10 @@ class BudgetFlowLitellmModel:
         prepared = set_cache_control(prepared, mode=self.set_cache_control)
 
         def _query():
-            ensure_aicode007_proxy()
+            if backend_name in _AICODE_BACKENDS:
+                ensure_aicode007_proxy()
+            else:
+                ensure_direct_api()
             return litellm.completion(
                 model=model_name,
                 messages=prepared,

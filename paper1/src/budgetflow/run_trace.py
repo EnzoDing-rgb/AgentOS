@@ -109,10 +109,25 @@ def _model_routing(agent: DefaultAgent) -> tuple[str, str]:
         return "-", "-"
     stage = getattr(model, "last_routing_stage", "-") or "-"
     backend = getattr(model, "last_backend_name", "-") or "-"
-    picks = getattr(model, "backend_picks", None)
-    if picks:
-        backend = picks[-1]
     return stage, backend
+
+
+def _live_llm_step(agent: DefaultAgent) -> int:
+    model = getattr(agent, "model", None)
+    if model is not None and hasattr(model, "step_index"):
+        return int(model.step_index)
+    return int(agent.n_calls)
+
+
+def _ui_phase_from_routing(route_stage: str, *, fallback: str) -> str:
+    key = (route_stage or "").lower()
+    if key == "repair":
+        return "edit_gold"
+    if key == "validation":
+        return "test"
+    if key == "localization":
+        return "explore"
+    return fallback
 
 
 class RunTraceLogger:
@@ -200,7 +215,11 @@ class RunTraceLogger:
         changed = self._last_changed or git_changed_files(self.repo_dir, timeout_s=3)
         agent_changed = [f for f in changed if f not in self.ignore_changed_files]
         gold_edited = [f for f in agent_changed if f in self.target_files]
-        phase = self._classify_phase(commands=[], changed=agent_changed, gold_edited=gold_edited)
+        fallback_phase = self.last_agent_phase or self._classify_phase(
+            commands=[], changed=agent_changed, gold_edited=gold_edited
+        )
+        route_stage, route_backend = _model_routing(agent)
+        phase = _ui_phase_from_routing(route_stage, fallback=fallback_phase)
         gold = status_yes() if (gold_edited or self._gold_files_edited) else status_no()
         submitted = status_yes() if self._submitted else status_no()
         agent_test = _format_agent_pytest(self._last_agent_pytest)
@@ -211,13 +230,17 @@ class RunTraceLogger:
         else:
             harness = status_fail("FAIL")
         gold_files = ",".join(sorted(self._gold_files_edited)[:1]) or "-"
-        route_stage, route_backend = _model_routing(agent)
+        llm_step = _live_llm_step(agent)
         return (
-            f"step={agent.n_calls} agent={phase_label(phase)} "
+            f"llm={llm_step} agent={phase_label(phase)} "
             f"route={routing_stage_label(route_stage)} model={backend_tier_label(route_backend)} "
             f"gold={gold} file={dim(gold_files)} submit={submitted} "
             f"agent_test={agent_test} harness={harness} elapsed={elapsed_s:.0f}s"
         )
+
+    def publish_live_progress(self, agent: DefaultAgent, *, elapsed_s: float) -> None:
+        """Refresh outer heartbeat line from live model routing (mid mini-SWE step)."""
+        self._publish_progress(agent, elapsed_s=elapsed_s)
 
     def _status_board(self, *, step: int, phase: str, gold_edited: list[str]) -> str:
         gold = status_yes() if gold_edited else status_no()

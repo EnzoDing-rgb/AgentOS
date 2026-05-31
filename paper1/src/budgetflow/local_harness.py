@@ -187,36 +187,28 @@ def _pip_marker_path(repo_dir: Path) -> Path:
     return repo_dir.parent / f"{repo_dir.name}.pip_ok"
 
 
-def _checkout_commit(repo_dir: Path, commit: str) -> None:
-    head = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=repo_dir,
-        capture_output=True,
-        text=True,
-    )
-    if head.returncode == 0 and head.stdout.strip() == commit:
-        return
+def _ensure_commit_available(repo_dir: Path, commit: str) -> None:
+    """Fetch commit into the bare/main clone if missing. Does not checkout main HEAD."""
     has_commit = subprocess.run(
         ["git", "cat-file", "-e", commit],
         cwd=repo_dir,
         capture_output=True,
         text=True,
     ).returncode == 0
-    if not has_commit:
-        fetch_attempts = (
-            ["git", "fetch", "--depth", "1", "origin", commit],
-            ["git", "fetch", "origin", commit],
-            ["git", "fetch", "origin"],
-        )
-        last_error = ""
-        for cmd in fetch_attempts:
-            result = subprocess.run(cmd, cwd=repo_dir, capture_output=True, text=True)
-            if result.returncode == 0:
-                break
-            last_error = (result.stderr or result.stdout or "").strip()
-        else:
-            raise subprocess.CalledProcessError(1, fetch_attempts[-1], last_error)
-    subprocess.run(["git", "checkout", "--force", commit], cwd=repo_dir, check=True, capture_output=True, text=True)
+    if has_commit:
+        return
+    fetch_attempts = (
+        ["git", "fetch", "--depth", "1", "origin", commit],
+        ["git", "fetch", "origin", commit],
+        ["git", "fetch", "origin"],
+    )
+    last_error = ""
+    for cmd in fetch_attempts:
+        result = subprocess.run(cmd, cwd=repo_dir, capture_output=True, text=True)
+        if result.returncode == 0:
+            return
+        last_error = (result.stderr or result.stdout or "").strip()
+    raise subprocess.CalledProcessError(1, fetch_attempts[-1], last_error)
 
 
 def _pip_install_editable(repo_dir: Path, *, task: LiteTaskRecord) -> subprocess.CompletedProcess:
@@ -264,7 +256,6 @@ def _ensure_main_repo(task: LiteTaskRecord) -> Path:
             capture_output=True,
             text=True,
         )
-    _checkout_commit(repo_dir, task.base_commit)
     return repo_dir
 
 
@@ -295,6 +286,7 @@ def _prepare_worktree(task: LiteTaskRecord, workspace_key: str) -> Path:
         worktree_path = WORKTREE_ROOT / slug / workspace_key
         worktree_path.parent.mkdir(parents=True, exist_ok=True)
         _remove_worktree(main_repo, worktree_path)
+        _ensure_commit_available(main_repo, task.base_commit)
         print(
             f"{tag('prep')} worktree {paint(task.instance_id, '\033[1m', '\033[96m')} "
             f"key={workspace_key} @ {task.base_commit[:8]} ...",

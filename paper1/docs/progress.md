@@ -16,7 +16,7 @@
 |---|---|
 | mini-SWE + local harness + worktree | ✅ |
 | Governor hard cap | ✅ |
-| tier 池 spark / flash / pro（DeepSeek） | ✅ 代码 |
+| tier 池 T1/T2/T3（全名日志） | ✅ 代码 |
 | `run_mini_swe_compare` 7 policy + `--resume` + `--run-series` | ✅ |
 | B.0 pilot → **FROZEN caps** | ✅ `data/frozen_caps.json` |
 | **policy_5x7-0**（旧 stem `t_policy_5x7`） | ⚠️ 中断于 30/35，可 `--resume` |
@@ -34,7 +34,13 @@ compare 加 **`--read-protocol`** 时从 JSON 读（`protocol_caps.py`），**�
 
 另含 `BUDGET_PRESSURE_INIT=0.01`、`PRESSURE_MAX=1.5`。  
 `run_pilot.py` 重跑会覆盖 JSON；**compare 期间勿手改**。  
-当前 tier（代码）：T1 spark / T2 flash / T3 pro → 均 DeepSeek，见 `defaults.py`。
+当前 tier（`defaults.py`）：
+
+| Tier | 终端 `model=` | litellm id |
+|---|---|---|
+| T1 | `gpt-5.3-codex-spark` | `openai/gpt-5.3-codex-spark` (AICode007) |
+| T2 | `deepseek-v4-flash` | `deepseek/deepseek-chat` |
+| T3 | `deepseek-v4-pro` | `deepseek/deepseek-reasoner` |
 
 ---
 
@@ -156,3 +162,4 @@ Rubric 弱，**不能**当 resolved 结论。
 - `run_pilot.py` — 写 `data/frozen_caps.json`
 - `protocol_caps.py` — `--read-protocol` 读 JSON
 - `lite_tasks.py` — easy 5 + medium 15 固定列表
+- `stall_guard.py` + `run_trace.publish_live_progress` — anti-stall + 心跳与 route 同步（2026-05-31）

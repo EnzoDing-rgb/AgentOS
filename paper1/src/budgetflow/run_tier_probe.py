@@ -28,7 +28,14 @@ for path in (str(SRC), str(MINI_SWE_SRC)):
 from budgetflow.adapter.runner import run_mini_swe_task  # noqa: E402
 from budgetflow.console_log import format_run_verdict, status_fail, status_pass, tag  # noqa: E402
 from budgetflow.deepseek_backend import load_env_file  # noqa: E402
-from budgetflow.defaults import TIER1_MODEL, TIER2_MODEL, TIER3_MODEL  # noqa: E402
+from budgetflow.defaults import (  # noqa: E402
+    TIER1_DISPLAY,
+    TIER1_MODEL,
+    TIER2_DISPLAY,
+    TIER2_MODEL,
+    TIER3_DISPLAY,
+    TIER3_MODEL,
+)
 from budgetflow.heartbeat import run_with_heartbeat  # noqa: E402
 from budgetflow.lite_tasks import load_compare_easy_tasks  # noqa: E402
 from budgetflow.litellm_quiet import configure_litellm_quiet  # noqa: E402
@@ -52,7 +59,9 @@ def _summarize(records: list[dict]) -> str:
 
     lines = [
         "=== Tier capability probe ===",
-        f"T1={TIER1_MODEL}  T2={TIER2_MODEL}  T3={TIER3_MODEL}",
+        f"T1={TIER1_DISPLAY} ({TIER1_MODEL})  "
+        f"T2={TIER2_DISPLAY} ({TIER2_MODEL})  "
+        f"T3={TIER3_DISPLAY} ({TIER3_MODEL})",
         f"budget=uncapped ({UNCAPPED_BUDGET:.0f} governor units/task)",
         "",
     ]

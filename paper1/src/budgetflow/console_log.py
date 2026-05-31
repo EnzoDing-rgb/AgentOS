@@ -129,17 +129,21 @@ def routing_stage_label(stage: str) -> str:
 
 
 def backend_tier_label(backend_name: str) -> str:
+    """Hyphenated model label for console (gpt-5.3-codex-spark / deepseek-v4-*)."""
+    from .defaults import tier_display_name
+
     if not backend_name or backend_name == "-":
         return dim("-")
     lowered = backend_name.lower()
     if "tier1" in lowered or "spark" in lowered:
-        tier, label = "tier1", "T1/codex-spark"
-    elif "tier2" in lowered or "gpt54" in lowered or "mini" in lowered:
-        tier, label = "tier2", "T2/gpt-5.4-mini"
-    elif "tier3" in lowered or "codex" in lowered:
-        tier, label = "tier3", "T3/gpt-5.3-codex"
+        tier = "tier1"
+    elif "tier2" in lowered or "flash" in lowered:
+        tier = "tier2"
+    elif "tier3" in lowered or "pro" in lowered:
+        tier = "tier3"
     else:
         return paint(backend_name, _DIM)
+    label = tier_display_name(backend_name)
     return paint(label, BACKEND_TIER_COLORS[tier], _BOLD)
 
 
@@ -160,13 +164,13 @@ def dim(text: str) -> str:
 
 
 def format_tier_pool_line() -> str:
-    """One-line tier → model_id summary for run banners."""
-    from .defaults import TIER1_MODEL, TIER2_MODEL, TIER3_MODEL
+    """One-line tier pool for run banners (full names + litellm ids)."""
+    from .defaults import TIER1_DISPLAY, TIER1_MODEL, TIER2_DISPLAY, TIER2_MODEL, TIER3_DISPLAY, TIER3_MODEL
 
     return (
-        f"T1={dim(TIER1_MODEL)}  "
-        f"T2={dim(TIER2_MODEL)}  "
-        f"T3={bold(TIER3_MODEL)}"
+        f"T1={bold(TIER1_DISPLAY)} {dim(f'({TIER1_MODEL})')}  "
+        f"T2={bold(TIER2_DISPLAY)} {dim(f'({TIER2_MODEL})')}  "
+        f"T3={bold(TIER3_DISPLAY)} {dim(f'({TIER3_MODEL})')}"
     )
 
 

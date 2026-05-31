@@ -9,40 +9,81 @@ W_I: dict[Stage, float] = {
     Stage.VALIDATION: 2.5,
 }
 
-TIER1_BACKEND = "tier1_codex_spark"
-TIER2_BACKEND = "tier2_gpt54_mini"
-TIER3_BACKEND = "tier3_codex"
+# Tier pool requested by experiment owner:
+# T1 = GPT-5.3 Codex Spark, T2 = DeepSeek V4 Flash, T3 = DeepSeek V4 Pro.
+TIER1_BACKEND = "tier1_spark"
+TIER2_BACKEND = "tier2_flash"
+TIER3_BACKEND = "tier3_pro"
 
 PROGRESS_TABLE: dict[Stage, dict[str, float]] = {
     Stage.LOCALIZATION: {
-        TIER1_BACKEND: 0.30,
-        TIER2_BACKEND: 0.35,
-        TIER3_BACKEND: 0.33,
+        TIER1_BACKEND: 0.45,
+        TIER2_BACKEND: 0.55,
+        TIER3_BACKEND: 0.50,
     },
     Stage.REPAIR: {
-        TIER1_BACKEND: 0.10,
-        TIER2_BACKEND: 0.22,
-        TIER3_BACKEND: 0.32,
+        TIER1_BACKEND: 0.25,
+        TIER2_BACKEND: 0.40,
+        TIER3_BACKEND: 0.45,
     },
     Stage.VALIDATION: {
-        TIER1_BACKEND: 0.22,
-        TIER2_BACKEND: 0.30,
-        TIER3_BACKEND: 0.36,
+        TIER1_BACKEND: 0.35,
+        TIER2_BACKEND: 0.42,
+        TIER3_BACKEND: 0.40,
     },
 }
 
-# Calibrated for 3-tier mock costs @ ~8k input tokens: repair T1→T2 score≈0.027, T2→T3≈0.009.
+# Progress-based escalation (budgetflow_full only): consecutive read-only steps.
+ESCALATION_THRESHOLD = 5
+
+# Anti-stall: all strategies share same no-progress streak.
+STAGNATION_REPEAT_CMD_LIMIT = 6
+STAGNATION_NO_PROGRESS_STEPS = 20
+
 BUDGET_PRESSURE_INIT = 0.01
 PRESSURE_MAX = 1.5
 UNCAPPED_BUDGET_THRESHOLD = 1_000_000.0
 
-# All tiers — AICode007 (OpenAI-compatible). openai/ prefix avoids litellm provider spam.
-TIER1_MODEL = "openai/gpt-5.3-codex-spark"
-TIER2_MODEL = "openai/gpt-5.4-mini"
-TIER3_MODEL = "openai/gpt-5.3-codex"
-AICODE007_API_BASE = "https://api.aicode007.com/v1"
-
-# DeepSeek official API — litellm requires provider prefix (deepseek/...).
 DEEPSEEK_API_BASE = "https://api.deepseek.com"
-DEEPSEEK_FLASH_MODEL = "deepseek/deepseek-chat"
-DEEPSEEK_PRO_MODEL = "deepseek/deepseek-reasoner"
+DEEPSEEK_V4_FLASH_MODEL = "deepseek/deepseek-chat"
+DEEPSEEK_V4_PRO_MODEL = "deepseek/deepseek-reasoner"
+
+TIER1_MODEL = "openai/gpt-5.3-codex-spark"
+TIER2_MODEL = DEEPSEEK_V4_FLASH_MODEL
+TIER3_MODEL = DEEPSEEK_V4_PRO_MODEL
+
+# Terminal model= labels (hyphenated; lowercase product tokens).
+TIER1_DISPLAY = "gpt-5.3-codex-spark"
+TIER2_DISPLAY = "deepseek-v4-flash"
+TIER3_DISPLAY = "deepseek-v4-pro"
+
+TIER_DISPLAY_BY_BACKEND: dict[str, str] = {
+    TIER1_BACKEND: TIER1_DISPLAY,
+    TIER2_BACKEND: TIER2_DISPLAY,
+    TIER3_BACKEND: TIER3_DISPLAY,
+}
+
+TIER_MODEL_BY_BACKEND: dict[str, str] = {
+    TIER1_BACKEND: TIER1_MODEL,
+    TIER2_BACKEND: TIER2_MODEL,
+    TIER3_BACKEND: TIER3_MODEL,
+}
+
+
+def tier_display_name(backend_name: str) -> str:
+    """Map tier backend id (e.g. tier3_pro) to full product name."""
+    if not backend_name or backend_name == "-":
+        return "-"
+    return TIER_DISPLAY_BY_BACKEND.get(backend_name, backend_name)
+
+
+def tier_model_id(backend_name: str) -> str:
+    return TIER_MODEL_BY_BACKEND.get(backend_name, backend_name)
+
+
+# Back-compat for probe/baseline scripts.
+DEEPSEEK_FLASH_MODEL = DEEPSEEK_V4_FLASH_MODEL
+DEEPSEEK_PRO_MODEL = DEEPSEEK_V4_PRO_MODEL
+
+# Legacy alias (pilot docs); compare uses DeepSeek only.
+AICODE007_API_BASE = "https://api.aicode007.com/v1"

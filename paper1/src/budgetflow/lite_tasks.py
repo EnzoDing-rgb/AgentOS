@@ -88,6 +88,52 @@ def load_compare_easy_tasks(limit: int = 5) -> list[LiteTaskRecord]:
     return load_swebench_lite_tasks(instance_ids=COMPARE_EASY_INSTANCE_IDS[:limit])
 
 
+COMPARE_MEDIUM_IDS_PATH = PAPER1_ROOT / "data" / "compare_medium_instance_ids.json"
+
+
+def derive_compare_medium_instance_ids(limit: int = 15) -> tuple[str, ...]:
+    """Pick sympy lite tasks outside compare_easy, largest gold patches first (medium-hard)."""
+    items = load_local_swebench_lite_export()
+    if items is None:
+        items = load_local_swebench_lite_parquet()
+    if items is None:
+        dataset = load_dataset("princeton-nlp/SWE-bench_Lite", split="test")
+        items = list(dataset)
+    easy = set(COMPARE_EASY_INSTANCE_IDS)
+    sympy = [item for item in items if str(item.get("instance_id", "")).startswith("sympy__")]
+    candidates = [item for item in sympy if item["instance_id"] not in easy]
+    candidates.sort(key=lambda item: len(str(item.get("patch") or "").splitlines()), reverse=True)
+    return tuple(item["instance_id"] for item in candidates[:limit])
+
+
+def load_compare_medium_instance_ids(limit: int = 15) -> tuple[str, ...]:
+    if COMPARE_MEDIUM_IDS_PATH.is_file():
+        raw = json.loads(COMPARE_MEDIUM_IDS_PATH.read_text())
+        ids = tuple(raw.get("instance_ids") or ())
+        if len(ids) >= limit:
+            return ids[:limit]
+    ids = derive_compare_medium_instance_ids(limit=limit)
+    COMPARE_MEDIUM_IDS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    COMPARE_MEDIUM_IDS_PATH.write_text(
+        json.dumps(
+            {
+                "instance_ids": list(ids),
+                "source": "sympy__ SWE-bench_Lite excluding COMPARE_EASY_INSTANCE_IDS",
+                "sort": "patch_lines_desc",
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n"
+    )
+    return ids
+
+
+def load_compare_medium_tasks(limit: int = 15) -> list[LiteTaskRecord]:
+    """Load fixed 15-task medium-hard sympy set (reproducible via compare_medium_instance_ids.json)."""
+    return load_swebench_lite_tasks(instance_ids=load_compare_medium_instance_ids(limit=limit))
+
+
 def load_local_swebench_lite_export() -> list[dict] | None:
     test_jsonl = LOCAL_EXPORT_DIR / "test.jsonl"
     if not test_jsonl.exists():

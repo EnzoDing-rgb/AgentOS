@@ -8,16 +8,16 @@ _UNLIMITED = 0
 
 
 def build_compare_backends() -> list[Backend]:
-    """Three-tier pool: codex-spark (T1) < gpt-5.4-mini (T2) < gpt-5.3-codex (T3).
+    """Three-tier pool: T1 spark < T2 flash < T3 pro.
 
-    Costs are governor mock units (not USD). Ratio ~ 1 : 2.5 : 6.
+    Costs are governor units (not USD). Ratio ~ 1 : 3 : 6 from probe-scale pricing.
     """
     return [
         Backend(
             name=TIER1_BACKEND,
             tier=1,
-            cost_per_input_token=0.0010,
-            cost_per_output_token=0.0020,
+            cost_per_input_token=0.0003,
+            cost_per_output_token=0.0006,
             rpm_limit=_UNLIMITED,
             concurrency_limit=_UNLIMITED,
             mean_output_tokens=256,
@@ -27,8 +27,8 @@ def build_compare_backends() -> list[Backend]:
         Backend(
             name=TIER2_BACKEND,
             tier=2,
-            cost_per_input_token=0.0025,
-            cost_per_output_token=0.0050,
+            cost_per_input_token=0.0010,
+            cost_per_output_token=0.0020,
             rpm_limit=_UNLIMITED,
             concurrency_limit=_UNLIMITED,
             mean_output_tokens=384,
