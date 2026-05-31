@@ -26,27 +26,24 @@ _PROXY_KEYS = (
 
 
 def ensure_direct_api() -> None:
-    """DeepSeek API 直连；shell SOCKS proxy 会让 httpx/litellm 报 socksio 缺失."""
+    """DeepSeek 官方 API 直连，清掉 shell/.env 里的代理。"""
     for key in _PROXY_KEYS:
         os.environ.pop(key, None)
 
 
-def ensure_aicode007_http_proxy() -> None:
-    """aicode007 需 HTTP 代理；保留 http(s)_proxy，去掉 SOCKS all_proxy."""
+def ensure_aicode007_proxy() -> None:
+    """aicode007 走 HTTP 代理：优先 shell http_proxy，否则 .env 的 AICODE007_HTTP_PROXY。"""
     proxy = (
-        os.environ.get("AICODE007_HTTP_PROXY")
-        or os.environ.get("HTTPS_PROXY")
-        or os.environ.get("https_proxy")
+        os.environ.get("http_proxy")
         or os.environ.get("HTTP_PROXY")
-        or os.environ.get("http_proxy")
+        or os.environ.get("AICODE007_HTTP_PROXY")
     )
-    os.environ.pop("all_proxy", None)
-    os.environ.pop("ALL_PROXY", None)
-    if proxy:
-        os.environ["http_proxy"] = proxy
-        os.environ["https_proxy"] = proxy
-        os.environ["HTTP_PROXY"] = proxy
-        os.environ["HTTPS_PROXY"] = proxy
+    if not proxy:
+        return
+    os.environ["http_proxy"] = proxy
+    os.environ["https_proxy"] = proxy
+    os.environ["HTTP_PROXY"] = proxy
+    os.environ["HTTPS_PROXY"] = proxy
 
 
 def load_env_file() -> None:
@@ -122,6 +119,7 @@ class DeepSeekBackend:
 
     def complete_chat(self, messages: list[dict[str, str]], stage: Stage) -> BackendCallResult:
         load_env_file()
+        ensure_direct_api()
         api_key = self.api_key or os.environ.get("DEEPSEEK_API_KEY")
         if not api_key:
             raise RuntimeError("DEEPSEEK_API_KEY is missing. Add it to the repo root .env file.")
@@ -165,6 +163,7 @@ class DeepSeekBackend:
             )
 
         load_env_file()
+        ensure_direct_api()
         api_key = self.api_key or os.environ.get("DEEPSEEK_API_KEY")
         if not api_key:
             raise RuntimeError("DEEPSEEK_API_KEY is missing. Add it to the repo root .env file.")

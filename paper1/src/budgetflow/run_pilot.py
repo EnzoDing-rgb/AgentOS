@@ -28,9 +28,10 @@ for path in (str(SRC), str(MINI_SWE_SRC)):
 from budgetflow.adapter.runner import run_mini_swe_task  # noqa: E402
 from budgetflow.defaults import (  # noqa: E402
     BUDGET_PRESSURE_INIT,
-    DEEPSEEK_FLASH_MODEL,
-    DEEPSEEK_PRO_MODEL,
     PRESSURE_MAX,
+    TIER1_MODEL,
+    TIER2_MODEL,
+    TIER3_MODEL,
 )
 from budgetflow.deepseek_backend import load_env_file  # noqa: E402
 from budgetflow.lite_tasks import COMPARE_EASY_INSTANCE_IDS, PILOT_INSTANCE_IDS, load_pilot_tasks  # noqa: E402
@@ -87,8 +88,9 @@ def _write_protocol(*, m: float, pilot_records: list[dict]) -> None:
 
 | tier | model_id |
 |---|---|
-| Flash | `{DEEPSEEK_FLASH_MODEL}` |
-| Pro | `{DEEPSEEK_PRO_MODEL}` |
+| Tier1 | `{TIER1_MODEL}` |
+| Tier2 | `{TIER2_MODEL}` |
+| Tier3 | `{TIER3_MODEL}` |
 
 Cost unit: **governor units** (mock token costs in `adapter/backends.py`, same口径 as BF routing runs).
 

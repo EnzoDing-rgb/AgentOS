@@ -31,7 +31,8 @@ PROGRESS_TABLE: dict[Stage, dict[str, float]] = {
     },
 }
 
-BUDGET_PRESSURE_INIT = 0.08
+# Calibrated for 3-tier mock costs @ ~8k input tokens: repair T1→T2 score≈0.027, T2→T3≈0.009.
+BUDGET_PRESSURE_INIT = 0.01
 PRESSURE_MAX = 1.5
 UNCAPPED_BUDGET_THRESHOLD = 1_000_000.0
 

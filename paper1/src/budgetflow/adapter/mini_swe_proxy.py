@@ -16,7 +16,7 @@ from minisweagent.models.utils.openai_multimodal import expand_multimodal_conten
 from minisweagent.models.utils.retry import retry
 
 from ..budget_pressure import live_budget_pressure
-from ..deepseek_backend import ensure_aicode007_http_proxy, ensure_direct_api, load_env_file
+from ..deepseek_backend import ensure_aicode007_proxy, ensure_direct_api, load_env_file
 from ..defaults import (
     AICODE007_API_BASE,
     DEEPSEEK_API_BASE,
@@ -27,10 +27,11 @@ from ..defaults import (
     TIER3_BACKEND,
     TIER3_MODEL,
 )
+from ..console_log import backend_tier_label, routing_stage_label, tag
 from ..governor import BudgetGovernor
 from ..types import Backend, TurnInfo, WorkflowStatus
 from .errors import BudgetFlowBudgetError
-from .bash_stage import classify_bash_stage
+from .bash_stage import classify_routing_stage
 from .message_utils import estimate_input_tokens, extract_bash_context
 from .strategies import RoutingContext, choose_backend, stage_weight
 
@@ -77,6 +78,9 @@ class BudgetFlowLitellmModel:
             raise RuntimeError("AICODE007_API_KEY is missing. Add it to the repo root .env file.")
         self.step_index = 0
         self.backend_picks: list[str] = []
+        self.last_routing_stage: str = "localization"
+        self.last_backend_name: str = "-"
+        self.agent_phase: str | None = None
         self.last_exit_reason: str | None = None
         self.last_budget_snapshot: dict[str, float] | None = None
         self.config = type("Config", (), {"model_name": TIER3_MODEL})()
@@ -84,7 +88,7 @@ class BudgetFlowLitellmModel:
     def query(self, messages: list[dict[str, str]], **kwargs) -> dict:
         self.step_index += 1
         bash_command, observation = extract_bash_context(messages)
-        stage = classify_bash_stage(bash_command, observation)
+        stage = classify_routing_stage(bash_command, observation, agent_phase=self.agent_phase)
         input_tokens = estimate_input_tokens(messages)
         turn = TurnInfo(
             workflow_id=self.workflow_id,
@@ -106,6 +110,15 @@ class BudgetFlowLitellmModel:
         backend = choose_backend(self.routing, turn, expected_costs)
         backend = self._reserve_with_downgrade(backend, input_tokens)
         self.backend_picks.append(backend.name)
+        self.last_routing_stage = stage.value
+        self.last_backend_name = backend.name
+        print(
+            f"{tag('route', bold=False)} #{self.step_index} "
+            f"stage={routing_stage_label(stage.value)} "
+            f"model={backend_tier_label(backend.name)} "
+            f"strategy={self.routing.strategy}",
+            flush=True,
+        )
 
         model_name, model_kwargs = self._model_config_for(backend)
         response = self._completion(
@@ -220,7 +233,7 @@ class BudgetFlowLitellmModel:
 
         def _query():
             if backend_name in _AICODE_BACKENDS:
-                ensure_aicode007_http_proxy()
+                ensure_aicode007_proxy()
             else:
                 ensure_direct_api()
             return litellm.completion(

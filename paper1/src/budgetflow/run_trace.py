@@ -12,10 +12,13 @@ from typing import Literal
 from minisweagent.agents.default import DefaultAgent
 
 from .console_log import (
+    backend_tier_label,
     bold,
     dim,
     format_harness_board,
     format_run_verdict,
+    phase_label,
+    routing_stage_label,
     status_fail,
     status_no,
     status_pass,
@@ -100,6 +103,18 @@ def git_changed_files(repo_dir: Path, *, timeout_s: int = 8) -> list[str]:
         return []
 
 
+def _model_routing(agent: DefaultAgent) -> tuple[str, str]:
+    model = getattr(agent, "model", None)
+    if model is None:
+        return "-", "-"
+    stage = getattr(model, "last_routing_stage", "-") or "-"
+    backend = getattr(model, "last_backend_name", "-") or "-"
+    picks = getattr(model, "backend_picks", None)
+    if picks:
+        backend = picks[-1]
+    return stage, backend
+
+
 class RunTraceLogger:
     def __init__(
         self,
@@ -130,6 +145,7 @@ class RunTraceLogger:
         self._last_agent_pytest: str | None = None
         self._harness_resolved: bool | None = None
         self._last_printed_phase: str | None = None
+        self.last_agent_phase: str | None = None
         self._gold_milestone_printed = False
         self._submit_milestone_printed = False
         self.trace_dir.mkdir(parents=True, exist_ok=True)
@@ -195,8 +211,10 @@ class RunTraceLogger:
         else:
             harness = status_fail("FAIL")
         gold_files = ",".join(sorted(self._gold_files_edited)[:1]) or "-"
+        route_stage, route_backend = _model_routing(agent)
         return (
-            f"step={agent.n_calls} phase={phase} "
+            f"step={agent.n_calls} agent={phase_label(phase)} "
+            f"route={routing_stage_label(route_stage)} model={backend_tier_label(route_backend)} "
             f"gold={gold} file={dim(gold_files)} submit={submitted} "
             f"agent_test={agent_test} harness={harness} elapsed={elapsed_s:.0f}s"
         )
@@ -212,7 +230,7 @@ class RunTraceLogger:
         else:
             harness = status_fail("FAIL")
         return (
-            f"step={step} phase={phase} | "
+            f"step={step} agent={phase_label(phase)} | "
             f"gold_edit={gold} agent_pytest={agent_test} submitted={submitted} harness={harness}"
         )
 
@@ -298,12 +316,15 @@ class RunTraceLogger:
             last = self._recent_commands[-1]
             repeat_score = sum(1 for c in list(self._recent_commands)[:-1] if c == last)
 
+        route_stage, route_backend = _model_routing(agent)
         record = {
             "ts": time.time(),
             "step": agent.n_calls,
             "elapsed_s": round(elapsed_s, 1),
             "strategy": self.strategy_label,
             "phase": phase,
+            "routing_stage": route_stage,
+            "backend": route_backend,
             "commands": commands[:6],
             "changed_files": agent_changed[:12],
             "compat_baseline_files": sorted(self.ignore_changed_files),
@@ -318,6 +339,7 @@ class RunTraceLogger:
         with self.steps_path.open("a") as handle:
             handle.write(json.dumps(record, ensure_ascii=False) + "\n")
         self._steps_logged += 1
+        self.last_agent_phase = phase
 
         self._publish_progress(agent, elapsed_s=elapsed_s)
         self._print_milestones(phase=phase, gold_edited=gold_edited, pytest_changed=pytest_changed)
@@ -373,6 +395,8 @@ class TracedDefaultAgent(DefaultAgent):
         self._run_started = run_started
 
     def step(self) -> list[dict]:
+        if hasattr(self.model, "agent_phase"):
+            self.model.agent_phase = self._trace.last_agent_phase
         result = super().step()
         self._trace.log_step(self, elapsed_s=time.time() - self._run_started)
         return result

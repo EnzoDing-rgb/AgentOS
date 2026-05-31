@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import threading
 import time
@@ -33,7 +34,7 @@ for path in (str(SRC), str(MINI_SWE_SRC)):
         sys.path.insert(0, path)
 
 from budgetflow.adapter.runner import run_mini_swe_task  # noqa: E402
-from budgetflow.console_log import dim, format_run_verdict, tag  # noqa: E402
+from budgetflow.console_log import backend_tier_label, dim, format_run_verdict, status_fail, status_pass, tag  # noqa: E402
 from budgetflow.deepseek_backend import load_env_file  # noqa: E402
 from budgetflow.governor import BudgetGovernor, GovernorConfig  # noqa: E402
 from budgetflow.heartbeat import run_with_heartbeat  # noqa: E402
@@ -144,18 +145,29 @@ def _run_one(
 
 def _print_run_done(record: dict, *, index: int, total: int, strategy: str) -> None:
     gold_file = (record.get("agent_gold_files") or ["-"])[0]
+    resolved = record["harness_resolved"]
+    banner = status_pass(f"PASS [{index}/{total}]") if resolved else status_fail(f"FAIL [{index}/{total}]")
+    picks = record.get("backend_picks") or []
+    tier_line = ""
+    if picks:
+        t1 = sum(1 for p in picks if "tier1" in p) / len(picks) * 100
+        t2 = sum(1 for p in picks if "tier2" in p) / len(picks) * 100
+        t3 = sum(1 for p in picks if "tier3" in p) / len(picks) * 100
+        last = backend_tier_label(picks[-1])
+        tier_line = f" models: last={last} mix T1={t1:.0f}% T2={t2:.0f}% T3={t3:.0f}%"
+    print(
+        f"{banner} {record['instance_id']} {strategy} "
+        f"turns={record.get('llm_turns')} cost={record.get('task_cost', record.get('total_cost', 0)):.1f} "
+        f"batch_left={float(record.get('batch_available') or 0):.1f} "
+        f"exit={record.get('exit_status')} elapsed={record.get('elapsed_s')}s{tier_line}",
+        flush=True,
+    )
     verdict = format_run_verdict(
-        harness_resolved=record["harness_resolved"],
+        harness_resolved=resolved,
         patch_extracted=record.get("patch_extracted", False),
         gold_edited=record.get("agent_gold_edited", False),
         gold_file=gold_file,
         detail=str(record.get("detail", "")),
-    )
-    print(
-        f"{tag('done', bold=False)} [{index}/{total}] {record['instance_id']} {strategy} "
-        f"turns={record.get('llm_turns')} task_cost={record.get('task_cost', record.get('total_cost', 0)):.1f} "
-        f"batch_avail={float(record.get('batch_available') or 0):.1f} elapsed={record.get('elapsed_s')}s",
-        flush=True,
     )
     print(f"  {verdict}", flush=True)
 
@@ -459,6 +471,8 @@ def _compare_paths(tasks_n: int, strategies_n: int) -> tuple[Path, Path]:
 
 def main() -> None:
     load_env_file()
+    if not os.environ.get("NO_COLOR"):
+        os.environ.setdefault("FORCE_COLOR", "1")
     parser = argparse.ArgumentParser(description="N tasks × 5 strategies — shared batch budget per policy")
     parser.add_argument(
         "--preset",
@@ -584,7 +598,7 @@ def main() -> None:
 
     state = _CompareState(
         summary_lines=[
-            f"compare_{len(tasks)}x5 preset={args.preset} tasks={len(tasks)} strategies={strategy_names}",
+            f"compare_{len(tasks)}x{len(strategies)} preset={args.preset} tasks={len(tasks)} strategies={strategy_names}",
             f"shared_batch_budget loose={loose} tight={tight} policy_jobs={args.jobs} hard_cap=settle_clamp",
             f"tasks={[t.instance_id for t in tasks]}",
             "",

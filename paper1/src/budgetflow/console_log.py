@@ -29,12 +29,27 @@ _BRIGHT_CYAN = "\033[96m"
 
 PHASE_COLORS: dict[str, str] = {
     "explore": _BLUE,
+    "edit_gold": _BRIGHT_GREEN,
     "edit_target": _BRIGHT_GREEN,
     "edit_related": _YELLOW,
     "edit_other": _BRIGHT_YELLOW,
+    "patch_prep": _YELLOW,
     "test": _MAGENTA,
     "submit": _CYAN,
     "prep": _BRIGHT_CYAN,
+    "agent": _CYAN,
+}
+
+ROUTING_STAGE_COLORS: dict[str, str] = {
+    "localization": _BLUE,
+    "repair": _BRIGHT_GREEN,
+    "validation": _MAGENTA,
+}
+
+BACKEND_TIER_COLORS: dict[str, str] = {
+    "tier1": _BRIGHT_CYAN,
+    "tier2": _BRIGHT_YELLOW,
+    "tier3": _BRIGHT_MAGENTA,
 }
 
 
@@ -102,7 +117,30 @@ def status_pending(text: str = "pending") -> str:
 
 
 def phase_label(phase: str) -> str:
-    return phase
+    color = PHASE_COLORS.get(phase, _WHITE)
+    return paint(phase, color, _BOLD)
+
+
+def routing_stage_label(stage: str) -> str:
+    key = (stage or "").lower().replace("stage.", "")
+    color = ROUTING_STAGE_COLORS.get(key, _WHITE)
+    short = {"localization": "LOC", "repair": "REP", "validation": "VAL"}.get(key, key.upper()[:3] or "?")
+    return paint(short, color, _BOLD)
+
+
+def backend_tier_label(backend_name: str) -> str:
+    if not backend_name or backend_name == "-":
+        return dim("-")
+    lowered = backend_name.lower()
+    if "tier1" in lowered or "gpt52" in lowered:
+        tier, label = "tier1", "T1/gpt-5.2"
+    elif "tier2" in lowered or "deepseek" in lowered:
+        tier, label = "tier2", "T2/deepseek-pro"
+    elif "tier3" in lowered or "gpt54" in lowered or "mini" in lowered:
+        tier, label = "tier3", "T3/gpt-5.4-mini"
+    else:
+        return paint(backend_name, _DIM)
+    return paint(label, BACKEND_TIER_COLORS[tier], _BOLD)
 
 
 def warn_label(text: str) -> str:
