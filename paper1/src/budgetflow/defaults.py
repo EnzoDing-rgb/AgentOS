@@ -19,27 +19,26 @@ PROGRESS_TABLE: dict[Stage, dict[str, float]] = {
     Stage.LOCALIZATION: {
         TIER1_BACKEND: 0.30,
         TIER2_BACKEND: 0.50,
-        TIER3_BACKEND: 0.65,
+        TIER3_BACKEND: 0.62,
     },
     Stage.REPAIR: {
         TIER1_BACKEND: 0.15,
         TIER2_BACKEND: 0.35,
-        TIER3_BACKEND: 0.55,
+        TIER3_BACKEND: 0.45,
     },
     Stage.VALIDATION: {
         TIER1_BACKEND: 0.25,
         TIER2_BACKEND: 0.45,
-        TIER3_BACKEND: 0.60,
+        TIER3_BACKEND: 0.55,
     },
 }
 
 # Scale factor converting progress deltas (0-1 probabilities) to cost-comparable units.
-# delta_cost T2→T3 ≈ 20 governor units; delta_progress ≈ 0.10-0.20.
-# With SCALE=50: score = w_i * (0.15*50) / 20 ≈ 0.375-1.5, comparable to budget_pressure.
-PROGRESS_SCALE: float = 25.0
+# Lower = more conservative about upgrading to expensive models.
+PROGRESS_SCALE: float = 15.0
 
 # Progress-based escalation (budgetflow_full only): consecutive read-only steps.
-ESCALATION_THRESHOLD = 5
+ESCALATION_THRESHOLD = 20
 
 # Adaptive routing (budgetflow_full only): rolling task feedback + in-run recovery.
 ADAPTIVE_WINDOW = 5
