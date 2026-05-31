@@ -13,6 +13,7 @@ from .console_log import tag
 # Defaults tuned for 15×7 (105 runs); override via CompareRunGuards config.
 GLOBAL_WINDOW = 15
 GLOBAL_MIN_SAMPLES = 10
+# Legacy name kept for CompareRunGuards field; global halt uses resolved count only.
 GLOBAL_PATCH_RATE_MIN = 0.20
 POLICY_CONSECUTIVE_FAIL = 5
 POLICY_PIPELINE_FAIL_MIN = 4
@@ -33,6 +34,7 @@ _UPSTREAM_PATTERNS = (
     re.compile(r"\b503\b"),
     re.compile(r"upstream_error", re.I),
     re.compile(r"badrequesterror", re.I),
+    re.compile(r"llm provider not provided", re.I),
 )
 
 
@@ -105,11 +107,11 @@ class CompareRunGuards:
                 window = list(self._recent)
                 resolved_n = sum(1 for r in window if r.get("harness_resolved"))
                 patch_n = sum(1 for r in window if r.get("patch_extracted"))
-                patch_rate = patch_n / len(window)
-                if resolved_n == 0 and patch_rate < self.global_patch_rate_min:
+                if resolved_n == 0:
+                    patch_rate = patch_n / len(window)
                     self._abort_all_reason = (
-                        f"global_guard last={len(window)} resolved=0 patch_rate={patch_rate:.0%} "
-                        f"(suspect_pipeline_failure)"
+                        f"global_guard last={len(window)} resolved=0 patch_extracted={patch_n} "
+                        f"patch_rate={patch_rate:.0%} (agent/harness not producing passes)"
                     )
                     return GuardAction(halt_all=True, reason=self._abort_all_reason)
 

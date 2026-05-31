@@ -21,7 +21,13 @@ from ..heartbeat import run_with_heartbeat
 from ..ledger import WorkflowLedgerStore
 from ..lite_tasks import LiteTaskRecord
 from ..local_harness import clone_or_checkout, evaluate_local_harness, get_last_compat_files
-from ..run_trace import RunTraceLogger, TracedDefaultAgent, TraceConsoleLevel, patch_local_swebench_config
+from ..run_trace import (
+    RunTraceLogger,
+    TracedDefaultAgent,
+    TraceConsoleLevel,
+    extract_worktree_patch,
+    patch_local_swebench_config,
+)
 from .backends import build_compare_backends
 from .errors import BudgetFlowBudgetError, BudgetFlowStagnationError, BudgetFlowUpstreamError
 from .mini_swe_proxy import BudgetFlowLitellmModel
@@ -178,6 +184,25 @@ def run_mini_swe_task(
     if exit_reason is None and model.last_exit_reason:
         exit_reason = model.last_exit_reason
 
+    patch_from_worktree = False
+    if not patch_text:
+        agent_summary = trace.agent_summary()
+        prefer = tuple(task.gold_files) if agent_summary.get("gold_edited") else ()
+        fallback = extract_worktree_patch(
+            repo_dir,
+            ignore_paths=trace.ignore_changed_files,
+            prefer_paths=prefer,
+        )
+        if fallback:
+            patch_text = fallback
+            patch_from_worktree = True
+            (trace_dir / "worktree.patch").write_text(patch_text)
+            print(
+                f"{tag('patch', bold=False)} {task.instance_id} {label} "
+                f"worktree git diff (no submit marker)",
+                flush=True,
+            )
+
     trace.finalize_agent(submitted=exit_reason == "submitted", patch_extracted=bool(patch_text))
     if patch_text:
         print(
@@ -192,6 +217,8 @@ def run_mini_swe_task(
         patch_extracted=bool(patch_text),
     )
     agent_summary = trace.agent_summary()
+    if patch_from_worktree and exit_reason in {"stagnation_no_progress", "stagnation_repeat_command"}:
+        exit_reason = f"{exit_reason}_worktree_patch"
     violations: list[str] = []
     if governor.state.available_budget < 0:
         violations.append("budget_violation")

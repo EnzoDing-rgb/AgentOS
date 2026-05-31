@@ -24,8 +24,8 @@ def test_repeat_command_streak() -> None:
 
 
 def test_no_progress_limit_unified() -> None:
-    assert no_progress_limit("all_pro") == 20
-    assert no_progress_limit("budgetflow_full") == 20
+    assert no_progress_limit("all_pro") == 30
+    assert no_progress_limit("budgetflow_full") == 30
 
 
 def test_check_stagnation_no_progress() -> None:

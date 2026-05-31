@@ -36,6 +36,17 @@ def test_global_guard_triggers() -> None:
     assert g.is_aborted()
 
 
+def test_global_guard_not_blocked_by_patches_without_resolve() -> None:
+    g = CompareRunGuards(global_min_samples=5, global_window=10, policy_consecutive_fail=99)
+    action = GuardAction()
+    for i in range(5):
+        r = _rec(resolved=False, patch=True, reason="submitted", status="Submitted")
+        r["strategy"] = f"s{i}"
+        action = g.record_task(r)
+    assert action.halt_all
+    assert g.is_aborted()
+
+
 def test_policy_guard_halts_strategy_only() -> None:
     g = CompareRunGuards(policy_consecutive_fail=3, policy_pipeline_fail_min=2)
     for _ in range(3):

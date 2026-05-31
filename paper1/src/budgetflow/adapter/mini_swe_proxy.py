@@ -37,7 +37,12 @@ from ..governor import BudgetGovernor
 from ..types import Backend, TurnInfo, WorkflowStatus
 from .errors import BudgetFlowBudgetError, BudgetFlowStagnationError, BudgetFlowUpstreamError
 from ..run_guards import record_upstream_error
-from .bash_stage import bash_has_progress, classify_routing_stage
+from .bash_stage import (
+    _REPAIR_AGENT_PHASES,
+    _VALIDATION_AGENT_PHASES,
+    bash_has_progress,
+    classify_routing_stage,
+)
 from .stall_guard import check_stagnation, normalize_bash_command
 from .message_utils import estimate_input_tokens, extract_bash_context
 from .strategies import RoutingContext, choose_backend, stage_weight
@@ -126,7 +131,8 @@ class BudgetFlowLitellmModel:
             init=self._pressure_init,
             pressure_max=self._pressure_max,
         )
-        if bash_has_progress(bash_command):
+        phase = (self.agent_phase or "").strip()
+        if bash_has_progress(bash_command) or phase in _REPAIR_AGENT_PHASES or phase in _VALIDATION_AGENT_PHASES:
             self._no_progress_streak = 0
         else:
             self._no_progress_streak += 1
@@ -305,13 +311,21 @@ class BudgetFlowLitellmModel:
         def _query():
             if backend_name in _AICODE_BACKENDS:
                 ensure_aicode007_proxy()
+                # Force OpenAI-compatible route to AICode007 (avoid litellm env OPENAI_* fallback).
+                kwargs_merged = {
+                    "api_base": AICODE007_API_BASE,
+                    "api_key": self.aicode_api_key,
+                    **model_kwargs,
+                    **kwargs,
+                }
             else:
                 ensure_direct_api()
+                kwargs_merged = {**model_kwargs, **kwargs}
             return litellm.completion(
                 model=model_name,
                 messages=prepared,
                 tools=[BASH_TOOL],
-                **(model_kwargs | kwargs),
+                **kwargs_merged,
             )
 
         try:

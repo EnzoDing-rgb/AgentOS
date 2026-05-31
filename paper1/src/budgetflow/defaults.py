@@ -38,7 +38,7 @@ ESCALATION_THRESHOLD = 5
 
 # Anti-stall: all strategies share same no-progress streak.
 STAGNATION_REPEAT_CMD_LIMIT = 6
-STAGNATION_NO_PROGRESS_STEPS = 20
+STAGNATION_NO_PROGRESS_STEPS = 30
 
 BUDGET_PRESSURE_INIT = 0.01
 PRESSURE_MAX = 1.5
@@ -48,13 +48,14 @@ DEEPSEEK_API_BASE = "https://api.deepseek.com"
 DEEPSEEK_V4_FLASH_MODEL = "deepseek/deepseek-chat"
 DEEPSEEK_V4_PRO_MODEL = "deepseek/deepseek-reasoner"
 
-# AICode007 expects raw model id (without provider prefix).
-TIER1_MODEL = "gpt-5.3-codex-spark"
+# litellm needs provider prefix; api_base/api_key pin calls to AICode007 (not OpenAI official).
+TIER1_MODEL_ID = "gpt-5.3-codex-spark"
+TIER1_MODEL = f"openai/{TIER1_MODEL_ID}"
 TIER2_MODEL = DEEPSEEK_V4_FLASH_MODEL
 TIER3_MODEL = DEEPSEEK_V4_PRO_MODEL
 
 # Terminal model= labels (hyphenated; lowercase product tokens).
-TIER1_DISPLAY = "gpt-5.3-codex-spark"
+TIER1_DISPLAY = TIER1_MODEL_ID
 TIER2_DISPLAY = "deepseek-v4-flash"
 TIER3_DISPLAY = "deepseek-v4-pro"
 

@@ -70,19 +70,50 @@ class CompareStrategy:
 
 DEFAULT_STRATEGIES: tuple[CompareStrategy, ...] = (
     CompareStrategy("all_pro", "all_pro", None),
-    CompareStrategy("all_flash_tight", "all_flash", "tight"),
-    CompareStrategy("all_flash_loose", "all_flash", "loose"),
+    CompareStrategy("all_spark_tight", "all_flash", "tight"),
+    CompareStrategy("all_spark_loose", "all_flash", "loose"),
     CompareStrategy("budgetflow_full_loose", "budgetflow_full", "loose"),
     CompareStrategy("budgetflow_full_tight", "budgetflow_full", "tight"),
     CompareStrategy("budget_only_loose", "budget_only", "loose"),
     CompareStrategy("budget_only_tight", "budget_only", "tight"),
 )
 
+_STRATEGY_ALIASES = {
+    # Backward-compatible aliases for old paper runs / CLI commands.
+    "all_flash_tight": "all_spark_tight",
+    "all_flash_loose": "all_spark_loose",
+}
+
 
 def _batch_budget_cap(cfg: CompareStrategy, budget_caps: dict[str, float]) -> float:
     if cfg.budget_tier is None:
         return UNCAPPED_BUDGET
     return budget_caps[cfg.budget_tier]
+
+
+def _task_difficulty_key(task) -> tuple[int, int, int, str]:
+    """Lower = easier (heuristic)."""
+    return (
+        len(task.patch.splitlines()),
+        len(task.fail_to_pass),
+        len(task.pass_to_pass),
+        str(task.instance_id),
+    )
+
+
+def _order_tasks_easy_first(tasks: list, *, task_set: str) -> list:
+    if task_set != "medium":
+        return list(tasks)
+    return sorted(tasks, key=_task_difficulty_key)
+
+
+def _task_descriptor(task) -> str:
+    return (
+        f"{task.instance_id}"
+        f"(patch={len(task.patch.splitlines())},"
+        f"f2p={len(task.fail_to_pass)},"
+        f"p2p={len(task.pass_to_pass)})"
+    )
 
 
 def _workspace_key(cfg: CompareStrategy, instance_id: str) -> str:
@@ -423,7 +454,7 @@ def _run_strategy_batch(
         if run_guards is not None:
             action = run_guards.record_task(record)
             run_guards.log_action(action)
-            if action.halt_all:
+            if action.halt_all or action.halt_strategy:
                 break
 
     return records, governor.state.spent_budget
@@ -651,7 +682,7 @@ def main() -> None:
         "--strategies",
         type=str,
         default=None,
-        help="comma-separated strategy names subset (e.g. all_flash_tight,budget_only_loose,budgetflow_full_tight)",
+        help="comma-separated strategy names subset (e.g. all_spark_tight,budget_only_loose,budgetflow_full_tight)",
     )
     parser.add_argument(
         "--append",
@@ -764,9 +795,10 @@ def main() -> None:
 
     all_strategies = DEFAULT_STRATEGIES
     if args.strategies:
-        wanted = {s.strip() for s in args.strategies.split(",") if s.strip()}
+        wanted_raw = {s.strip() for s in args.strategies.split(",") if s.strip()}
+        wanted = {_STRATEGY_ALIASES.get(name, name) for name in wanted_raw}
         strategies = tuple(s for s in all_strategies if s.name in wanted)
-        missing = wanted - {s.name for s in strategies}
+        missing = wanted_raw - {s.name for s in strategies} - set(_STRATEGY_ALIASES)
         if missing:
             raise SystemExit(f"unknown strategies: {sorted(missing)}")
         if not strategies:
@@ -778,6 +810,7 @@ def main() -> None:
         tasks = load_compare_medium_tasks(tasks_n)
     else:
         tasks = load_compare_easy_tasks(tasks_n)
+    tasks = _order_tasks_easy_first(tasks, task_set=args.task_set)
     total_runs = len(tasks) * len(strategies)
     if args.resume and not args.out_stem:
         raise SystemExit("--resume requires --out-stem (e.g. policy_5x7-0)")
@@ -812,6 +845,7 @@ def main() -> None:
     )
     print(f"  pool: {format_tier_pool_line()}", flush=True)
     print(f"{dim('tasks=' + ','.join(t.instance_id for t in tasks))}", flush=True)
+    print(f"{dim('task_order=' + ', '.join(_task_descriptor(t) for t in tasks))}", flush=True)
     print(f"{dim('strategies=' + ','.join(strategy_names))}", flush=True)
     print(f"{dim('mode=shared_batch_budget; tasks serial within policy; policies parallel with --jobs')}", flush=True)
     print(f"{dim('trace_console=' + trace_console + '; heartbeat every ' + str(args.heartbeat) + 's')}", flush=True)
@@ -828,6 +862,7 @@ def main() -> None:
         f"pressure_init={pressure_init} pressure_max={pressure_max} "
         f"policy_jobs={args.jobs} hard_cap=settle_clamp",
         f"tasks={[t.instance_id for t in tasks]}",
+        f"task_order={[_task_descriptor(t) for t in tasks]}",
         "",
     ]
     if args.append and out_path.is_file():

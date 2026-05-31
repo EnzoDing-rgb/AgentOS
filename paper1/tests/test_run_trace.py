@@ -7,7 +7,9 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 sys.path.insert(0, str(SRC))
 
-from budgetflow.run_trace import RunTraceLogger, SUBMIT_MARKER  # noqa: E402
+import subprocess
+
+from budgetflow.run_trace import RunTraceLogger, SUBMIT_MARKER, extract_worktree_patch  # noqa: E402
 
 
 def _logger(tmp_path: Path) -> RunTraceLogger:
@@ -45,3 +47,24 @@ def test_finalize_agent_ignores_patch_only(tmp_path: Path) -> None:
     logger = _logger(tmp_path)
     logger.finalize_agent(submitted=False, patch_extracted=True)
     assert logger._submitted is False
+
+
+def test_extract_worktree_patch(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    target = repo / "sympy/core.py"
+    target.parent.mkdir(parents=True)
+    target.write_text("x = 1\n")
+    subprocess.run(["git", "add", "sympy/core.py"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-c", "user.email=t@t.com", "-c", "user.name=t", "commit", "-m", "init"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+    target.write_text("x = 2\n")
+    patch = extract_worktree_patch(repo, prefer_paths=("sympy/core.py",))
+    assert patch is not None
+    assert "sympy/core.py" in patch
+    assert extract_worktree_patch(repo, prefer_paths=("other.py",)) is None

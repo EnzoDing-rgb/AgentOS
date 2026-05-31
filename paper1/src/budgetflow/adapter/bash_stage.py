@@ -32,6 +32,8 @@ _REPAIR_PATTERNS = (
     r"cat <<",
     r"tee ",
     r"echo .+ >>",
+    r"\bcp\s+",
+    r"\bmv\s+",
 )
 _VALIDATION_PATTERNS = (
     r"\bpytest\b",
