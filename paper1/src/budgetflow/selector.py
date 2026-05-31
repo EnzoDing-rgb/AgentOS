@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .defaults import PROGRESS_SCALE
 from .types import Backend, ProgressTable, Stage, TurnInfo
 
 
@@ -36,7 +37,7 @@ class BudgetFlowSelector:
                 upgraded = True
                 continue
 
-            score = turn_info.w_i * (delta_progress / delta_cost)
+            score = turn_info.w_i * (delta_progress * PROGRESS_SCALE / delta_cost)
             if score >= budget_pressure:
                 current = next_backend
                 current_score = score

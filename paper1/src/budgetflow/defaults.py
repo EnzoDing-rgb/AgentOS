@@ -17,21 +17,26 @@ TIER3_BACKEND = "tier3_pro"
 
 PROGRESS_TABLE: dict[Stage, dict[str, float]] = {
     Stage.LOCALIZATION: {
-        TIER1_BACKEND: 0.45,
-        TIER2_BACKEND: 0.55,
-        TIER3_BACKEND: 0.50,
+        TIER1_BACKEND: 0.30,
+        TIER2_BACKEND: 0.50,
+        TIER3_BACKEND: 0.65,
     },
     Stage.REPAIR: {
-        TIER1_BACKEND: 0.25,
-        TIER2_BACKEND: 0.40,
-        TIER3_BACKEND: 0.45,
+        TIER1_BACKEND: 0.15,
+        TIER2_BACKEND: 0.35,
+        TIER3_BACKEND: 0.55,
     },
     Stage.VALIDATION: {
-        TIER1_BACKEND: 0.35,
-        TIER2_BACKEND: 0.42,
-        TIER3_BACKEND: 0.40,
+        TIER1_BACKEND: 0.25,
+        TIER2_BACKEND: 0.45,
+        TIER3_BACKEND: 0.60,
     },
 }
+
+# Scale factor converting progress deltas (0-1 probabilities) to cost-comparable units.
+# delta_cost T2→T3 ≈ 20 governor units; delta_progress ≈ 0.10-0.20.
+# With SCALE=50: score = w_i * (0.15*50) / 20 ≈ 0.375-1.5, comparable to budget_pressure.
+PROGRESS_SCALE: float = 50.0
 
 # Progress-based escalation (budgetflow_full only): consecutive read-only steps.
 ESCALATION_THRESHOLD = 5
