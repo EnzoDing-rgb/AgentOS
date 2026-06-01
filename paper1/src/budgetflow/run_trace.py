@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
+import sys
 import time
 from collections import deque
 from pathlib import Path
@@ -45,7 +47,22 @@ def patch_local_swebench_config(config: dict, repo_dir: Path) -> dict:
         or "minisweagent.environments.local.LocalEnvironment"
     )
     config["environment"]["cwd"] = repo
+    config["environment"]["env"] = {
+        **(config["environment"].get("env") or {}),
+        "PATH": f"{_ensure_python_shim_dir()}{os.pathsep}{os.environ.get('PATH', '')}",
+    }
     return config
+
+
+def _ensure_python_shim_dir() -> str:
+    """Expose `python` for old SWE-Bench repos without changing system state."""
+    shim_dir = Path(__file__).resolve().parents[2] / "data" / "local_bin"
+    shim_dir.mkdir(parents=True, exist_ok=True)
+    python_shim = shim_dir / "python"
+    if not python_shim.exists():
+        target = Path(sys.executable)
+        python_shim.symlink_to(target)
+    return str(shim_dir)
 
 
 def _extract_bash_commands(message: dict) -> list[str]:
@@ -197,6 +214,7 @@ class RunTraceLogger:
         self._gold_files_edited: set[str] = set()
         self._steps_logged = 0
         self._submitted = False
+        self._attempted_submit = False
         self._last_agent_pytest: str | None = None
         self._harness_resolved: bool | None = None
         self._harness_detail: str = ""
@@ -249,6 +267,7 @@ class RunTraceLogger:
             "phase": phase,
             "gold_edited": bool(gold_edited or self._gold_files_edited),
             "gold_files": sorted(self._gold_files_edited or set(gold_edited)),
+            "attempted_submit": self._attempted_submit,
             "submitted": self._submitted,
             "agent_pytest": self._last_agent_pytest,
         }
@@ -313,10 +332,10 @@ class RunTraceLogger:
             f"gold_edit={gold} agent_pytest={agent_test} submitted={submitted} harness={harness}"
         )
 
-    def _detect_submitted(self, commands: list[str]) -> None:
+    def _detect_submit_attempt(self, commands: list[str]) -> None:
         for cmd in commands:
             if SUBMIT_MARKER in cmd:
-                self._submitted = True
+                self._attempted_submit = True
                 return
 
     def finalize_agent(self, *, submitted: bool, patch_extracted: bool) -> None:
@@ -343,7 +362,7 @@ class RunTraceLogger:
             self._submit_milestone_printed = True
             print(
                 f"{tag('agent', bold=False)} {self.instance_id} {self.strategy_label} "
-                f"submitting patch...",
+                f"attempting submit...",
                 flush=True,
             )
         if pytest_changed:
@@ -380,7 +399,7 @@ class RunTraceLogger:
         commands = _extract_bash_commands(assistant)
         for cmd in commands:
             self._recent_commands.append(cmd)
-        self._detect_submitted(commands)
+        self._detect_submit_attempt(commands)
 
         changed = git_changed_files(self.repo_dir)
         self._last_changed = changed
@@ -410,6 +429,7 @@ class RunTraceLogger:
             "compat_baseline_files": sorted(self.ignore_changed_files),
             "gold_edited_files": gold_edited,
             "target_files": list(self.target_files),
+            "attempted_submit": self._attempted_submit,
             "submitted": self._submitted,
             "agent_pytest": self._last_agent_pytest,
             "harness_resolved": self._harness_resolved,
@@ -465,6 +485,7 @@ class RunTraceLogger:
         return {
             "gold_edited": bool(self._gold_files_edited),
             "gold_files": sorted(self._gold_files_edited),
+            "attempted_submit": self._attempted_submit,
             "submitted": self._submitted,
             "agent_pytest": self._last_agent_pytest,
         }

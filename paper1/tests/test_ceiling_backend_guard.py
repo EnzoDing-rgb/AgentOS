@@ -53,3 +53,11 @@ def test_all_gpt55_uses_explicit_ceiling_pool() -> None:
     backend = choose_backend(ctx, _turn(), {})
 
     assert backend.name == TIER5_BACKEND
+
+
+def test_all_gpt53_uses_explicit_gpt53_backend() -> None:
+    ctx = build_routing_context("all_gpt53", build_ceiling_backends(), budget_pressure=0.01)
+
+    backend = choose_backend(ctx, _turn(), {})
+
+    assert backend.name == TIER4_GPT53_BACKEND

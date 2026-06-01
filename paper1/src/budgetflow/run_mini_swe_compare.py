@@ -90,6 +90,7 @@ DEFAULT_STRATEGIES: tuple[CompareStrategy, ...] = (
 
 DIAGNOSTIC_STRATEGIES: tuple[CompareStrategy, ...] = (
     CompareStrategy("all_t4", "all_t4", None),
+    CompareStrategy("all_gpt53", "all_gpt53", None),
     CompareStrategy("all_gpt55", "all_gpt55", None),
 )
 
@@ -241,6 +242,7 @@ def _run_one(
         "detail": result.harness_detail,
         "agent_gold_edited": result.agent_gold_edited,
         "agent_gold_files": list(result.agent_gold_files),
+        "agent_attempted_submit": result.agent_attempted_submit,
         "agent_submitted": result.agent_submitted,
         "prompt_tokens_total": result.prompt_tokens_total,
         "completion_tokens_total": result.completion_tokens_total,
@@ -248,6 +250,7 @@ def _run_one(
         "agent_summary": {
             "gold_edited": result.agent_gold_edited,
             "gold_files": list(result.agent_gold_files),
+            "attempted_submit": result.agent_attempted_submit,
             "submitted": result.agent_submitted,
         },
         "turn_trace_count": result.turn_trace_count,

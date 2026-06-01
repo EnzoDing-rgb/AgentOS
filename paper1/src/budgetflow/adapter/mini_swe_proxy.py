@@ -12,6 +12,7 @@ from minisweagent.models.utils.actions_toolcall import (
     format_toolcall_observation_messages,
     parse_toolcall_actions,
 )
+from minisweagent.exceptions import FormatError
 from minisweagent.models.utils.anthropic_utils import _reorder_anthropic_thinking_blocks
 from minisweagent.models.utils.cache_control import set_cache_control
 from minisweagent.models.utils.openai_multimodal import expand_multimodal_content
@@ -61,6 +62,7 @@ configure_litellm_quiet()
 
 _DASHSCOPE_BACKENDS = frozenset({TIER1_BACKEND, TIER2_BACKEND, TIER3_BACKEND, TIER4_BACKEND})
 _AICODE007_BACKENDS = frozenset({TIER4_GPT53_BACKEND, TIER5_BACKEND})
+FORMAT_ERROR_STOP_AFTER = 5
 
 
 class FatalProviderBillingError(RuntimeError):
@@ -194,6 +196,7 @@ class BudgetFlowLitellmModel:
         self._enable_turn_trace: bool = enable_turn_trace
         self.turn_traces: list[dict] = []
         self._last_reserve_out: int = 0
+        self._format_error_streak: int = 0
         self.config = type("Config", (), {"model_name": TIER3_MODEL})()
 
     def query(self, messages: list[dict[str, str]], **kwargs) -> dict:
@@ -391,8 +394,40 @@ class BudgetFlowLitellmModel:
         spend_headroom = max(0.0, snap["total_budget"] - snap["spent_budget"])
         billable = min(actual_cost, spend_headroom)
         self.governor.settle(reservation_id, actual_cost, WorkflowStatus.RUNNING)
+        try:
+            actions = self._parse_actions(response)
+        except Exception as exc:
+            if self._enable_turn_trace:
+                self.turn_traces.append(_build_turn_trace(
+                    step_index=self.step_index,
+                    agent_phase=self.agent_phase,
+                    stage=stage,
+                    bash_command=bash_command,
+                    input_tokens=input_tokens,
+                    expected_costs=expected_costs,
+                    base_pressure=base_pressure,
+                    effective_pressure=self.routing.budget_pressure,
+                    backend_chosen=backend_chosen,
+                    escalated_backend=escalated_backend,
+                    final_backend=backend.name,
+                    backend_tier=backend.tier,
+                    reserve_out=reserve_out,
+                    adaptive=self.routing.adaptive,
+                    no_progress_streak=self._no_progress_streak,
+                    no_progress_on_tier=self._no_progress_on_current_tier,
+                    turns_on_tier=self._turns_on_current_tier,
+                    has_progress=has_progress,
+                    progress_reason=progress_reason,
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    actual_cost=actual_cost,
+                    billable=billable,
+                    response_ok=True,
+                    error_type=type(exc).__name__,
+                ))
+            raise
         message["extra"] = {
-            "actions": self._parse_actions(response),
+            "actions": actions,
             "response": response.model_dump(),
             "cost": billable,
             "backend": backend.name,
@@ -659,7 +694,32 @@ class BudgetFlowLitellmModel:
 
     def _parse_actions(self, response) -> list[dict]:
         tool_calls = response.choices[0].message.tool_calls or []
-        return parse_toolcall_actions(tool_calls, format_error_template=self.format_error_template)
+        if tool_calls:
+            self._format_error_streak = 0
+        counted_format_error = False
+        if not tool_calls:
+            self._format_error_streak += 1
+            counted_format_error = True
+            if self._format_error_streak >= FORMAT_ERROR_STOP_AFTER:
+                raise BudgetFlowStagnationError(
+                    self.workflow_id,
+                    exit_reason="format_error_no_tool_calls",
+                    step_index=self.step_index,
+                    no_progress_streak=self._format_error_streak,
+                )
+        try:
+            return parse_toolcall_actions(tool_calls, format_error_template=self.format_error_template)
+        except FormatError:
+            if not counted_format_error:
+                self._format_error_streak += 1
+            if self._format_error_streak >= FORMAT_ERROR_STOP_AFTER:
+                raise BudgetFlowStagnationError(
+                    self.workflow_id,
+                    exit_reason="format_error_invalid_tool_call",
+                    step_index=self.step_index,
+                    no_progress_streak=self._format_error_streak,
+                )
+            raise
 
     def format_message(self, **kwargs) -> dict:
         return expand_multimodal_content(kwargs, pattern=self.multimodal_regex)

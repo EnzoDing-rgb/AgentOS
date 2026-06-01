@@ -54,6 +54,7 @@ class MiniSweRunResult:
     harness_resolved: bool
     harness_detail: str
     agent_gold_edited: bool
+    agent_attempted_submit: bool
     agent_submitted: bool
     agent_gold_files: tuple[str, ...]
     violations: tuple[str, ...]
@@ -124,7 +125,7 @@ def run_mini_swe_task(
         progress_box=progress_box,
     )
     config = patch_local_swebench_config(_load_agent_config(step_limit=step_limit), repo_dir)
-    backends = build_ceiling_backends() if strategy == "all_gpt55" else build_compare_backends()
+    backends = build_ceiling_backends() if strategy in ("all_gpt53", "all_gpt55") else build_compare_backends()
     routing = build_routing_context(
         strategy,
         backends,
@@ -261,6 +262,7 @@ def run_mini_swe_task(
         harness_resolved=harness.harness_resolved,
         harness_detail=harness.detail,
         agent_gold_edited=bool(agent_summary.get("gold_edited")),
+        agent_attempted_submit=bool(agent_summary.get("attempted_submit")),
         agent_submitted=bool(agent_summary.get("submitted")),
         agent_gold_files=tuple(str(f) for f in (agent_summary.get("gold_files") or ())),
         violations=tuple(violations),
