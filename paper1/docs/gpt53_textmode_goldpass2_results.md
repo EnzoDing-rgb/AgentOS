@@ -1,4 +1,4 @@
-# GPT-5.3 Text-Mode Goldpass2 Results
+# GPT-5.3 Text-Mode Goldpass Results
 
 Date: 2026-06-02
 
@@ -30,7 +30,7 @@ PYTHONPATH=src:../external/mini-swe-agent/src \
   --resume
 ```
 
-## Result
+## Goldpass2 Result
 
 ```text
 all_gpt53: 2/2 PASS
@@ -67,3 +67,37 @@ AuthenticationError: Incorrect API key provided
 ```
 
 Until that is fixed, do not interpret Qwen BudgetFlow failures as model or routing failures.
+
+## Goldpass3 Resume Result
+
+The same stem was resumed with one additional task:
+
+```bash
+scripts/run-gpt53-textmode-goldpass3.sh gpt53_textmode_goldpass2
+```
+
+Resume skipped the first two completed `(strategy, task)` pairs and ran only `sympy__sympy-20212`.
+
+Final result:
+
+```text
+all_gpt53: 3/3 PASS
+total_cost: 597.8 governor units
+avg_turns: 8.3
+```
+
+| task | verdict | turns | cost | note |
+| --- | --- | ---: | ---: | --- |
+| sympy__sympy-13480 | PASS | 7 | 138.8 | gold tracked |
+| sympy__sympy-17139 | PASS | 7 | 149.6 | gold tracked |
+| sympy__sympy-20212 | PASS | 11 | 309.4 | harness PASS, but gold tracking showed `none`; do not use this row for localization-rate claims |
+
+Output:
+
+```text
+data/runs/gpt53_textmode_goldpass2.jsonl
+data/runs/gpt53_textmode_goldpass2.summary.log
+data/runs/gpt53_textmode_goldpass2.driver.log
+```
+
+This strengthens the task-hardness anchor: these gold-pass Sympy tasks are solvable by SWE-mini + GPT-5.3 Codex when the scaffold protocol is correct.
