@@ -22,6 +22,7 @@ This is the current evidence table for BudgetFlow paper progress. It is not the 
 | --- | --- | ---: | --- | ---: | ---: | --- |
 | `budgetflow_auto_v2_smoke` | BudgetFlow policy smoke | 2 | Qwen pool, tight policies | `1/6` rows, auto_v2 `1/2` | `3368.3` | First positive signal for automatic budget routing; not paper-ready |
 | `gpt53_textmode_goldpass2` + `gpt53_textmode_goldpass5_tail2_foreground` | strong scaffold ceiling anchor | 5 | SWE-mini + GPT-5.3 Codex text mode | `4/5` | `1100.4` | GPT-5.3 is viable T4 candidate, but not perfect ceiling |
+| `gpt55_textmode_16988_ceiling` | expensive ceiling probe on GPT-5.3 hard case | 1 | SWE-mini + GPT-5.5 text mode | `0/1` | `982.2` | Protocol/cost failure: 5 format-error turns, no patch |
 | `qwen_api_ping_20260602` | Qwen provider gate | 0 agent tasks | Qwen flash/pro ping | `0/2` API ping | minimal | Qwen compare currently blocked by invalid DashScope key |
 
 ## Key Findings
@@ -29,8 +30,9 @@ This is the current evidence table for BudgetFlow paper progress. It is not the 
 1. GPT-5.3 Codex is not the earlier failure source. The earlier `all_gpt53` run failed because AICode007/GPT did not work with mini-SWE tool-call mode. Text/backtick mode fixes this.
 2. GPT-5.3 Codex solved `4/5` gold-pass Sympy tasks with SWE-mini in text mode.
 3. `sympy__sympy-16988` is a hard repair case for GPT-5.3: gold file was found and patch application succeeded, but `fail_after` still failed.
-4. BudgetFlow auto_v2 has a real positive smoke signal: it solved one task that `stage_blind_tight` and `budgetflow_full_tight` did not solve in the same smoke.
-5. Qwen-backed formal comparison cannot continue until `DASHSCOPE_API_KEY` is fixed. Running it now would create infra-fail noise, not science.
+4. GPT-5.5 is still not safe for automatic budget routing: on `16988` it spent `982.2` governor units in 5 turns, produced format errors, and extracted no patch.
+5. BudgetFlow auto_v2 has a real positive smoke signal: it solved one task that `stage_blind_tight` and `budgetflow_full_tight` did not solve in the same smoke.
+6. Qwen-backed formal comparison cannot continue until `DASHSCOPE_API_KEY` is fixed. Running it now would create infra-fail noise, not science.
 
 ## Current Commands
 
@@ -61,6 +63,13 @@ Run GPT-5.3 text-mode ceiling without Qwen:
 cd paper1
 scripts/run-gpt53-textmode-goldpass3.sh gpt53_textmode_goldpass2
 scripts/run-gpt53-textmode-goldpass5-tail2.sh gpt53_textmode_goldpass5_tail2_foreground
+```
+
+Run the single GPT-5.5 hard-case ceiling probe only when explicitly needed:
+
+```bash
+cd paper1
+scripts/run-gpt55-textmode-16988-ceiling.sh gpt55_textmode_16988_ceiling
 ```
 
 ## Next Decision
