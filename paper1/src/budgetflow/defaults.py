@@ -62,13 +62,13 @@ DEEPSEEK_V4_FLASH_MODEL = "deepseek/deepseek-chat"
 DEEPSEEK_V4_PRO_MODEL = "deepseek/deepseek-reasoner"
 
 # litellm needs provider prefix; api_base/api_key pin calls to AICode007 (not OpenAI official).
-TIER1_MODEL_ID = "gpt-5.3-codex-spark"
+TIER1_MODEL_ID = "gpt-5.2"
 TIER1_MODEL = f"openai/{TIER1_MODEL_ID}"
 TIER2_MODEL = DEEPSEEK_V4_FLASH_MODEL
 TIER3_MODEL = DEEPSEEK_V4_PRO_MODEL
 
 # Terminal model= labels (hyphenated; lowercase product tokens).
-TIER1_DISPLAY = TIER1_MODEL_ID
+TIER1_DISPLAY = "gpt-5.2"
 TIER2_DISPLAY = "deepseek-v4-flash"
 TIER3_DISPLAY = "deepseek-v4-pro"
 
