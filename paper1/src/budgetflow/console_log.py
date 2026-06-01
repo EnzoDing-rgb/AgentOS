@@ -165,12 +165,18 @@ def dim(text: str) -> str:
 
 def format_tier_pool_line() -> str:
     """One-line tier pool for run banners (full names + litellm ids)."""
-    from .defaults import TIER1_DISPLAY, TIER1_MODEL, TIER2_DISPLAY, TIER2_MODEL, TIER3_DISPLAY, TIER3_MODEL
+    from .defaults import (
+        TIER1_DISPLAY, TIER1_MODEL,
+        TIER2_DISPLAY, TIER2_MODEL,
+        TIER3_DISPLAY, TIER3_MODEL,
+        TIER4_DISPLAY, TIER4_MODEL,
+    )
 
     return (
         f"T1={bold(TIER1_DISPLAY)} {dim(f'({TIER1_MODEL})')}  "
         f"T2={bold(TIER2_DISPLAY)} {dim(f'({TIER2_MODEL})')}  "
-        f"T3={bold(TIER3_DISPLAY)} {dim(f'({TIER3_MODEL})')}"
+        f"T3={bold(TIER3_DISPLAY)} {dim(f'({TIER3_MODEL})')}  "
+        f"T4={bold(TIER4_DISPLAY)} {dim(f'({TIER4_MODEL})')}"
     )
 
 
