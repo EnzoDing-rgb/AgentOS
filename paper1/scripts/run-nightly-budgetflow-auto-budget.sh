@@ -37,10 +37,27 @@ echo "[ids] $IDS"
 echo "[policy] no docker; no gpt-5.5 in budgeted routing; qwen-only current pool"
 echo
 
-jsonl_count() {
+jsonl_unique_count() {
   local file="$1"
   if [[ -f "$file" ]]; then
-    wc -l < "$file" | tr -d ' '
+    "$PY" - "$file" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+seen = set()
+for line in Path(sys.argv[1]).read_text().splitlines():
+    if not line.strip():
+        continue
+    try:
+        row = json.loads(line)
+    except json.JSONDecodeError:
+        continue
+    key = (row.get("strategy"), row.get("instance_id"))
+    if all(key):
+        seen.add(key)
+print(len(seen))
+PY
   else
     echo 0
   fi
@@ -57,7 +74,7 @@ run_resume_loop() {
   local attempt=1
   while (( attempt <= max_attempts )); do
     local done
-    done="$(jsonl_count "$jsonl")"
+    done="$(jsonl_unique_count "$jsonl")"
     echo "[loop] stem=$stem attempt=$attempt/$max_attempts done=$done/$expected timeout=${timeout_s}s"
     if (( done >= expected )); then
       echo "[ok] stem=$stem complete done=$done/$expected"
@@ -69,7 +86,7 @@ run_resume_loop() {
     local code=$?
     set -e
 
-    done="$(jsonl_count "$jsonl")"
+    done="$(jsonl_unique_count "$jsonl")"
     echo "[loop] stem=$stem exit=$code done=$done/$expected at $(date -Is)"
     if (( done >= expected )); then
       echo "[ok] stem=$stem complete after attempt=$attempt"
