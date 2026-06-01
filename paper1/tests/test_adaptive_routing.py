@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 sys.path.insert(0, str(SRC))
 
-from budgetflow.adaptive_routing import AdaptiveRoutingState, EvidenceRescueState
+from budgetflow.adaptive_routing import AdaptiveRoutingState, EvidenceRescueState, rescue_state_for_strategy
 from budgetflow.types import Stage
 
 
@@ -188,3 +188,12 @@ def test_evidence_rescue_stop_loss_after_window_and_patience() -> None:
     )
 
     assert rescue.should_stop_loss(gold_edited=True)
+
+
+def test_auto_v2_rescue_waits_longer_and_allows_more_repair_turns() -> None:
+    current = rescue_state_for_strategy("budgetflow_full")
+    v2 = rescue_state_for_strategy("budgetflow_auto_v2")
+
+    assert v2.trigger_turns > current.trigger_turns
+    assert v2.window_turns > current.window_turns
+    assert v2.stop_loss_turns > current.stop_loss_turns

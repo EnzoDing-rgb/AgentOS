@@ -63,6 +63,15 @@ def build_routing_context(
 
 def choose_backend(ctx: RoutingContext, turn: TurnInfo, expected_costs: dict[str, float]) -> Backend:
     ctx.expected_costs = expected_costs
+    if ctx.strategy == "budgetflow_auto_v2":
+        turn = TurnInfo(
+            workflow_id=turn.workflow_id,
+            step_index=turn.step_index,
+            stage=turn.stage,
+            w_i=1.0,
+            context_len=turn.context_len,
+            tool_name=turn.tool_name,
+        )
     if ctx.strategy == "all_flash":
         return ctx.backends[0]
     if ctx.strategy == "all_tier2":

@@ -107,6 +107,17 @@ class EvidenceRescueState:
         return self.evidence_turns >= self.stop_loss_turns
 
 
+def rescue_state_for_strategy(strategy_name: str) -> EvidenceRescueState:
+    if strategy_name == "budgetflow_auto_v2":
+        return EvidenceRescueState(
+            trigger_turns=8,
+            window_turns=4,
+            stop_loss_turns=14,
+            min_headroom_frac=0.15,
+        )
+    return EvidenceRescueState()
+
+
 @dataclass
 class AdaptiveRoutingState:
     """Per compare-policy rolling health + in-run recovery knobs."""
@@ -125,6 +136,9 @@ class AdaptiveRoutingState:
     min_tier_floor: int = 1
     last_weak_stage: Stage | None = None
     rescue: EvidenceRescueState = field(default_factory=EvidenceRescueState)
+
+    def __post_init__(self) -> None:
+        self.rescue = rescue_state_for_strategy(self.strategy_name)
 
     def record_task(self, record: dict) -> None:
         self._recent.append(record)
@@ -170,7 +184,7 @@ class AdaptiveRoutingState:
         return 1
 
     def reset_task_runtime(self) -> None:
-        self.rescue = EvidenceRescueState()
+        self.rescue = rescue_state_for_strategy(self.strategy_name)
 
     def status_snippet(self) -> str:
         rescue = (
@@ -239,7 +253,7 @@ class AdaptiveRoutingState:
         self.ttl_steps_remaining = 0
         self.min_tier_floor = 1
         self.last_weak_stage = None
-        self.rescue = EvidenceRescueState()
+        self.rescue = rescue_state_for_strategy(self.strategy_name)
         for record in records[-ADAPTIVE_WINDOW :]:
             self.record_task(record)
 
@@ -252,7 +266,7 @@ class AdaptiveRoutingRegistry:
         self._states: dict[str, AdaptiveRoutingState] = {}
 
     def for_strategy(self, strategy_name: str, routing: str) -> AdaptiveRoutingState | None:
-        if routing not in ("budgetflow_full", "stage_blind"):
+        if routing not in ("budgetflow_full", "budgetflow_auto_v2", "stage_blind"):
             return None
         with self._lock:
             state = self._states.get(strategy_name)

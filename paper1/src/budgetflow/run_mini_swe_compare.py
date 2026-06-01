@@ -80,9 +80,11 @@ DEFAULT_STRATEGIES: tuple[CompareStrategy, ...] = (
     CompareStrategy("budget_only_tight", "budget_only", "tight"),
     CompareStrategy("stage_blind_tight", "stage_blind", "tight"),
     CompareStrategy("budgetflow_full_tight", "budgetflow_full", "tight"),
+    CompareStrategy("budgetflow_auto_v2_tight", "budgetflow_auto_v2", "tight"),
     CompareStrategy("budget_only_loose", "budget_only", "loose"),
     CompareStrategy("stage_blind_loose", "stage_blind", "loose"),
     CompareStrategy("budgetflow_full_loose", "budgetflow_full", "loose"),
+    CompareStrategy("budgetflow_auto_v2_loose", "budgetflow_auto_v2", "loose"),
     CompareStrategy("all_pro", "all_pro", None),
 )
 
@@ -113,6 +115,8 @@ def _w_i_profile_for_record(routing: str) -> str:
     """JSONL field: stage_blind forces w_i=1 at query time regardless of BF_W_PROFILE."""
     if routing == "stage_blind":
         return "flat_forced"
+    if routing == "budgetflow_auto_v2":
+        return "auto_v2"
     return active_w_i_profile_name()
 
 
