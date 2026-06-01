@@ -189,6 +189,8 @@ def _run_one(
     adaptive = None
     if adaptive_registry is not None:
         adaptive = adaptive_registry.for_strategy(cfg.name, cfg.routing)
+    if adaptive is not None:
+        adaptive.reset_task_runtime()
     result = run_mini_swe_task(
         task,
         strategy=cfg.routing,

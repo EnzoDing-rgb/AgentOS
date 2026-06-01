@@ -49,6 +49,17 @@ def test_strong_results_decay_boost() -> None:
     assert state.ttl_steps_remaining == 0
 
 
+def test_task_runtime_state_resets_rescue_between_tasks() -> None:
+    state = AdaptiveRoutingState(strategy_name="budgetflow_full_tight")
+    state.rescue.evidence_turns = 10
+    state.rescue.window_opened = True
+
+    state.reset_task_runtime()
+
+    assert state.rescue.evidence_turns == 0
+    assert not state.rescue.window_opened
+
+
 def test_on_step_ticks_ttl() -> None:
     state = AdaptiveRoutingState(strategy_name="budgetflow_full_tight")
     state.ttl_steps_remaining = 2

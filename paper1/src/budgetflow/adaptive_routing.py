@@ -169,6 +169,9 @@ class AdaptiveRoutingState:
             return 2
         return 1
 
+    def reset_task_runtime(self) -> None:
+        self.rescue = EvidenceRescueState()
+
     def status_snippet(self) -> str:
         rescue = (
             f" rescue=evidence:{self.rescue.evidence_turns}"
