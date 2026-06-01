@@ -49,7 +49,7 @@ PROGRESS_SCALE: float = 18.0
 TIER_ESCALATION_PATIENCE: dict[int, int] = {
     1: 4,   # T1→T2 after 4 non-progress steps
     2: 5,   # T2→T3 after 5 non-progress steps
-    3: 3,   # T3→T4 after 3 non-progress steps (coder-plus is cheap enough, be aggressive)
+    3: 5,   # T3→T4 after 5 non-progress steps (give T3 a fair chance)
     4: 5,   # T4 stop-loss after 5 non-progress steps
 }
 
