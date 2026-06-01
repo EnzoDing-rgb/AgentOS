@@ -8,22 +8,21 @@ _UNLIMITED = 0
 
 
 def build_compare_backends() -> list[Backend]:
-    """Four-tier Qwen pool via 阿里云百炼.
+    """Four-tier Qwen pool via 阿里云百炼 with coder models.
 
     Costs are governor units scaled from ¥ pricing (per 1M tokens):
-      T1 (qwen3.5-flash): ¥0.2/M in, ¥0.8/M out
-      T2 (qwen3.6-flash): ¥1.2/M in, ¥7.2/M out
-      T3 (qwen3.6-plus):  ¥2.0/M in, ¥12/M out
-      T4 (qwen3.7-max):   ¥4.0/M in, ¥16/M out (5折 ~¥2/M)
-    T4 is last resort: selector picks for REPAIR when budget loose,
-    escalation-only for LOC/VAL. 2x T3 cost, marginally better.
+      T1 (qwen3.5-flash):      ¥0.3/M in, ¥0.6/M out
+      T2 (qwen3-coder-flash):  ¥0.5/M in, ¥2.0/M out
+      T3 (qwen3.6-plus):       ¥2.0/M in, ¥6.0/M out
+      T4 (qwen3-coder-plus):   ¥4.0/M in, ¥12/M out (SWE-bench 78.8%)
+    T4 is code-specialized and cheap enough to use aggressively.
     """
     return [
         Backend(
             name=TIER1_BACKEND,
             tier=1,
-            cost_per_input_token=0.0002,
-            cost_per_output_token=0.0008,
+            cost_per_input_token=0.0003,
+            cost_per_output_token=0.0006,
             rpm_limit=_UNLIMITED,
             concurrency_limit=_UNLIMITED,
             mean_output_tokens=512,
@@ -33,19 +32,19 @@ def build_compare_backends() -> list[Backend]:
         Backend(
             name=TIER2_BACKEND,
             tier=2,
-            cost_per_input_token=0.0012,
-            cost_per_output_token=0.0072,
+            cost_per_input_token=0.0005,
+            cost_per_output_token=0.0020,
             rpm_limit=_UNLIMITED,
             concurrency_limit=_UNLIMITED,
             mean_output_tokens=768,
-            progress_score=0.14,
+            progress_score=0.15,
             latency_ms=500,
         ),
         Backend(
             name=TIER3_BACKEND,
             tier=3,
             cost_per_input_token=0.0020,
-            cost_per_output_token=0.0120,
+            cost_per_output_token=0.0060,
             rpm_limit=_UNLIMITED,
             concurrency_limit=_UNLIMITED,
             mean_output_tokens=1024,
@@ -56,12 +55,12 @@ def build_compare_backends() -> list[Backend]:
             name=TIER4_BACKEND,
             tier=4,
             cost_per_input_token=0.0040,
-            cost_per_output_token=0.0160,
+            cost_per_output_token=0.0120,
             rpm_limit=_UNLIMITED,
             concurrency_limit=_UNLIMITED,
             mean_output_tokens=1024,
-            progress_score=0.20,
-            latency_ms=1000,
+            progress_score=0.22,
+            latency_ms=900,
         ),
     ]
 

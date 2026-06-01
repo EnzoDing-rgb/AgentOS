@@ -9,36 +9,32 @@ W_I: dict[Stage, float] = {
     Stage.VALIDATION: 2.5,
 }
 
-# Tier pool: Qwen family via 阿里云百炼 (DashScope) — 4-tier cost gradient.
-# T1 = Qwen3.5-Flash (cheapest, ¥0.2/M in, ~¥0.8/M out)
-# T2 = Qwen3.6-Flash (lightweight, ¥1.2/M in, ¥7.2/M out)
-# T3 = Qwen3.6-Plus (balanced, ¥2/M in, ¥12/M out)
-# T4 = Qwen3.7-Max  (flagship, ¥4/M in, ¥16/M out, 5折 ~¥2/M in)
-# T4 is last resort — only reached via escalation after T3 fails. Selector never
-# picks T4 directly (tiny progress deltas vs huge cost).
+# Tier pool: Qwen family via 阿里云百炼 — 4-tier with coder models.
+# T1=qwen3.5-flash (¥0.3/¥0.6), T2=qwen3-coder-flash (¥0.5/¥2),
+# T3=qwen3.6-plus (¥2/¥6), T4=qwen3-coder-plus (¥4/¥12, SWE-bench 78.8%)
 TIER1_BACKEND = "tier1_qwen35_flash"
-TIER2_BACKEND = "tier2_qwen36_flash"
+TIER2_BACKEND = "tier2_qwen3_coder_flash"
 TIER3_BACKEND = "tier3_qwen36_plus"
-TIER4_BACKEND = "tier4_qwen37_max"
+TIER4_BACKEND = "tier4_qwen3_coder_plus"
 
 PROGRESS_TABLE: dict[Stage, dict[str, float]] = {
     Stage.LOCALIZATION: {
         TIER1_BACKEND: 0.30,
         TIER2_BACKEND: 0.50,
         TIER3_BACKEND: 0.62,
-        TIER4_BACKEND: 0.64,  # tiny delta: escalation-only for LOC
+        TIER4_BACKEND: 0.65,  # coder-plus bit better even for LOC
     },
     Stage.REPAIR: {
         TIER1_BACKEND: 0.15,
-        TIER2_BACKEND: 0.35,
+        TIER2_BACKEND: 0.38,  # coder-flash bit better at repair
         TIER3_BACKEND: 0.45,
-        TIER4_BACKEND: 0.58,  # significant delta: selector CAN pick T4 for repair
+        TIER4_BACKEND: 0.62,  # coder-plus significantly better at repair
     },
     Stage.VALIDATION: {
         TIER1_BACKEND: 0.25,
         TIER2_BACKEND: 0.45,
         TIER3_BACKEND: 0.55,
-        TIER4_BACKEND: 0.57,  # tiny delta: escalation-only for VAL
+        TIER4_BACKEND: 0.60,  # coder-plus better at validation too
     },
 }
 
@@ -51,10 +47,10 @@ PROGRESS_SCALE: float = 18.0
 # T1 is expected to fail often → upgrade quickly. T3 gets most patience.
 # Resets when a step makes progress (bash_has_progress returns True).
 TIER_ESCALATION_PATIENCE: dict[int, int] = {
-    1: 4,   # T1 (3.5-flash): 4 non-progress steps → T2 (slightly more patient)
-    2: 5,   # T2 (3.6-flash): 5 non-progress steps → T3
-    3: 5,   # T3 (3.6-plus): 5 non-progress steps → T4
-    4: 6,   # T4 (3.7-max): 6 non-progress steps → give up, downgrade to T2
+    1: 4,   # T1→T2 after 4 non-progress steps
+    2: 5,   # T2→T3 after 5 non-progress steps
+    3: 3,   # T3→T4 after 3 non-progress steps (coder-plus is cheap enough, be aggressive)
+    4: 5,   # T4 stop-loss after 5 non-progress steps
 }
 
 # After T4 fails to make progress, downgrade to this tier instead of stagnation.
@@ -62,10 +58,10 @@ T4_DOWNGRADE_TIER = 2
 
 # Per-tier max consecutive turns before forced upgrade.
 TIER_MAX_TURNS: dict[int, int] = {
-    1: 20,   # T1: max 20 turns → force T2 (cheap but slow)
-    2: 35,   # T2: max 35 turns → force T3
-    3: 40,   # T3: max 40 turns → force T4 (don't waste time on plus)
-    4: 999,  # T4: no turn cap
+    1: 20,
+    2: 35,
+    3: 30,   # T3 max 30 turns → force T4 (coder-plus is cheap, use it)
+    4: 999,
 }
 
 # Adaptive routing (budgetflow_full only): rolling task feedback + in-run recovery.
@@ -88,11 +84,11 @@ UNCAPPED_BUDGET_THRESHOLD = 1_000_000.0
 # 阿里云百炼 (DashScope) OpenAI-compatible endpoint.
 DASHSCOPE_API_BASE = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
-# Qwen model IDs (bare names, no provider prefix — litellm routes via api_base).
+# Qwen model IDs — coder models for T2/T4 (code-specialized).
 QWEN_T1_MODEL = "qwen3.5-flash"
-QWEN_T2_MODEL = "qwen3.6-flash"
+QWEN_T2_MODEL = "qwen3-coder-flash"
 QWEN_T3_MODEL = "qwen3.6-plus"
-QWEN_T4_MODEL = "qwen3.7-max"
+QWEN_T4_MODEL = "qwen3-coder-plus"
 
 # litellm model strings: openai/ prefix + custom api_base → 百炼.
 TIER1_MODEL = f"openai/{QWEN_T1_MODEL}"
@@ -102,9 +98,9 @@ TIER4_MODEL = f"openai/{QWEN_T4_MODEL}"
 
 # Terminal model= labels for console output.
 TIER1_DISPLAY = "qwen3.5-flash"
-TIER2_DISPLAY = "qwen3.6-flash"
+TIER2_DISPLAY = "qwen3-coder-flash"
 TIER3_DISPLAY = "qwen3.6-plus"
-TIER4_DISPLAY = "qwen3.7-max"
+TIER4_DISPLAY = "qwen3-coder-plus"
 
 TIER_DISPLAY_BY_BACKEND: dict[str, str] = {
     TIER1_BACKEND: TIER1_DISPLAY,
