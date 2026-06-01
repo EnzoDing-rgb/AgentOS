@@ -146,3 +146,34 @@ def test_evidence_rescue_does_not_consume_window_without_real_gold_edit() -> Non
         remaining_budget=100,
         total_budget=100,
     ) == 4
+
+
+def test_evidence_rescue_stop_loss_after_window_and_patience() -> None:
+    rescue = EvidenceRescueState(trigger_turns=1, window_turns=2, stop_loss_turns=3)
+
+    assert not rescue.should_stop_loss(gold_edited=True)
+    assert rescue.forced_min_tier(
+        stage=Stage.REPAIR,
+        gold_edited=True,
+        current_tier=2,
+        remaining_budget=100,
+        total_budget=100,
+    ) == 4
+    assert rescue.forced_min_tier(
+        stage=Stage.REPAIR,
+        gold_edited=True,
+        current_tier=2,
+        remaining_budget=100,
+        total_budget=100,
+    ) == 4
+    assert not rescue.should_stop_loss(gold_edited=True)
+
+    rescue.forced_min_tier(
+        stage=Stage.REPAIR,
+        gold_edited=True,
+        current_tier=2,
+        remaining_budget=100,
+        total_budget=100,
+    )
+
+    assert rescue.should_stop_loss(gold_edited=True)

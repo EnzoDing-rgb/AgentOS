@@ -60,6 +60,7 @@ class EvidenceRescueState:
 
     trigger_turns: int = 6
     window_turns: int = 3
+    stop_loss_turns: int = 10
     min_headroom_frac: float = 0.18
     rescue_tier: int = 4
     evidence_turns: int = 0
@@ -75,6 +76,11 @@ class EvidenceRescueState:
         remaining_budget: float,
         total_budget: float,
     ) -> int | None:
+        has_evidence = gold_edited and stage in (Stage.REPAIR, Stage.VALIDATION)
+        if not has_evidence:
+            return None
+
+        self.evidence_turns += 1
         if self.window_remaining > 0:
             self.window_remaining -= 1
             return self.rescue_tier
@@ -82,11 +88,6 @@ class EvidenceRescueState:
         if self.window_opened:
             return None
 
-        has_evidence = gold_edited and stage in (Stage.REPAIR, Stage.VALIDATION)
-        if not has_evidence:
-            return None
-
-        self.evidence_turns += 1
         if self.evidence_turns < self.trigger_turns:
             return None
 
@@ -99,6 +100,11 @@ class EvidenceRescueState:
         self.window_opened = True
         self.window_remaining = max(0, self.window_turns - 1)
         return self.rescue_tier
+
+    def should_stop_loss(self, *, gold_edited: bool) -> bool:
+        if not gold_edited or not self.window_opened or self.window_remaining > 0:
+            return False
+        return self.evidence_turns >= self.stop_loss_turns
 
 
 @dataclass
