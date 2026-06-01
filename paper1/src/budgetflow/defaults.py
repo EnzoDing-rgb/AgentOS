@@ -9,29 +9,36 @@ W_I: dict[Stage, float] = {
     Stage.VALIDATION: 2.5,
 }
 
-# Tier pool: Qwen family via 阿里云百炼 (DashScope).
+# Tier pool: Qwen family via 阿里云百炼 (DashScope) — 4-tier cost gradient.
 # T1 = Qwen3.5-Flash (cheapest, ¥0.2/M in, ~¥0.8/M out)
 # T2 = Qwen3.6-Flash (lightweight, ¥1.2/M in, ¥7.2/M out)
 # T3 = Qwen3.6-Plus (balanced, ¥2/M in, ¥12/M out)
+# T4 = Qwen3.7-Max  (flagship, ¥4/M in, ¥16/M out, 5折 ~¥2/M in)
+# T4 is last resort — only reached via escalation after T3 fails. Selector never
+# picks T4 directly (tiny progress deltas vs huge cost).
 TIER1_BACKEND = "tier1_qwen35_flash"
 TIER2_BACKEND = "tier2_qwen36_flash"
 TIER3_BACKEND = "tier3_qwen36_plus"
+TIER4_BACKEND = "tier4_qwen37_max"
 
 PROGRESS_TABLE: dict[Stage, dict[str, float]] = {
     Stage.LOCALIZATION: {
         TIER1_BACKEND: 0.30,
         TIER2_BACKEND: 0.50,
         TIER3_BACKEND: 0.62,
+        TIER4_BACKEND: 0.64,  # tiny delta: escalation-only for LOC
     },
     Stage.REPAIR: {
         TIER1_BACKEND: 0.15,
         TIER2_BACKEND: 0.35,
         TIER3_BACKEND: 0.45,
+        TIER4_BACKEND: 0.58,  # significant delta: selector CAN pick T4 for repair
     },
     Stage.VALIDATION: {
         TIER1_BACKEND: 0.25,
         TIER2_BACKEND: 0.45,
         TIER3_BACKEND: 0.55,
+        TIER4_BACKEND: 0.57,  # tiny delta: escalation-only for VAL
     },
 }
 
@@ -44,9 +51,10 @@ PROGRESS_SCALE: float = 18.0
 # T1 is expected to fail often → upgrade quickly. T3 gets most patience.
 # Resets when a step makes progress (bash_has_progress returns True).
 TIER_ESCALATION_PATIENCE: dict[int, int] = {
-    1: 3,   # spark/gpt-5.2 → upgrade to T2 after 3 non-progress steps
-    2: 5,   # flash → upgrade to T3 after 5 non-progress steps
-    3: 10,  # pro → if this fails for 10 steps, task is genuinely stuck (stagnation)
+    1: 3,   # T1 (3.5-flash): 3 non-progress steps → T2
+    2: 5,   # T2 (3.6-flash): 5 non-progress steps → T3
+    3: 8,   # T3 (3.6-plus): 8 non-progress steps → T4 (last resort)
+    4: 15,  # T4 (3.7-max): 15 steps → stagnation (ultimate last resort)
 }
 
 # Per-tier max consecutive turns before forced upgrade.
@@ -54,9 +62,10 @@ TIER_ESCALATION_PATIENCE: dict[int, int] = {
 # Escalation handles "T1 is completely stuck (no progress)".
 # After max_turns on a tier, force upgrade even if progress is being made.
 TIER_MAX_TURNS: dict[int, int] = {
-    1: 25,   # T1: max 25 turns → force T2 (cheap but slow, don't waste time)
-    2: 40,   # T2: max 40 turns → force T3 (balanced, give more runway)
-    3: 999,  # T3: no limit (best model, let it run)
+    1: 25,   # T1: max 25 turns → force T2 (cheap but slow)
+    2: 40,   # T2: max 40 turns → force T3 (balanced, more runway)
+    3: 60,   # T3: max 60 turns → force T4 (if plus can't solve it, try max)
+    4: 999,  # T4: no turn cap (if max can't solve it, no model can)
 }
 
 # Adaptive routing (budgetflow_full only): rolling task feedback + in-run recovery.
@@ -83,27 +92,32 @@ DASHSCOPE_API_BASE = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 QWEN_T1_MODEL = "qwen3.5-flash"
 QWEN_T2_MODEL = "qwen3.6-flash"
 QWEN_T3_MODEL = "qwen3.6-plus"
+QWEN_T4_MODEL = "qwen3.7-max"
 
 # litellm model strings: openai/ prefix + custom api_base → 百炼.
 TIER1_MODEL = f"openai/{QWEN_T1_MODEL}"
 TIER2_MODEL = f"openai/{QWEN_T2_MODEL}"
 TIER3_MODEL = f"openai/{QWEN_T3_MODEL}"
+TIER4_MODEL = f"openai/{QWEN_T4_MODEL}"
 
 # Terminal model= labels for console output.
 TIER1_DISPLAY = "qwen3.5-flash"
 TIER2_DISPLAY = "qwen3.6-flash"
 TIER3_DISPLAY = "qwen3.6-plus"
+TIER4_DISPLAY = "qwen3.7-max"
 
 TIER_DISPLAY_BY_BACKEND: dict[str, str] = {
     TIER1_BACKEND: TIER1_DISPLAY,
     TIER2_BACKEND: TIER2_DISPLAY,
     TIER3_BACKEND: TIER3_DISPLAY,
+    TIER4_BACKEND: TIER4_DISPLAY,
 }
 
 TIER_MODEL_BY_BACKEND: dict[str, str] = {
     TIER1_BACKEND: TIER1_MODEL,
     TIER2_BACKEND: TIER2_MODEL,
     TIER3_BACKEND: TIER3_MODEL,
+    TIER4_BACKEND: TIER4_MODEL,
 }
 
 # Back-compat aliases for scripts that reference old model names.

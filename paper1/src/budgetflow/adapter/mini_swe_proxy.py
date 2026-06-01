@@ -29,6 +29,8 @@ from ..defaults import (
     TIER2_MODEL,
     TIER3_BACKEND,
     TIER3_MODEL,
+    TIER4_BACKEND,
+    TIER4_MODEL,
     TIER_ESCALATION_PATIENCE,
     TIER_MAX_TURNS,
 )
@@ -51,7 +53,7 @@ logger = logging.getLogger("budgetflow_litellm_model")
 
 configure_litellm_quiet()
 
-_DASHSCOPE_BACKENDS = frozenset({TIER1_BACKEND, TIER2_BACKEND, TIER3_BACKEND})
+_DASHSCOPE_BACKENDS = frozenset({TIER1_BACKEND, TIER2_BACKEND, TIER3_BACKEND, TIER4_BACKEND})
 
 
 class BudgetFlowLitellmModel:
@@ -340,6 +342,7 @@ class BudgetFlowLitellmModel:
                 TIER1_BACKEND: TIER1_MODEL,
                 TIER2_BACKEND: TIER2_MODEL,
                 TIER3_BACKEND: TIER3_MODEL,
+                TIER4_BACKEND: TIER4_MODEL,
             }
             return model_map[backend.name], common
         raise ValueError(f"unknown backend: {backend.name}")

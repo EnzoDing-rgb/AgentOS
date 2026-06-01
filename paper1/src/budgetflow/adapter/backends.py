@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ..defaults import TIER1_BACKEND, TIER2_BACKEND, TIER3_BACKEND
+from ..defaults import TIER1_BACKEND, TIER2_BACKEND, TIER3_BACKEND, TIER4_BACKEND
 from ..types import Backend
 
 # rpm_limit / concurrency_limit kept on Backend for Tier-2 paper metrics only; governor does not enforce them.
@@ -8,14 +8,15 @@ _UNLIMITED = 0
 
 
 def build_compare_backends() -> list[Backend]:
-    """Three-tier Qwen pool via 阿里云百炼.
+    """Four-tier Qwen pool via 阿里云百炼.
 
     Costs are governor units scaled from ¥ pricing (per 1M tokens):
       T1 (qwen3.5-flash): ¥0.2/M in, ¥0.8/M out
       T2 (qwen3.6-flash): ¥1.2/M in, ¥7.2/M out
       T3 (qwen3.6-plus):  ¥2.0/M in, ¥12/M out
-    Ratio T1:T2:T3 ≈ 1:6:10 (in), 1:9:15 (out).
-    Huge T1→T2 gap makes T1 the default, T2/T3 for important stages.
+      T4 (qwen3.7-max):   ¥4.0/M in, ¥16/M out (5折 ~¥2/M)
+    T4 is last resort: selector picks for REPAIR when budget loose,
+    escalation-only for LOC/VAL. 2x T3 cost, marginally better.
     """
     return [
         Backend(
@@ -50,6 +51,17 @@ def build_compare_backends() -> list[Backend]:
             mean_output_tokens=1024,
             progress_score=0.18,
             latency_ms=700,
+        ),
+        Backend(
+            name=TIER4_BACKEND,
+            tier=4,
+            cost_per_input_token=0.0040,
+            cost_per_output_token=0.0160,
+            rpm_limit=_UNLIMITED,
+            concurrency_limit=_UNLIMITED,
+            mean_output_tokens=1024,
+            progress_score=0.20,
+            latency_ms=1000,
         ),
     ]
 
