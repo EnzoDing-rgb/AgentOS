@@ -312,6 +312,13 @@ def _format_live_snapshot(
     *,
     strategy_names: list[str],
     resolved_by_strategy: dict[str, list[bool]],
+    task_cost_by_strategy: dict[str, list[float]],
+    turns_by_strategy: dict[str, list[int]],
+    spark_by_strategy: dict[str, list[float]],
+    flash_by_strategy: dict[str, list[float]],
+    pro_by_strategy: dict[str, list[float]],
+    batch_spent_by_strategy: dict[str, float],
+    batch_caps: dict[str, float | None],
     runs_done: int,
     total_runs: int,
     tasks_per_strategy: int,
@@ -319,29 +326,49 @@ def _format_live_snapshot(
     out_path: Path,
     global_line: str | None = None,
 ) -> list[str]:
-    """Top-of-file dashboard: always rewrite so `head` shows current pass/fail."""
+    """Top-of-file dashboard: pass/fail + cost summary in one table."""
     total_pass = sum(sum(1 for flag in flags if flag) for flags in resolved_by_strategy.values())
     total_fail = runs_done - total_pass
     running = max(0, total_runs - runs_done)
+    elapsed = time.time() - started
     lines = [
-        "=== LIVE SNAPSHOT (read this block first) ===",
-        f"elapsed_s={time.time() - started:.1f}",
-        f"GLOBAL done={runs_done}/{total_runs} running={running} PASS={total_pass} FAIL={total_fail}",
+        f"=== RUN STATUS done={runs_done}/{total_runs} running={running} pass={total_pass} fail={total_fail} elapsed={elapsed:.0f}s ===",
     ]
     if global_line:
         lines.append(global_line)
     lines.append(
-        f"{'strategy':<28} {'done':>4} {'plan':>4} {'PASS':>5} {'FAIL':>5}"
+        f"{'strategy':<28} {'done':>4} {'plan':>4} {'PASS':>5} {'FAIL':>5} {'rate':>6} "
+        f"{'avg_cost':>8} {'avg_turn':>7} {'spark':>5} {'flash':>5} {'pro':>5} "
+        f"{'batch_spent':>11} {'batch_cap':>10}"
     )
-    lines.append("-" * 52)
+    lines.append("-" * 110)
     for name in strategy_names:
         flags = resolved_by_strategy.get(name, [])
+        costs = task_cost_by_strategy.get(name, [])
+        turns = turns_by_strategy.get(name, [])
+        spark = spark_by_strategy.get(name, [])
+        flash = flash_by_strategy.get(name, [])
+        pro = pro_by_strategy.get(name, [])
         done_n = len(flags)
         pass_n = sum(1 for flag in flags if flag)
         fail_n = done_n - pass_n
-        lines.append(f"{name:<28} {done_n:>4} {tasks_per_strategy:>4} {pass_n:>5} {fail_n:>5}")
+        rate = f"{100*pass_n/done_n:.0f}%" if done_n else "-"
+        avg_cost = sum(costs) / len(costs) if costs else 0.0
+        avg_turns = sum(turns) / len(turns) if turns else 0.0
+        avg_spark = sum(spark) / len(spark) if spark else 0.0
+        avg_flash = sum(flash) / len(flash) if flash else 0.0
+        avg_pro = sum(pro) / len(pro) if pro else 0.0
+        batch_spent = batch_spent_by_strategy.get(name, 0.0)
+        cap = batch_caps.get(name)
+        cap_s = f"{cap:.0f}" if cap is not None else "uncapped"
+        lines.append(
+            f"{name:<28} {done_n:>4} {tasks_per_strategy:>4} {pass_n:>5} {fail_n:>5} {rate:>6} "
+            f"{avg_cost:>8.1f} {avg_turns:>7.1f} {avg_spark*100:>4.0f}% {avg_flash*100:>4.0f}% {avg_pro*100:>4.0f}% "
+            f"{batch_spent:>11.1f} {cap_s:>10}"
+        )
     lines.append(f"jsonl={out_path}")
-    lines.append("=== event log (newest near bottom) ===")
+    lines.append("")
+    lines.append("=== EVENT LOG (newest at bottom) ===")
     lines.append("")
     return lines
 
@@ -369,6 +396,13 @@ def _write_summary_file(
     live = _format_live_snapshot(
         strategy_names=strategy_names,
         resolved_by_strategy=resolved_by_strategy,
+        task_cost_by_strategy=task_cost_by_strategy,
+        turns_by_strategy=turns_by_strategy,
+        spark_by_strategy=spark_by_strategy,
+        flash_by_strategy=flash_by_strategy,
+        pro_by_strategy=pro_by_strategy,
+        batch_spent_by_strategy=batch_spent_by_strategy,
+        batch_caps=batch_caps,
         runs_done=runs_done,
         total_runs=total_runs,
         tasks_per_strategy=tasks_per_strategy,
@@ -377,22 +411,6 @@ def _write_summary_file(
         global_line=global_line,
     )
     lines = live + list(summary_lines)
-    lines.append("")
-    lines.extend(
-        _format_strategy_totals(
-            strategy_names=strategy_names,
-            resolved_by_strategy=resolved_by_strategy,
-            task_cost_by_strategy=task_cost_by_strategy,
-            batch_spent_by_strategy=batch_spent_by_strategy,
-            turns_by_strategy=turns_by_strategy,
-            spark_by_strategy=spark_by_strategy,
-            flash_by_strategy=flash_by_strategy,
-            pro_by_strategy=pro_by_strategy,
-            batch_caps=batch_caps,
-        )
-    )
-    progress = global_line or f"total={total_runs} done={runs_done} running={max(0, total_runs - runs_done)}"
-    lines.append(f"PROGRESS {progress} elapsed={time.time() - started:.1f}s")
     path.write_text("\n".join(lines) + "\n")
 
 
