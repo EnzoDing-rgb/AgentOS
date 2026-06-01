@@ -88,6 +88,11 @@ _STRATEGY_ALIASES = {
 }
 
 
+def _normalize_strategy(name: str) -> str:
+    """Resolve legacy strategy names to current canonical names."""
+    return _STRATEGY_ALIASES.get(name, name)
+
+
 def _batch_budget_cap(cfg: CompareStrategy, budget_caps: dict[str, float]) -> float:
     if cfg.budget_tier is None:
         return UNCAPPED_BUDGET
@@ -571,7 +576,7 @@ def _rebuild_state_from_jsonl(path: Path, header_lines: list[str]) -> _CompareSt
             record = json.loads(line)
         except json.JSONDecodeError:
             continue
-        name = record.get("strategy")
+        name = _normalize_strategy(record.get("strategy") or "")
         if not name:
             continue
         state.runs_done += 1
@@ -658,7 +663,7 @@ def _completed_keys(jsonl_path: Path, *, skip_bad: bool = False) -> set[tuple[st
         # Also skip records with 0 cost and 1 turn (API reject before any work).
         if skip_bad and record.get("total_cost", 1) == 0 and record.get("llm_turns", 0) <= 1:
             continue
-        strategy = record.get("strategy")
+        strategy = _normalize_strategy(record.get("strategy") or "")
         task = record.get("instance_id")
         if strategy and task:
             done.add((strategy, task))
