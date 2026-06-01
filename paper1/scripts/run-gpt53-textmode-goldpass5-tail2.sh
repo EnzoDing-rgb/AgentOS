@@ -81,8 +81,16 @@ fi
 
 "${CMD[@]}" &
 child_pid=$!
+set +e
 wait "$child_pid"
+run_code=$?
+set -e
 child_pid=""
+echo "[run] exit=$run_code"
+if (( run_code != 0 )); then
+  echo "[done] $(date -Is)"
+  exit "$run_code"
+fi
 
 "$PY" "$PAPER_DIR/scripts/summarize-nightly-budgetflow.py" "$STEM"
 echo "[done] $(date -Is)"
