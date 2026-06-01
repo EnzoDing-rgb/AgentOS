@@ -185,6 +185,8 @@ def _run_one(
         "agent_gold_edited": result.agent_gold_edited,
         "agent_gold_files": list(result.agent_gold_files),
         "agent_submitted": result.agent_submitted,
+        "prompt_tokens_total": result.prompt_tokens_total,
+        "completion_tokens_total": result.completion_tokens_total,
         "elapsed_s": round(time.time() - started, 1),
         "agent_summary": {
             "gold_edited": result.agent_gold_edited,

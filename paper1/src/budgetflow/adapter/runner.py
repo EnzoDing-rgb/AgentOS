@@ -57,6 +57,8 @@ class MiniSweRunResult:
     agent_submitted: bool
     agent_gold_files: tuple[str, ...]
     violations: tuple[str, ...]
+    prompt_tokens_total: int = 0
+    completion_tokens_total: int = 0
 
 
 def _load_agent_config(*, step_limit: int = 250) -> dict:
@@ -245,4 +247,6 @@ def run_mini_swe_task(
         agent_submitted=bool(agent_summary.get("submitted")),
         agent_gold_files=tuple(str(f) for f in (agent_summary.get("gold_files") or ())),
         violations=tuple(violations),
+        prompt_tokens_total=model._total_prompt_tokens,
+        completion_tokens_total=model._total_completion_tokens,
     )

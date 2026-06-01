@@ -92,6 +92,8 @@ class BudgetFlowLitellmModel:
         self._no_progress_streak = 0
         self._no_progress_on_current_tier = 0  # consecutive non-progress steps on current tier
         self._last_backend_tier: int = 0  # track tier changes to reset patience
+        self._total_prompt_tokens = 0
+        self._total_completion_tokens = 0
         self._recent_commands: deque[str] = deque(maxlen=16)
         self._progress_refresh = progress_refresh
         self.backend_picks: list[str] = []
@@ -195,6 +197,8 @@ class BudgetFlowLitellmModel:
         message = response.choices[0].message.model_dump()
         prompt_tokens = getattr(response.usage, "prompt_tokens", None) or input_tokens
         completion_tokens = getattr(response.usage, "completion_tokens", None) or backend.mean_output_tokens
+        self._total_prompt_tokens += prompt_tokens
+        self._total_completion_tokens += completion_tokens
         actual_cost = (
             prompt_tokens * backend.cost_per_input_token
             + completion_tokens * backend.cost_per_output_token
