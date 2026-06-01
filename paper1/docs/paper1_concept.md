@@ -953,3 +953,5 @@ This is outside the scope of Tier 1, but it is a natural Tier 2+ or Paper 2 dire
 | Workflow-Level Router | pick a model or routing profile once at workflow start |
 | Budget-Only Step Scheduler | decide per step using only budget state, ignoring workflow stage and observation type |
 | BudgetFlow Full | per-step upgrade decisions + stage weights + `expected_progress_gain` + `budget_pressure` + runtime governance |
+
+<!-- Cursor write check: 2026-06-02 — file edit OK -->
