@@ -111,6 +111,7 @@ run_resume_loop() {
         --trace-turns \
         --trace-max-turns 60 \
         --per-task-cap 3000 \
+        --max-overrun 300 \
         --pressure-init 0.30 \
         --resume
     local code=$?

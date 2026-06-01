@@ -21,10 +21,16 @@ class BudgetGovernor:
 
     def __init__(self, config: GovernorConfig, ledger: WorkflowLedgerStore) -> None:
         self.config = config
+        self.soft_budget = config.soft_budget if config.soft_budget is not None else config.total_budget
+        self.absolute_budget = (
+            self.soft_budget + max(0.0, config.max_overrun)
+            if config.soft_budget is not None
+            else config.total_budget
+        )
         self.ledger = ledger
         self.state = BudgetState(
-            total_budget=config.total_budget,
-            available_budget=config.total_budget,
+            total_budget=self.absolute_budget,
+            available_budget=self.absolute_budget,
         )
         self._lock = threading.Lock()
         self._active_reservations: dict[str, Reservation] = {}
@@ -61,6 +67,9 @@ class BudgetGovernor:
     def budget_snapshot(self) -> dict[str, float]:
         return {
             "total_budget": self.state.total_budget,
+            "soft_budget": self.soft_budget,
+            "absolute_budget": self.absolute_budget,
+            "max_overrun": max(0.0, self.absolute_budget - self.soft_budget),
             "available_budget": self.state.available_budget,
             "reserved_budget": self.state.reserved_budget,
             "spent_budget": self.state.spent_budget,
@@ -90,7 +99,7 @@ class BudgetGovernor:
         if self.state.spent_budget >= self.state.total_budget:
             return "budget_exhausted"
         if reserved_cost > self._remaining_budget():
-            return "budget_exhausted"
+            return "overrun_guard" if self.soft_budget < self.absolute_budget else "budget_exhausted"
         return None
 
     def reserve(self, workflow_id: str, backend: Backend, estimate: CostEstimate) -> Reservation | None:

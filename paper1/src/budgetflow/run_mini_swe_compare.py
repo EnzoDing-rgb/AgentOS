@@ -515,6 +515,8 @@ def _run_strategy_batch(
     *,
     batch_budget_cap: float,
     per_task_cap: float | None = None,
+    soft_budget: float | None = None,
+    max_overrun: float = 0.0,
     step_limit: int,
     trace_console: TraceConsoleLevel,
     heartbeat: float,
@@ -544,14 +546,26 @@ def _run_strategy_batch(
     governor: BudgetGovernor | None = None
     if not use_per_task:
         governor = BudgetGovernor(
-            GovernorConfig(total_budget=batch_budget_cap, default_max_output_tokens=4096),
+            GovernorConfig(
+                total_budget=batch_budget_cap,
+                default_max_output_tokens=4096,
+                soft_budget=soft_budget,
+                max_overrun=max_overrun if soft_budget is not None else 0.0,
+            ),
             ledger,
         )
         if initial_spent > 0:
             governor.state.spent_budget = initial_spent
-            governor.state.available_budget = max(0.0, batch_budget_cap - initial_spent)
+            governor.state.available_budget = max(0.0, governor.state.total_budget - initial_spent)
 
-    cap_label = f"per_task_cap={per_task_cap:.1f}" if use_per_task else f"shared_cap={batch_budget_cap:.1f}"
+    if use_per_task:
+        cap_label = f"per_task_cap={per_task_cap:.1f}"
+        if max_overrun > 0:
+            cap_label += f"+overrun={max_overrun:.1f}"
+    else:
+        cap_label = f"shared_cap={batch_budget_cap:.1f}"
+        if soft_budget is not None:
+            cap_label += f" soft={soft_budget:.1f}+overrun={max_overrun:.1f}"
     _log(
         f"{tag('batch', bold=False)} strategy={cfg.name} tasks={len(tasks)} "
         f"{cap_label} spent_resume={initial_spent:.1f} mode=serial_tasks"
@@ -595,10 +609,15 @@ def _run_strategy_batch(
                 assert per_task_cap is not None
                 task_ledger = WorkflowLedgerStore()
                 task_governor = BudgetGovernor(
-                    GovernorConfig(total_budget=per_task_cap, default_max_output_tokens=4096),
+                    GovernorConfig(
+                        total_budget=per_task_cap,
+                        default_max_output_tokens=4096,
+                        soft_budget=per_task_cap if max_overrun > 0 else None,
+                        max_overrun=max_overrun,
+                    ),
                     task_ledger,
                 )
-                effective_batch_cap = per_task_cap
+                effective_batch_cap = task_governor.state.total_budget
             return _run_one(
                 task,
                 cfg=cfg,
@@ -1007,6 +1026,18 @@ def main() -> None:
         "batch --tight/--loose caps are ignored for budgeting",
     )
     parser.add_argument(
+        "--soft-budget",
+        type=float,
+        default=None,
+        help="optional soft budget for shared mode; absolute cap is soft budget plus --max-overrun",
+    )
+    parser.add_argument(
+        "--max-overrun",
+        type=float,
+        default=0.0,
+        help="bounded overrun above --soft-budget or --per-task-cap (default 0)",
+    )
+    parser.add_argument(
         "--w-profile",
         choices=("repair_heavy", "validation_heavy", "flat"),
         default=None,
@@ -1015,6 +1046,7 @@ def main() -> None:
     args = parser.parse_args()
     if args.w_profile:
         os.environ["BF_W_PROFILE"] = args.w_profile
+    max_overrun = max(0.0, args.max_overrun)
     if args.resume:
         args.append = True
         args.skip_completed = True
@@ -1133,9 +1165,11 @@ def main() -> None:
     print(f"{dim('task_order=' + ', '.join(_task_descriptor(t) for t in tasks))}", flush=True)
     print(f"{dim('strategies=' + ','.join(strategy_names))}", flush=True)
     budget_mode = (
-        f"per_task_cap={args.per_task_cap}"
+        f"per_task_cap={args.per_task_cap}" + (f"+overrun={max_overrun}" if max_overrun else "")
         if args.per_task_cap
-        else "shared_batch_budget"
+        else "shared_batch_budget" + (
+            f" soft_budget={args.soft_budget}+overrun={max_overrun}" if args.soft_budget is not None else ""
+        )
     )
     print(
         f"{dim('mode=' + budget_mode + '; tasks serial within policy; policies parallel with --jobs')}",
@@ -1158,6 +1192,7 @@ def main() -> None:
         f"compare_{len(tasks)}x{len(strategies)} task_set={args.task_set} preset={args.preset} "
         f"tasks={len(tasks)} strategies={strategy_names}",
         f"budget_mode={'per_task_cap=' + str(args.per_task_cap) if args.per_task_cap else 'shared'} "
+        f"soft_budget={args.soft_budget} max_overrun={max_overrun} "
         f"loose={loose} tight={tight} w_i_profile={args.w_profile or active_w_i_profile_name()} "
         f"pressure_init={pressure_init} pressure_max={pressure_max} "
         f"policy_jobs={args.jobs} hard_cap=settle_clamp",
@@ -1260,6 +1295,8 @@ def main() -> None:
             batch_tasks,
             batch_budget_cap=batch_cap,
             per_task_cap=args.per_task_cap,
+            soft_budget=args.soft_budget,
+            max_overrun=max_overrun,
             step_limit=args.step_limit,
             trace_console=trace_console,
             heartbeat=args.heartbeat,

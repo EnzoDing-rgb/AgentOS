@@ -79,6 +79,8 @@ class GovernorConfig:
     total_budget: float
     default_max_output_tokens: int
     queue_limit: int = 0
+    soft_budget: float | None = None
+    max_overrun: float = 0.0
 
 
 @dataclass(frozen=True)

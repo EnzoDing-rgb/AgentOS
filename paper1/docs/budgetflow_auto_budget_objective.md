@@ -200,6 +200,13 @@ Current implementation:
 - Explicit `all_flash` / `all_t1` ablation runs can still include T1.
 - This makes the main automatic-budget pool start at T2, which matches the paper claim: BudgetFlow should allocate useful budget, not prove repeatedly that the cheapest weak model is weak.
 
+Soft budget implementation:
+
+- `GovernorConfig` now supports `soft_budget` and `max_overrun`.
+- `run_mini_swe_compare` exposes `--soft-budget` and `--max-overrun`.
+- Per-task experiments can keep a soft cap while allowing a bounded overrun when a turn is already in flight or evidence justifies one more step.
+- `scripts/run-auto-v2-goldpass5.sh` uses `--per-task-cap 3000 --max-overrun 300`.
+
 ## 8. Evaluation Guardrails
 
 Evaluation hardness 是第一优先级。
