@@ -50,6 +50,63 @@ class _StageBucket:
 
 
 @dataclass
+class EvidenceRescueState:
+    """Open one short high-tier window only after concrete repair evidence.
+
+    This is deliberately not a permanent repair floor. It waits until the
+    agent has edited the target/gold file or reached validation, then spends a
+    bounded rescue window while there is still budget headroom.
+    """
+
+    trigger_turns: int = 6
+    window_turns: int = 3
+    min_headroom_frac: float = 0.18
+    rescue_tier: int = 4
+    evidence_turns: int = 0
+    window_remaining: int = 0
+    window_opened: bool = False
+
+    def forced_min_tier(
+        self,
+        *,
+        stage: Stage,
+        agent_phase: str | None,
+        current_tier: int,
+        remaining_budget: float,
+        total_budget: float,
+    ) -> int | None:
+        if self.window_remaining > 0:
+            self.window_remaining -= 1
+            return self.rescue_tier
+
+        if self.window_opened:
+            return None
+
+        phase = (agent_phase or "").strip()
+        has_evidence = stage in (Stage.REPAIR, Stage.VALIDATION) and phase in {
+            "edit_gold",
+            "patch_prep",
+            "test",
+        }
+        if not has_evidence:
+            return None
+
+        self.evidence_turns += 1
+        if self.evidence_turns < self.trigger_turns:
+            return None
+
+        if current_tier >= self.rescue_tier:
+            return None
+
+        if total_budget <= 0 or (remaining_budget / total_budget) < self.min_headroom_frac:
+            return None
+
+        self.window_opened = True
+        self.window_remaining = max(0, self.window_turns - 1)
+        return self.rescue_tier
+
+
+@dataclass
 class AdaptiveRoutingState:
     """Per compare-policy rolling health + in-run recovery knobs."""
 
@@ -66,6 +123,7 @@ class AdaptiveRoutingState:
     ttl_steps_remaining: int = 0
     min_tier_floor: int = 1
     last_weak_stage: Stage | None = None
+    rescue: EvidenceRescueState = field(default_factory=EvidenceRescueState)
 
     def record_task(self, record: dict) -> None:
         self._recent.append(record)
@@ -111,13 +169,21 @@ class AdaptiveRoutingState:
         return 1
 
     def status_snippet(self) -> str:
+        rescue = (
+            f" rescue=evidence:{self.rescue.evidence_turns}"
+            f"/window:{self.rescue.window_remaining}"
+            if self.rescue.window_opened or self.rescue.evidence_turns
+            else ""
+        )
         if self.pressure_boost <= 0 and self.ttl_steps_remaining <= 0:
+            if rescue:
+                return f"adapt=off{rescue}"
             return "adapt=off"
         stage = self.last_weak_stage.value if self.last_weak_stage else "-"
         return (
             f"adapt=on boost=+{self.pressure_boost:.2f} "
             f"ttl={self.ttl_steps_remaining} floor_tier={self.min_tier_for_reserve()} "
-            f"weak_stage={stage}"
+            f"weak_stage={stage}{rescue}"
         )
 
     def _recompute(self) -> None:
@@ -169,6 +235,7 @@ class AdaptiveRoutingState:
         self.ttl_steps_remaining = 0
         self.min_tier_floor = 1
         self.last_weak_stage = None
+        self.rescue = EvidenceRescueState()
         for record in records[-ADAPTIVE_WINDOW :]:
             self.record_task(record)
 
@@ -229,4 +296,3 @@ class AdaptiveRoutingRegistry:
         for state in sorted(states, key=lambda s: s.strategy_name):
             lines.append(f"  {state.strategy_name}: {state.status_snippet()}")
         return lines
-

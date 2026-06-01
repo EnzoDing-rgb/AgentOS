@@ -117,9 +117,14 @@ def _build_turn_trace(
         "error_type": error_type,
     }
     if adaptive is not None:
-        trace["adaptive_ttl"] = getattr(adaptive, "remaining_ttl", None)
-        trace["adaptive_floor"] = getattr(adaptive, "current_floor", None)
-        trace["adaptive_boost"] = getattr(adaptive, "current_boost", None)
+        trace["adaptive_ttl"] = getattr(adaptive, "ttl_steps_remaining", None)
+        trace["adaptive_floor"] = adaptive.min_tier_for_reserve()
+        trace["adaptive_boost"] = getattr(adaptive, "pressure_boost", None)
+        rescue = getattr(adaptive, "rescue", None)
+        if rescue is not None:
+            trace["rescue_evidence_turns"] = getattr(rescue, "evidence_turns", None)
+            trace["rescue_window_remaining"] = getattr(rescue, "window_remaining", None)
+            trace["rescue_window_opened"] = getattr(rescue, "window_opened", None)
     return trace
 
 
@@ -260,6 +265,24 @@ class BudgetFlowLitellmModel:
                     f"starting_tier={min_start} ({backend_tier_label(backend.name)})",
                     flush=True,
                 )
+        if self.routing.adaptive is not None and self.routing.strategy in ("budgetflow_full", "stage_blind"):
+            forced_tier = self.routing.adaptive.rescue.forced_min_tier(
+                stage=stage,
+                agent_phase=self.agent_phase,
+                current_tier=backend.tier,
+                remaining_budget=self.governor.remaining_budget(),
+                total_budget=self.governor.state.total_budget,
+            )
+            if forced_tier is not None and backend.tier < forced_tier:
+                ordered = self.routing.backends
+                candidate = next((b for b in ordered if b.tier >= forced_tier), ordered[-1])
+                print(
+                    f"{tag('rescue', bold=False)} #{self.step_index} "
+                    f"evidence_window tier>={forced_tier} "
+                    f"{backend_tier_label(backend.name)} -> {backend_tier_label(candidate.name)}",
+                    flush=True,
+                )
+                backend = candidate
         prev_tier = self._last_backend_tier
         backend = self._apply_progress_escalation(backend)
         escalated_backend = backend.name

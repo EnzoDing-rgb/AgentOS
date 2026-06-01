@@ -7,7 +7,8 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 sys.path.insert(0, str(SRC))
 
-from budgetflow.adaptive_routing import AdaptiveRoutingState
+from budgetflow.adaptive_routing import AdaptiveRoutingState, EvidenceRescueState
+from budgetflow.types import Stage
 
 
 def _fail_record(**extra) -> dict:
@@ -53,3 +54,64 @@ def test_on_step_ticks_ttl() -> None:
     state.ttl_steps_remaining = 2
     state.on_step()
     assert state.ttl_steps_remaining == 1
+
+
+def test_evidence_rescue_opens_one_bounded_window_after_gold_repair_stalls() -> None:
+    rescue = EvidenceRescueState(trigger_turns=3, window_turns=2, min_headroom_frac=0.20)
+
+    assert rescue.forced_min_tier(
+        stage=Stage.REPAIR,
+        agent_phase="edit_other",
+        current_tier=2,
+        remaining_budget=100,
+        total_budget=100,
+    ) is None
+
+    rescue.forced_min_tier(
+        stage=Stage.REPAIR,
+        agent_phase="edit_gold",
+        current_tier=2,
+        remaining_budget=100,
+        total_budget=100,
+    )
+    rescue.forced_min_tier(
+        stage=Stage.VALIDATION,
+        agent_phase="test",
+        current_tier=2,
+        remaining_budget=100,
+        total_budget=100,
+    )
+
+    assert rescue.forced_min_tier(
+        stage=Stage.REPAIR,
+        agent_phase="edit_gold",
+        current_tier=2,
+        remaining_budget=100,
+        total_budget=100,
+    ) == 4
+    assert rescue.forced_min_tier(
+        stage=Stage.VALIDATION,
+        agent_phase="test",
+        current_tier=2,
+        remaining_budget=100,
+        total_budget=100,
+    ) == 4
+    assert rescue.forced_min_tier(
+        stage=Stage.REPAIR,
+        agent_phase="edit_gold",
+        current_tier=2,
+        remaining_budget=100,
+        total_budget=100,
+    ) is None
+
+
+def test_evidence_rescue_respects_budget_headroom() -> None:
+    rescue = EvidenceRescueState(trigger_turns=1, window_turns=2, min_headroom_frac=0.20)
+
+    assert rescue.forced_min_tier(
+        stage=Stage.REPAIR,
+        agent_phase="edit_gold",
+        current_tier=2,
+        remaining_budget=10,
+        total_budget=100,
+    ) is None
