@@ -172,6 +172,17 @@ class BudgetFlowLitellmModel:
             )
 
         backend = choose_backend(self.routing, turn, expected_costs)
+        # Adaptive starting tier: skip T1/T2 on first step if strategy is on a losing streak
+        if self.step_index == 1 and self.routing.adaptive is not None:
+            min_start = self.routing.adaptive.starting_tier()
+            if backend.tier < min_start:
+                ordered = self.routing.backends
+                backend = ordered[min_start - 1]
+                print(
+                    f"{tag('adapt', bold=False)} #{self.step_index} "
+                    f"starting_tier={min_start} ({backend_tier_label(backend.name)})",
+                    flush=True,
+                )
         prev_tier = self._last_backend_tier
         backend = self._apply_progress_escalation(backend)
         backend = self._reserve_with_downgrade(backend, input_tokens)

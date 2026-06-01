@@ -91,6 +91,25 @@ class AdaptiveRoutingState:
             return max(self.min_tier_floor, 2)
         return 1
 
+    def starting_tier(self) -> int:
+        """Recommended tier to start the next task, based on recent outcomes.
+
+        0 consecutive fails → T1 (default)
+        2+ consecutive fails → T2 (skip cheapest)
+        4+ consecutive fails → T3 (serious trouble, start strong)
+        A resolved task resets the streak to 0.
+        """
+        streak = 0
+        for r in reversed(list(self._recent)):
+            if r.get("harness_resolved"):
+                break
+            streak += 1
+        if streak >= 4:
+            return 3
+        if streak >= 2:
+            return 2
+        return 1
+
     def status_snippet(self) -> str:
         if self.pressure_boost <= 0 and self.ttl_steps_remaining <= 0:
             return "adapt=off"
