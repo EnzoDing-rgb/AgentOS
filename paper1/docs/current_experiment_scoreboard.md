@@ -21,15 +21,16 @@ This is the current evidence table for BudgetFlow paper progress. It is not the 
 | run | purpose | tasks | policy/model | pass | cost | interpretation |
 | --- | --- | ---: | --- | ---: | ---: | --- |
 | `budgetflow_auto_v2_smoke` | BudgetFlow policy smoke | 2 | Qwen pool, tight policies | `1/6` rows, auto_v2 `1/2` | `3368.3` | First positive signal for automatic budget routing; not paper-ready |
-| `gpt53_textmode_goldpass2` | strong scaffold ceiling anchor | 3 | SWE-mini + GPT-5.3 Codex text mode | `3/3` | `597.8` | Tasks are solvable when scaffold protocol is correct |
+| `gpt53_textmode_goldpass2` + `gpt53_textmode_goldpass5_tail2_foreground` | strong scaffold ceiling anchor | 5 | SWE-mini + GPT-5.3 Codex text mode | `4/5` | `1100.4` | GPT-5.3 is viable T4 candidate, but not perfect ceiling |
 | `qwen_api_ping_20260602` | Qwen provider gate | 0 agent tasks | Qwen flash/pro ping | `0/2` API ping | minimal | Qwen compare currently blocked by invalid DashScope key |
 
 ## Key Findings
 
 1. GPT-5.3 Codex is not the earlier failure source. The earlier `all_gpt53` run failed because AICode007/GPT did not work with mini-SWE tool-call mode. Text/backtick mode fixes this.
-2. GPT-5.3 Codex solved `3/3` gold-pass Sympy tasks with SWE-mini in text mode.
-3. BudgetFlow auto_v2 has a real positive smoke signal: it solved one task that `stage_blind_tight` and `budgetflow_full_tight` did not solve in the same smoke.
-4. Qwen-backed formal comparison cannot continue until `DASHSCOPE_API_KEY` is fixed. Running it now would create infra-fail noise, not science.
+2. GPT-5.3 Codex solved `4/5` gold-pass Sympy tasks with SWE-mini in text mode.
+3. `sympy__sympy-16988` is a hard repair case for GPT-5.3: gold file was found and patch application succeeded, but `fail_after` still failed.
+4. BudgetFlow auto_v2 has a real positive smoke signal: it solved one task that `stage_blind_tight` and `budgetflow_full_tight` did not solve in the same smoke.
+5. Qwen-backed formal comparison cannot continue until `DASHSCOPE_API_KEY` is fixed. Running it now would create infra-fail noise, not science.
 
 ## Current Commands
 
@@ -59,6 +60,7 @@ Run GPT-5.3 text-mode ceiling without Qwen:
 ```bash
 cd paper1
 scripts/run-gpt53-textmode-goldpass3.sh gpt53_textmode_goldpass2
+scripts/run-gpt53-textmode-goldpass5-tail2.sh gpt53_textmode_goldpass5_tail2_foreground
 ```
 
 ## Next Decision

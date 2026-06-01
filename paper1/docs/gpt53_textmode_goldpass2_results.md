@@ -101,3 +101,39 @@ data/runs/gpt53_textmode_goldpass2.driver.log
 ```
 
 This strengthens the task-hardness anchor: these gold-pass Sympy tasks are solvable by SWE-mini + GPT-5.3 Codex when the scaffold protocol is correct.
+
+## Goldpass5 Tail Result
+
+To avoid reburning the first three solved tasks, the remaining two gold-pass easy5 tasks were run separately:
+
+```bash
+scripts/run-gpt53-textmode-goldpass5-tail2.sh gpt53_textmode_goldpass5_tail2_foreground
+```
+
+Result:
+
+```text
+all_gpt53 tail: 1/2 PASS
+combined gold-pass easy5 anchor: 4/5 PASS
+tail total_cost: 502.6 governor units
+```
+
+| task | verdict | gold file | turns | cost | failure |
+| --- | --- | --- | ---: | ---: | --- |
+| sympy__sympy-13647 | PASS | sympy/matrices/common.py | 9 | 211.8 | - |
+| sympy__sympy-16988 | FAIL | sympy/sets/sets.py | 11 | 290.9 | repair_fail; patch applied but fail_after still failed |
+
+Output:
+
+```text
+data/runs/gpt53_textmode_goldpass5_tail2_foreground.jsonl
+data/runs/gpt53_textmode_goldpass5_tail2_foreground.summary.log
+data/runs/gpt53_textmode_goldpass5_tail2_foreground.driver.log
+data/runs/trace_sympy__sympy-16988_all_gpt53/submitted.patch
+```
+
+Interpretation:
+
+- GPT-5.3 Codex text mode is a useful regular T4 candidate, but it is not a perfect ceiling for this five-task set.
+- `sympy__sympy-16988` is not an infra or harness failure: gold file was edited, patch extraction and application succeeded, `fail_before` failed as expected, and `pass_to_pass` passed. The model patch failed the target test.
+- For BudgetFlow, this means `16988` should be treated as a hard repair case. If automatic budget cannot solve it without GPT-5.5, that is not automatically a routing bug.
