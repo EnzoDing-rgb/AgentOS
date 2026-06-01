@@ -35,7 +35,7 @@ from ..console_log import backend_tier_label, bold, dim, routing_stage_label, ta
 from ..governor import BudgetGovernor
 from ..types import Backend, TurnInfo, WorkflowStatus
 from .errors import BudgetFlowBudgetError, BudgetFlowStagnationError, BudgetFlowUpstreamError
-from ..run_guards import record_upstream_error
+from ..run_guards import is_fatal_billing_error, record_billing_halt, record_upstream_error
 from .bash_stage import (
     _REPAIR_AGENT_PHASES,
     _VALIDATION_AGENT_PHASES,
@@ -360,14 +360,25 @@ class BudgetFlowLitellmModel:
                 with attempt:
                     return _query()
         except Exception as exc:  # noqa: BLE001
-            action = record_upstream_error(str(exc), backend=backend_name)
+            err_msg = str(exc)
+            # Billing errors: halt everything immediately, don't retry.
+            if is_fatal_billing_error(err_msg):
+                action = record_billing_halt(err_msg, backend=backend_name)
+                raise BudgetFlowUpstreamError(
+                    self.workflow_id,
+                    exit_reason=action.reason or "billing_guard",
+                    step_index=self.step_index,
+                    backend=backend_name,
+                    sample=err_msg,
+                ) from exc
+            action = record_upstream_error(err_msg, backend=backend_name)
             if action.halt_all:
                 raise BudgetFlowUpstreamError(
                     self.workflow_id,
                     exit_reason=action.reason or "upstream_guard",
                     step_index=self.step_index,
                     backend=backend_name,
-                    sample=str(exc),
+                    sample=err_msg,
                 ) from exc
             raise
 

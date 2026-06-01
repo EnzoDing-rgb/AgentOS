@@ -37,6 +37,15 @@ _UPSTREAM_PATTERNS = (
     re.compile(r"llm provider not provided", re.I),
 )
 
+# Patterns that indicate payment/billing issues — halt immediately, don't retry.
+_FATAL_BILLING_PATTERNS = (
+    re.compile(r"overdue.payment", re.I),
+    re.compile(r"Access denied, please make sure your account is in good standing", re.I),
+    re.compile(r"insufficient.balance", re.I),
+    re.compile(r"account.*arrears", re.I),
+    re.compile(r"billing.*issue", re.I),
+)
+
 
 @dataclass(frozen=True)
 class GuardAction:
@@ -189,3 +198,19 @@ def _is_pipeline_failure(record: dict[str, Any]) -> bool:
 def _looks_upstream(message: str) -> bool:
     text = message or ""
     return any(p.search(text) for p in _UPSTREAM_PATTERNS)
+
+
+def is_fatal_billing_error(message: str) -> bool:
+    """Check if error is a payment/billing issue that should halt immediately."""
+    text = message or ""
+    return any(p.search(text) for p in _FATAL_BILLING_PATTERNS)
+
+
+def record_billing_halt(message: str, *, backend: str) -> GuardAction:
+    """Create an immediate halt-all action for billing errors."""
+    reason = f"billing_guard backend={backend} sample={message[:120]}"
+    guard = get_active_guard()
+    if guard is not None:
+        with guard._lock:
+            guard._abort_all_reason = reason
+    return GuardAction(halt_all=True, reason=reason)

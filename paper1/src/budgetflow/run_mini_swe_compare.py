@@ -620,16 +620,23 @@ def _persist_task_record(
         )
 
 
-def _completed_keys(jsonl_path: Path) -> set[tuple[str, str]]:
+def _completed_keys(jsonl_path: Path, *, skip_bad: bool = False) -> set[tuple[str, str]]:
     if not jsonl_path.is_file():
         return set()
     done: set[tuple[str, str]] = set()
+    bad_exits = frozenset({"BadRequestError"})
     for line in jsonl_path.read_text().splitlines():
         if not line.strip():
             continue
         try:
             record = json.loads(line)
         except json.JSONDecodeError:
+            continue
+        # When resuming, don't count billing-error tasks as done — re-run them.
+        if skip_bad and record.get("exit_status") in bad_exits:
+            continue
+        # Also skip records with 0 cost and 1 turn (API reject before any work).
+        if skip_bad and record.get("total_cost", 1) == 0 and record.get("llm_turns", 0) <= 1:
             continue
         strategy = record.get("strategy")
         task = record.get("instance_id")
@@ -892,7 +899,7 @@ def main() -> None:
     checkpoint_path = checkpoint_path_for(out_stem, RUNS_DIR)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     strategy_names = [s.name for s in strategies]
-    completed = _completed_keys(out_path) if args.skip_completed else set()
+    completed = _completed_keys(out_path, skip_bad=args.skip_completed) if args.skip_completed else set()
     if args.skip_completed and completed:
         print(f"{tag('resume', bold=False)} skip {len(completed)} completed (strategy,task) pairs", flush=True)
     checkpoint = CompareCheckpointStore(checkpoint_path, stem=out_stem, total_runs=total_runs)
