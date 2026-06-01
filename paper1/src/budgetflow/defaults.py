@@ -10,12 +10,12 @@ W_I: dict[Stage, float] = {
 }
 
 # Tier pool: Qwen family via 阿里云百炼 (DashScope).
-# T1 = Qwen3.6-Flash (lightweight, ¥1.2/M in, ¥7.2/M out)
-# T2 = Qwen3.6-Plus (balanced, ¥2/M in, ¥12/M out)
-# T3 = Qwen3.7-Max (flagship, ¥4/M in, ¥16/M out, 5折 until 2026-06-22)
-TIER1_BACKEND = "tier1_qwen_flash"
-TIER2_BACKEND = "tier2_qwen_plus"
-TIER3_BACKEND = "tier3_qwen_max"
+# T1 = Qwen3.5-Flash (cheapest, ¥0.2/M in, ~¥0.8/M out)
+# T2 = Qwen3.6-Flash (lightweight, ¥1.2/M in, ¥7.2/M out)
+# T3 = Qwen3.6-Plus (balanced, ¥2/M in, ¥12/M out)
+TIER1_BACKEND = "tier1_qwen35_flash"
+TIER2_BACKEND = "tier2_qwen36_flash"
+TIER3_BACKEND = "tier3_qwen36_plus"
 
 PROGRESS_TABLE: dict[Stage, dict[str, float]] = {
     Stage.LOCALIZATION: {
@@ -70,9 +70,9 @@ UNCAPPED_BUDGET_THRESHOLD = 1_000_000.0
 DASHSCOPE_API_BASE = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
 # Qwen model IDs (bare names, no provider prefix — litellm routes via api_base).
-QWEN_T1_MODEL = "qwen3.6-flash"
-QWEN_T2_MODEL = "qwen3.6-plus"
-QWEN_T3_MODEL = "qwen3.7-max"
+QWEN_T1_MODEL = "qwen3.5-flash"
+QWEN_T2_MODEL = "qwen3.6-flash"
+QWEN_T3_MODEL = "qwen3.6-plus"
 
 # litellm model strings: openai/ prefix + custom api_base → 百炼.
 TIER1_MODEL = f"openai/{QWEN_T1_MODEL}"
@@ -80,9 +80,9 @@ TIER2_MODEL = f"openai/{QWEN_T2_MODEL}"
 TIER3_MODEL = f"openai/{QWEN_T3_MODEL}"
 
 # Terminal model= labels for console output.
-TIER1_DISPLAY = "qwen3.6-flash"
-TIER2_DISPLAY = "qwen3.6-plus"
-TIER3_DISPLAY = "qwen3.7-max"
+TIER1_DISPLAY = "qwen3.5-flash"
+TIER2_DISPLAY = "qwen3.6-flash"
+TIER3_DISPLAY = "qwen3.6-plus"
 
 TIER_DISPLAY_BY_BACKEND: dict[str, str] = {
     TIER1_BACKEND: TIER1_DISPLAY,
