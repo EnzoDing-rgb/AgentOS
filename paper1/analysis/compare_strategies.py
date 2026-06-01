@@ -5,96 +5,98 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-COST_SCALE = 100  # divide raw governor units for readable display (not RMB/USD)
+COST_SCALE = 100
 
-def analyze(jsonl_path: str) -> None:
+DISPLAY_NAMES = {
+    "all_pro": "all_pro (T3)",
+    "all_t1_tight": "t1-only tight",
+    "all_t1_loose": "t1-only loose",
+    "all_spark_tight": "t1-only tight",
+    "all_spark_loose": "t1-only loose",
+    "all_flash_tight": "t1-only tight",
+    "all_flash_loose": "t1-only loose",
+    "budgetflow_full_loose": "bf-full loose",
+    "budgetflow_full_tight": "bf-full tight",
+    "budget_only_loose": "bo-only loose",
+    "budget_only_tight": "bo-only tight",
+}
+
+DISPLAY_ORDER = [
+    "budget_only_tight", "budgetflow_full_tight",
+    "budget_only_loose", "budgetflow_full_loose",
+    "all_pro",
+    "all_t1_tight", "all_t1_loose",
+    "all_spark_tight", "all_spark_loose",
+    "all_flash_tight", "all_flash_loose",
+]
+
+
+def analyze(jsonl_path: str) -> str:
     lines = [json.loads(l) for l in Path(jsonl_path).read_text().splitlines() if l.strip()]
-    # Filter out BadRequestError garbage records
     lines = [r for r in lines if r.get("exit_status") != "BadRequestError"]
+
+    # Merge old strategy names
+    _ALIASES = {"all_spark_tight": "all_t1_tight", "all_spark_loose": "all_t1_loose",
+                 "all_flash_tight": "all_t1_tight", "all_flash_loose": "all_t1_loose"}
+    for r in lines:
+        r["strategy"] = _ALIASES.get(r["strategy"], r["strategy"])
 
     by_strat = defaultdict(list)
     for rec in lines:
         by_strat[rec["strategy"]].append(rec)
 
-    abbrev = {
-        "all_pro": "all_pro",
-        "all_spark_tight": "t1-T", "all_spark_loose": "t1-L",
-        "all_t1_tight": "t1-T", "all_t1_loose": "t1-L",
-        "all_flash_tight": "t1-T", "all_flash_loose": "t1-L",
-        "budgetflow_full_loose": "bf-L", "budgetflow_full_tight": "bf-T",
-        "budget_only_loose": "bo-L", "budget_only_tight": "bo-T",
-    }
+    out = []
+    out.append(f"{'strategy':<22} {'done':>5} {'PASS':>5} {'FAIL':>5} {'rate':>6} {'avg_cost':>8} {'cost/res':>8}")
+    out.append("-" * 68)
 
-    # Show tight budget strategies first, then loose, then uncapped
-    display_order = [
-        "budget_only_tight", "budgetflow_full_tight",
-        "budget_only_loose", "budgetflow_full_loose",
-        "all_pro",
-        "all_t1_tight", "all_t1_loose",
-        "all_spark_tight", "all_spark_loose",
-        "all_flash_tight", "all_flash_loose",
-    ]
-
-    print(f"{'strategy':<6} {'tasks':>5} {'PASS':>5} {'FAIL':>5} {'resolve%':>8} {'avg_cost':>8} {'avg_turns':>9}")
-    print("-" * 55)
-
-    ordered = [s for s in display_order if s in by_strat]
-    remaining = [s for s in sorted(by_strat.keys()) if s not in display_order]
+    ordered = [s for s in DISPLAY_ORDER if s in by_strat]
+    remaining = [s for s in sorted(by_strat) if s not in DISPLAY_ORDER]
     for strat in ordered + remaining:
         tasks = by_strat[strat]
         n = len(tasks)
         resolved = sum(1 for t in tasks if t.get("harness_resolved"))
         avg_cost = sum(t["total_cost"] for t in tasks) / n / COST_SCALE if n else 0
-        avg_turns = sum(t["llm_turns"] for t in tasks) / n if n else 0
-        label = abbrev.get(strat, strat)
-        print(f"{label:<6} {n:>5} {resolved:>5} {n-resolved:>5} {100*resolved/n:>7.1f}% {avg_cost:>8.1f} {avg_turns:>9.1f}")
+        cost_per = sum(t["total_cost"] for t in tasks) / max(1, resolved) / COST_SCALE
+        label = DISPLAY_NAMES.get(strat, strat)
+        out.append(f"{label:<22} {n:>5} {resolved:>5} {n-resolved:>5} {100*resolved/n:>5.0f}% {avg_cost:>8.1f} {cost_per:>8.1f}")
 
-    print()
+    out.append("")
 
-    # Key comparisons
-    def show_comparison(name1, group1, name2, group2):
-        r1 = sum(1 for t in group1 if t.get("harness_resolved"))
-        r2 = sum(1 for t in group2 if t.get("harness_resolved"))
-        c1 = sum(t["total_cost"] for t in group1) / COST_SCALE
-        c2 = sum(t["total_cost"] for t in group2) / COST_SCALE
-        n1, n2 = len(group1), len(group2)
-        if n1 == 0 or n2 == 0:
+    def show(n1, g1, n2, g2):
+        r1 = sum(1 for t in g1 if t.get("harness_resolved"))
+        r2 = sum(1 for t in g2 if t.get("harness_resolved"))
+        c1 = sum(t["total_cost"] for t in g1) / COST_SCALE
+        c2 = sum(t["total_cost"] for t in g2) / COST_SCALE
+        n1n, n2n = len(g1), len(g2)
+        if n1n == 0 or n2n == 0:
             return
-        print(f"{name1}: {r1}/{n1} resolved, total={c1:.1f}, avg={c1/n1:.1f}")
-        print(f"{name2}: {r2}/{n2} resolved, total={c2:.1f}, avg={c2/n2:.1f}")
+        out.append(f"  {n1}: {r1}/{n1n} resolves, cost/resolve={c1/max(1,r1):.1f}")
+        out.append(f"  {n2}: {r2}/{n2n} resolves, cost/resolve={c2/max(1,r2):.1f}")
+        delta = (c1/max(1,r1) - c2/max(1,r2)) / max(0.01, c2/max(1,r2)) * 100
         if r1 > r2:
-            print(f"  => {name1} wins on resolution (+{r1-r2})")
+            out.append(f"  => {n1} wins: +{r1-r2} resolves")
         elif r2 > r1:
-            print(f"  => {name2} wins on resolution (+{r2-r1})")
-        print(f"  cost/resolve: {name1}={c1/max(1,r1):.1f}, {name2}={c2/max(1,r2):.1f}")
-        print()
+            out.append(f"  => {n2} wins: +{r2-r1} resolves")
+        else:
+            winner = n1 if c1/max(1,r1) < c2/max(1,r2) else n2
+            out.append(f"  => same resolves, {winner} cheaper ({abs(delta):.0f}%)")
+        out.append("")
 
-    bf_loose = [t for t in lines if t["strategy"] == "budgetflow_full_loose"]
-    bo_loose = [t for t in lines if t["strategy"] == "budget_only_loose"]
-    bf_tight = [t for t in lines if t["strategy"] == "budgetflow_full_tight"]
-    bo_tight = [t for t in lines if t["strategy"] == "budget_only_tight"]
-    all_pro = [t for t in lines if t["strategy"] == "all_pro"]
+    bf_L = [t for t in lines if t["strategy"] == "budgetflow_full_loose"]
+    bo_L = [t for t in lines if t["strategy"] == "budget_only_loose"]
+    bf_T = [t for t in lines if t["strategy"] == "budgetflow_full_tight"]
+    bo_T = [t for t in lines if t["strategy"] == "budget_only_tight"]
+    apro = [t for t in lines if t["strategy"] == "all_pro"]
 
-    print("=== LOOSE BUDGET ===")
-    show_comparison("bf-loose", bf_loose, "bo-loose", bo_loose)
-    show_comparison("bf-loose", bf_loose, "all_pro", all_pro)
+    out.append("=== LOOSE ===")
+    show("bf-loose", bf_L, "bo-loose", bo_L)
+    show("bf-loose", bf_L, "all_pro", apro)
+    out.append("=== TIGHT ===")
+    show("bf-tight", bf_T, "bo-tight", bo_T)
 
-    print("=== TIGHT BUDGET ===")
-    show_comparison("bf-tight", bf_tight, "bo-tight", bo_tight)
+    return "\n".join(out)
 
-    # Per-task
-    print("=== PER-TASK (loose) ===")
-    bf_by_task = {t["instance_id"]: t for t in bf_loose}
-    bo_by_task = {t["instance_id"]: t for t in bo_loose}
-    for task_id in sorted(set(list(bf_by_task) + list(bo_by_task))):
-        bf = bf_by_task.get(task_id)
-        bo = bo_by_task.get(task_id)
-        bf_r = "PASS" if bf and bf.get("harness_resolved") else "FAIL" if bf else "---"
-        bo_r = "PASS" if bo and bo.get("harness_resolved") else "FAIL" if bo else "---"
-        bf_c = (bf["total_cost"] if bf else 0) / COST_SCALE
-        bo_c = (bo["total_cost"] if bo else 0) / COST_SCALE
-        short = task_id.split("__")[-1]
-        print(f"  {short}: bf={bf_r}({bf_c:.1f}) bo={bo_r}({bo_c:.1f})")
 
 if __name__ == "__main__":
-    analyze(sys.argv[1] if len(sys.argv) > 1 else "data/runs/policy_10x7-1.jsonl")
+    path = sys.argv[1] if len(sys.argv) > 1 else "data/runs/policy_10x7-1.jsonl"
+    print(analyze(path))

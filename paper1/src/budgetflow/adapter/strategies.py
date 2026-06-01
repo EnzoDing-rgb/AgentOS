@@ -68,7 +68,9 @@ def choose_backend(ctx: RoutingContext, turn: TurnInfo, expected_costs: dict[str
     if ctx.strategy == "all_tier2":
         return ctx.backends[1]
     if ctx.strategy == "all_pro":
-        return ctx.backends[-1]
+        # Use T3 (qwen3.6-plus), not T4 (qwen3.7-max).
+        # T4 is a budgetflow-only last resort. all_pro is the "standard best" baseline.
+        return ctx.backends[2] if len(ctx.backends) >= 3 else ctx.backends[-1]
     if ctx.strategy == "workflow_level":
         assert ctx.workflow_level_backend is not None
         return ctx.workflow_level_backend
