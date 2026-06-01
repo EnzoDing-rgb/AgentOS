@@ -12,6 +12,7 @@ This is the current evidence table for BudgetFlow paper progress. It is not the 
 | Docker official eval | disabled | avoided due VM memory pressure |
 | GPT-5.5 in normal pool | blocked by design | `build_compare_backends()` excludes `tier5_gpt55` |
 | GPT-5.3 regular T4 | opt-in only | `BF_T4_PROVIDER=gpt53_codex` |
+| Qwen Max regular T4 | opt-in only | `BF_T4_PROVIDER=qwen_max` |
 | GPT text scaffold | opt-in only | `BF_GPT_TEXT_MODE=1` |
 | Qwen preflight | required | `scripts/run-auto-v2-goldpass5.sh` exits before compare if Qwen ping fails |
 
@@ -44,6 +45,13 @@ Resume formal BudgetFlow only after Qwen gate passes:
 ```bash
 cd paper1
 scripts/run-auto-v2-goldpass5.sh budgetflow_goldpass5_auto_v2_p030_v1
+```
+
+Compare regular T4 candidates only after Qwen gate passes:
+
+```bash
+cd paper1
+scripts/run-t4-candidate-goldpass3.sh t4_candidate_goldpass3
 ```
 
 Run GPT-5.3 text-mode ceiling without Qwen:

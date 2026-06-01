@@ -24,3 +24,9 @@ def test_gpt53_codex_is_opt_in_regular_t4_candidate() -> None:
     assert defaults.TIER4_GPT53_DISPLAY == "gpt-5.3-codex"
     assert defaults.TIER4_GPT53_MODEL == "openai/gpt-5.3-codex"
     assert defaults.TIER_MODEL_BY_BACKEND[defaults.TIER4_GPT53_BACKEND] == "openai/gpt-5.3-codex"
+
+
+def test_qwen_max_is_opt_in_regular_t4_candidate() -> None:
+    assert defaults.TIER4_QWEN_MAX_DISPLAY == "qwen3.7-max"
+    assert defaults.TIER4_QWEN_MAX_MODEL == "openai/qwen3.7-max"
+    assert defaults.TIER_MODEL_BY_BACKEND[defaults.TIER4_QWEN_MAX_BACKEND] == "openai/qwen3.7-max"

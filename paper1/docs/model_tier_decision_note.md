@@ -12,6 +12,12 @@ Add GPT-5.3 Codex as an opt-in regular T4 candidate:
 BF_T4_PROVIDER=gpt53_codex
 ```
 
+Add Qwen Max as an opt-in regular T4 candidate:
+
+```bash
+BF_T4_PROVIDER=qwen_max
+```
+
 Keep GPT-5.5 as ceiling-only T5.
 
 Do not silently switch the default T4 to a general `Max` model until a local gold-pass comparison proves it helps this SWE-mini repair workload at acceptable cost.
@@ -49,7 +55,7 @@ The safe policy is:
 
 ```text
 default: T1/T2/T3/T4 = Qwen pool
-opt-in:  T4 = GPT-5.3 Codex
+opt-in:  T4 = Qwen Max or GPT-5.3 Codex
 ceiling: T5 = GPT-5.5 only for all_gpt55/raw ceiling
 ```
 
@@ -65,3 +71,22 @@ PYTHONPATH=src:../external/mini-swe-agent/src ../.venv/bin/python -u -m budgetfl
 ```
 
 If this fails, do not run compare. Fix `DASHSCOPE_API_KEY` first.
+
+## Candidate Comparison Command
+
+After Qwen auth is fixed, run:
+
+```bash
+cd paper1
+scripts/run-t4-candidate-goldpass3.sh t4_candidate_goldpass3
+```
+
+This compares:
+
+```text
+qwen default T4: qwen3-coder-plus
+qwen_max T4:     qwen3.7-max
+gpt53 T4:        gpt-5.3-codex text mode
+```
+
+Use the result to decide whether `qwen3-coder-plus` should remain the default or whether Max deserves promotion.

@@ -5,6 +5,7 @@ from ..defaults import (
     TIER2_BACKEND,
     TIER3_BACKEND,
     TIER4_BACKEND,
+    TIER4_QWEN_MAX_BACKEND,
     TIER4_GPT53_BACKEND,
     TIER5_BACKEND,
     active_t4_backend_name,
@@ -71,6 +72,17 @@ def _build_all_backends() -> list[Backend]:
             latency_ms=900,
         ),
         Backend(
+            name=TIER4_QWEN_MAX_BACKEND,
+            tier=4,
+            cost_per_input_token=0.0040,
+            cost_per_output_token=0.0120,
+            rpm_limit=_UNLIMITED,
+            concurrency_limit=_UNLIMITED,
+            mean_output_tokens=1024,
+            progress_score=0.22,
+            latency_ms=950,
+        ),
+        Backend(
             name=TIER4_GPT53_BACKEND,
             tier=4,
             cost_per_input_token=0.0060,
@@ -102,7 +114,7 @@ def build_compare_backends() -> list[Backend]:
     unless the caller explicitly asks for the ceiling pool.
     """
     active_t4 = active_t4_backend_name()
-    excluded = {TIER5_BACKEND, TIER4_BACKEND, TIER4_GPT53_BACKEND} - {active_t4}
+    excluded = {TIER5_BACKEND, TIER4_BACKEND, TIER4_QWEN_MAX_BACKEND, TIER4_GPT53_BACKEND} - {active_t4}
     return [backend for backend in _build_all_backends() if backend.name not in excluded]
 
 

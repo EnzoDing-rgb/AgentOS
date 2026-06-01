@@ -37,6 +37,8 @@ from ..defaults import (
     TIER3_BACKEND,
     TIER3_MODEL,
     TIER4_BACKEND,
+    TIER4_QWEN_MAX_BACKEND,
+    TIER4_QWEN_MAX_MODEL,
     TIER4_GPT53_BACKEND,
     TIER4_GPT53_MODEL,
     TIER4_MODEL,
@@ -64,7 +66,7 @@ logger = logging.getLogger("budgetflow_litellm_model")
 
 configure_litellm_quiet()
 
-_DASHSCOPE_BACKENDS = frozenset({TIER1_BACKEND, TIER2_BACKEND, TIER3_BACKEND, TIER4_BACKEND})
+_DASHSCOPE_BACKENDS = frozenset({TIER1_BACKEND, TIER2_BACKEND, TIER3_BACKEND, TIER4_BACKEND, TIER4_QWEN_MAX_BACKEND})
 _AICODE007_BACKENDS = frozenset({TIER4_GPT53_BACKEND, TIER5_BACKEND})
 FORMAT_ERROR_STOP_AFTER = 5
 
@@ -598,6 +600,7 @@ class BudgetFlowLitellmModel:
                 TIER2_BACKEND: TIER2_MODEL,
                 TIER3_BACKEND: TIER3_MODEL,
                 TIER4_BACKEND: TIER4_MODEL,
+                TIER4_QWEN_MAX_BACKEND: TIER4_QWEN_MAX_MODEL,
             }
             return model_map[backend.name], common
         if backend.name in _AICODE007_BACKENDS:
