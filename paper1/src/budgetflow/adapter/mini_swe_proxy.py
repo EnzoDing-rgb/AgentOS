@@ -23,6 +23,7 @@ from ..deepseek_backend import ensure_aicode007_proxy, ensure_direct_api, load_e
 from ..defaults import (
     DASHSCOPE_API_BASE,
     PRESSURE_MAX,
+    T4_DOWNGRADE_TIER,
     TIER1_BACKEND,
     TIER1_MODEL,
     TIER2_BACKEND,
@@ -240,19 +241,15 @@ class BudgetFlowLitellmModel:
         return max(64, min(headroom, int(affordable_tokens * 0.95)))
 
     def _apply_progress_escalation(self, backend: Backend) -> Backend:
-        """Per-tier escalation + turn cap: two complementary mechanisms.
+        """Per-tier escalation + turn cap + T4 stop-loss.
 
-        Escalation (no-progress streak): "T1 is completely stuck → upgrade."
-        - T1: 3 non-progress steps → T2
-        - T2: 5 non-progress steps → T3
+        Escalation (no-progress streak): "stuck → try better model."
+        - T1→T2, T2→T3, T3→T4
+        - T4→T2 (stop-loss: best model couldn't save it, fall back)
         - Resets when progress is made.
 
-        Turn cap: "T1 is making progress but too slowly → upgrade."
-        - T1: max 25 turns → force T2
-        - T2: max 40 turns → force T3
-        - Does NOT reset on progress — hard limit per tier.
-
-        Both are core BudgetFlow: "don't waste time/money on weak models."
+        Turn cap: "making progress but too slowly → force upgrade."
+        - T1:25, T2:40, T3:60 turns
         """
         if self.routing.strategy != "budgetflow_full":
             return backend
@@ -260,37 +257,46 @@ class BudgetFlowLitellmModel:
         if len(ordered) < 2:
             return backend
 
-        next_tier_idx = backend.tier
-        if next_tier_idx >= len(ordered):
-            return backend  # already at max tier
-        floor = ordered[next_tier_idx]
-        if floor.tier <= backend.tier:
-            return backend
-
         reason = None
+        next_backend = None
 
         # Check escalation (no-progress streak)
         patience = TIER_ESCALATION_PATIENCE.get(backend.tier)
         if patience is not None and self._no_progress_on_current_tier >= patience:
-            reason = f"streak={self._no_progress_on_current_tier}/{patience}"
+            if backend.tier == 4:
+                # T4 stop-loss: downgrade instead of upgrading
+                next_backend = ordered[T4_DOWNGRADE_TIER - 1]  # tier is 1-indexed
+                reason = f"T4-stop-loss streak={self._no_progress_on_current_tier}/{patience}"
+            else:
+                next_tier_idx = backend.tier
+                if next_tier_idx < len(ordered):
+                    next_backend = ordered[next_tier_idx]
+                    reason = f"streak={self._no_progress_on_current_tier}/{patience}"
 
-        # Check turn cap (total turns on this tier, regardless of progress)
-        max_turns = TIER_MAX_TURNS.get(backend.tier)
-        if reason is None and max_turns is not None and self._turns_on_current_tier >= max_turns:
-            reason = f"turns={self._turns_on_current_tier}/{max_turns}"
-
+        # Check turn cap
         if reason is None:
+            max_turns = TIER_MAX_TURNS.get(backend.tier)
+            if max_turns is not None and self._turns_on_current_tier >= max_turns:
+                if backend.tier == 4:
+                    next_backend = ordered[T4_DOWNGRADE_TIER - 1]
+                    reason = f"T4-turn-cap turns={self._turns_on_current_tier}/{max_turns}"
+                elif backend.tier < len(ordered):
+                    next_backend = ordered[backend.tier]
+                    reason = f"turns={self._turns_on_current_tier}/{max_turns}"
+
+        if reason is None or next_backend is None or next_backend.tier == backend.tier:
             return backend
 
+        direction = "downgrade" if next_backend.tier < backend.tier else "upgrade"
         print(
             f"{tag('escalate', bold=False)} #{self.step_index} "
-            f"{reason} "
-            f"{backend_tier_label(backend.name)} -> {backend_tier_label(floor.name)}",
+            f"{reason} ({direction}) "
+            f"{backend_tier_label(backend.name)} -> {backend_tier_label(next_backend.name)}",
             flush=True,
         )
-        self._no_progress_on_current_tier = 0  # reset for new tier
-        self._turns_on_current_tier = 0  # reset for new tier
-        return floor
+        self._no_progress_on_current_tier = 0
+        self._turns_on_current_tier = 0
+        return next_backend
 
     def _reserve_with_downgrade(self, backend: Backend, input_tokens: int) -> Backend:
         ordered = self.routing.backends

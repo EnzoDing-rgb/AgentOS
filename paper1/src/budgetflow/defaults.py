@@ -53,9 +53,13 @@ PROGRESS_SCALE: float = 18.0
 TIER_ESCALATION_PATIENCE: dict[int, int] = {
     1: 3,   # T1 (3.5-flash): 3 non-progress steps → T2
     2: 5,   # T2 (3.6-flash): 5 non-progress steps → T3
-    3: 8,   # T3 (3.6-plus): 8 non-progress steps → T4 (last resort)
-    4: 15,  # T4 (3.7-max): 15 steps → stagnation (ultimate last resort)
+    3: 8,   # T3 (3.6-plus): 8 non-progress steps → T4 (try the best)
+    4: 10,  # T4 (3.7-max): 10 non-progress steps → give up, downgrade to T2
 }
+
+# After T4 fails to make progress, downgrade to this tier instead of stagnation.
+# "T4 couldn't save it, stop burning money, fall back to cheap model."
+T4_DOWNGRADE_TIER = 2
 
 # Per-tier max consecutive turns before forced upgrade.
 # Separate from escalation: this handles "T1 is making progress but too slowly".
