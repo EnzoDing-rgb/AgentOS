@@ -41,6 +41,21 @@ echo "[ids] $IDS"
 echo "[policy] no docker; no gpt-5.5 in budgeted routing; jobs=1; BF_T4_PROVIDER=${BF_T4_PROVIDER:-qwen}"
 echo
 
+if [[ "${BF_SKIP_QWEN_PREFLIGHT:-0}" != "1" ]]; then
+  echo "[preflight] qwen api ping flash,pro"
+  set +e
+  "$PY" -u -m budgetflow.run_deepseek_smoke --tier flash,pro
+  preflight_code=$?
+  set -e
+  if (( preflight_code != 0 )); then
+    echo "[blocker] qwen preflight failed exit=$preflight_code"
+    echo "[blocker] fix DASHSCOPE_API_KEY before running BudgetFlow Qwen-backed policies"
+    echo "[done] $(date -Is)"
+    exit 0
+  fi
+  echo "[preflight] qwen api ok"
+fi
+
 jsonl_unique_count() {
   local file="$1"
   if [[ -f "$file" ]]; then
