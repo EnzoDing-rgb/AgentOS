@@ -4,10 +4,11 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PAPER_DIR="$ROOT_DIR/paper1"
 RUN_DIR="$PAPER_DIR/data/runs"
+export PAPER_DIR
 mkdir -p "$RUN_DIR"
 
 MASTER_LOG="$RUN_DIR/nightly-budgetflow-auto-budget.log"
-exec > >(tee -a "$MASTER_LOG") 2>&1
+exec >> "$MASTER_LOG" 2>&1
 
 export FORCE_COLOR=1
 export HF_HOME="$PAPER_DIR/data/hf_cache"
@@ -20,8 +21,9 @@ fi
 
 IDS="$("$PY" - <<'PY'
 import json
+import os
 from pathlib import Path
-p = Path("paper1/data/gold_pass_easy5_instance_ids.json")
+p = Path(os.environ["PAPER_DIR"]) / "data" / "gold_pass_easy5_instance_ids.json"
 print(",".join(json.loads(p.read_text())["instance_ids"]))
 PY
 )"
