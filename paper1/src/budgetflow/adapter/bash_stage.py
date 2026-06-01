@@ -48,15 +48,20 @@ _REPAIR_AGENT_PHASES = frozenset({"edit_gold", "edit_target", "edit_related", "e
 _VALIDATION_AGENT_PHASES = frozenset({"test", "submit"})
 
 
-def bash_has_progress(bash_command: str | None) -> bool:
-    """True when the last bash action likely advanced the task (write or test run)."""
+def bash_has_progress(bash_command: str | None) -> tuple[bool, str]:
+    """Return (has_progress, reason).
+
+    reason is one of: ``"repair_pattern"``, ``"validation_pattern"``, ``"none"``.
+    """
     command = (bash_command or "").strip()
     if not command:
-        return False
+        return False, "none"
     haystack = command.lower()
     if any(re.search(pattern, haystack, flags=re.IGNORECASE) for pattern in _REPAIR_PATTERNS):
-        return True
-    return any(re.search(pattern, haystack, flags=re.IGNORECASE) for pattern in _VALIDATION_PATTERNS)
+        return True, "repair_pattern"
+    if any(re.search(pattern, haystack, flags=re.IGNORECASE) for pattern in _VALIDATION_PATTERNS):
+        return True, "validation_pattern"
+    return False, "none"
 
 
 def classify_bash_stage(bash_command: str | None, observation: str | None = None) -> Stage:

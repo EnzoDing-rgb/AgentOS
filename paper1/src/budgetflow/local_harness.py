@@ -320,14 +320,12 @@ def _finalize_repo_workspace(repo_dir: Path, task: LiteTaskRecord) -> Path:
         return repo_dir
 
     install = _pip_install_editable(repo_dir, task=task)
-    if install.returncode != 0 and "sympy" not in task.repo:
-        install.check_returncode()
     if install.returncode == 0:
         marker.parent.mkdir(parents=True, exist_ok=True)
         marker.write_text(task.base_commit)
         print(f"{tag('prep')} pip {paint('done', '\033[92m')}", flush=True)
     else:
-        print("[prep] pip failed (non-fatal for sympy)", flush=True)
+        print(f"{tag('prep')} pip failed (rc={install.returncode}), continuing anyway", flush=True)
     return repo_dir
 
 

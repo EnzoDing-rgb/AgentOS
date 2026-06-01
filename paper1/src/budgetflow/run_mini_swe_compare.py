@@ -51,7 +51,7 @@ from budgetflow.governor import BudgetGovernor, GovernorConfig  # noqa: E402
 from budgetflow.defaults import BUDGET_PRESSURE_INIT, PRESSURE_MAX  # noqa: E402
 from budgetflow.heartbeat import run_with_heartbeat  # noqa: E402
 from budgetflow.ledger import WorkflowLedgerStore  # noqa: E402
-from budgetflow.lite_tasks import load_compare_easy_tasks, load_compare_medium_tasks  # noqa: E402
+from budgetflow.lite_tasks import load_compare_easy_tasks, load_compare_medium_tasks, load_swebench_lite_tasks  # noqa: E402
 from budgetflow.protocol_caps import read_protocol_caps  # noqa: E402
 from budgetflow.adaptive_routing import AdaptiveRoutingRegistry  # noqa: E402
 from budgetflow.run_guards import CompareRunGuards, set_active_guard  # noqa: E402
@@ -73,8 +73,10 @@ DEFAULT_STRATEGIES: tuple[CompareStrategy, ...] = (
     CompareStrategy("all_t1_tight", "all_flash", "tight"),
     CompareStrategy("all_t1_loose", "all_flash", "loose"),
     CompareStrategy("budget_only_tight", "budget_only", "tight"),
+    CompareStrategy("stage_blind_tight", "stage_blind", "tight"),
     CompareStrategy("budgetflow_full_tight", "budgetflow_full", "tight"),
     CompareStrategy("budget_only_loose", "budget_only", "loose"),
+    CompareStrategy("stage_blind_loose", "stage_blind", "loose"),
     CompareStrategy("budgetflow_full_loose", "budgetflow_full", "loose"),
     CompareStrategy("all_pro", "all_pro", None),
 )
@@ -129,6 +131,20 @@ def _workspace_key(cfg: CompareStrategy, instance_id: str) -> str:
     return f"{safe}_{instance_id}"
 
 
+def _truncate_turn_traces(
+    traces: list[dict] | None, max_turns: int, max_chars: int
+) -> list[dict] | None:
+    """Truncate turn traces to max_turns entries and bash_digest to max_chars."""
+    if traces is None:
+        return None
+    trimmed = traces[-max_turns:] if len(traces) > max_turns else traces
+    for t in trimmed:
+        digest = t.get("bash_digest")
+        if isinstance(digest, str) and len(digest) > max_chars:
+            t["bash_digest"] = digest[:max_chars]
+    return trimmed
+
+
 def _run_one(
     task,
     *,
@@ -143,6 +159,9 @@ def _run_one(
     budget_pressure: float | None = None,
     pressure_max: float | None = None,
     adaptive_registry: AdaptiveRoutingRegistry | None = None,
+    enable_turn_trace: bool = False,
+    trace_max_turns: int = 200,
+    trace_truncate_chars: int = 120,
 ) -> dict:
     started = time.time()
     workspace_key = _workspace_key(cfg, task.instance_id)
@@ -163,6 +182,7 @@ def _run_one(
         budget_pressure=budget_pressure,
         pressure_max=pressure_max,
         adaptive=adaptive,
+        enable_turn_trace=enable_turn_trace,
     )
     batch_snapshot = governor.budget_snapshot()
     return {
@@ -182,6 +202,7 @@ def _run_one(
         "workspace_key": workspace_key,
         "harness_resolved": result.harness_resolved,
         "patch_extracted": bool(result.patch_text),
+        "patch_source": result.patch_source,
         "exit_status": result.exit_status,
         "exit_reason": result.exit_reason,
         "total_cost": result.total_cost,
@@ -200,6 +221,9 @@ def _run_one(
             "gold_files": list(result.agent_gold_files),
             "submitted": result.agent_submitted,
         },
+        "turn_trace_count": result.turn_trace_count,
+        "turn_traces": _truncate_turn_traces(result.turn_traces, trace_max_turns, trace_truncate_chars)
+        if enable_turn_trace and result.turn_traces else None,
     }
 
 
@@ -443,6 +467,9 @@ def _run_strategy_batch(
     on_task_complete: Callable[[dict], None] | None = None,
     run_guards: CompareRunGuards | None = None,
     adaptive_registry: AdaptiveRoutingRegistry | None = None,
+    enable_turn_trace: bool = False,
+    trace_max_turns: int = 200,
+    trace_truncate_chars: int = 120,
 ) -> tuple[list[dict], float]:
     ledger = WorkflowLedgerStore()
     governor = BudgetGovernor(
@@ -508,6 +535,9 @@ def _run_strategy_batch(
                 budget_pressure=budget_pressure,
                 pressure_max=pressure_max,
                 adaptive_registry=adaptive_registry,
+                enable_turn_trace=enable_turn_trace,
+                trace_max_turns=trace_max_turns,
+                trace_truncate_chars=trace_truncate_chars,
             )
 
         try:
@@ -805,6 +835,12 @@ def main() -> None:
         help="easy=5 compare_easy tasks; medium=15 sympy medium-hard (fixed list)",
     )
     parser.add_argument(
+        "--ids",
+        type=str,
+        default=None,
+        help="comma-separated instance IDs (e.g. sympy__sympy-12419,...); overrides --task-set/--limit",
+    )
+    parser.add_argument(
         "--out-stem",
         type=str,
         default=None,
@@ -845,6 +881,24 @@ def main() -> None:
         "--no-run-guards",
         action="store_true",
         help="disable global/policy/upstream auto-halt guards",
+    )
+    parser.add_argument(
+        "--trace-turns",
+        action="store_true",
+        default=False,
+        help="collect per-turn routing decision traces in JSONL output (off by default; enable for diagnostics)",
+    )
+    parser.add_argument(
+        "--trace-max-turns",
+        type=int,
+        default=200,
+        help="max turn traces to keep per task (default 200)",
+    )
+    parser.add_argument(
+        "--trace-truncate-chars",
+        type=int,
+        default=120,
+        help="max chars for bash command digest in turn traces (default 120)",
     )
     args = parser.parse_args()
     if args.resume:
@@ -905,7 +959,10 @@ def main() -> None:
     else:
         strategies = all_strategies
     budget_caps = {"loose": loose, "tight": tight}
-    if args.task_set == "medium":
+    if args.ids:
+        ids = tuple(s.strip() for s in args.ids.split(",") if s.strip())
+        tasks = load_swebench_lite_tasks(instance_ids=ids)
+    elif args.task_set == "medium":
         tasks = load_compare_medium_tasks(tasks_n)
     else:
         tasks = load_compare_easy_tasks(tasks_n)
@@ -1080,6 +1137,9 @@ def main() -> None:
             on_task_complete=_on_task,
             run_guards=run_guards,
             adaptive_registry=adaptive_registry,
+            enable_turn_trace=args.trace_turns,
+            trace_max_turns=args.trace_max_turns,
+            trace_truncate_chars=args.trace_truncate_chars,
         )
         return cfg, records, batch_spent, batch_cap
 

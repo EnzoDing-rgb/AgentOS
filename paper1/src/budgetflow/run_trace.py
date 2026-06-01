@@ -119,8 +119,13 @@ def extract_worktree_patch(
         if not any(path in preferred for path in changed):
             return None
     try:
+        # Diff ONLY the agent's real changed files (pathspec). Without this,
+        # `git diff` also dumps apply_python_compat edits (collections.abc
+        # rewrites across dozens of files). The harness re-applies compat on a
+        # fresh checkout, so a patch carrying those edits hits "corrupt patch"
+        # / already-applied context mismatches and fails spuriously.
         result = subprocess.run(
-            ["git", "diff", "--no-color"],
+            ["git", "diff", "--no-color", "--", *changed],
             cwd=repo_dir,
             capture_output=True,
             text=True,

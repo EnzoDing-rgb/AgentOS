@@ -181,7 +181,7 @@ class AdaptiveRoutingRegistry:
         self._states: dict[str, AdaptiveRoutingState] = {}
 
     def for_strategy(self, strategy_name: str, routing: str) -> AdaptiveRoutingState | None:
-        if routing != "budgetflow_full":
+        if routing not in ("budgetflow_full", "stage_blind"):
             return None
         with self._lock:
             state = self._states.get(strategy_name)
@@ -208,7 +208,7 @@ class AdaptiveRoutingRegistry:
                 record = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if record.get("routing") != "budgetflow_full":
+            if record.get("routing") not in ("budgetflow_full", "stage_blind"):
                 continue
             name = record.get("strategy")
             if not name:

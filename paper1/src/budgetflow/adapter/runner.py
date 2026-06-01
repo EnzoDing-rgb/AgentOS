@@ -59,6 +59,9 @@ class MiniSweRunResult:
     violations: tuple[str, ...]
     prompt_tokens_total: int = 0
     completion_tokens_total: int = 0
+    patch_source: str = "submission"
+    turn_trace_count: int = 0
+    turn_traces: list[dict] | None = None
 
 
 def _load_agent_config(*, step_limit: int = 250) -> dict:
@@ -94,6 +97,7 @@ def run_mini_swe_task(
     ledger: WorkflowLedgerStore | None = None,
     workspace_key: str | None = None,
     adaptive: AdaptiveRoutingState | None = None,
+    enable_turn_trace: bool = False,
 ) -> MiniSweRunResult:
     label = strategy_label or strategy
     ledger = ledger or WorkflowLedgerStore()
@@ -134,6 +138,7 @@ def run_mini_swe_task(
         routing=routing,
         observation_template=model_cfg.get("observation_template"),
         format_error_template=model_cfg.get("format_error_template"),
+        enable_turn_trace=enable_turn_trace,
     )
     env = LocalEnvironment(cwd=str(repo_dir), timeout=config.get("environment", {}).get("timeout", 120))
     agent_cfg = dict(config.get("agent", {}))
@@ -182,6 +187,8 @@ def run_mini_swe_task(
         exit_status = "UpstreamExit"
         exit_reason = exc.exit_reason
         model.last_exit_reason = exc.exit_reason
+        if exit_reason == "infra_error":
+            exit_status = "infra_error"
     except Exception as exc:  # noqa: BLE001
         exit_status = type(exc).__name__
         exit_reason = type(exc).__name__
@@ -189,10 +196,14 @@ def run_mini_swe_task(
     if exit_reason is None and model.last_exit_reason:
         exit_reason = model.last_exit_reason
 
+    patch_source = "submission"
+    # Use model-reported submission text as primary source.
+    # Fallback to worktree git diff only when agent didn't submit any text.
+    # (worktree diff can include non-gold file changes that break harness git apply.)
     patch_from_worktree = False
     if not patch_text:
-        agent_summary = trace.agent_summary()
-        prefer = tuple(task.gold_files) if agent_summary.get("gold_edited") else ()
+        agent_summary_early = trace.agent_summary()
+        prefer = tuple(task.gold_files) if agent_summary_early.get("gold_edited") else ()
         fallback = extract_worktree_patch(
             repo_dir,
             ignore_paths=trace.ignore_changed_files,
@@ -200,6 +211,7 @@ def run_mini_swe_task(
         )
         if fallback:
             patch_text = fallback
+            patch_source = "worktree"
             patch_from_worktree = True
             (trace_dir / "worktree.patch").write_text(patch_text)
             print(
@@ -247,6 +259,9 @@ def run_mini_swe_task(
         agent_submitted=bool(agent_summary.get("submitted")),
         agent_gold_files=tuple(str(f) for f in (agent_summary.get("gold_files") or ())),
         violations=tuple(violations),
+        patch_source=patch_source,
         prompt_tokens_total=model._total_prompt_tokens,
         completion_tokens_total=model._total_completion_tokens,
+        turn_trace_count=len(model.turn_traces),
+        turn_traces=list(model.turn_traces) if model.turn_traces else None,
     )

@@ -713,6 +713,8 @@ The two tiers share **the same code**. The only differences are configuration, d
 
 **Design note: why a simple agent scaffold is the right choice.** BudgetFlow's contribution is at the LLM-call routing layer — it sits *between* the agent framework and the backend pool. Building a custom agent harness is a multi-person-month effort that does not advance the paper's core claim. Worse, an elaborate scaffold introduces confounding variables: is the gain from BudgetFlow, or from better prompts, more tools, or retry loops? Using a standard, minimal scaffold (mini-SWE-agent) keeps the causal chain short: same agent, same tasks, different routing. The paper reports *relative* improvement over baselines under the same scaffold — not *absolute* SWE-bench scores. A 50% solve rate on a hard subset (e.g., sympy-only) with cheap models is honest; claiming 80% by switching to Claude Opus would bury the BudgetFlow signal under the model effect. In short: **keep the agent boring; make the routing interesting.**
 
+**Phase 2 caveat (planned, not Tier 1).** After Tier 1 gates pass and the harness is stable on a fast task slice (requests / flask / small django), we may deliberately break the "boring agent" rule for a **Phase 2 architecture bet** — see §11 *Phase 2 architecture bets*. That work is high risk and high reward; it is explicitly out of scope until patch-apply health, crash-free runs, and a frozen Tier-1 baseline exist.
+
 ### 8.6 Minimum decisive experiment (stage signal vs budget-only pacing)
 
 Run BudgetFlow **Full** (three stages + default $w_i$ + progress table) and **Budget-Only Step Scheduler** under identical settings: same agent scaffold, same backend pool, same global budget, same concurrency knobs, same evaluation split. The only deliberate difference is that Budget-Only drops stage weights and the calibrated progress table, keeping ledger, reservation, admission, and `budget_pressure`.
@@ -809,6 +811,51 @@ Coding workflows are useful for paper 1 because progress signals are relatively 
 Future work can plug in learned evaluators, rule-plus-model evaluators, or domain-specific verifiers as the source of $q_i$, $w_i$, and `expected_progress_gain`. For example, customer support could use issue resolution, escalation, satisfaction, or post-hoc QA; RAG could use citation correctness, answer faithfulness, or retrieval hit rate; scientific reasoning could use benchmark verifiers, self-consistency, or expert review. These evaluators must themselves be validated on held-out tasks, rather than tuned and reported on the same examples.
 
 The main experiments in this paper therefore stay with batched SWE-bench-style workloads: maximize final resolved rate under a fixed budget while enforcing provider and concurrency limits. BudgetFlow's ledger, reservation, scheduler, and stop-loss machinery can carry over to other domains; what changes is the evidence source for progress and step importance.
+
+### Phase 2 architecture bets (high risk, high reward)
+
+> **Horizon:** ~1–2 weeks after Tier 1 stabilizes (fast task slice, harness `model_patch=apply_ok`, crash-free runs, frozen BF vs BO baseline). **Not** part of the current paper draft until re-baselined.
+
+These are deliberate **architecture pivots** — larger than observability or task-set tweaks, smaller than a full Paper 2. Each could materially raise resolved rate or clarify the contribution, but each also risks confounding the "routing-only" story in §8.5. Treat them as **gated experiments** with explicit before/after baselines on the same task IDs and budgets.
+
+| Bet | What changes | Upside | Main risk | Prerequisite gate |
+|---|---|---|---|---|
+| **A. Independent validation pass** | Before `submit_patch`, add a **second model** (ideally different tier) that reviews the candidate diff + failing-test context and returns approve / revise / abort | Catches wrong repair direction early; aligns with "repairer ≠ reviewer" multi-model review practice; makes **Validation** stage spend meaningful (expensive tier only on review, not on every bash turn) | Extra latency and budget per task; false negatives may block good patches; integration complexity in the agent loop | Tier-1 BF vs BO signal exists; turn traces show repair loops dying with `apply_ok` but `fail_after=fail` |
+| **B. [SWE-agent](https://github.com/SWE-agent/SWE-agent) as primary scaffold** | Replace mini-SWE-agent integration with SWE-agent hooks, `.traj` artifacts, and yaml-driven configs | Richer structured `action` / `observation` for stage classification (§1.5); mature SWE-bench tooling; community baselines and public trajectories | **Upstream note:** SWE-agent maintainers now steer new work toward [mini-SWE-agent](https://github.com/SWE-agent/mini-swe-agent) for simplicity — migrating *to* SWE-agent trades minimalism for surface area; all Tier-1 numbers need re-running | Frozen mini-SWE-agent baseline jsonl; adapter interface documented in §2 |
+| **C. Agent-first development** | Invert the current shape: **SWE-agent (or successor) owns the loop**; BudgetFlow is a governor plugin (callback / hook), not a fork of the runner | Cleaner separation of concerns; easier to ship validation-pass (Bet A) inside native submit hooks; better story for "runtime layer on a real agent stack" | Blurs the paper boundary — readers may attribute gains to SWE-agent prompts/tools rather than BudgetFlow; multi-week integration | B complete or explicitly rejected; contribution narrative updated in §0 and §8.5 |
+
+**Bet A — validation pass (detail).** Today the agent is a **single model, single trajectory**: edit → run tests → read output → repeat, with no independent check that the repair direction is sane. External evidence (e.g. multi-model code review pipelines and "slow but careful" review workflows) suggests **spending tokens on verification** can have high precision even when generation is cheap and noisy. BudgetFlow already names a **Validation** stage (§1.5) for turns that read test output; Bet A adds an explicit **pre-submit verification call** that is *not* the same model/tier as the last repair edit when budget allows. Minimal design:
+
+```text
+Repair turns (cheap tiers) → candidate patch
+    → Validation-pass LLM (higher tier, different model family if possible)
+        → approve → submit_patch → harness
+        → revise → one bounded repair retry with critique in context
+        → abort → stop-loss / release budget
+```
+
+Budget implication: shift the unit of allocation from **per step** to **per (repair candidate, validation decision)** — cheap mass on Localization/Repair, scarce spend on Validation-pass. This is the operational version of the §3 routing intuition (Validation $w_i = 2.5$) and connects to `stage_blind` ablations (does stage weighting help if validation is explicit?).
+
+**Bet B — SWE-agent scaffold (detail).** Current Tier 1 intentionally uses mini-SWE-agent because its action vocabulary is tiny and `.traj`-like logs are easy to classify. SWE-agent offers richer trajectories, configurable tools, and first-class SWE-bench batch modes ([SWE-agent repo](https://github.com/SWE-agent/SWE-agent)). A migration path that preserves the paper claim:
+
+1. Implement BudgetFlow as **proxy + callback** only — no fork of SWE-agent's core loop.
+2. Freeze prompts/tools for the comparison window; only routing policy changes between Full / Budget-Only / Workflow-Level.
+3. Re-run the **same** `instance_id` list on the fast slice before touching sympy-heavy sets.
+
+**Bet C — agent-first (detail).** "Agent as main framework" means new features (validation pass, richer tools, trajectory mining) land in the agent repo's extension points; BudgetFlow stays the **ledger + selector + admission** package imported by that agent. This is the natural end state if Bet B succeeds and is the right place to host Bet A long term. It is **not** required for the Tier-1 thesis ("workflow-aware budgeting beats budget-only pacing under hard limits").
+
+**Recommended sequencing (if gates pass).**
+
+1. **Stabilize evaluation** — fast task set, no `corrupt patch`, no silent crashes (current sprint).
+2. **Bet A prototype on mini-SWE-agent** — smallest diff: one extra `query()` before submit, routed to Validation stage + high tier; measure delta on repair-near-miss tasks only.
+3. **Parallel spike: SWE-agent adapter** — time-boxed; if hook parity takes >~3 days, defer B/C and ship A on mini-SWE-agent.
+4. **Re-baseline all strategies** on frozen task IDs before any paper text claims Phase 2 gains.
+
+**What Phase 2 is not (avoid scope creep).**
+
+- Not a replacement for calibrated `expected_progress_gain` tables (§3.4) — validation-pass is orthogonal.
+- Not an excuse to chase absolute SWE-bench leaderboard scores with Claude-class models only.
+- Not started while harness or budget instrumentation is still untrusted.
 
 ### Long-range direction: BudgetFlow as an RLB-style continual-learning system
 

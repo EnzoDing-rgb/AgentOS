@@ -57,6 +57,68 @@ configure_litellm_quiet()
 _DASHSCOPE_BACKENDS = frozenset({TIER1_BACKEND, TIER2_BACKEND, TIER3_BACKEND, TIER4_BACKEND})
 
 
+def _build_turn_trace(
+    *,
+    step_index: int,
+    agent_phase: str | None,
+    stage,
+    bash_command: str | None,
+    input_tokens: int,
+    expected_costs: dict[str, float],
+    base_pressure: float,
+    effective_pressure: float,
+    backend_chosen: str,
+    escalated_backend: str,
+    final_backend: str,
+    backend_tier: int,
+    reserve_out: int,
+    adaptive,
+    no_progress_streak: int,
+    no_progress_on_tier: int,
+    turns_on_tier: int,
+    has_progress: bool,
+    progress_reason: str,
+    prompt_tokens: int,
+    completion_tokens: int,
+    actual_cost: float,
+    billable: float,
+    response_ok: bool,
+    error_type: str | None,
+) -> dict:
+    """Build a single turn-trace dict for observability (no side effects)."""
+    trace: dict[str, Any] = {
+        "step": step_index,
+        "agent_phase": agent_phase,
+        "stage": stage.name if stage else None,
+        "bash_digest": (bash_command or "")[:120],
+        "input_tokens": input_tokens,
+        "expected_costs": expected_costs,
+        "base_pressure": round(base_pressure, 4),
+        "effective_pressure": round(effective_pressure, 4),
+        "backend_chosen": backend_chosen,
+        "escalated_backend": escalated_backend if escalated_backend != backend_chosen else None,
+        "final_backend": final_backend,
+        "backend_tier": backend_tier,
+        "reserve_output_tokens": reserve_out,
+        "no_progress_streak": no_progress_streak,
+        "no_progress_on_tier": no_progress_on_tier,
+        "turns_on_tier": turns_on_tier,
+        "has_progress": has_progress,
+        "progress_reason": progress_reason,
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "actual_cost": round(actual_cost, 6),
+        "billable_cost": round(billable, 6),
+        "response_ok": response_ok,
+        "error_type": error_type,
+    }
+    if adaptive is not None:
+        trace["adaptive_ttl"] = getattr(adaptive, "remaining_ttl", None)
+        trace["adaptive_floor"] = getattr(adaptive, "current_floor", None)
+        trace["adaptive_boost"] = getattr(adaptive, "current_boost", None)
+    return trace
+
+
 class BudgetFlowLitellmModel:
     """mini-SWE-agent Model: BudgetFlow governor + spark/flash/pro tier pool."""
 
@@ -73,6 +135,7 @@ class BudgetFlowLitellmModel:
         set_cache_control: str | None = None,
         multimodal_regex: str = "",
         progress_refresh: Callable[[], None] | None = None,
+        enable_turn_trace: bool = False,
     ) -> None:
         load_env_file()
         self.workflow_id = workflow_id
@@ -107,6 +170,9 @@ class BudgetFlowLitellmModel:
         self.agent_phase: str | None = None
         self.last_exit_reason: str | None = None
         self.last_budget_snapshot: dict[str, float] | None = None
+        self._enable_turn_trace: bool = enable_turn_trace
+        self.turn_traces: list[dict] = []
+        self._last_reserve_out: int = 0
         self.config = type("Config", (), {"model_name": TIER3_MODEL})()
 
     def query(self, messages: list[dict[str, str]], **kwargs) -> dict:
@@ -118,7 +184,7 @@ class BudgetFlowLitellmModel:
             workflow_id=self.workflow_id,
             step_index=self.step_index,
             stage=stage,
-            w_i=stage_weight(stage),
+            w_i = 1.0 if self.routing.strategy == "stage_blind" else stage_weight(stage),
             context_len=input_tokens,
             tool_name="bash",
         )
@@ -142,7 +208,12 @@ class BudgetFlowLitellmModel:
         else:
             self.routing.budget_pressure = base_pressure
         phase = (self.agent_phase or "").strip()
-        if bash_has_progress(bash_command) or phase in _REPAIR_AGENT_PHASES or phase in _VALIDATION_AGENT_PHASES:
+        has_progress, progress_reason = bash_has_progress(bash_command)
+        if has_progress or phase in _REPAIR_AGENT_PHASES or phase in _VALIDATION_AGENT_PHASES:
+            if not has_progress and phase in _REPAIR_AGENT_PHASES:
+                progress_reason = "repair_pattern"
+            elif not has_progress and phase in _VALIDATION_AGENT_PHASES:
+                progress_reason = "validation_pattern"
             self._no_progress_streak = 0
             self._no_progress_on_current_tier = 0
         else:
@@ -172,6 +243,7 @@ class BudgetFlowLitellmModel:
             )
 
         backend = choose_backend(self.routing, turn, expected_costs)
+        backend_chosen = backend.name
         # Adaptive starting tier: skip T1/T2 on first step if strategy is on a losing streak
         if self.step_index == 1 and self.routing.adaptive is not None:
             min_start = self.routing.adaptive.starting_tier()
@@ -185,7 +257,9 @@ class BudgetFlowLitellmModel:
                 )
         prev_tier = self._last_backend_tier
         backend = self._apply_progress_escalation(backend)
+        escalated_backend = backend.name
         backend = self._reserve_with_downgrade(backend, input_tokens)
+        reserve_out = self._last_reserve_out
         if backend.tier != prev_tier and prev_tier > 0:
             self._no_progress_on_current_tier = 0  # tier changed, reset patience
             self._turns_on_current_tier = 0  # tier changed, reset turn counter
@@ -205,13 +279,48 @@ class BudgetFlowLitellmModel:
         self._refresh_progress()
 
         model_name, model_kwargs = self._model_config_for(backend)
-        response = self._completion(
-            messages,
-            backend_name=backend.name,
-            model_name=model_name,
-            model_kwargs=model_kwargs,
-            **kwargs,
-        )
+        response_ok = True
+        error_type = None
+        try:
+            response = self._completion(
+                messages,
+                backend_name=backend.name,
+                model_name=model_name,
+                model_kwargs=model_kwargs,
+                **kwargs,
+            )
+        except Exception as exc:
+            response_ok = False
+            error_type = type(exc).__name__
+            if self._enable_turn_trace:
+                self.turn_traces.append(_build_turn_trace(
+                    step_index=self.step_index,
+                    agent_phase=self.agent_phase,
+                    stage=stage,
+                    bash_command=bash_command,
+                    input_tokens=input_tokens,
+                    expected_costs=expected_costs,
+                    base_pressure=base_pressure,
+                    effective_pressure=self.routing.budget_pressure,
+                    backend_chosen=backend_chosen,
+                    escalated_backend=escalated_backend,
+                    final_backend=backend.name,
+                    backend_tier=backend.tier,
+                    reserve_out=reserve_out,
+                    adaptive=self.routing.adaptive,
+                    no_progress_streak=self._no_progress_streak,
+                    no_progress_on_tier=self._no_progress_on_current_tier,
+                    turns_on_tier=self._turns_on_current_tier,
+                    has_progress=has_progress,
+                    progress_reason=progress_reason,
+                    prompt_tokens=0,
+                    completion_tokens=0,
+                    actual_cost=0.0,
+                    billable=0.0,
+                    response_ok=False,
+                    error_type=error_type,
+                ))
+            raise
         message = response.choices[0].message.model_dump()
         prompt_tokens = getattr(response.usage, "prompt_tokens", None) or input_tokens
         completion_tokens = getattr(response.usage, "completion_tokens", None) or backend.mean_output_tokens
@@ -233,6 +342,34 @@ class BudgetFlowLitellmModel:
             "backend": backend.name,
             "stage": stage.value,
         }
+        if self._enable_turn_trace:
+            self.turn_traces.append(_build_turn_trace(
+                step_index=self.step_index,
+                agent_phase=self.agent_phase,
+                stage=stage,
+                bash_command=bash_command,
+                input_tokens=input_tokens,
+                expected_costs=expected_costs,
+                base_pressure=base_pressure,
+                effective_pressure=self.routing.budget_pressure,
+                backend_chosen=backend_chosen,
+                escalated_backend=escalated_backend,
+                final_backend=backend.name,
+                backend_tier=backend.tier,
+                reserve_out=reserve_out,
+                adaptive=self.routing.adaptive,
+                no_progress_streak=self._no_progress_streak,
+                no_progress_on_tier=self._no_progress_on_current_tier,
+                turns_on_tier=self._turns_on_current_tier,
+                has_progress=has_progress,
+                progress_reason=progress_reason,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                actual_cost=actual_cost,
+                billable=billable,
+                response_ok=True,
+                error_type=None,
+            ))
         return message
 
     def _refresh_progress(self) -> None:
@@ -262,7 +399,7 @@ class BudgetFlowLitellmModel:
         Turn cap: "making progress but too slowly → force upgrade."
         - T1:25, T2:40, T3:60 turns
         """
-        if self.routing.strategy != "budgetflow_full":
+        if self.routing.strategy not in ("budgetflow_full", "stage_blind"):
             return backend
         ordered = self.routing.backends
         if len(ordered) < 2:
@@ -314,7 +451,7 @@ class BudgetFlowLitellmModel:
         start_index = ordered.index(backend)
         min_tier = 1
         adaptive = self.routing.adaptive
-        if adaptive is not None and self.routing.strategy == "budgetflow_full":
+        if adaptive is not None and self.routing.strategy in ("budgetflow_full", "stage_blind"):
             min_tier = adaptive.min_tier_for_reserve()
         reserve_out = None
         last_reason: str | None = None
@@ -332,6 +469,7 @@ class BudgetFlowLitellmModel:
             reservation = self.governor.reserve(self.workflow_id, candidate, estimate)
             if reservation is not None:
                 self._last_reservation_id = reservation.reservation_id
+                self._last_reserve_out = reserve_out
                 return candidate
             last_reason = self.governor.last_reserve_failure
         snapshot = self.governor.budget_snapshot()
@@ -406,6 +544,15 @@ class BudgetFlowLitellmModel:
                 raise BudgetFlowUpstreamError(
                     self.workflow_id,
                     exit_reason=action.reason or "billing_guard",
+                    step_index=self.step_index,
+                    backend=backend_name,
+                    sample=err_msg,
+                ) from exc
+            # BadRequestError (400): tag as infra error, let runner fall through to harness eval.
+            if "BadRequestError" in type(exc).__name__ or getattr(exc, "status_code", None) == 400:
+                raise BudgetFlowUpstreamError(
+                    self.workflow_id,
+                    exit_reason="infra_error",
                     step_index=self.step_index,
                     backend=backend_name,
                     sample=err_msg,

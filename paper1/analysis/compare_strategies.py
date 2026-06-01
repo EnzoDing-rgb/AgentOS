@@ -19,11 +19,13 @@ DISPLAY_NAMES = {
     "budgetflow_full_tight": "BudgetFlow tight",
     "budget_only_loose": "BudgetOnly loose",
     "budget_only_tight": "BudgetOnly tight",
+    "stage_blind_loose": "StageBlind loose",
+    "stage_blind_tight": "StageBlind tight",
 }
 
 DISPLAY_ORDER = [
-    "budget_only_tight", "budgetflow_full_tight",
-    "budget_only_loose", "budgetflow_full_loose",
+    "budget_only_tight", "stage_blind_tight", "budgetflow_full_tight",
+    "budget_only_loose", "stage_blind_loose", "budgetflow_full_loose",
     "all_pro",
     "all_t1_tight", "all_t1_loose",
     "all_spark_tight", "all_spark_loose",
@@ -31,9 +33,110 @@ DISPLAY_ORDER = [
 ]
 
 
+def _append_stage_tier_mix(out: list[str], lines: list[dict]) -> None:
+    """Per-strategy stage→tier histogram from turn_traces."""
+    from collections import Counter
+    targets = {"budgetflow_full_tight", "budgetflow_full_loose",
+               "budget_only_tight", "budget_only_loose",
+               "stage_blind_tight", "stage_blind_loose"}
+    out.append("--- Stage-tier mix (bf/bo/sb) ---")
+    for strat in sorted(targets):
+        tasks = [t for t in lines if t.get("strategy") == strat]
+        if not tasks:
+            continue
+        stage_tier: dict[str, Counter] = defaultdict(Counter)
+        total_turns = 0
+        for t in tasks:
+            for tr in (t.get("turn_traces") or []):
+                stage = (tr.get("stage") or "unknown").lower()
+                tier = tr.get("backend_tier", 0)
+                stage_tier[stage][tier] += 1
+                total_turns += 1
+        if not total_turns:
+            continue
+        label = DISPLAY_NAMES.get(strat, strat)
+        parts = [f"{label}: "]
+        for stage in ("localization", "repair", "validation"):
+            sc = stage_tier.get(stage)
+            if sc:
+                total = sum(sc.values())
+                tier_str = "/".join(f"T{t}={sc[t]}" for t in sorted(sc))
+                parts.append(f"{stage}[{total}]={{{tier_str}}} ")
+        out.append("".join(parts))
+    out.append("")
+
+
+def _append_patch_but_fail(out: list[str], lines: list[dict]) -> None:
+    """Count gold_edited=True but harness_resolved=False per strategy."""
+    out.append("--- Patch-but-fail rate (gold_edited=True, harness_resolved=False) ---")
+    targets = {"budgetflow_full_tight", "budgetflow_full_loose",
+               "budget_only_tight", "budget_only_loose",
+               "stage_blind_tight", "stage_blind_loose", "all_pro"}
+    for strat in sorted(targets):
+        tasks = [t for t in lines if t.get("strategy") == strat]
+        gold_hit = sum(1 for t in tasks if t.get("agent_gold_edited"))
+        gold_fail = sum(1 for t in tasks if t.get("agent_gold_edited") and not t.get("harness_resolved"))
+        gold_win = gold_hit - gold_fail
+        label = DISPLAY_NAMES.get(strat, strat)
+        if gold_hit:
+            out.append(f"  {label:<22} gold_hit={gold_hit}  resolved={gold_win}  "
+                       f"patch_but_fail={gold_fail} ({100*gold_fail/gold_hit:.0f}%)")
+    out.append("")
+
+
+def _append_no_progress_signature(out: list[str], lines: list[dict]) -> None:
+    """Last 5 turns before StagnationExit: stage/tier distribution."""
+    out.append("--- No-progress signature (last 5 turns of StagnationExit) ---")
+    stag_tasks = [t for t in lines if t.get("exit_status") == "StagnationExit" and t.get("turn_traces")]
+    if not stag_tasks:
+        out.append("  (no StagnationExit tasks with turn traces)")
+        out.append("")
+        return
+    from collections import Counter
+    stage_before_stall: Counter = Counter()
+    tier_before_stall: Counter = Counter()
+    for t in stag_tasks:
+        traces = t.get("turn_traces") or []
+        for tr in traces[-5:]:
+            stage_before_stall[tr.get("stage") or "unknown"] += 1
+            tier_before_stall[tr.get("backend_tier", 0)] += 1
+    out.append(f"  n={len(stag_tasks)} stagnation tasks")
+    out.append(f"  stage (last 5 turns): {dict(stage_before_stall.most_common())}")
+    out.append(f"  tier  (last 5 turns): {dict(sorted(tier_before_stall.items()))}")
+    out.append("")
+
+
+def _append_discordant_tasks(
+    out: list[str], lines: list[dict],
+    bf_L: list, bo_L: list, bf_T: list, bo_T: list,
+) -> None:
+    """Print tasks where BO and BF disagree on resolve."""
+    out.append("--- Discordant tasks (bo != bf) ---")
+
+    def _resolved_map(task_list):
+        return {t["instance_id"]: t.get("harness_resolved", False) for t in task_list}
+
+    for label, bf, bo in [("loose", bf_L, bo_L), ("tight", bf_T, bo_T)]:
+        bf_map = _resolved_map(bf)
+        bo_map = _resolved_map(bo)
+        common = set(bf_map) & set(bo_map)
+        disc = []
+        for iid in common:
+            if bf_map[iid] != bo_map[iid]:
+                disc.append((iid, bf_map[iid], bo_map[iid]))
+        if disc:
+            out.append(f"  {label}: {len(disc)} discordant tasks")
+            for iid, bf_r, bo_r in disc:
+                winner = "bf" if bf_r else "bo"
+                out.append(f"    {iid}  bf={'PASS' if bf_r else 'FAIL'} bo={'PASS' if bo_r else 'FAIL'} -> {winner}")
+        else:
+            out.append(f"  {label}: 0 discordant")
+    out.append("")
+
+
 def analyze(jsonl_path: str) -> str:
     lines = [json.loads(l) for l in Path(jsonl_path).read_text().splitlines() if l.strip()]
-    lines = [r for r in lines if r.get("exit_status") != "BadRequestError"]
+    lines = [r for r in lines if r.get("exit_status") not in ("BadRequestError", "infra_error", "UpstreamExit")]
 
     # Merge old strategy names
     _ALIASES = {"all_spark_tight": "all_t1_tight", "all_spark_loose": "all_t1_loose",
@@ -84,15 +187,28 @@ def analyze(jsonl_path: str) -> str:
 
     bf_L = [t for t in lines if t["strategy"] == "budgetflow_full_loose"]
     bo_L = [t for t in lines if t["strategy"] == "budget_only_loose"]
+    sb_L = [t for t in lines if t["strategy"] == "stage_blind_loose"]
     bf_T = [t for t in lines if t["strategy"] == "budgetflow_full_tight"]
     bo_T = [t for t in lines if t["strategy"] == "budget_only_tight"]
+    sb_T = [t for t in lines if t["strategy"] == "stage_blind_tight"]
     apro = [t for t in lines if t["strategy"] == "all_pro"]
 
     out.append("=== LOOSE ===")
     show("bf-loose", bf_L, "bo-loose", bo_L)
+    show("bf-loose", bf_L, "sb-loose", sb_L)
     show("bf-loose", bf_L, "all_pro", apro)
     out.append("=== TIGHT ===")
     show("bf-tight", bf_T, "bo-tight", bo_T)
+    show("bf-tight", bf_T, "sb-tight", sb_T)
+
+    # ── trace-driven diagnostics (only when turn_traces present) ──
+    _has_traces = any(t.get("turn_traces") for t in lines)
+    if _has_traces:
+        out.append("=== DIAGNOSTICS (turn-trace) ===")
+        _append_stage_tier_mix(out, lines)
+        _append_patch_but_fail(out, lines)
+        _append_no_progress_signature(out, lines)
+        _append_discordant_tasks(out, lines, bf_L, bo_L, bf_T, bo_T)
 
     return "\n".join(out)
 
