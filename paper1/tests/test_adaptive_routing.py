@@ -61,7 +61,7 @@ def test_evidence_rescue_opens_one_bounded_window_after_gold_repair_stalls() -> 
 
     assert rescue.forced_min_tier(
         stage=Stage.REPAIR,
-        agent_phase="edit_other",
+        gold_edited=False,
         current_tier=2,
         remaining_budget=100,
         total_budget=100,
@@ -69,14 +69,14 @@ def test_evidence_rescue_opens_one_bounded_window_after_gold_repair_stalls() -> 
 
     rescue.forced_min_tier(
         stage=Stage.REPAIR,
-        agent_phase="edit_gold",
+        gold_edited=True,
         current_tier=2,
         remaining_budget=100,
         total_budget=100,
     )
     rescue.forced_min_tier(
         stage=Stage.VALIDATION,
-        agent_phase="test",
+        gold_edited=True,
         current_tier=2,
         remaining_budget=100,
         total_budget=100,
@@ -84,21 +84,21 @@ def test_evidence_rescue_opens_one_bounded_window_after_gold_repair_stalls() -> 
 
     assert rescue.forced_min_tier(
         stage=Stage.REPAIR,
-        agent_phase="edit_gold",
+        gold_edited=True,
         current_tier=2,
         remaining_budget=100,
         total_budget=100,
     ) == 4
     assert rescue.forced_min_tier(
         stage=Stage.VALIDATION,
-        agent_phase="test",
+        gold_edited=True,
         current_tier=2,
         remaining_budget=100,
         total_budget=100,
     ) == 4
     assert rescue.forced_min_tier(
         stage=Stage.REPAIR,
-        agent_phase="edit_gold",
+        gold_edited=True,
         current_tier=2,
         remaining_budget=100,
         total_budget=100,
@@ -110,8 +110,39 @@ def test_evidence_rescue_respects_budget_headroom() -> None:
 
     assert rescue.forced_min_tier(
         stage=Stage.REPAIR,
-        agent_phase="edit_gold",
+        gold_edited=True,
         current_tier=2,
         remaining_budget=10,
         total_budget=100,
     ) is None
+
+
+def test_evidence_rescue_does_not_consume_window_without_real_gold_edit() -> None:
+    rescue = EvidenceRescueState(trigger_turns=2, window_turns=2, min_headroom_frac=0.20)
+
+    for _ in range(5):
+        assert rescue.forced_min_tier(
+            stage=Stage.REPAIR,
+            gold_edited=False,
+            current_tier=2,
+            remaining_budget=100,
+            total_budget=100,
+        ) is None
+
+    assert rescue.evidence_turns == 0
+    assert not rescue.window_opened
+
+    rescue.forced_min_tier(
+        stage=Stage.REPAIR,
+        gold_edited=True,
+        current_tier=2,
+        remaining_budget=100,
+        total_budget=100,
+    )
+    assert rescue.forced_min_tier(
+        stage=Stage.REPAIR,
+        gold_edited=True,
+        current_tier=2,
+        remaining_budget=100,
+        total_budget=100,
+    ) == 4

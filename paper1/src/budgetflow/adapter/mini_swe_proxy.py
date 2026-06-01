@@ -178,6 +178,7 @@ class BudgetFlowLitellmModel:
         self.last_routing_stage: str = "localization"
         self.last_backend_name: str = "-"
         self.agent_phase: str | None = None
+        self.agent_gold_edited: bool = False
         self.last_exit_reason: str | None = None
         self.last_budget_snapshot: dict[str, float] | None = None
         self._enable_turn_trace: bool = enable_turn_trace
@@ -268,7 +269,7 @@ class BudgetFlowLitellmModel:
         if self.routing.adaptive is not None and self.routing.strategy in ("budgetflow_full", "stage_blind"):
             forced_tier = self.routing.adaptive.rescue.forced_min_tier(
                 stage=stage,
-                agent_phase=self.agent_phase,
+                gold_edited=self.agent_gold_edited,
                 current_tier=backend.tier,
                 remaining_budget=self.governor.remaining_budget(),
                 total_budget=self.governor.state.total_budget,

@@ -479,6 +479,10 @@ class TracedDefaultAgent(DefaultAgent):
     def step(self) -> list[dict]:
         if hasattr(self.model, "agent_phase"):
             self.model.agent_phase = self._trace.last_agent_phase
+        if hasattr(self.model, "agent_gold_edited"):
+            self.model.agent_gold_edited = bool(self._trace._gold_files_edited)
         result = super().step()
         self._trace.log_step(self, elapsed_s=time.time() - self._run_started)
+        if hasattr(self.model, "agent_gold_edited"):
+            self.model.agent_gold_edited = bool(self._trace._gold_files_edited)
         return result

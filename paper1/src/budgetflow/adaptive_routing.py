@@ -70,7 +70,7 @@ class EvidenceRescueState:
         self,
         *,
         stage: Stage,
-        agent_phase: str | None,
+        gold_edited: bool,
         current_tier: int,
         remaining_budget: float,
         total_budget: float,
@@ -82,12 +82,7 @@ class EvidenceRescueState:
         if self.window_opened:
             return None
 
-        phase = (agent_phase or "").strip()
-        has_evidence = stage in (Stage.REPAIR, Stage.VALIDATION) and phase in {
-            "edit_gold",
-            "patch_prep",
-            "test",
-        }
+        has_evidence = gold_edited and stage in (Stage.REPAIR, Stage.VALIDATION)
         if not has_evidence:
             return None
 
