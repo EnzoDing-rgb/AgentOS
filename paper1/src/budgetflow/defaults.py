@@ -52,24 +52,20 @@ PROGRESS_SCALE: float = 18.0
 # Resets when a step makes progress (bash_has_progress returns True).
 TIER_ESCALATION_PATIENCE: dict[int, int] = {
     1: 3,   # T1 (3.5-flash): 3 non-progress steps → T2
-    2: 5,   # T2 (3.6-flash): 5 non-progress steps → T3
-    3: 8,   # T3 (3.6-plus): 8 non-progress steps → T4 (try the best)
-    4: 10,  # T4 (3.7-max): 10 non-progress steps → give up, downgrade to T2
+    2: 4,   # T2 (3.6-flash): 4 non-progress steps → T3
+    3: 5,   # T3 (3.6-plus): 5 non-progress steps → T4 (don't wait too long)
+    4: 6,   # T4 (3.7-max): 6 non-progress steps → give up, downgrade to T2
 }
 
 # After T4 fails to make progress, downgrade to this tier instead of stagnation.
-# "T4 couldn't save it, stop burning money, fall back to cheap model."
 T4_DOWNGRADE_TIER = 2
 
 # Per-tier max consecutive turns before forced upgrade.
-# Separate from escalation: this handles "T1 is making progress but too slowly".
-# Escalation handles "T1 is completely stuck (no progress)".
-# After max_turns on a tier, force upgrade even if progress is being made.
 TIER_MAX_TURNS: dict[int, int] = {
-    1: 25,   # T1: max 25 turns → force T2 (cheap but slow)
-    2: 40,   # T2: max 40 turns → force T3 (balanced, more runway)
-    3: 60,   # T3: max 60 turns → force T4 (if plus can't solve it, try max)
-    4: 999,  # T4: no turn cap (if max can't solve it, no model can)
+    1: 20,   # T1: max 20 turns → force T2 (cheap but slow)
+    2: 35,   # T2: max 35 turns → force T3
+    3: 40,   # T3: max 40 turns → force T4 (don't waste time on plus)
+    4: 999,  # T4: no turn cap
 }
 
 # Adaptive routing (budgetflow_full only): rolling task feedback + in-run recovery.
