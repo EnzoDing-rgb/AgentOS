@@ -87,3 +87,11 @@ def test_text_mode_format_error_stops_after_threshold() -> None:
         model._parse_actions(response, text_mode=True)
 
     assert excinfo.value.exit_reason == "format_error_text_action"
+
+
+def test_text_mode_is_run_level_switch(monkeypatch) -> None:
+    model = _model()
+    monkeypatch.setenv("BF_GPT_TEXT_MODE", "1")
+
+    assert model._use_text_mode("tier1_qwen35_flash") is True
+    assert model._use_text_mode("tier4_gpt53_codex") is True

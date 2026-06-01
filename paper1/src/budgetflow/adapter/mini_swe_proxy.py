@@ -703,7 +703,7 @@ class BudgetFlowLitellmModel:
             raise
 
     def _use_text_mode(self, backend_name: str) -> bool:
-        return backend_name in _AICODE007_BACKENDS and os.environ.get("BF_GPT_TEXT_MODE") == "1"
+        return os.environ.get("BF_GPT_TEXT_MODE") == "1"
 
     def _parse_actions(self, response, *, text_mode: bool = False) -> list[dict]:
         if text_mode:
