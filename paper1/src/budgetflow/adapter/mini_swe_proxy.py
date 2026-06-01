@@ -69,6 +69,13 @@ configure_litellm_quiet()
 _DASHSCOPE_BACKENDS = frozenset({TIER1_BACKEND, TIER2_BACKEND, TIER3_BACKEND, TIER4_BACKEND, TIER4_QWEN_MAX_BACKEND})
 _AICODE007_BACKENDS = frozenset({TIER4_GPT53_BACKEND, TIER5_BACKEND})
 FORMAT_ERROR_STOP_AFTER = 5
+TIER5_FORMAT_ERROR_STOP_AFTER = 2
+
+
+def _format_error_stop_after(backend_tier: int | None) -> int:
+    if backend_tier is not None and backend_tier >= 5:
+        return TIER5_FORMAT_ERROR_STOP_AFTER
+    return FORMAT_ERROR_STOP_AFTER
 
 
 class FatalProviderBillingError(RuntimeError):
@@ -405,7 +412,7 @@ class BudgetFlowLitellmModel:
         billable = min(actual_cost, spend_headroom)
         self.governor.settle(reservation_id, actual_cost, WorkflowStatus.RUNNING)
         try:
-            actions = self._parse_actions(response, text_mode=text_mode)
+            actions = self._parse_actions(response, text_mode=text_mode, backend_tier=backend.tier)
         except Exception as exc:
             if self._enable_turn_trace:
                 self.turn_traces.append(_build_turn_trace(
@@ -708,7 +715,8 @@ class BudgetFlowLitellmModel:
     def _use_text_mode(self, backend_name: str) -> bool:
         return os.environ.get("BF_GPT_TEXT_MODE") == "1"
 
-    def _parse_actions(self, response, *, text_mode: bool = False) -> list[dict]:
+    def _parse_actions(self, response, *, text_mode: bool = False, backend_tier: int | None = None) -> list[dict]:
+        stop_after = _format_error_stop_after(backend_tier)
         if text_mode:
             content = response.choices[0].message.content or ""
             try:
@@ -719,7 +727,7 @@ class BudgetFlowLitellmModel:
                 )
             except FormatError:
                 self._format_error_streak += 1
-                if self._format_error_streak >= FORMAT_ERROR_STOP_AFTER:
+                if self._format_error_streak >= stop_after:
                     raise BudgetFlowStagnationError(
                         self.workflow_id,
                         exit_reason="format_error_text_action",
@@ -737,7 +745,7 @@ class BudgetFlowLitellmModel:
         if not tool_calls:
             self._format_error_streak += 1
             counted_format_error = True
-            if self._format_error_streak >= FORMAT_ERROR_STOP_AFTER:
+            if self._format_error_streak >= stop_after:
                 raise BudgetFlowStagnationError(
                     self.workflow_id,
                     exit_reason="format_error_no_tool_calls",
@@ -749,7 +757,7 @@ class BudgetFlowLitellmModel:
         except FormatError:
             if not counted_format_error:
                 self._format_error_streak += 1
-            if self._format_error_streak >= FORMAT_ERROR_STOP_AFTER:
+            if self._format_error_streak >= stop_after:
                 raise BudgetFlowStagnationError(
                     self.workflow_id,
                     exit_reason="format_error_invalid_tool_call",

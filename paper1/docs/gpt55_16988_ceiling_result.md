@@ -55,3 +55,9 @@ Paper implication:
 - GPT-5.5 must remain ceiling-only.
 - Automatic Budget must not call GPT-5.5 without a compatibility/protocol gate.
 - If T5 is ever allowed, it needs a much stricter stop-loss: one or two invalid format turns should stop the task before spending near a full per-task cap.
+
+Follow-up implemented:
+
+- Tier-5 format/protocol stop-loss is now stricter than normal tiers.
+- T5 stops after 2 consecutive format errors.
+- T4 and below keep the existing threshold of 5 consecutive format errors.
