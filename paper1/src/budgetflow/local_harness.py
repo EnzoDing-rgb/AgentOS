@@ -506,13 +506,12 @@ def evaluate_local_harness(
     if not fail_after:
         detail_parts.append(fail_after_log)
 
-    pass_subset = task.pass_to_pass[:5]
-    pass_ok, pass_log = run_pytest(repo_dir, pass_subset, test_paths) if pass_subset else (True, "skipped")
+    pass_ok, pass_log = run_pytest(repo_dir, task.pass_to_pass, test_paths) if task.pass_to_pass else (True, "skipped")
     detail_parts.append(f"pass_to_pass={'pass' if pass_ok else 'fail'}")
     if not pass_ok:
         detail_parts.append(pass_log)
 
-    resolved = fail_after and pass_ok
+    resolved = (not fail_before) and fail_after and pass_ok
     return HarnessResult(
         instance_id=task.instance_id,
         patch_applied=True,
