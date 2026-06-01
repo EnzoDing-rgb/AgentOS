@@ -9,11 +9,13 @@ W_I: dict[Stage, float] = {
     Stage.VALIDATION: 2.5,
 }
 
-# Tier pool requested by experiment owner:
-# T1 = GPT-5.3 Codex Spark, T2 = DeepSeek V4 Flash, T3 = DeepSeek V4 Pro.
-TIER1_BACKEND = "tier1_spark"
-TIER2_BACKEND = "tier2_flash"
-TIER3_BACKEND = "tier3_pro"
+# Tier pool: Qwen family via 阿里云百炼 (DashScope).
+# T1 = Qwen3.6-Flash (lightweight, ¥1.2/M in, ¥7.2/M out)
+# T2 = Qwen3.6-Plus (balanced, ¥2/M in, ¥12/M out)
+# T3 = Qwen3.7-Max (flagship, ¥4/M in, ¥16/M out, 5折 until 2026-06-22)
+TIER1_BACKEND = "tier1_qwen_flash"
+TIER2_BACKEND = "tier2_qwen_plus"
+TIER3_BACKEND = "tier3_qwen_max"
 
 PROGRESS_TABLE: dict[Stage, dict[str, float]] = {
     Stage.LOCALIZATION: {
@@ -64,20 +66,23 @@ BUDGET_PRESSURE_INIT = 0.01
 PRESSURE_MAX = 1.5
 UNCAPPED_BUDGET_THRESHOLD = 1_000_000.0
 
-DEEPSEEK_API_BASE = "https://api.deepseek.com"
-DEEPSEEK_V4_FLASH_MODEL = "deepseek/deepseek-chat"
-DEEPSEEK_V4_PRO_MODEL = "deepseek/deepseek-reasoner"
+# 阿里云百炼 (DashScope) OpenAI-compatible endpoint.
+DASHSCOPE_API_BASE = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
-# litellm needs provider prefix; api_base/api_key pin calls to AICode007 (not OpenAI official).
-TIER1_MODEL_ID = "gpt-5.2"
-TIER1_MODEL = f"openai/{TIER1_MODEL_ID}"
-TIER2_MODEL = DEEPSEEK_V4_FLASH_MODEL
-TIER3_MODEL = DEEPSEEK_V4_PRO_MODEL
+# Qwen model IDs (bare names, no provider prefix — litellm routes via api_base).
+QWEN_T1_MODEL = "qwen3.6-flash"
+QWEN_T2_MODEL = "qwen3.6-plus"
+QWEN_T3_MODEL = "qwen3.7-max"
 
-# Terminal model= labels (hyphenated; lowercase product tokens).
-TIER1_DISPLAY = "gpt-5.2"
-TIER2_DISPLAY = "deepseek-v4-flash"
-TIER3_DISPLAY = "deepseek-v4-pro"
+# litellm model strings: openai/ prefix + custom api_base → 百炼.
+TIER1_MODEL = f"openai/{QWEN_T1_MODEL}"
+TIER2_MODEL = f"openai/{QWEN_T2_MODEL}"
+TIER3_MODEL = f"openai/{QWEN_T3_MODEL}"
+
+# Terminal model= labels for console output.
+TIER1_DISPLAY = "qwen3.6-flash"
+TIER2_DISPLAY = "qwen3.6-plus"
+TIER3_DISPLAY = "qwen3.7-max"
 
 TIER_DISPLAY_BY_BACKEND: dict[str, str] = {
     TIER1_BACKEND: TIER1_DISPLAY,
@@ -90,6 +95,11 @@ TIER_MODEL_BY_BACKEND: dict[str, str] = {
     TIER2_BACKEND: TIER2_MODEL,
     TIER3_BACKEND: TIER3_MODEL,
 }
+
+# Back-compat aliases for scripts that reference old model names.
+DEEPSEEK_API_BASE = DASHSCOPE_API_BASE
+DEEPSEEK_V4_FLASH_MODEL = TIER2_MODEL
+DEEPSEEK_V4_PRO_MODEL = TIER3_MODEL
 
 
 def tier_display_name(backend_name: str) -> str:

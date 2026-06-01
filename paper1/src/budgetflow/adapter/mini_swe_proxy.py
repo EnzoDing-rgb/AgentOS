@@ -21,8 +21,7 @@ from ..litellm_quiet import configure_litellm_quiet
 from ..budget_pressure import live_budget_pressure
 from ..deepseek_backend import ensure_aicode007_proxy, ensure_direct_api, load_env_file
 from ..defaults import (
-    AICODE007_API_BASE,
-    DEEPSEEK_API_BASE,
+    DASHSCOPE_API_BASE,
     PRESSURE_MAX,
     TIER1_BACKEND,
     TIER1_MODEL,
@@ -51,8 +50,7 @@ logger = logging.getLogger("budgetflow_litellm_model")
 
 configure_litellm_quiet()
 
-_DEEPSEEK_BACKENDS = frozenset({TIER2_BACKEND, TIER3_BACKEND})
-_AICODE_BACKENDS = frozenset({TIER1_BACKEND})
+_DASHSCOPE_BACKENDS = frozenset({TIER1_BACKEND, TIER2_BACKEND, TIER3_BACKEND})
 
 
 class BudgetFlowLitellmModel:
@@ -87,12 +85,9 @@ class BudgetFlowLitellmModel:
         self.format_error_template = format_error_template or "{{ error }}"
         self.set_cache_control = set_cache_control
         self.multimodal_regex = multimodal_regex
-        self.deepseek_api_key = os.environ.get("DEEPSEEK_API_KEY")
-        if not self.deepseek_api_key:
-            raise RuntimeError("DEEPSEEK_API_KEY is missing. Add it to the repo root .env file.")
-        self.aicode_api_key = os.environ.get("AICODE007_API_KEY")
-        if not self.aicode_api_key:
-            raise RuntimeError("AICODE007_API_KEY is missing. Add it to the repo root .env file.")
+        self.dashscope_api_key = os.environ.get("DASHSCOPE_API_KEY")
+        if not self.dashscope_api_key:
+            raise RuntimeError("DASHSCOPE_API_KEY is missing. Add it to the repo root .env file.")
         self.step_index = 0
         self._no_progress_streak = 0
         self._no_progress_on_current_tier = 0  # consecutive non-progress steps on current tier
@@ -310,26 +305,20 @@ class BudgetFlowLitellmModel:
         )
 
     def _model_config_for(self, backend: Backend) -> tuple[str, dict[str, Any]]:
-        if backend.name in _DEEPSEEK_BACKENDS:
+        if backend.name in _DASHSCOPE_BACKENDS:
             common = {
                 "temperature": 0.0,
                 "parallel_tool_calls": True,
                 "drop_params": True,
-                "api_base": DEEPSEEK_API_BASE,
-                "api_key": self.deepseek_api_key,
+                "api_base": DASHSCOPE_API_BASE,
+                "api_key": self.dashscope_api_key,
             }
-            if backend.name == TIER2_BACKEND:
-                return TIER2_MODEL, common
-            return TIER3_MODEL, common
-        if backend.name in _AICODE_BACKENDS:
-            common = {
-                "temperature": 0.0,
-                "parallel_tool_calls": True,
-                "drop_params": True,
-                "api_base": AICODE007_API_BASE,
-                "api_key": self.aicode_api_key,
+            model_map = {
+                TIER1_BACKEND: TIER1_MODEL,
+                TIER2_BACKEND: TIER2_MODEL,
+                TIER3_BACKEND: TIER3_MODEL,
             }
-            return TIER1_MODEL, common
+            return model_map[backend.name], common
         raise ValueError(f"unknown backend: {backend.name}")
 
     def _completion(
@@ -346,17 +335,14 @@ class BudgetFlowLitellmModel:
         prepared = set_cache_control(prepared, mode=self.set_cache_control)
 
         def _query():
-            if backend_name in _AICODE_BACKENDS:
-                ensure_aicode007_proxy()
-                # Force OpenAI-compatible route to AICode007 (avoid litellm env OPENAI_* fallback).
+            if backend_name in _DASHSCOPE_BACKENDS:
                 kwargs_merged = {
-                    "api_base": AICODE007_API_BASE,
-                    "api_key": self.aicode_api_key,
+                    "api_base": DASHSCOPE_API_BASE,
+                    "api_key": self.dashscope_api_key,
                     **model_kwargs,
                     **kwargs,
                 }
             else:
-                ensure_direct_api()
                 kwargs_merged = {**model_kwargs, **kwargs}
             return litellm.completion(
                 model=model_name,
