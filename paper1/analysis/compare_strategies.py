@@ -8,17 +8,17 @@ from pathlib import Path
 COST_SCALE = 100
 
 DISPLAY_NAMES = {
-    "all_pro": "all_pro (T3)",
-    "all_t1_tight": "t1-only tight",
-    "all_t1_loose": "t1-only loose",
-    "all_spark_tight": "t1-only tight",
-    "all_spark_loose": "t1-only loose",
-    "all_flash_tight": "t1-only tight",
-    "all_flash_loose": "t1-only loose",
-    "budgetflow_full_loose": "bf-full loose",
-    "budgetflow_full_tight": "bf-full tight",
-    "budget_only_loose": "bo-only loose",
-    "budget_only_tight": "bo-only tight",
+    "all_pro": "all_pro",
+    "all_t1_tight": "T1-only tight",
+    "all_t1_loose": "T1-only loose",
+    "all_spark_tight": "T1-only tight",
+    "all_spark_loose": "T1-only loose",
+    "all_flash_tight": "T1-only tight",
+    "all_flash_loose": "T1-only loose",
+    "budgetflow_full_loose": "BudgetFlow loose",
+    "budgetflow_full_tight": "BudgetFlow tight",
+    "budget_only_loose": "BudgetOnly loose",
+    "budget_only_tight": "BudgetOnly tight",
 }
 
 DISPLAY_ORDER = [
