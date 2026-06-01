@@ -340,6 +340,7 @@ class RunTraceLogger:
 
     def finalize_agent(self, *, submitted: bool, patch_extracted: bool) -> None:
         if submitted:
+            self._attempted_submit = True
             self._submitted = True
         self._patch_extracted = patch_extracted
 

@@ -59,3 +59,31 @@ def test_valid_tool_call_resets_format_error_streak() -> None:
     actions = model._parse_actions(_response([tool_call]))
 
     assert actions == [{"command": "ls", "tool_call_id": "call_1"}]
+
+
+def test_text_mode_parses_bash_block() -> None:
+    model = _model()
+    response = _response()
+    response.choices[0].message.content = "THOUGHT: list files\n\n```mswea_bash_command\nls -la\n```"
+
+    actions = model._parse_actions(response, text_mode=True)
+
+    assert actions == [{"command": "ls -la"}]
+    assert model._format_error_streak == 0
+
+
+def test_text_mode_format_error_stops_after_threshold() -> None:
+    model = _model()
+    response = _response()
+    response.choices[0].message.content = "THOUGHT: no command"
+
+    for step in range(1, FORMAT_ERROR_STOP_AFTER):
+        model.step_index = step
+        with pytest.raises(FormatError):
+            model._parse_actions(response, text_mode=True)
+
+    model.step_index = FORMAT_ERROR_STOP_AFTER
+    with pytest.raises(BudgetFlowStagnationError) as excinfo:
+        model._parse_actions(response, text_mode=True)
+
+    assert excinfo.value.exit_reason == "format_error_text_action"

@@ -91,3 +91,41 @@ agent_submitted=false
 ```
 
 This confirms the guard works: the same protocol mismatch now stops after 5 turns instead of wasting 45 turns. It also confirms the trace no longer reports a false submission.
+
+## Text-Mode Smoke
+
+The root protocol issue was then tested with mini-SWE's backtick/text scaffold:
+
+```bash
+BF_GPT_TEXT_MODE=1 BF_T4_PROVIDER=gpt53_codex python -m budgetflow.run_mini_swe_compare \
+  --ids sympy__sympy-13480 \
+  --strategies all_gpt53 \
+  --out-stem gpt53_codex_textmode_smoke \
+  --step-limit 8 \
+  --per-task-cap 800 \
+  --resume
+```
+
+Result:
+
+```text
+PASS 1/1
+turns=7
+cost=124.266 governor units
+exit_status=Submitted
+patch_extracted=true
+gold=sympy/functions/elementary/hyperbolic.py
+harness=PASS
+```
+
+Conclusion:
+
+GPT-5.3 Codex can solve this gold-pass Sympy task when driven through text-mode mini-SWE. The previous `all_gpt53` failure was a tool-call protocol mismatch with the AICode007/GPT route, not a model ceiling failure.
+
+For small GPT-5.3 probes, use:
+
+```bash
+BF_GPT_TEXT_MODE=1 BF_T4_PROVIDER=gpt53_codex
+```
+
+Default Qwen BudgetFlow runs still use the original tool-call scaffold.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import time
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -35,6 +36,16 @@ from ..adaptive_routing import AdaptiveRoutingState
 from .strategies import build_routing_context
 
 SWEBENCH_CONFIG = REPO_ROOT / "external" / "mini-swe-agent" / "src" / "minisweagent" / "config" / "benchmarks" / "swebench.yaml"
+SWEBENCH_TEXT_CONFIG = (
+    REPO_ROOT
+    / "external"
+    / "mini-swe-agent"
+    / "src"
+    / "minisweagent"
+    / "config"
+    / "benchmarks"
+    / "swebench_backticks.yaml"
+)
 RUNS_DIR = REPO_ROOT / "paper1" / "data" / "runs"
 
 
@@ -67,8 +78,9 @@ class MiniSweRunResult:
 
 
 def _load_agent_config(*, step_limit: int = 250) -> dict:
+    config_path = SWEBENCH_TEXT_CONFIG if os.environ.get("BF_GPT_TEXT_MODE") == "1" else SWEBENCH_CONFIG
     config = recursive_merge(
-        get_config_from_spec(SWEBENCH_CONFIG),
+        get_config_from_spec(config_path),
         {
             "agent": {
                 "cost_limit": 0.0,

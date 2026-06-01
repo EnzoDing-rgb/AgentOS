@@ -54,6 +54,7 @@ def test_patch_txt_phase_not_submit(tmp_path: Path) -> None:
 def test_finalize_agent_sets_real_submission(tmp_path: Path) -> None:
     logger = _logger(tmp_path)
     logger.finalize_agent(submitted=True, patch_extracted=True)
+    assert logger._attempted_submit is True
     assert logger._submitted is True
 
 

@@ -13,6 +13,10 @@ from minisweagent.models.utils.actions_toolcall import (
     parse_toolcall_actions,
 )
 from minisweagent.exceptions import FormatError
+from minisweagent.models.utils.actions_text import (
+    format_observation_messages as format_text_observation_messages,
+    parse_regex_actions,
+)
 from minisweagent.models.utils.anthropic_utils import _reorder_anthropic_thinking_blocks
 from minisweagent.models.utils.cache_control import set_cache_control
 from minisweagent.models.utils.openai_multimodal import expand_multimodal_content
@@ -197,6 +201,7 @@ class BudgetFlowLitellmModel:
         self.turn_traces: list[dict] = []
         self._last_reserve_out: int = 0
         self._format_error_streak: int = 0
+        self._last_text_mode: bool = False
         self.config = type("Config", (), {"model_name": TIER3_MODEL})()
 
     def query(self, messages: list[dict[str, str]], **kwargs) -> dict:
@@ -341,11 +346,14 @@ class BudgetFlowLitellmModel:
         response_ok = True
         error_type = None
         try:
+            text_mode = self._use_text_mode(backend.name)
+            self._last_text_mode = text_mode
             response = self._completion(
                 messages,
                 backend_name=backend.name,
                 model_name=model_name,
                 model_kwargs=model_kwargs,
+                text_mode=text_mode,
                 **kwargs,
             )
         except Exception as exc:
@@ -395,7 +403,7 @@ class BudgetFlowLitellmModel:
         billable = min(actual_cost, spend_headroom)
         self.governor.settle(reservation_id, actual_cost, WorkflowStatus.RUNNING)
         try:
-            actions = self._parse_actions(response)
+            actions = self._parse_actions(response, text_mode=text_mode)
         except Exception as exc:
             if self._enable_turn_trace:
                 self.turn_traces.append(_build_turn_trace(
@@ -432,6 +440,7 @@ class BudgetFlowLitellmModel:
             "cost": billable,
             "backend": backend.name,
             "stage": stage.value,
+            "text_mode": text_mode,
         }
         if self._enable_turn_trace:
             self.turn_traces.append(_build_turn_trace(
@@ -615,6 +624,7 @@ class BudgetFlowLitellmModel:
         backend_name: str,
         model_name: str,
         model_kwargs: dict[str, Any],
+        text_mode: bool = False,
         **kwargs,
     ):
         prepared = [{k: v for k, v in msg.items() if k != "extra"} for msg in messages]
@@ -638,7 +648,7 @@ class BudgetFlowLitellmModel:
                 return litellm.completion(
                     model=model_name,
                     messages=prepared,
-                    tools=[BASH_TOOL],
+                    **({} if text_mode else {"tools": [BASH_TOOL]}),
                     **kwargs_merged,
                 )
             except Exception as exc:  # noqa: BLE001
@@ -692,7 +702,31 @@ class BudgetFlowLitellmModel:
                 ) from exc
             raise
 
-    def _parse_actions(self, response) -> list[dict]:
+    def _use_text_mode(self, backend_name: str) -> bool:
+        return backend_name in _AICODE007_BACKENDS and os.environ.get("BF_GPT_TEXT_MODE") == "1"
+
+    def _parse_actions(self, response, *, text_mode: bool = False) -> list[dict]:
+        if text_mode:
+            content = response.choices[0].message.content or ""
+            try:
+                actions = parse_regex_actions(
+                    content,
+                    action_regex=r"```mswea_bash_command\s*\n(.*?)\n```",
+                    format_error_template=self.format_error_template,
+                )
+            except FormatError:
+                self._format_error_streak += 1
+                if self._format_error_streak >= FORMAT_ERROR_STOP_AFTER:
+                    raise BudgetFlowStagnationError(
+                        self.workflow_id,
+                        exit_reason="format_error_text_action",
+                        step_index=self.step_index,
+                        no_progress_streak=self._format_error_streak,
+                    )
+                raise
+            self._format_error_streak = 0
+            return actions
+
         tool_calls = response.choices[0].message.tool_calls or []
         if tool_calls:
             self._format_error_streak = 0
@@ -728,6 +762,13 @@ class BudgetFlowLitellmModel:
         self, message: dict, outputs: list[dict], template_vars: dict | None = None
     ) -> list[dict]:
         actions = message.get("extra", {}).get("actions", [])
+        if message.get("extra", {}).get("text_mode"):
+            return format_text_observation_messages(
+                outputs,
+                observation_template=self.observation_template,
+                template_vars=template_vars,
+                multimodal_regex=self.multimodal_regex,
+            )
         return format_toolcall_observation_messages(
             actions=actions,
             outputs=outputs,
