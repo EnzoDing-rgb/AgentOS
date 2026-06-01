@@ -51,9 +51,9 @@ PROGRESS_SCALE: float = 18.0
 # T1 is expected to fail often → upgrade quickly. T3 gets most patience.
 # Resets when a step makes progress (bash_has_progress returns True).
 TIER_ESCALATION_PATIENCE: dict[int, int] = {
-    1: 3,   # T1 (3.5-flash): 3 non-progress steps → T2
-    2: 4,   # T2 (3.6-flash): 4 non-progress steps → T3
-    3: 5,   # T3 (3.6-plus): 5 non-progress steps → T4 (don't wait too long)
+    1: 4,   # T1 (3.5-flash): 4 non-progress steps → T2 (slightly more patient)
+    2: 5,   # T2 (3.6-flash): 5 non-progress steps → T3
+    3: 5,   # T3 (3.6-plus): 5 non-progress steps → T4
     4: 6,   # T4 (3.7-max): 6 non-progress steps → give up, downgrade to T2
 }
 
