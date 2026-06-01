@@ -30,6 +30,7 @@ from ..defaults import (
     TIER3_BACKEND,
     TIER3_MODEL,
     TIER_ESCALATION_PATIENCE,
+    TIER_MAX_TURNS,
 )
 from ..console_log import backend_tier_label, bold, dim, routing_stage_label, tag
 from ..governor import BudgetGovernor
@@ -91,6 +92,7 @@ class BudgetFlowLitellmModel:
         self.step_index = 0
         self._no_progress_streak = 0
         self._no_progress_on_current_tier = 0  # consecutive non-progress steps on current tier
+        self._turns_on_current_tier = 0  # total turns on current tier (for turn cap)
         self._last_backend_tier: int = 0  # track tier changes to reset patience
         self._total_prompt_tokens = 0
         self._total_completion_tokens = 0
@@ -172,7 +174,9 @@ class BudgetFlowLitellmModel:
         backend = self._reserve_with_downgrade(backend, input_tokens)
         if backend.tier != prev_tier and prev_tier > 0:
             self._no_progress_on_current_tier = 0  # tier changed, reset patience
+            self._turns_on_current_tier = 0  # tier changed, reset turn counter
         self._last_backend_tier = backend.tier
+        self._turns_on_current_tier += 1
         self.backend_picks.append(backend.name)
         self.last_routing_stage = stage.value
         self.last_backend_name = backend.name
@@ -234,15 +238,19 @@ class BudgetFlowLitellmModel:
         return max(64, min(headroom, int(affordable_tokens * 0.95)))
 
     def _apply_progress_escalation(self, backend: Backend) -> Backend:
-        """Per-tier escalation: cheaper tiers get less patience before upgrading.
+        """Per-tier escalation + turn cap: two complementary mechanisms.
 
-        Core BudgetFlow mechanism — not a band-aid:
-        - T1 (cheapest): expected to fail often → upgrade after 3 non-progress steps
-        - T2 (mid): moderate patience → upgrade after 5 non-progress steps
-        - T3 (best): most patience → 10 steps, then stagnation kills the task
+        Escalation (no-progress streak): "T1 is completely stuck → upgrade."
+        - T1: 3 non-progress steps → T2
+        - T2: 5 non-progress steps → T3
+        - Resets when progress is made.
 
-        Counter resets when any step makes progress, so a single successful
-        edit/test resets patience for the current tier.
+        Turn cap: "T1 is making progress but too slowly → upgrade."
+        - T1: max 25 turns → force T2
+        - T2: max 40 turns → force T3
+        - Does NOT reset on progress — hard limit per tier.
+
+        Both are core BudgetFlow: "don't waste time/money on weak models."
         """
         if self.routing.strategy != "budgetflow_full":
             return backend
@@ -250,25 +258,36 @@ class BudgetFlowLitellmModel:
         if len(ordered) < 2:
             return backend
 
-        patience = TIER_ESCALATION_PATIENCE.get(backend.tier)
-        if patience is None or self._no_progress_on_current_tier < patience:
-            return backend
-
-        # Find next higher tier
-        next_tier_idx = backend.tier  # tier is 1-indexed, next tier is at index `tier`
+        next_tier_idx = backend.tier
         if next_tier_idx >= len(ordered):
             return backend  # already at max tier
         floor = ordered[next_tier_idx]
         if floor.tier <= backend.tier:
             return backend
 
+        reason = None
+
+        # Check escalation (no-progress streak)
+        patience = TIER_ESCALATION_PATIENCE.get(backend.tier)
+        if patience is not None and self._no_progress_on_current_tier >= patience:
+            reason = f"streak={self._no_progress_on_current_tier}/{patience}"
+
+        # Check turn cap (total turns on this tier, regardless of progress)
+        max_turns = TIER_MAX_TURNS.get(backend.tier)
+        if reason is None and max_turns is not None and self._turns_on_current_tier >= max_turns:
+            reason = f"turns={self._turns_on_current_tier}/{max_turns}"
+
+        if reason is None:
+            return backend
+
         print(
             f"{tag('escalate', bold=False)} #{self.step_index} "
-            f"streak={self._no_progress_on_current_tier}/{patience} "
+            f"{reason} "
             f"{backend_tier_label(backend.name)} -> {backend_tier_label(floor.name)}",
             flush=True,
         )
         self._no_progress_on_current_tier = 0  # reset for new tier
+        self._turns_on_current_tier = 0  # reset for new tier
         return floor
 
     def _reserve_with_downgrade(self, backend: Backend, input_tokens: int) -> Backend:

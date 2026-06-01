@@ -49,6 +49,16 @@ TIER_ESCALATION_PATIENCE: dict[int, int] = {
     3: 10,  # pro → if this fails for 10 steps, task is genuinely stuck (stagnation)
 }
 
+# Per-tier max consecutive turns before forced upgrade.
+# Separate from escalation: this handles "T1 is making progress but too slowly".
+# Escalation handles "T1 is completely stuck (no progress)".
+# After max_turns on a tier, force upgrade even if progress is being made.
+TIER_MAX_TURNS: dict[int, int] = {
+    1: 25,   # T1: max 25 turns → force T2 (cheap but slow, don't waste time)
+    2: 40,   # T2: max 40 turns → force T3 (balanced, give more runway)
+    3: 999,  # T3: no limit (best model, let it run)
+}
+
 # Adaptive routing (budgetflow_full only): rolling task feedback + in-run recovery.
 ADAPTIVE_WINDOW = 5
 ADAPTIVE_MIN_SAMPLES = 2
