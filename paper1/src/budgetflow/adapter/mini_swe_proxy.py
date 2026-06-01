@@ -23,7 +23,6 @@ from ..deepseek_backend import ensure_aicode007_proxy, ensure_direct_api, load_e
 from ..defaults import (
     AICODE007_API_BASE,
     DEEPSEEK_API_BASE,
-    ESCALATION_THRESHOLD,
     PRESSURE_MAX,
     TIER1_BACKEND,
     TIER1_MODEL,
@@ -31,6 +30,7 @@ from ..defaults import (
     TIER2_MODEL,
     TIER3_BACKEND,
     TIER3_MODEL,
+    TIER_ESCALATION_PATIENCE,
 )
 from ..console_log import backend_tier_label, bold, dim, routing_stage_label, tag
 from ..governor import BudgetGovernor
@@ -95,6 +95,8 @@ class BudgetFlowLitellmModel:
             raise RuntimeError("AICODE007_API_KEY is missing. Add it to the repo root .env file.")
         self.step_index = 0
         self._no_progress_streak = 0
+        self._no_progress_on_current_tier = 0  # consecutive non-progress steps on current tier
+        self._last_backend_tier: int = 0  # track tier changes to reset patience
         self._recent_commands: deque[str] = deque(maxlen=16)
         self._progress_refresh = progress_refresh
         self.backend_picks: list[str] = []
@@ -140,8 +142,10 @@ class BudgetFlowLitellmModel:
         phase = (self.agent_phase or "").strip()
         if bash_has_progress(bash_command) or phase in _REPAIR_AGENT_PHASES or phase in _VALIDATION_AGENT_PHASES:
             self._no_progress_streak = 0
+            self._no_progress_on_current_tier = 0
         else:
             self._no_progress_streak += 1
+            self._no_progress_on_current_tier += 1
         norm_cmd = normalize_bash_command(bash_command)
         if norm_cmd:
             self._recent_commands.append(norm_cmd)
@@ -166,8 +170,12 @@ class BudgetFlowLitellmModel:
             )
 
         backend = choose_backend(self.routing, turn, expected_costs)
+        prev_tier = self._last_backend_tier
         backend = self._apply_progress_escalation(backend)
         backend = self._reserve_with_downgrade(backend, input_tokens)
+        if backend.tier != prev_tier and prev_tier > 0:
+            self._no_progress_on_current_tier = 0  # tier changed, reset patience
+        self._last_backend_tier = backend.tier
         self.backend_picks.append(backend.name)
         self.last_routing_stage = stage.value
         self.last_backend_name = backend.name
@@ -227,25 +235,41 @@ class BudgetFlowLitellmModel:
         return max(64, min(headroom, int(affordable_tokens * 0.95)))
 
     def _apply_progress_escalation(self, backend: Backend) -> Backend:
+        """Per-tier escalation: cheaper tiers get less patience before upgrading.
+
+        Core BudgetFlow mechanism — not a band-aid:
+        - T1 (cheapest): expected to fail often → upgrade after 3 non-progress steps
+        - T2 (mid): moderate patience → upgrade after 5 non-progress steps
+        - T3 (best): most patience → 10 steps, then stagnation kills the task
+
+        Counter resets when any step makes progress, so a single successful
+        edit/test resets patience for the current tier.
+        """
         if self.routing.strategy != "budgetflow_full":
             return backend
         ordered = self.routing.backends
         if len(ordered) < 2:
             return backend
-        if self._no_progress_streak >= ESCALATION_THRESHOLD * 2:
-            floor = ordered[-1]
-        elif self._no_progress_streak >= ESCALATION_THRESHOLD:
-            floor = ordered[1]
-        else:
+
+        patience = TIER_ESCALATION_PATIENCE.get(backend.tier)
+        if patience is None or self._no_progress_on_current_tier < patience:
             return backend
-        if backend.tier >= floor.tier:
+
+        # Find next higher tier
+        next_tier_idx = backend.tier  # tier is 1-indexed, next tier is at index `tier`
+        if next_tier_idx >= len(ordered):
+            return backend  # already at max tier
+        floor = ordered[next_tier_idx]
+        if floor.tier <= backend.tier:
             return backend
+
         print(
             f"{tag('escalate', bold=False)} #{self.step_index} "
-            f"streak={self._no_progress_streak} "
+            f"streak={self._no_progress_on_current_tier}/{patience} "
             f"{backend_tier_label(backend.name)} -> {backend_tier_label(floor.name)}",
             flush=True,
         )
+        self._no_progress_on_current_tier = 0  # reset for new tier
         return floor
 
     def _reserve_with_downgrade(self, backend: Backend, input_tokens: int) -> Backend:

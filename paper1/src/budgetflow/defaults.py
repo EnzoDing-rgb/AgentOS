@@ -37,8 +37,15 @@ PROGRESS_TABLE: dict[Stage, dict[str, float]] = {
 # Lower = more conservative about upgrading to expensive models.
 PROGRESS_SCALE: float = 18.0
 
-# Progress-based escalation (budgetflow_full only): consecutive read-only steps.
-ESCALATION_THRESHOLD = 20
+# Per-tier escalation patience: cheaper tiers get less patience before upgrading.
+# Core BudgetFlow mechanism: "try cheap, escalate on failure within this task."
+# T1 is expected to fail often → upgrade quickly. T3 gets most patience.
+# Resets when a step makes progress (bash_has_progress returns True).
+TIER_ESCALATION_PATIENCE: dict[int, int] = {
+    1: 3,   # spark/gpt-5.2 → upgrade to T2 after 3 non-progress steps
+    2: 5,   # flash → upgrade to T3 after 5 non-progress steps
+    3: 10,  # pro → if this fails for 10 steps, task is genuinely stuck (stagnation)
+}
 
 # Adaptive routing (budgetflow_full only): rolling task feedback + in-run recovery.
 ADAPTIVE_WINDOW = 5
