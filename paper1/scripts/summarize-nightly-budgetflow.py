@@ -42,9 +42,15 @@ def summarize(stem: str, run_dir: Path) -> None:
 
 
 def main() -> None:
+    import sys
+
     run_dir = Path(__file__).resolve().parents[1] / "data" / "runs"
-    summarize("rescue_stoploss_targeted_v2", run_dir)
-    summarize("budgetflow_goldpass5_autobudget_p030_v1", run_dir)
+    stems = sys.argv[1:] or [
+        "rescue_stoploss_targeted_v2",
+        "budgetflow_goldpass5_autobudget_p030_v1",
+    ]
+    for stem in stems:
+        summarize(stem, run_dir)
 
 
 if __name__ == "__main__":
