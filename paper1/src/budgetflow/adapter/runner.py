@@ -29,7 +29,7 @@ from ..run_trace import (
     extract_worktree_patch,
     patch_local_swebench_config,
 )
-from .backends import build_ceiling_backends, build_compare_backends
+from .backends import build_backends_for_strategy
 from .errors import BudgetFlowBudgetError, BudgetFlowStagnationError, BudgetFlowUpstreamError
 from .mini_swe_proxy import BudgetFlowLitellmModel
 from ..adaptive_routing import AdaptiveRoutingState
@@ -137,7 +137,7 @@ def run_mini_swe_task(
         progress_box=progress_box,
     )
     config = patch_local_swebench_config(_load_agent_config(step_limit=step_limit), repo_dir)
-    backends = build_ceiling_backends() if strategy in ("all_gpt53", "all_gpt55") else build_compare_backends()
+    backends = build_backends_for_strategy(strategy)
     routing = build_routing_context(
         strategy,
         backends,

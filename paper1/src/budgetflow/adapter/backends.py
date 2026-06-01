@@ -107,7 +107,7 @@ def _build_all_backends() -> list[Backend]:
     ]
 
 
-def build_compare_backends() -> list[Backend]:
+def build_compare_backends(*, include_t1: bool = False) -> list[Backend]:
     """Default experiment pool: Qwen T1-T4 only.
 
     GPT-5.5 is a ceiling probe and must not be reachable by budgeted strategies
@@ -115,12 +115,20 @@ def build_compare_backends() -> list[Backend]:
     """
     active_t4 = active_t4_backend_name()
     excluded = {TIER5_BACKEND, TIER4_BACKEND, TIER4_QWEN_MAX_BACKEND, TIER4_GPT53_BACKEND} - {active_t4}
+    if not include_t1:
+        excluded.add(TIER1_BACKEND)
     return [backend for backend in _build_all_backends() if backend.name not in excluded]
 
 
 def build_ceiling_backends() -> list[Backend]:
     """Full pool including GPT-5.5 for explicit all_gpt55 ceiling probes."""
     return _build_all_backends()
+
+
+def build_backends_for_strategy(strategy: str) -> list[Backend]:
+    if strategy in {"all_gpt53", "all_gpt55"}:
+        return build_ceiling_backends()
+    return build_compare_backends(include_t1=strategy in {"all_flash", "all_t1"})
 
 
 def build_deepseek_backends() -> list[Backend]:

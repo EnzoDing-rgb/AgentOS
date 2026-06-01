@@ -6,7 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from budgetflow.console_log import backend_tier_label
+from budgetflow.console_log import backend_tier_label, format_tier_pool_line
 from budgetflow.defaults import (
     TIER1_BACKEND,
     TIER1_DISPLAY,
@@ -45,3 +45,17 @@ def test_backend_tier_label_full_names_not_abbrev() -> None:
         label = backend_tier_label(backend)
         assert expected in label
         assert "T1/" not in label and "T3/pro" not in label
+
+
+def test_tier_pool_line_marks_t1_skipped_by_default() -> None:
+    line = format_tier_pool_line()
+
+    assert "skipped in main pool" in line
+    assert TIER2_DISPLAY in line
+
+
+def test_tier_pool_line_can_show_t1_for_ablation() -> None:
+    line = format_tier_pool_line(include_t1=True)
+
+    assert TIER1_DISPLAY in line
+    assert "skipped in main pool" not in line

@@ -194,6 +194,12 @@ T5: GPT-5.5 only for ceiling probe
 - 如果 GPT-5.3 Codex 明显强于当前 Qwen T4，应该替换当前 T4。
 - T1 不要参与主实验，避免低质量调用污染轨迹；但可以保留做消融。
 
+Current implementation:
+
+- `build_compare_backends()` skips T1 by default.
+- Explicit `all_flash` / `all_t1` ablation runs can still include T1.
+- This makes the main automatic-budget pool start at T2, which matches the paper claim: BudgetFlow should allocate useful budget, not prove repeatedly that the cheapest weak model is weak.
+
 ## 8. Evaluation Guardrails
 
 Evaluation hardness 是第一优先级。
@@ -238,4 +244,3 @@ gold patch sanity
 > 我们提出一个 workflow-aware budget governor。它能在 agent workflow 运行中根据进展证据动态分配预算、升级模型和止损。在相同预算下，它比固定强模型、固定弱模型、stage-blind routing、budget-only routing 解决更多任务或浪费更少预算。
 
 这才是 BudgetFlow 的核心贡献。
-

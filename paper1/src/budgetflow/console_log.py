@@ -169,7 +169,7 @@ def dim(text: str) -> str:
     return paint(text, _DIM)
 
 
-def format_tier_pool_line() -> str:
+def format_tier_pool_line(*, include_t1: bool = False) -> str:
     """One-line tier pool for run banners (full names + litellm ids)."""
     from .defaults import (
         TIER1_DISPLAY, TIER1_MODEL,
@@ -182,8 +182,13 @@ def format_tier_pool_line() -> str:
     t4_backend = active_t4_backend_name()
     t4_display = tier_display_name(t4_backend)
     t4_model = tier_model_id(t4_backend)
+    t1 = (
+        f"T1={bold(TIER1_DISPLAY)} {dim(f'({TIER1_MODEL})')}"
+        if include_t1
+        else f"T1={dim('skipped in main pool')}"
+    )
     return (
-        f"T1={bold(TIER1_DISPLAY)} {dim(f'({TIER1_MODEL})')}  "
+        f"{t1}  "
         f"T2={bold(TIER2_DISPLAY)} {dim(f'({TIER2_MODEL})')}  "
         f"T3={bold(TIER3_DISPLAY)} {dim(f'({TIER3_MODEL})')}  "
         f"T4={bold(t4_display)} {dim(f'({t4_model})')}"

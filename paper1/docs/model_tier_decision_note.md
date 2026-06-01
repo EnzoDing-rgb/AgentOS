@@ -35,12 +35,14 @@ Do not silently switch the default T4 to a general `Max` model until a local gol
 - The current blocker is DashScope/Qwen account state, not model routing.
 - Local GPT-5.3 Codex text-mode probe solved `3/3` gold-pass Sympy tasks, so GPT-5.3 is a valid strong T4 candidate for controlled probes.
 - Qwen API preflight currently fails with `AuthenticationError: Incorrect API key provided`; no new Qwen performance conclusion can be drawn until this is fixed.
+- Public model/pricing material says Qwen3.7-Max is a newer strong agentic/general model, with higher listed pricing than older cheap Qwen tiers.
+- Public Qwen-Coder material positions the coder line for code generation, tool use, and software-engineering style workflows.
 
 ## Rationale
 
 Qwen3-Coder-Plus remains the default because it is code-specialized and was already integrated into the Qwen tier pool. For SWE-Bench style software repair, a coder-tuned model is the more conservative default than a general max model unless local evidence says otherwise.
 
-Qwen Max may be a stronger general model, but the paper question is not general chat ability. It is repair success per budget unit inside this scaffold. The correct test is a small gold-pass side-by-side once DashScope auth works:
+Qwen Max may be a stronger general/agentic model, but the paper question is not general chat ability or leaderboard maximum. It is repair success per budget unit inside this scaffold. The correct test is a small gold-pass side-by-side once DashScope auth works:
 
 ```text
 all_t4(coder-plus) vs all_t4(max) vs BF_T4_PROVIDER=gpt53_codex
@@ -54,12 +56,19 @@ GPT-5.3 Codex is plausible as a stronger regular T4, but should not silently rep
 The safe policy is:
 
 ```text
-default: T1/T2/T3/T4 = Qwen pool
+default: T2/T3/T4 = Qwen pool
+ablation: T1 only when explicitly requested
 opt-in:  T4 = Qwen Max or GPT-5.3 Codex
 ceiling: T5 = GPT-5.5 only for all_gpt55/raw ceiling
 ```
 
 This lets BudgetFlow test the real paper question without accidentally turning the main experiment into an expensive GPT-5.5 run.
+
+Implementation note:
+
+- Main compare routing now skips T1 by default.
+- `all_flash` / `all_t1` remain available for explicit ablation.
+- `all_tier2`, `all_pro`, and `all_t4` select by backend tier, not list index, so skipping T1 does not shift baselines.
 
 ## Operational Gate
 

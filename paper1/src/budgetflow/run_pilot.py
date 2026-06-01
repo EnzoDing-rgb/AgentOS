@@ -108,7 +108,7 @@ def main() -> None:
 
     print(f"{tag('pilot')} B.0 budget pilot — {len(tasks)} tasks × {bold(PILOT_STRATEGY)}", flush=True)
     print(f"  strategy: {bold(PILOT_STRATEGY_LABEL)}  model: {bold(TIER3_DISPLAY)}", flush=True)
-    print(f"  pool: {format_tier_pool_line()}", flush=True)
+    print(f"  pool: {format_tier_pool_line(include_t1=True)}", flush=True)
     print(
         f"  budget: uncapped  step_limit={args.step_limit}  heartbeat=30s  jobs={max(1, args.jobs)} (worktree)",
         flush=True,

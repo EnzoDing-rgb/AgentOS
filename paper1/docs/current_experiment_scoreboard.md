@@ -13,6 +13,7 @@ This is the current evidence table for BudgetFlow paper progress. It is not the 
 | GPT-5.5 in normal pool | blocked by design | `build_compare_backends()` excludes `tier5_gpt55` |
 | GPT-5.3 regular T4 | opt-in only | `BF_T4_PROVIDER=gpt53_codex` |
 | Qwen Max regular T4 | opt-in only | `BF_T4_PROVIDER=qwen_max` |
+| T1 in main compare | skipped by default | `build_compare_backends()` excludes T1; `all_flash` remains ablation |
 | GPT text scaffold | opt-in only | `BF_GPT_TEXT_MODE=1` |
 | Qwen preflight | required | `scripts/run-auto-v2-goldpass5.sh` exits before compare if Qwen ping fails |
 
@@ -31,8 +32,9 @@ This is the current evidence table for BudgetFlow paper progress. It is not the 
 2. GPT-5.3 Codex solved `4/5` gold-pass Sympy tasks with SWE-mini in text mode.
 3. `sympy__sympy-16988` is a hard repair case for GPT-5.3: gold file was found and patch application succeeded, but `fail_after` still failed.
 4. GPT-5.5 is still not safe for automatic budget routing: on `16988` it spent `982.2` governor units in 5 turns, produced format errors, and extracted no patch.
-5. BudgetFlow auto_v2 has a real positive smoke signal: it solved one task that `stage_blind_tight` and `budgetflow_full_tight` did not solve in the same smoke.
-6. Qwen-backed formal comparison cannot continue until `DASHSCOPE_API_KEY` is fixed. Running it now would create infra-fail noise, not science.
+5. Main BudgetFlow compare now starts at T2 by default; T1 is retained only for explicit `all_flash` / `all_t1` ablation.
+6. BudgetFlow auto_v2 has a real positive smoke signal: it solved one task that `stage_blind_tight` and `budgetflow_full_tight` did not solve in the same smoke.
+7. Qwen-backed formal comparison cannot continue until `DASHSCOPE_API_KEY` is fixed. Running it now would create infra-fail noise, not science.
 
 ## Current Commands
 
