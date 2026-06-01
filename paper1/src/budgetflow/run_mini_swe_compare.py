@@ -47,8 +47,13 @@ from budgetflow.compare_checkpoint import (  # noqa: E402
 )
 from budgetflow.console_log import backend_tier_label, dim, format_run_verdict, status_fail, status_pass, tag  # noqa: E402
 from budgetflow.deepseek_backend import load_env_file  # noqa: E402
+from budgetflow.failure_classification import classify_failure  # noqa: E402
 from budgetflow.governor import BudgetGovernor, GovernorConfig  # noqa: E402
-from budgetflow.defaults import BUDGET_PRESSURE_INIT, PRESSURE_MAX  # noqa: E402
+from budgetflow.defaults import (  # noqa: E402
+    BUDGET_PRESSURE_INIT,
+    PRESSURE_MAX,
+    active_w_i_profile_name,
+)
 from budgetflow.heartbeat import run_with_heartbeat  # noqa: E402
 from budgetflow.ledger import WorkflowLedgerStore  # noqa: E402
 from budgetflow.lite_tasks import load_compare_easy_tasks, load_compare_medium_tasks, load_swebench_lite_tasks  # noqa: E402
@@ -81,6 +86,11 @@ DEFAULT_STRATEGIES: tuple[CompareStrategy, ...] = (
     CompareStrategy("all_pro", "all_pro", None),
 )
 
+DIAGNOSTIC_STRATEGIES: tuple[CompareStrategy, ...] = (
+    CompareStrategy("all_t4", "all_t4", None),
+    CompareStrategy("all_gpt55", "all_gpt55", None),
+)
+
 _STRATEGY_ALIASES = {
     # Backward-compatible — old spark names map to new T1 names.
     "all_spark_tight": "all_t1_tight",
@@ -93,6 +103,17 @@ _STRATEGY_ALIASES = {
 def _normalize_strategy(name: str) -> str:
     """Resolve legacy strategy names to current canonical names."""
     return _STRATEGY_ALIASES.get(name, name)
+
+
+def _strategy_catalog() -> tuple[CompareStrategy, ...]:
+    return DEFAULT_STRATEGIES + DIAGNOSTIC_STRATEGIES
+
+
+def _w_i_profile_for_record(routing: str) -> str:
+    """JSONL field: stage_blind forces w_i=1 at query time regardless of BF_W_PROFILE."""
+    if routing == "stage_blind":
+        return "flat_forced"
+    return active_w_i_profile_name()
 
 
 def _batch_budget_cap(cfg: CompareStrategy, budget_caps: dict[str, float]) -> float:
@@ -185,10 +206,11 @@ def _run_one(
         enable_turn_trace=enable_turn_trace,
     )
     batch_snapshot = governor.budget_snapshot()
-    return {
+    record = {
         "instance_id": result.instance_id,
         "strategy": cfg.name,
         "routing": cfg.routing,
+        "w_i_profile": _w_i_profile_for_record(cfg.routing),
         "budget_tier": cfg.budget_tier or "uncapped",
         "batch_budget_cap": None if cfg.budget_tier is None else batch_budget_cap,
         "batch_spent": batch_snapshot.get("spent_budget"),
@@ -203,6 +225,7 @@ def _run_one(
         "harness_resolved": result.harness_resolved,
         "patch_extracted": bool(result.patch_text),
         "patch_source": result.patch_source,
+        "submitted_patch": result.submitted_patch_path,
         "exit_status": result.exit_status,
         "exit_reason": result.exit_reason,
         "total_cost": result.total_cost,
@@ -225,6 +248,8 @@ def _run_one(
         "turn_traces": _truncate_turn_traces(result.turn_traces, trace_max_turns, trace_truncate_chars)
         if enable_turn_trace and result.turn_traces else None,
     }
+    record["failure_class"] = classify_failure(record)
+    return record
 
 
 def _print_run_done(record: dict, *, done: int, total: int, strategy: str) -> None:
@@ -279,6 +304,7 @@ def _append_summary(lines: list[str], record: dict, *, index: int, total: int) -
     lines.append(
         f"[{index}/{total}] DONE strategy={record['strategy']} task={record['instance_id']} {status} "
         f"exit={record.get('exit_status')} reason={record.get('exit_reason')} turns={record.get('llm_turns')} "
+        f"class={record.get('failure_class', classify_failure(record))} "
         f"task_cost={task_cost:.2f} batch_cap={cap_s} batch_avail={record.get('batch_available')} "
         f"batch_spent={record.get('batch_spent')} spark={spark_pct:.0f}% flash={flash_pct:.0f}% pro={pro_pct:.0f}% "
         f"elapsed={record.get('elapsed_s')}s"
@@ -302,6 +328,7 @@ def _format_strategy_totals(
     spark_by_strategy: dict[str, list[float]],
     flash_by_strategy: dict[str, list[float]],
     pro_by_strategy: dict[str, list[float]],
+    failure_by_strategy: dict[str, dict[str, int]],
     batch_caps: dict[str, float | None],
 ) -> list[str]:
     lines = ["=== BATCH RESOLVED + COST BY STRATEGY (governor units, shared pool) ==="]
@@ -318,6 +345,7 @@ def _format_strategy_totals(
         spark = spark_by_strategy.get(key, [])
         flash = flash_by_strategy.get(key, [])
         pro = pro_by_strategy.get(key, [])
+        failures = failure_by_strategy.get(key, {})
         resolved_n = sum(1 for f in flags if f)
         batch_spent = batch_spent_by_strategy.get(key, 0.0)
         cap = batch_caps.get(key)
@@ -334,6 +362,9 @@ def _format_strategy_totals(
             f"{key:<28} {resolved_n}/{len(flags):<7} {batch_spent:11.2f} {cap_s:>10}{cap_flag} "
             f"{avg_cost:9.2f} {avg_turns:10.1f} {avg_spark * 100:4.0f}% {avg_flash * 100:4.0f}% {avg_pro * 100:4.0f}%"
         )
+        if failures:
+            fail_s = ", ".join(f"{name}={count}" for name, count in sorted(failures.items()))
+            lines.append(f"{'':<28} failure_class: {fail_s}")
     return lines
 
 
@@ -354,6 +385,7 @@ def _format_live_snapshot(
     started: float,
     out_path: Path,
     global_line: str | None = None,
+    failure_by_strategy: dict[str, dict[str, int]] | None = None,
 ) -> list[str]:
     """Top-of-file dashboard: pass/fail + cost summary in one table."""
     total_pass = sum(sum(1 for flag in flags if flag) for flags in resolved_by_strategy.values())
@@ -378,6 +410,7 @@ def _format_live_snapshot(
         spark = spark_by_strategy.get(name, [])
         flash = flash_by_strategy.get(name, [])
         pro = pro_by_strategy.get(name, [])
+        failures = (failure_by_strategy or {}).get(name, {})
         done_n = len(flags)
         pass_n = sum(1 for flag in flags if flag)
         fail_n = done_n - pass_n
@@ -395,6 +428,9 @@ def _format_live_snapshot(
             f"{avg_cost:>8.1f} {avg_turns:>7.1f} {avg_spark*100:>4.0f}% {avg_flash*100:>4.0f}% {avg_pro*100:>4.0f}% "
             f"{batch_spent:>11.1f} {cap_s:>10}"
         )
+        if failures:
+            fail_s = ", ".join(f"{k}={v}" for k, v in sorted(failures.items()))
+            lines.append(f"{'':<28} failures: {fail_s}")
     lines.append(f"jsonl={out_path}")
     lines.append("")
     lines.append("=== EVENT LOG (newest at bottom) ===")
@@ -414,6 +450,7 @@ def _write_summary_file(
     spark_by_strategy: dict[str, list[float]],
     flash_by_strategy: dict[str, list[float]],
     pro_by_strategy: dict[str, list[float]],
+    failure_by_strategy: dict[str, dict[str, int]],
     batch_caps: dict[str, float | None],
     started: float,
     out_path: Path,
@@ -430,6 +467,7 @@ def _write_summary_file(
         spark_by_strategy=spark_by_strategy,
         flash_by_strategy=flash_by_strategy,
         pro_by_strategy=pro_by_strategy,
+        failure_by_strategy=failure_by_strategy,
         batch_spent_by_strategy=batch_spent_by_strategy,
         batch_caps=batch_caps,
         runs_done=runs_done,
@@ -454,6 +492,7 @@ def _run_strategy_batch(
     tasks: list,
     *,
     batch_budget_cap: float,
+    per_task_cap: float | None = None,
     step_limit: int,
     trace_console: TraceConsoleLevel,
     heartbeat: float,
@@ -471,15 +510,6 @@ def _run_strategy_batch(
     trace_max_turns: int = 200,
     trace_truncate_chars: int = 120,
 ) -> tuple[list[dict], float]:
-    ledger = WorkflowLedgerStore()
-    governor = BudgetGovernor(
-        GovernorConfig(total_budget=batch_budget_cap, default_max_output_tokens=4096),
-        ledger,
-    )
-    if initial_spent > 0:
-        governor.state.spent_budget = initial_spent
-        governor.state.available_budget = max(0.0, batch_budget_cap - initial_spent)
-
     def _log(msg: str) -> None:
         if print_lock:
             with print_lock:
@@ -487,9 +517,22 @@ def _run_strategy_batch(
         else:
             print(msg, flush=True)
 
+    use_per_task = per_task_cap is not None and per_task_cap > 0
+    ledger = WorkflowLedgerStore()
+    governor: BudgetGovernor | None = None
+    if not use_per_task:
+        governor = BudgetGovernor(
+            GovernorConfig(total_budget=batch_budget_cap, default_max_output_tokens=4096),
+            ledger,
+        )
+        if initial_spent > 0:
+            governor.state.spent_budget = initial_spent
+            governor.state.available_budget = max(0.0, batch_budget_cap - initial_spent)
+
+    cap_label = f"per_task_cap={per_task_cap:.1f}" if use_per_task else f"shared_cap={batch_budget_cap:.1f}"
     _log(
         f"{tag('batch', bold=False)} strategy={cfg.name} tasks={len(tasks)} "
-        f"shared_cap={batch_budget_cap:.1f} spent_resume={initial_spent:.1f} mode=serial_tasks"
+        f"{cap_label} spent_resume={initial_spent:.1f} mode=serial_tasks"
     )
 
     records: list[dict] = []
@@ -503,7 +546,8 @@ def _run_strategy_batch(
 
         global_progress.start_task()
         if checkpoint is not None:
-            checkpoint.mark_in_flight(cfg.name, task.instance_id, batch_budget_cap)
+            cap_for_ckpt = per_task_cap if use_per_task and per_task_cap else batch_budget_cap
+            checkpoint.mark_in_flight(cfg.name, task.instance_id, cap_for_ckpt)
         banner = global_progress.format_banner(scoreboard)
         _log(
             f"\n======== {banner} ========\n"
@@ -522,12 +566,23 @@ def _run_strategy_batch(
 
         def _execute() -> dict:
             status_box["phase"] = "agent"
+            task_governor = governor
+            task_ledger = ledger
+            effective_batch_cap = batch_budget_cap
+            if use_per_task:
+                assert per_task_cap is not None
+                task_ledger = WorkflowLedgerStore()
+                task_governor = BudgetGovernor(
+                    GovernorConfig(total_budget=per_task_cap, default_max_output_tokens=4096),
+                    task_ledger,
+                )
+                effective_batch_cap = per_task_cap
             return _run_one(
                 task,
                 cfg=cfg,
-                batch_budget_cap=batch_budget_cap,
-                governor=governor,
-                ledger=ledger,
+                batch_budget_cap=effective_batch_cap,
+                governor=task_governor,
+                ledger=task_ledger,
                 task_index=task_index,
                 step_limit=step_limit,
                 trace_console=trace_console,
@@ -555,11 +610,12 @@ def _run_strategy_batch(
             _print_run_done(record, done=done_n, total=global_progress.total, strategy=cfg.name)
         records.append(record)
         if checkpoint is not None:
+            task_spent = float(record.get("task_cost") or record.get("total_cost") or 0)
             checkpoint.mark_task_done(
                 cfg.name,
                 task.instance_id,
-                batch_spent=float(governor.state.spent_budget),
-                batch_cap=batch_budget_cap,
+                batch_spent=task_spent if use_per_task else float(governor.state.spent_budget),
+                batch_cap=per_task_cap if use_per_task else batch_budget_cap,
             )
         if on_task_complete is not None:
             on_task_complete(record)
@@ -572,7 +628,12 @@ def _run_strategy_batch(
             if action.halt_all or action.halt_strategy:
                 break
 
-    return records, governor.state.spent_budget
+    if use_per_task:
+        batch_spent_total = sum(float(r.get("task_cost") or r.get("total_cost") or 0) for r in records)
+    else:
+        assert governor is not None
+        batch_spent_total = governor.state.spent_budget
+    return records, batch_spent_total
 
 
 @dataclass
@@ -585,6 +646,7 @@ class _CompareState:
     spark_by_strategy: dict[str, list[float]]
     flash_by_strategy: dict[str, list[float]]
     pro_by_strategy: dict[str, list[float]]
+    failure_by_strategy: dict[str, dict[str, int]]
     runs_done: int = 0
 
 
@@ -598,6 +660,7 @@ def _rebuild_state_from_jsonl(path: Path, header_lines: list[str]) -> _CompareSt
         spark_by_strategy={},
         flash_by_strategy={},
         pro_by_strategy={},
+        failure_by_strategy={},
     )
     for line in path.read_text().splitlines():
         if not line.strip():
@@ -620,6 +683,9 @@ def _rebuild_state_from_jsonl(path: Path, header_lines: list[str]) -> _CompareSt
         state.spark_by_strategy.setdefault(name, []).append(_spark_ratio(picks))
         state.flash_by_strategy.setdefault(name, []).append(_tier_ratio(picks, 2))
         state.pro_by_strategy.setdefault(name, []).append(_tier_ratio(picks, 3))
+        failure_class = str(record.get("failure_class") or classify_failure(record))
+        failures = state.failure_by_strategy.setdefault(name, {})
+        failures[failure_class] = failures.get(failure_class, 0) + 1
         state.batch_spent_by_strategy[name] = float(record.get("batch_spent") or 0.0)
     return state
 
@@ -654,6 +720,9 @@ def _persist_task_record(
         state.spark_by_strategy.setdefault(name, []).append(_spark_ratio(picks))
         state.flash_by_strategy.setdefault(name, []).append(_tier_ratio(picks, 2))
         state.pro_by_strategy.setdefault(name, []).append(_tier_ratio(picks, 3))
+        failure_class = str(record.get("failure_class") or classify_failure(record))
+        failures = state.failure_by_strategy.setdefault(name, {})
+        failures[failure_class] = failures.get(failure_class, 0) + 1
         state.batch_spent_by_strategy[name] = float(record.get("batch_spent") or 0.0)
         if scoreboard is not None:
             scoreboard.record(name, resolved=bool(record.get("harness_resolved")))
@@ -668,6 +737,7 @@ def _persist_task_record(
             spark_by_strategy=state.spark_by_strategy,
             flash_by_strategy=state.flash_by_strategy,
             pro_by_strategy=state.pro_by_strategy,
+            failure_by_strategy=state.failure_by_strategy,
             batch_caps=batch_caps,
             started=started,
             out_path=out_path,
@@ -742,6 +812,7 @@ def _ingest_batch_footer(
             spark_by_strategy=state.spark_by_strategy,
             flash_by_strategy=state.flash_by_strategy,
             pro_by_strategy=state.pro_by_strategy,
+            failure_by_strategy=state.failure_by_strategy,
             batch_caps=batch_caps,
             started=started,
             out_path=out_path,
@@ -900,7 +971,22 @@ def main() -> None:
         default=120,
         help="max chars for bash command digest in turn traces (default 120)",
     )
+    parser.add_argument(
+        "--per-task-cap",
+        type=float,
+        default=None,
+        help="if set, each task gets a fresh governor with this cap (avoids shared-pool starvation); "
+        "batch --tight/--loose caps are ignored for budgeting",
+    )
+    parser.add_argument(
+        "--w-profile",
+        choices=("repair_heavy", "validation_heavy", "flat"),
+        default=None,
+        help="w_i ordering for budgetflow_full (stage_blind still forces 1.0); default repair_heavy",
+    )
     args = parser.parse_args()
+    if args.w_profile:
+        os.environ["BF_W_PROFILE"] = args.w_profile
     if args.resume:
         args.append = True
         args.skip_completed = True
@@ -946,7 +1032,7 @@ def main() -> None:
     else:
         trace_console = "milestones"
 
-    all_strategies = DEFAULT_STRATEGIES
+    all_strategies = _strategy_catalog()
     if args.strategies:
         wanted_raw = {s.strip() for s in args.strategies.split(",") if s.strip()}
         wanted = {_STRATEGY_ALIASES.get(name, name) for name in wanted_raw}
@@ -1012,7 +1098,17 @@ def main() -> None:
     print(f"{dim('tasks=' + ','.join(t.instance_id for t in tasks))}", flush=True)
     print(f"{dim('task_order=' + ', '.join(_task_descriptor(t) for t in tasks))}", flush=True)
     print(f"{dim('strategies=' + ','.join(strategy_names))}", flush=True)
-    print(f"{dim('mode=shared_batch_budget; tasks serial within policy; policies parallel with --jobs')}", flush=True)
+    budget_mode = (
+        f"per_task_cap={args.per_task_cap}"
+        if args.per_task_cap
+        else "shared_batch_budget"
+    )
+    print(
+        f"{dim('mode=' + budget_mode + '; tasks serial within policy; policies parallel with --jobs')}",
+        flush=True,
+    )
+    if args.w_profile:
+        print(f"{dim('w_i_profile=' + args.w_profile)}", flush=True)
     print(f"{dim('trace_console=' + trace_console + '; heartbeat every ' + str(args.heartbeat) + 's')}", flush=True)
     print(f"{dim('run_id=' + out_stem)}", flush=True)
     print(f"{dim('out=' + str(out_path))}", flush=True)
@@ -1027,7 +1123,8 @@ def main() -> None:
     header_lines = [
         f"compare_{len(tasks)}x{len(strategies)} task_set={args.task_set} preset={args.preset} "
         f"tasks={len(tasks)} strategies={strategy_names}",
-        f"shared_batch_budget loose={loose} tight={tight} "
+        f"budget_mode={'per_task_cap=' + str(args.per_task_cap) if args.per_task_cap else 'shared'} "
+        f"loose={loose} tight={tight} w_i_profile={args.w_profile or active_w_i_profile_name()} "
         f"pressure_init={pressure_init} pressure_max={pressure_max} "
         f"policy_jobs={args.jobs} hard_cap=settle_clamp",
         f"tasks={[t.instance_id for t in tasks]}",
@@ -1052,6 +1149,7 @@ def main() -> None:
             spark_by_strategy={},
             flash_by_strategy={},
             pro_by_strategy={},
+            failure_by_strategy={},
         )
     started = time.time()
     io_lock = threading.Lock()
@@ -1074,6 +1172,7 @@ def main() -> None:
         spark_by_strategy=state.spark_by_strategy,
         flash_by_strategy=state.flash_by_strategy,
         pro_by_strategy=state.pro_by_strategy,
+        failure_by_strategy=state.failure_by_strategy,
         batch_caps=batch_caps,
         started=started,
         out_path=out_path,
@@ -1124,6 +1223,7 @@ def main() -> None:
             cfg,
             batch_tasks,
             batch_budget_cap=batch_cap,
+            per_task_cap=args.per_task_cap,
             step_limit=args.step_limit,
             trace_console=trace_console,
             heartbeat=args.heartbeat,
@@ -1209,6 +1309,7 @@ def main() -> None:
         spark_by_strategy=state.spark_by_strategy,
         flash_by_strategy=state.flash_by_strategy,
         pro_by_strategy=state.pro_by_strategy,
+        failure_by_strategy=state.failure_by_strategy,
         batch_caps=batch_caps,
         started=started,
         out_path=out_path,
@@ -1232,6 +1333,7 @@ def main() -> None:
         spark_by_strategy=state.spark_by_strategy,
         flash_by_strategy=state.flash_by_strategy,
         pro_by_strategy=state.pro_by_strategy,
+        failure_by_strategy=state.failure_by_strategy,
         batch_caps=batch_caps,
     ):
         print(f"  {line}", flush=True)

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ..defaults import TIER1_BACKEND, TIER2_BACKEND, TIER3_BACKEND, TIER4_BACKEND
+from ..defaults import TIER1_BACKEND, TIER2_BACKEND, TIER3_BACKEND, TIER4_BACKEND, TIER5_BACKEND
 from ..types import Backend
 
 # rpm_limit / concurrency_limit kept on Backend for Tier-2 paper metrics only; governor does not enforce them.
@@ -61,6 +61,17 @@ def build_compare_backends() -> list[Backend]:
             mean_output_tokens=1024,
             progress_score=0.22,
             latency_ms=900,
+        ),
+        Backend(
+            name=TIER5_BACKEND,
+            tier=5,
+            cost_per_input_token=0.01,
+            cost_per_output_token=0.04,
+            rpm_limit=_UNLIMITED,
+            concurrency_limit=_UNLIMITED,
+            mean_output_tokens=2048,
+            progress_score=0.35,
+            latency_ms=2000,
         ),
     ]
 

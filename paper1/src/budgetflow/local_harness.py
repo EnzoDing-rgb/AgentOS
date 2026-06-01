@@ -383,19 +383,39 @@ def test_paths_for(task: LiteTaskRecord) -> list[str]:
     return list(dict.fromkeys(paths))
 
 
-def run_pytest(repo_dir: Path, test_names: tuple[str, ...], test_paths: list[str]) -> tuple[bool, str]:
-    if not test_names:
-        return False, "no test names"
+def _node_path(node_id: str) -> str:
+    return node_id.split("::", 1)[0]
+
+
+def build_pytest_node_ids(repo_dir: Path, test_names: tuple[str, ...], test_paths: list[str]) -> tuple[list[str], list[str]]:
     node_ids: list[str] = []
     missing: list[str] = []
+    test_path_set = set(test_paths)
+    for name in test_names:
+        if "::" not in name:
+            continue
+        path = _node_path(name)
+        if not test_path_set or path in test_path_set or (repo_dir / path).exists():
+            node_ids.append(name)
+        else:
+            missing.append(name)
     for path in test_paths:
         full = repo_dir / path
         text = full.read_text() if full.is_file() else ""
         for name in test_names:
+            if "::" in name:
+                continue
             if f"def {name}(" in text:
                 node_ids.append(f"{path}::{name}")
             else:
                 missing.append(f"{path}::{name}")
+    return list(dict.fromkeys(node_ids)), missing
+
+
+def run_pytest(repo_dir: Path, test_names: tuple[str, ...], test_paths: list[str]) -> tuple[bool, str]:
+    if not test_names:
+        return False, "no test names"
+    node_ids, missing = build_pytest_node_ids(repo_dir, test_names, test_paths)
     if not node_ids:
         detail = ", ".join(missing[:6]) if missing else "none"
         return False, f"no pytest node ids: {detail}"

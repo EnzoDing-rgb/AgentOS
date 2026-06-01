@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from .types import Stage
 
 # concept.md §3.3 / §3.4 cold-start defaults — sole source for Tier 1 reproduction.
@@ -9,6 +11,35 @@ W_I: dict[Stage, float] = {
     Stage.VALIDATION: 2.5,
 }
 
+# §8.4 weight-ordering sub-ablation: swap only the w_i profile, mechanism fixed.
+# Select at run time via env var BF_W_PROFILE (empty/unknown -> repair_heavy default).
+# Tests external hypothesis "judging a patch > writing it" (validation_heavy).
+W_I_PROFILES: dict[str, dict[Stage, float]] = {
+    "repair_heavy": dict(W_I),  # current default ordering
+    "validation_heavy": {
+        Stage.LOCALIZATION: 1.0,
+        Stage.REPAIR: 2.0,
+        Stage.VALIDATION: 3.5,
+    },
+    "flat": {
+        Stage.LOCALIZATION: 1.0,
+        Stage.REPAIR: 1.0,
+        Stage.VALIDATION: 1.0,
+    },
+}
+
+
+def active_w_i_profile_name() -> str:
+    """Profile name for logging; unknown/empty env -> repair_heavy (W_I default)."""
+    name = os.environ.get("BF_W_PROFILE", "").strip()
+    return name if name in W_I_PROFILES else "repair_heavy"
+
+
+def active_w_i() -> dict[Stage, float]:
+    """Return the active w_i profile selected by BF_W_PROFILE (default repair_heavy)."""
+    name = os.environ.get("BF_W_PROFILE", "").strip()
+    return W_I_PROFILES.get(name, W_I)
+
 # Tier pool: Qwen family via 阿里云百炼 — 4-tier with coder models.
 # T1=qwen3.5-flash (¥0.3/¥0.6), T2=qwen3-coder-flash (¥0.5/¥2),
 # T3=qwen3.6-plus (¥2/¥6), T4=qwen3-coder-plus (¥4/¥12, SWE-bench 78.8%)
@@ -16,6 +47,7 @@ TIER1_BACKEND = "tier1_qwen35_flash"
 TIER2_BACKEND = "tier2_qwen3_coder_flash"
 TIER3_BACKEND = "tier3_qwen36_plus"
 TIER4_BACKEND = "tier4_qwen3_coder_plus"
+TIER5_BACKEND = "tier5_gpt55"
 
 PROGRESS_TABLE: dict[Stage, dict[str, float]] = {
     Stage.LOCALIZATION: {
@@ -23,18 +55,21 @@ PROGRESS_TABLE: dict[Stage, dict[str, float]] = {
         TIER2_BACKEND: 0.50,
         TIER3_BACKEND: 0.62,
         TIER4_BACKEND: 0.65,  # coder-plus bit better even for LOC
+        TIER5_BACKEND: 0.75,  # GPT-5.5 ceiling
     },
     Stage.REPAIR: {
         TIER1_BACKEND: 0.15,
         TIER2_BACKEND: 0.38,  # coder-flash bit better at repair
         TIER3_BACKEND: 0.45,
         TIER4_BACKEND: 0.62,  # coder-plus significantly better at repair
+        TIER5_BACKEND: 0.75,  # GPT-5.5 ceiling
     },
     Stage.VALIDATION: {
         TIER1_BACKEND: 0.25,
         TIER2_BACKEND: 0.45,
         TIER3_BACKEND: 0.55,
         TIER4_BACKEND: 0.60,  # coder-plus better at validation too
+        TIER5_BACKEND: 0.72,  # GPT-5.5 ceiling
     },
 }
 
@@ -95,18 +130,21 @@ TIER1_MODEL = f"openai/{QWEN_T1_MODEL}"
 TIER2_MODEL = f"openai/{QWEN_T2_MODEL}"
 TIER3_MODEL = f"openai/{QWEN_T3_MODEL}"
 TIER4_MODEL = f"openai/{QWEN_T4_MODEL}"
+TIER5_MODEL = "openai/gpt-5.5"  # aicode007 GPT-5.5 ceiling test
 
 # Terminal model= labels for console output.
 TIER1_DISPLAY = "qwen3.5-flash"
 TIER2_DISPLAY = "qwen3-coder-flash"
 TIER3_DISPLAY = "qwen3.6-plus"
 TIER4_DISPLAY = "qwen3-coder-plus"
+TIER5_DISPLAY = "gpt-5.5"
 
 TIER_DISPLAY_BY_BACKEND: dict[str, str] = {
     TIER1_BACKEND: TIER1_DISPLAY,
     TIER2_BACKEND: TIER2_DISPLAY,
     TIER3_BACKEND: TIER3_DISPLAY,
     TIER4_BACKEND: TIER4_DISPLAY,
+    TIER5_BACKEND: TIER5_DISPLAY,
 }
 
 TIER_MODEL_BY_BACKEND: dict[str, str] = {
@@ -114,6 +152,7 @@ TIER_MODEL_BY_BACKEND: dict[str, str] = {
     TIER2_BACKEND: TIER2_MODEL,
     TIER3_BACKEND: TIER3_MODEL,
     TIER4_BACKEND: TIER4_MODEL,
+    TIER5_BACKEND: TIER5_MODEL,
 }
 
 # Back-compat aliases for scripts that reference old model names.

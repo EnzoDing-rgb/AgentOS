@@ -21,3 +21,9 @@ def test_strategy_scoreboard_live_line() -> None:
     assert "apro 0/0" in line
     assert strategy_abbrev("all_spark_tight") == "as-T"
     assert strategy_abbrev("all_flash_tight") == "as-T"
+
+
+def test_ceiling_strategy_abbrevs() -> None:
+    assert strategy_abbrev("all_pro") == "apro"
+    assert strategy_abbrev("all_t4") == "at4"
+    assert strategy_abbrev("all_gpt55") == "g55"

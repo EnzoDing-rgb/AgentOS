@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ..adaptive_routing import AdaptiveRoutingState
-from ..defaults import BUDGET_PRESSURE_INIT, PROGRESS_TABLE, W_I
+from ..defaults import BUDGET_PRESSURE_INIT, PROGRESS_TABLE, W_I, active_w_i, active_w_i_profile_name
 from ..policies import BudgetOnlyStepRouter, WorkflowLevelRouter
 from ..selector import BudgetFlowSelector
 from ..types import Backend, ProgressTable, Stage, TurnInfo
@@ -67,10 +67,15 @@ def choose_backend(ctx: RoutingContext, turn: TurnInfo, expected_costs: dict[str
         return ctx.backends[0]
     if ctx.strategy == "all_tier2":
         return ctx.backends[1]
+    if ctx.strategy == "all_gpt55":
+        # GPT-5.5 ceiling test via aicode007
+        return ctx.backends[-1]  # the last backend = GPT-5.5
     if ctx.strategy == "all_pro":
         # Use T3 (qwen3.6-plus), not T4 (qwen3.7-max).
         # T4 is a budgetflow-only last resort. all_pro is the "standard best" baseline.
         return ctx.backends[2] if len(ctx.backends) >= 3 else ctx.backends[-1]
+    if ctx.strategy == "all_t4":
+        return ctx.backends[3] if len(ctx.backends) >= 4 else ctx.backends[-1]
     if ctx.strategy == "workflow_level":
         assert ctx.workflow_level_backend is not None
         return ctx.workflow_level_backend
@@ -86,4 +91,8 @@ def choose_backend(ctx: RoutingContext, turn: TurnInfo, expected_costs: dict[str
 
 
 def stage_weight(stage: Stage) -> float:
-    return W_I[stage]
+    return active_w_i()[stage]
+
+
+def current_w_i_profile() -> str:
+    return active_w_i_profile_name()

@@ -50,6 +50,8 @@ BACKEND_TIER_COLORS: dict[str, str] = {
     "tier1": _BRIGHT_CYAN,
     "tier2": _BRIGHT_YELLOW,
     "tier3": _BRIGHT_MAGENTA,
+    "tier4": _BRIGHT_BLUE,
+    "tier5": _BRIGHT_GREEN,
 }
 
 
@@ -141,6 +143,10 @@ def backend_tier_label(backend_name: str) -> str:
         tier = "tier2"
     elif "tier3" in lowered or "pro" in lowered:
         tier = "tier3"
+    elif "tier4" in lowered:
+        tier = "tier4"
+    elif "tier5" in lowered:
+        tier = "tier5"
     else:
         return paint(backend_name, _DIM)
     label = tier_display_name(backend_name)

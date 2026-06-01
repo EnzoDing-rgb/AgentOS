@@ -22,6 +22,7 @@ from ..budget_pressure import live_budget_pressure
 from ..deepseek_backend import ensure_aicode007_proxy, ensure_direct_api, load_env_file
 from ..defaults import (
     DASHSCOPE_API_BASE,
+    AICODE007_API_BASE,
     PRESSURE_MAX,
     T4_DOWNGRADE_TIER,
     TIER1_BACKEND,
@@ -32,6 +33,8 @@ from ..defaults import (
     TIER3_MODEL,
     TIER4_BACKEND,
     TIER4_MODEL,
+    TIER5_BACKEND,
+    TIER5_MODEL,
     TIER_ESCALATION_PATIENCE,
     TIER_MAX_TURNS,
 )
@@ -55,6 +58,7 @@ logger = logging.getLogger("budgetflow_litellm_model")
 configure_litellm_quiet()
 
 _DASHSCOPE_BACKENDS = frozenset({TIER1_BACKEND, TIER2_BACKEND, TIER3_BACKEND, TIER4_BACKEND})
+_AICODE007_BACKENDS = frozenset({TIER5_BACKEND})
 
 
 def _build_turn_trace(
@@ -153,7 +157,8 @@ class BudgetFlowLitellmModel:
         self.set_cache_control = set_cache_control
         self.multimodal_regex = multimodal_regex
         self.dashscope_api_key = os.environ.get("DASHSCOPE_API_KEY")
-        if not self.dashscope_api_key:
+        self.aicode007_api_key = os.environ.get("AICODE007_API_KEY")
+        if not self.dashscope_api_key and any(b.name in _DASHSCOPE_BACKENDS for b in routing.backends):
             raise RuntimeError("DASHSCOPE_API_KEY is missing. Add it to the repo root .env file.")
         self.step_index = 0
         self._no_progress_streak = 0
@@ -500,6 +505,17 @@ class BudgetFlowLitellmModel:
                 TIER4_BACKEND: TIER4_MODEL,
             }
             return model_map[backend.name], common
+        if backend.name in _AICODE007_BACKENDS:
+            if not self.aicode007_api_key:
+                raise RuntimeError("AICODE007_API_KEY is missing. Add it to the repo root .env file.")
+            ensure_aicode007_proxy()
+            return TIER5_MODEL, {
+                "temperature": 0.0,
+                "parallel_tool_calls": True,
+                "drop_params": True,
+                "api_base": os.environ.get("AICODE007_BASE_URL") or AICODE007_API_BASE,
+                "api_key": self.aicode007_api_key,
+            }
         raise ValueError(f"unknown backend: {backend.name}")
 
     def _completion(
@@ -523,6 +539,9 @@ class BudgetFlowLitellmModel:
                     **model_kwargs,
                     **kwargs,
                 }
+            elif backend_name in _AICODE007_BACKENDS:
+                ensure_aicode007_proxy()
+                kwargs_merged = {**model_kwargs, **kwargs}
             else:
                 kwargs_merged = {**model_kwargs, **kwargs}
             return litellm.completion(

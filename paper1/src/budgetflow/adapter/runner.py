@@ -60,6 +60,7 @@ class MiniSweRunResult:
     prompt_tokens_total: int = 0
     completion_tokens_total: int = 0
     patch_source: str = "submission"
+    submitted_patch_path: str | None = None
     turn_trace_count: int = 0
     turn_traces: list[dict] | None = None
 
@@ -222,10 +223,14 @@ def run_mini_swe_task(
 
     trace.finalize_agent(submitted=exit_reason == "submitted", patch_extracted=bool(patch_text))
     if patch_text:
+        submitted_patch = trace_dir / "submitted.patch"
+        submitted_patch.write_text(patch_text if patch_text.endswith("\n") else patch_text + "\n")
         print(
             f"{tag('eval', bold=False)} {task.instance_id} {label} running harness on extracted patch...",
             flush=True,
         )
+    else:
+        submitted_patch = None
 
     harness = evaluate_local_harness(task, patch_text, workspace_key=workspace_key)
     trace.log_harness_result(
@@ -264,4 +269,5 @@ def run_mini_swe_task(
         completion_tokens_total=model._total_completion_tokens,
         turn_trace_count=len(model.turn_traces),
         turn_traces=list(model.turn_traces) if model.turn_traces else None,
+        submitted_patch_path=str(submitted_patch) if submitted_patch is not None else None,
     )
