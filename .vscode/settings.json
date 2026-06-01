@@ -1,4 +1,14 @@
 {
+  "files.watcherExclude": {
+    "**/.git/**": true,
+    "**/external/**": true,
+    "**/paper1/data/**": true,
+    "**/node_modules/**": true,
+    "**/__pycache__/**": true,
+    "**/.venv/**": true,
+    "**/paper1/logs/**": true,
+    "**/.pytest_cache/**": true
+  },
   "C_Cpp_Runner.cCompilerPath": "gcc",
   "C_Cpp_Runner.cppCompilerPath": "g++",
   "C_Cpp_Runner.debuggerPath": "gdb",

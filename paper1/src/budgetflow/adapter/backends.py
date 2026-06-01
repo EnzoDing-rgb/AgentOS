@@ -7,7 +7,7 @@ from ..types import Backend
 _UNLIMITED = 0
 
 
-def build_compare_backends() -> list[Backend]:
+def _build_all_backends() -> list[Backend]:
     """Four-tier Qwen pool via 阿里云百炼 with coder models.
 
     Costs are governor units scaled from ¥ pricing (per 1M tokens):
@@ -74,6 +74,20 @@ def build_compare_backends() -> list[Backend]:
             latency_ms=2000,
         ),
     ]
+
+
+def build_compare_backends() -> list[Backend]:
+    """Default experiment pool: Qwen T1-T4 only.
+
+    GPT-5.5 is a ceiling probe and must not be reachable by budgeted strategies
+    unless the caller explicitly asks for the ceiling pool.
+    """
+    return [backend for backend in _build_all_backends() if backend.name != TIER5_BACKEND]
+
+
+def build_ceiling_backends() -> list[Backend]:
+    """Full pool including GPT-5.5 for explicit all_gpt55 ceiling probes."""
+    return _build_all_backends()
 
 
 def build_deepseek_backends() -> list[Backend]:
