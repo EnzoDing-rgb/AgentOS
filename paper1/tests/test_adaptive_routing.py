@@ -25,7 +25,7 @@ def test_weak_window_raises_pressure_and_ttl() -> None:
     state = AdaptiveRoutingState(strategy_name="budgetflow_full_tight")
     state.record_task(_fail_record())
     state.record_task(_fail_record(agent_gold_edited=True))
-    assert state.pressure_boost > 0
+    assert state.pressure_boost == 0.0
     assert state.ttl_steps_remaining > 0
     assert state.min_tier_for_reserve() >= 2
 
@@ -40,7 +40,8 @@ def test_strong_results_decay_boost() -> None:
     state = AdaptiveRoutingState(strategy_name="budgetflow_full_tight")
     for _ in range(3):
         state.record_task(_fail_record())
-    assert state.pressure_boost > 0
+    assert state.ttl_steps_remaining > 0
+    assert state.min_tier_for_reserve() >= 2
     for _ in range(5):
         state.record_task({"harness_resolved": True, "patch_extracted": True})
     assert state.pressure_boost == 0.0

@@ -40,7 +40,7 @@ from ..defaults import (
 )
 from ..console_log import backend_tier_label, bold, dim, routing_stage_label, tag
 from ..governor import BudgetGovernor
-from ..types import Backend, TurnInfo, WorkflowStatus
+from ..types import Backend, Stage, TurnInfo, WorkflowStatus
 from .errors import BudgetFlowBudgetError, BudgetFlowStagnationError, BudgetFlowUpstreamError
 from ..run_guards import is_fatal_billing_error, record_billing_halt, record_upstream_error
 from .bash_stage import (
@@ -59,6 +59,20 @@ configure_litellm_quiet()
 
 _DASHSCOPE_BACKENDS = frozenset({TIER1_BACKEND, TIER2_BACKEND, TIER3_BACKEND, TIER4_BACKEND})
 _AICODE007_BACKENDS = frozenset({TIER5_BACKEND})
+
+
+def evidence_floor_tier(*, strategy: str, stage: Stage, agent_phase: str | None) -> int:
+    """Minimum tier once BudgetFlow has evidence that the task is in repair.
+
+    Gold/edit/test phases are the point where cheap exploration has done its job.
+    Dropping to weak repair calls here wastes turns and often loses a near-solved task.
+    """
+    if strategy != "budgetflow_full":
+        return 1
+    phase = (agent_phase or "").strip()
+    if stage in (Stage.REPAIR, Stage.VALIDATION) or phase in _REPAIR_AGENT_PHASES or phase in _VALIDATION_AGENT_PHASES:
+        return 3
+    return 1
 
 
 def _build_turn_trace(
@@ -249,6 +263,11 @@ class BudgetFlowLitellmModel:
 
         backend = choose_backend(self.routing, turn, expected_costs)
         backend_chosen = backend.name
+        floor_tier = evidence_floor_tier(
+            strategy=self.routing.strategy,
+            stage=stage,
+            agent_phase=self.agent_phase,
+        )
         # Adaptive starting tier: skip T1/T2 on first step if strategy is on a losing streak
         if self.step_index == 1 and self.routing.adaptive is not None:
             min_start = self.routing.adaptive.starting_tier()
@@ -262,8 +281,9 @@ class BudgetFlowLitellmModel:
                 )
         prev_tier = self._last_backend_tier
         backend = self._apply_progress_escalation(backend)
+        backend = self._apply_evidence_floor(backend, floor_tier)
         escalated_backend = backend.name
-        backend = self._reserve_with_downgrade(backend, input_tokens)
+        backend = self._reserve_with_downgrade(backend, input_tokens, floor_tier=floor_tier)
         reserve_out = self._last_reserve_out
         if backend.tier != prev_tier and prev_tier > 0:
             self._no_progress_on_current_tier = 0  # tier changed, reset patience
@@ -451,13 +471,31 @@ class BudgetFlowLitellmModel:
         self._turns_on_current_tier = 0
         return next_backend
 
-    def _reserve_with_downgrade(self, backend: Backend, input_tokens: int) -> Backend:
+    def _apply_evidence_floor(self, backend: Backend, floor_tier: int) -> Backend:
+        if floor_tier <= 1 or backend.tier >= floor_tier:
+            return backend
+        ordered = self.routing.backends
+        candidates = [candidate for candidate in ordered if candidate.tier >= floor_tier]
+        if not candidates:
+            return backend
+        next_backend = candidates[0]
+        print(
+            f"{tag('evidence', bold=False)} #{self.step_index} "
+            f"repair_floor=T{floor_tier} "
+            f"{backend_tier_label(backend.name)} -> {backend_tier_label(next_backend.name)}",
+            flush=True,
+        )
+        self._no_progress_on_current_tier = 0
+        self._turns_on_current_tier = 0
+        return next_backend
+
+    def _reserve_with_downgrade(self, backend: Backend, input_tokens: int, *, floor_tier: int = 1) -> Backend:
         ordered = self.routing.backends
         start_index = ordered.index(backend)
-        min_tier = 1
+        min_tier = max(1, floor_tier)
         adaptive = self.routing.adaptive
         if adaptive is not None and self.routing.strategy in ("budgetflow_full", "stage_blind"):
-            min_tier = adaptive.min_tier_for_reserve()
+            min_tier = max(min_tier, adaptive.min_tier_for_reserve())
         reserve_out = None
         last_reason: str | None = None
         candidates = [c for c in ordered[start_index::-1] if c.tier >= min_tier]

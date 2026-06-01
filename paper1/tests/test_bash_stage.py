@@ -14,10 +14,10 @@ def test_bash_stage_repair():
 
 
 def test_bash_has_progress():
-    assert bash_has_progress("sed -i 's/a/b/' src/foo.py") is True
-    assert bash_has_progress("pytest -x tests/test_foo.py") is True
-    assert bash_has_progress("grep -R pattern src") is False
-    assert bash_has_progress("") is False
+    assert bash_has_progress("sed -i 's/a/b/' src/foo.py") == (True, "repair_pattern")
+    assert bash_has_progress("pytest -x tests/test_foo.py") == (True, "validation_pattern")
+    assert bash_has_progress("grep -R pattern src") == (False, "none")
+    assert bash_has_progress("") == (False, "none")
 
 
 def test_bash_stage_localization():
