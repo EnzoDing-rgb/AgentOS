@@ -17,15 +17,30 @@ def analyze(jsonl_path: str) -> None:
         by_strat[rec["strategy"]].append(rec)
 
     abbrev = {
-        "all_pro": "apro", "all_spark_tight": "as-T", "all_spark_loose": "as-L",
+        "all_pro": "all_pro",
+        "all_spark_tight": "t1-T", "all_spark_loose": "t1-L",
+        "all_t1_tight": "t1-T", "all_t1_loose": "t1-L",
+        "all_flash_tight": "t1-T", "all_flash_loose": "t1-L",
         "budgetflow_full_loose": "bf-L", "budgetflow_full_tight": "bf-T",
         "budget_only_loose": "bo-L", "budget_only_tight": "bo-T",
     }
 
+    # Show tight budget strategies first, then loose, then uncapped
+    display_order = [
+        "budget_only_tight", "budgetflow_full_tight",
+        "budget_only_loose", "budgetflow_full_loose",
+        "all_pro",
+        "all_t1_tight", "all_t1_loose",
+        "all_spark_tight", "all_spark_loose",
+        "all_flash_tight", "all_flash_loose",
+    ]
+
     print(f"{'strategy':<6} {'tasks':>5} {'PASS':>5} {'FAIL':>5} {'resolve%':>8} {'avg_cost':>8} {'avg_turns':>9}")
     print("-" * 55)
 
-    for strat in sorted(by_strat.keys()):
+    ordered = [s for s in display_order if s in by_strat]
+    remaining = [s for s in sorted(by_strat.keys()) if s not in display_order]
+    for strat in ordered + remaining:
         tasks = by_strat[strat]
         n = len(tasks)
         resolved = sum(1 for t in tasks if t.get("harness_resolved"))

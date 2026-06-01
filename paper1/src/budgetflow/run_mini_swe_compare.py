@@ -70,19 +70,21 @@ class CompareStrategy:
 
 
 DEFAULT_STRATEGIES: tuple[CompareStrategy, ...] = (
-    CompareStrategy("all_pro", "all_pro", None),
-    CompareStrategy("all_spark_tight", "all_flash", "tight"),
-    CompareStrategy("all_spark_loose", "all_flash", "loose"),
-    CompareStrategy("budgetflow_full_loose", "budgetflow_full", "loose"),
+    CompareStrategy("all_t1_tight", "all_flash", "tight"),
+    CompareStrategy("all_t1_loose", "all_flash", "loose"),
+    CompareStrategy("budget_only_tight", "budget_only", "tight"),
     CompareStrategy("budgetflow_full_tight", "budgetflow_full", "tight"),
     CompareStrategy("budget_only_loose", "budget_only", "loose"),
-    CompareStrategy("budget_only_tight", "budget_only", "tight"),
+    CompareStrategy("budgetflow_full_loose", "budgetflow_full", "loose"),
+    CompareStrategy("all_pro", "all_pro", None),
 )
 
 _STRATEGY_ALIASES = {
-    # Backward-compatible aliases for old paper runs / CLI commands.
-    "all_flash_tight": "all_spark_tight",
-    "all_flash_loose": "all_spark_loose",
+    # Backward-compatible — old spark names map to new T1 names.
+    "all_spark_tight": "all_t1_tight",
+    "all_spark_loose": "all_t1_loose",
+    "all_flash_tight": "all_t1_tight",
+    "all_flash_loose": "all_t1_loose",
 }
 
 
