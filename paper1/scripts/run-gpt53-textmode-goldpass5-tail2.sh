@@ -6,6 +6,15 @@ PAPER_DIR="$ROOT_DIR/paper1"
 RUN_DIR="$PAPER_DIR/data/runs"
 mkdir -p "$RUN_DIR"
 
+child_pid=""
+cleanup_child() {
+  if [[ -n "$child_pid" ]]; then
+    kill "$child_pid" 2>/dev/null || true
+    wait "$child_pid" 2>/dev/null || true
+  fi
+}
+trap 'cleanup_child; exit 143' TERM INT HUP
+
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
   cat <<EOF
 Usage: scripts/run-gpt53-textmode-goldpass5-tail2.sh [stem]
@@ -70,7 +79,10 @@ if [[ "${BF_DRY_RUN:-0}" == "1" ]]; then
   exit 0
 fi
 
-"${CMD[@]}"
+"${CMD[@]}" &
+child_pid=$!
+wait "$child_pid"
+child_pid=""
 
 "$PY" "$PAPER_DIR/scripts/summarize-nightly-budgetflow.py" "$STEM"
 echo "[done] $(date -Is)"
