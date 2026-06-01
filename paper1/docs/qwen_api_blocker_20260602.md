@@ -7,7 +7,7 @@ Date: 2026-06-02
 Ran a tiny API ping:
 
 ```bash
-PYTHONPATH=src:../external/mini-swe-agent/src python -m budgetflow.run_deepseek_smoke --tier flash,pro
+PYTHONPATH=src:../external/mini-swe-agent/src python -m budgetflow.run_deepseek_smoke --tier compare
 ```
 
 ## Result
@@ -35,7 +35,7 @@ After replacing/fixing `DASHSCOPE_API_KEY`, rerun:
 
 ```bash
 cd /home/fengde/Projects/AI-learning/agent_learning/AgentOS/paper1
-PYTHONPATH=src:../external/mini-swe-agent/src ../.venv/bin/python -u -m budgetflow.run_deepseek_smoke --tier flash,pro
+PYTHONPATH=src:../external/mini-swe-agent/src ../.venv/bin/python -u -m budgetflow.run_deepseek_smoke --tier compare
 ```
 
 Only if this passes should the Qwen BudgetFlow goldpass5 run be resumed.

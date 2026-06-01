@@ -42,9 +42,9 @@ echo "[policy] no docker; no gpt-5.5 in budgeted routing; jobs=1; BF_T4_PROVIDER
 echo
 
 if [[ "${BF_SKIP_QWEN_PREFLIGHT:-0}" != "1" ]]; then
-  echo "[preflight] qwen api ping flash,pro"
+  echo "[preflight] qwen api ping compare (t2,t3,t4)"
   set +e
-  "$PY" -u -m budgetflow.run_deepseek_smoke --tier flash,pro
+  "$PY" -u -m budgetflow.run_deepseek_smoke --tier compare
   preflight_code=$?
   set -e
   if (( preflight_code != 0 )); then

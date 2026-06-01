@@ -67,7 +67,7 @@ Before any Qwen-backed BudgetFlow run:
 
 ```bash
 cd paper1
-PYTHONPATH=src:../external/mini-swe-agent/src ../.venv/bin/python -u -m budgetflow.run_deepseek_smoke --tier flash,pro
+PYTHONPATH=src:../external/mini-swe-agent/src ../.venv/bin/python -u -m budgetflow.run_deepseek_smoke --tier compare
 ```
 
 If this fails, do not run compare. Fix `DASHSCOPE_API_KEY` first.

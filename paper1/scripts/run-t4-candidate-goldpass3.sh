@@ -37,9 +37,12 @@ run_one() {
 
   echo
   echo "[candidate] provider=$provider strategy=$strategy stem=$run_stem"
-  if [[ "$provider" == qwen_* ]]; then
-    echo "[preflight] qwen api ping flash,pro"
-    "$PY" -u -m budgetflow.run_deepseek_smoke --tier flash,pro
+  if [[ "$provider" == "qwen" ]]; then
+    echo "[preflight] qwen api ping t4"
+    "$PY" -u -m budgetflow.run_deepseek_smoke --tier t4
+  elif [[ "$provider" == "qwen_max" ]]; then
+    echo "[preflight] qwen api ping max"
+    "$PY" -u -m budgetflow.run_deepseek_smoke --tier max
   fi
 
   env BF_T4_PROVIDER="$provider" $extra_env \

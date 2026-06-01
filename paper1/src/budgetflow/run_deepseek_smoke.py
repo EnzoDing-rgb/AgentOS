@@ -3,6 +3,7 @@
 Usage:
   PYTHONPATH=src:../external/mini-swe-agent/src python -u -m budgetflow.run_deepseek_smoke
   python -u -m budgetflow.run_deepseek_smoke --tier flash,pro
+  python -u -m budgetflow.run_deepseek_smoke --tier t2,t3,t4,max
   python -u -m budgetflow.run_deepseek_smoke --tier pro --agent --step-limit 5
 """
 
@@ -25,14 +26,38 @@ import litellm  # noqa: E402
 
 from budgetflow.console_log import bold, dim, status_fail, status_pass, tag  # noqa: E402
 from budgetflow.deepseek_backend import ensure_direct_api, load_env_file  # noqa: E402
-from budgetflow.defaults import DEEPSEEK_API_BASE, DEEPSEEK_FLASH_MODEL, DEEPSEEK_PRO_MODEL  # noqa: E402
+from budgetflow.defaults import (  # noqa: E402
+    DEEPSEEK_API_BASE,
+    DEEPSEEK_FLASH_MODEL,
+    DEEPSEEK_PRO_MODEL,
+    TIER1_MODEL,
+    TIER2_MODEL,
+    TIER3_MODEL,
+    TIER4_MODEL,
+    TIER4_QWEN_MAX_MODEL,
+)
 from budgetflow.litellm_quiet import configure_litellm_quiet  # noqa: E402
 from budgetflow.lite_tasks import load_compare_easy_tasks  # noqa: E402
 from budgetflow.run_mini_swe_baseline import run_baseline_task  # noqa: E402
 
 TIER_MODELS = {
+    "t1": TIER1_MODEL,
+    "qwen35": TIER1_MODEL,
     "flash": DEEPSEEK_FLASH_MODEL,
+    "t2": TIER2_MODEL,
+    "coder_flash": TIER2_MODEL,
     "pro": DEEPSEEK_PRO_MODEL,
+    "t3": TIER3_MODEL,
+    "plus": TIER3_MODEL,
+    "t4": TIER4_MODEL,
+    "coder_plus": TIER4_MODEL,
+    "max": TIER4_QWEN_MAX_MODEL,
+    "qwen_max": TIER4_QWEN_MAX_MODEL,
+}
+TIER_GROUPS = {
+    "all": ("t1", "t2", "t3", "t4", "max"),
+    "compare": ("t2", "t3", "t4"),
+    "t4_candidates": ("t4", "max"),
 }
 
 
@@ -42,7 +67,7 @@ def _parse_args() -> argparse.Namespace:
         "--tier",
         type=str,
         default="flash,pro",
-        help="flash|pro comma list (flash=deepseek-chat, pro=deepseek-reasoner)",
+        help="comma list: t1,t2,t3,t4,max or aliases flash,pro,coder_plus; groups: all,compare,t4_candidates",
     )
     parser.add_argument("--agent", action="store_true", help="run 1-task mini-SWE after API ping")
     parser.add_argument("--instance-id", type=str, default="sympy__sympy-13480")
@@ -54,6 +79,17 @@ def _parse_args() -> argparse.Namespace:
         help="print every agent step (default: milestones on gold/submit)",
     )
     return parser.parse_args()
+
+
+def _expand_tiers(raw: str) -> list[str]:
+    requested = [t.strip() for t in raw.split(",") if t.strip()]
+    tiers: list[str] = []
+    for item in requested:
+        if item in TIER_GROUPS:
+            tiers.extend(TIER_GROUPS[item])
+        else:
+            tiers.append(item)
+    return tiers
 
 
 def _api_ping(model: str) -> dict:
@@ -93,10 +129,10 @@ def main() -> None:
         os.environ.setdefault("FORCE_COLOR", "1")
 
     args = _parse_args()
-    tiers = [t.strip() for t in args.tier.split(",") if t.strip()]
+    tiers = _expand_tiers(args.tier)
     unknown = [t for t in tiers if t not in TIER_MODELS]
     if unknown:
-        raise SystemExit(f"unknown tier {unknown}; use flash, pro")
+        raise SystemExit(f"unknown tier {unknown}; use {sorted(TIER_MODELS)} or groups {sorted(TIER_GROUPS)}")
 
     print(f"{tag('smoke')} DeepSeek connectivity api_base={DEEPSEEK_API_BASE}", flush=True)
 
