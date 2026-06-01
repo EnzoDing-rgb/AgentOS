@@ -579,6 +579,9 @@ def _rebuild_state_from_jsonl(path: Path, header_lines: list[str]) -> _CompareSt
         name = _normalize_strategy(record.get("strategy") or "")
         if not name:
             continue
+        # Skip known garbage:欠费 BadRequestError records with no real work done
+        if record.get("exit_status") == "BadRequestError" and record.get("total_cost", 1) == 0:
+            continue
         state.runs_done += 1
         state.resolved_by_strategy.setdefault(name, []).append(bool(record.get("harness_resolved")))
         state.task_cost_by_strategy.setdefault(name, []).append(float(record.get("task_cost") or 0.0))
