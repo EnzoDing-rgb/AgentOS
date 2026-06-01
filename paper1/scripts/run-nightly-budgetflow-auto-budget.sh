@@ -140,34 +140,6 @@ run_resume_loop \
 
 echo
 echo "[phase 3] summarize latest results"
-"$PY" - <<'PY'
-import json
-from collections import defaultdict
-from pathlib import Path
-
-run_dir = Path("data/runs")
-for stem in ["rescue_stoploss_targeted_v2", "budgetflow_goldpass5_autobudget_p030_v1"]:
-    path = run_dir / f"{stem}.jsonl"
-    print(f"=== {stem} ===")
-    if not path.exists():
-        print("missing")
-        continue
-    rows = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
-    by = defaultdict(list)
-    for row in rows:
-        by[row["strategy"]].append(row)
-    print(f"records={len(rows)}")
-    for strategy, items in sorted(by.items()):
-        passed = sum(1 for r in items if r.get("harness_resolved"))
-        cost = sum(float(r.get("task_cost") or r.get("total_cost") or 0) for r in items)
-        turns = sum(int(r.get("llm_turns") or 0) for r in items)
-        failures = defaultdict(int)
-        for r in items:
-            if not r.get("harness_resolved"):
-                failures[r.get("failure_class") or "unknown"] += 1
-        fail_s = ",".join(f"{k}:{v}" for k, v in sorted(failures.items())) or "-"
-        print(f"{strategy}: pass={passed}/{len(items)} cost={cost:.1f} turns={turns} fail={fail_s}")
-    print()
-PY
+"$PY" "$PAPER_DIR/scripts/summarize-nightly-budgetflow.py"
 
 echo "[done] $(date -Is)"
