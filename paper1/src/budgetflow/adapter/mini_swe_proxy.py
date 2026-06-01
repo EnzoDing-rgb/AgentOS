@@ -32,6 +32,8 @@ from ..defaults import (
     TIER3_BACKEND,
     TIER3_MODEL,
     TIER4_BACKEND,
+    TIER4_GPT53_BACKEND,
+    TIER4_GPT53_MODEL,
     TIER4_MODEL,
     TIER5_BACKEND,
     TIER5_MODEL,
@@ -58,7 +60,15 @@ logger = logging.getLogger("budgetflow_litellm_model")
 configure_litellm_quiet()
 
 _DASHSCOPE_BACKENDS = frozenset({TIER1_BACKEND, TIER2_BACKEND, TIER3_BACKEND, TIER4_BACKEND})
-_AICODE007_BACKENDS = frozenset({TIER5_BACKEND})
+_AICODE007_BACKENDS = frozenset({TIER4_GPT53_BACKEND, TIER5_BACKEND})
+
+
+class FatalProviderBillingError(RuntimeError):
+    """Provider billing/account errors should bypass mini-SWE retry backoff."""
+
+    def __init__(self, original: Exception) -> None:
+        self.original = original
+        super().__init__(str(original))
 
 
 def _build_turn_trace(
@@ -550,7 +560,11 @@ class BudgetFlowLitellmModel:
             if not self.aicode007_api_key:
                 raise RuntimeError("AICODE007_API_KEY is missing. Add it to the repo root .env file.")
             ensure_aicode007_proxy()
-            return TIER5_MODEL, {
+            model_map = {
+                TIER4_GPT53_BACKEND: TIER4_GPT53_MODEL,
+                TIER5_BACKEND: TIER5_MODEL,
+            }
+            return model_map[backend.name], {
                 "temperature": 0.0,
                 "parallel_tool_calls": True,
                 "drop_params": True,
@@ -585,17 +599,32 @@ class BudgetFlowLitellmModel:
                 kwargs_merged = {**model_kwargs, **kwargs}
             else:
                 kwargs_merged = {**model_kwargs, **kwargs}
-            return litellm.completion(
-                model=model_name,
-                messages=prepared,
-                tools=[BASH_TOOL],
-                **kwargs_merged,
-            )
+            try:
+                return litellm.completion(
+                    model=model_name,
+                    messages=prepared,
+                    tools=[BASH_TOOL],
+                    **kwargs_merged,
+                )
+            except Exception as exc:  # noqa: BLE001
+                if is_fatal_billing_error(str(exc)):
+                    raise FatalProviderBillingError(exc) from exc
+                raise
 
         try:
-            for attempt in retry(logger=logger, abort_exceptions=[KeyboardInterrupt]):
+            for attempt in retry(logger=logger, abort_exceptions=[KeyboardInterrupt, FatalProviderBillingError]):
                 with attempt:
                     return _query()
+        except FatalProviderBillingError as exc:
+            err_msg = str(exc)
+            action = record_billing_halt(err_msg, backend=backend_name)
+            raise BudgetFlowUpstreamError(
+                self.workflow_id,
+                exit_reason=action.reason or "billing_guard",
+                step_index=self.step_index,
+                backend=backend_name,
+                sample=err_msg,
+            ) from exc.original
         except Exception as exc:  # noqa: BLE001
             err_msg = str(exc)
             # Billing errors: halt everything immediately, don't retry.

@@ -47,6 +47,7 @@ TIER1_BACKEND = "tier1_qwen35_flash"
 TIER2_BACKEND = "tier2_qwen3_coder_flash"
 TIER3_BACKEND = "tier3_qwen36_plus"
 TIER4_BACKEND = "tier4_qwen3_coder_plus"
+TIER4_GPT53_BACKEND = "tier4_gpt53_codex"
 TIER5_BACKEND = "tier5_gpt55"
 
 PROGRESS_TABLE: dict[Stage, dict[str, float]] = {
@@ -55,6 +56,7 @@ PROGRESS_TABLE: dict[Stage, dict[str, float]] = {
         TIER2_BACKEND: 0.50,
         TIER3_BACKEND: 0.62,
         TIER4_BACKEND: 0.65,  # coder-plus bit better even for LOC
+        TIER4_GPT53_BACKEND: 0.68,  # candidate regular strong tier; verified via AICode007 ping
         TIER5_BACKEND: 0.75,  # GPT-5.5 ceiling
     },
     Stage.REPAIR: {
@@ -62,6 +64,7 @@ PROGRESS_TABLE: dict[Stage, dict[str, float]] = {
         TIER2_BACKEND: 0.38,  # coder-flash bit better at repair
         TIER3_BACKEND: 0.45,
         TIER4_BACKEND: 0.62,  # coder-plus significantly better at repair
+        TIER4_GPT53_BACKEND: 0.68,
         TIER5_BACKEND: 0.75,  # GPT-5.5 ceiling
     },
     Stage.VALIDATION: {
@@ -69,6 +72,7 @@ PROGRESS_TABLE: dict[Stage, dict[str, float]] = {
         TIER2_BACKEND: 0.45,
         TIER3_BACKEND: 0.55,
         TIER4_BACKEND: 0.60,  # coder-plus better at validation too
+        TIER4_GPT53_BACKEND: 0.66,
         TIER5_BACKEND: 0.72,  # GPT-5.5 ceiling
     },
 }
@@ -130,6 +134,7 @@ TIER1_MODEL = f"openai/{QWEN_T1_MODEL}"
 TIER2_MODEL = f"openai/{QWEN_T2_MODEL}"
 TIER3_MODEL = f"openai/{QWEN_T3_MODEL}"
 TIER4_MODEL = f"openai/{QWEN_T4_MODEL}"
+TIER4_GPT53_MODEL = "openai/gpt-5.3-codex"  # AICode007 verified ping; opt-in regular T4 candidate
 TIER5_MODEL = "openai/gpt-5.5"  # aicode007 GPT-5.5 ceiling test
 
 # Terminal model= labels for console output.
@@ -137,6 +142,7 @@ TIER1_DISPLAY = "qwen3.5-flash"
 TIER2_DISPLAY = "qwen3-coder-flash"
 TIER3_DISPLAY = "qwen3.6-plus"
 TIER4_DISPLAY = "qwen3-coder-plus"
+TIER4_GPT53_DISPLAY = "gpt-5.3-codex"
 TIER5_DISPLAY = "gpt-5.5"
 
 TIER_DISPLAY_BY_BACKEND: dict[str, str] = {
@@ -144,6 +150,7 @@ TIER_DISPLAY_BY_BACKEND: dict[str, str] = {
     TIER2_BACKEND: TIER2_DISPLAY,
     TIER3_BACKEND: TIER3_DISPLAY,
     TIER4_BACKEND: TIER4_DISPLAY,
+    TIER4_GPT53_BACKEND: TIER4_GPT53_DISPLAY,
     TIER5_BACKEND: TIER5_DISPLAY,
 }
 
@@ -152,8 +159,16 @@ TIER_MODEL_BY_BACKEND: dict[str, str] = {
     TIER2_BACKEND: TIER2_MODEL,
     TIER3_BACKEND: TIER3_MODEL,
     TIER4_BACKEND: TIER4_MODEL,
+    TIER4_GPT53_BACKEND: TIER4_GPT53_MODEL,
     TIER5_BACKEND: TIER5_MODEL,
 }
+
+
+def active_t4_backend_name() -> str:
+    provider = os.environ.get("BF_T4_PROVIDER", "").strip().lower()
+    if provider in {"gpt53", "gpt53_codex", "gpt-5.3-codex"}:
+        return TIER4_GPT53_BACKEND
+    return TIER4_BACKEND
 
 # Back-compat aliases for scripts that reference old model names.
 DEEPSEEK_API_BASE = DASHSCOPE_API_BASE

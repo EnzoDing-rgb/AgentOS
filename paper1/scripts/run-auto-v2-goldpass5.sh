@@ -38,7 +38,7 @@ echo "[root] $ROOT_DIR"
 echo "[stem] $STEM"
 echo "[log] $MASTER_LOG"
 echo "[ids] $IDS"
-echo "[policy] no docker; no gpt-5.5 in budgeted routing; jobs=1"
+echo "[policy] no docker; no gpt-5.5 in budgeted routing; jobs=1; BF_T4_PROVIDER=${BF_T4_PROVIDER:-qwen}"
 echo
 
 jsonl_unique_count() {

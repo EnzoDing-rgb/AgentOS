@@ -6,7 +6,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from budgetflow.run_guards import CompareRunGuards, GuardAction, _is_pipeline_failure, _looks_upstream  # noqa: E402
+from budgetflow.run_guards import (  # noqa: E402
+    CompareRunGuards,
+    GuardAction,
+    _is_pipeline_failure,
+    _looks_upstream,
+    is_fatal_billing_error,
+)
 
 
 def _rec(*, resolved=False, patch=False, reason="", status=""):
@@ -62,3 +68,8 @@ def test_upstream_pattern() -> None:
     for _ in range(3):
         action = g.record_upstream_error("503 Service temporarily unavailable", backend="tier1_spark")
     assert action.halt_all
+
+
+def test_billing_errors_are_fatal() -> None:
+    assert is_fatal_billing_error("Access denied, please make sure your account is in good standing")
+    assert is_fatal_billing_error("overdue-payment")

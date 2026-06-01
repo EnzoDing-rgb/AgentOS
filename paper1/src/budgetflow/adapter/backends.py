@@ -1,6 +1,14 @@
 from __future__ import annotations
 
-from ..defaults import TIER1_BACKEND, TIER2_BACKEND, TIER3_BACKEND, TIER4_BACKEND, TIER5_BACKEND
+from ..defaults import (
+    TIER1_BACKEND,
+    TIER2_BACKEND,
+    TIER3_BACKEND,
+    TIER4_BACKEND,
+    TIER4_GPT53_BACKEND,
+    TIER5_BACKEND,
+    active_t4_backend_name,
+)
 from ..types import Backend
 
 # rpm_limit / concurrency_limit kept on Backend for Tier-2 paper metrics only; governor does not enforce them.
@@ -63,6 +71,17 @@ def _build_all_backends() -> list[Backend]:
             latency_ms=900,
         ),
         Backend(
+            name=TIER4_GPT53_BACKEND,
+            tier=4,
+            cost_per_input_token=0.0060,
+            cost_per_output_token=0.0180,
+            rpm_limit=_UNLIMITED,
+            concurrency_limit=_UNLIMITED,
+            mean_output_tokens=1024,
+            progress_score=0.25,
+            latency_ms=1200,
+        ),
+        Backend(
             name=TIER5_BACKEND,
             tier=5,
             cost_per_input_token=0.01,
@@ -82,7 +101,9 @@ def build_compare_backends() -> list[Backend]:
     GPT-5.5 is a ceiling probe and must not be reachable by budgeted strategies
     unless the caller explicitly asks for the ceiling pool.
     """
-    return [backend for backend in _build_all_backends() if backend.name != TIER5_BACKEND]
+    active_t4 = active_t4_backend_name()
+    excluded = {TIER5_BACKEND, TIER4_BACKEND, TIER4_GPT53_BACKEND} - {active_t4}
+    return [backend for backend in _build_all_backends() if backend.name not in excluded]
 
 
 def build_ceiling_backends() -> list[Backend]:

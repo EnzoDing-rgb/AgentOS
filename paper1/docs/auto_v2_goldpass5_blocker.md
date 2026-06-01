@@ -30,6 +30,7 @@ The script uses:
 - `jobs=1`
 - no Docker
 - no GPT-5.5
+- Qwen T4 by default; set `BF_T4_PROVIDER=gpt53_codex` to test GPT-5.3 Codex as the regular T4 candidate
 - `--resume`
 - per-attempt timeout
 - JSONL/checkpoint resume
@@ -78,3 +79,13 @@ Expected complete count:
 ```text
 20 unique (strategy, task) verdicts
 ```
+
+If Qwen remains blocked and you want the GPT-5.3 Codex T4 candidate instead:
+
+```bash
+cd /home/fengde/Projects/AI-learning/agent_learning/AgentOS/paper1
+BF_T4_PROVIDER=gpt53_codex nohup scripts/run-auto-v2-goldpass5.sh budgetflow_goldpass5_auto_v2_p030_v1 \
+  > data/runs/budgetflow_goldpass5_auto_v2_p030_v1.nohup.log 2>&1 &
+```
+
+This still does not route GPT-5.5 into the budgeted pool.
