@@ -413,6 +413,28 @@ If `actual_cost < reserved_cost`, the difference is returned to the global budge
 
 In short: `expected_cost` is for routing order, `reserved_cost` is for budget safety, and `actual_cost` is for accounting and experimental reporting.
 
+### 4.4 Where does the batch budget come from? — Adaptive Budget Estimation
+
+Sections 4.1–4.3 explain how BudgetFlow enforces a given budget. But who sets the budget in the first place?
+
+In the current prototype, batch budget caps (`loose` / `tight`) are frozen constants computed once from a small pilot run (`protocol_caps.py`). This is adequate for a controlled A/B comparison but tells us nothing about whether the budget itself is reasonable.
+
+A more complete system should answer:
+
+> Given a batch of N unseen tasks, what total budget gives the best expected outcome, and how should the runtime update the budget online as tasks complete?
+
+**Static pilot-based calibration (current).** Run K pilot tasks with a strong model, measure median spend, then set `loose = 2 × median × N` and `tight = 0.5 × median × N`. Simple, reproducible, but blind to task heterogeneity — an easy task and a hard task get the same per-task share.
+
+**Task-aware estimation (proposed).** Before execution, estimate each task's difficulty from lightweight features (issue length, repo size, number of changed files in similar historical fixes) and assign a per-task budget. The batch budget is the sum. This prevents easy tasks from hoarding budget that hard tasks need.
+
+**Online budget reallocation (proposed).** As tasks complete, the runtime observes which tasks were cheap to solve and which burned budget without resolving. Remaining unused budget from completed tasks is redistributed to unfinished tasks, weighted by their estimated difficulty and current progress. This closes the loop: the same ledger and governor that enforce the budget also feed back into how the budget should be reallocated.
+
+The paper can treat this as:
+- **Tier 1:** frozen caps (current) — enough to show the routing mechanism works.
+- **Tier 2+:** task-aware estimation + online reallocation — strengthens the claim that BudgetFlow is a *complete* budget governance system, not just a router.
+
+This direction connects naturally to the RLB vision in §11: the per-task difficulty estimates and reallocation rules become part of the maintained heuristic system, improving over time from logs and replay data.
+
 ---
 
 ## 5. How do we measure quality?
@@ -773,6 +795,10 @@ Interactive agent workloads introduce deadlines, SLA tiers, latency SLOs, and th
 ### Learned selector as a plug-in
 
 A learned selector, for example borrowing BoPO-style boundary-guided training, can replace or refine the heuristic ModelSelector. The ledger, reservation, admission, scheduling, settlement, and recovery mechanisms remain the runtime substrate around that learned policy.
+
+### Adaptive batch budget estimation and online reallocation
+
+Paper 1 sets batch budget caps from a frozen pilot calibration (§4.4). A natural next step is to let the runtime itself estimate per-task budgets from lightweight task features (issue length, repo size, historical difficulty), set a total batch budget, then reallocate unspent budget from easy resolved tasks to harder unfinished tasks during the run. This turns BudgetFlow from a budget *enforcer* into a budget *planner* — connecting the ledger and governor feedback loop directly to the initial budget decision. The mechanism is described in §4.4.
 
 ### Non-coding workflows
 
