@@ -188,30 +188,29 @@ T5: GPT-5.5 only for ceiling probe
 
 原则：
 
-- GPT-5.5 只回答“这题强模型到底能不能解”。
-- GPT-5.5 不进入 budgeted routing pool。
-- 常规 BudgetFlow 实验用 GPT-5.3 Codex 做强档更合理。
-- 如果 GPT-5.3 Codex 明显强于当前 Qwen T4，应该替换当前 T4。
-- T1 不要参与主实验，避免低质量调用污染轨迹；但可以保留做消融。
+- 当前强档是 T3/GPT-5.4，不再使用 GPT-5.3 Codex。
+- GPT-5.5 不进入当前推理链。
+- T1/T2/T3 是系统 tier contract，不是永久商业模型身份。
+- T1 可作为明确消融，主实验当前从 T2/T3 池开始。
 
 Current implementation:
 
-- `build_compare_backends()` skips T1 by default.
+- `build_compare_backends()` 当前默认返回 T2/T3。
 - Explicit `all_flash` / `all_t1` ablation runs can still include T1.
-- This makes the main automatic-budget pool start at T2, which matches the paper claim: BudgetFlow should allocate useful budget, not prove repeatedly that the cheapest weak model is weak.
+- `all_pro` 必须表示 strongest/T3，不能硬编码成 T2。
 
 Soft budget implementation:
 
 - `GovernorConfig` now supports `soft_budget` and `max_overrun`.
 - `run_mini_swe_compare` exposes `--soft-budget` and `--max-overrun`.
 - Per-task experiments can keep a soft cap while allowing a bounded overrun when a turn is already in flight or evidence justifies one more step.
-- `scripts/run-auto-v2-goldpass5.sh` uses `--per-task-cap 3000 --max-overrun 300`.
+- 历史 prior 由 `paper1/src/budgetflow/historical_etl.py` 生成，当前报告在 `paper1/docs/reports/historical_budgeting_prior.md`。
 
-Expensive T4 rule:
+Expensive tier rule:
 
-- If regular T4 is Qwen coder-plus, auto_v2 may open a short T4 rescue window after concrete repair evidence.
-- If regular T4 is `gpt-5.3-codex`, auto_v2 must be more conservative: wait for more repair evidence, use a shorter rescue window, and require more remaining budget headroom.
-- This is the key automatic-budget behavior: expensive models are not banned, but they are only unlocked after evidence says the task is worth rescuing.
+- Expensive models are not banned, but they are only unlocked after evidence says the task is worth rescuing.
+- GPT-5.4/T3 must pass the command-format parser gate before it can be trusted as a rescue or ceiling signal.
+- `budgetflow_equal_weight` is only a stage-weight ablation. It is not Automatic Budgeting.
 
 ## 8. Evaluation Guardrails
 

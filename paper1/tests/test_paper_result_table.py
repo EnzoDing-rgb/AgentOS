@@ -56,5 +56,6 @@ def test_build_markdown_table_summarizes_runs(tmp_path: Path) -> None:
         labels={"raw_gpt53": "raw ceiling", "budgetflow": "BudgetFlow"},
     )
 
-    assert "| raw ceiling | `all_gpt53` | 2 | 1/2 | 30.0 | 15.0 | 5 | pass=1, repair_fail=1 | inspect repair failures |" in text
-    assert "| BudgetFlow | `budgetflow_auto_v2_tight` | 1 | 1/1 | 7.0 | 7.0 | 4 | pass=1 | keep / scale cautiously |" in text
+    assert "| forensic_axes |" in text
+    assert "| raw ceiling | `all_gpt53` | 2 | 1/2 | 30.0 | 15.0 | 5 | pass=1, repair_fail=1 | repair_quality=1, pass=1 | inspect repair failures |" in text
+    assert "| BudgetFlow | `budgetflow_auto_v2_tight` | 1 | 1/1 | 7.0 | 7.0 | 4 | pass=1 | pass=1 | keep / scale cautiously |" in text

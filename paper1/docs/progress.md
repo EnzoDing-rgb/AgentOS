@@ -6,12 +6,12 @@
 
 ### 结论
 
-- 5×3 跑完（`policy_5x3-2`），**1/15 PASS**。唯一 PASS：`all_pro` 在 sympy__sympy-13480。
-- **Bug 1 — GPT-5.4 输出格式不兼容。** 所有用 T3（GPT-5.4）的 turn 触发 `format_error_text_action` / `extract_fail`，5 步 `StagnationExit`。T2（qwen3-coder-plus）输出格式正确。
-- **Bug 2 — `all_pro` 实际用 T2 不是 T3。** `strategies.py:86` 硬编码 `_backend_by_tier(ctx.backends, 2)`。名字叫 "all_pro"，跑的是千问 qwen3-coder-plus。旧 4-tier 时代 pro=tier4，重构后 tier 塌缩但代码没跟着改。
-- **Bug 3 — `budget_only` 跳过 T2 直选 T3。** 15 个 turn 全选 `tier3`。`BudgetOnlyStepRouter` 应选最便宜的可用 tier（T2），但选了最贵的。
-- 旧 GPT-5.3 Codex 在 AiCode007 上游下架/不可用，相关 503 不是任务失败。
-- T3 默认 text-mode；provider unavailable 时会释放 reservation 并 fallback 到剩余 tier。
+- 当前 P0 是 **local harness 可信度**，不是继续跑实验。
+- 5×3（`policy_5x3-2`）和 `clean_gold2-0` 暴露的问题已经推进到下一层：GPT-5.4 命令格式已修，trace 已够用，`all_pro`/`budget_only` tier bug 已修。
+- `result1-0` 证明 GPT-5.4/T3 可以执行命令、编辑 gold file、提交 patch。
+- `result1-0` 的 `repair_fail` 不能当模型质量结论，因为 `002.md` 证明 `sympy__sympy-14774` 的 P2P 是 **环境假失败**。
+- 假失败根因：旧 SymPy + 当前 `mpmath 1.4.1`，`to_str(inf)` 返回 `"inf"`，旧 SymPy 只识别 `"+inf"`。
+- 在 harness 修好前，所有涉及 `sympy__sympy-14774` 的 pass/fail 结论都要降权。
 
 ### Current active tier
 
@@ -25,6 +25,10 @@
 
 ### 最新改动（2026-06-02，下午）
 
+- 已修：GPT-5.4 文本命令解析，支持普通 ```bash / ```sh fenced block 和 JSON `{"command": ...}`。提交：`105edc6`。
+- 已跑：`result1-0`，`all_pro` 确认为 T3/GPT-5.4，7 turns 提交 patch。
+- 已查：`result1-0` 的 P2P 失败是 harness/env 假失败，见 `paper1/docs/reports/002.md`。
+- 已写：目录整理方案 `paper1/docs/reports/003.md`。目录整理是 P1，等 harness 修复后再动。
 - **已改：`--read-protocol` → `--read-frozen-caps`。** 旧名保留为静默 alias，不显示在 `--help` 中。
 - **已跑：5×3（`policy_5x3-2`）。** 3 tasks × 5 strategies = 15 rows，`--read-frozen-caps`，`--jobs 5`。见下方 Run 登记。
 - **已分析：equal-weight ablation 不需要优先跑。** `budgetflow_full` 已经有 evidence rescue、stop-loss、adaptive routing。`budgetflow_equal_weight` 只把 `w_i` 打平，用同一套 rescue 参数，回答 stage weight 先验是否有效。
@@ -37,11 +41,11 @@
 
 ### 下一步
 
-1. 修 Bug 1（GPT-5.4 format 不兼容）——定位 `format_error_text_action` root cause，修 parser 或 system prompt。
-2. 修 Bug 2（`all_pro` tier 映射）——改为 T3 或改为 `all_t2` 并改名。
-3. 修 Bug 3（`budget_only` tier 选择）——检查 `BudgetOnlyStepRouter` 为何不选 T2。
-4. 三 bug 修完后重跑 5×3。
-5. 并行推进 Automatic Budgeting（Plan B → Plan C，见下方）。
+1. 修 local harness：旧 SymPy + 新 mpmath 的 `latex(1.0*oo)` P2P 假失败。
+2. 用 `result1` 的 patch 做最小复验，确认 `sympy__sympy-14774` P2P 干净。
+3. 写 `paper1/docs/reports/004.md`，说明 harness 修复证据。
+4. 只在 harness 可信后跑 `result2` / `clean_gold2_after_harness`。
+5. 目录整理和 Automatic Budgeting 都暂停到 P1。
 
 ---
 
@@ -65,6 +69,8 @@
 | `--read-protocol` → `--read-frozen-caps` rename | ✅ |
 | **policy_5x7-0**（旧代码 7×5） | ⚠️ 中断于 30/35 |
 | **policy_5x3-2**（新代码 5×3） | ✅ 跑完，1/15 PASS，暴露 3 个 bug |
+| **result1-0**（GPT-5.4 parser 修复后单题） | ⚠️ 触发 harness 假 P2P |
+| local harness P2P trust | ⛔ P0 待修 |
 | Automatic Budgeting Plan B（difficulty bucket） | ⏳ 待实现 |
 | Automatic Budgeting Plan C（continuous learning kNN） | ⏳ 依赖 Plan B |
 

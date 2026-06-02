@@ -468,6 +468,121 @@ Matt Pocock Skills 系统里有几条实践对本项目有价值：
 
 当前状态：trace schema 就绪，protocol adapter 就绪。等 probe 跑完才有 parser 修复判据。
 
+## 16. Harness Trust 经验
+
+### 我们看到了什么现象
+
+`result1-0` 中 GPT-5.4/T3 已经不再卡在命令格式解析。它完成了定位、编辑 gold file、提交 patch。
+
+表面结果仍是 `repair_fail`，原因是 `pass_to_pass=fail`。
+
+### 发现了什么问题
+
+这次 `repair_fail` 不是可靠的模型质量信号。
+
+`sympy__sympy-14774` 的 P2P 失败点是：
+
+```text
+latex(1.0*oo) expected "\\infty", got "inf"
+```
+
+但模型 patch 只改了 inverse trig table：
+
+```text
+["asin", "acos", "atan", "acot"]
+→ ["asin", "acos", "atan", "acsc", "asec", "acot"]
+```
+
+两者无直接关系。进一步调查发现，干净 base commit 在当前本地环境下也会失败。根因是旧 SymPy 和当前 `mpmath 1.4.1` 不兼容：`mpmath.libmp.to_str(...)` 返回 `"inf"`，旧 SymPy 只识别 `"+inf"`。
+
+### 如何解决
+
+先暂停实验，修 local harness compatibility layer。
+
+推荐把修复放在 `paper1/src/budgetflow/local_harness.py` 的 `apply_python_compat()` 路径中，而不是改模型 patch 或直接 pin mpmath：
+
+```python
+elif str_real in ("+inf", "inf"):
+    return r"\infty"
+```
+
+修复后必须证明：
+
+- base + test_patch + no model_patch 时 P2P 干净。
+- base + test_patch + `result1` model patch 时 fail_before/fail_after/P2P 都符合预期。
+- submitted patch 不包含 harness compatibility edits。
+
+### 得出的结论
+
+local harness 是论文证据链的一部分，不是普通工具。任何 P2P 基线不干净的任务，都不能拿来判断 BudgetFlow 或模型能力。
+
+当前优先级：
+
+1. P0：修 harness trust。
+2. P1：目录整理。
+3. P2：Automatic Budgeting runtime。
+
+## 17. Cross-Repo Harness 经验
+
+### 我们看到了什么现象
+
+用户提出：Requests / Django 看起来应该比 SymPy 简单，为什么之前也失败？
+
+我们没有直接跑模型 3x3，而是先跑 gold patch harness sanity。这个判断是对的：如果 gold patch 在本地 harness 都不能过，模型实验没有解释价值。
+
+候选筛选结果：
+
+- Django Lite 任务很多：`django/django` 有 114 个。
+- Requests Lite 任务很少：`psf/requests` 只有 6 个。
+- 按 gold patch 行数看，Django 有很多 10-12 行小 patch；Requests 的 P2P 数量偏多，不一定更简单。
+
+### 发现了什么问题
+
+最小 gold probe：
+
+```text
+paper1/data/runs/gold_probe_django_requests_3.jsonl
+```
+
+已完成的两个 Django gold rows 都失败：
+
+- `django__django-12113`: `test_patch=ok; fail_before=fail; model_patch=ok; fail_after=fail`
+- `django__django-10924`: `test_patch=ok; fail_before=fail; model_patch=ok; fail_after=fail; pass_to_pass=fail`
+
+关键错误不是模型修不好，而是 harness 无法映射 SWE-bench 的 Django test node：
+
+```text
+no pytest node ids: tests/backends/sqlite/test_creation.py::test_custom_test_name
+  (backends.sqlite.test_creation.TestDbSignatureTests)
+```
+
+这说明当前 local harness 的 pytest node 构造逻辑更适合 SymPy 风格，不足以直接支持 Django/Requests。
+
+### 如何解决
+
+跨 repo 实验前必须先做 gold patch sanity gate：
+
+1. 从候选 repo 挑任务。
+2. 先跑 `gold_harness_probe.py`。
+3. 只有 gold patch 能在本地 harness 过，才允许跑模型策略。
+4. 如果 gold patch 不过，先修 harness 的 repo-specific test mapping / env setup。
+
+Django 的下一步不是跑模型，而是修 `local_harness.py` 的 test node mapping：
+
+- 支持 SWE-bench 里带括号类名的测试标识。
+- 能把 `tests/path.py::test_name (module.ClassName)` 转成可运行 pytest node。
+- 对 Django 可能需要额外支持 `tests/...` 与 Django test labels 的转换。
+
+### 得出的结论
+
+Requests/Django 不一定比 SymPy “简单”。对我们的系统来说，任务难度首先取决于 **local harness 是否能正确复现官方测试语义**。
+
+当前决策：
+
+- 不直接跑 Requests/Django 3x3。
+- 先修 harness。
+- 每个新 repo 先过 gold patch sanity，再谈 BudgetFlow/model 结论。
+
 ### 15.3 TDD 垂直切片
 
 **适用。** 四个重构（ModelCatalog、ProtocolAdapter、RouterDecision、BudgetAllocator）的切法：
