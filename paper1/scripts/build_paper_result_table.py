@@ -17,6 +17,7 @@ class StrategySummary:
     cost: float
     turns: int
     failures: Counter[str]
+    forensic_axes: Counter[str]
 
     @property
     def avg_cost(self) -> float:
@@ -56,6 +57,13 @@ def _failure_class(row: dict) -> str:
     return "pass" if row.get("harness_resolved") else "unknown"
 
 
+def _forensic_axis(row: dict) -> str:
+    summary = row.get("forensic_summary")
+    if isinstance(summary, dict) and summary.get("primary_axis"):
+        return str(summary["primary_axis"])
+    return "pass" if row.get("harness_resolved") else "unknown"
+
+
 def summarize_rows(rows: list[dict], group: str) -> list[StrategySummary]:
     by_strategy: dict[str, list[dict]] = defaultdict(list)
     for row in rows:
@@ -64,6 +72,7 @@ def summarize_rows(rows: list[dict], group: str) -> list[StrategySummary]:
     summaries: list[StrategySummary] = []
     for strategy, items in sorted(by_strategy.items()):
         failures = Counter(_failure_class(row) for row in items)
+        axes = Counter(_forensic_axis(row) for row in items)
         summaries.append(
             StrategySummary(
                 group=group,
@@ -73,15 +82,16 @@ def summarize_rows(rows: list[dict], group: str) -> list[StrategySummary]:
                 cost=sum(_cost(row) for row in items),
                 turns=sum(_turns(row) for row in items),
                 failures=failures,
+                forensic_axes=axes,
             )
         )
     return summaries
 
 
-def format_failure_classes(failures: Counter[str]) -> str:
-    if not failures:
+def format_counter(values: Counter[str]) -> str:
+    if not values:
         return "-"
-    return ", ".join(f"{name}={count}" for name, count in sorted(failures.items()))
+    return ", ".join(f"{name}={count}" for name, count in sorted(values.items()))
 
 
 def next_action(summary: StrategySummary) -> str:
@@ -89,13 +99,34 @@ def next_action(summary: StrategySummary) -> str:
         return "rerun missing data"
     if summary.passed == summary.tasks:
         return "keep / scale cautiously"
+
+    axes = summary.forensic_axes
+    if axes:
+        axis, _ = axes.most_common(1)[0]
+        if axis == "budget":
+            return "tune cap/rescue after repair progress"
+        if axis == "protocol":
+            return "fix submission/protocol before scaling"
+        if axis == "localization":
+            return "escalate earlier in localization"
+        if axis == "repair_quality":
+            return "compare high-tier repair quality"
+        if axis == "harness":
+            return "verify local harness before conclusions"
+        if axis == "model_behavior":
+            return "inspect no-progress/stagnation behavior"
+        if axis == "infra":
+            return "fix infra before conclusions"
+
     if summary.failures.get("infra_fail") or summary.failures.get("auth_fail"):
         return "fix infra before conclusions"
     if summary.failures.get("extract_fail") or summary.failures.get("format_fail"):
         return "fix protocol / patch extraction"
+    if summary.failures.get("budget_fail"):
+        return "tune cap/rescue after repair progress"
     if summary.failures.get("repair_fail"):
-        return "inspect repair failures"
-    if summary.failures.get("localization_fail"):
+        return "inspect repair failures with forensic trace"
+    if summary.failures.get("loc_fail") or summary.failures.get("localization_fail"):
         return "improve localization / escalate earlier"
     if summary.passed == 0:
         return "do not scale yet"
@@ -115,15 +146,16 @@ def build_markdown_table(
         summaries.extend(summarize_rows(load_rows(run_dir / f"{stem}.jsonl"), group=group))
 
     lines = [
-        "| group | strategy | tasks | pass | cost | avg_cost | turns | failure_classes | next_action |",
-        "|---|---:|---:|---:|---:|---:|---:|---|---|",
+        "| group | strategy | tasks | pass | cost | avg_cost | turns | failure_classes | forensic_axes | next_action |",
+        "|---|---:|---:|---:|---:|---:|---:|---|---|---|",
     ]
     for summary in summaries:
         lines.append(
             "| "
             f"{summary.group} | `{summary.strategy}` | {summary.tasks} | "
             f"{summary.passed}/{summary.tasks} | {summary.cost:.1f} | {summary.avg_cost:.1f} | "
-            f"{summary.turns} | {format_failure_classes(summary.failures)} | {next_action(summary)} |"
+            f"{summary.turns} | {format_counter(summary.failures)} | "
+            f"{format_counter(summary.forensic_axes)} | {next_action(summary)} |"
         )
     return "\n".join(lines) + "\n"
 

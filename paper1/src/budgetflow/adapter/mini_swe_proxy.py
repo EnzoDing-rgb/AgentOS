@@ -29,21 +29,13 @@ from ..defaults import (
     DASHSCOPE_API_BASE,
     AICODE007_API_BASE,
     PRESSURE_MAX,
-    T4_DOWNGRADE_TIER,
+    STRONGEST_DOWNGRADE_TIER,
     TIER1_BACKEND,
     TIER1_MODEL,
     TIER2_BACKEND,
     TIER2_MODEL,
     TIER3_BACKEND,
     TIER3_MODEL,
-    TIER4_BACKEND,
-    TIER4_QWEN_MAX_BACKEND,
-    TIER4_QWEN_MAX_MODEL,
-    TIER4_GPT53_BACKEND,
-    TIER4_GPT53_MODEL,
-    TIER4_MODEL,
-    TIER5_BACKEND,
-    TIER5_MODEL,
     TIER_ESCALATION_PATIENCE,
     TIER_MAX_TURNS,
 )
@@ -66,15 +58,12 @@ logger = logging.getLogger("budgetflow_litellm_model")
 
 configure_litellm_quiet()
 
-_DASHSCOPE_BACKENDS = frozenset({TIER1_BACKEND, TIER2_BACKEND, TIER3_BACKEND, TIER4_BACKEND, TIER4_QWEN_MAX_BACKEND})
-_AICODE007_BACKENDS = frozenset({TIER4_GPT53_BACKEND, TIER5_BACKEND})
+_DASHSCOPE_BACKENDS = frozenset({TIER1_BACKEND, TIER2_BACKEND})
+_AICODE007_BACKENDS = frozenset({TIER3_BACKEND})
 FORMAT_ERROR_STOP_AFTER = 5
-TIER5_FORMAT_ERROR_STOP_AFTER = 2
 
 
 def _format_error_stop_after(backend_tier: int | None) -> int:
-    if backend_tier is not None and backend_tier >= 5:
-        return TIER5_FORMAT_ERROR_STOP_AFTER
     return FORMAT_ERROR_STOP_AFTER
 
 
@@ -522,7 +511,7 @@ class BudgetFlowLitellmModel:
         if patience is not None and self._no_progress_on_current_tier >= patience:
             if backend.tier == 4:
                 # T4 stop-loss: downgrade instead of upgrading
-                next_backend = ordered[T4_DOWNGRADE_TIER - 1]  # tier is 1-indexed
+                next_backend = ordered[STRONGEST_DOWNGRADE_TIER - 1]  # tier is 1-indexed
                 reason = f"T4-stop-loss streak={self._no_progress_on_current_tier}/{patience}"
             else:
                 next_tier_idx = backend.tier
@@ -535,7 +524,7 @@ class BudgetFlowLitellmModel:
             max_turns = TIER_MAX_TURNS.get(backend.tier)
             if max_turns is not None and self._turns_on_current_tier >= max_turns:
                 if backend.tier == 4:
-                    next_backend = ordered[T4_DOWNGRADE_TIER - 1]
+                    next_backend = ordered[STRONGEST_DOWNGRADE_TIER - 1]
                     reason = f"T4-turn-cap turns={self._turns_on_current_tier}/{max_turns}"
                 elif backend.tier < len(ordered):
                     next_backend = ordered[backend.tier]
@@ -605,9 +594,6 @@ class BudgetFlowLitellmModel:
             model_map = {
                 TIER1_BACKEND: TIER1_MODEL,
                 TIER2_BACKEND: TIER2_MODEL,
-                TIER3_BACKEND: TIER3_MODEL,
-                TIER4_BACKEND: TIER4_MODEL,
-                TIER4_QWEN_MAX_BACKEND: TIER4_QWEN_MAX_MODEL,
             }
             return model_map[backend.name], common
         if backend.name in _AICODE007_BACKENDS:
@@ -615,8 +601,7 @@ class BudgetFlowLitellmModel:
                 raise RuntimeError("AICODE007_API_KEY is missing. Add it to the repo root .env file.")
             ensure_aicode007_proxy()
             model_map = {
-                TIER4_GPT53_BACKEND: TIER4_GPT53_MODEL,
-                TIER5_BACKEND: TIER5_MODEL,
+                TIER3_BACKEND: TIER3_MODEL,
             }
             return model_map[backend.name], {
                 "temperature": 0.0,

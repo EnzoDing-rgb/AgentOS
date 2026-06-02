@@ -80,17 +80,10 @@ def choose_backend(ctx: RoutingContext, turn: TurnInfo, expected_costs: dict[str
         return _backend_by_tier(ctx.backends, 1)
     if ctx.strategy == "all_tier2":
         return _backend_by_tier(ctx.backends, 2)
-    if ctx.strategy == "all_gpt55":
-        # GPT-5.5 ceiling test via aicode007
-        return ctx.backends[-1]  # the last backend = GPT-5.5
     if ctx.strategy == "all_gpt53":
-        return next((backend for backend in ctx.backends if "gpt53" in backend.name), ctx.backends[-1])
-    if ctx.strategy == "all_pro":
-        # Use T3 (qwen3.6-plus), not T4 (qwen3.7-max).
-        # T4 is a budgetflow-only last resort. all_pro is the "standard best" baseline.
         return _backend_by_tier(ctx.backends, 3)
-    if ctx.strategy == "all_t4":
-        return _backend_by_tier(ctx.backends, 4)
+    if ctx.strategy == "all_pro":
+        return _backend_by_tier(ctx.backends, 2)
     if ctx.strategy == "workflow_level":
         assert ctx.workflow_level_backend is not None
         return ctx.workflow_level_backend

@@ -40,44 +40,27 @@ def active_w_i() -> dict[Stage, float]:
     name = os.environ.get("BF_W_PROFILE", "").strip()
     return W_I_PROFILES.get(name, W_I)
 
-# Tier pool: Qwen family via 阿里云百炼 — 4-tier with coder models.
-# T1=qwen3.5-flash (¥0.3/¥0.6), T2=qwen3-coder-flash (¥0.5/¥2),
-# T3=qwen3.6-plus (¥2/¥6), T4=qwen3-coder-plus (¥4/¥12, SWE-bench 78.8%)
-TIER1_BACKEND = "tier1_qwen35_flash"
-TIER2_BACKEND = "tier2_qwen3_coder_flash"
-TIER3_BACKEND = "tier3_qwen36_plus"
-TIER4_BACKEND = "tier4_qwen3_coder_plus"
-TIER4_QWEN_MAX_BACKEND = "tier4_qwen_max"
-TIER4_GPT53_BACKEND = "tier4_gpt53_codex"
-TIER5_BACKEND = "tier5_gpt55"
+# Tier pool for the current diagnostic line.
+# T1=Coder Flash, T2=Coder Plus, T3=GPT-5.3 Codex.
+TIER1_BACKEND = "tier1_qwen3_coder_flash"
+TIER2_BACKEND = "tier2_qwen3_coder_plus"
+TIER3_BACKEND = "tier3_gpt53_codex"
 
 PROGRESS_TABLE: dict[Stage, dict[str, float]] = {
     Stage.LOCALIZATION: {
-        TIER1_BACKEND: 0.30,
-        TIER2_BACKEND: 0.50,
-        TIER3_BACKEND: 0.62,
-        TIER4_BACKEND: 0.65,  # coder-plus bit better even for LOC
-        TIER4_QWEN_MAX_BACKEND: 0.66,  # opt-in general strong Qwen candidate; not default
-        TIER4_GPT53_BACKEND: 0.68,  # candidate regular strong tier; verified via AICode007 ping
-        TIER5_BACKEND: 0.75,  # GPT-5.5 ceiling
+        TIER1_BACKEND: 0.50,
+        TIER2_BACKEND: 0.65,
+        TIER3_BACKEND: 0.68,
     },
     Stage.REPAIR: {
-        TIER1_BACKEND: 0.15,
-        TIER2_BACKEND: 0.38,  # coder-flash bit better at repair
-        TIER3_BACKEND: 0.45,
-        TIER4_BACKEND: 0.62,  # coder-plus significantly better at repair
-        TIER4_QWEN_MAX_BACKEND: 0.60,  # do not assume general Max beats coder on repair
-        TIER4_GPT53_BACKEND: 0.68,
-        TIER5_BACKEND: 0.75,  # GPT-5.5 ceiling
+        TIER1_BACKEND: 0.38,
+        TIER2_BACKEND: 0.62,
+        TIER3_BACKEND: 0.68,
     },
     Stage.VALIDATION: {
-        TIER1_BACKEND: 0.25,
-        TIER2_BACKEND: 0.45,
-        TIER3_BACKEND: 0.55,
-        TIER4_BACKEND: 0.60,  # coder-plus better at validation too
-        TIER4_QWEN_MAX_BACKEND: 0.62,
-        TIER4_GPT53_BACKEND: 0.66,
-        TIER5_BACKEND: 0.72,  # GPT-5.5 ceiling
+        TIER1_BACKEND: 0.45,
+        TIER2_BACKEND: 0.60,
+        TIER3_BACKEND: 0.66,
     },
 }
 
@@ -87,24 +70,21 @@ PROGRESS_SCALE: float = 18.0
 
 # Per-tier escalation patience: cheaper tiers get less patience before upgrading.
 # Core BudgetFlow mechanism: "try cheap, escalate on failure within this task."
-# T1 is expected to fail often → upgrade quickly. T3 gets most patience.
 # Resets when a step makes progress (bash_has_progress returns True).
 TIER_ESCALATION_PATIENCE: dict[int, int] = {
-    1: 4,   # T1→T2 after 4 non-progress steps
-    2: 5,   # T2→T3 after 5 non-progress steps
-    3: 5,   # T3→T4 after 5 non-progress steps (give T3 a fair chance)
-    4: 5,   # T4 stop-loss after 5 non-progress steps
+    1: 4,
+    2: 5,
+    3: 5,
 }
 
-# After T4 fails to make progress, downgrade to this tier instead of stagnation.
-T4_DOWNGRADE_TIER = 2
+# After the strongest tier fails to make progress, downgrade instead of stagnation.
+STRONGEST_DOWNGRADE_TIER = 2
 
 # Per-tier max consecutive turns before forced upgrade.
 TIER_MAX_TURNS: dict[int, int] = {
     1: 20,
     2: 35,
-    3: 30,   # T3 max 30 turns → force T4 (coder-plus is cheap, use it)
-    4: 999,
+    3: 999,
 }
 
 # Adaptive routing (budgetflow_full only): rolling task feedback + in-run recovery.
@@ -127,59 +107,31 @@ UNCAPPED_BUDGET_THRESHOLD = 1_000_000.0
 # 阿里云百炼 (DashScope) OpenAI-compatible endpoint.
 DASHSCOPE_API_BASE = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
-# Qwen model IDs — coder models for T2/T4 (code-specialized).
-QWEN_T1_MODEL = "qwen3.5-flash"
-QWEN_T2_MODEL = "qwen3-coder-flash"
-QWEN_T3_MODEL = "qwen3.6-plus"
-QWEN_T4_MODEL = "qwen3-coder-plus"
-QWEN_T4_MAX_MODEL = "qwen3.7-max"
+# litellm model strings: openai/ prefix + custom api_base → 百炼 for Qwen.
+QWEN_CODER_FLASH_MODEL = "qwen3-coder-flash"
+QWEN_CODER_PLUS_MODEL = "qwen3-coder-plus"
+GPT53_CODEX_MODEL = "openai/gpt-5.3-codex"
 
-# litellm model strings: openai/ prefix + custom api_base → 百炼.
-TIER1_MODEL = f"openai/{QWEN_T1_MODEL}"
-TIER2_MODEL = f"openai/{QWEN_T2_MODEL}"
-TIER3_MODEL = f"openai/{QWEN_T3_MODEL}"
-TIER4_MODEL = f"openai/{QWEN_T4_MODEL}"
-TIER4_QWEN_MAX_MODEL = f"openai/{QWEN_T4_MAX_MODEL}"
-TIER4_GPT53_MODEL = "openai/gpt-5.3-codex"  # AICode007 verified ping; opt-in regular T4 candidate
-TIER5_MODEL = "openai/gpt-5.5"  # aicode007 GPT-5.5 ceiling test
+TIER1_MODEL = f"openai/{QWEN_CODER_FLASH_MODEL}"
+TIER2_MODEL = f"openai/{QWEN_CODER_PLUS_MODEL}"
+TIER3_MODEL = GPT53_CODEX_MODEL
 
 # Terminal model= labels for console output.
-TIER1_DISPLAY = "qwen3.5-flash"
-TIER2_DISPLAY = "qwen3-coder-flash"
-TIER3_DISPLAY = "qwen3.6-plus"
-TIER4_DISPLAY = "qwen3-coder-plus"
-TIER4_QWEN_MAX_DISPLAY = "qwen3.7-max"
-TIER4_GPT53_DISPLAY = "gpt-5.3-codex"
-TIER5_DISPLAY = "gpt-5.5"
+TIER1_DISPLAY = "qwen3-coder-flash"
+TIER2_DISPLAY = "qwen3-coder-plus"
+TIER3_DISPLAY = "GPT-5.3 Codex"
 
 TIER_DISPLAY_BY_BACKEND: dict[str, str] = {
     TIER1_BACKEND: TIER1_DISPLAY,
     TIER2_BACKEND: TIER2_DISPLAY,
     TIER3_BACKEND: TIER3_DISPLAY,
-    TIER4_BACKEND: TIER4_DISPLAY,
-    TIER4_QWEN_MAX_BACKEND: TIER4_QWEN_MAX_DISPLAY,
-    TIER4_GPT53_BACKEND: TIER4_GPT53_DISPLAY,
-    TIER5_BACKEND: TIER5_DISPLAY,
 }
 
 TIER_MODEL_BY_BACKEND: dict[str, str] = {
     TIER1_BACKEND: TIER1_MODEL,
     TIER2_BACKEND: TIER2_MODEL,
     TIER3_BACKEND: TIER3_MODEL,
-    TIER4_BACKEND: TIER4_MODEL,
-    TIER4_QWEN_MAX_BACKEND: TIER4_QWEN_MAX_MODEL,
-    TIER4_GPT53_BACKEND: TIER4_GPT53_MODEL,
-    TIER5_BACKEND: TIER5_MODEL,
 }
-
-
-def active_t4_backend_name() -> str:
-    provider = os.environ.get("BF_T4_PROVIDER", "").strip().lower()
-    if provider in {"gpt53", "gpt53_codex", "gpt-5.3-codex"}:
-        return TIER4_GPT53_BACKEND
-    if provider in {"qwen_max", "qwen3.7-max", "max"}:
-        return TIER4_QWEN_MAX_BACKEND
-    return TIER4_BACKEND
 
 # Back-compat aliases for scripts that reference old model names.
 DEEPSEEK_API_BASE = DASHSCOPE_API_BASE

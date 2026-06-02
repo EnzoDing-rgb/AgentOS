@@ -99,14 +99,14 @@ def test_evidence_rescue_opens_one_bounded_window_after_gold_repair_stalls() -> 
         current_tier=2,
         remaining_budget=100,
         total_budget=100,
-    ) == 4
+    ) == 3
     assert rescue.forced_min_tier(
         stage=Stage.VALIDATION,
         gold_edited=True,
         current_tier=2,
         remaining_budget=100,
         total_budget=100,
-    ) == 4
+    ) == 3
     assert rescue.forced_min_tier(
         stage=Stage.REPAIR,
         gold_edited=True,
@@ -156,7 +156,7 @@ def test_evidence_rescue_does_not_consume_window_without_real_gold_edit() -> Non
         current_tier=2,
         remaining_budget=100,
         total_budget=100,
-    ) == 4
+    ) == 3
 
 
 def test_evidence_rescue_stop_loss_after_window_and_patience() -> None:
@@ -169,14 +169,14 @@ def test_evidence_rescue_stop_loss_after_window_and_patience() -> None:
         current_tier=2,
         remaining_budget=100,
         total_budget=100,
-    ) == 4
+    ) == 3
     assert rescue.forced_min_tier(
         stage=Stage.REPAIR,
         gold_edited=True,
         current_tier=2,
         remaining_budget=100,
         total_budget=100,
-    ) == 4
+    ) == 3
     assert not rescue.should_stop_loss(gold_edited=True)
 
     rescue.forced_min_tier(
@@ -190,20 +190,20 @@ def test_evidence_rescue_stop_loss_after_window_and_patience() -> None:
     assert rescue.should_stop_loss(gold_edited=True)
 
 
-def test_auto_v2_rescue_waits_longer_and_allows_more_repair_turns() -> None:
+def test_auto_v2_rescue_waits_longer_and_uses_shorter_gpt53_window() -> None:
     current = rescue_state_for_strategy("budgetflow_full")
     v2 = rescue_state_for_strategy("budgetflow_auto_v2")
 
     assert v2.trigger_turns > current.trigger_turns
-    assert v2.window_turns > current.window_turns
+    assert v2.window_turns < current.window_turns
     assert v2.stop_loss_turns > current.stop_loss_turns
+    assert v2.min_headroom_frac > current.min_headroom_frac
 
 
-def test_gpt53_t4_rescue_is_more_conservative(monkeypatch) -> None:
-    qwen_v2 = rescue_state_for_strategy("budgetflow_auto_v2")
-    monkeypatch.setenv("BF_T4_PROVIDER", "gpt53_codex")
-    gpt_v2 = rescue_state_for_strategy("budgetflow_auto_v2")
+def test_auto_v2_rescue_targets_gpt53_codex_t3_conservatively() -> None:
+    v2 = rescue_state_for_strategy("budgetflow_auto_v2")
 
-    assert gpt_v2.trigger_turns > qwen_v2.trigger_turns
-    assert gpt_v2.window_turns < qwen_v2.window_turns
-    assert gpt_v2.min_headroom_frac > qwen_v2.min_headroom_frac
+    assert v2.rescue_tier == 3
+    assert v2.trigger_turns == 12
+    assert v2.window_turns == 2
+    assert v2.min_headroom_frac == 0.30

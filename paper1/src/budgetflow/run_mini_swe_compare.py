@@ -47,7 +47,7 @@ from budgetflow.compare_checkpoint import (  # noqa: E402
 )
 from budgetflow.console_log import backend_tier_label, dim, format_run_verdict, status_fail, status_pass, tag  # noqa: E402
 from budgetflow.deepseek_backend import load_env_file  # noqa: E402
-from budgetflow.failure_classification import classify_failure  # noqa: E402
+from budgetflow.failure_classification import build_forensic_summary, classify_failure  # noqa: E402
 from budgetflow.governor import BudgetGovernor, GovernorConfig  # noqa: E402
 from budgetflow.defaults import (  # noqa: E402
     BUDGET_PRESSURE_INIT,
@@ -89,9 +89,7 @@ DEFAULT_STRATEGIES: tuple[CompareStrategy, ...] = (
 )
 
 DIAGNOSTIC_STRATEGIES: tuple[CompareStrategy, ...] = (
-    CompareStrategy("all_t4", "all_t4", None),
     CompareStrategy("all_gpt53", "all_gpt53", None),
-    CompareStrategy("all_gpt55", "all_gpt55", None),
 )
 
 _STRATEGY_ALIASES = {
@@ -258,6 +256,7 @@ def _run_one(
         if enable_turn_trace and result.turn_traces else None,
     }
     record["failure_class"] = classify_failure(record)
+    record["forensic_summary"] = build_forensic_summary(record)
     return record
 
 
@@ -271,9 +270,8 @@ def _print_run_done(record: dict, *, done: int, total: int, strategy: str) -> No
         t1 = _tier_ratio(picks, 1) * 100
         t2 = _tier_ratio(picks, 2) * 100
         t3 = _tier_ratio(picks, 3) * 100
-        t4 = _tier_ratio(picks, 4) * 100
         last = backend_tier_label(picks[-1])
-        tier_line = f" models: last={last} mix T1={t1:.0f}% T2={t2:.0f}% T3={t3:.0f}% T4={t4:.0f}%"
+        tier_line = f" models: last={last} mix T1={t1:.0f}% T2={t2:.0f}% T3={t3:.0f}%"
     print(
         f"{banner} {record['instance_id']} {strategy} "
         f"turns={record.get('llm_turns')} cost={record.get('task_cost', record.get('total_cost', 0)):.1f} "
@@ -311,15 +309,14 @@ def _append_summary(lines: list[str], record: dict, *, index: int, total: int) -
     spark_pct = _spark_ratio(picks) * 100.0
     flash_pct = _tier_ratio(picks, 2) * 100.0
     pro_pct = _tier_ratio(picks, 3) * 100.0
-    t4_pct = _tier_ratio(picks, 4) * 100.0
     lines.append(
         f"[{index}/{total}] DONE strategy={record['strategy']} task={record['instance_id']} {status} "
         f"exit={record.get('exit_status')} reason={record.get('exit_reason')} turns={record.get('llm_turns')} "
         f"class={record.get('failure_class', classify_failure(record))} "
+        f"axis={(record.get('forensic_summary') or {}).get('primary_axis', '-')} "
         f"task_cost={task_cost:.2f} batch_cap={cap_s} batch_avail={record.get('batch_available')} "
         f"batch_spent={record.get('batch_spent')} T1={spark_pct:.0f}% T2={flash_pct:.0f}% "
-        f"T3={pro_pct:.0f}% T4={t4_pct:.0f}% "
-        f"elapsed={record.get('elapsed_s')}s"
+        f"T3={pro_pct:.0f}% elapsed={record.get('elapsed_s')}s"
     )
     if record.get("backend_picks"):
         lines.append(f"  picks={record['backend_picks']}")
@@ -340,14 +337,13 @@ def _format_strategy_totals(
     spark_by_strategy: dict[str, list[float]],
     flash_by_strategy: dict[str, list[float]],
     pro_by_strategy: dict[str, list[float]],
-    t4_by_strategy: dict[str, list[float]],
     failure_by_strategy: dict[str, dict[str, int]],
     batch_caps: dict[str, float | None],
 ) -> list[str]:
     lines = ["=== BATCH RESOLVED + COST BY STRATEGY (governor units, shared pool) ==="]
     header = (
         f"{'strategy':<28} {'resolved':>8} {'batch_spent':>11} {'batch_cap':>10} "
-        f"{'avg_task':>9} {'avg_turns':>10} {'T1':>5} {'T2':>5} {'T3':>5} {'T4':>5}"
+        f"{'avg_task':>9} {'avg_turns':>10} {'T1':>5} {'T2':>5} {'T3':>5}"
     )
     lines.append(header)
     lines.append("-" * len(header))
@@ -358,7 +354,6 @@ def _format_strategy_totals(
         spark = spark_by_strategy.get(key, [])
         flash = flash_by_strategy.get(key, [])
         pro = pro_by_strategy.get(key, [])
-        t4 = t4_by_strategy.get(key, [])
         failures = failure_by_strategy.get(key, {})
         resolved_n = sum(1 for f in flags if f)
         batch_spent = batch_spent_by_strategy.get(key, 0.0)
@@ -372,11 +367,10 @@ def _format_strategy_totals(
         avg_spark = sum(spark) / len(spark) if spark else 0.0
         avg_flash = sum(flash) / len(flash) if flash else 0.0
         avg_pro = sum(pro) / len(pro) if pro else 0.0
-        avg_t4 = sum(t4) / len(t4) if t4 else 0.0
         lines.append(
             f"{key:<28} {resolved_n}/{len(flags):<7} {batch_spent:11.2f} {cap_s:>10}{cap_flag} "
             f"{avg_cost:9.2f} {avg_turns:10.1f} {avg_spark * 100:4.0f}% "
-            f"{avg_flash * 100:4.0f}% {avg_pro * 100:4.0f}% {avg_t4 * 100:4.0f}%"
+            f"{avg_flash * 100:4.0f}% {avg_pro * 100:4.0f}%"
         )
         if failures:
             fail_s = ", ".join(f"{name}={count}" for name, count in sorted(failures.items()))
@@ -393,7 +387,6 @@ def _format_live_snapshot(
     spark_by_strategy: dict[str, list[float]],
     flash_by_strategy: dict[str, list[float]],
     pro_by_strategy: dict[str, list[float]],
-    t4_by_strategy: dict[str, list[float]],
     batch_spent_by_strategy: dict[str, float],
     batch_caps: dict[str, float | None],
     runs_done: int,
@@ -416,7 +409,7 @@ def _format_live_snapshot(
         lines.append(global_line)
     lines.append(
         f"{'strategy':<28} {'done':>4} {'plan':>4} {'PASS':>5} {'FAIL':>5} {'rate':>6} "
-        f"{'avg_cost':>8} {'avg_turn':>7} {'T1':>5} {'T2':>5} {'T3':>5} {'T4':>5} "
+        f"{'avg_cost':>8} {'avg_turn':>7} {'T1':>5} {'T2':>5} {'T3':>5} "
         f"{'batch_spent':>11} {'batch_cap':>10}"
     )
     lines.append("-" * 110)
@@ -427,7 +420,6 @@ def _format_live_snapshot(
         spark = spark_by_strategy.get(name, [])
         flash = flash_by_strategy.get(name, [])
         pro = pro_by_strategy.get(name, [])
-        t4 = t4_by_strategy.get(name, [])
         failures = (failure_by_strategy or {}).get(name, {})
         done_n = len(flags)
         pass_n = sum(1 for flag in flags if flag)
@@ -438,14 +430,13 @@ def _format_live_snapshot(
         avg_spark = sum(spark) / len(spark) if spark else 0.0
         avg_flash = sum(flash) / len(flash) if flash else 0.0
         avg_pro = sum(pro) / len(pro) if pro else 0.0
-        avg_t4 = sum(t4) / len(t4) if t4 else 0.0
         batch_spent = batch_spent_by_strategy.get(name, 0.0)
         cap = batch_caps.get(name)
         cap_s = f"{cap:.0f}" if cap is not None else "uncapped"
         lines.append(
             f"{name:<28} {done_n:>4} {tasks_per_strategy:>4} {pass_n:>5} {fail_n:>5} {rate:>6} "
             f"{avg_cost:>8.1f} {avg_turns:>7.1f} {avg_spark*100:>4.0f}% "
-            f"{avg_flash*100:>4.0f}% {avg_pro*100:>4.0f}% {avg_t4*100:>4.0f}% "
+            f"{avg_flash*100:>4.0f}% {avg_pro*100:>4.0f}% "
             f"{batch_spent:>11.1f} {cap_s:>10}"
         )
         if failures:
@@ -470,7 +461,6 @@ def _write_summary_file(
     spark_by_strategy: dict[str, list[float]],
     flash_by_strategy: dict[str, list[float]],
     pro_by_strategy: dict[str, list[float]],
-    t4_by_strategy: dict[str, list[float]],
     failure_by_strategy: dict[str, dict[str, int]],
     batch_caps: dict[str, float | None],
     started: float,
@@ -488,7 +478,6 @@ def _write_summary_file(
         spark_by_strategy=spark_by_strategy,
         flash_by_strategy=flash_by_strategy,
         pro_by_strategy=pro_by_strategy,
-        t4_by_strategy=t4_by_strategy,
         failure_by_strategy=failure_by_strategy,
         batch_spent_by_strategy=batch_spent_by_strategy,
         batch_caps=batch_caps,
@@ -687,7 +676,6 @@ class _CompareState:
     spark_by_strategy: dict[str, list[float]]
     flash_by_strategy: dict[str, list[float]]
     pro_by_strategy: dict[str, list[float]]
-    t4_by_strategy: dict[str, list[float]]
     failure_by_strategy: dict[str, dict[str, int]]
     runs_done: int = 0
 
@@ -702,7 +690,6 @@ def _rebuild_state_from_jsonl(path: Path, header_lines: list[str]) -> _CompareSt
         spark_by_strategy={},
         flash_by_strategy={},
         pro_by_strategy={},
-        t4_by_strategy={},
         failure_by_strategy={},
     )
     for line in path.read_text().splitlines():
@@ -726,7 +713,6 @@ def _rebuild_state_from_jsonl(path: Path, header_lines: list[str]) -> _CompareSt
         state.spark_by_strategy.setdefault(name, []).append(_spark_ratio(picks))
         state.flash_by_strategy.setdefault(name, []).append(_tier_ratio(picks, 2))
         state.pro_by_strategy.setdefault(name, []).append(_tier_ratio(picks, 3))
-        state.t4_by_strategy.setdefault(name, []).append(_tier_ratio(picks, 4))
         failure_class = str(record.get("failure_class") or classify_failure(record))
         failures = state.failure_by_strategy.setdefault(name, {})
         failures[failure_class] = failures.get(failure_class, 0) + 1
@@ -764,7 +750,6 @@ def _persist_task_record(
         state.spark_by_strategy.setdefault(name, []).append(_spark_ratio(picks))
         state.flash_by_strategy.setdefault(name, []).append(_tier_ratio(picks, 2))
         state.pro_by_strategy.setdefault(name, []).append(_tier_ratio(picks, 3))
-        state.t4_by_strategy.setdefault(name, []).append(_tier_ratio(picks, 4))
         failure_class = str(record.get("failure_class") or classify_failure(record))
         failures = state.failure_by_strategy.setdefault(name, {})
         failures[failure_class] = failures.get(failure_class, 0) + 1
@@ -782,7 +767,6 @@ def _persist_task_record(
             spark_by_strategy=state.spark_by_strategy,
             flash_by_strategy=state.flash_by_strategy,
             pro_by_strategy=state.pro_by_strategy,
-            t4_by_strategy=state.t4_by_strategy,
             failure_by_strategy=state.failure_by_strategy,
             batch_caps=batch_caps,
             started=started,
@@ -858,7 +842,6 @@ def _ingest_batch_footer(
             spark_by_strategy=state.spark_by_strategy,
             flash_by_strategy=state.flash_by_strategy,
             pro_by_strategy=state.pro_by_strategy,
-            t4_by_strategy=state.t4_by_strategy,
             failure_by_strategy=state.failure_by_strategy,
             batch_caps=batch_caps,
             started=started,
@@ -870,7 +853,17 @@ def _ingest_batch_footer(
         )
 
 
-PRESET_TASKS = {"3x5": 3, "5x5": 5}
+PRESET_TASKS = {"3x3": 3, "3x5": 3, "5x5": 5}
+DIAGNOSTIC_3X3_IDS = (
+    "sympy__sympy-13480",
+    "sympy__sympy-20212",
+    "sympy__sympy-16988",
+)
+DIAGNOSTIC_3X3_STRATEGIES = (
+    "budget_only_tight",
+    "budgetflow_full_tight",
+    "budgetflow_auto_v2_tight",
+)
 
 
 def _compare_paths(tasks_n: int, strategies_n: int, *, stem: str | None = None) -> tuple[Path, Path]:
@@ -882,18 +875,18 @@ def main() -> None:
     load_env_file()
     if not os.environ.get("NO_COLOR"):
         os.environ.setdefault("FORCE_COLOR", "1")
-    parser = argparse.ArgumentParser(description="N tasks × 5 strategies — shared batch budget per policy")
+    parser = argparse.ArgumentParser(description="N tasks × strategies — shared batch budget per policy")
     parser.add_argument(
         "--preset",
         choices=sorted(PRESET_TASKS),
-        default="3x5",
-        help="3x5=3 tasks (fast smoke), 5x5=5 tasks (full compare); sets --limit unless overridden",
+        default="3x3",
+        help="3x3=diagnostic 3 policies × 3 tasks, 3x5=legacy fast smoke, 5x5=legacy full compare",
     )
     parser.add_argument(
         "--limit",
         type=int,
         default=None,
-        help="task count (default from --preset: 3x5→3, 5x5→5)",
+        help="task count (default from --preset)",
     )
     parser.add_argument("--loose", type=float, default=None, help="shared batch budget for *_loose strategies")
     parser.add_argument("--tight", type=float, default=None, help="shared batch budget for *_tight strategies")
@@ -1095,6 +1088,11 @@ def main() -> None:
     all_strategies = _strategy_catalog()
     if args.strategies:
         wanted_raw = {s.strip() for s in args.strategies.split(",") if s.strip()}
+    elif args.preset == "3x3":
+        wanted_raw = set(DIAGNOSTIC_3X3_STRATEGIES)
+    else:
+        wanted_raw = set()
+    if wanted_raw:
         wanted = {_STRATEGY_ALIASES.get(name, name) for name in wanted_raw}
         strategies = tuple(s for s in all_strategies if s.name in wanted)
         missing = wanted_raw - {s.name for s in strategies} - set(_STRATEGY_ALIASES)
@@ -1108,6 +1106,8 @@ def main() -> None:
     if args.ids:
         ids = tuple(s.strip() for s in args.ids.split(",") if s.strip())
         tasks = load_swebench_lite_tasks(instance_ids=ids)
+    elif args.preset == "3x3":
+        tasks = load_swebench_lite_tasks(instance_ids=DIAGNOSTIC_3X3_IDS)
     elif args.task_set == "medium":
         tasks = load_compare_medium_tasks(tasks_n)
     else:
@@ -1218,7 +1218,6 @@ def main() -> None:
             spark_by_strategy={},
             flash_by_strategy={},
             pro_by_strategy={},
-            t4_by_strategy={},
             failure_by_strategy={},
         )
     started = time.time()
@@ -1242,7 +1241,6 @@ def main() -> None:
         spark_by_strategy=state.spark_by_strategy,
         flash_by_strategy=state.flash_by_strategy,
         pro_by_strategy=state.pro_by_strategy,
-        t4_by_strategy=state.t4_by_strategy,
         failure_by_strategy=state.failure_by_strategy,
         batch_caps=batch_caps,
         started=started,
@@ -1382,7 +1380,6 @@ def main() -> None:
         spark_by_strategy=state.spark_by_strategy,
         flash_by_strategy=state.flash_by_strategy,
         pro_by_strategy=state.pro_by_strategy,
-        t4_by_strategy=state.t4_by_strategy,
         failure_by_strategy=state.failure_by_strategy,
         batch_caps=batch_caps,
         started=started,
@@ -1407,7 +1404,6 @@ def main() -> None:
         spark_by_strategy=state.spark_by_strategy,
         flash_by_strategy=state.flash_by_strategy,
         pro_by_strategy=state.pro_by_strategy,
-        t4_by_strategy=state.t4_by_strategy,
         failure_by_strategy=state.failure_by_strategy,
         batch_caps=batch_caps,
     ):

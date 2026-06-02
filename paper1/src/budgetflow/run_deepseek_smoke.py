@@ -33,8 +33,6 @@ from budgetflow.defaults import (  # noqa: E402
     TIER1_MODEL,
     TIER2_MODEL,
     TIER3_MODEL,
-    TIER4_MODEL,
-    TIER4_QWEN_MAX_MODEL,
 )
 from budgetflow.litellm_quiet import configure_litellm_quiet  # noqa: E402
 from budgetflow.lite_tasks import load_compare_easy_tasks  # noqa: E402
@@ -42,22 +40,18 @@ from budgetflow.run_mini_swe_baseline import run_baseline_task  # noqa: E402
 
 TIER_MODELS = {
     "t1": TIER1_MODEL,
-    "qwen35": TIER1_MODEL,
     "flash": DEEPSEEK_FLASH_MODEL,
+    "coder_flash": TIER1_MODEL,
     "t2": TIER2_MODEL,
-    "coder_flash": TIER2_MODEL,
-    "pro": DEEPSEEK_PRO_MODEL,
+    "plus": DEEPSEEK_PRO_MODEL,
+    "coder_plus": TIER2_MODEL,
     "t3": TIER3_MODEL,
-    "plus": TIER3_MODEL,
-    "t4": TIER4_MODEL,
-    "coder_plus": TIER4_MODEL,
-    "max": TIER4_QWEN_MAX_MODEL,
-    "qwen_max": TIER4_QWEN_MAX_MODEL,
+    "gpt53": TIER3_MODEL,
+    "gpt-5.3-codex": TIER3_MODEL,
 }
 TIER_GROUPS = {
-    "all": ("t1", "t2", "t3", "t4", "max"),
-    "compare": ("t2", "t3", "t4"),
-    "t4_candidates": ("t4", "max"),
+    "all": ("t1", "t2", "t3"),
+    "compare": ("t2", "t3"),
 }
 
 

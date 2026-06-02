@@ -175,13 +175,8 @@ def format_tier_pool_line(*, include_t1: bool = False) -> str:
         TIER1_DISPLAY, TIER1_MODEL,
         TIER2_DISPLAY, TIER2_MODEL,
         TIER3_DISPLAY, TIER3_MODEL,
-        TIER4_DISPLAY, TIER4_MODEL,
-        tier_display_name, tier_model_id, active_t4_backend_name,
     )
 
-    t4_backend = active_t4_backend_name()
-    t4_display = tier_display_name(t4_backend)
-    t4_model = tier_model_id(t4_backend)
     t1 = (
         f"T1={bold(TIER1_DISPLAY)} {dim(f'({TIER1_MODEL})')}"
         if include_t1
@@ -190,8 +185,7 @@ def format_tier_pool_line(*, include_t1: bool = False) -> str:
     return (
         f"{t1}  "
         f"T2={bold(TIER2_DISPLAY)} {dim(f'({TIER2_MODEL})')}  "
-        f"T3={bold(TIER3_DISPLAY)} {dim(f'({TIER3_MODEL})')}  "
-        f"T4={bold(t4_display)} {dim(f'({t4_model})')}"
+        f"T3={bold(TIER3_DISPLAY)} {dim(f'({TIER3_MODEL})')}"
     )
 
 
