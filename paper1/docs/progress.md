@@ -8,17 +8,17 @@
 
 - 当前 3×3 已停止，没有相关 `run_mini_swe_compare` / `mini-SWE-agent` 进程。
 - `diagnostic_3x3_forensic_v1` 已污染，不能作为 BudgetFlow repair 结论。
-- GPT-5.3 Codex 昨晚可用：`gpt53_textmode_goldpass2` 是 `all_gpt53 + BF_GPT_TEXT_MODE=1`，3/3 pass。
-- 今天 3×3 的 T3 失败是当前调用路径返回 `ServiceUnavailableError` / 503；不能直接说 GPT-5.3 Codex 模型坏。
-- 关键差异：昨晚成功 run 是 text-mode ceiling；今天 3×3 没明确带 `BF_GPT_TEXT_MODE=1`，且当前 litellm minimal ping 到 AiCode007 `openai/gpt-5.3-codex` 返回 503。
+- 旧 GPT-5.3 Codex 在 AiCode007 上游下架/不可用，相关 503 不是任务失败。
+- T3 已迁移为 GPT-5.4：BudgetFlow 代码只认稳定 T1/T2/T3，provider/model/base_url/api_key 在 `defaults.py` 的 tier registry 集中映射。
+- T3 默认 text-mode；provider unavailable 时会释放 reservation 并 fallback 到剩余 tier。
 
 ### 当前 active tier
 
 | Tier | backend | litellm id | provider |
 |---|---|---|---|
-| T1 | `tier1_qwen3_coder_flash` | `openai/qwen3-coder-flash` | DashScope 百炼 |
-| T2 | `tier2_qwen3_coder_plus` | `openai/qwen3-coder-plus` | DashScope 百炼 |
-| T3 | `tier3_gpt53_codex` | `openai/gpt-5.3-codex` | AiCode007 |
+| T1 | `tier1` | `openai/qwen3-coder-flash` | DashScope 百炼 |
+| T2 | `tier2` | `openai/qwen3-coder-plus` | DashScope 百炼 |
+| T3 | `tier3` | `openai/gpt-5.4` | AiCode007 |
 
 ### 当前 polluted 3×3
 
@@ -32,14 +32,25 @@
 - 但 `reserved_budget` 增加、`available_budget` 下降，说明 provider exception path 没释放 reservation。
 - `failure_class=infra_fail` 基本对；`forensic_summary.primary_axis=protocol` 不够准，应归 `infra/provider`。
 
+### 最新改动（2026-06-02）
+
+- 已确认：AiCode007 上游下架/不可用旧 GPT-5.3 Codex，当前不是任务失败。
+- 已改：T1/T2/T3 使用稳定 backend id；provider/model/base_url/api_key/display/text_mode 在 `defaults.py` 的 tier registry 集中映射。
+- 已改：T3 切到 GPT-5.4（`openai/gpt-5.4`），`all_t3` 为 canonical diagnostic 策略，`all_gpt53` / `all_gpt54` 仅作兼容别名。
+- 已改：provider unavailable 时释放当前 reservation。
+- 已改：provider unavailable 时 runtime 尝试切到剩余可用 tier。
+- 已改：T3 默认强制 text-mode。
+- 已改：`ServiceUnavailableError` / `provider_all_unavailable` forensic axis -> `infra/provider`。
+- 已加：provider signature check gate；compare 启动前检查所需 T1/T2/T3 最小 chat completion，失败则 abort。
+- 已测：focused tests 39 passed；edited modules py_compile 通过。
+- 已加测：provider unavailable 会释放 reservation、尝试 fallback；全 tier unavailable 会 `provider_all_unavailable` 且不污染 budget。
+- 已决：Automatic Budgeting 暂缓，先完成 clean 3×3。
+
 ### 下一步
 
-1. 查清 GPT-5.3 Codex 当前 503 的真实原因：对比 text-mode / tool-call payload、AiCode007 raw body、HTTP status、request id。
-2. 修 provider error 可观测性：记录 provider、model、status、error body 摘要，不泄露 key。
-3. 修 reservation release：provider/API 异常后释放本 turn reservation。
-4. 修 forensic axis：`ServiceUnavailableError` / 503 -> `infra/provider`。
-5. 加 provider signature check gate：T1/T2/T3 最小 chat completion 全过才允许启动实验。
-6. 以上完成并经你确认后，再用新 stem 干净重跑 3×3。
+1. 跑 provider signature check，确认 T1/T2/T3 当前可用性；若 T3 不可用，gate 应阻止 clean 3×3。
+2. clean 3×3 前必须确认 signature check 通过；不需要先加 Automatic Budgeting。
+3. 3×3 之后再评估 Automatic Budgeting。
 
 ---
 
@@ -81,7 +92,7 @@ compare 加 **`--read-protocol`** 时从 JSON 读（`protocol_caps.py`），**�
 |---|---|---|---|
 | T1 | `qwen3-coder-flash` | `openai/qwen3-coder-flash` | DashScope 百炼 |
 | T2 | `qwen3-coder-plus` | `openai/qwen3-coder-plus` | DashScope 百炼 |
-| T3 | `GPT-5.3 Codex` | `openai/gpt-5.3-codex` | AiCode007 |
+| T3 | `GPT-5.4` | `openai/gpt-5.4` | AiCode007 |
 
 ---
 

@@ -131,7 +131,7 @@ def routing_stage_label(stage: str) -> str:
 
 
 def backend_tier_label(backend_name: str) -> str:
-    """Hyphenated model label for console (gpt-5.3-codex-spark / deepseek-v4-*)."""
+    """Hyphenated model label for console output."""
     from .defaults import tier_display_name
 
     if not backend_name or backend_name == "-":

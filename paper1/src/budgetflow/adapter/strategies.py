@@ -80,7 +80,7 @@ def choose_backend(ctx: RoutingContext, turn: TurnInfo, expected_costs: dict[str
         return _backend_by_tier(ctx.backends, 1)
     if ctx.strategy == "all_tier2":
         return _backend_by_tier(ctx.backends, 2)
-    if ctx.strategy == "all_gpt53":
+    if ctx.strategy in {"all_t3", "all_gpt53", "all_gpt54"}:
         return _backend_by_tier(ctx.backends, 3)
     if ctx.strategy == "all_pro":
         return _backend_by_tier(ctx.backends, 2)

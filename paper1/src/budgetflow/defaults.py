@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 
 from .types import Stage
 
@@ -40,11 +41,61 @@ def active_w_i() -> dict[Stage, float]:
     name = os.environ.get("BF_W_PROFILE", "").strip()
     return W_I_PROFILES.get(name, W_I)
 
-# Tier pool for the current diagnostic line.
-# T1=Coder Flash, T2=Coder Plus, T3=GPT-5.3 Codex.
-TIER1_BACKEND = "tier1_qwen3_coder_flash"
-TIER2_BACKEND = "tier2_qwen3_coder_plus"
-TIER3_BACKEND = "tier3_gpt53_codex"
+@dataclass(frozen=True)
+class TierConfig:
+    tier: int
+    backend: str
+    model: str
+    provider: str
+    api_base: str
+    api_key_env: str
+    display: str
+    text_mode: bool = False
+
+
+# 阿里云百炼 (DashScope) OpenAI-compatible endpoint.
+DASHSCOPE_API_BASE = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+AICODE007_API_BASE = "https://api.aicode007.com/v1"
+
+# BudgetFlow uses stable tier identities; provider/model details live here.
+TIER1_BACKEND = "tier1"
+TIER2_BACKEND = "tier2"
+TIER3_BACKEND = "tier3"
+
+QWEN_CODER_FLASH_MODEL = "qwen3-coder-flash"
+QWEN_CODER_PLUS_MODEL = "qwen3-coder-plus"
+GPT54_MODEL = "openai/gpt-5.4"
+
+TIER_CONFIGS: dict[str, TierConfig] = {
+    TIER1_BACKEND: TierConfig(
+        tier=1,
+        backend=TIER1_BACKEND,
+        model=f"openai/{QWEN_CODER_FLASH_MODEL}",
+        provider="dashscope",
+        api_base=DASHSCOPE_API_BASE,
+        api_key_env="DASHSCOPE_API_KEY",
+        display="qwen3-coder-flash",
+    ),
+    TIER2_BACKEND: TierConfig(
+        tier=2,
+        backend=TIER2_BACKEND,
+        model=f"openai/{QWEN_CODER_PLUS_MODEL}",
+        provider="dashscope",
+        api_base=DASHSCOPE_API_BASE,
+        api_key_env="DASHSCOPE_API_KEY",
+        display="qwen3-coder-plus",
+    ),
+    TIER3_BACKEND: TierConfig(
+        tier=3,
+        backend=TIER3_BACKEND,
+        model=GPT54_MODEL,
+        provider="aicode007",
+        api_base=AICODE007_API_BASE,
+        api_key_env="AICODE007_API_KEY",
+        display="GPT-5.4",
+        text_mode=True,
+    ),
+}
 
 PROGRESS_TABLE: dict[Stage, dict[str, float]] = {
     Stage.LOCALIZATION: {
@@ -104,36 +155,23 @@ BUDGET_PRESSURE_INIT = 0.01
 PRESSURE_MAX = 1.5
 UNCAPPED_BUDGET_THRESHOLD = 1_000_000.0
 
-# 阿里云百炼 (DashScope) OpenAI-compatible endpoint.
-DASHSCOPE_API_BASE = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+TIER1_MODEL = TIER_CONFIGS[TIER1_BACKEND].model
+TIER2_MODEL = TIER_CONFIGS[TIER2_BACKEND].model
+TIER3_MODEL = TIER_CONFIGS[TIER3_BACKEND].model
 
-# litellm model strings: openai/ prefix + custom api_base → 百炼 for Qwen.
-QWEN_CODER_FLASH_MODEL = "qwen3-coder-flash"
-QWEN_CODER_PLUS_MODEL = "qwen3-coder-plus"
-GPT53_CODEX_MODEL = "openai/gpt-5.3-codex"
-
-TIER1_MODEL = f"openai/{QWEN_CODER_FLASH_MODEL}"
-TIER2_MODEL = f"openai/{QWEN_CODER_PLUS_MODEL}"
-TIER3_MODEL = GPT53_CODEX_MODEL
-
-# Terminal model= labels for console output.
-TIER1_DISPLAY = "qwen3-coder-flash"
-TIER2_DISPLAY = "qwen3-coder-plus"
-TIER3_DISPLAY = "GPT-5.3 Codex"
+TIER1_DISPLAY = TIER_CONFIGS[TIER1_BACKEND].display
+TIER2_DISPLAY = TIER_CONFIGS[TIER2_BACKEND].display
+TIER3_DISPLAY = TIER_CONFIGS[TIER3_BACKEND].display
 
 TIER_DISPLAY_BY_BACKEND: dict[str, str] = {
-    TIER1_BACKEND: TIER1_DISPLAY,
-    TIER2_BACKEND: TIER2_DISPLAY,
-    TIER3_BACKEND: TIER3_DISPLAY,
+    backend: config.display for backend, config in TIER_CONFIGS.items()
 }
 
 TIER_MODEL_BY_BACKEND: dict[str, str] = {
-    TIER1_BACKEND: TIER1_MODEL,
-    TIER2_BACKEND: TIER2_MODEL,
-    TIER3_BACKEND: TIER3_MODEL,
+    backend: config.model for backend, config in TIER_CONFIGS.items()
 }
 
-# Back-compat aliases for scripts that reference old model names.
+# Back-compat aliases for scripts that reference old provider names.
 DEEPSEEK_API_BASE = DASHSCOPE_API_BASE
 DEEPSEEK_V4_FLASH_MODEL = TIER2_MODEL
 DEEPSEEK_V4_PRO_MODEL = TIER3_MODEL
@@ -155,4 +193,3 @@ DEEPSEEK_FLASH_MODEL = DEEPSEEK_V4_FLASH_MODEL
 DEEPSEEK_PRO_MODEL = DEEPSEEK_V4_PRO_MODEL
 
 # Legacy alias (pilot docs); compare uses DeepSeek only.
-AICODE007_API_BASE = "https://api.aicode007.com/v1"

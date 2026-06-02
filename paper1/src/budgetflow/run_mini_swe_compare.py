@@ -52,12 +52,16 @@ from budgetflow.governor import BudgetGovernor, GovernorConfig  # noqa: E402
 from budgetflow.defaults import (  # noqa: E402
     BUDGET_PRESSURE_INIT,
     PRESSURE_MAX,
+    TIER1_BACKEND,
+    TIER2_BACKEND,
+    TIER3_BACKEND,
     active_w_i_profile_name,
 )
 from budgetflow.heartbeat import run_with_heartbeat  # noqa: E402
 from budgetflow.ledger import WorkflowLedgerStore  # noqa: E402
 from budgetflow.lite_tasks import load_compare_easy_tasks, load_compare_medium_tasks, load_swebench_lite_tasks  # noqa: E402
 from budgetflow.protocol_caps import read_protocol_caps  # noqa: E402
+from budgetflow.provider_signature import check_required_signatures  # noqa: E402
 from budgetflow.adaptive_routing import AdaptiveRoutingRegistry  # noqa: E402
 from budgetflow.run_guards import CompareRunGuards, set_active_guard  # noqa: E402
 from budgetflow.run_series import default_series_base, resolve_compare_stem  # noqa: E402
@@ -89,7 +93,7 @@ DEFAULT_STRATEGIES: tuple[CompareStrategy, ...] = (
 )
 
 DIAGNOSTIC_STRATEGIES: tuple[CompareStrategy, ...] = (
-    CompareStrategy("all_gpt53", "all_gpt53", None),
+    CompareStrategy("all_t3", "all_t3", None),
 )
 
 _STRATEGY_ALIASES = {
@@ -98,6 +102,8 @@ _STRATEGY_ALIASES = {
     "all_spark_loose": "all_t1_loose",
     "all_flash_tight": "all_t1_tight",
     "all_flash_loose": "all_t1_loose",
+    "all_gpt53": "all_t3",
+    "all_gpt54": "all_t3",
 }
 
 
@@ -108,6 +114,20 @@ def _normalize_strategy(name: str) -> str:
 
 def _strategy_catalog() -> tuple[CompareStrategy, ...]:
     return DEFAULT_STRATEGIES + DIAGNOSTIC_STRATEGIES
+
+
+def _required_backends_for_strategies(strategies: tuple[CompareStrategy, ...]) -> list[str]:
+    required: set[str] = set()
+    for cfg in strategies:
+        if cfg.routing == "all_flash":
+            required.add(TIER1_BACKEND)
+        elif cfg.routing in {"all_tier2", "all_pro"}:
+            required.add(TIER2_BACKEND)
+        elif cfg.routing == "all_t3":
+            required.add(TIER3_BACKEND)
+        else:
+            required.update({TIER1_BACKEND, TIER2_BACKEND, TIER3_BACKEND})
+    return [b for b in (TIER1_BACKEND, TIER2_BACKEND, TIER3_BACKEND) if b in required]
 
 
 def _w_i_profile_for_record(routing: str) -> str:
@@ -994,6 +1014,11 @@ def main() -> None:
         help="disable global/policy/upstream auto-halt guards",
     )
     parser.add_argument(
+        "--no-provider-signature-check",
+        action="store_true",
+        help="skip preflight minimal chat completion checks for required providers",
+    )
+    parser.add_argument(
         "--trace-turns",
         action="store_true",
         default=False,
@@ -1102,6 +1127,23 @@ def main() -> None:
             raise SystemExit("no strategies selected")
     else:
         strategies = all_strategies
+    if not args.no_provider_signature_check:
+        signature_results = check_required_signatures(_required_backends_for_strategies(strategies))
+        for result in signature_results:
+            state = "PASS" if result.ok else "FAIL"
+            print(
+                f"{tag('preflight', bold=False)} {state} backend={result.backend} "
+                f"provider={result.provider} model={result.model} latency_ms={result.latency_ms} "
+                f"status={result.status_code or '-'} error={result.error_type or '-'}",
+                flush=True,
+            )
+        failed = [r for r in signature_results if not r.ok]
+        if failed:
+            raise SystemExit(
+                "provider signature check failed: "
+                + ", ".join(f"{r.backend}:{r.error_type or r.status_code}" for r in failed)
+            )
+
     budget_caps = {"loose": loose, "tight": tight}
     if args.ids:
         ids = tuple(s.strip() for s in args.ids.split(",") if s.strip())

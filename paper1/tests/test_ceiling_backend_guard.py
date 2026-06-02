@@ -70,8 +70,8 @@ def test_all_pro_selects_coder_plus() -> None:
     assert backend.name == TIER2_BACKEND
 
 
-def test_all_gpt53_uses_gpt53_codex_t3_backend() -> None:
-    ctx = build_routing_context("all_gpt53", build_ceiling_backends(), budget_pressure=0.01)
+def test_all_t3_uses_t3_backend() -> None:
+    ctx = build_routing_context("all_t3", build_ceiling_backends(), budget_pressure=0.01)
 
     backend = choose_backend(ctx, _turn(), {})
 

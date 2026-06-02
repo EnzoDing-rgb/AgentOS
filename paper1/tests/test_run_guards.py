@@ -63,7 +63,7 @@ def test_policy_guard_halts_strategy_only() -> None:
 
 
 def test_upstream_pattern() -> None:
-    assert _looks_upstream("The gpt-5.3-codex-spark model is not supported when using Codex with a ChatGPT account")
+    assert _looks_upstream("The requested model is not supported by this provider account")
     g = CompareRunGuards(upstream_consecutive=3)
     for _ in range(3):
         action = g.record_upstream_error("503 Service temporarily unavailable", backend="tier1_spark")

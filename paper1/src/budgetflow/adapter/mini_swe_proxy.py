@@ -26,15 +26,10 @@ from ..litellm_quiet import configure_litellm_quiet
 from ..budget_pressure import live_budget_pressure
 from ..deepseek_backend import ensure_aicode007_proxy, ensure_direct_api, load_env_file
 from ..defaults import (
-    DASHSCOPE_API_BASE,
-    AICODE007_API_BASE,
     PRESSURE_MAX,
     STRONGEST_DOWNGRADE_TIER,
+    TIER_CONFIGS,
     TIER1_BACKEND,
-    TIER1_MODEL,
-    TIER2_BACKEND,
-    TIER2_MODEL,
-    TIER3_BACKEND,
     TIER3_MODEL,
     TIER_ESCALATION_PATIENCE,
     TIER_MAX_TURNS,
@@ -58,13 +53,38 @@ logger = logging.getLogger("budgetflow_litellm_model")
 
 configure_litellm_quiet()
 
-_DASHSCOPE_BACKENDS = frozenset({TIER1_BACKEND, TIER2_BACKEND})
-_AICODE007_BACKENDS = frozenset({TIER3_BACKEND})
+_DASHSCOPE_BACKENDS = frozenset(
+    backend for backend, config in TIER_CONFIGS.items() if config.provider == "dashscope"
+)
+_AICODE007_BACKENDS = frozenset(
+    backend for backend, config in TIER_CONFIGS.items() if config.provider == "aicode007"
+)
 FORMAT_ERROR_STOP_AFTER = 5
+_PROVIDER_UNAVAILABLE_MARKERS = (
+    "service temporarily unavailable",
+    "serviceunavailableerror",
+    "model is not supported",
+    "model_not_found",
+    "model not found",
+    "model unavailable",
+    "not available",
+    "not provided",
+    "no such model",
+    "\"code\":404",
+    "503",
+)
 
 
 def _format_error_stop_after(backend_tier: int | None) -> int:
     return FORMAT_ERROR_STOP_AFTER
+
+
+def _is_provider_unavailable(exc: Exception) -> bool:
+    status_code = getattr(exc, "status_code", None)
+    if status_code in {404, 503}:
+        return True
+    text = f"{type(exc).__name__} {exc}".lower()
+    return any(marker in text for marker in _PROVIDER_UNAVAILABLE_MARKERS)
 
 
 class FatalProviderBillingError(RuntimeError):
@@ -175,10 +195,16 @@ class BudgetFlowLitellmModel:
         self.format_error_template = format_error_template or "{{ error }}"
         self.set_cache_control = set_cache_control
         self.multimodal_regex = multimodal_regex
-        self.dashscope_api_key = os.environ.get("DASHSCOPE_API_KEY")
-        self.aicode007_api_key = os.environ.get("AICODE007_API_KEY")
-        if not self.dashscope_api_key and any(b.name in _DASHSCOPE_BACKENDS for b in routing.backends):
-            raise RuntimeError("DASHSCOPE_API_KEY is missing. Add it to the repo root .env file.")
+        self._api_keys = {config.api_key_env: os.environ.get(config.api_key_env) for config in TIER_CONFIGS.values()}
+        missing_keys = sorted(
+            {
+                TIER_CONFIGS[b.name].api_key_env
+                for b in routing.backends
+                if b.name in TIER_CONFIGS and not self._api_keys.get(TIER_CONFIGS[b.name].api_key_env)
+            }
+        )
+        if missing_keys:
+            raise RuntimeError(f"{', '.join(missing_keys)} is missing. Add it to the repo root .env file.")
         self.step_index = 0
         self._no_progress_streak = 0
         self._no_progress_on_current_tier = 0  # consecutive non-progress steps on current tier
@@ -197,9 +223,11 @@ class BudgetFlowLitellmModel:
         self.last_budget_snapshot: dict[str, float] | None = None
         self._enable_turn_trace: bool = enable_turn_trace
         self.turn_traces: list[dict] = []
+        self._last_reservation_id: str | None = None
         self._last_reserve_out: int = 0
         self._format_error_streak: int = 0
         self._last_text_mode: bool = False
+        self._unavailable_backends: set[str] = set()
         self.config = type("Config", (), {"model_name": TIER3_MODEL})()
 
     def query(self, messages: list[dict[str, str]], **kwargs) -> dict:
@@ -320,72 +348,94 @@ class BudgetFlowLitellmModel:
         prev_tier = self._last_backend_tier
         backend = self._apply_progress_escalation(backend)
         escalated_backend = backend.name
-        backend = self._reserve_with_downgrade(backend, input_tokens)
-        reserve_out = self._last_reserve_out
-        if backend.tier != prev_tier and prev_tier > 0:
-            self._no_progress_on_current_tier = 0  # tier changed, reset patience
-            self._turns_on_current_tier = 0  # tier changed, reset turn counter
-        self._last_backend_tier = backend.tier
-        self._turns_on_current_tier += 1
-        self.backend_picks.append(backend.name)
-        self.last_routing_stage = stage.value
-        self.last_backend_name = backend.name
-        print(
-            f"{tag('route', bold=False)} #{self.step_index} "
-            f"{dim(self.workflow_id)} "
-            f"strategy={bold(self.routing.strategy)} "
-            f"model={backend_tier_label(backend.name)} "
-            f"stage={routing_stage_label(stage.value)}",
-            flush=True,
-        )
-        self._refresh_progress()
-
-        model_name, model_kwargs = self._model_config_for(backend)
-        response_ok = True
-        error_type = None
-        try:
-            text_mode = self._use_text_mode(backend.name)
-            self._last_text_mode = text_mode
-            response = self._completion(
-                messages,
-                backend_name=backend.name,
-                model_name=model_name,
-                model_kwargs=model_kwargs,
-                text_mode=text_mode,
-                **kwargs,
+        response = None
+        text_mode = False
+        attempted_unavailable: list[str] = []
+        for candidate in self._provider_candidates(backend):
+            backend = self._reserve_with_downgrade(candidate, input_tokens)
+            reserve_out = self._last_reserve_out
+            if backend.tier != prev_tier and prev_tier > 0:
+                self._no_progress_on_current_tier = 0
+                self._turns_on_current_tier = 0
+            self._last_backend_tier = backend.tier
+            self._turns_on_current_tier += 1
+            self.backend_picks.append(backend.name)
+            self.last_routing_stage = stage.value
+            self.last_backend_name = backend.name
+            print(
+                f"{tag('route', bold=False)} #{self.step_index} "
+                f"{dim(self.workflow_id)} "
+                f"strategy={bold(self.routing.strategy)} "
+                f"model={backend_tier_label(backend.name)} "
+                f"stage={routing_stage_label(stage.value)}",
+                flush=True,
             )
-        except Exception as exc:
-            response_ok = False
-            error_type = type(exc).__name__
-            if self._enable_turn_trace:
-                self.turn_traces.append(_build_turn_trace(
-                    step_index=self.step_index,
-                    agent_phase=self.agent_phase,
-                    stage=stage,
-                    bash_command=bash_command,
-                    input_tokens=input_tokens,
-                    expected_costs=expected_costs,
-                    base_pressure=base_pressure,
-                    effective_pressure=self.routing.budget_pressure,
-                    backend_chosen=backend_chosen,
-                    escalated_backend=escalated_backend,
-                    final_backend=backend.name,
-                    backend_tier=backend.tier,
-                    reserve_out=reserve_out,
-                    adaptive=self.routing.adaptive,
-                    no_progress_streak=self._no_progress_streak,
-                    no_progress_on_tier=self._no_progress_on_current_tier,
-                    turns_on_tier=self._turns_on_current_tier,
-                    has_progress=has_progress,
-                    progress_reason=progress_reason,
-                    prompt_tokens=0,
-                    completion_tokens=0,
-                    actual_cost=0.0,
-                    billable=0.0,
-                    response_ok=False,
-                    error_type=error_type,
-                ))
-            raise
+            self._refresh_progress()
+
+            model_name, model_kwargs = self._model_config_for(backend)
+            try:
+                text_mode = self._use_text_mode(backend.name)
+                self._last_text_mode = text_mode
+                response = self._completion(
+                    messages,
+                    backend_name=backend.name,
+                    model_name=model_name,
+                    model_kwargs=model_kwargs,
+                    text_mode=text_mode,
+                    **kwargs,
+                )
+                break
+            except Exception as exc:
+                error_type = type(exc).__name__
+                self._release_last_reservation()
+                if self._enable_turn_trace:
+                    self.turn_traces.append(_build_turn_trace(
+                        step_index=self.step_index,
+                        agent_phase=self.agent_phase,
+                        stage=stage,
+                        bash_command=bash_command,
+                        input_tokens=input_tokens,
+                        expected_costs=expected_costs,
+                        base_pressure=base_pressure,
+                        effective_pressure=self.routing.budget_pressure,
+                        backend_chosen=backend_chosen,
+                        escalated_backend=escalated_backend,
+                        final_backend=backend.name,
+                        backend_tier=backend.tier,
+                        reserve_out=reserve_out,
+                        adaptive=self.routing.adaptive,
+                        no_progress_streak=self._no_progress_streak,
+                        no_progress_on_tier=self._no_progress_on_current_tier,
+                        turns_on_tier=self._turns_on_current_tier,
+                        has_progress=has_progress,
+                        progress_reason=progress_reason,
+                        prompt_tokens=0,
+                        completion_tokens=0,
+                        actual_cost=0.0,
+                        billable=0.0,
+                        response_ok=False,
+                        error_type=error_type,
+                    ))
+                if not _is_provider_unavailable(exc):
+                    raise
+                self._unavailable_backends.add(backend.name)
+                attempted_unavailable.append(backend.name)
+                print(
+                    f"{tag('provider', bold=False)} #{self.step_index} unavailable "
+                    f"{backend_tier_label(backend.name)} -> fallback",
+                    flush=True,
+                )
+                continue
+        if response is None:
+            self.last_exit_reason = "provider_all_unavailable"
+            self.last_budget_snapshot = self.governor.budget_snapshot()
+            raise BudgetFlowUpstreamError(
+                self.workflow_id,
+                exit_reason="provider_all_unavailable",
+                step_index=self.step_index,
+                backend=",".join(attempted_unavailable) or backend.name,
+                sample="all configured backends unavailable",
+            )
         message = response.choices[0].message.model_dump()
         prompt_tokens = getattr(response.usage, "prompt_tokens", None) or input_tokens
         completion_tokens = getattr(response.usage, "completion_tokens", None) or backend.mean_output_tokens
@@ -400,6 +450,8 @@ class BudgetFlowLitellmModel:
         spend_headroom = max(0.0, snap["total_budget"] - snap["spent_budget"])
         billable = min(actual_cost, spend_headroom)
         self.governor.settle(reservation_id, actual_cost, WorkflowStatus.RUNNING)
+        self._last_reservation_id = None
+        self._last_reserve_out = 0
         try:
             actions = self._parse_actions(response, text_mode=text_mode, backend_tier=backend.tier)
         except Exception as exc:
@@ -473,6 +525,33 @@ class BudgetFlowLitellmModel:
     def _refresh_progress(self) -> None:
         if self._progress_refresh is not None:
             self._progress_refresh()
+
+    def _provider_candidates(self, backend: Backend) -> list[Backend]:
+        ordered = [b for b in self.routing.backends if b.name not in self._unavailable_backends]
+        if backend.name in self._unavailable_backends:
+            primary = []
+        else:
+            primary = [backend]
+        lower = [b for b in reversed(ordered) if b.tier < backend.tier]
+        higher = [b for b in ordered if b.tier > backend.tier]
+        seen: set[str] = set()
+        candidates: list[Backend] = []
+        for candidate in primary + lower + higher:
+            if candidate.name not in seen:
+                seen.add(candidate.name)
+                candidates.append(candidate)
+        return candidates
+
+    def _release_last_reservation(self) -> None:
+        reservation_id = self._last_reservation_id
+        if reservation_id is None:
+            return
+        try:
+            self.governor.release(reservation_id, WorkflowStatus.FAILED)
+        finally:
+            self._last_reservation_id = None
+            self._last_reserve_out = 0
+            self.last_budget_snapshot = self.governor.budget_snapshot()
 
     def _reserve_output_tokens(self, backend: Backend, input_tokens: int) -> int:
         remaining = self.governor.remaining_budget()
@@ -583,34 +662,23 @@ class BudgetFlowLitellmModel:
         )
 
     def _model_config_for(self, backend: Backend) -> tuple[str, dict[str, Any]]:
-        if backend.name in _DASHSCOPE_BACKENDS:
-            common = {
-                "temperature": 0.0,
-                "parallel_tool_calls": True,
-                "drop_params": True,
-                "api_base": DASHSCOPE_API_BASE,
-                "api_key": self.dashscope_api_key,
-            }
-            model_map = {
-                TIER1_BACKEND: TIER1_MODEL,
-                TIER2_BACKEND: TIER2_MODEL,
-            }
-            return model_map[backend.name], common
-        if backend.name in _AICODE007_BACKENDS:
-            if not self.aicode007_api_key:
-                raise RuntimeError("AICODE007_API_KEY is missing. Add it to the repo root .env file.")
+        config = TIER_CONFIGS.get(backend.name)
+        if config is None:
+            raise ValueError(f"unknown backend: {backend.name}")
+        if config.provider == "aicode007":
             ensure_aicode007_proxy()
-            model_map = {
-                TIER3_BACKEND: TIER3_MODEL,
-            }
-            return model_map[backend.name], {
-                "temperature": 0.0,
-                "parallel_tool_calls": True,
-                "drop_params": True,
-                "api_base": os.environ.get("AICODE007_BASE_URL") or AICODE007_API_BASE,
-                "api_key": self.aicode007_api_key,
-            }
-        raise ValueError(f"unknown backend: {backend.name}")
+        api_base = (
+            os.environ.get("AICODE007_BASE_URL") or config.api_base
+            if config.provider == "aicode007"
+            else config.api_base
+        )
+        return config.model, {
+            "temperature": 0.0,
+            "parallel_tool_calls": True,
+            "drop_params": True,
+            "api_base": api_base,
+            "api_key": self._api_keys.get(config.api_key_env),
+        }
 
     def _completion(
         self,
@@ -627,18 +695,10 @@ class BudgetFlowLitellmModel:
         prepared = set_cache_control(prepared, mode=self.set_cache_control)
 
         def _query():
-            if backend_name in _DASHSCOPE_BACKENDS:
-                kwargs_merged = {
-                    "api_base": DASHSCOPE_API_BASE,
-                    "api_key": self.dashscope_api_key,
-                    **model_kwargs,
-                    **kwargs,
-                }
-            elif backend_name in _AICODE007_BACKENDS:
+            config = TIER_CONFIGS.get(backend_name)
+            if config is not None and config.provider == "aicode007":
                 ensure_aicode007_proxy()
-                kwargs_merged = {**model_kwargs, **kwargs}
-            else:
-                kwargs_merged = {**model_kwargs, **kwargs}
+            kwargs_merged = {**model_kwargs, **kwargs}
             try:
                 return litellm.completion(
                     model=model_name,
@@ -698,7 +758,8 @@ class BudgetFlowLitellmModel:
             raise
 
     def _use_text_mode(self, backend_name: str) -> bool:
-        return os.environ.get("BF_GPT_TEXT_MODE") == "1"
+        config = TIER_CONFIGS.get(backend_name)
+        return bool(config and config.text_mode) or os.environ.get("BF_GPT_TEXT_MODE") == "1"
 
     def _parse_actions(self, response, *, text_mode: bool = False, backend_tier: int | None = None) -> list[dict]:
         stop_after = _format_error_stop_after(backend_tier)

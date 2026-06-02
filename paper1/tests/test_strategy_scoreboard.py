@@ -25,4 +25,5 @@ def test_strategy_scoreboard_live_line() -> None:
 
 def test_ceiling_strategy_abbrevs() -> None:
     assert strategy_abbrev("all_pro") == "apro"
-    assert strategy_abbrev("all_gpt53") == "g53"
+    assert strategy_abbrev("all_t3") == "t3"
+    assert strategy_abbrev("all_gpt53") == "t3"

@@ -12,7 +12,7 @@ _UNLIMITED = 0
 
 
 def _build_all_backends() -> list[Backend]:
-    """Current three-tier pool: Coder Flash, Coder Plus, GPT-5.3 Codex."""
+    """Current three-tier BudgetFlow pool."""
     return [
         Backend(
             name=TIER1_BACKEND,

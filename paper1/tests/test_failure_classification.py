@@ -74,6 +74,22 @@ def test_classify_infra_fail_from_provider_error() -> None:
     )
 
 
+def test_forensic_summary_provider_unavailable_axis() -> None:
+    summary = build_forensic_summary(
+        {
+            "harness_resolved": False,
+            "patch_extracted": False,
+            "exit_status": "ServiceUnavailableError",
+            "exit_reason": "ServiceUnavailableError",
+            "turn_traces": [{"error_type": "ServiceUnavailableError"}],
+        }
+    )
+
+    assert classify_failure({"exit_status": "ServiceUnavailableError"}) == "infra_fail"
+    assert summary["primary_axis"] == "infra/provider"
+    assert "ServiceUnavailableError" in summary["failure_chain"]
+
+
 def test_classify_budget_fail_from_budget_exit_with_progress() -> None:
     assert (
         classify_failure(
@@ -115,7 +131,7 @@ def test_forensic_summary_budget_after_patch() -> None:
             "exit_status": "BudgetFlowBudgetError",
             "exit_reason": "budget_exhausted",
             "detail": "test_patch=ok; fail_before=fail; model_patch=ok; fail_after=fail",
-            "backend_picks": ["tier2_qwen3_coder_flash", "tier3_gpt53_codex"],
+            "backend_picks": ["tier2", "tier3"],
             "budget_spent": 12.5,
             "budget_available": 0.0,
         }

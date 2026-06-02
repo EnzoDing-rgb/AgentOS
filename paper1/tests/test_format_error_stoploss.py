@@ -89,23 +89,6 @@ def test_text_mode_format_error_stops_after_threshold() -> None:
     assert excinfo.value.exit_reason == "format_error_text_action"
 
 
-def test_text_mode_tier5_format_error_stops_after_two_turns() -> None:
-    model = _model()
-    response = _response()
-    response.choices[0].message.content = "THOUGHT: no command"
-
-    model.step_index = 1
-    with pytest.raises(FormatError):
-        model._parse_actions(response, text_mode=True, backend_tier=5)
-
-    model.step_index = 2
-    with pytest.raises(BudgetFlowStagnationError) as excinfo:
-        model._parse_actions(response, text_mode=True, backend_tier=5)
-
-    assert excinfo.value.exit_reason == "format_error_text_action"
-    assert excinfo.value.no_progress_streak == 2
-
-
 def test_text_mode_tier4_keeps_default_format_error_threshold() -> None:
     model = _model()
     response = _response()
@@ -125,5 +108,13 @@ def test_text_mode_is_run_level_switch(monkeypatch) -> None:
     model = _model()
     monkeypatch.setenv("BF_GPT_TEXT_MODE", "1")
 
-    assert model._use_text_mode("tier1_qwen35_flash") is True
-    assert model._use_text_mode("tier4_gpt53_codex") is True
+    assert model._use_text_mode("tier1") is True
+    assert model._use_text_mode("tier2") is True
+
+
+def test_t3_forces_text_mode(monkeypatch) -> None:
+    model = _model()
+    monkeypatch.delenv("BF_GPT_TEXT_MODE", raising=False)
+
+    assert model._use_text_mode("tier3") is True
+    assert model._use_text_mode("tier2") is False

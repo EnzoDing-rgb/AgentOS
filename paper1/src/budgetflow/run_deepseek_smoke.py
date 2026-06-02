@@ -46,8 +46,9 @@ TIER_MODELS = {
     "plus": DEEPSEEK_PRO_MODEL,
     "coder_plus": TIER2_MODEL,
     "t3": TIER3_MODEL,
+    "gpt54": TIER3_MODEL,
+    "gpt-5.4": TIER3_MODEL,
     "gpt53": TIER3_MODEL,
-    "gpt-5.3-codex": TIER3_MODEL,
 }
 TIER_GROUPS = {
     "all": ("t1", "t2", "t3"),

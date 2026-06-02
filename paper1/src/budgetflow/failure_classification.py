@@ -10,6 +10,16 @@ _INFRA_STATUSES = {
     "RateLimitError",
     "AuthenticationError",
     "PermissionDeniedError",
+    "ServiceUnavailableError",
+    "UpstreamExit",
+    "infra_error",
+}
+
+_PROVIDER_UNAVAILABLE = {
+    "ServiceUnavailableError",
+    "provider_all_unavailable",
+    "model_unavailable",
+    "upstream_guard",
 }
 
 _BUDGET_REASONS = {
@@ -41,6 +51,23 @@ def _is_budget_exit(status: str, reason: str) -> bool:
 def _is_infra_exit(status: str) -> bool:
     status_l = status.lower()
     return status in _INFRA_STATUSES or "error" in status_l
+
+
+def _is_provider_unavailable(status: str, reason: str, errors: set[str]) -> bool:
+    values = {status, reason, *errors}
+    lowered = " ".join(values).lower()
+    return bool(values & _PROVIDER_UNAVAILABLE) or any(
+        marker in lowered
+        for marker in (
+            "serviceunavailableerror",
+            "service unavailable",
+            "provider_all_unavailable",
+            "model unavailable",
+            "model_not_found",
+            "model is not supported",
+            "503",
+        )
+    )
 
 
 def _parse_harness_detail(detail: str) -> dict[str, str]:
@@ -110,6 +137,8 @@ def _primary_axis(record: dict[str, Any], harness: dict[str, str]) -> tuple[str,
 
     if _is_budget_exit(status, reason):
         return "budget", "high"
+    if _is_provider_unavailable(status, reason, errors):
+        return "infra/provider", "high"
     if harness.get("test_patch") == "fail" or harness.get("fail_before") == "ok":
         return "harness", "high"
     if not record.get("patch_extracted"):

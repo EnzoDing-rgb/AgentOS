@@ -69,9 +69,10 @@ def _resolve_model_profile(model: str) -> dict[str, str]:
         "pro": DEEPSEEK_PRO_MODEL,
         "deepseek_flash": DEEPSEEK_FLASH_MODEL,
         "deepseek_pro": DEEPSEEK_PRO_MODEL,
+        "t3": TIER3_MODEL,
+        "gpt54": TIER3_MODEL,
+        "gpt-5.4": TIER3_MODEL,
         "gpt53": TIER3_MODEL,
-        "gpt-5.3-codex": TIER3_MODEL,
-        "gpt5.3_codex": TIER3_MODEL,
     }
     model_name = aliases.get(key, key)
     if model_name == TIER3_MODEL or "gpt" in model_name.lower():
@@ -276,7 +277,7 @@ def main() -> None:
         "--model",
         type=str,
         default=DEEPSEEK_PRO_MODEL,
-        help="model alias/name: pro, flash, gpt53, or a litellm model string",
+        help="model alias/name: pro, flash, t3/gpt54, or a litellm model string",
     )
     parser.add_argument("--step-limit", type=int, default=250, help="Agent step cap (use 5 for quick API smoke)")
     args = parser.parse_args()

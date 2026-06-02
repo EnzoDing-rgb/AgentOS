@@ -100,7 +100,9 @@ _STRATEGY_ABBREV: dict[str, str] = {
     "budgetflow_full_tight": "bf-T",
     "budgetflow_full_loose": "bf-L",
     "all_pro": "apro",
-    "all_gpt53": "g53",
+    "all_t3": "t3",
+    "all_gpt53": "t3",
+    "all_gpt54": "t3",
 }
 
 

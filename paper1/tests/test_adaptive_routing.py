@@ -190,7 +190,7 @@ def test_evidence_rescue_stop_loss_after_window_and_patience() -> None:
     assert rescue.should_stop_loss(gold_edited=True)
 
 
-def test_auto_v2_rescue_waits_longer_and_uses_shorter_gpt53_window() -> None:
+def test_auto_v2_rescue_waits_longer_and_uses_shorter_t3_window() -> None:
     current = rescue_state_for_strategy("budgetflow_full")
     v2 = rescue_state_for_strategy("budgetflow_auto_v2")
 
@@ -200,7 +200,7 @@ def test_auto_v2_rescue_waits_longer_and_uses_shorter_gpt53_window() -> None:
     assert v2.min_headroom_frac > current.min_headroom_frac
 
 
-def test_auto_v2_rescue_targets_gpt53_codex_t3_conservatively() -> None:
+def test_auto_v2_rescue_targets_t3_conservatively() -> None:
     v2 = rescue_state_for_strategy("budgetflow_auto_v2")
 
     assert v2.rescue_tier == 3
