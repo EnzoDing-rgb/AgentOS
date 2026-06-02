@@ -34,6 +34,91 @@ _COLLECTIONS_ABC = frozenset(
 )
 
 
+class RepoHarnessAdapter:
+    """Per-repo harness compatibility seam.
+
+    Each subclass handles repo-specific quirks:
+    - compat patches that must run during harness eval but not leak into model patch
+    - test name mapping from SWE-bench format to pytest node ids
+    """
+
+    repo_slug: str
+
+    def apply_compat(self, repo_dir: Path) -> list[str]:
+        """Apply repo-specific compat fixes. Returns list of changed file paths."""
+        return []
+
+    def map_test_name(self, raw_name: str) -> str | None:
+        """Map SWE-bench test name to pytest node id. Returns None if no mapping needed."""
+        return None
+
+    def pytest_env(self) -> dict[str, str]:
+        """Extra env vars to set when running pytest for this repo."""
+        return {}
+
+    @staticmethod
+    def for_task(task) -> "RepoHarnessAdapter":
+        repo = getattr(task, "repo", "")
+        slug = repo.replace("/", "__") if repo else ""
+        if slug == "sympy__sympy":
+            return SymPyHAdapter()
+        if slug == "django__django":
+            return DjangoHAdapter()
+        if slug == "psf__requests":
+            return RequestsHAdapter()
+        return DefaultHAdapter()
+
+
+class SymPyHAdapter(RepoHarnessAdapter):
+    repo_slug = "sympy__sympy"
+
+    def apply_compat(self, repo_dir: Path) -> list[str]:
+        latex_py = repo_dir / "sympy" / "printing" / "latex.py"
+        if not latex_py.is_file():
+            return []
+        original = latex_py.read_text(encoding="utf-8", errors="ignore")
+        # mpmath 1.4.1 returns 'inf' without '+', old sympy expects '+inf'
+        patched = original.replace(
+            'elif str_real == "+inf":\n            return r"\\infty"',
+            'elif str_real in ("+inf", "inf"):\n            return r"\\infty"',
+        )
+        if patched != original:
+            latex_py.write_text(patched)
+            return ["sympy/printing/latex.py"]
+        return []
+
+
+_DJANGO_TEST_NAME_RE = re.compile(r"^(\w+)\s+\((.+)\.(\w+)\)$")
+
+
+class DjangoHAdapter(RepoHarnessAdapter):
+    repo_slug = "django__django"
+
+    def pytest_env(self) -> dict[str, str]:
+        return {"DJANGO_SETTINGS_MODULE": "tests.test_sqlite"}
+
+    def map_test_name(self, raw_name: str) -> str | None:
+        # Format: "test_name (dotted.module.ClassName)"
+        m = _DJANGO_TEST_NAME_RE.match(raw_name)
+        if m:
+            test_name, module_path, class_name = m.group(1), m.group(2), m.group(3)
+            file_path = f"tests/{module_path.replace('.', '/')}.py"
+            return f"{file_path}::{class_name}::{test_name}"
+        # Also handle: "path.py::test_name (module.ClassName)"
+        m2 = re.match(r"^(.+\.py)::(\w+)\s+\(.*?\.(\w+)\)$", raw_name)
+        if m2:
+            return f"{m2.group(1)}::{m2.group(3)}::{m2.group(2)}"
+        return None
+
+
+class RequestsHAdapter(RepoHarnessAdapter):
+    repo_slug = "psf__requests"
+
+
+class DefaultHAdapter(RepoHarnessAdapter):
+    repo_slug = ""
+
+
 def harness_python() -> str:
     return os.environ.get("BUDGETFLOW_HARNESS_PYTHON", sys.executable)
 
@@ -387,11 +472,22 @@ def _node_path(node_id: str) -> str:
     return node_id.split("::", 1)[0]
 
 
-def build_pytest_node_ids(repo_dir: Path, test_names: tuple[str, ...], test_paths: list[str]) -> tuple[list[str], list[str]]:
+def build_pytest_node_ids(
+    repo_dir: Path,
+    test_names: tuple[str, ...],
+    test_paths: list[str],
+    adapter: RepoHarnessAdapter | None = None,
+) -> tuple[list[str], list[str]]:
     node_ids: list[str] = []
     missing: list[str] = []
     test_path_set = set(test_paths)
-    for name in test_names:
+    resolved: set[int] = set()
+    for idx, name in enumerate(test_names):
+        if adapter:
+            mapped = adapter.map_test_name(name)
+            if mapped:
+                name = mapped
+                resolved.add(idx)
         if "::" not in name:
             continue
         path = _node_path(name)
@@ -402,7 +498,9 @@ def build_pytest_node_ids(repo_dir: Path, test_names: tuple[str, ...], test_path
     for path in test_paths:
         full = repo_dir / path
         text = full.read_text() if full.is_file() else ""
-        for name in test_names:
+        for idx, name in enumerate(test_names):
+            if idx in resolved:
+                continue
             if "::" in name:
                 continue
             if f"def {name}(" in text:
@@ -412,15 +510,25 @@ def build_pytest_node_ids(repo_dir: Path, test_names: tuple[str, ...], test_path
     return list(dict.fromkeys(node_ids)), missing
 
 
-def run_pytest(repo_dir: Path, test_names: tuple[str, ...], test_paths: list[str]) -> tuple[bool, str]:
+def run_pytest(
+    repo_dir: Path,
+    test_names: tuple[str, ...],
+    test_paths: list[str],
+    adapter: RepoHarnessAdapter | None = None,
+) -> tuple[bool, str]:
     if not test_names:
         return False, "no test names"
-    node_ids, missing = build_pytest_node_ids(repo_dir, test_names, test_paths)
+    node_ids, missing = build_pytest_node_ids(repo_dir, test_names, test_paths, adapter=adapter)
     if not node_ids:
         detail = ", ".join(missing[:6]) if missing else "none"
         return False, f"no pytest node ids: {detail}"
     cmd = [harness_python(), "-m", "pytest", "-x", *node_ids]
-    result = subprocess.run(cmd, cwd=repo_dir, capture_output=True, text=True)
+    env = None
+    if adapter:
+        extra_env = adapter.pytest_env()
+        if extra_env:
+            env = {**os.environ, **extra_env}
+    result = subprocess.run(cmd, cwd=repo_dir, capture_output=True, text=True, env=env)
     output = (result.stdout + "\n" + result.stderr).strip()
     tail = output[-2000:] if len(output) > 2000 else output
     return result.returncode == 0, tail
@@ -461,6 +569,11 @@ def evaluate_local_harness(
             repo_dir=str(repo_dir),
         )
 
+    adapter = RepoHarnessAdapter.for_task(task)
+    compat_files = adapter.apply_compat(repo_dir)
+    if compat_files:
+        detail_parts.append(f"compat={','.join(compat_files)}")
+
     test_paths = test_paths_for(task)
     test_patch_ok: bool | None = None
     if task.test_patch:
@@ -480,7 +593,7 @@ def evaluate_local_harness(
                 pass_to_pass=task.pass_to_pass,
             )
 
-    fail_before, fail_before_log = run_pytest(repo_dir, task.fail_to_pass, test_paths)
+    fail_before, fail_before_log = run_pytest(repo_dir, task.fail_to_pass, test_paths, adapter=adapter)
     detail_parts.append(f"fail_before={'pass' if fail_before else 'fail'}")
 
     ok, msg = apply_patch(repo_dir, model_patch, "model_patch")
@@ -501,12 +614,12 @@ def evaluate_local_harness(
             pass_to_pass=task.pass_to_pass,
         )
 
-    fail_after, fail_after_log = run_pytest(repo_dir, task.fail_to_pass, test_paths)
+    fail_after, fail_after_log = run_pytest(repo_dir, task.fail_to_pass, test_paths, adapter=adapter)
     detail_parts.append(f"fail_after={'pass' if fail_after else 'fail'}")
     if not fail_after:
         detail_parts.append(fail_after_log)
 
-    pass_ok, pass_log = run_pytest(repo_dir, task.pass_to_pass, test_paths) if task.pass_to_pass else (True, "skipped")
+    pass_ok, pass_log = run_pytest(repo_dir, task.pass_to_pass, test_paths, adapter=adapter) if task.pass_to_pass else (True, "skipped")
     detail_parts.append(f"pass_to_pass={'pass' if pass_ok else 'fail'}")
     if not pass_ok:
         detail_parts.append(pass_log)
