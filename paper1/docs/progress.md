@@ -2,6 +2,47 @@
 
 > 单一入口：进度、跑法、历史结果。
 
+## 当前快照（2026-06-02）
+
+### 结论
+
+- 当前 3×3 已停止，没有相关 `run_mini_swe_compare` / `mini-SWE-agent` 进程。
+- `diagnostic_3x3_forensic_v1` 已污染，不能作为 BudgetFlow repair 结论。
+- GPT-5.3 Codex 昨晚可用：`gpt53_textmode_goldpass2` 是 `all_gpt53 + BF_GPT_TEXT_MODE=1`，3/3 pass。
+- 今天 3×3 的 T3 失败是当前调用路径返回 `ServiceUnavailableError` / 503；不能直接说 GPT-5.3 Codex 模型坏。
+- 关键差异：昨晚成功 run 是 text-mode ceiling；今天 3×3 没明确带 `BF_GPT_TEXT_MODE=1`，且当前 litellm minimal ping 到 AiCode007 `openai/gpt-5.3-codex` 返回 503。
+
+### 当前 active tier
+
+| Tier | backend | litellm id | provider |
+|---|---|---|---|
+| T1 | `tier1_qwen3_coder_flash` | `openai/qwen3-coder-flash` | DashScope 百炼 |
+| T2 | `tier2_qwen3_coder_plus` | `openai/qwen3-coder-plus` | DashScope 百炼 |
+| T3 | `tier3_gpt53_codex` | `openai/gpt-5.3-codex` | AiCode007 |
+
+### 当前 polluted 3×3
+
+| run_id | 状态 | 说明 |
+|---|---|---|
+| `diagnostic_3x3_forensic_v1` | 停止，6/9 written | T3 503 + reservation leak 疑似污染；不要 resume，不要写进主结论 |
+
+已确认现象：
+
+- T3 provider error rows：`prompt_tokens_total=0`、`completion_tokens_total=0`、`task_cost=0`。
+- 但 `reserved_budget` 增加、`available_budget` 下降，说明 provider exception path 没释放 reservation。
+- `failure_class=infra_fail` 基本对；`forensic_summary.primary_axis=protocol` 不够准，应归 `infra/provider`。
+
+### 下一步
+
+1. 查清 GPT-5.3 Codex 当前 503 的真实原因：对比 text-mode / tool-call payload、AiCode007 raw body、HTTP status、request id。
+2. 修 provider error 可观测性：记录 provider、model、status、error body 摘要，不泄露 key。
+3. 修 reservation release：provider/API 异常后释放本 turn reservation。
+4. 修 forensic axis：`ServiceUnavailableError` / 503 -> `infra/provider`。
+5. 加 provider signature check gate：T1/T2/T3 最小 chat completion 全过才允许启动实验。
+6. 以上完成并经你确认后，再用新 stem 干净重跑 3×3。
+
+---
+
 ## 论文问题
 
 固定 **batch 经济预算** 下，agentic SWE 能否在 hard cap 内靠 **progress-aware routing** 比 budget-only / all-tier1 换更多 **harness resolved**？
@@ -36,11 +77,11 @@ compare 加 **`--read-protocol`** 时从 JSON 读（`protocol_caps.py`），**�
 `run_pilot.py` 重跑会覆盖 JSON；**compare 期间勿手改**。  
 当前 tier（`defaults.py`）：
 
-| Tier | 终端 `model=` | litellm id |
-|---|---|---|
-| T1 | `gpt-5.3-codex-spark` | `openai/gpt-5.3-codex-spark` + AICode007 base |
-| T2 | `deepseek-v4-flash` | `deepseek/deepseek-chat` |
-| T3 | `deepseek-v4-pro` | `deepseek/deepseek-reasoner` |
+| Tier | 终端 `model=` | litellm id | provider |
+|---|---|---|---|
+| T1 | `qwen3-coder-flash` | `openai/qwen3-coder-flash` | DashScope 百炼 |
+| T2 | `qwen3-coder-plus` | `openai/qwen3-coder-plus` | DashScope 百炼 |
+| T3 | `GPT-5.3 Codex` | `openai/gpt-5.3-codex` | AiCode007 |
 
 ---
 
