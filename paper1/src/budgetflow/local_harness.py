@@ -11,7 +11,16 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .lite_tasks import LiteTaskRecord
-from .console_log import dim, paint, tag
+from .console_log import (
+    _BOLD,
+    _BRIGHT_BLUE,
+    _BRIGHT_CYAN,
+    _BRIGHT_GREEN,
+    _BRIGHT_YELLOW,
+    dim,
+    paint,
+    tag,
+)
 
 PAPER1_ROOT = Path(__file__).resolve().parents[2]
 CACHE_DIR = PAPER1_ROOT / "data" / "repo_cache"
@@ -212,7 +221,7 @@ def apply_python_compat(repo_dir: Path) -> tuple[str, ...]:
     if changed_paths:
         print(
             f"{tag('prep')} py{sys.version_info.major}.{sys.version_info.minor} "
-            f"collections compat {paint(str(len(changed_paths)), '\033[92m')} files",
+            f"collections compat {paint(str(len(changed_paths)), _BRIGHT_GREEN)} files",
             flush=True,
         )
     return tuple(changed_paths)
@@ -316,10 +325,10 @@ def _pip_install_editable(repo_dir: Path, *, task: LiteTaskRecord) -> subprocess
             continue
         # pip progress: "Collecting...", "Installing...", "Building wheel..."
         if any(token in line for token in ("Collecting", "Installing", "Building", "Preparing", "Successfully")):
-            print(f"  {tag('pip', color='\033[94m')} {line[:140]}", flush=True)
+            print(f"  {tag('pip', color=_BRIGHT_BLUE)} {line[:140]}", flush=True)
         now = time.time()
         if now - last_pulse >= 20:
-            elapsed = paint(f"{now - started:.0f}s", "\033[93m", "\033[1m")
+            elapsed = paint(f"{now - started:.0f}s", _BRIGHT_YELLOW, _BOLD)
             print(f"{tag('prep')} pip running elapsed={elapsed} ...", flush=True)
             last_pulse = now
     proc.wait()
@@ -334,7 +343,7 @@ def _ensure_main_repo(task: LiteTaskRecord) -> Path:
     repo_url = f"https://github.com/{task.repo}.git"
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     if not repo_dir.exists():
-        print(f"{tag('prep')} git clone {paint(task.repo, '\033[96m')} ...", flush=True)
+        print(f"{tag('prep')} git clone {paint(task.repo, _BRIGHT_CYAN)} ...", flush=True)
         subprocess.run(
             ["git", "clone", "--filter=blob:none", repo_url, str(repo_dir)],
             check=True,
@@ -372,9 +381,9 @@ def _prepare_worktree(task: LiteTaskRecord, workspace_key: str) -> Path:
         worktree_path.parent.mkdir(parents=True, exist_ok=True)
         _remove_worktree(main_repo, worktree_path)
         _ensure_commit_available(main_repo, task.base_commit)
+        inst = paint(task.instance_id, _BOLD, _BRIGHT_CYAN)
         print(
-            f"{tag('prep')} worktree {paint(task.instance_id, '\033[1m', '\033[96m')} "
-            f"key={workspace_key} @ {task.base_commit[:8]} ...",
+            f"{tag('prep')} worktree {inst} key={workspace_key} @ {task.base_commit[:8]} ...",
             flush=True,
         )
         subprocess.run(
@@ -408,7 +417,7 @@ def _finalize_repo_workspace(repo_dir: Path, task: LiteTaskRecord) -> Path:
     if install.returncode == 0:
         marker.parent.mkdir(parents=True, exist_ok=True)
         marker.write_text(task.base_commit)
-        print(f"{tag('prep')} pip {paint('done', '\033[92m')}", flush=True)
+        print(f"{tag('prep')} pip {paint('done', _BRIGHT_GREEN)}", flush=True)
     else:
         print(f"{tag('prep')} pip failed (rc={install.returncode}), continuing anyway", flush=True)
     return repo_dir
@@ -423,10 +432,8 @@ def clone_or_checkout(task: LiteTaskRecord, *, workspace_key: str | None = None)
     with _main_repo_lock(slug):
         global _LAST_COMPAT_FILES
         repo_dir = _ensure_main_repo(task)
-        print(
-            f"{tag('prep')} checkout {paint(task.instance_id, '\033[1m', '\033[96m')} @ {task.base_commit[:8]} ...",
-            flush=True,
-        )
+        inst = paint(task.instance_id, _BOLD, _BRIGHT_CYAN)
+        print(f"{tag('prep')} checkout {inst} @ {task.base_commit[:8]} ...", flush=True)
         subprocess.run(["git", "reset", "--hard", task.base_commit], cwd=repo_dir, check=True, capture_output=True, text=True)
         subprocess.run(["git", "clean", "-fdx"], cwd=repo_dir, check=True, capture_output=True, text=True)
         return _finalize_repo_workspace(repo_dir, task)
