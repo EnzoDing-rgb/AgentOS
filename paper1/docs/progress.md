@@ -6,13 +6,14 @@
 
 ### 结论
 
-- 当前 3×3 已停止，没有相关 `run_mini_swe_compare` / `mini-SWE-agent` 进程。
-- `diagnostic_3x3_forensic_v1` 已污染，不能作为 BudgetFlow repair 结论。
+- 5×3 跑完（`policy_5x3-2`），**1/15 PASS**。唯一 PASS：`all_pro` 在 sympy__sympy-13480。
+- **Bug 1 — GPT-5.4 输出格式不兼容。** 所有用 T3（GPT-5.4）的 turn 触发 `format_error_text_action` / `extract_fail`，5 步 `StagnationExit`。T2（qwen3-coder-plus）输出格式正确。
+- **Bug 2 — `all_pro` 实际用 T2 不是 T3。** `strategies.py:86` 硬编码 `_backend_by_tier(ctx.backends, 2)`。名字叫 "all_pro"，跑的是千问 qwen3-coder-plus。旧 4-tier 时代 pro=tier4，重构后 tier 塌缩但代码没跟着改。
+- **Bug 3 — `budget_only` 跳过 T2 直选 T3。** 15 个 turn 全选 `tier3`。`BudgetOnlyStepRouter` 应选最便宜的可用 tier（T2），但选了最贵的。
 - 旧 GPT-5.3 Codex 在 AiCode007 上游下架/不可用，相关 503 不是任务失败。
-- T3 已迁移为 GPT-5.4：BudgetFlow 代码只认稳定 T1/T2/T3，provider/model/base_url/api_key 在 `defaults.py` 的 tier registry 集中映射。
 - T3 默认 text-mode；provider unavailable 时会释放 reservation 并 fallback 到剩余 tier。
 
-### 当前 active tier
+### Current active tier
 
 | Tier | backend | litellm id | provider |
 |---|---|---|---|
@@ -20,37 +21,27 @@
 | T2 | `tier2` | `openai/qwen3-coder-plus` | DashScope 百炼 |
 | T3 | `tier3` | `openai/gpt-5.4` | AiCode007 |
 
-### 当前 polluted 3×3
+注：当前 main pool T1 标记为 "skipped"，可用 tier 实际为 [T2, T3]。
 
-| run_id | 状态 | 说明 |
-|---|---|---|
-| `diagnostic_3x3_forensic_v1` | 停止，6/9 written | T3 503 + reservation leak 疑似污染；不要 resume，不要写进主结论 |
+### 最新改动（2026-06-02，下午）
 
-已确认现象：
-
-- T3 provider error rows：`prompt_tokens_total=0`、`completion_tokens_total=0`、`task_cost=0`。
-- 但 `reserved_budget` 增加、`available_budget` 下降，说明 provider exception path 没释放 reservation。
-- `failure_class=infra_fail` 基本对；`forensic_summary.primary_axis=protocol` 不够准，应归 `infra/provider`。
-
-### 最新改动（2026-06-02）
-
-- 已确认：AiCode007 上游下架/不可用旧 GPT-5.3 Codex，当前不是任务失败。
+- **已改：`--read-protocol` → `--read-frozen-caps`。** 旧名保留为静默 alias，不显示在 `--help` 中。
+- **已跑：5×3（`policy_5x3-2`）。** 3 tasks × 5 strategies = 15 rows，`--read-frozen-caps`，`--jobs 5`。见下方 Run 登记。
+- **已分析：auto_v2 不需要单独跑。** `budgetflow_full` 已经有 evidence rescue、stop-loss、adaptive routing。auto_v2 只是 flat w_i + 更保守的 rescue 参数，不是新机制。保留代码作为备选 ablation。
+- **已分析：7×15 历史数据（`policy_5x7-0`）。** 提取了 5 道题的相对难度系数，见下方"任务难度系数"。
+- **已确认：frozen caps 同题同源。** pilot（`run_pilot.py`）用的 3 道题跟 5×3 完全相同，cap 无 mismatch。但 `all_pro` 在 pilot 中也用的 T2，所以 cap 是 T2 水平。
+- 已确认：AiCode007 上游下架/不可用旧 GPT-5.3 Codex。
 - 已改：T1/T2/T3 使用稳定 backend id；provider/model/base_url/api_key/display/text_mode 在 `defaults.py` 的 tier registry 集中映射。
-- 已改：T3 切到 GPT-5.4（`openai/gpt-5.4`），`all_t3` 为 canonical diagnostic 策略，`all_gpt53` / `all_gpt54` 仅作兼容别名。
-- 已改：provider unavailable 时释放当前 reservation。
-- 已改：provider unavailable 时 runtime 尝试切到剩余可用 tier。
-- 已改：T3 默认强制 text-mode。
-- 已改：`ServiceUnavailableError` / `provider_all_unavailable` forensic axis -> `infra/provider`。
-- 已加：provider signature check gate；compare 启动前检查所需 T1/T2/T3 最小 chat completion，失败则 abort。
-- 已测：focused tests 39 passed；edited modules py_compile 通过。
-- 已加测：provider unavailable 会释放 reservation、尝试 fallback；全 tier unavailable 会 `provider_all_unavailable` 且不污染 budget。
-- 已决：Automatic Budgeting 暂缓，先完成 clean 3×3。
+- 已改：provider unavailable 时释放当前 reservation、尝试 fallback。
+- 已加：provider signature check gate。
 
 ### 下一步
 
-1. 跑 provider signature check，确认 T1/T2/T3 当前可用性；若 T3 不可用，gate 应阻止 clean 3×3。
-2. clean 3×3 前必须确认 signature check 通过；不需要先加 Automatic Budgeting。
-3. 3×3 之后再评估 Automatic Budgeting。
+1. 修 Bug 1（GPT-5.4 format 不兼容）——定位 `format_error_text_action` root cause，修 parser 或 system prompt。
+2. 修 Bug 2（`all_pro` tier 映射）——改为 T3 或改为 `all_t2` 并改名。
+3. 修 Bug 3（`budget_only` tier 选择）——检查 `BudgetOnlyStepRouter` 为何不选 T2。
+4. 三 bug 修完后重跑 5×3。
+5. 并行推进 Automatic Budgeting（Plan B → Plan C，见下方）。
 
 ---
 
@@ -68,24 +59,75 @@
 |---|---|
 | mini-SWE + local harness + worktree | ✅ |
 | Governor hard cap | ✅ |
-| tier 池 T1/T2/T3（全名日志） | ✅ 代码 |
-| `run_mini_swe_compare` 7 policy + `--resume` + `--run-series` | ✅ |
+| tier 池 T1/T2/T3（全名日志） | ✅ |
+| `run_mini_swe_compare` + `--resume` + `--run-series` | ✅ |
 | B.0 pilot → **FROZEN caps** | ✅ `data/frozen_caps.json` |
-| **policy_5x7-0**（旧 stem `t_policy_5x7`） | ⚠️ 中断于 30/35，可 `--resume` |
-| 新代码全量重跑 | ⏳ `policy_5x7-1` 起 |
+| `--read-protocol` → `--read-frozen-caps` rename | ✅ |
+| **policy_5x7-0**（旧代码 7×5） | ⚠️ 中断于 30/35 |
+| **policy_5x3-2**（新代码 5×3） | ✅ 跑完，1/15 PASS，暴露 3 个 bug |
+| Automatic Budgeting Plan B（difficulty bucket） | ⏳ 待实现 |
+| Automatic Budgeting Plan C（continuous learning kNN） | ⏳ 依赖 Plan B |
+
+---
+
+## 任务难度系数（从 7×15 历史数据提取）
+
+`policy_5x7-0.jsonl`（旧 tier：codex-spark / gpt-5.4-mini / gpt-5.3-codex），35 records，5 easy sympy tasks × 7 strategies。
+
+**核心发现：任务相对难度在不同策略下稳定。** 锚定 sympy__sympy-20212 = 1.0×：
+
+| task | median cost | 难度系数 |
+|---|---|---|
+| sympy__sympy-14774 | 42 | 0.15× |
+| sympy__sympy-13480 | 88 | 0.31× |
+| sympy__sympy-13647 | 232 | 0.82× |
+| sympy__sympy-20212 | 284 | **1.00×**（锚） |
+| sympy__sympy-16988 | 1868 | **6.58×** |
+
+难度系数跟模型无关——同一题在 all_flash 和 budgetflow_full 下按同一比例缩放。这个系数是 Automatic Budgeting 的核心。
+
+---
+
+## Automatic Budgeting 路线图
+
+**目标：不跑 pilot，直接给任务估 budget。**
+
+### Plan B — Difficulty Bucket（冷启动）
+
+对所有 sympy lite 任务提取特征（problem 长度、patch 行数、gold files 数、测试数），unsupervised clustering → 3 buckets（easy/medium/hard）。每个 bucket 用 pilot 数据校准 unit cost。新任务 → 算特征 → 归入 bucket → 直接用校准 cost。
+
+- 输入：`lite_tasks.py` 的 token estimator 特征 + 7×15 历史数据的难度系数
+- 输出：`estimate_task_cost(features) → governor_units`
+- 依赖：当前 pilot 数据（3 题）+ 7×15 数据（5 题）
+
+### Plan C — Continuous Learning kNN（持续学习）
+
+Plan B 的 bucket 是 Plan C 的 cold-start。每次实验跑完，自动写入 `data/task_cost_history.jsonl`：`(task_features, actual_cost, model_tier, strategy)`。当数据 ≥ 10 条，切到 k=3 最近邻预测。
+
+```
+triage(task) = kNN(features(task), history) → estimated_cost
+```
+
+- 每跑一个新实验，系统多一个数据点
+- 模型无关——难度是 task 属性，cost 随 tier 缩
 
 ---
 
 ## 冻结 cap（`data/frozen_caps.json`）
 
-compare 加 **`--read-protocol`** 时从 JSON 读（`protocol_caps.py`），**不是** `docs/protocol.md`：
+compare 加 **`--read-frozen-caps`** 时从 JSON 读（`protocol_caps.py`），**不是** `docs/protocol.md`：
 
 | n | tight | loose |
 |---:|---:|---:|
+| 3 | 3162.357 | 12649.428 |
 | 5 | 5270.595 | 21082.38 |
+| 15 | 15811.785 | 63247.14 |
 
+公式：`loose = 2 × median(pilot_costs) × n; tight = 0.5 × median(pilot_costs) × n`。  
 另含 `BUDGET_PRESSURE_INIT=0.01`、`PRESSURE_MAX=1.5`。  
 `run_pilot.py` 重跑会覆盖 JSON；**compare 期间勿手改**。  
+pilot 用 `all_pro`（实际 T2，非 T3）跑 3 题，median cost=2108.2。
+
 当前 tier（`defaults.py`）：
 
 | Tier | 终端 `model=` | litellm id | provider |
@@ -98,34 +140,31 @@ compare 加 **`--read-protocol`** 时从 JSON 读（`protocol_caps.py`），**�
 
 ## 跑法（绝对路径）
 
-环境：`cd` 到 `paper1`，`PYTHONPATH=src:../external/mini-swe-agent/src`，日志建议 `FORCE_COLOR=1`。
+环境：`cd` 到 `paper1`，用 `.venv/bin/python`，`PYTHONPATH=src:../external/mini-swe-agent/src`，日志建议 `FORCE_COLOR=1`。
 
-**① 新跑一轮（自动 ID `policy_5x7-1`, `-2`, … 不覆盖）**
+**① 5×3（3 tasks × 5 strategies，frozen caps）**
 
 ```bash
 cd /home/fengde/Projects/AI-learning/agent_learning/AgentOS/paper1 && \
-RUN_ID=$(PYTHONPATH=src python -c "from pathlib import Path; from budgetflow.run_series import allocate_series_stem; print(allocate_series_stem(Path('data/runs'), 'policy_5x7'))") && \
-echo "next run_id=$RUN_ID" && \
 FORCE_COLOR=1 PYTHONPATH=src:../external/mini-swe-agent/src \
-python -u -m budgetflow.run_mini_swe_compare \
-  --read-protocol --limit 5 --step-limit 150 \
-  --strategies all_flash_tight,budget_only_tight,budgetflow_full_tight,all_flash_loose,budget_only_loose,budgetflow_full_loose,all_pro \
-  --jobs 7 --run-series policy_5x7 \
-  2>&1 | tee "/home/fengde/Projects/AI-learning/agent_learning/AgentOS/paper1/data/runs/${RUN_ID}.log"
+/home/fengde/Projects/AI-learning/agent_learning/AgentOS/.venv/bin/python -u -m budgetflow.run_mini_swe_compare \
+  --read-frozen-caps --limit 3 --step-limit 150 \
+  --strategies budget_only_tight,budget_only_loose,budgetflow_full_tight,budgetflow_full_loose,all_pro \
+  --jobs 5 --run-series policy_5x3 \
+  --ids sympy__sympy-13480,sympy__sympy-14774,sympy__sympy-16988 \
+  2>&1 | tee data/runs/policy_5x3-N.log
 ```
-
-首行会再打 `[run_id] policy_5x7-N`；应与 `RUN_ID` 一致（不要并行开两轮抢同一号）。
 
 **② 中断恢复（固定 stem，不新开 ID）**
 
 ```bash
 cd /home/fengde/Projects/AI-learning/agent_learning/AgentOS/paper1 && \
-FORCE_COLOR=1 PYTHONPATH=/home/fengde/Projects/AI-learning/agent_learning/AgentOS/paper1/src:/home/fengde/Projects/AI-learning/agent_learning/AgentOS/external/mini-swe-agent/src \
-python -u -m budgetflow.run_mini_swe_compare \
-  --read-protocol --limit 5 --step-limit 150 \
-  --strategies all_flash_tight,budget_only_tight,budgetflow_full_tight,all_flash_loose,budget_only_loose,budgetflow_full_loose,all_pro \
-  --jobs 7 --out-stem policy_5x7-0 --resume \
-  2>&1 | tee -a /home/fengde/Projects/AI-learning/agent_learning/AgentOS/paper1/data/runs/policy_5x7-0.log
+FORCE_COLOR=1 PYTHONPATH=src:../external/mini-swe-agent/src \
+/home/fengde/Projects/AI-learning/agent_learning/AgentOS/.venv/bin/python -u -m budgetflow.run_mini_swe_compare \
+  --read-frozen-caps --limit 3 --step-limit 150 \
+  --strategies budget_only_tight,budget_only_loose,budgetflow_full_tight,budgetflow_full_loose,all_pro \
+  --jobs 5 --out-stem policy_5x3-2 --resume \
+  2>&1 | tee -a data/runs/policy_5x3-2.log
 ```
 
 产物：`data/runs/<run_id>.jsonl`、`.summary.log`、`.checkpoint.json`、`.log`。
@@ -137,14 +176,14 @@ python -u -m budgetflow.run_mini_swe_compare \
 | run_id | 说明 | 进度 | 产物 |
 |---|---|---|---|
 | **policy_5x7-0** | 旧代码 7×5；已 rename 自 `t_policy_5x7` | **30/35** 中断 | `data/runs/policy_5x7-0.*` |
-| policy_5x7-1 | 新代码首次全量（spark/flash/pro + checkpoint） | 待跑 | — |
+| **policy_5x3-2** | 新代码 5×3；3 pilot tasks × 5 strategies；frozen caps | **15/15**，1 PASS | `data/runs/policy_5x3-2.*` |
 
 ---
 
 ## policy_5x7-0 快照（30/35，旧 tier 名）
 
 **设置：** 5 easy sympy × 7 policy；`tight=5270.6` `loose=21082.4`；`step_limit=150`；7 路并行。  
-**后端：** 当时为 codex-spark / gpt-5.4-mini / gpt-5.3-codex（非当前 DeepSeek 池）。
+**后端：** 当时为 codex-spark / gpt-5.4-mini / gpt-5.3-codex（非当前 qwen/GPT-5.4 池）。
 
 | strategy | resolved | batch_spent | cap |
 |---|---:|---:|---:|
@@ -157,7 +196,43 @@ python -u -m budgetflow.run_mini_swe_compare \
 | all_pro | 0/0（未完成） | — | ∞ |
 
 **亮点：** `budgetflow_full_tight` **5/5**，含 **16988**（all_flash_tight / budget_only_tight 在此题 FAIL）。  
-**未完成：** all_pro 及部分 loose 尾任务；用上面 **②** 续跑。
+**未完成：** all_pro 及部分 loose 尾任务；可用 `--resume` 续跑。
+
+---
+
+## policy_5x3-2 结果（15/15，当前 tier：qwen/GPT-5.4）
+
+**设置：** 3 pilot tasks × 5 strategies；`tight=3162.4` `loose=12649.4`；`step_limit=150`；5 路并行。  
+**后端：** T1=skipped, T2=qwen3-coder-plus, T3=GPT-5.4。
+
+```
+strategy               | 13480          | 14774          | 16988
+----------------------------------------------------------------------
+budget_only_tight      | FAIL ext_fail  | FAIL ext_fail  | FAIL ext_fail
+budgetflow_full_tight  | FAIL ext_fail  | FAIL ext_fail  | FAIL rep_fail
+budget_only_loose      | FAIL ext_fail  | FAIL ext_fail  | FAIL ext_fail
+budgetflow_full_loose  | FAIL ext_fail  | FAIL ext_fail  | FAIL rep_fail
+all_pro                | PASS           | FAIL rep_fail  | FAIL rep_fail
+```
+
+**PASS: 1/15。** 所有 `ext_fail` = GPT-5.4 格式不兼容。所有 `rep_fail` = T2 输出正常但没修对。  
+**bf-T 在 16988 上唯一有价值的信号：** 36 turn、cost=2290、主要用 T2，跑了完整 BudgetFlow（routing/escalation/rescue），最终 `gold_rescue_stop_loss`。
+
+---
+
+## auto_v2 分析
+
+`budgetflow_full` 已包含 evidence rescue、stop-loss、adaptive routing、adaptive starting tier。  
+`budgetflow_auto_v2` 不是"加新机制"，只是改了两个参数：
+
+| | budgetflow_full | budgetflow_auto_v2 |
+|---|---|---|
+| w_i | repair-heavy (1/3/2.5) | flat (1/1/1) |
+| rescue trigger_turns | 6 | 12 |
+| rescue window_turns | 3 | 2 |
+| rescue min_headroom | 0.18 | 0.30 |
+
+**保留代码作为备选 ablation。** 如果 `budgetflow_full` 信号强，下一轮跑 `budgetflow_auto_v2_tight` 回答：flat w_i 比 repair-heavy w_i 差还是好？
 
 ---
 
@@ -204,14 +279,16 @@ Rubric 弱，**不能**当 resolved 结论。
 - 把 Stage-A INVALID 3×3 写进主表
 - `workflow_steps_ok` 当 resolved
 - eval 上 tune progress_table
+- 拿 `budgetflow_auto_v2` 当独立机制（它只是 `budgetflow_full` 的 w_i + rescue 参数变体）
 
 ---
 
 ## 代码入口
 
-- `run_mini_swe_compare.py` — `--run-series` / `--resume` / `--task-set medium`
-- `run_series.py` — `policy_5x7-N` 自增
-- `run_pilot.py` — 写 `data/frozen_caps.json`
-- `protocol_caps.py` — `--read-protocol` 读 JSON
-- `lite_tasks.py` — easy 5 + medium 15 固定列表
-- `stall_guard.py` + `run_trace.publish_live_progress` — anti-stall + 心跳与 route 同步（2026-05-31）
+- `run_mini_swe_compare.py` — `--run-series` / `--resume` / `--task-set medium` / `--read-frozen-caps`
+- `run_series.py` — `policy_5x3-N` / `policy_5x7-N` 自增
+- `run_pilot.py` — 写 `data/frozen_caps.json`（跑一次，续用）
+- `protocol_caps.py` — `--read-frozen-caps` 读 JSON（`derive_batch_caps` + `write_frozen_caps`）
+- `lite_tasks.py` — easy 5 + medium 15 + pilot 3 固定列表
+- `adaptive_routing.py` — `AdaptiveRoutingState` + `EvidenceRescueState`（`budgetflow_full` 和 `auto_v2` 共用）
+- `stall_guard.py` + `run_trace.publish_live_progress` — anti-stall + 心跳与 route 同步

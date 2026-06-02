@@ -3,7 +3,7 @@
 Each policy runs its task list serially on one BudgetGovernor (shared pool).
 Different policies may run in parallel (--jobs) using git worktrees for repo isolation.
 
-Frozen caps: pass --read-protocol to load data/frozen_caps.json (from run_pilot).
+Frozen caps: pass --read-frozen-caps to load data/frozen_caps.json (from run_pilot).
   Do not recompute loose/tight batch budgets during compare. See protocol_caps.py.
 
 Usage (from paper1/):
@@ -911,9 +911,16 @@ def main() -> None:
     parser.add_argument("--loose", type=float, default=None, help="shared batch budget for *_loose strategies")
     parser.add_argument("--tight", type=float, default=None, help="shared batch budget for *_tight strategies")
     parser.add_argument(
+        "--read-frozen-caps",
+        action="store_true",
+        dest="read_frozen_caps",
+        help="read loose/tight batch caps from data/frozen_caps.json for current task count",
+    )
+    parser.add_argument(
         "--read-protocol",
         action="store_true",
-        help="read loose/tight batch caps from data/frozen_caps.json for current task count",
+        dest="read_frozen_caps",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--step-limit",
@@ -988,25 +995,25 @@ def main() -> None:
         "--pressure-init",
         type=float,
         default=None,
-        help=f"override BUDGET_PRESSURE_INIT (default {BUDGET_PRESSURE_INIT}; protocol used when --read-protocol)",
+        help=f"override BUDGET_PRESSURE_INIT (default {BUDGET_PRESSURE_INIT}; frozen caps used when --read-frozen-caps)",
     )
     parser.add_argument(
         "--pressure-max",
         type=float,
         default=None,
-        help=f"override PRESSURE_MAX ceiling (default {PRESSURE_MAX}; protocol used when --read-protocol)",
+        help=f"override PRESSURE_MAX ceiling (default {PRESSURE_MAX}; frozen caps used when --read-frozen-caps)",
     )
     parser.add_argument(
         "--tight-scale",
         type=float,
         default=1.0,
-        help="multiply tight batch cap after --read-protocol or --tight (diagnostic sweeps)",
+        help="multiply tight batch cap after --read-frozen-caps or --tight (diagnostic sweeps)",
     )
     parser.add_argument(
         "--loose-scale",
         type=float,
         default=1.0,
-        help="multiply loose batch cap after --read-protocol or --loose",
+        help="multiply loose batch cap after --read-frozen-caps or --loose",
     )
     parser.add_argument(
         "--no-run-guards",
@@ -1076,7 +1083,7 @@ def main() -> None:
     tight = args.tight
     pressure_init = args.pressure_init
     pressure_max = args.pressure_max
-    if args.read_protocol:
+    if args.read_frozen_caps:
         caps = read_protocol_caps(tasks_n)
         loose = caps.loose_batch
         tight = caps.tight_batch
@@ -1085,7 +1092,7 @@ def main() -> None:
         if pressure_max is None:
             pressure_max = caps.pressure_max
         print(
-            f"{tag('protocol', bold=False)} read n={tasks_n} "
+            f"{tag('frozen-caps', bold=False)} read n={tasks_n} "
             f"loose_batch={loose:.4f} tight_batch={tight:.4f} "
             f"pressure_init={pressure_init:.4f} pressure_max={pressure_max:.4f}",
             flush=True,

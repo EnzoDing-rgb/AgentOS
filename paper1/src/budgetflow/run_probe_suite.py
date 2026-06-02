@@ -45,7 +45,7 @@ def _compare_cmd(
         "budgetflow.run_mini_swe_compare",
         "--limit",
         str(limit),
-        "--read-protocol",
+        "--read-frozen-caps",
         "--jobs",
         str(jobs),
         "--strategies",

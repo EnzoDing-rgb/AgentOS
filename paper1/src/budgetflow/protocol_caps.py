@@ -1,9 +1,8 @@
 """Frozen compare caps — loaded from data/frozen_caps.json (written by run_pilot.py).
 
-Why not docs/protocol.md:
-  - Machine-readable JSON is the source of truth for --read-protocol.
-  - Pilot re-run overwrites this file; compare runs must not recompute caps ad hoc.
-  - Human runbook lives in docs/progress.md; constants live here + defaults.py.
+Machine-readable JSON is the source of truth for --read-frozen-caps.
+Pilot re-run overwrites this file; compare runs must not recompute caps ad hoc.
+Human runbook lives in docs/progress.md; constants live here + defaults.py.
 """
 
 from __future__ import annotations
@@ -135,7 +134,7 @@ def write_frozen_caps(
         "status": "FROZEN",
         "generated_at": generated_at,
         "generated_by": "run_pilot.py",
-        "note": "Compare --read-protocol reads batch_caps + pressure. Do not hand-edit during compare.",
+        "note": "Compare --read-frozen-caps reads batch_caps + pressure. Do not hand-edit during compare.",
         "scaffold": {
             "mini_swe_agent_commit": pinned_commit,
             "harness": "B — local_harness.py (Docker unavailable; not SWE-bench leaderboard comparable)",
