@@ -97,6 +97,48 @@ TIER_CONFIGS: dict[str, TierConfig] = {
     ),
 }
 
+class ModelCatalog:
+    """Central tier registry — single source for cheapest/strongest/tier=N lookups.
+
+    Strategy code asks for *what* it needs (cheapest, strongest, tier=2), not *which*
+    provider/model id.  This stops bugs where all_pro hardcodes tier 2 after a tier
+    pool change.
+    """
+
+    @staticmethod
+    def cheapest(backends: list) -> object:
+        """Return the cheapest (lowest-tier) backend from *backends*."""
+        ordered = sorted(backends, key=lambda b: b.tier)
+        return ordered[0]
+
+    @staticmethod
+    def strongest(backends: list) -> object:
+        """Return the strongest (highest-tier) backend from *backends*."""
+        ordered = sorted(backends, key=lambda b: b.tier)
+        return ordered[-1]
+
+    @staticmethod
+    def tier(backends: list, n: int) -> object:
+        """Return the backend whose tier == *n*, or the last available."""
+        return next((b for b in backends if b.tier == n), backends[-1])
+
+    @staticmethod
+    def protocol_for(backend_name: str) -> str:
+        """Return the declared action-protocol mode for *backend_name*.
+
+        Returns 'tool_call' or 'text_regex'.  Default: 'tool_call'.
+        """
+        cfg = TIER_CONFIGS.get(backend_name)
+        if cfg is None:
+            return "tool_call"
+        return "text_regex" if cfg.text_mode else "tool_call"
+
+    @staticmethod
+    def config_for(backend_name: str):
+        """Return the TierConfig for *backend_name* or None."""
+        return TIER_CONFIGS.get(backend_name)
+
+
 PROGRESS_TABLE: dict[Stage, dict[str, float]] = {
     Stage.LOCALIZATION: {
         TIER1_BACKEND: 0.50,

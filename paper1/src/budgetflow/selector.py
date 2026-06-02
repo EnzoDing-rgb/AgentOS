@@ -7,6 +7,16 @@ from .types import Backend, ProgressTable, Stage, TurnInfo
 
 
 @dataclass(frozen=True)
+class RouterDecision:
+    """Structured routing decision — why a tier was selected."""
+    backend: Backend
+    reason: str
+    scores: dict[str, float]
+    pressure: float
+    branch: str  # "selector" | "budget_only" | "workflow_level" | "all_flash" | "all_pro" | "all_tier2" | "all_t3"
+
+
+@dataclass(frozen=True)
 class SelectionDecision:
     backend: Backend
     score: float

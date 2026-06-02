@@ -82,8 +82,10 @@ These are real refactors, not optional notes:
 
 4. `BudgetAllocator`
    - Problem: budget logic is scattered across pilot caps, frozen caps, tight/loose rules, pressure, rescue, and stop-loss.
-   - Required shape now: historical prior loader and soft-cap recommendation; no complex runtime learner yet.
-   - Required shape later: active soft-cap/reallocation policy.
+   - Required shape: one module owns task budget estimate, soft cap, reallocation decision, and stop-loss decision.
+   - Required now: historical prior loader and soft-cap recommendation. Keep runtime wiring minimal until clean traces exist.
+   - Required later: active soft-cap/reallocation policy that uses early evidence and remaining global budget.
+   - It must replace pilot as the normal budgeting path. Pilot can remain as a diagnostic/ablation path only.
 
 5. `RunSpec`
    - Status: lower priority than the first four.
@@ -376,6 +378,8 @@ Acceptance criteria:
 ## P2: Automatic Budgeting
 
 Delay runtime Automatic Budgeting until the clean rerun is interpretable and historical ETL exists.
+
+Do not confuse `budgetflow_equal_weight` with Automatic Budgeting. `budgetflow_equal_weight` is only a stage-weight ablation: it keeps the same rescue/stop-loss parameters as `budgetflow_full` and changes only `w_i` to equal weights.
 
 When it is time, implement a small version:
 

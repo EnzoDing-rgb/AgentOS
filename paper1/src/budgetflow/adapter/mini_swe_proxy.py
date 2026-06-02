@@ -47,6 +47,7 @@ from .bash_stage import (
 )
 from .stall_guard import check_stagnation, normalize_bash_command
 from .message_utils import estimate_input_tokens, extract_bash_context
+from .protocol_adapter import ActionProtocolAdapter
 from .strategies import RoutingContext, choose_backend, stage_weight
 
 logger = logging.getLogger("budgetflow_litellm_model")
@@ -122,6 +123,28 @@ def _build_turn_trace(
     billable: float,
     response_ok: bool,
     error_type: str | None,
+    # --- P0 trace extension fields ---
+    provider: str | None = None,
+    model: str | None = None,
+    text_mode: bool = False,
+    protocol: str | None = None,
+    parser: str | None = None,
+    assistant_content_head: str | None = None,
+    tool_call_summary: dict | None = None,
+    parser_input_snippet: str | None = None,
+    parser_error_type: str | None = None,
+    parser_error_message: str | None = None,
+    provider_status_code: int | None = None,
+    provider_error_body: str | None = None,
+    provider_request_id: str | None = None,
+    reservation_id: str | None = None,
+    reserved_cost: float | None = None,
+    reservation_released: bool = False,
+    reservation_settled: bool = False,
+    router_reason: str | None = None,
+    router_scores: dict[str, float] | None = None,
+    router_pressure: float | None = None,
+    router_branch: str | None = None,
 ) -> dict:
     """Build a single turn-trace dict for observability (no side effects)."""
     trace: dict[str, Any] = {
@@ -149,6 +172,32 @@ def _build_turn_trace(
         "billable_cost": round(billable, 6),
         "response_ok": response_ok,
         "error_type": error_type,
+        # P0: provider/model identity
+        "provider": provider,
+        "model": model,
+        # P0: protocol/parser evidence
+        "text_mode": text_mode,
+        "protocol": protocol,
+        "parser": parser,
+        "assistant_content_head": assistant_content_head,
+        "tool_call_summary": tool_call_summary,
+        "parser_input_snippet": parser_input_snippet,
+        "parser_error_type": parser_error_type,
+        "parser_error_message": parser_error_message,
+        # P0: provider error evidence
+        "provider_status_code": provider_status_code,
+        "provider_error_body": provider_error_body,
+        "provider_request_id": provider_request_id,
+        # P0: reservation lifecycle
+        "reservation_id": reservation_id,
+        "reserved_cost": reserved_cost,
+        "reservation_released": reservation_released,
+        "reservation_settled": reservation_settled,
+        # P0: router reasoning
+        "router_reason": router_reason,
+        "router_scores": router_scores,
+        "router_pressure": router_pressure,
+        "router_branch": router_branch,
     }
     if adaptive is not None:
         trace["adaptive_ttl"] = getattr(adaptive, "ttl_steps_remaining", None)
@@ -160,6 +209,76 @@ def _build_turn_trace(
             trace["rescue_window_remaining"] = getattr(rescue, "window_remaining", None)
             trace["rescue_window_opened"] = getattr(rescue, "window_opened", None)
     return trace
+
+
+def _router_trace_fields(routing) -> dict[str, Any]:
+    """Extract router reasoning fields from RoutingContext.last_decision."""
+    d = routing.last_decision
+    if d is None:
+        return {}
+    return {
+        "router_reason": d.reason,
+        "router_scores": d.scores,
+        "router_pressure": d.pressure,
+        "router_branch": d.branch,
+    }
+
+
+def _provider_trace_fields(backend_name: str) -> dict[str, Any]:
+    """Extract provider/model identity from TierConfig."""
+    from ..defaults import ModelCatalog
+    cfg = ModelCatalog.config_for(backend_name)
+    if cfg is None:
+        return {}
+    return {
+        "provider": cfg.provider,
+        "model": cfg.model,
+    }
+
+
+def _protocol_trace_fields(backend_name: str, text_mode: bool) -> dict[str, Any]:
+    """Extract protocol/parser evidence for trace."""
+    decision = ActionProtocolAdapter.resolve(backend_name)
+    return {
+        "text_mode": text_mode,
+        "protocol": decision.protocol,
+        "parser": decision.parser,
+    }
+
+
+def _safe_content_head(response, max_chars: int = 300) -> str | None:
+    """First *max_chars* of assistant text content, redacted of API keys."""
+    try:
+        content = response.choices[0].message.content or ""
+        return content[:max_chars]
+    except Exception:
+        return None
+
+
+def _tool_call_summary(response) -> dict | None:
+    """Count + function names of tool calls in response."""
+    try:
+        tool_calls = response.choices[0].message.tool_calls or []
+        if not tool_calls:
+            return None
+        names = [tc.function.name for tc in tool_calls if hasattr(tc, "function")]
+        return {"count": len(tool_calls), "names": names}
+    except Exception:
+        return None
+
+
+def _parser_input_snippet(response, text_mode: bool) -> str | None:
+    """What the parser received: text_regex→content head, tool_call→summary JSON."""
+    import json
+    if text_mode:
+        return _safe_content_head(response, max_chars=500)
+    tc = _tool_call_summary(response)
+    if tc is None:
+        return None
+    try:
+        return json.dumps(tc)
+    except Exception:
+        return str(tc)
 
 
 class BudgetFlowLitellmModel:
@@ -239,7 +358,7 @@ class BudgetFlowLitellmModel:
             workflow_id=self.workflow_id,
             step_index=self.step_index,
             stage=stage,
-            w_i=1.0 if self.routing.strategy in ("stage_blind", "budgetflow_auto_v2") else stage_weight(stage),
+            w_i=1.0 if self.routing.strategy in ("stage_blind", "budgetflow_equal_weight", "budgetflow_auto_v2") else stage_weight(stage),
             context_len=input_tokens,
             tool_name="bash",
         )
@@ -312,6 +431,7 @@ class BudgetFlowLitellmModel:
                 )
         if self.routing.adaptive is not None and self.routing.strategy in (
             "budgetflow_full",
+            "budgetflow_equal_weight",
             "budgetflow_auto_v2",
             "stage_blind",
         ):
@@ -415,6 +535,13 @@ class BudgetFlowLitellmModel:
                         billable=0.0,
                         response_ok=False,
                         error_type=error_type,
+                        **_provider_trace_fields(backend.name),
+                        **_protocol_trace_fields(backend.name, text_mode=ActionProtocolAdapter.resolve(backend.name).protocol == "text_regex"),
+                        **_router_trace_fields(self.routing),
+                        provider_status_code=getattr(exc, "status_code", None),
+                        provider_error_body=str(exc)[:500],
+                        reservation_id=self._last_reservation_id,
+                        reservation_released=True,
                     ))
                 if not _is_provider_unavailable(exc):
                     raise
@@ -482,6 +609,17 @@ class BudgetFlowLitellmModel:
                     billable=billable,
                     response_ok=True,
                     error_type=type(exc).__name__,
+                    **_provider_trace_fields(backend.name),
+                    **_protocol_trace_fields(backend.name, text_mode),
+                    **_router_trace_fields(self.routing),
+                    assistant_content_head=_safe_content_head(response),
+                    tool_call_summary=_tool_call_summary(response),
+                    parser_input_snippet=_parser_input_snippet(response, text_mode),
+                    parser_error_type=type(exc).__name__,
+                    parser_error_message=str(exc)[:500],
+                    reservation_id=reservation_id,
+                    reserved_cost=round(actual_cost, 6),
+                    reservation_settled=True,
                 ))
             raise
         message["extra"] = {
@@ -519,6 +657,15 @@ class BudgetFlowLitellmModel:
                 billable=billable,
                 response_ok=True,
                 error_type=None,
+                **_provider_trace_fields(backend.name),
+                **_protocol_trace_fields(backend.name, text_mode),
+                **_router_trace_fields(self.routing),
+                assistant_content_head=_safe_content_head(response),
+                tool_call_summary=_tool_call_summary(response),
+                parser_input_snippet=_parser_input_snippet(response, text_mode),
+                reservation_id=reservation_id,
+                reserved_cost=round(actual_cost, 6),
+                reservation_settled=True,
             ))
         return message
 
@@ -576,7 +723,7 @@ class BudgetFlowLitellmModel:
         Turn cap: "making progress but too slowly → force upgrade."
         - T1:25, T2:40, T3:60 turns
         """
-        if self.routing.strategy not in ("budgetflow_full", "budgetflow_auto_v2", "stage_blind"):
+        if self.routing.strategy not in ("budgetflow_full", "budgetflow_equal_weight", "budgetflow_auto_v2", "stage_blind"):
             return backend
         ordered = self.routing.backends
         if len(ordered) < 2:
@@ -628,7 +775,7 @@ class BudgetFlowLitellmModel:
         start_index = ordered.index(backend)
         min_tier = 1
         adaptive = self.routing.adaptive
-        if adaptive is not None and self.routing.strategy in ("budgetflow_full", "budgetflow_auto_v2", "stage_blind"):
+        if adaptive is not None and self.routing.strategy in ("budgetflow_full", "budgetflow_equal_weight", "budgetflow_auto_v2", "stage_blind"):
             min_tier = adaptive.min_tier_for_reserve()
         reserve_out = None
         last_reason: str | None = None
@@ -758,8 +905,8 @@ class BudgetFlowLitellmModel:
             raise
 
     def _use_text_mode(self, backend_name: str) -> bool:
-        config = TIER_CONFIGS.get(backend_name)
-        return bool(config and config.text_mode) or os.environ.get("BF_GPT_TEXT_MODE") == "1"
+        decision = ActionProtocolAdapter.resolve(backend_name)
+        return decision.protocol == "text_regex"
 
     def _parse_actions(self, response, *, text_mode: bool = False, backend_tier: int | None = None) -> list[dict]:
         stop_after = _format_error_stop_after(backend_tier)

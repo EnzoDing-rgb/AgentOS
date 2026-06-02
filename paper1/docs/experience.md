@@ -161,7 +161,7 @@ paper 当前最重要的证据不是“大表格”，而是小矩阵里的 fail
 
 ### 我们看到了什么现象
 
-实验中出现过多种模型路径：Qwen Flash、Qwen Coder、Qwen Max、GPT-5.3 Codex、GPT-5.5。
+实验中出现过多种模型路径：Qwen Flash、Qwen Coder、Qwen Max、GPT-5.3 Codex、GPT-5.4、GPT-5.5。
 
 低 tier 模型容易出现：
 
@@ -187,21 +187,21 @@ paper 当前最重要的证据不是“大表格”，而是小矩阵里的 fail
 
 当前 active model line 收敛到三档：
 
-- T1 = Coder Flash
-- T2 = Coder Plus
-- T3 = GPT-5.3 Codex
+- T1 = `qwen3-coder-flash`
+- T2 = `qwen3-coder-plus`
+- T3 = `GPT-5.4`
 
-GPT-5.5 从 active code path 移除。历史 artifact 可以保留，但当前实验不路由到 GPT-5.5。
+GPT-5.3 Codex 已经不再暴露接口，只能作为历史 artifact。GPT-5.5 从 active code path 移除。历史 artifact 可以保留，但当前实验不路由到 GPT-5.5。
 
 ### 得出的结论
 
 BudgetFlow 需要一个清晰、稳定、可解释的 tier line。否则失败时无法判断是 policy 问题还是 model pool 设计问题。
 
-## 6. GPT-5.3 Codex 与 GPT-5.5 的经验
+## 6. GPT-5.3 Codex、GPT-5.4 与 GPT-5.5 的经验
 
 ### 我们看到了什么现象
 
-GPT-5.3 Codex 在当前项目里是最强 practical anchor。GPT-5.5 有历史 ceiling probe 价值，但成本高，不适合当前常规实验路径。
+GPT-5.3 Codex 曾经是当前项目里的 practical anchor，但现在已经不可用。GPT-5.4 是新的 T3 anchor。GPT-5.5 有历史 ceiling probe 价值，但成本高，不适合当前常规实验路径。
 
 ### 发现了什么问题
 
@@ -209,16 +209,17 @@ GPT-5.3 Codex 在当前项目里是最强 practical anchor。GPT-5.5 有历史 c
 
 ### 如何解决的
 
-当前统一写法：**GPT-5.3 Codex**。
+当前统一写法：**GPT-5.4**。
 
 当前 active tier：
 
-- GPT-5.3 Codex = T3。
+- GPT-5.4 = T3。
+- GPT-5.3 Codex = 历史不可用模型，只能解释旧 artifact。
 - GPT-5.5 = 移出当前 code path。
 
 ### 得出的结论
 
-强模型最有价值的用途是诊断和控制变量。GPT-5.3 Codex 用来判断任务/协议/路由是否有上界可达性。GPT-5.5 暂时不参与当前推理链。
+强模型最有价值的用途是诊断和控制变量。GPT-5.4 用来判断任务/协议/路由是否有上界可达性，但它必须先通过 action protocol/trace gate。GPT-5.5 暂时不参与当前推理链。
 
 ## 7. 小模型/小 agent 的经验
 
@@ -353,7 +354,7 @@ Automatic Budgeting 很重要，但应该由证据触发。现在先跑 3x3，�
 - `next_action` 改成 forensic axis 优先。
 - active model pool 改成 T1/T2/T3。
 - GPT-5.5 active path 清除。
-- GPT-5.3 Codex 作为 T3。
+- GPT-5.4 作为 T3。
 - `3x3` preset 接入 compare runner。
 - focused tests 通过：37 passed。
 
@@ -373,7 +374,7 @@ Automatic Budgeting 很重要，但应该由证据触发。现在先跑 3x3，�
 
 ### 12.3 强模型是诊断工具
 
-GPT-5.3 Codex 不只是更强模型，也是 control/ceiling。它帮助判断任务能不能被强模型解决，以及 BudgetFlow 是否把强模型用在了正确时机。
+GPT-5.4 不只是更强模型，也是 control/ceiling。它帮助判断任务能不能被强模型解决，以及 BudgetFlow 是否把强模型用在了正确时机。前提是先修好 action protocol，否则强模型信号会被 parser failure 污染。
 
 ### 12.4 预算路由需要稳定 tier line
 
@@ -393,3 +394,125 @@ Automatic Budgeting 是重要功能，但实现时机要看失败轴。先诊断
 4. 得出了什么结论和经验。
 
 不要写空话。不要写绕话。直接写证据和判断。
+
+## 14. Agent Skills / Claude Code 实践经验
+
+### 我们看到了什么现象
+
+Matt Pocock Skills 系统里有几条实践对本项目有价值：
+
+- 用 `CLAUDE.md` / `CONTEXT.md` 固化项目约束和领域词汇。
+- 用 `/diagnose` 思路先建反馈回路，再猜原因。
+- 用 `/handoff` 思路把会话状态压缩成交接文件。
+- 用小而可组合的能力单元，不让一个流程黑箱接管全部开发。
+- 周期性做架构审计，防止 agent 加速代码熵增。
+
+### 发现了什么问题
+
+这些实践不能直接替代 BudgetFlow 的工程实现。它们不是新算法，也不是 Automatic Budgeting。
+
+但它们能修复本项目反复出现的工程问题：
+
+- 会话信息散在聊天里，下一轮 agent 容易丢上下文。
+- T1/T2/T3、action protocol、trace、rescue、headroom 等词没有统一定义。
+- 当前最严重 bug 是协议/解析不可观测，符合 `/diagnose` 说的“先建反馈回路”。
+- 重构边界如果不写清楚，agent 容易把局部修复做成新的硬编码。
+
+### 如何解决
+
+把有价值的部分固化成项目文件和代码，不靠临时 prompt：
+
+- 建项目根目录 `CLAUDE.md`，给 Claude Code 默认加载，写清楚当前 tiers、P0 trace、禁止事项、常用测试命令。
+- 建 `paper1/docs/CONTEXT.md`，定义 BudgetFlow 领域词汇：tier contract、action protocol、router decision、budget prior、soft cap、rescue、headroom、clean row、protocol fail、equal-weight ablation、Automatic Budgeting。
+- 继续维护 `paper1/docs/handoff.md`，只写下一步执行状态，不重复 PRD/实验表。
+- 把 observability gate 写进代码和测试：没有 turn trace 的 parser failure 不算可诊断。
+- 对重构保持小步：先做 `ModelCatalog / TierRegistry`、`ActionProtocolAdapter`、`RouterDecision`、`BudgetAllocator` 四个必要 seam，不重写 runner。
+
+### 得出的结论
+
+这篇文章的价值不是“安装一堆 skills”，而是提醒我们把隐性协作规则变成项目资产。
+
+当前最值得立刻做的是：
+
+1. 建 `CLAUDE.md`，约束 Claude Code。
+2. 建 `CONTEXT.md`，统一 BudgetFlow 语言。
+3. 用 `/diagnose` 的反馈回路标准推进 P0 trace。
+4. 用 `/handoff` 的思路保持 `handoff.md` 可执行、短、最新。
+
+不需要现在安装额外 skills。需要的是把这些规则固化到仓库和测试里。
+
+## 15. Agent Patterns Applied to BudgetFlow
+
+评估 6 个 agent 工程模式对 BudgetFlow 的适用性，每个映射到具体执行方式。
+
+### 15.1 小而可组合
+
+**适用。** BudgetFlow 不搞大流程 agent。拆成独立模块：
+
+- trace → `_build_turn_trace` + helper functions
+- protocol adapter → `adapter/protocol_adapter.py`
+- tier registry → `ModelCatalog` in `defaults.py`
+- router decision → `RouterDecision` dataclass in `selector.py`
+- budget allocator → `historical_etl.py` (data), runtime shell TBD
+
+执行方式：固化成代码架构。每个模块有单一职责、独立测试。
+
+### 15.2 /diagnose 反馈回路
+
+**非常适用。** GPT-5.4 parse bug 的修法：
+
+1. 先跑单题 probe + `--trace-turns`（`gpt54_protocol_probe`）。
+2. 从 trace 提取：`assistant_content_head`、`parser`、`parser_error_type`、`parser_error_message`。
+3. 判据明确后才修 parser/prompt。
+4. 修复结果固化成测试（`test_trace_fields.py` 已验证 trace schema）。
+
+当前状态：trace schema 就绪，protocol adapter 就绪。等 probe 跑完才有 parser 修复判据。
+
+### 15.3 TDD 垂直切片
+
+**适用。** 四个重构（ModelCatalog、ProtocolAdapter、RouterDecision、BudgetAllocator）的切法：
+
+- ModelCatalog：先写 `test_all_pro_picks_tier3_not_tier2`（失败）→ 实现 `ModelCatalog.strongest()` → 通过。
+- ProtocolAdapter：先写 `test_tier3_is_text_regex` → 实现 `ActionProtocolAdapter.resolve()` → 通过。
+- RouterDecision：先写 `test_all_pro_records_decision` → 实现 `RouterDecision` + `ctx.last_decision` → 通过。
+- BudgetAllocator：等 P0 trace clean 后再切。
+
+每个切片 = 一个失败测试 + 最小实现。不要一次性写完四个重构再跑测试。
+
+### 15.4 /handoff
+
+**已在做。** handoff.md 的维护规则：
+
+- 不重复所有历史。历史在 progress.md 和 run 登记表。
+- 只写：当前判断、边界条件、交付物列表、禁止事项。
+- 执行方式：由 agent 在每次实验后更新。
+
+### 15.5 /improve-codebase-architecture
+
+**适用，但不是现在。** 触发时机：P0 trace + protocol + tier semantics 全部 clean 后。
+
+审计问题：
+- `ModelCatalog` 是否真正消除了硬编码 tier 查找？
+- `ActionProtocolAdapter` 是否让 parser 选择变成显式声明？
+- `RouterDecision` 是否在所有路由分支都有 reason？
+- `_build_turn_trace` 18 个新字段是否形成深模块（接口简单、实现深）？
+
+等 clean_gold2 probe 跑完再做。不要提前扫。
+
+### 15.6 CONTEXT.md / 共享语言
+
+**已完成。** `paper1/docs/CONTEXT.md` 定义：
+
+- tier contract
+- action protocol
+- router decision
+- budget prior
+- soft cap
+- rescue
+- headroom
+- clean row
+- protocol fail
+- equal-weight ablation
+- Automatic Budgeting
+
+每轮 agent 会话先读 CONTEXT.md 对齐语言。不靠临时 prompt 解释术语。

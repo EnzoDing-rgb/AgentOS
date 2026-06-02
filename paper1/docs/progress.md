@@ -27,7 +27,7 @@
 
 - **已改：`--read-protocol` → `--read-frozen-caps`。** 旧名保留为静默 alias，不显示在 `--help` 中。
 - **已跑：5×3（`policy_5x3-2`）。** 3 tasks × 5 strategies = 15 rows，`--read-frozen-caps`，`--jobs 5`。见下方 Run 登记。
-- **已分析：auto_v2 不需要单独跑。** `budgetflow_full` 已经有 evidence rescue、stop-loss、adaptive routing。auto_v2 只是 flat w_i + 更保守的 rescue 参数，不是新机制。保留代码作为备选 ablation。
+- **已分析：equal-weight ablation 不需要优先跑。** `budgetflow_full` 已经有 evidence rescue、stop-loss、adaptive routing。`budgetflow_equal_weight` 只把 `w_i` 打平，用同一套 rescue 参数，回答 stage weight 先验是否有效。
 - **已分析：7×15 历史数据（`policy_5x7-0`）。** 提取了 5 道题的相对难度系数，见下方"任务难度系数"。
 - **已确认：frozen caps 同题同源。** pilot（`run_pilot.py`）用的 3 道题跟 5×3 完全相同，cap 无 mismatch。但 `all_pro` 在 pilot 中也用的 T2，所以 cap 是 T2 水平。
 - 已确认：AiCode007 上游下架/不可用旧 GPT-5.3 Codex。
@@ -220,19 +220,19 @@ all_pro                | PASS           | FAIL rep_fail  | FAIL rep_fail
 
 ---
 
-## auto_v2 分析
+## Equal-weight ablation 分析
 
 `budgetflow_full` 已包含 evidence rescue、stop-loss、adaptive routing、adaptive starting tier。  
-`budgetflow_auto_v2` 不是"加新机制"，只是改了两个参数：
+`budgetflow_equal_weight` 不是"加新机制"，只是 stage weight 消融：
 
-| | budgetflow_full | budgetflow_auto_v2 |
+| | budgetflow_full | budgetflow_equal_weight |
 |---|---|---|
 | w_i | repair-heavy (1/3/2.5) | flat (1/1/1) |
-| rescue trigger_turns | 6 | 12 |
-| rescue window_turns | 3 | 2 |
-| rescue min_headroom | 0.18 | 0.30 |
+| rescue trigger_turns | 6 | 6 |
+| rescue window_turns | 3 | 3 |
+| rescue min_headroom | 0.18 | 0.18 |
 
-**保留代码作为备选 ablation。** 如果 `budgetflow_full` 信号强，下一轮跑 `budgetflow_auto_v2_tight` 回答：flat w_i 比 repair-heavy w_i 差还是好？
+**保留代码作为备选 ablation。** 如果 `budgetflow_full` 信号强，下一轮跑 `budgetflow_equal_weight_tight` 回答：flat w_i 比 repair-heavy w_i 差还是好？
 
 ---
 
@@ -279,7 +279,7 @@ Rubric 弱，**不能**当 resolved 结论。
 - 把 Stage-A INVALID 3×3 写进主表
 - `workflow_steps_ok` 当 resolved
 - eval 上 tune progress_table
-- 拿 `budgetflow_auto_v2` 当独立机制（它只是 `budgetflow_full` 的 w_i + rescue 参数变体）
+- 拿 `budgetflow_equal_weight` 当独立机制（它只是 `budgetflow_full` 的 w_i 消融）
 
 ---
 
@@ -290,5 +290,5 @@ Rubric 弱，**不能**当 resolved 结论。
 - `run_pilot.py` — 写 `data/frozen_caps.json`（跑一次，续用）
 - `protocol_caps.py` — `--read-frozen-caps` 读 JSON（`derive_batch_caps` + `write_frozen_caps`）
 - `lite_tasks.py` — easy 5 + medium 15 + pilot 3 固定列表
-- `adaptive_routing.py` — `AdaptiveRoutingState` + `EvidenceRescueState`（`budgetflow_full` 和 `auto_v2` 共用）
+- `adaptive_routing.py` — `AdaptiveRoutingState` + `EvidenceRescueState`（`budgetflow_full` 和 `budgetflow_equal_weight` 共用）
 - `stall_guard.py` + `run_trace.publish_live_progress` — anti-stall + 心跳与 route 同步

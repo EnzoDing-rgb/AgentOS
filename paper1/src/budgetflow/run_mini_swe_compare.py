@@ -84,11 +84,11 @@ DEFAULT_STRATEGIES: tuple[CompareStrategy, ...] = (
     CompareStrategy("budget_only_tight", "budget_only", "tight"),
     CompareStrategy("stage_blind_tight", "stage_blind", "tight"),
     CompareStrategy("budgetflow_full_tight", "budgetflow_full", "tight"),
-    CompareStrategy("budgetflow_auto_v2_tight", "budgetflow_auto_v2", "tight"),
+    CompareStrategy("budgetflow_equal_weight_tight", "budgetflow_equal_weight", "tight"),
     CompareStrategy("budget_only_loose", "budget_only", "loose"),
     CompareStrategy("stage_blind_loose", "stage_blind", "loose"),
     CompareStrategy("budgetflow_full_loose", "budgetflow_full", "loose"),
-    CompareStrategy("budgetflow_auto_v2_loose", "budgetflow_auto_v2", "loose"),
+    CompareStrategy("budgetflow_equal_weight_loose", "budgetflow_equal_weight", "loose"),
     CompareStrategy("all_pro", "all_pro", None),
 )
 
@@ -104,6 +104,8 @@ _STRATEGY_ALIASES = {
     "all_flash_loose": "all_t1_loose",
     "all_gpt53": "all_t3",
     "all_gpt54": "all_t3",
+    "budgetflow_auto_v2_tight": "budgetflow_equal_weight_tight",
+    "budgetflow_auto_v2_loose": "budgetflow_equal_weight_loose",
 }
 
 
@@ -121,9 +123,9 @@ def _required_backends_for_strategies(strategies: tuple[CompareStrategy, ...]) -
     for cfg in strategies:
         if cfg.routing == "all_flash":
             required.add(TIER1_BACKEND)
-        elif cfg.routing in {"all_tier2", "all_pro"}:
+        elif cfg.routing in {"all_tier2"}:
             required.add(TIER2_BACKEND)
-        elif cfg.routing == "all_t3":
+        elif cfg.routing in {"all_pro", "all_t3"}:
             required.add(TIER3_BACKEND)
         else:
             required.update({TIER1_BACKEND, TIER2_BACKEND, TIER3_BACKEND})
@@ -134,8 +136,8 @@ def _w_i_profile_for_record(routing: str) -> str:
     """JSONL field: stage_blind forces w_i=1 at query time regardless of BF_W_PROFILE."""
     if routing == "stage_blind":
         return "flat_forced"
-    if routing == "budgetflow_auto_v2":
-        return "auto_v2"
+    if routing in {"budgetflow_equal_weight", "budgetflow_auto_v2"}:
+        return "equal_weight"
     return active_w_i_profile_name()
 
 
@@ -882,7 +884,7 @@ DIAGNOSTIC_3X3_IDS = (
 DIAGNOSTIC_3X3_STRATEGIES = (
     "budget_only_tight",
     "budgetflow_full_tight",
-    "budgetflow_auto_v2_tight",
+    "budgetflow_equal_weight_tight",
 )
 
 

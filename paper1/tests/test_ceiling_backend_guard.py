@@ -62,12 +62,12 @@ def test_all_tier2_still_selects_t2_when_t1_is_absent() -> None:
     assert backend.name == TIER2_BACKEND
 
 
-def test_all_pro_selects_coder_plus() -> None:
+def test_all_pro_selects_strongest_tier() -> None:
     ctx = build_routing_context("all_pro", build_compare_backends(), budget_pressure=0.01)
 
     backend = choose_backend(ctx, _turn(), {})
 
-    assert backend.name == TIER2_BACKEND
+    assert backend.name == TIER3_BACKEND
 
 
 def test_all_t3_uses_t3_backend() -> None:

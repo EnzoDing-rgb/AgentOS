@@ -108,13 +108,6 @@ class EvidenceRescueState:
 
 
 def rescue_state_for_strategy(strategy_name: str) -> EvidenceRescueState:
-    if strategy_name == "budgetflow_auto_v2":
-        return EvidenceRescueState(
-            trigger_turns=12,
-            window_turns=2,
-            stop_loss_turns=16,
-            min_headroom_frac=0.30,
-        )
     return EvidenceRescueState()
 
 
@@ -266,7 +259,7 @@ class AdaptiveRoutingRegistry:
         self._states: dict[str, AdaptiveRoutingState] = {}
 
     def for_strategy(self, strategy_name: str, routing: str) -> AdaptiveRoutingState | None:
-        if routing not in ("budgetflow_full", "budgetflow_auto_v2", "stage_blind"):
+        if routing not in ("budgetflow_full", "budgetflow_equal_weight", "budgetflow_auto_v2", "stage_blind"):
             return None
         with self._lock:
             state = self._states.get(strategy_name)

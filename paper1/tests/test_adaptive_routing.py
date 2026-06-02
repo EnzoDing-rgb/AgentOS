@@ -190,20 +190,23 @@ def test_evidence_rescue_stop_loss_after_window_and_patience() -> None:
     assert rescue.should_stop_loss(gold_edited=True)
 
 
-def test_auto_v2_rescue_waits_longer_and_uses_shorter_t3_window() -> None:
+def test_equal_weight_uses_same_rescue_parameters_as_budgetflow_full() -> None:
     current = rescue_state_for_strategy("budgetflow_full")
-    v2 = rescue_state_for_strategy("budgetflow_auto_v2")
+    equal_weight = rescue_state_for_strategy("budgetflow_equal_weight")
 
-    assert v2.trigger_turns > current.trigger_turns
-    assert v2.window_turns < current.window_turns
-    assert v2.stop_loss_turns > current.stop_loss_turns
-    assert v2.min_headroom_frac > current.min_headroom_frac
+    assert equal_weight.trigger_turns == current.trigger_turns
+    assert equal_weight.window_turns == current.window_turns
+    assert equal_weight.stop_loss_turns == current.stop_loss_turns
+    assert equal_weight.min_headroom_frac == current.min_headroom_frac
+    assert equal_weight.rescue_tier == current.rescue_tier
 
 
-def test_auto_v2_rescue_targets_t3_conservatively() -> None:
-    v2 = rescue_state_for_strategy("budgetflow_auto_v2")
+def test_legacy_auto_v2_alias_uses_equal_weight_rescue_parameters() -> None:
+    current = rescue_state_for_strategy("budgetflow_full")
+    legacy = rescue_state_for_strategy("budgetflow_auto_v2")
 
-    assert v2.rescue_tier == 3
-    assert v2.trigger_turns == 12
-    assert v2.window_turns == 2
-    assert v2.min_headroom_frac == 0.30
+    assert legacy.trigger_turns == current.trigger_turns
+    assert legacy.window_turns == current.window_turns
+    assert legacy.stop_loss_turns == current.stop_loss_turns
+    assert legacy.min_headroom_frac == current.min_headroom_frac
+    assert legacy.rescue_tier == current.rescue_tier
