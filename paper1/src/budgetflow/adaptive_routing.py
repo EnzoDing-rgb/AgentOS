@@ -15,6 +15,8 @@ from .defaults import (
     ADAPTIVE_WEAK_RESOLVE_MAX,
     ADAPTIVE_WINDOW,
     PRESSURE_MAX,
+    TIER4_GPT53_BACKEND,
+    active_t4_backend_name,
 )
 from .types import Stage
 
@@ -109,6 +111,13 @@ class EvidenceRescueState:
 
 def rescue_state_for_strategy(strategy_name: str) -> EvidenceRescueState:
     if strategy_name == "budgetflow_auto_v2":
+        if active_t4_backend_name() == TIER4_GPT53_BACKEND:
+            return EvidenceRescueState(
+                trigger_turns=12,
+                window_turns=2,
+                stop_loss_turns=16,
+                min_headroom_frac=0.30,
+            )
         return EvidenceRescueState(
             trigger_turns=8,
             window_turns=4,

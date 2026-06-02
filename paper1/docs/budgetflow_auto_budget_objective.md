@@ -207,6 +207,12 @@ Soft budget implementation:
 - Per-task experiments can keep a soft cap while allowing a bounded overrun when a turn is already in flight or evidence justifies one more step.
 - `scripts/run-auto-v2-goldpass5.sh` uses `--per-task-cap 3000 --max-overrun 300`.
 
+Expensive T4 rule:
+
+- If regular T4 is Qwen coder-plus, auto_v2 may open a short T4 rescue window after concrete repair evidence.
+- If regular T4 is `gpt-5.3-codex`, auto_v2 must be more conservative: wait for more repair evidence, use a shorter rescue window, and require more remaining budget headroom.
+- This is the key automatic-budget behavior: expensive models are not banned, but they are only unlocked after evidence says the task is worth rescuing.
+
 ## 8. Evaluation Guardrails
 
 Evaluation hardness 是第一优先级。
