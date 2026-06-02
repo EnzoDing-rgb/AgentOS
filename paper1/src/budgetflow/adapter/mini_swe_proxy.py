@@ -281,6 +281,36 @@ def _parser_input_snippet(response, text_mode: bool) -> str | None:
         return str(tc)
 
 
+def _try_extract_json_command(content: str) -> str | None:
+    """Extract a bash command from {"command": "..."} JSON embedded in prose.
+
+    GPT-5.4 sometimes emits JSON-format commands instead of fenced blocks.
+    Returns the unescaped command string, or None if no JSON command found.
+    """
+    import json
+    import re
+    # Find {"command": ...} patterns.  Match the string value with \-escapes.
+    for m in re.finditer(r'\{"command"\s*:\s*"((?:[^"\\]|\\.)*)"\}', content):
+        try:
+            return json.loads(m.group(0))["command"]
+        except (json.JSONDecodeError, KeyError):
+            continue
+    # Also try [bash] {"command": "..."} variant
+    for m in re.finditer(r'\[bash\]\s*\{[^}]*"command"\s*:\s*"((?:[^"\\]|\\.)*)"[^}]*\}', content):
+        try:
+            inner = re.search(r'\{[^}]*"command"\s*:\s*"((?:[^"\\]|\\.)*)"[^}]*\}', m.group(0))
+            if inner:
+                return json.loads(inner.group(0))["command"]
+        except (json.JSONDecodeError, KeyError):
+            continue
+    return None
+
+
+# Canonical regex for text-mode bash command extraction.
+# Matches: ```mswea_bash_command, ```bash, ```sh
+_TEXT_ACTION_REGEX = r"```(?:mswea_bash_command|bash|sh)\s*\n(.*?)\n```"
+
+
 class BudgetFlowLitellmModel:
     """mini-SWE-agent Model: BudgetFlow governor + spark/flash/pro tier pool."""
 
@@ -915,10 +945,21 @@ class BudgetFlowLitellmModel:
             try:
                 actions = parse_regex_actions(
                     content,
-                    action_regex=r"```mswea_bash_command\s*\n(.*?)\n```",
+                    action_regex=_TEXT_ACTION_REGEX,
                     format_error_template=self.format_error_template,
                 )
+                self._format_error_streak = 0
+                return actions
             except FormatError:
+                # Fallback: try JSON {"command": "..."} extraction for GPT-5.4
+                json_cmd = _try_extract_json_command(content)
+                if json_cmd is not None:
+                    logger.info(
+                        "text_regex fallback: extracted JSON command for %s step=%d",
+                        self.workflow_id, self.step_index,
+                    )
+                    self._format_error_streak = 0
+                    return [{"command": json_cmd}]
                 self._format_error_streak += 1
                 if self._format_error_streak >= stop_after:
                     raise BudgetFlowStagnationError(
@@ -928,8 +969,6 @@ class BudgetFlowLitellmModel:
                         no_progress_streak=self._format_error_streak,
                     )
                 raise
-            self._format_error_streak = 0
-            return actions
 
         tool_calls = response.choices[0].message.tool_calls or []
         if tool_calls:
