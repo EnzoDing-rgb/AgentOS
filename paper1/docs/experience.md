@@ -2,6 +2,50 @@
 
 持续更新文件。目标：把烧掉的 token、实验成本、调研结论沉淀成可复用经验。即使 paper 最后失败，这里也要留下有价值的判断框架和工程经验。
 
+## 0. HPC 运行环境闸门
+
+当前实验环境已经迁移到 HPC。HPC 的价值是 CPU 任务多、并行空间更大；GPU 暂时不是本论文实验的关键资源。
+
+`/Lishun` 是 NFS：持久，但小文件读写慢。`/tmp` 是本机临时盘：快，但不持久。模型实验、harness、pip、worktree、trace 都会产生大量小文件，所以运行前必须显式设置：
+
+```bash
+export TMPDIR=/tmp
+export PIP_CACHE_DIR=/Lishun/.cache/pip
+```
+
+原则：
+
+- 临时构建、pytest tmp、解压、短生命周期 scratch 优先走 `/tmp`。
+- pip 下载缓存走 `/Lishun/.cache/pip`，避免重复下载且不把缓存打到临时盘。
+- 实验结果、JSONL、报告、最终 trace 必须落在 `/Lishun` 下，避免 `/tmp` 清理后丢证据。
+- 如果出现大量小文件 I/O 变慢，先检查是否误把临时目录留在 NFS。
+
+Compare runner 的并行模型：
+
+- 单个 policy 内部必须顺序跑任务，因为同一个 policy 共享一个 batch-level `BudgetGovernor`。
+- 不同 policy 之间可以并行跑；`run_mini_swe_compare --jobs N` 会让多个 policy 并行推进，并用 git worktree 做 repo 隔离。
+- 因此小规模 sanity probe 可以优先并行 policy，而不是把所有 task/policy 完全串行跑完。并行度先保守设为 3-4，确认 provider、worktree、harness 稳定后再扩大。
+
+容器和 cgroup 风险：
+
+- 当前 HPC shell 运行在 Kubernetes/Docker 容器里。`cgroup` 是 Linux kernel 的资源分组和限制机制，容器用它限制/统计 CPU、内存、进程等资源。
+- `exit 137` 表示进程收到 `SIGKILL`，通常是外部杀进程，不是 Python 正常异常。需要先查 `memory.failcnt`、`memory.max_usage_in_bytes`、`dmesg`、runner log，再判断是不是 OOM。
+- 如果 cgroup 没有 OOM 证据，优先按“容器/session/平台外部中断”处理。这是持久运行风险，不是一次实验结果。
+- 长实验不要直接依赖交互式 Claude/Cloud Code bash 的生命周期。用 `--resume`、`--run-series`、checkpoint 续跑；必要时让执行 agent 用持久终端（如 tmux/nohup）跑。
+
+Resume 和结果可信度：
+
+- `run_mini_swe_compare` 已有 `--resume` 和 `.checkpoint.json`。断点续跑是当前实验基础能力，必须保留。
+- 断点续跑后必须检查 JSONL 是否出现重复 `(instance_id, strategy)`。重复记录不能直接计入结果表。
+- 如果 resume 产生重复行，先判定为 runner/checkpoint 幂等性 bug，而不是模型或 harness 结果。
+- 给 sub-agent 的运行提示必须包含：先查风险，再决定 resume；resume 后做去重/一致性检查；不要把重复 JSONL 行写进论文结论。
+
+NFS 扫描风险：
+
+- 避免在 `/Lishun` 上做大范围 `find`、`du -sh`、全仓库递归扫描，尤其是 worktree、node_modules、trace、repo_cache。
+- 优先用精确路径、`rg --files`、`find -maxdepth`、按 run-series/stem 过滤。
+- 如果必须统计目录大小，先限定目录和深度；不要在交互式长任务旁边额外制造 NFS I/O 压力。
+
 ## 0. 当前 Harness 闸门
 
 当前不新增 `docs/specs/001_harness_trust.md`。Harness trust 属于阶段性实验闸门，写在 `experience.md` 顶部即可。
@@ -417,10 +461,6 @@ Automatic Budgeting 很重要，但应该由证据触发。现在先跑 3x3，�
 
 日志不是目的。诊断摘要才是目的。`forensic_summary` 的价值在于让每条实验记录都能指导下一步。
 
-### 12.3 强模型是诊断工具
-
-GPT-5.4 不只是更强模型，也是 control/ceiling。它帮助判断任务能不能被强模型解决，以及 BudgetFlow 是否把强模型用在了正确时机。前提是先修好 action protocol，否则强模型信号会被 parser failure 污染。
-
 ### 12.4 预算路由需要稳定 tier line
 
 如果模型池本身不断变化，BudgetFlow 的实验结论就会不稳定。先固定 T1/T2/T3，再判断 policy。
@@ -428,17 +468,6 @@ GPT-5.4 不只是更强模型，也是 control/ceiling。它帮助判断任务�
 ### 12.5 自动预算要靠证据驱动
 
 Automatic Budgeting 是重要功能，但实现时机要看失败轴。先诊断，再动大模块。
-
-## 13. 后续更新规则
-
-每次有新实验，按这个格式追加：
-
-1. 我们看到了什么现象。
-2. 发现了什么问题。
-3. 如何解决的。
-4. 得出了什么结论和经验。
-
-不要写空话。不要写绕话。直接写证据和判断。
 
 ## 14. Agent Skills / Claude Code 实践经验
 

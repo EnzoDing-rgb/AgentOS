@@ -6,12 +6,12 @@
 
 ### 结论
 
-- 当前 P0 是 **local harness 可信度**，不是继续跑实验。
-- 5×3（`policy_5x3-2`）和 `clean_gold2-0` 暴露的问题已经推进到下一层：GPT-5.4 命令格式已修，trace 已够用，`all_pro`/`budget_only` tier bug 已修。
-- `result1-0` 证明 GPT-5.4/T3 可以执行命令、编辑 gold file、提交 patch。
-- `result1-0` 的 `repair_fail` 不能当模型质量结论，因为 `002.md` 证明 `sympy__sympy-14774` 的 P2P 是 **环境假失败**。
-- 假失败根因：旧 SymPy + 当前 `mpmath 1.4.1`，`to_str(inf)` 返回 `"inf"`，旧 SymPy 只识别 `"+inf"`。
-- 在 harness 修好前，所有涉及 `sympy__sympy-14774` 的 pass/fail 结论都要降权。
+- Local harness 可信度已阶段性恢复：`sympy__sympy-14774`、`django__django-12113`、`django__django-10924` gold sanity 3/3 PASS，见 `reports/004.md`。
+- Compare runner 依赖已补齐，`run_mini_swe_compare` 能启动，见 `reports/006.md`。
+- 当前 P0 已从 harness 修复转为 **runner/resume 可信度 + 小规模模型 probe 解释**。
+- `sanity_gold_pass_006-0` 已证明 SymPy gold-PASS 任务能在模型链路中真 pass；但 `tight=250` 对 3-task batch 太紧，后续 Django 没有预算。
+- 006 暴露一个 runner 隐患：resume 后 JSONL 出现重复 `(instance_id, strategy)`，不能直接计入结果表，需要修 checkpoint/jsonl 幂等性。
+- 当前不能把 006 的 Django budget fail 解释成模型能力失败；它主要说明 batch budget 已被前序 SymPy 消耗完。
 
 ### Current active tier
 
@@ -41,11 +41,11 @@
 
 ### 下一步
 
-1. 修 local harness：旧 SymPy + 新 mpmath 的 `latex(1.0*oo)` P2P 假失败。
-2. 用 `result1` 的 patch 做最小复验，确认 `sympy__sympy-14774` P2P 干净。
-3. 写 `paper1/docs/reports/004.md`，说明 harness 修复证据。
-4. 只在 harness 可信后跑 `result2` / `clean_gold2_after_harness`。
-5. 目录整理和 Automatic Budgeting 都暂停到 P1。
+1. 修 `run_mini_swe_compare --resume` 重复写入：同一 `(instance_id, strategy)` 只能有一个可信完成记录。
+2. 把 006 的结果去重后重算 summary，明确哪些是真 pass、真 budget fail、protocol/budget edge case。
+3. 调整小 probe 预算：不要再用 `tight=250` 跑 3-task batch；下一轮用 frozen caps 或 `tight=500/750`。
+4. Automatic Budgeting 进入 P0/P1 边界：先把历史难度 prior 接入预算估计，不再靠手工 tight 值猜 batch cap。
+5. Requests 仍暂缓；没有 gold sanity 前不纳入模型结论。
 
 ---
 
@@ -70,8 +70,10 @@
 | **policy_5x7-0**（旧代码 7×5） | ⚠️ 中断于 30/35 |
 | **policy_5x3-2**（新代码 5×3） | ✅ 跑完，1/15 PASS，暴露 3 个 bug |
 | **result1-0**（GPT-5.4 parser 修复后单题） | ⚠️ 触发 harness 假 P2P |
-| local harness P2P trust | ⛔ P0 待修 |
-| Automatic Budgeting Plan B（difficulty bucket） | ⏳ 待实现 |
+| local harness P2P trust | ✅ 3/3 gold sanity PASS，见 `reports/004.md` |
+| `run_mini_swe_compare` dependency recovery | ✅ 见 `reports/006.md` |
+| `run_mini_swe_compare --resume` idempotency | ⚠️ 006 暴露重复 JSONL 行，待修 |
+| Automatic Budgeting Plan B（difficulty bucket） | ⛔ 路线图存在，尚未接入 runner |
 | Automatic Budgeting Plan C（continuous learning kNN） | ⏳ 依赖 Plan B |
 
 ---
@@ -97,6 +99,13 @@
 ## Automatic Budgeting 路线图
 
 **目标：不跑 pilot，直接给任务估 budget。**
+
+当前状态：
+
+- 已有历史难度系数和 soft-budget 设计。
+- `GovernorConfig` 支持 `soft_budget` / `max_overrun`，`run_mini_swe_compare` 暴露对应参数。
+- 尚未实现 Automatic Budgeting：runner 还不会自动根据 task difficulty prior 估算 batch/per-task budget。
+- 006 证明手工 `tight=250` 容易把 3-task batch 变成“第一题吃满预算”，这正是 Automatic Budgeting 必须解决的问题。
 
 ### Plan B — Difficulty Bucket（冷启动）
 
