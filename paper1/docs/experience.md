@@ -2,6 +2,51 @@
 
 持续更新文件。目标：把烧掉的 token、实验成本、调研结论沉淀成可复用经验。即使 paper 最后失败，这里也要留下有价值的判断框架和工程经验。
 
+## 0. 当前 Harness 闸门
+
+当前不新增 `docs/specs/001_harness_trust.md`。Harness trust 属于阶段性实验闸门，写在 `experience.md` 顶部即可。
+
+Local harness 必须先证明 gold patch 能过，再允许跑模型实验。否则模型实验没有解释价值。
+
+已确认：
+
+- `sympy__sympy-14774`: gold sanity PASS。
+- `django__django-12113`: gold sanity PASS。
+- `django__django-10924`: gold sanity PASS。
+- 证据文件：`paper1/data/runs/gold_probe_harness_fix_v3.jsonl`。
+- 修复报告：`paper1/docs/reports/004.md`。
+
+当前允许：
+
+- 可以跑一个很小的模型 sanity probe，不要直接扩大成大矩阵。
+- 优先选已经 gold sanity PASS 的任务。
+- Django 可以进入小规模模型 probe。
+
+当前不允许：
+
+- 不跑大规模 3x5 / 5x3。
+- 不把旧的 `sympy__sympy-14774` 失败当模型失败证据。
+- 不把未过 gold sanity 的 repo/task 纳入论文结论。
+
+遇到以下情况必须停止并判定 harness 暂不可信：
+
+- gold patch 不能做到 `fail_before=fail` 且 `fail_after=pass`。
+- P2P 在干净 base 或 gold patch 后失败。
+- pytest node id 映射失败。
+- 需要 repo-specific env/compat，但 adapter 没有显式记录。
+- submitted model patch 混入 harness compatibility edit。
+
+最小验收命令：
+
+```bash
+cd paper1 && PYTHONPATH=src:../external/mini-swe-agent/src \
+../.venv/bin/python -u -m budgetflow.gold_harness_probe \
+  --ids sympy__sympy-14774,django__django-12113,django__django-10924 \
+  --out data/runs/gold_probe_harness_fix_v3.jsonl
+```
+
+下一步建议：先补 Requests gold sanity；如果 Requests 失败，就只修 `RequestsHAdapter`，不要跑模型。
+
 ## 1. 总结结论
 
 ### 我们看到了什么现象

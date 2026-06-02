@@ -16,6 +16,7 @@ venv/
 # IDE / agent tooling
 .cursor/
 .claude/
+CLAUDE.md
 
 # External deps (clone separately; see external/PINNED_COMMIT)
 external/mini-swe-agent/
