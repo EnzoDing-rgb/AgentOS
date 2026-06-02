@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PAPER_DIR="$ROOT_DIR/paper1"
 RUN_DIR="$PAPER_DIR/data/runs"
 DOC_DIR="$PAPER_DIR/docs"
-mkdir -p "$RUN_DIR" "$DOC_DIR"
+mkdir -p "$RUN_DIR" "$DOC_DIR" "$DOC_DIR/reports" "$DOC_DIR/blockers"
 
 MASTER_LOG="$RUN_DIR/nightly-paper-progress.log"
 exec >> "$MASTER_LOG" 2>&1
@@ -37,12 +37,12 @@ refresh_table() {
     --label 'budgetflow_goldpass5_autobudget_p030_v1=BudgetFlow autobudget p030' \
     --label 'budgetflow_goldpass5_bounded_rescue_p030_v2=BudgetFlow bounded rescue v2' \
     --label 'rescue_stoploss_targeted_v2=BudgetFlow rescue stoploss v2' \
-    --out docs/current_paper_result_table.md
+    --out docs/reports/current_paper_result_table.md
 }
 
 write_blocker() {
   local code="$1"
-  cat > docs/nightly_paper_progress_blocker.md <<EOF
+  cat > docs/blockers/nightly_paper_progress_blocker.md <<EOF
 # Nightly Paper Progress Blocker
 
 Date: $(date -Is)
