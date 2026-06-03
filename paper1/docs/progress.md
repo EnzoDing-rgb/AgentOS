@@ -18,7 +18,8 @@
 - Consistency checker 已构建（`check_consistency.py`）。
 - Gold-PASS pool 已达 10 task，66 SymPy candidate 待筛选。
 - **015 完成：** postfix_012_trace_sanity 25/25 rows，0 crashes。Routing fix verified — bf_tight 84% T2, bf_loose 77% T2（vs 012 的 100% T3）。12/12 passes 全真实（full harness evidence chain）。2 ceiling tasks（all_pro 也 fail）。Turn traces 全部非零（4-46）。`reports/015.md`。
-- 下一步：扩 task pool 至 mixed-difficulty 10+；修 budget_only T3 窗口；修 bf_tight T2 cap。
+- **016 完成：** 3 bugs fixed (bo T3 window, bf cap relax, rescue_timeout rename)。bf_tight **5/5 PASS (100%)**，首次 beat all_pro。all_pro stability audit 11/11 PASS 确认 18189/18057 为模型非确定性，非天花板。BudgetFlow 路由修复全面验证。54/54 tests pass。`reports/016.md`。
+- 下一步：gold-PASS pool 从 7 → 10+；跑 3×5 smoke test；准备 10×5。
 
 ### Current active tier
 
@@ -32,6 +33,7 @@
 
 ### 最新改动（2026-06-03）
 
+- **016**：3 bug fixes + routing verification。bf_tight 5/5 (100%)。all_pro stability audit 11/11 PASS。`reports/016.md`。
 - **015**：postfix_012_trace_sanity 完成。25/25 rows，0 crashes。Routing fix verified — bf_tight 84% T2, bf_loose 77% T2。12 passes 全部 authentic。`reports/015.md`。
 - **Display fix**：`run_mini_swe_compare.py` summary label `"failures:"` → `"outcomes:"`。
 - **Routing fix**：`selector.py` 公式从 `score >= pressure` 反转为 `pressure >= upgrade_threshold`（`upgrade_threshold = delta_cost / (delta_progress * SCALE * w_i)`）。`PROGRESS_SCALE` 18.0→0.3。现在 LOC 优先 T2，REPAIR/VAL 在 pressure 升高时升级 T3。`policies.py` budget_only T3 窗口。
@@ -40,7 +42,7 @@
 - **010**：P0 修复（API 价格校准、worktree crash、resolved=None）+ 009 成本重解 $34K→$10.63。`reports/010.md`。
 - **009**：Overnight batch loop。56 recorded rows，BudgetFlow 正向信号但数据不够干净。3 个新 SymPy gold-PASS task。`reports/009.md`。
 - **008**：首次 model matrix。14/15 records。`reports/008.md`。
-- 已写：`reports/006.md`、`007.md`、`008.md`、`009.md`、`010.md`、`011.md`、`012.md`、`015.md`。
+- 已写：`reports/006.md`、`007.md`、`008.md`、`009.md`、`010.md`、`011.md`、`012.md`、`015.md`、`016.md`。
 - 已补：mini-swe-agent 依赖，compare runner import/`--help`/全链路恢复。
 - 已实现/接入：Automatic Budgeting v1 与 memory 写入。Memory 已清理（备份至 `.bak_010`），下次运行自动新建。
 - 已修/部分修：SymPy `py.test` compat；Django `django.setup()` compat。但 Django 新 task 仍卡 `INSTALLED_APPS`。
@@ -91,7 +93,7 @@
 | Turn traces | ✅ 默认开启，pipeline 审计无 bug |
 | Consistency checker | ✅ `check_consistency.py` |
 | Routing fix (T3 overuse) | ✅ formula inverted + PROGRESS_SCALE 18.0→0.3 |
-| Routing verification experiment | ❌ 待跑 postfix_012_trace_sanity |
+| Routing verification experiment | ✅ postfix_015_fixes: bf_tight 5/5 (100%) |
 
 ---
 
@@ -240,6 +242,9 @@ cd paper1 && PYTHONPATH=src:../external/mini-swe-agent/src \
 | **policy_5x7-0** | 旧代码 7×5；已 rename 自 `t_policy_5x7` | **30/35** 中断 | `data/runs/policy_5x7-0.*` |
 | **policy_5x3-2** | 新代码 5×3；3 pilot tasks × 5 strategies；frozen caps | **15/15**，1 PASS | `data/runs/policy_5x3-2.*` |
 | **postfix_011_sanity-0** | 012 验证 run；5 tasks × 5 strategies；auto-budget | **25/25**，22 PASS | `data/runs/postfix_011_sanity-0.*` |
+| **postfix_012_trace_sanity-1** | 015 验证 run；5×5；trace enabled；routing fix | **25/25**，12 PASS | `data/runs/postfix_012_trace_sanity-1.*` |
+| **postfix_015_fixes-1** | 016 验证 run；5×5；bo T3 + bf cap fix | **25/25**，19 PASS | `data/runs/postfix_015_fixes-1.*` |
+| **stability_audit** | all_pro 7 tasks × 3 rounds；T3-only uncapped | **11/21**（中断）| `data/runs/stability_audit_*.jsonl` |
 
 ---
 

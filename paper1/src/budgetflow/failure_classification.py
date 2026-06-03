@@ -196,7 +196,7 @@ def build_forensic_summary(record: dict[str, Any]) -> dict[str, Any]:
         "policy": {
             "backend_mix": dict(sorted(mix.items())),
             "rescue_seen": any("rescue" in item for item in chain),
-            "stop_loss_seen": any("stop_loss" in item or "stoploss" in item for item in chain),
+            "rescue_timeout_seen": any("rescue_timeout" in item for item in chain),
         },
         "confidence": confidence,
         "missing_evidence": missing_evidence,

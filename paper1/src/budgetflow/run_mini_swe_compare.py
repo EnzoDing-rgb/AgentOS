@@ -1020,8 +1020,8 @@ def main() -> None:
     parser.add_argument(
         "--jobs",
         type=int,
-        default=1,
-        help="parallel policy batches (each policy still runs tasks serially on one shared pool)",
+        default=None,
+        help="parallel policy batches (default: one worker per policy; each policy still runs tasks serially)",
     )
     parser.add_argument(
         "--trace-quiet",
@@ -1292,6 +1292,7 @@ def main() -> None:
                 "provider signature check failed: "
                 + ", ".join(f"{r.backend}:{r.error_type or r.status_code}" for r in failed)
             )
+    policy_jobs = len(strategies) if args.jobs is None else max(1, args.jobs)
 
     budget_caps = {"loose": loose, "tight": tight}
     if args.ids:
@@ -1386,7 +1387,7 @@ def main() -> None:
         f"{tag('compare', bold=False)} task_set={args.task_set} preset={args.preset} tasks={len(tasks)} "
         f"strategies={len(strategies)} batches={len(strategies)} runs={total_runs} loose={loose} tight={tight} "
         f"pressure_init={pressure_init} pressure_max={pressure_max} "
-        f"policy_jobs={args.jobs} heartbeat={args.heartbeat}s hard_cap=settle_clamp",
+        f"policy_jobs={policy_jobs} heartbeat={args.heartbeat}s hard_cap=settle_clamp",
         flush=True,
     )
     print(f"  pool: {format_tier_pool_line()}", flush=True)
@@ -1424,7 +1425,7 @@ def main() -> None:
         f"soft_budget={args.soft_budget} max_overrun={max_overrun} "
         f"loose={loose} tight={tight} w_i_profile={args.w_profile or active_w_i_profile_name()} "
         f"pressure_init={pressure_init} pressure_max={pressure_max} "
-        f"policy_jobs={args.jobs} hard_cap=settle_clamp",
+        f"policy_jobs={policy_jobs} hard_cap=settle_clamp",
         f"tasks={[t.instance_id for t in tasks]}",
         f"task_order={[_task_descriptor(t) for t in tasks]}",
         "adaptive_routing=always_on_for_budgetflow_full",
@@ -1451,7 +1452,7 @@ def main() -> None:
         )
     started = time.time()
     io_lock = threading.Lock()
-    print_lock = threading.Lock() if args.jobs > 1 else None
+    print_lock = threading.Lock() if policy_jobs > 1 else None
     global_progress = GlobalRunProgress(total_runs)
     scoreboard = StrategyScoreboard(strategy_names)
     if completed:
@@ -1550,7 +1551,7 @@ def main() -> None:
     file_mode = "a" if args.append else "w"
     try:
         with out_path.open(file_mode) as handle:
-            if args.jobs <= 1:
+            if policy_jobs <= 1:
                 for cfg in strategies:
                     if run_guards is not None and run_guards.is_aborted():
                         break
@@ -1572,7 +1573,7 @@ def main() -> None:
                         global_progress=global_progress,
                     )
             else:
-                with ThreadPoolExecutor(max_workers=min(args.jobs, len(strategies))) as pool:
+                with ThreadPoolExecutor(max_workers=min(policy_jobs, len(strategies))) as pool:
                     futures = {pool.submit(_run_one_batch, cfg): cfg for cfg in strategies}
                     for future in as_completed(futures):
                         cfg, batch_records, batch_spent, batch_cap = future.result()

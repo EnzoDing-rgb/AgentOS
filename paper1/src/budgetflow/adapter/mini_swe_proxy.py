@@ -485,13 +485,13 @@ class BudgetFlowLitellmModel:
             if self.routing.adaptive.rescue.should_stop_loss(gold_edited=self.agent_gold_edited):
                 print(
                     f"{tag('stop', bold=False)} #{self.step_index} "
-                    f"gold_rescue_stop_loss evidence_turns="
+                    f"rescue_timeout_gold_edited evidence_turns="
                     f"{self.routing.adaptive.rescue.evidence_turns}",
                     flush=True,
                 )
                 raise BudgetFlowStagnationError(
                     self.workflow_id,
-                    exit_reason="gold_rescue_stop_loss",
+                    exit_reason="rescue_timeout_gold_edited",
                     step_index=self.step_index,
                     no_progress_streak=self._no_progress_streak,
                 )
