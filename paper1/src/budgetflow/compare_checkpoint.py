@@ -23,7 +23,7 @@ class StrategyCheckpoint:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "batch_cap": self.batch_cap,
+            "batch_cap": self.batch_cap if self.batch_cap is not None else 0.0,
             "batch_spent": self.batch_spent,
             "completed_tasks": list(self.completed_tasks),
             "in_flight_task": self.in_flight_task,
@@ -31,8 +31,13 @@ class StrategyCheckpoint:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> StrategyCheckpoint:
+        raw_cap = data.get("batch_cap")
+        if raw_cap is None:
+            batch_cap = 0.0
+        else:
+            batch_cap = float(raw_cap)
         return cls(
-            batch_cap=float(data.get("batch_cap", 0.0)),
+            batch_cap=batch_cap,
             batch_spent=float(data.get("batch_spent", 0.0)),
             completed_tasks=list(data.get("completed_tasks") or []),
             in_flight_task=data.get("in_flight_task"),

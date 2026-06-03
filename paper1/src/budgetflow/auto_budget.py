@@ -10,13 +10,20 @@ from typing import Iterable
 
 # Embedded historical prior from paper1/docs/reports/historical_budgeting_prior.md.
 # Costs recalibrated to real USD (2026-06).
+# Updated 2026-06-03: added 5 tasks from postfix_011_sanity (5-strategy observed costs).
 _HISTORICAL_PRIOR: dict[str, dict] = {
+    # From 7×15 historical data (recalibrated).
     "sympy__sympy-13480": {"median_cost": 0.04, "median_turns": 14, "resolved": 7, "total": 8},
     "sympy__sympy-13647": {"median_cost": 0.11, "median_turns": 25, "resolved": 7, "total": 8},
-    "sympy__sympy-14774": {"median_cost": 0.01, "median_turns": 10, "resolved": 7, "total": 7},
     "sympy__sympy-16988": {"median_cost": 0.70, "median_turns": 141, "resolved": 3, "total": 8},
     "sympy__sympy-17139": {"median_cost": 0.24, "median_turns": 39, "resolved": 1, "total": 1},
     "sympy__sympy-20212": {"median_cost": 0.10, "median_turns": 46, "resolved": 8, "total": 8},
+    # From postfix_011_sanity (2026-06-03, 4-5 strategies observed).
+    "sympy__sympy-14774": {"median_cost": 0.05, "median_turns": 6, "resolved": 5, "total": 5},
+    "sympy__sympy-18057": {"median_cost": 0.08, "median_turns": 5, "resolved": 3, "total": 4},
+    "sympy__sympy-18189": {"median_cost": 0.12, "median_turns": 8, "resolved": 4, "total": 4},
+    "sympy__sympy-18621": {"median_cost": 0.17, "median_turns": 7, "resolved": 4, "total": 4},
+    "django__django-10924": {"median_cost": 0.13, "median_turns": 8, "resolved": 4, "total": 4},
 }
 
 # Difficulty bucket thresholds.
@@ -246,7 +253,7 @@ class AutoBudgetEstimator:
         task,
         *,
         scale: float = 1.5,
-        min_cap: float = 0.05,
+        min_cap: float = 0.10,
         max_cap: float = 10.0,
     ) -> BudgetEstimate:
         iid = task.instance_id

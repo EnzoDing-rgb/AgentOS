@@ -400,46 +400,98 @@ def _ensure_main_repo(task: LiteTaskRecord) -> Path:
 def _remove_worktree(main_repo: Path, worktree_path: Path) -> None:
     import shutil
 
-    # 1. Remove git worktree registration (if registered).
+    worktree_name = worktree_path.name
+    meta_dir = main_repo / ".git" / "worktrees" / worktree_name
+
+    # 1. Always unlock first — a stale lock prevents prune and re-add.
+    subprocess.run(
+        ["git", "worktree", "unlock", str(worktree_path)],
+        cwd=main_repo,
+        capture_output=True,
+        text=True,
+    )
+
+    # 2. Remove git worktree registration.
     if worktree_path.exists():
-        result = subprocess.run(
+        subprocess.run(
             ["git", "worktree", "remove", "--force", str(worktree_path)],
             cwd=main_repo,
             capture_output=True,
             text=True,
         )
-        if result.returncode != 0:
-            # Worktree may be registered under a stale name in .git/worktrees/.
-            # Try to nuke the metadata directory so `git worktree add` can proceed.
-            worktree_name = worktree_path.name
-            meta_dir = main_repo / ".git" / "worktrees" / worktree_name
-            if meta_dir.exists():
-                shutil.rmtree(meta_dir, ignore_errors=True)
-            # Unlock if locked.
-            subprocess.run(
-                ["git", "worktree", "unlock", str(worktree_path)],
-                cwd=main_repo,
-                capture_output=True,
-                text=True,
-            )
-            subprocess.run(
-                ["git", "worktree", "remove", "--force", str(worktree_path)],
-                cwd=main_repo,
-                capture_output=True,
-                text=True,
-            )
 
-    # 2. Filesystem cleanup: nuke the directory regardless of git state.
+    # 3. Nuke the git metadata dir so "missing but locked" worktrees
+    #    (directory gone, .git/worktrees/<name> still present) are cleaned.
+    if meta_dir.exists():
+        shutil.rmtree(meta_dir, ignore_errors=True)
+
+    # 4. Filesystem cleanup: nuke the directory regardless of git state.
     if worktree_path.exists():
         shutil.rmtree(worktree_path, ignore_errors=True)
 
-    # 3. Prune stale metadata.
+    # 5. Prune stale metadata.
     subprocess.run(
         ["git", "worktree", "prune"],
         cwd=main_repo,
         capture_output=True,
         text=True,
     )
+
+
+def _worktree_add(main_repo: Path, worktree_path: Path, commit: str) -> None:
+    """``git worktree add`` with retries for transient git metadata issues."""
+    result = subprocess.run(
+        ["git", "worktree", "add", "--force", str(worktree_path), commit],
+        cwd=main_repo,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode == 0:
+        return
+    stderr = (result.stderr or "").strip()
+    # Commit may be missing from a shallow/blobless clone even after
+    # _ensure_commit_available succeeded — re-fetch deeply and retry once.
+    if "invalid reference" in stderr:
+        subprocess.run(
+            ["git", "fetch", "origin", commit],
+            cwd=main_repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["git", "worktree", "add", "--force", str(worktree_path), commit],
+            cwd=main_repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return
+    # "missing but locked" worktree: stale metadata from a previous crash.
+    # unlock + prune + nuke metadata, then retry.
+    if "missing but locked" in stderr or "locked worktree" in stderr:
+        worktree_name = worktree_path.name
+        meta_dir = main_repo / ".git" / "worktrees" / worktree_name
+        subprocess.run(
+            ["git", "worktree", "unlock", str(worktree_path)],
+            cwd=main_repo, capture_output=True, text=True,
+        )
+        import shutil
+        if meta_dir.exists():
+            shutil.rmtree(meta_dir, ignore_errors=True)
+        subprocess.run(
+            ["git", "worktree", "prune"],
+            cwd=main_repo, capture_output=True, text=True,
+        )
+        subprocess.run(
+            ["git", "worktree", "add", "--force", str(worktree_path), commit],
+            cwd=main_repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return
+    result.check_returncode()
 
 
 def _prepare_worktree(task: LiteTaskRecord, workspace_key: str) -> Path:
@@ -455,13 +507,7 @@ def _prepare_worktree(task: LiteTaskRecord, workspace_key: str) -> Path:
             f"{tag('prep')} worktree {inst} key={workspace_key} @ {task.base_commit[:8]} ...",
             flush=True,
         )
-        subprocess.run(
-            ["git", "worktree", "add", "--force", str(worktree_path), task.base_commit],
-            cwd=main_repo,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+        _worktree_add(main_repo, worktree_path, task.base_commit)
         subprocess.run(
             ["git", "reset", "--hard", task.base_commit],
             cwd=worktree_path,

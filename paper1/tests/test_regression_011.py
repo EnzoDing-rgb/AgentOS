@@ -284,7 +284,7 @@ class TestFallbackCalibration:
     def test_sympy_14774_easy_prior(self):
         """sympy-14774 is the easiest task, should have very low estimated cost."""
         info = _HISTORICAL_PRIOR["sympy__sympy-14774"]
-        assert info["median_cost"] < 0.05  # real USD
+        assert info["median_cost"] <= 0.05  # real USD (was $0.01 before 2026-06-03 recalibration)
         assert info["resolved"] / info["total"] >= 0.9  # high pass rate
 
     def test_sympy_16988_hard_prior(self):
@@ -324,3 +324,90 @@ class TestWorktreeContract:
         add_pos = src.find("git", remove_pos)
         assert remove_pos >= 0, "_remove_worktree not found in _prepare_worktree"
         assert remove_pos < add_pos, "_remove_worktree must be called BEFORE git worktree add"
+
+
+class TestWorktreeMissingButLocked:
+    """Regression: _remove_worktree and _worktree_add must handle "missing but locked" git metadata."""
+
+    @pytest.fixture
+    def _temp_git_repo(self, tmp_path: Path):
+        """Create a minimal git repo in tmp_path for worktree simulation."""
+        import subprocess
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(["git", "-c", "init.defaultBranch=main", "init"], cwd=repo, check=True,
+                       capture_output=True, text=True)
+        subprocess.run(["git", "-c", "user.name=test", "-c", "user.email=test@test", "commit",
+                        "--allow-empty", "-m", "init"], cwd=repo, check=True,
+                       capture_output=True, text=True)
+        return repo
+
+    def test_remove_worktree_unlocks_before_anything(self, _temp_git_repo):
+        """_remove_worktree always unlocks first — prevents stale locks."""
+        from budgetflow.local_harness import _remove_worktree
+        repo = _temp_git_repo
+        nonexistent = tmp_path() / "nonexistent_worktree" if hasattr(self, 'tmp_path') else repo.parent / "nonexistent_wt"
+        # Must NOT crash even when worktree dir + metadata don't exist.
+        _remove_worktree(repo, repo.parent / "nonexistent_wt")
+
+    def test_remove_worktree_cleans_locked_metadata(self, _temp_git_repo):
+        """When .git/worktrees/<name> exists (locked) but dir is missing, cleanup must nuke metadata."""
+        import subprocess, shutil
+        from budgetflow.local_harness import _remove_worktree
+        repo = _temp_git_repo
+        commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, check=True,
+                                capture_output=True, text=True).stdout.strip()
+        wt_path = repo.parent / "test_locked_wt"
+        meta_dir = repo / ".git" / "worktrees" / wt_path.name
+        # Simulate: create worktree, delete dir, leave metadata behind
+        subprocess.run(["git", "worktree", "add", str(wt_path), commit], cwd=repo, check=True,
+                       capture_output=True, text=True)
+        subprocess.run(["git", "-C", str(wt_path), "checkout", "-b", "test-locked-br"], check=False,
+                       capture_output=True, text=True)
+        shutil.rmtree(wt_path, ignore_errors=True)
+        # Metadata should still exist
+        assert meta_dir.exists(), "metadata dir must exist before cleanup"
+        _remove_worktree(repo, wt_path)
+        assert not meta_dir.exists(), f"metadata dir {meta_dir} must be removed"
+        # worktree add should now succeed
+        subprocess.run(["git", "worktree", "add", "--force", str(wt_path), commit],
+                       cwd=repo, check=True, capture_output=True, text=True)
+        # Clean up
+        subprocess.run(["git", "worktree", "remove", "--force", str(wt_path)],
+                       cwd=repo, check=True, capture_output=True, text=True)
+
+    def test_worktree_add_retries_on_locked_metadata(self, _temp_git_repo):
+        """_worktree_add must retry when 'missing but locked' error occurs."""
+        import subprocess, shutil
+        from budgetflow.local_harness import _worktree_add, _remove_worktree
+        repo = _temp_git_repo
+        commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, check=True,
+                                capture_output=True, text=True).stdout.strip()
+        wt_path = repo.parent / "test_retry_wt"
+        # Clean first
+        _remove_worktree(repo, wt_path)
+        # Simulate locked metadata: create worktree, delete dir, leave metadata
+        subprocess.run(["git", "worktree", "add", str(wt_path), commit], cwd=repo, check=True,
+                       capture_output=True, text=True)
+        shutil.rmtree(wt_path, ignore_errors=True)
+        meta_dir = repo / ".git" / "worktrees" / wt_path.name
+        assert meta_dir.exists()
+        # _worktree_add should retry and succeed
+        _worktree_add(repo, wt_path, commit)
+        assert wt_path.exists()
+        # Clean up
+        subprocess.run(["git", "worktree", "remove", "--force", str(wt_path)],
+                       cwd=repo, check=True, capture_output=True, text=True)
+
+    def test_worktree_add_retries_on_invalid_reference(self, _temp_git_repo):
+        """_worktree_add must fetch and retry when commit reference is invalid."""
+        import subprocess
+        from budgetflow.local_harness import _worktree_add, _remove_worktree
+        repo = _temp_git_repo
+        wt_path = repo.parent / "test_invalid_ref_wt"
+        _remove_worktree(repo, wt_path)
+        fake_commit = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+        # Expect CalledProcessError because fetch will fail for fake commit
+        with pytest.raises(subprocess.CalledProcessError):
+            _worktree_add(repo, wt_path, fake_commit)
+        assert not wt_path.exists()

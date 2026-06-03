@@ -348,8 +348,8 @@ def _spark_ratio(picks: list[str]) -> float:
 def _tier_ratio(picks: list[str], tier: int) -> float:
     if not picks:
         return 0.0
-    needle = f"tier{tier}_"
-    return sum(1 for p in picks if needle in p.lower()) / len(picks)
+    needle = f"tier{tier}"
+    return sum(1 for p in picks if p.lower() == needle.lower()) / len(picks)
 
 
 def _append_summary(lines: list[str], record: dict, *, index: int, total: int) -> None:
@@ -1153,8 +1153,8 @@ def main() -> None:
     parser.add_argument(
         "--auto-budget-min",
         type=float,
-        default=0.05,
-        help="minimum per-task cap in USD (default 0.05)",
+        default=0.10,
+        help="minimum per-task cap in USD (default 0.10)",
     )
     parser.add_argument(
         "--auto-budget-max",
