@@ -4,7 +4,59 @@
 
 该 commit 就 commit，该 push 就 push。关键节点必须 commit，能同步远端就同步远端。
 
-## 0. 当前硬规则
+## 0. 最新关键判断（2026-06-03）
+
+### 竞争模型与论文定位
+
+Liquid LFM2.5、Ling-2.6-flash、OpenSquilla、Hermes/OpenClaw 会影响 paper 的表述方式，但不会直接打掉 BudgetFlow。
+
+分层判断：
+
+- `Liquid LFM2.5`、`Ling-2.6-flash` 主要是 **backend / model-intrinsic efficiency**：模型本身更便宜、更短、更快。它们是 T1/T2 候选 backend，不是 BudgetFlow 的直接替代。
+- `OpenSquilla`、`Hermes/OpenClaw` 是 **runtime / orchestration competitor**：它们也讲 routing、memory、skills、cost tracking，是真竞争。
+- 这些系统的 marketing claim 不能直接当事实；只把官方自述当定位参考，性能结论必须自己跑。
+
+BudgetFlow 的 claim 必须收窄：
+
+- 不说“通用 token efficiency 最强”。
+- 不说“最强模型路由器”。
+- 主张改成：**在固定经济预算下，BudgetFlow 用 workflow/progress-aware routing 提升 agentic code-repair 的 clean resolved per dollar**。
+- 关键差异是 fixed budget、batch governor、verified repair outcome、failure attribution、auto-budget learning，而不是单次调用更省 token。
+
+远期增强方向：
+
+- 把 Ling/LFM 作为候选 T1/T2 backend 做小规模同题同 cap 对照。
+- 把 OpenSquilla/Hermes 的 memory compression、tool-output truncation、skills/on-demand context 作为 future work 或 ablation。
+- 在 related work 里明确区分：model efficiency、agent runtime orchestration、BudgetFlow budget governance。
+
+### Official Harness 定位
+
+当前 HPC 容器不能直接跑 official SWE-bench Docker harness：
+
+- 本地有 `paper1/data/SWE-bench`，`swebench` Python 包可 import，`run_evaluation --help` 可跑。
+- 但容器里没有 `docker` CLI、没有 `/var/run/docker.sock`、没有 `dockerd/containerd/podman/nerdctl/apptainer`。
+- 所以官方 harness 代码在，Docker 执行层不在。
+
+当前策略：
+
+- local harness 继续做 inner loop：gold sanity、debug、failure attribution、BudgetFlow 对比。
+- official SWE-bench harness 做 outer audit：等 clean rows 出来后，把 prediction JSONL 拿到 Docker-capable 节点/VM/Modal/sb-cli 验证。
+- paper 里必须区分 `local harness resolved` 和 `official SWE-bench resolved`。headline 结果最终最好有 official audit 支撑。
+
+### `postfix_011_sanity` 当前状态
+
+不要把当前 run 解读成“14 个全过所以重大突破”。真实状态：
+
+- 已完成 22/25 rows，20/22 PASS，1 true budget fail，另有 1 crash 后 checkpoint/jsonl 状态需复核。
+- `all_pro` 已确认是 T3-only、`batch_budget_cap=null`、`budget_tier=uncapped`，不属于 BudgetFlow。
+- pass 的 local harness 证据基本强：`test_patch=ok; fail_before=fail; model_patch=ok; fail_after=pass; pass_to_pass=pass`。
+- 但所有 rows 缺 `turn_traces`，只能做 outcome-level attribution，不能做 turn-level 细诊断。
+- `budget_only_tight` 仍有 worktree add exit 128 崩溃，说明 010/011 的 worktree P0 没有实跑闭环。
+- `budget_only_loose × sympy-18057` 是真 budget/repair fail：gold file edited，patch extracted，P2P pass，但 F2P 仍 fail，cap 几乎耗尽。
+
+结论：当前实验值得继续，但必须先修/验证 worktree crash 和 checkpoint/jsonl 一致性；不要扩大到大矩阵。
+
+## 1. 当前硬规则
 
 ### HPC / NFS / 容器
 
