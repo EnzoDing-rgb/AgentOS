@@ -17,7 +17,8 @@
 - Turn traces 已默认开启（`--trace-turns`），trace pipeline 审计无 bug。
 - Consistency checker 已构建（`check_consistency.py`）。
 - Gold-PASS pool 已达 10 task，66 SymPy candidate 待筛选。
-- 下一步：跑 postfix_012_trace_sanity 验证 routing 修复 + trace 收集。
+- **015 完成：** postfix_012_trace_sanity 25/25 rows，0 crashes。Routing fix verified — bf_tight 84% T2, bf_loose 77% T2（vs 012 的 100% T3）。12/12 passes 全真实（full harness evidence chain）。2 ceiling tasks（all_pro 也 fail）。Turn traces 全部非零（4-46）。`reports/015.md`。
+- 下一步：扩 task pool 至 mixed-difficulty 10+；修 budget_only T3 窗口；修 bf_tight T2 cap。
 
 ### Current active tier
 
@@ -31,13 +32,15 @@
 
 ### 最新改动（2026-06-03）
 
+- **015**：postfix_012_trace_sanity 完成。25/25 rows，0 crashes。Routing fix verified — bf_tight 84% T2, bf_loose 77% T2。12 passes 全部 authentic。`reports/015.md`。
+- **Display fix**：`run_mini_swe_compare.py` summary label `"failures:"` → `"outcomes:"`。
 - **Routing fix**：`selector.py` 公式从 `score >= pressure` 反转为 `pressure >= upgrade_threshold`（`upgrade_threshold = delta_cost / (delta_progress * SCALE * w_i)`）。`PROGRESS_SCALE` 18.0→0.3。现在 LOC 优先 T2，REPAIR/VAL 在 pressure 升高时升级 T3。`policies.py` budget_only T3 窗口。
 - **012**：Worktree crash 闭环修复（`_remove_worktree` 5层清理 + `_worktree_add` retry）。Checkpoint `batch_cap:null` 修复。Auto-budget 扩充至 10 task + `min_cap` $0.05→$0.10。回归测试 31→50，全部通过。postfix_011_sanity 25/25 rows clean。`reports/012.md`。
 - **011**：P0 fix — `.1f` cost 展示四舍五入污染真实 USD 可观测性，已加 `_fmt_usd()` 自适应格式。31 个新回归测试（pricing/worktree/resolved/memory/format）。59/59 pass。
 - **010**：P0 修复（API 价格校准、worktree crash、resolved=None）+ 009 成本重解 $34K→$10.63。`reports/010.md`。
 - **009**：Overnight batch loop。56 recorded rows，BudgetFlow 正向信号但数据不够干净。3 个新 SymPy gold-PASS task。`reports/009.md`。
 - **008**：首次 model matrix。14/15 records。`reports/008.md`。
-- 已写：`reports/006.md`、`007.md`、`008.md`、`009.md`、`010.md`、`011.md`、`012.md`。
+- 已写：`reports/006.md`、`007.md`、`008.md`、`009.md`、`010.md`、`011.md`、`012.md`、`015.md`。
 - 已补：mini-swe-agent 依赖，compare runner import/`--help`/全链路恢复。
 - 已实现/接入：Automatic Budgeting v1 与 memory 写入。Memory 已清理（备份至 `.bak_010`），下次运行自动新建。
 - 已修/部分修：SymPy `py.test` compat；Django `django.setup()` compat。但 Django 新 task 仍卡 `INSTALLED_APPS`。
