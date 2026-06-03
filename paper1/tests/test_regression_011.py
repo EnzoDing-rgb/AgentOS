@@ -792,11 +792,12 @@ class TestBudgetFlowRouting:
         assert ctx.last_decision.branch == "budgetflow_full"
 
     def test_budget_only_uses_t2_not_t3(self):
-        """budget_only with 2 backends picks the cheapest (T2), not T3."""
+        """budget_only with 2 backends at moderate pressure picks T2."""
         from budgetflow.adapter.strategies import choose_backend
         backends = self._make_backends()
         ctx = self._make_ctx("budget_only", backends=backends)
-        turn = self._make_turn(step_index=1)
+        ctx.budget_pressure = 0.30  # above T3 window threshold (0.15)
+        turn = self._make_turn(step_index=5)
         expected_costs = {b.name: 0.01 for b in backends}
 
         backend = choose_backend(ctx, turn, expected_costs)
@@ -835,4 +836,69 @@ class TestBudgetFlowRouting:
         backend = choose_backend(ctx, turn, expected_costs)
         assert backend.tier <= 2, (
             f"budgetflow_full repair stage picked tier {backend.tier}, expected <= 2"
+        )
+
+    # —— budget_only T3 window (015 fix) ——
+
+    def test_budget_only_n2_low_pressure_allows_t3(self):
+        """budget_only with n=2 pool and pressure < 0.15 picks T3 (not T2)."""
+        from budgetflow.adapter.strategies import choose_backend
+        backends = self._make_backends()  # [T2, T3]
+        ctx = self._make_ctx("budget_only", backends=backends)
+        ctx.budget_pressure = 0.05
+        turn = self._make_turn(step_index=1)
+        expected_costs = {b.name: 0.01 for b in backends}
+
+        backend = choose_backend(ctx, turn, expected_costs)
+        assert backend.tier == 3, (
+            f"budget_only n=2 low pressure picked tier {backend.tier}, expected 3"
+        )
+
+    def test_budget_only_n2_high_pressure_uses_t2(self):
+        """budget_only with n=2 pool and pressure >= 0.15 picks T2."""
+        from budgetflow.adapter.strategies import choose_backend
+        backends = self._make_backends()
+        ctx = self._make_ctx("budget_only", backends=backends)
+        ctx.budget_pressure = 0.30
+        turn = self._make_turn(step_index=5)
+        expected_costs = {b.name: 0.01 for b in backends}
+
+        backend = choose_backend(ctx, turn, expected_costs)
+        assert backend.tier == 2, (
+            f"budget_only n=2 high pressure picked tier {backend.tier}, expected 2"
+        )
+
+    # —— bf_full T2 cap relaxation (015 fix) ——
+
+    def test_budgetflow_full_pressure_lift_allows_t3(self):
+        """At pressure >= 0.15, cap lifts; selector can pick T3 for REPAIR at high pressure."""
+        from budgetflow.adapter.strategies import choose_backend
+        backends = self._make_backends()
+        ctx = self._make_ctx("budgetflow_full", backends=backends)
+        # Simulate elevated budget pressure — this lifts the max_tier cap
+        ctx.budget_pressure = 0.50
+        governor = self._make_governor()
+        turn = self._make_turn(step_index=6, stage="repair", w_i=3.0)
+        expected_costs = self._make_expected_costs(governor, backends, turn)
+
+        backend = choose_backend(ctx, turn, expected_costs)
+        # At pressure 0.50, REPAIR w_i=3.0, the selector's upgrade_threshold ≈ 0.46
+        # so pressure 0.50 > threshold → T3 should be selected
+        assert backend.tier == 3, (
+            f"bf_full high pressure REPAIR picked tier {backend.tier}, expected 3"
+        )
+
+    def test_budgetflow_full_low_pressure_stays_t2(self):
+        """At pressure < 0.15 without prior T3, cap keeps T2 even for REPAIR."""
+        from budgetflow.adapter.strategies import choose_backend
+        backends = self._make_backends()
+        ctx = self._make_ctx("budgetflow_full", backends=backends)
+        ctx.budget_pressure = 0.05
+        governor = self._make_governor()
+        turn = self._make_turn(step_index=2, stage="repair", w_i=3.0)
+        expected_costs = self._make_expected_costs(governor, backends, turn)
+
+        backend = choose_backend(ctx, turn, expected_costs)
+        assert backend.tier <= 2, (
+            f"bf_full low pressure REPAIR picked tier {backend.tier}, expected <= 2"
         )

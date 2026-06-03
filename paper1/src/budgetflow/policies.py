@@ -44,6 +44,13 @@ class BudgetOnlyStepRouter:
                 pressure=budget_pressure, branch="budget_only",
             )
         if n == 2:
+            # When budget is mostly unspent, allow T3 to handle tasks T2 can't solve.
+            # The n>=3 path below has the same window; this mirrors it for [T2,T3] pools.
+            if budget_pressure < 0.15:
+                return RouterDecision(
+                    backend=ordered[1], reason=f"very_low_pressure={budget_pressure:.3f}_tier3", scores={},
+                    pressure=budget_pressure, branch="budget_only",
+                )
             return RouterDecision(
                 backend=ordered[0], reason="cheapest_baseline_n2", scores={},
                 pressure=budget_pressure, branch="budget_only",

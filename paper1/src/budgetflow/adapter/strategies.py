@@ -73,11 +73,20 @@ def _budgetflow_max_tier(ctx: RoutingContext) -> int:
     Default cap is T2.  T2→T3 escalation is gated by _apply_progress_escalation
     (per-tier patience), not by the selector.  If the previous step already
     used T3 (meaning escalation already fired), keep T3 to avoid ping-pong.
+    When budget pressure is elevated (>= 0.15), lift the cap — the fixed
+    selector formula (pressure >= upgrade_threshold) already prefers T2 at
+    low pressure and only picks T3 when the cost/progress tradeoff justifies it.
     If adaptive routing recommends a higher starting tier, honour it.
     """
     max_tier: int = 2  # default cap: don't auto-upgrade to T3
     if ctx.last_backend is not None and ctx.last_backend.tier >= 3:
         max_tier = 3  # already escalated, keep T3
+    # When budget pressure is moderate, let the selector decide.
+    # upgrade_threshold for T2→T3 REPAIR ≈ 0.46, so at 0.15 the selector
+    # still won't pick T3 — this just removes the artificial ceiling for
+    # later steps when pressure genuinely crosses the threshold.
+    if ctx.budget_pressure >= 0.15:
+        max_tier = 3
     if ctx.adaptive is not None:
         start_tier = ctx.adaptive.starting_tier()
         if start_tier > max_tier:
