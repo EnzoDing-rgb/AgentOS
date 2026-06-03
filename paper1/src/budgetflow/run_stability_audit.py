@@ -26,6 +26,7 @@ for path in (str(SRC), str(MINI_SWE_SRC)):
 from budgetflow.deepseek_backend import ensure_aicode007_proxy, load_env_file
 from budgetflow.console_log import dim, fail_label, ok_label, paint, tag
 from budgetflow.defaults import TIER3_MODEL
+from budgetflow.failure_classification import build_forensic_summary, classify_failure
 from budgetflow.heartbeat import run_with_heartbeat
 from budgetflow.lite_tasks import load_swebench_lite_tasks
 from budgetflow.local_harness import clone_or_checkout, evaluate_local_harness
@@ -180,6 +181,10 @@ def run_one(task, model_name: str, round_idx: int, *, heartbeat_s: float = 30.0)
     record["model"] = getattr(getattr(model, "config", None), "model_name", str(model))
     record["strategy_label"] = "all_pro_stability"
     record["round"] = round_idx
+    record["backend_picks"] = ["tier3"] * agent.n_calls
+    record["turn_trace_count"] = trace._steps_logged
+    record["failure_class"] = classify_failure(record)
+    record["forensic_summary"] = build_forensic_summary(record)
     return record
 
 

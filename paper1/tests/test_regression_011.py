@@ -902,3 +902,223 @@ class TestBudgetFlowRouting:
         assert backend.tier <= 2, (
             f"bf_full low pressure REPAIR picked tier {backend.tier}, expected <= 2"
         )
+
+
+# ── observability: harness evidence parsing ─────────────────────────────
+
+class TestParseHarnessEvidence:
+    def test_empty_detail_returns_defaults(self):
+        from budgetflow.observability import parse_harness_evidence
+        ev = parse_harness_evidence("")
+        assert ev.evidence_complete is False
+        assert ev.test_patch_ok is False
+        assert ev.fail_before_failed is False
+
+    def test_complete_evidence(self):
+        from budgetflow.observability import parse_harness_evidence
+        detail = "compat=2;test_patch=ok;fail_before=fail;model_patch=ok;fail_after=pass;pass_to_pass=pass"
+        ev = parse_harness_evidence(detail)
+        assert ev.evidence_complete is True
+        assert ev.test_patch_ok is True
+        assert ev.fail_before_failed is True
+        assert ev.model_patch_ok is True
+        assert ev.fail_after_passed is True
+        assert ev.pass_to_pass_ok is True
+
+    def test_partial_evidence_missing_fail_after(self):
+        from budgetflow.observability import parse_harness_evidence
+        detail = "compat=2;test_patch=ok;fail_before=fail;model_patch=ok;fail_after=;pass_to_pass=pass"
+        ev = parse_harness_evidence(detail)
+        assert ev.evidence_complete is False
+        assert ev.fail_after_passed is False
+
+    def test_no_equals_no_crash(self):
+        from budgetflow.observability import parse_harness_evidence
+        detail = "garbage_no_equals"
+        ev = parse_harness_evidence(detail)
+        assert ev.evidence_complete is False
+
+    def test_none_detail(self):
+        from budgetflow.observability import parse_harness_evidence
+        ev = parse_harness_evidence(None)  # type: ignore[arg-type]
+        assert ev.evidence_complete is False
+
+
+# ── observability: build_observability_status ───────────────────────────
+
+class TestBuildObservabilityStatus:
+    def test_trace_available_when_count_positive(self):
+        from budgetflow.observability import build_observability_status
+        record = {"turn_trace_count": 5, "detail": "", "harness_resolved": False}
+        status = build_observability_status(record)
+        assert status["trace_available"] is True
+        assert status["turn_trace_count"] == 5
+
+    def test_trace_unavailable_when_zero(self):
+        from budgetflow.observability import build_observability_status
+        record = {"turn_trace_count": 0, "detail": "", "harness_resolved": False}
+        status = build_observability_status(record)
+        assert status["trace_available"] is False
+
+    def test_suspicious_pass_detected(self):
+        from budgetflow.observability import build_observability_status
+        record = {
+            "turn_trace_count": 3,
+            "detail": "test_patch=ok;fail_before=fail;model_patch=fail",
+            "harness_resolved": True,
+        }
+        status = build_observability_status(record)
+        assert status["suspicious_pass"] is True
+        assert "fail_after_passed" in status["missing_evidence"]
+
+    def test_genuine_pass_no_suspicious(self):
+        from budgetflow.observability import build_observability_status
+        detail = "test_patch=ok;fail_before=fail;model_patch=ok;fail_after=pass;pass_to_pass=pass"
+        record = {"turn_trace_count": 3, "detail": detail, "harness_resolved": True}
+        status = build_observability_status(record)
+        assert status["suspicious_pass"] is False
+        assert status["missing_evidence"] == []
+
+    def test_submitted_patch_detected(self):
+        from budgetflow.observability import build_observability_status
+        record = {
+            "turn_trace_count": 1,
+            "detail": "",
+            "harness_resolved": False,
+            "submitted_patch": "/tmp/patch.diff",
+        }
+        status = build_observability_status(record)
+        assert status["submitted_patch_exists"] is True
+
+
+# ── observability: heartbeat writer ─────────────────────────────────────
+
+class TestHeartbeatWriter:
+    def test_writes_on_init(self, tmp_path):
+        from budgetflow.observability import HeartbeatWriter, load_heartbeat
+        hb_path = tmp_path / "test.heartbeat.json"
+        HeartbeatWriter(hb_path, run_series="test_series", total_expected=50)
+        hb = load_heartbeat(hb_path)
+        assert hb is not None
+        assert hb["run_series"] == "test_series"
+        assert hb["total_expected"] == 50
+        assert hb["status"] == "running"
+
+    def test_pulse_updates_fields(self, tmp_path):
+        from budgetflow.observability import HeartbeatWriter, load_heartbeat
+        hb_path = tmp_path / "test.heartbeat.json"
+        writer = HeartbeatWriter(hb_path, run_series="test_series", total_expected=50)
+        writer.pulse(rows_done=10, active_strategy="bf_tight", active_instance="sympy-14774")
+        hb = load_heartbeat(hb_path)
+        assert hb["rows_done"] == 10
+        assert hb["active_strategy"] == "bf_tight"
+        assert hb["active_instance"] == "sympy-14774"
+
+    def test_mark_done(self, tmp_path):
+        from budgetflow.observability import HeartbeatWriter, load_heartbeat
+        hb_path = tmp_path / "test.heartbeat.json"
+        writer = HeartbeatWriter(hb_path, run_series="test_series", total_expected=50)
+        writer.mark_done()
+        hb = load_heartbeat(hb_path)
+        assert hb["status"] == "completed"
+
+    def test_mark_aborted(self, tmp_path):
+        from budgetflow.observability import HeartbeatWriter, load_heartbeat
+        hb_path = tmp_path / "test.heartbeat.json"
+        writer = HeartbeatWriter(hb_path, run_series="test_series", total_expected=50)
+        writer.mark_aborted("user ctrl-c")
+        hb = load_heartbeat(hb_path)
+        assert hb["status"] == "aborted: user ctrl-c"
+
+    def test_auto_complete_when_rows_done_exceeds_total(self, tmp_path):
+        from budgetflow.observability import HeartbeatWriter, load_heartbeat
+        hb_path = tmp_path / "test.heartbeat.json"
+        writer = HeartbeatWriter(hb_path, run_series="test_series", total_expected=5)
+        writer.pulse(rows_done=5)
+        hb = load_heartbeat(hb_path)
+        assert hb["status"] == "completed"
+
+
+# ── observability: heartbeat utilities ──────────────────────────────────
+
+class TestHeartbeatUtils:
+    def test_load_missing_returns_none(self, tmp_path):
+        from budgetflow.observability import load_heartbeat
+        assert load_heartbeat(tmp_path / "nonexistent.json") is None
+
+    def test_load_corrupt_returns_none(self, tmp_path):
+        from budgetflow.observability import load_heartbeat
+        bad = tmp_path / "bad.json"
+        bad.write_text("not json")
+        assert load_heartbeat(bad) is None
+
+    def test_stale_returns_true_for_old_heartbeat(self):
+        from budgetflow.observability import heartbeat_is_stale
+        hb = {"updated_at": 0}
+        assert heartbeat_is_stale(hb, stale_seconds=10) is True
+
+    def test_stale_returns_false_for_fresh_heartbeat(self):
+        import time
+        from budgetflow.observability import heartbeat_is_stale
+        hb = {"updated_at": time.time()}
+        assert heartbeat_is_stale(hb, stale_seconds=600) is False
+
+    def test_stale_returns_true_for_none(self):
+        from budgetflow.observability import heartbeat_is_stale
+        assert heartbeat_is_stale(None) is True  # type: ignore[arg-type]
+
+
+# ── observability: checker functions ────────────────────────────────────
+
+class TestCheckerFunctions:
+    def test_check_duplicates_finds_dup(self):
+        from budgetflow.check_run_observability import _check_duplicates
+        records = [
+            {"strategy": "bf_tight", "instance_id": "sympy-14774"},
+            {"strategy": "bf_tight", "instance_id": "sympy-14774"},
+        ]
+        issues = _check_duplicates(records)
+        assert len(issues) == 1
+        assert "DUPLICATE" in issues[0]
+
+    def test_check_duplicates_no_false_positive(self):
+        from budgetflow.check_run_observability import _check_duplicates
+        records = [
+            {"strategy": "bf_tight", "instance_id": "sympy-14774"},
+            {"strategy": "bf_loose", "instance_id": "sympy-14774"},
+        ]
+        assert _check_duplicates(records) == []
+
+    def test_check_pass_evidence_flags_suspicious(self):
+        from budgetflow.check_run_observability import _check_pass_evidence
+        records = [
+            {"harness_resolved": True, "detail": "test_patch=ok",
+             "harness_evidence": {"evidence_complete": False}},
+        ]
+        issues = _check_pass_evidence(records)
+        assert len(issues) == 1
+        assert "SUSPICIOUS_PASS" in issues[0]
+
+    def test_check_pass_evidence_skips_genuine(self):
+        from budgetflow.check_run_observability import _check_pass_evidence
+        records = [
+            {"harness_resolved": True, "detail": "test_patch=ok",
+             "harness_evidence": {"evidence_complete": True}},
+        ]
+        assert _check_pass_evidence(records) == []
+
+    def test_check_trace_coverage_flags_zero(self):
+        from budgetflow.check_run_observability import _check_trace_coverage
+        records = [
+            {"turn_trace_count": 0, "instance_id": "sympy-14774", "strategy": "bf_tight"},
+        ]
+        issues = _check_trace_coverage(records)
+        assert len(issues) == 1
+        assert "NO_TRACE" in issues[0]
+
+    def test_check_missing_fields(self):
+        from budgetflow.check_run_observability import _check_missing_fields
+        records = [{"instance_id": "x"}]  # missing most fields
+        issues = _check_missing_fields(records)
+        assert len(issues) >= 1
+        assert "MISSING_FIELDS" in issues[0]

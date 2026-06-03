@@ -50,6 +50,11 @@ from budgetflow.console_log import backend_tier_label, dim, format_run_verdict, 
 from budgetflow.deepseek_backend import load_env_file  # noqa: E402
 from budgetflow.failure_classification import build_forensic_summary, classify_failure  # noqa: E402
 from budgetflow.governor import BudgetGovernor, GovernorConfig  # noqa: E402
+from budgetflow.observability import (  # noqa: E402
+    HeartbeatWriter,
+    build_observability_status,
+    parse_harness_evidence,
+)
 from budgetflow.defaults import (  # noqa: E402
     BUDGET_PRESSURE_INIT,
     PRESSURE_MAX,
@@ -227,6 +232,8 @@ def _run_one(
     trace_max_turns: int = 200,
     trace_truncate_chars: int = 120,
     budget_estimate: BudgetEstimate | None = None,
+    run_series: str = "",
+    policy_lane: str = "",
 ) -> dict:
     started = time.time()
     workspace_key = _workspace_key(cfg, task.instance_id)
@@ -295,9 +302,17 @@ def _run_one(
         "turn_trace_count": result.turn_trace_count,
         "turn_traces": _truncate_turn_traces(result.turn_traces, trace_max_turns, trace_truncate_chars)
         if enable_turn_trace and result.turn_traces else None,
+        "run_series": run_series,
+        "policy_lane": policy_lane,
+        "task_order_index": task_index,
+        "row_started_at": started,
+        "row_finished_at": time.time(),
+        "attempt_id": f"{run_series}_{cfg.name}_{task.instance_id}" if run_series else "",
     }
     record["failure_class"] = classify_failure(record)
     record["forensic_summary"] = build_forensic_summary(record)
+    record["harness_evidence"] = parse_harness_evidence(str(record.get("detail") or "")).__dict__
+    record["observability_status"] = build_observability_status(record)
     # Auto-budget metadata.
     if budget_estimate is not None:
         record["auto_budget_enabled"] = True
@@ -576,6 +591,7 @@ def _run_strategy_batch(
     trace_truncate_chars: int = 120,
     task_caps: dict[str, float] | None = None,
     budget_estimates: dict[str, BudgetEstimate] | None = None,
+    run_series: str = "",
 ) -> tuple[list[dict], float]:
     def _log(msg: str) -> None:
         if print_lock:
@@ -690,6 +706,8 @@ def _run_strategy_batch(
                 trace_max_turns=trace_max_turns,
                 trace_truncate_chars=trace_truncate_chars,
                 budget_estimate=budget_estimates.get(task.instance_id) if budget_estimates else None,
+                run_series=run_series,
+                policy_lane=cfg.name,
             )
 
         try:
@@ -1453,6 +1471,8 @@ def main() -> None:
     started = time.time()
     io_lock = threading.Lock()
     print_lock = threading.Lock() if policy_jobs > 1 else None
+    heartbeat_path = RUNS_DIR / f"{series}.heartbeat.json"
+    heartbeat_writer = HeartbeatWriter(heartbeat_path, run_series=series, total_expected=total_runs)
     global_progress = GlobalRunProgress(total_runs)
     scoreboard = StrategyScoreboard(strategy_names)
     if completed:
@@ -1519,6 +1539,13 @@ def main() -> None:
                 auto_budget_memory=auto_budget_memory,
                 no_auto_budget_learn=args.no_auto_budget_learn,
             )
+            heartbeat_writer.pulse(
+                rows_done=state.runs_done,
+                active_strategy=str(record.get("strategy", "")),
+                active_instance=str(record.get("instance_id", "")),
+                active_elapsed_s=float(record.get("elapsed_s", 0)),
+                last_completed=str(record.get("instance_id", "")),
+            )
 
         records, batch_spent = _run_strategy_batch(
             cfg,
@@ -1545,6 +1572,7 @@ def main() -> None:
             trace_truncate_chars=args.trace_truncate_chars,
             task_caps=auto_budget_task_caps,
             budget_estimates=auto_budget_estimates,
+            run_series=series,
         )
         return cfg, records, batch_spent, batch_cap
 
@@ -1624,6 +1652,7 @@ def main() -> None:
         global_line=global_progress.format_global(scoreboard),
     )
 
+    heartbeat_writer.mark_done()
     print(
         f"\n{tag('final', bold=False)}\n{global_progress.format_banner(scoreboard)}\n"
         f"elapsed={time.time() - started:.1f}s",
