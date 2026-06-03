@@ -45,6 +45,7 @@ from budgetflow.compare_checkpoint import (  # noqa: E402
     StrategyScoreboard,
     checkpoint_path_for,
 )
+from budgetflow.auto_budget import AutoBudgetEstimator, AutoBudgetMemory, BudgetEstimate  # noqa: E402
 from budgetflow.console_log import backend_tier_label, dim, format_run_verdict, status_fail, status_pass, tag  # noqa: E402
 from budgetflow.deepseek_backend import load_env_file  # noqa: E402
 from budgetflow.failure_classification import build_forensic_summary, classify_failure  # noqa: E402
@@ -208,6 +209,7 @@ def _run_one(
     enable_turn_trace: bool = False,
     trace_max_turns: int = 200,
     trace_truncate_chars: int = 120,
+    budget_estimate: BudgetEstimate | None = None,
 ) -> dict:
     started = time.time()
     workspace_key = _workspace_key(cfg, task.instance_id)
@@ -279,6 +281,17 @@ def _run_one(
     }
     record["failure_class"] = classify_failure(record)
     record["forensic_summary"] = build_forensic_summary(record)
+    # Auto-budget metadata.
+    if budget_estimate is not None:
+        record["auto_budget_enabled"] = True
+        record["estimated_task_cap"] = budget_estimate.cap
+        record["estimated_task_cost"] = budget_estimate.estimated_cost
+        record["budget_prior_source"] = budget_estimate.source
+        record["budget_prior_confidence"] = budget_estimate.confidence
+        record["budget_estimator_version"] = "v1"
+        record["budget_memory_used"] = budget_estimate.source.startswith("memory_")
+        record["budget_memory_neighbors"] = budget_estimate.memory_neighbors
+        record["auto_budget_features"] = budget_estimate.features
     return record
 
 
@@ -544,6 +557,8 @@ def _run_strategy_batch(
     enable_turn_trace: bool = False,
     trace_max_turns: int = 200,
     trace_truncate_chars: int = 120,
+    task_caps: dict[str, float] | None = None,
+    budget_estimates: dict[str, BudgetEstimate] | None = None,
 ) -> tuple[list[dict], float]:
     def _log(msg: str) -> None:
         if print_lock:
@@ -552,7 +567,9 @@ def _run_strategy_batch(
         else:
             print(msg, flush=True)
 
-    use_per_task = per_task_cap is not None and per_task_cap > 0
+    use_per_task = cfg.budget_tier is not None and (
+        (per_task_cap is not None and per_task_cap > 0) or (task_caps is not None)
+    )
     ledger = WorkflowLedgerStore()
     governor: BudgetGovernor | None = None
     if not use_per_task:
@@ -570,7 +587,10 @@ def _run_strategy_batch(
             governor.state.available_budget = max(0.0, governor.state.total_budget - initial_spent)
 
     if use_per_task:
-        cap_label = f"per_task_cap={per_task_cap:.1f}"
+        if task_caps is not None:
+            cap_label = "auto_budget_per_task"
+        else:
+            cap_label = f"per_task_cap={per_task_cap:.1f}" if per_task_cap else "per_task"
         if max_overrun > 0:
             cap_label += f"+overrun={max_overrun:.1f}"
     else:
@@ -616,14 +636,21 @@ def _run_strategy_batch(
             task_governor = governor
             task_ledger = ledger
             effective_batch_cap = batch_budget_cap
-            if use_per_task:
-                assert per_task_cap is not None
+            # Resolve per-task cap: task_caps dict (auto-budget) takes precedence.
+            # Only budget strategies get per-task caps; all_pro stays uncapped.
+            task_cap: float | None = None
+            if cfg.budget_tier is not None:
+                if task_caps is not None:
+                    task_cap = task_caps.get(task.instance_id)
+                elif per_task_cap is not None and per_task_cap > 0:
+                    task_cap = per_task_cap
+            if task_cap is not None:
                 task_ledger = WorkflowLedgerStore()
                 task_governor = BudgetGovernor(
                     GovernorConfig(
-                        total_budget=per_task_cap,
+                        total_budget=task_cap,
                         default_max_output_tokens=4096,
-                        soft_budget=per_task_cap if max_overrun > 0 else None,
+                        soft_budget=task_cap if max_overrun > 0 else None,
                         max_overrun=max_overrun,
                     ),
                     task_ledger,
@@ -645,6 +672,7 @@ def _run_strategy_batch(
                 enable_turn_trace=enable_turn_trace,
                 trace_max_turns=trace_max_turns,
                 trace_truncate_chars=trace_truncate_chars,
+                budget_estimate=budget_estimates.get(task.instance_id) if budget_estimates else None,
             )
 
         try:
@@ -742,6 +770,38 @@ def _rebuild_state_from_jsonl(path: Path, header_lines: list[str]) -> _CompareSt
     return state
 
 
+def _write_budget_memory(memory: AutoBudgetMemory, record: dict) -> None:
+    """Build a memory record from a run record and write it to the learning memory."""
+    forensic = record.get("forensic_summary") or {}
+    mem = AutoBudgetMemory.build_record(
+        instance_id=str(record.get("instance_id", "")),
+        repo=str(record.get("instance_id", "")).rsplit("__", 1)[0].replace("__", "/"),
+        strategy=str(record.get("strategy", "")),
+        routing=str(record.get("routing", "")),
+        resolved=bool(record.get("harness_resolved")),
+        harness_resolved=bool(record.get("harness_resolved")),
+        failure_class=str(record.get("failure_class") or ""),
+        forensic_primary_axis=str(forensic.get("primary_axis") or record.get("failure_class") or ""),
+        total_cost=float(record.get("task_cost") or 0.0),
+        estimated_task_cap=record.get("estimated_task_cap"),
+        estimated_task_cost=record.get("estimated_task_cost"),
+        patch_extracted=bool(record.get("patch_extracted")),
+        agent_gold_edited=bool(record.get("agent_gold_edited")),
+        llm_turns=int(record.get("llm_turns") or 0),
+        patch_lines=int((record.get("auto_budget_features") or {}).get("patch_lines", 0)),
+        f2p_count=int((record.get("auto_budget_features") or {}).get("f2p_count", 0)),
+        p2p_count=int((record.get("auto_budget_features") or {}).get("p2p_count", 0)),
+        problem_length=len(str(record.get("problem_statement") or "")),
+        gold_file_count=len(record.get("agent_gold_files") or []),
+        run_series=str(record.get("run_series", "")),
+        run_id=str(record.get("run_id", "")),
+        dominant_tier=str(record.get("dominant_tier") or ""),
+        exit_status=str(record.get("exit_status") or ""),
+        detail=str(record.get("detail") or ""),
+    )
+    memory.write_record(mem)
+
+
 def _persist_task_record(
     state: _CompareState,
     record: dict,
@@ -757,8 +817,17 @@ def _persist_task_record(
     batch_caps: dict[str, float | None],
     started: float,
     out_path: Path,
+    auto_budget_memory: AutoBudgetMemory | None = None,
+    no_auto_budget_learn: bool = False,
 ) -> None:
     with io_lock:
+        # Write auto-budget memory record (before JSONL so memory is updated first).
+        if auto_budget_memory is not None and not no_auto_budget_learn and record.get("auto_budget_enabled"):
+            _write_budget_memory(auto_budget_memory, record)
+            record["budget_learning_update_written"] = True
+        elif auto_budget_memory is not None and not no_auto_budget_learn:
+            record["budget_learning_update_written"] = False
+
         handle.write(json.dumps(record, ensure_ascii=False) + "\n")
         handle.flush()
         state.runs_done += 1
@@ -1053,6 +1122,54 @@ def main() -> None:
         "batch --tight/--loose caps are ignored for budgeting",
     )
     parser.add_argument(
+        "--auto-budget",
+        action="store_true",
+        default=False,
+        help="enable automatic per-task budget estimation from historical prior",
+    )
+    parser.add_argument(
+        "--auto-budget-scale",
+        type=float,
+        default=1.5,
+        help="multiply estimated cost by this scale (default 1.5)",
+    )
+    parser.add_argument(
+        "--auto-budget-min",
+        type=float,
+        default=0.05,
+        help="minimum per-task cap in USD (default 0.05)",
+    )
+    parser.add_argument(
+        "--auto-budget-max",
+        type=float,
+        default=10.0,
+        help="maximum per-task cap in USD (default 10.0)",
+    )
+    parser.add_argument(
+        "--auto-budget-mode",
+        choices=("per_task",),
+        default="per_task",
+        help="budget mode (currently only per_task; shared auto may be added later)",
+    )
+    parser.add_argument(
+        "--auto-budget-memory",
+        type=str,
+        default=None,
+        help="path to auto-budget memory file for continuous learning (default data/auto_budget_memory.jsonl)",
+    )
+    parser.add_argument(
+        "--no-auto-budget-learn",
+        action="store_true",
+        default=False,
+        help="disable writing new records to auto-budget memory after run",
+    )
+    parser.add_argument(
+        "--auto-budget-k",
+        type=int,
+        default=3,
+        help="k for kNN fallback in auto-budget (default 3)",
+    )
+    parser.add_argument(
         "--soft-budget",
         type=float,
         default=None,
@@ -1164,6 +1281,44 @@ def main() -> None:
     else:
         tasks = load_compare_easy_tasks(tasks_n)
     tasks = _order_tasks_easy_first(tasks, task_set=args.task_set)
+
+    # Auto-budget: compute per-task caps from historical prior + online memory.
+    auto_budget_estimates: dict[str, BudgetEstimate] = {}
+    auto_budget_task_caps: dict[str, float] | None = None
+    auto_budget_memory: AutoBudgetMemory | None = None
+    if args.auto_budget:
+        memory_path: Path | None = None
+        if args.auto_budget_memory:
+            memory_path = Path(args.auto_budget_memory)
+        else:
+            default_memory = RUNS_DIR / "auto_budget_memory.jsonl"
+            memory_path = default_memory
+        auto_budget_memory = AutoBudgetMemory(memory_path if memory_path.is_file() else None)
+        # Always set path so we can write new records.
+        if auto_budget_memory._path is None:
+            auto_budget_memory._path = memory_path
+
+        estimator = AutoBudgetEstimator(memory=auto_budget_memory, k=args.auto_budget_k)
+        for task in tasks:
+            est = estimator.estimate(
+                task,
+                scale=args.auto_budget_scale,
+                min_cap=args.auto_budget_min,
+                max_cap=args.auto_budget_max,
+            )
+            auto_budget_estimates[task.instance_id] = est
+            auto_budget_task_caps = {iid: est.cap for iid, est in auto_budget_estimates.items()}
+            print(
+                f"{tag('auto-budget', bold=False)} {est.instance_id} "
+                f"est={est.estimated_cost:.1f} cap={est.cap:.1f} "
+                f"source={est.source} confidence={est.confidence}"
+                + (f" neighbors={est.memory_neighbors}" if est.memory_neighbors else ""),
+                flush=True,
+            )
+        # Auto-budget implies per_task mode.
+        if args.per_task_cap is None:
+            args.per_task_cap = -1.0  # Sentinel: per-task with varying caps.
+
     total_runs = len(tasks) * len(strategies)
     series = args.run_series or default_series_base(
         tasks_n=len(tasks),
@@ -1337,13 +1492,15 @@ def main() -> None:
                 batch_caps=batch_caps,
                 started=started,
                 out_path=out_path,
+                auto_budget_memory=auto_budget_memory,
+                no_auto_budget_learn=args.no_auto_budget_learn,
             )
 
         records, batch_spent = _run_strategy_batch(
             cfg,
             batch_tasks,
             batch_budget_cap=batch_cap,
-            per_task_cap=args.per_task_cap,
+            per_task_cap=args.per_task_cap if args.per_task_cap and args.per_task_cap > 0 else None,
             soft_budget=args.soft_budget,
             max_overrun=max_overrun,
             step_limit=args.step_limit,
@@ -1362,6 +1519,8 @@ def main() -> None:
             enable_turn_trace=args.trace_turns,
             trace_max_turns=args.trace_max_turns,
             trace_truncate_chars=args.trace_truncate_chars,
+            task_caps=auto_budget_task_caps,
+            budget_estimates=auto_budget_estimates,
         )
         return cfg, records, batch_spent, batch_cap
 

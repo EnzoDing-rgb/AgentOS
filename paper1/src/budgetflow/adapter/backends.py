@@ -12,13 +12,21 @@ _UNLIMITED = 0
 
 
 def _build_all_backends() -> list[Backend]:
-    """Current three-tier BudgetFlow pool."""
+    """Current three-tier BudgetFlow pool.
+
+    Token pricing calibrated to real API costs (2026-06):
+      - T1 (qwen3-coder-flash):  DashScope ¥0.0004/1K in, ¥0.002/1K out
+      - T2 (qwen3-coder-plus):  DashScope ¥0.004/1K in,  ¥0.016/1K out
+      - T3 (GPT-5.4):           aicode007 ~$2.50/1M in,  ~$15.00/1M out
+    USD conversion at CNY/USD ≈ 7.25.
+    """
+    _R = 1.0 / 7.25  # CNY→USD
     return [
         Backend(
             name=TIER1_BACKEND,
             tier=1,
-            cost_per_input_token=0.0005,
-            cost_per_output_token=0.0020,
+            cost_per_input_token=0.0004 / 1000 * _R,   # ¥0.0004/1K → $/token
+            cost_per_output_token=0.002 / 1000 * _R,    # ¥0.002/1K → $/token
             rpm_limit=_UNLIMITED,
             concurrency_limit=_UNLIMITED,
             mean_output_tokens=768,
@@ -28,8 +36,8 @@ def _build_all_backends() -> list[Backend]:
         Backend(
             name=TIER2_BACKEND,
             tier=2,
-            cost_per_input_token=0.0040,
-            cost_per_output_token=0.0120,
+            cost_per_input_token=0.004 / 1000 * _R,    # ¥0.004/1K → $/token
+            cost_per_output_token=0.016 / 1000 * _R,    # ¥0.016/1K → $/token
             rpm_limit=_UNLIMITED,
             concurrency_limit=_UNLIMITED,
             mean_output_tokens=1024,
@@ -39,8 +47,8 @@ def _build_all_backends() -> list[Backend]:
         Backend(
             name=TIER3_BACKEND,
             tier=3,
-            cost_per_input_token=0.0060,
-            cost_per_output_token=0.0180,
+            cost_per_input_token=2.50 / 1_000_000,     # $2.50/1M → $/token
+            cost_per_output_token=15.00 / 1_000_000,    # $15.00/1M → $/token
             rpm_limit=_UNLIMITED,
             concurrency_limit=_UNLIMITED,
             mean_output_tokens=1024,

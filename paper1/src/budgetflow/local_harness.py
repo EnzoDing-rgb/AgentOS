@@ -82,19 +82,38 @@ class SymPyHAdapter(RepoHarnessAdapter):
     repo_slug = "sympy__sympy"
 
     def apply_compat(self, repo_dir: Path) -> list[str]:
+        changed: list[str] = []
+
+        # 1. mpmath 1.4.1 compat: returns 'inf' without '+', old sympy expects '+inf'
         latex_py = repo_dir / "sympy" / "printing" / "latex.py"
-        if not latex_py.is_file():
-            return []
-        original = latex_py.read_text(encoding="utf-8", errors="ignore")
-        # mpmath 1.4.1 returns 'inf' without '+', old sympy expects '+inf'
-        patched = original.replace(
-            'elif str_real == "+inf":\n            return r"\\infty"',
-            'elif str_real in ("+inf", "inf"):\n            return r"\\infty"',
-        )
-        if patched != original:
-            latex_py.write_text(patched)
-            return ["sympy/printing/latex.py"]
-        return []
+        if latex_py.is_file():
+            original = latex_py.read_text(encoding="utf-8", errors="ignore")
+            patched = original.replace(
+                'elif str_real == "+inf":\n            return r"\\infty"',
+                'elif str_real in ("+inf", "inf"):\n            return r"\\infty"',
+            )
+            if patched != original:
+                latex_py.write_text(patched)
+                changed.append("sympy/printing/latex.py")
+
+        # 2. py.test compat: modern pytest removed py.test submodule
+        pytest_py = repo_dir / "sympy" / "utilities" / "pytest.py"
+        if pytest_py.is_file():
+            original = pytest_py.read_text(encoding="utf-8", errors="ignore")
+            if "py.test.mark." in original:
+                patched = original.replace("py.test.mark.xfail", "pytest.mark.xfail")
+                patched = patched.replace("py.test.mark.slow", "pytest.mark.slow")
+                if "import pytest" not in patched:
+                    patched = patched.replace(
+                        "try:\n    import py\n",
+                        "import pytest\n\ntry:\n    import py\n",
+                        1,
+                    )
+                if patched != original:
+                    pytest_py.write_text(patched)
+                    changed.append("sympy/utilities/pytest.py")
+
+        return changed
 
 
 _DJANGO_TEST_NAME_RE = re.compile(r"^(\w+)\s+\((.+)\.(\w+)\)$")
@@ -102,6 +121,31 @@ _DJANGO_TEST_NAME_RE = re.compile(r"^(\w+)\s+\((.+)\.(\w+)\)$")
 
 class DjangoHAdapter(RepoHarnessAdapter):
     repo_slug = "django__django"
+
+    def apply_compat(self, repo_dir: Path) -> list[str]:
+        # Ensure django.setup() runs before test collection.
+        # Some test modules import Django models at module level, which triggers
+        # AppRegistryNotReady if django.setup() hasn't been called.
+        conftest = repo_dir / "conftest.py"
+        if not conftest.is_file():
+            conftest.write_text(
+                "import os\n"
+                "os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'tests.test_sqlite')\n"
+                "import django\n"
+                "django.setup()\n"
+            )
+            return ["conftest.py (generated)"]
+        # Existing conftest may not call django.setup(); wrap it.
+        original = conftest.read_text(encoding="utf-8", errors="ignore")
+        if "django.setup()" not in original:
+            patched = (
+                "import django\n"
+                "django.setup()\n\n"
+                + original
+            )
+            conftest.write_text(patched)
+            return ["conftest.py (patched)"]
+        return []
 
     def pytest_env(self) -> dict[str, str]:
         return {"DJANGO_SETTINGS_MODULE": "tests.test_sqlite"}
@@ -354,17 +398,42 @@ def _ensure_main_repo(task: LiteTaskRecord) -> Path:
 
 
 def _remove_worktree(main_repo: Path, worktree_path: Path) -> None:
+    import shutil
+
+    # 1. Remove git worktree registration (if registered).
     if worktree_path.exists():
-        subprocess.run(
+        result = subprocess.run(
             ["git", "worktree", "remove", "--force", str(worktree_path)],
             cwd=main_repo,
             capture_output=True,
             text=True,
         )
-    if worktree_path.exists():
-        import shutil
+        if result.returncode != 0:
+            # Worktree may be registered under a stale name in .git/worktrees/.
+            # Try to nuke the metadata directory so `git worktree add` can proceed.
+            worktree_name = worktree_path.name
+            meta_dir = main_repo / ".git" / "worktrees" / worktree_name
+            if meta_dir.exists():
+                shutil.rmtree(meta_dir, ignore_errors=True)
+            # Unlock if locked.
+            subprocess.run(
+                ["git", "worktree", "unlock", str(worktree_path)],
+                cwd=main_repo,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                ["git", "worktree", "remove", "--force", str(worktree_path)],
+                cwd=main_repo,
+                capture_output=True,
+                text=True,
+            )
 
+    # 2. Filesystem cleanup: nuke the directory regardless of git state.
+    if worktree_path.exists():
         shutil.rmtree(worktree_path, ignore_errors=True)
+
+    # 3. Prune stale metadata.
     subprocess.run(
         ["git", "worktree", "prune"],
         cwd=main_repo,

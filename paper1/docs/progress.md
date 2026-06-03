@@ -2,16 +2,17 @@
 
 > 单一入口：进度、跑法、历史结果。
 
-## 当前快照（2026-06-02）
+## 当前快照（2026-06-03）
 
 ### 结论
 
-- Local harness 可信度已阶段性恢复：`sympy__sympy-14774`、`django__django-12113`、`django__django-10924` gold sanity 3/3 PASS，见 `reports/004.md`。
-- Compare runner 依赖已补齐，`run_mini_swe_compare` 能启动，见 `reports/006.md`。
-- 当前 P0 已从 harness 修复转为 **runner/resume 可信度 + 小规模模型 probe 解释**。
-- `sanity_gold_pass_006-0` 已证明 SymPy gold-PASS 任务能在模型链路中真 pass；但 `tight=250` 对 3-task batch 太紧，后续 Django 没有预算。
-- 006 暴露一个 runner 隐患：resume 后 JSONL 出现重复 `(instance_id, strategy)`，不能直接计入结果表，需要修 checkpoint/jsonl 幂等性。
-- 当前不能把 006 的 Django budget fail 解释成模型能力失败；它主要说明 batch budget 已被前序 SymPy 消耗完。
+- Local harness 已从 004 的 3/3 gold sanity 恢复，扩展到 009 的 gold-PASS pool：3 old trusted + 7 new SymPy + 1 Requests。Requests 暂不进主模型矩阵。
+- Runner 已恢复：依赖补齐，`run_mini_swe_compare` 能完成 worktree → compat → LLM → patch extraction → harness eval。
+- 008/009 已跑出 56 条 recorded rows。当前能看出 BudgetFlow 有正向信号，但数据还不够干净，不能直接上 5×30。
+- 当前最强 budget 策略是 `budgetflow_full_tight`：在可用记录里最接近 `all_pro`，且多次比 `all_pro` 更便宜通过。但 `all_pro` 总体仍更强，BudgetFlow 卖点还需要更干净、更大样本证明。
+- `all_pro` 是 uncapped GPT-5.4 ceiling/control，不属于 BudgetFlow，不应被 auto-budget cap 限制。
+- 当前 P0 是 **worktree/resume/JSONL 可信度 + auto-budget memory 清洁 + 成本口径校准**，不是继续盲目扩 batch。
+- 内部 `$cost` 目前只是 governor/provider 记录的内部 cost unit，不能直接写成真实 USD；真实 API 价格需要 web/API 价格表校准。
 
 ### Current active tier
 
@@ -23,29 +24,24 @@
 
 注：当前 main pool T1 标记为 "skipped"，可用 tier 实际为 [T2, T3]。
 
-### 最新改动（2026-06-02，下午）
+### 最新改动（2026-06-03）
 
-- 已修：GPT-5.4 文本命令解析，支持普通 ```bash / ```sh fenced block 和 JSON `{"command": ...}`。提交：`105edc6`。
-- 已跑：`result1-0`，`all_pro` 确认为 T3/GPT-5.4，7 turns 提交 patch。
-- 已查：`result1-0` 的 P2P 失败是 harness/env 假失败，见 `paper1/docs/reports/002.md`。
-- 已写：目录整理方案 `paper1/docs/reports/003.md`。目录整理是 P1，等 harness 修复后再动。
-- **已改：`--read-protocol` → `--read-frozen-caps`。** 旧名保留为静默 alias，不显示在 `--help` 中。
-- **已跑：5×3（`policy_5x3-2`）。** 3 tasks × 5 strategies = 15 rows，`--read-frozen-caps`，`--jobs 5`。见下方 Run 登记。
-- **已分析：equal-weight ablation 不需要优先跑。** `budgetflow_full` 已经有 evidence rescue、stop-loss、adaptive routing。`budgetflow_equal_weight` 只把 `w_i` 打平，用同一套 rescue 参数，回答 stage weight 先验是否有效。
-- **已分析：7×15 历史数据（`policy_5x7-0`）。** 提取了 5 道题的相对难度系数，见下方"任务难度系数"。
-- **已确认：frozen caps 同题同源。** pilot（`run_pilot.py`）用的 3 道题跟 5×3 完全相同，cap 无 mismatch。但 `all_pro` 在 pilot 中也用的 T2，所以 cap 是 T2 水平。
-- 已确认：AiCode007 上游下架/不可用旧 GPT-5.3 Codex。
-- 已改：T1/T2/T3 使用稳定 backend id；provider/model/base_url/api_key/display/text_mode 在 `defaults.py` 的 tier registry 集中映射。
-- 已改：provider unavailable 时释放当前 reservation、尝试 fallback。
-- 已加：provider signature check gate。
+- 已写：`reports/006.md`、`007.md`、`008.md`、`009.md`，其中 009 是 overnight batch loop 总结。
+- 已补：mini-swe-agent 依赖，compare runner import/`--help`/全链路恢复。
+- 已实现/接入：Automatic Budgeting v1 与 memory 写入；`resolved=None` 污染问题已报告为已修，但仍需清理旧 memory 并回归验证。
+- 已修/部分修：SymPy `py.test` compat；Django `django.setup()` compat。但 Django 新 task 仍卡 `INSTALLED_APPS`，不能扩 Django pool。
+- 已确认：`--jobs` 能并行多个 policy；worktree 隔离大体有效，但 `budget_only_tight` 系统性 worktree crash/缺行。
+- 已确认：GPT-5.4 / `all_pro` 有非确定性，同一 task 单次 PASS/FAIL 不能当稳定天花板，需要重复或更大样本。
+- 已观察：`django__django-12113` 和 `sympy__sympy-21612` 目前像 ceiling/unsolvable task；不适合拿来证明 budget policy 差。
 
 ### 下一步
 
-1. 修 `run_mini_swe_compare --resume` 重复写入：同一 `(instance_id, strategy)` 只能有一个可信完成记录。
-2. 把 006 的结果去重后重算 summary，明确哪些是真 pass、真 budget fail、protocol/budget edge case。
-3. 调整小 probe 预算：不要再用 `tight=250` 跑 3-task batch；下一轮用 frozen caps 或 `tight=500/750`。
-4. Automatic Budgeting 进入 P0/P1 边界：先把历史难度 prior 接入预算估计，不再靠手工 tight 值猜 batch cap。
-5. Requests 仍暂缓；没有 gold sanity 前不纳入模型结论。
+1. P0：修 worktree 清理。`git worktree add` 前必须能处理 stale dir / stale registration，解决 `budget_only_tight` 缺行。
+2. P0：验证 checkpoint/JSONL/summary 幂等性。resume 后同一 `(instance_id, strategy)` 只能有一个可信完成记录。
+3. P0：清理 auto-budget memory，移除 `resolved=None` 污染记录；新增回归测试，确保只用 `harness_resolved` 写 learning signal。
+4. P1：校准真实 API 价格，把内部 cost unit 映射为真实成本；否则 paper 里不能写真实费用结论。
+5. P1：小 batch 回归后再扩 5×15/5×30。先用 gold-PASS、solvable、非 ceiling task，避免把任务难度噪声当 policy 失败。
+6. P1：Django 新 task 要先修 `INSTALLED_APPS` adapter；Requests 先保留 gold sanity，不急进主矩阵。
 
 ---
 
@@ -72,9 +68,13 @@
 | **result1-0**（GPT-5.4 parser 修复后单题） | ⚠️ 触发 harness 假 P2P |
 | local harness P2P trust | ✅ 3/3 gold sanity PASS，见 `reports/004.md` |
 | `run_mini_swe_compare` dependency recovery | ✅ 见 `reports/006.md` |
-| `run_mini_swe_compare --resume` idempotency | ⚠️ 006 暴露重复 JSONL 行，待修 |
-| Automatic Budgeting Plan B（difficulty bucket） | ⛔ 路线图存在，尚未接入 runner |
-| Automatic Budgeting Plan C（continuous learning kNN） | ⏳ 依赖 Plan B |
+| 008/009 model batches | ⚠️ 56 recorded rows，数据有缺行/崩溃噪声 |
+| `run_mini_swe_compare --resume` idempotency | ⚠️ 006 暴露重复 JSONL 行，待验证修复 |
+| Worktree resilience | ⛔ `budget_only_tight` 系统性 crash/缺行 |
+| Automatic Budgeting v1 | ⚠️ 已接入，但 memory 污染和 cap floor 需修 |
+| Automatic Budgeting continuous learning | ⚠️ 已有方向，必须基于 clean rows |
+| Django new-task harness | ⚠️ `INSTALLED_APPS` / bare-pytest gap |
+| Real-world cost calibration | ⛔ 内部 cost unit 未映射真实 API 价格 |
 
 ---
 
