@@ -286,6 +286,55 @@ def _fallback_audit(recs: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def _trusted_fallback_audit(recs: list[dict]) -> str:
+    """Audit trusted_fallback rows specifically: patch comparison, evidence completeness."""
+    from budgetflow.observability import audit_fallback_patch, build_harness_trust
+
+    lines = ["\n=== TRUSTED_FALLBACK AUDIT ==="]
+    tf_rows: list[dict] = []
+    for r in recs:
+        ht = build_harness_trust(r)
+        if ht["harness_trust"] == "trusted_fallback":
+            tf_rows.append(r)
+
+    if not tf_rows:
+        lines.append("  trusted_fallback_rows=0")
+        return "\n".join(lines)
+
+    lines.append(f"  trusted_fallback_rows={len(tf_rows)}")
+
+    evidence_complete = sum(
+        1 for r in tf_rows
+        if (r.get("harness_evidence") or {}).get("evidence_complete", False)
+    )
+    lines.append(f"  evidence_complete={evidence_complete}")
+
+    # Audit fallback patches for these rows
+    comparison: Counter = Counter()
+    for r in tf_rows:
+        fa = audit_fallback_patch(r)
+        svf = fa["submitted_vs_fallback"]
+        if svf == "unknown":
+            # Can't determine offline — patch files not accessible
+            comparison["unknown_offline"] += 1
+        else:
+            comparison[svf] += 1
+
+    for k in ("no_submission", "submitted_same", "submitted_different", "no_fallback", "no_patch", "unknown_offline"):
+        if k in comparison:
+            lines.append(f"  {k}={comparison[k]}")
+
+    if "unknown_offline" in comparison:
+        lines.append("  NOTE: unknown_offline = patch file paths not accessible in offline replay")
+
+    # Evidence gaps for trusted_fallback rows that are PASS
+    pass_tf = [r for r in tf_rows if r.get("harness_resolved")]
+    if pass_tf:
+        lines.append(f"  trusted_fallback_pass={len(pass_tf)} (PASS with worktree fallback)")
+
+    return "\n".join(lines)
+
+
 def _incomplete_fail_breakdown(recs: list[dict]) -> str:
     """Break down incomplete FAIL records."""
     from budgetflow.observability import classify_incomplete_fail
@@ -367,6 +416,7 @@ def run_replay(path_017: Path, path_018: Path) -> str:
         _failure_ownership(recs_018),
         _failure_subtypes(recs_018),
         _harness_trust_stats(recs_018),
+        _trusted_fallback_audit(recs_018),
         _fallback_audit(recs_018),
         _incomplete_fail_breakdown(recs_018),
         _policy_memory_effect(recs_017, recs_018),

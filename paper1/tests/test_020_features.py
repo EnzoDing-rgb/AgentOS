@@ -82,7 +82,8 @@ class TestBudgetMemoryIntegration:
             budget_memory_estimate=est,
         )
         rec["budget_memory_enabled"] = True
-        rec["budget_memory_source"] = est.budget_source
+        rec["budget_memory_source_paths"] = "/data/runs/test.jsonl"
+        rec["budget_memory_budget_source"] = est.budget_source
         rec["budget_memory_estimated_budget"] = est.estimated_task_budget
         rec["budget_memory_predicted_cost"] = est.predicted_cost
         rec["budget_memory_confidence"] = est.budget_confidence
@@ -92,7 +93,8 @@ class TestBudgetMemoryIntegration:
         rec["budget_memory_applied"] = True
 
         assert rec["budget_memory_enabled"] is True
-        assert rec["budget_memory_source"] == "repo_median"
+        assert rec["budget_memory_budget_source"] == "repo_median"
+        assert rec["budget_memory_source_paths"] == "/data/runs/test.jsonl"
         assert rec["budget_memory_estimated_budget"] == 0.25
         assert rec["budget_memory_applied"] is True
 
@@ -476,3 +478,792 @@ class TestOfflineReplayNewSections:
         audit = build_compact_audit(recs)
         assert "fail_subtypes" in audit
         assert "budget_exhausted_no_progress" in audit["fail_subtypes"]
+
+
+# ── P0: dry-run / gate-only must not trigger provider preflight ───────────────
+
+
+class TestNoProviderPreflightForDryRun:
+    """P0: --budget-memory-dry-run and --budget-memory-gate-only must NOT
+    call provider signature check, create run files, or write JSONL."""
+
+    def test_dry_run_does_not_call_provider_preflight(self, tmp_path, monkeypatch):
+        """dry-run must exit before check_required_signatures is reached."""
+        from budgetflow.run_mini_swe_compare import main
+        from budgetflow import provider_signature
+
+        # Create a minimal JSONL for BudgetMemory
+        jl = tmp_path / "bm.jsonl"
+        jl.write_text(
+            json.dumps(_make_record(
+                instance_id="sympy__sympy-99999",
+                total_cost=0.5,
+                strategy="budget_only_tight",
+            )) + "\n"
+        )
+
+        preflight_called = []
+
+        def _fake_check(backends):
+            preflight_called.append(True)
+            raise AssertionError("provider preflight must NOT be called during dry-run")
+
+        monkeypatch.setattr(
+            provider_signature, "check_required_signatures", _fake_check
+        )
+
+        # Also mock task loading to avoid needing real SWE-bench data
+        import budgetflow.run_mini_swe_compare as rm
+        from unittest.mock import MagicMock
+
+        _fake_task = MagicMock()
+        _fake_task.instance_id = "sympy__sympy-99999"
+        _fake_task.repo = "sympy"
+
+        monkeypatch.setattr(rm, "load_compare_easy_tasks", lambda n: [_fake_task])
+        monkeypatch.setattr(rm, "load_compare_medium_tasks", lambda n: [_fake_task])
+        monkeypatch.setattr(rm, "load_swebench_lite_tasks", lambda instance_ids=None: [_fake_task])
+
+        # Save and restore sys.argv
+        import sys as _sys
+        _orig_argv = _sys.argv[:]
+        try:
+            _sys.argv = [
+                "run_mini_swe_compare",
+                "--budget-memory-dry-run",
+                "--budget-memory", str(jl),
+                "--preset", "3x3",
+            ]
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+            assert exc_info.value.code == 0
+            assert len(preflight_called) == 0, (
+                "check_required_signatures was called during dry-run!"
+            )
+        finally:
+            _sys.argv = _orig_argv
+
+    def test_gate_only_does_not_call_provider_preflight(self, tmp_path, monkeypatch):
+        """gate-only must exit before provider check."""
+        from budgetflow.run_mini_swe_compare import main
+        from budgetflow import provider_signature
+
+        jl = tmp_path / "bm.jsonl"
+        jl.write_text(
+            json.dumps(_make_record(
+                instance_id="sympy__sympy-99999",
+                total_cost=0.5,
+                strategy="budget_only_tight",
+            )) + "\n"
+        )
+
+        preflight_called = []
+
+        def _fake_check(backends):
+            preflight_called.append(True)
+            raise AssertionError("provider preflight must NOT be called during gate-only")
+
+        monkeypatch.setattr(
+            provider_signature, "check_required_signatures", _fake_check
+        )
+
+        import sys as _sys
+        _orig_argv = _sys.argv[:]
+        try:
+            _sys.argv = [
+                "run_mini_swe_compare",
+                "--budget-memory-gate-only",
+                "--budget-memory", str(jl),
+            ]
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+            assert exc_info.value.code == 0
+            assert len(preflight_called) == 0, (
+                "check_required_signatures was called during gate-only!"
+            )
+        finally:
+            _sys.argv = _orig_argv
+
+    def test_dry_run_does_not_create_run_files(self, tmp_path, monkeypatch):
+        """dry-run must not create JSONL, heartbeat, or summary files."""
+        from budgetflow.run_mini_swe_compare import main
+        from budgetflow import provider_signature
+        from unittest.mock import MagicMock
+
+        jl = tmp_path / "bm.jsonl"
+        jl.write_text(
+            json.dumps(_make_record(
+                instance_id="sympy__sympy-99999",
+                total_cost=0.5,
+                strategy="budget_only_tight",
+            )) + "\n"
+        )
+
+        # Mock provider check to no-op
+        monkeypatch.setattr(
+            provider_signature, "check_required_signatures", lambda backends: []
+        )
+        # Mock task loading
+        import budgetflow.run_mini_swe_compare as rm
+
+        _fake_task = MagicMock()
+        _fake_task.instance_id = "sympy__sympy-99999"
+        _fake_task.repo = "sympy"
+
+        monkeypatch.setattr(rm, "load_compare_easy_tasks", lambda n: [_fake_task])
+        monkeypatch.setattr(rm, "load_compare_medium_tasks", lambda n: [_fake_task])
+        monkeypatch.setattr(rm, "load_swebench_lite_tasks", lambda instance_ids=None: [_fake_task])
+
+        # Override RUNS_DIR to a temp dir so any accidental writes go there
+        runs_tmp = tmp_path / "runs"
+        runs_tmp.mkdir()
+        monkeypatch.setattr(rm, "RUNS_DIR", runs_tmp)
+
+        before_files = set(str(p.relative_to(tmp_path)) for p in tmp_path.rglob("*") if p.is_file())
+
+        import sys as _sys
+        _orig_argv = _sys.argv[:]
+        try:
+            _sys.argv = [
+                "run_mini_swe_compare",
+                "--budget-memory-dry-run",
+                "--budget-memory", str(jl),
+                "--preset", "3x3",
+            ]
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+            assert exc_info.value.code == 0
+        finally:
+            _sys.argv = _orig_argv
+
+        after_files = set(str(p.relative_to(tmp_path)) for p in tmp_path.rglob("*") if p.is_file())
+        new_files = after_files - before_files
+        assert not new_files, (
+            f"dry-run created files: {new_files}"
+        )
+
+    def test_policy_memory_gate_only_no_preflight(self, tmp_path, monkeypatch):
+        """--policy-memory-gate-only also must not trigger provider preflight."""
+        from budgetflow.run_mini_swe_compare import main
+        from budgetflow import provider_signature
+
+        # Create JSONL with enough records to pass the gate (needs >= 10 records/tasks)
+        jl = tmp_path / "pm.jsonl"
+        lines = []
+        for i in range(15):
+            lines.append(json.dumps(_make_record(
+                instance_id=f"sympy__sympy-{10000+i}",
+                strategy="budgetflow_full_tight",
+                total_cost=0.5 + i * 0.02,
+                harness_resolved=(i % 3 == 0),
+            )))
+        jl.write_text("\n".join(lines) + "\n")
+
+        preflight_called = []
+
+        def _fake_check(backends):
+            preflight_called.append(True)
+            raise AssertionError("provider preflight must NOT be called during gate-only")
+
+        monkeypatch.setattr(
+            provider_signature, "check_required_signatures", _fake_check
+        )
+
+        import sys as _sys
+        _orig_argv = _sys.argv[:]
+        try:
+            _sys.argv = [
+                "run_mini_swe_compare",
+                "--policy-memory-gate-only",
+                "--policy-memory", str(jl),
+            ]
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+            assert exc_info.value.code == 0
+            assert len(preflight_called) == 0, (
+                "check_required_signatures was called during policy-memory-gate-only!"
+            )
+        finally:
+            _sys.argv = _orig_argv
+
+
+# ── P1.1: Dry-run output fields ────────────────────────────────────────────────
+
+
+class TestDryRunOutputFields:
+    """P1.1: dry-run output includes old_cap_source, actual_median, verdict."""
+
+    def test_dry_run_output_has_new_fields(self, tmp_path, monkeypatch):
+        """dry-run output must contain old_cap_src, actual_median, verdict columns."""
+        import sys as _sys
+        from budgetflow.run_mini_swe_compare import main
+        from budgetflow import provider_signature
+        from unittest.mock import MagicMock
+        import io
+
+        jl = tmp_path / "bm.jsonl"
+        jl.write_text(
+            json.dumps(_make_record(
+                instance_id="sympy__sympy-99999",
+                total_cost=0.5,
+                strategy="budget_only_tight",
+            )) + "\n" +
+            json.dumps(_make_record(
+                instance_id="sympy__sympy-99999",
+                total_cost=0.6,
+                strategy="budget_only_tight",
+            )) + "\n"
+        )
+
+        monkeypatch.setattr(
+            provider_signature, "check_required_signatures", lambda backends: []
+        )
+        import budgetflow.run_mini_swe_compare as rm
+
+        _fake_task = MagicMock()
+        _fake_task.instance_id = "sympy__sympy-99999"
+        _fake_task.repo = "sympy"
+
+        monkeypatch.setattr(rm, "load_compare_easy_tasks", lambda n: [_fake_task])
+        monkeypatch.setattr(rm, "load_compare_medium_tasks", lambda n: [_fake_task])
+        monkeypatch.setattr(rm, "load_swebench_lite_tasks", lambda instance_ids=None: [_fake_task])
+
+        captured = io.StringIO()
+        monkeypatch.setattr(_sys, "stdout", captured)
+
+        _orig_argv = _sys.argv[:]
+        try:
+            _sys.argv = [
+                "run_mini_swe_compare",
+                "--budget-memory-dry-run",
+                "--budget-memory", str(jl),
+                "--preset", "3x3",
+            ]
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+            assert exc_info.value.code == 0
+        finally:
+            _sys.argv = _orig_argv
+
+        output = captured.getvalue()
+        assert "old_cap_src" in output, f"missing old_cap_src in:\n{output}"
+        assert "verdict" in output, f"missing verdict in:\n{output}"
+        assert "BudgetMemory dry-run" in output
+        assert "Summary:" in output
+
+    def test_dry_run_with_auto_budget_uses_auto_budget_source(self, tmp_path, monkeypatch):
+        """With --auto-budget, old_cap_src must be 'auto_budget'."""
+        import sys as _sys
+        from budgetflow.run_mini_swe_compare import main
+        from budgetflow import provider_signature
+        from unittest.mock import MagicMock
+        import io
+
+        jl = tmp_path / "bm.jsonl"
+        jl.write_text(
+            json.dumps(_make_record(
+                instance_id="sympy__sympy-99999",
+                total_cost=0.5,
+                strategy="budget_only_tight",
+            )) + "\n"
+        )
+
+        monkeypatch.setattr(
+            provider_signature, "check_required_signatures", lambda backends: []
+        )
+        import budgetflow.run_mini_swe_compare as rm
+
+        _fake_task = MagicMock()
+        _fake_task.instance_id = "sympy__sympy-99999"
+        _fake_task.repo = "sympy"
+
+        monkeypatch.setattr(rm, "load_compare_easy_tasks", lambda n: [_fake_task])
+        monkeypatch.setattr(rm, "load_compare_medium_tasks", lambda n: [_fake_task])
+        monkeypatch.setattr(rm, "load_swebench_lite_tasks", lambda instance_ids=None: [_fake_task])
+
+        # Mock AutoBudgetEstimator to return a known cap
+        from budgetflow.auto_budget import BudgetEstimate as AutoBudgetEstimate
+
+        _fake_est = AutoBudgetEstimate(
+            instance_id="sympy__sympy-99999",
+            cap=0.30,
+            estimated_cost=0.25,
+            source="test_mock",
+            confidence="medium",
+            features={},
+            memory_neighbors=0,
+        )
+
+        class _FakeEstimator:
+            def estimate(self, task, scale=1.0, min_cap=0.1, max_cap=10.0):
+                return _fake_est
+
+        monkeypatch.setattr(rm, "AutoBudgetEstimator", lambda memory, k=3: _FakeEstimator())
+
+        # AutoBudgetMemory needs special handling — mock it
+        _fake_memory = MagicMock()
+        monkeypatch.setattr(rm, "AutoBudgetMemory", lambda path: _fake_memory)
+
+        captured = io.StringIO()
+        monkeypatch.setattr(_sys, "stdout", captured)
+
+        _orig_argv = _sys.argv[:]
+        try:
+            _sys.argv = [
+                "run_mini_swe_compare",
+                "--budget-memory-dry-run",
+                "--budget-memory", str(jl),
+                "--auto-budget",
+                "--preset", "3x3",
+            ]
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+            assert exc_info.value.code == 0
+        finally:
+            _sys.argv = _orig_argv
+
+        output = captured.getvalue()
+        assert "auto_budget" in output, f"expected auto_budget source in:\n{output}"
+
+
+# ── P1.2: Trusted fallback audit section ─────────────────────────────────────
+
+
+class TestTrustedFallbackAudit:
+    def test_trusted_fallback_section_appears(self, tmp_path):
+        """TRUSTED_FALLBACK AUDIT section must appear in replay output."""
+        from budgetflow.offline_replay import run_replay
+
+        p017 = tmp_path / "017.jsonl"
+        p017.write_text(json.dumps(_make_record(harness_resolved=True)) + "\n")
+
+        # Create a trusted_fallback row: worktree patch source + complete evidence
+        p018 = tmp_path / "018.jsonl"
+        tf_rec = _make_record(
+            instance_id="sympy__sympy-1",
+            harness_resolved=True,
+            patch_extracted=True,
+            patch_source="worktree",
+            submitted_patch="",
+            patch_text="mock diff content",
+            detail="test_patch=ok;fail_before=fail;model_patch=ok;fail_after=pass;pass_to_pass=pass",
+        )
+        # build_harness_trust needs to see this as trusted_fallback
+        p018.write_text(json.dumps(tf_rec) + "\n")
+
+        out = run_replay(p017, p018)
+        assert "TRUSTED_FALLBACK AUDIT" in out
+        assert "trusted_fallback_rows=1" in out
+        assert "evidence_complete=1" in out
+
+    def test_trusted_fallback_no_rows(self, tmp_path):
+        """No trusted_fallback rows → section shows 0."""
+        from budgetflow.offline_replay import run_replay
+
+        p017 = tmp_path / "017.jsonl"
+        p017.write_text(json.dumps(_make_record(harness_resolved=True)) + "\n")
+
+        p018 = tmp_path / "018.jsonl"
+        # Normal submission — not trusted_fallback
+        p018.write_text(json.dumps(_make_record(
+            harness_resolved=True,
+            patch_extracted=True,
+            patch_source="submission",
+            submitted_patch="/tmp/p.diff",
+            detail="test_patch=ok;fail_before=fail;model_patch=ok;fail_after=pass;pass_to_pass=pass",
+        )) + "\n")
+
+        out = run_replay(p017, p018)
+        assert "TRUSTED_FALLBACK AUDIT" in out
+        assert "trusted_fallback_rows=0" in out
+
+
+# ── P1: Historical cap & not_comparable verdict ───────────────────────────────
+
+
+class TestDryRunHistoricalCap:
+    """P1.1: dry-run must prefer historical cap over standard_tight."""
+
+    def test_historical_cap_from_jsonl(self, tmp_path, monkeypatch):
+        """When source JSONL has estimated_task_cap, use it as old_cap."""
+        import sys as _sys
+        from budgetflow.run_mini_swe_compare import main
+        from budgetflow import provider_signature
+        from unittest.mock import MagicMock
+        import io
+
+        # JSONL with estimated_task_cap field
+        jl = tmp_path / "bm.jsonl"
+        jl.write_text(
+            json.dumps({
+                ** _make_record(
+                    instance_id="sympy__sympy-99999",
+                    total_cost=0.5,
+                    strategy="budget_only_tight",
+                ),
+                "estimated_task_cap": 0.25,
+            }) + "\n"
+        )
+
+        monkeypatch.setattr(provider_signature, "check_required_signatures", lambda backends: [])
+        import budgetflow.run_mini_swe_compare as rm
+
+        _fake_task = MagicMock()
+        _fake_task.instance_id = "sympy__sympy-99999"
+        _fake_task.repo = "sympy"
+
+        monkeypatch.setattr(rm, "load_compare_easy_tasks", lambda n: [_fake_task])
+        monkeypatch.setattr(rm, "load_compare_medium_tasks", lambda n: [_fake_task])
+        monkeypatch.setattr(rm, "load_swebench_lite_tasks", lambda instance_ids=None: [_fake_task])
+
+        captured = io.StringIO()
+        monkeypatch.setattr(_sys, "stdout", captured)
+
+        _orig_argv = _sys.argv[:]
+        try:
+            _sys.argv = [
+                "run_mini_swe_compare",
+                "--budget-memory-dry-run",
+                "--budget-memory", str(jl),
+                "--preset", "3x3",
+            ]
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+            assert exc_info.value.code == 0
+        finally:
+            _sys.argv = _orig_argv
+
+        output = captured.getvalue()
+        assert "historical" in output, (
+            f"expected historical old_cap source in:\n{output}"
+        )
+
+    def test_standard_tight_not_comparable(self, tmp_path, monkeypatch):
+        """Without auto-budget, historical cap, or per-task-cap → not_comparable."""
+        import sys as _sys
+        from budgetflow.run_mini_swe_compare import main
+        from budgetflow import provider_signature
+        from unittest.mock import MagicMock
+        import io
+
+        # JSONL without estimated_task_cap or batch_budget_cap
+        jl = tmp_path / "bm.jsonl"
+        jl.write_text(
+            json.dumps(_make_record(
+                instance_id="sympy__sympy-99999",
+                total_cost=0.5,
+                strategy="budget_only_tight",
+            )) + "\n"
+        )
+
+        monkeypatch.setattr(provider_signature, "check_required_signatures", lambda backends: [])
+        import budgetflow.run_mini_swe_compare as rm
+
+        _fake_task = MagicMock()
+        _fake_task.instance_id = "sympy__sympy-99999"
+        _fake_task.repo = "sympy"
+
+        monkeypatch.setattr(rm, "load_compare_easy_tasks", lambda n: [_fake_task])
+        monkeypatch.setattr(rm, "load_compare_medium_tasks", lambda n: [_fake_task])
+        monkeypatch.setattr(rm, "load_swebench_lite_tasks", lambda instance_ids=None: [_fake_task])
+
+        captured = io.StringIO()
+        monkeypatch.setattr(_sys, "stdout", captured)
+
+        _orig_argv = _sys.argv[:]
+        try:
+            _sys.argv = [
+                "run_mini_swe_compare",
+                "--budget-memory-dry-run",
+                "--budget-memory", str(jl),
+                "--preset", "3x3",
+            ]
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+            assert exc_info.value.code == 0
+        finally:
+            _sys.argv = _orig_argv
+
+        output = captured.getvalue()
+        assert "not_comparable" in output, (
+            f"expected not_comparable verdict in:\n{output}"
+        )
+
+    def test_historical_batch_budget_cap(self, tmp_path, monkeypatch):
+        """batch_budget_cap in JSONL also qualifies as historical cap."""
+        import sys as _sys
+        from budgetflow.run_mini_swe_compare import main
+        from budgetflow import provider_signature
+        from unittest.mock import MagicMock
+        import io
+
+        jl = tmp_path / "bm.jsonl"
+        jl.write_text(
+            json.dumps({
+                ** _make_record(
+                    instance_id="sympy__sympy-99999",
+                    total_cost=0.5,
+                    strategy="budget_only_tight",
+                ),
+                "batch_budget_cap": 0.30,
+            }) + "\n"
+        )
+
+        monkeypatch.setattr(provider_signature, "check_required_signatures", lambda backends: [])
+        import budgetflow.run_mini_swe_compare as rm
+
+        _fake_task = MagicMock()
+        _fake_task.instance_id = "sympy__sympy-99999"
+        _fake_task.repo = "sympy"
+
+        monkeypatch.setattr(rm, "load_compare_easy_tasks", lambda n: [_fake_task])
+        monkeypatch.setattr(rm, "load_compare_medium_tasks", lambda n: [_fake_task])
+        monkeypatch.setattr(rm, "load_swebench_lite_tasks", lambda instance_ids=None: [_fake_task])
+
+        captured = io.StringIO()
+        monkeypatch.setattr(_sys, "stdout", captured)
+
+        _orig_argv = _sys.argv[:]
+        try:
+            _sys.argv = [
+                "run_mini_swe_compare",
+                "--budget-memory-dry-run",
+                "--budget-memory", str(jl),
+                "--preset", "3x3",
+            ]
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+            assert exc_info.value.code == 0
+        finally:
+            _sys.argv = _orig_argv
+
+        output = captured.getvalue()
+        assert "historical" in output, (
+            f"expected historical source for batch_budget_cap in:\n{output}"
+        )
+
+    def test_per_task_cap_priority_over_standard(self, tmp_path, monkeypatch):
+        """--per-task-cap should show per_task source (not standard_tight)."""
+        import sys as _sys
+        from budgetflow.run_mini_swe_compare import main
+        from budgetflow import provider_signature
+        from unittest.mock import MagicMock
+        import io
+
+        jl = tmp_path / "bm.jsonl"
+        jl.write_text(
+            json.dumps(_make_record(
+                instance_id="sympy__sympy-99999",
+                total_cost=0.5,
+                strategy="budget_only_tight",
+            )) + "\n"
+        )
+
+        monkeypatch.setattr(provider_signature, "check_required_signatures", lambda backends: [])
+        import budgetflow.run_mini_swe_compare as rm
+
+        _fake_task = MagicMock()
+        _fake_task.instance_id = "sympy__sympy-99999"
+        _fake_task.repo = "sympy"
+
+        monkeypatch.setattr(rm, "load_compare_easy_tasks", lambda n: [_fake_task])
+        monkeypatch.setattr(rm, "load_compare_medium_tasks", lambda n: [_fake_task])
+        monkeypatch.setattr(rm, "load_swebench_lite_tasks", lambda instance_ids=None: [_fake_task])
+
+        captured = io.StringIO()
+        monkeypatch.setattr(_sys, "stdout", captured)
+
+        _orig_argv = _sys.argv[:]
+        try:
+            _sys.argv = [
+                "run_mini_swe_compare",
+                "--budget-memory-dry-run",
+                "--budget-memory", str(jl),
+                "--per-task-cap", "0.15",
+                "--preset", "3x3",
+            ]
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+            assert exc_info.value.code == 0
+        finally:
+            _sys.argv = _orig_argv
+
+        output = captured.getvalue()
+        assert "per_task" in output, (
+            f"expected per_task source in:\n{output}"
+        )
+
+    def test_verdict_ok_when_within_threshold(self, tmp_path, monkeypatch):
+        """When actual_median is close to old_cap → verdict=ok."""
+        import sys as _sys
+        from budgetflow.run_mini_swe_compare import main
+        from budgetflow import provider_signature
+        from unittest.mock import MagicMock
+        import io
+
+        # estimated_task_cap=0.25, actual median=0.25 -> ratio=1.0 → ok
+        jl = tmp_path / "bm.jsonl"
+        jl.write_text(
+            json.dumps({
+                ** _make_record(
+                    instance_id="sympy__sympy-99999",
+                    total_cost=0.25,
+                    strategy="budget_only_tight",
+                ),
+                "estimated_task_cap": 0.25,
+            }) + "\n"
+        )
+
+        monkeypatch.setattr(provider_signature, "check_required_signatures", lambda backends: [])
+        import budgetflow.run_mini_swe_compare as rm
+
+        _fake_task = MagicMock()
+        _fake_task.instance_id = "sympy__sympy-99999"
+        _fake_task.repo = "sympy"
+
+        monkeypatch.setattr(rm, "load_compare_easy_tasks", lambda n: [_fake_task])
+        monkeypatch.setattr(rm, "load_compare_medium_tasks", lambda n: [_fake_task])
+        monkeypatch.setattr(rm, "load_swebench_lite_tasks", lambda instance_ids=None: [_fake_task])
+
+        captured = io.StringIO()
+        monkeypatch.setattr(_sys, "stdout", captured)
+
+        _orig_argv = _sys.argv[:]
+        try:
+            _sys.argv = [
+                "run_mini_swe_compare",
+                "--budget-memory-dry-run",
+                "--budget-memory", str(jl),
+                "--preset", "3x3",
+            ]
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+            assert exc_info.value.code == 0
+        finally:
+            _sys.argv = _orig_argv
+
+        output = captured.getvalue()
+        assert "ok" in output, (
+            f"expected ok verdict in:\n{output}"
+        )
+
+
+# ── Task 3: BudgetMemory record field naming ─────────────────────────────────
+
+
+class TestBudgetMemoryFieldNaming:
+    """budget_memory_budget_source vs budget_memory_source_paths distinction."""
+
+    def test_budget_source_field_uses_exact_task(self):
+        """budget_memory_budget_source reflects the cascade level."""
+        bm = BudgetMemory()
+        bm._learn([_make_record(instance_id="foo__bar-1", total_cost=0.50)] * 5)
+        est = bm.estimate_task_budget("foo__bar-1", strategy="budget_only_tight")
+        assert est.budget_source == "exact_task"
+
+    def test_source_paths_distinct_from_budget_source(self):
+        """budget_memory_source_paths is file paths; budget_memory_budget_source is cascade level."""
+        bm = BudgetMemory()
+        bm._learn([_make_record(instance_id="foo__bar-1", total_cost=0.50)] * 5)
+        est = bm.estimate_task_budget("foo__bar-1", strategy="budget_only_tight")
+
+        rec = _make_record()
+        rec["budget_memory_enabled"] = True
+        rec["budget_memory_source_paths"] = "/data/018.jsonl"
+        rec["budget_memory_budget_source"] = est.budget_source
+
+        assert rec["budget_memory_source_paths"] == "/data/018.jsonl"
+        assert rec["budget_memory_budget_source"] == "exact_task"
+        assert rec["budget_memory_source_paths"] != rec["budget_memory_budget_source"]
+
+
+# ── Task 1: No litellm warning in dry-run/gate-only ──────────────────────────
+
+
+class TestNoLitellmInOfflineMode:
+    """Verify dry-run/gate-only output does not contain provider preflight lines."""
+
+    def test_dry_run_output_has_no_preflight(self, tmp_path, monkeypatch):
+        """dry-run stdout must not contain '[preflight]'."""
+        import sys as _sys
+        from budgetflow.run_mini_swe_compare import main
+        from budgetflow import provider_signature
+        from unittest.mock import MagicMock
+        import io
+
+        jl = tmp_path / "bm.jsonl"
+        jl.write_text(
+            json.dumps(_make_record(
+                instance_id="sympy__sympy-99999",
+                total_cost=0.5,
+                strategy="budget_only_tight",
+            )) + "\n"
+        )
+
+        monkeypatch.setattr(provider_signature, "check_required_signatures", lambda backends: [])
+        import budgetflow.run_mini_swe_compare as rm
+
+        _fake_task = MagicMock()
+        _fake_task.instance_id = "sympy__sympy-99999"
+        _fake_task.repo = "sympy"
+        monkeypatch.setattr(rm, "load_compare_easy_tasks", lambda n: [_fake_task])
+        monkeypatch.setattr(rm, "load_compare_medium_tasks", lambda n: [_fake_task])
+        monkeypatch.setattr(rm, "load_swebench_lite_tasks", lambda instance_ids=None: [_fake_task])
+
+        captured = io.StringIO()
+        monkeypatch.setattr(_sys, "stdout", captured)
+
+        _orig_argv = _sys.argv[:]
+        try:
+            _sys.argv = [
+                "run_mini_swe_compare",
+                "--budget-memory-dry-run",
+                "--budget-memory", str(jl),
+                "--preset", "3x3",
+            ]
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+            assert exc_info.value.code == 0
+        finally:
+            _sys.argv = _orig_argv
+
+        output = captured.getvalue()
+        assert "[preflight]" not in output, (
+            f"dry-run output must NOT contain [preflight]:\n{output}"
+        )
+
+    def test_gate_only_output_has_no_preflight(self, tmp_path, monkeypatch):
+        """gate-only stdout must not contain '[preflight]'."""
+        import sys as _sys
+        from budgetflow.run_mini_swe_compare import main
+        import io
+
+        jl = tmp_path / "bm.jsonl"
+        jl.write_text(
+            json.dumps(_make_record(
+                instance_id="sympy__sympy-99999",
+                total_cost=0.5,
+                strategy="budget_only_tight",
+            )) + "\n"
+        )
+
+        captured = io.StringIO()
+        monkeypatch.setattr(_sys, "stdout", captured)
+
+        _orig_argv = _sys.argv[:]
+        try:
+            _sys.argv = [
+                "run_mini_swe_compare",
+                "--budget-memory-gate-only",
+                "--budget-memory", str(jl),
+            ]
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+            assert exc_info.value.code == 0
+        finally:
+            _sys.argv = _orig_argv
+
+        output = captured.getvalue()
+        assert "[preflight]" not in output, (
+            f"gate-only output must NOT contain [preflight]:\n{output}"
+        )

@@ -38,8 +38,6 @@ for path in (str(SRC), str(MINI_SWE_SRC)):
 
 from collections.abc import Callable  # noqa: E402
 
-from budgetflow.adapter.backends import _selected_t2_backend  # noqa: E402
-from budgetflow.adapter.runner import run_mini_swe_task  # noqa: E402
 from budgetflow.compare_checkpoint import (  # noqa: E402
     CompareCheckpointStore,
     GlobalRunProgress,
@@ -70,7 +68,6 @@ from budgetflow.ledger import WorkflowLedgerStore  # noqa: E402
 from budgetflow.lite_tasks import load_compare_easy_tasks, load_compare_medium_tasks, load_swebench_lite_tasks  # noqa: E402
 from budgetflow.local_harness import set_worktree_root  # noqa: E402
 from budgetflow.protocol_caps import read_protocol_caps  # noqa: E402
-from budgetflow.provider_signature import check_required_signatures  # noqa: E402
 from budgetflow.adaptive_routing import AdaptiveRoutingRegistry  # noqa: E402
 from budgetflow.policy_memory import PolicyMemory  # noqa: E402
 from budgetflow.run_guards import CompareRunGuards, set_active_guard  # noqa: E402
@@ -151,6 +148,8 @@ def _strategy_catalog() -> tuple[CompareStrategy, ...]:
 
 
 def _required_backends_for_strategies(strategies: tuple[CompareStrategy, ...]) -> list[str]:
+    from budgetflow.adapter.backends import _selected_t2_backend  # noqa: E402
+
     required: set[str] = set()
     t2_backend = _selected_t2_backend()
     for cfg in strategies:
@@ -243,6 +242,7 @@ def _run_one(
     trace_truncate_chars: int = 120,
     budget_estimate: BudgetEstimate | None = None,
     budget_memory_estimate: BudgetMemoryEstimate | None = None,
+    budget_memory_source_paths: str = "",
     run_series: str = "",
     policy_lane: str = "",
 ) -> dict:
@@ -254,6 +254,8 @@ def _run_one(
     if adaptive is not None:
         adaptive.reset_task_runtime()
         adaptive.set_task_context(task.instance_id)
+    from budgetflow.adapter.runner import run_mini_swe_task  # noqa: E402
+
     result = run_mini_swe_task(
         task,
         strategy=cfg.routing,
@@ -362,7 +364,9 @@ def _run_one(
     # BudgetMemory metadata (020)
     if budget_memory_estimate is not None:
         record["budget_memory_enabled"] = True
-        record["budget_memory_source"] = budget_memory_estimate.budget_source
+        if budget_memory_source_paths:
+            record["budget_memory_source_paths"] = budget_memory_source_paths
+        record["budget_memory_budget_source"] = budget_memory_estimate.budget_source
         record["budget_memory_estimated_budget"] = budget_memory_estimate.estimated_task_budget
         record["budget_memory_predicted_cost"] = budget_memory_estimate.predicted_cost
         record["budget_memory_confidence"] = budget_memory_estimate.budget_confidence
@@ -644,6 +648,7 @@ def _run_strategy_batch(
     task_caps: dict[str, float] | None = None,
     budget_estimates: dict[str, BudgetEstimate] | None = None,
     budget_memory_estimates: dict[str, BudgetMemoryEstimate] | None = None,
+    budget_memory_source_paths: str = "",
     run_series: str = "",
     heartbeat_writer: object | None = None,
 ) -> tuple[list[dict], float]:
@@ -779,6 +784,7 @@ def _run_strategy_batch(
                 trace_truncate_chars=trace_truncate_chars,
                 budget_estimate=budget_estimates.get(task.instance_id) if budget_estimates else None,
                 budget_memory_estimate=budget_memory_estimates.get(task.instance_id) if budget_memory_estimates else None,
+                budget_memory_source_paths=budget_memory_source_paths,
                 run_series=run_series,
                 policy_lane=cfg.name,
             )
@@ -1613,22 +1619,6 @@ def main() -> None:
             raise SystemExit("no strategies selected")
     else:
         strategies = all_strategies
-    if not args.no_provider_signature_check:
-        signature_results = check_required_signatures(_required_backends_for_strategies(strategies))
-        for result in signature_results:
-            state = "PASS" if result.ok else "FAIL"
-            print(
-                f"{tag('preflight', bold=False)} {state} backend={result.backend} "
-                f"provider={result.provider} model={result.model} latency_ms={result.latency_ms} "
-                f"status={result.status_code or '-'} error={result.error_type or '-'}",
-                flush=True,
-            )
-        failed = [r for r in signature_results if not r.ok]
-        if failed:
-            raise SystemExit(
-                "provider signature check failed: "
-                + ", ".join(f"{r.backend}:{r.error_type or r.status_code}" for r in failed)
-            )
     policy_jobs = len(strategies) if args.jobs is None else max(1, args.jobs)
 
     budget_caps = {"loose": loose, "tight": tight}
@@ -1681,6 +1671,7 @@ def main() -> None:
             args.per_task_cap = -1.0  # Sentinel: per-task with varying caps.
 
     # ── BudgetMemory dry-run: load, compute estimates, print comparison, exit ──
+    # Must run BEFORE provider signature check — no API calls, no run files.
     if args.budget_memory_dry_run:
         if not args.budget_memory:
             print("ERROR: --budget-memory-dry-run requires --budget-memory PATH[,PATH...]", flush=True)
@@ -1696,37 +1687,128 @@ def main() -> None:
         print(f"records={bm.record_count} tasks={bm.task_count} repos={bm.repo_count}")
         print(f"sources: {bm._source_paths}")
         print()
-        # Compare BudgetMemory estimates vs auto-budget or standard caps
+
+        # Build historical cap lookup from source JSONL files
+        # Index: instance_id → first found estimated_task_cap or batch_budget_cap
+        historical_caps: dict[str, tuple[float, str]] = {}
+        for sp in bm._source_paths:
+            try:
+                for line in Path(sp).read_text(errors="replace").splitlines():
+                    if not line.strip():
+                        continue
+                    try:
+                        r = json.loads(line.strip())
+                    except json.JSONDecodeError:
+                        continue
+                    iid = str(r.get("instance_id") or "")
+                    if not iid or iid in historical_caps:
+                        continue
+                    est_cap = r.get("estimated_task_cap")
+                    batch_cap = r.get("batch_budget_cap")
+                    if est_cap is not None:
+                        historical_caps[iid] = (float(est_cap), "historical")
+                    elif batch_cap is not None:
+                        historical_caps[iid] = (float(batch_cap), "historical")
+            except Exception:
+                pass
+
         auto_cap_available = auto_budget_task_caps is not None
-        print(f"  {'task':<40} {'auto_cap':>10} {'bm_cap':>10} {'bm_source':<20} {'diff':>10} {'confidence':>10}")
-        print(f"  {'-'*100}")
-        under_count = over_count = unchanged = 0
+        per_task_hard = args.per_task_cap if args.per_task_cap and args.per_task_cap > 0 else None
+
+        # Header
+        hdr = (
+            f"  {'task':<40} {'strategy':<28} {'old_cap_src':<16} {'old_cap':>10} "
+            f"{'bm_cap':>10} {'actual_median':>13} {'verdict':>16}"
+        )
+        print(hdr)
+        print(f"  {'-'*125}")
+
+        under_count = over_count = ok_count = not_comp = 0
         for task in tasks:
             iid = task.instance_id
             repo = getattr(task, "repo", "") or iid.split("__")[0] if "__" in iid else iid
-            hard_cap = args.per_task_cap if args.per_task_cap and args.per_task_cap > 0 else None
-            est = bm.estimate_task_budget(iid, repo=repo, strategy="budget_only_tight", hard_budget=hard_cap)
+            strat = "budget_only_tight"
+            est = bm.estimate_task_budget(iid, repo=repo, strategy=strat, hard_budget=per_task_hard)
             bm_cap = est.estimated_task_budget
-            auto_cap = auto_budget_task_caps.get(iid) if auto_budget_task_caps else None
-            diff_str = ""
-            if auto_cap is not None:
-                diff = bm_cap - auto_cap
-                diff_str = f"${diff:+.4f}"
-                if bm_cap > auto_cap * 1.5:
-                    over_count += 1
-                elif bm_cap < auto_cap * 0.5:
+
+            # Resolve old_cap and old_cap_source (priority order)
+            old_cap: float | None = None
+            old_src = "standard_tight"
+            comparable = False
+            if auto_budget_task_caps is not None:
+                old_cap = auto_budget_task_caps.get(iid)
+                old_src = "auto_budget"
+                comparable = True
+            elif iid in historical_caps:
+                old_cap, old_src = historical_caps[iid]
+                comparable = True
+            elif per_task_hard is not None:
+                old_cap = per_task_hard
+                old_src = "per_task"
+                comparable = True
+
+            old_cap_val = old_cap if old_cap is not None else 0
+            old_str = f"${old_cap_val:.4f}" if old_cap_val > 0 else "N/A"
+
+            # Actual cost from BudgetMemory's task stats (median)
+            ts = bm.task_stats(iid)
+            actual_median = ts.median_cost if ts and ts.median_cost > 0 else 0
+            actual_str = f"${actual_median:.4f}" if actual_median > 0 else "N/A"
+
+            # Verdict
+            if not comparable:
+                verdict = "not_comparable"
+                not_comp += 1
+            elif actual_median > 0 and old_cap_val > 0:
+                if actual_median > old_cap_val * 1.2:
+                    verdict = "underbudget"
                     under_count += 1
+                elif old_cap_val > actual_median * 3:
+                    verdict = "overbudget"
+                    over_count += 1
                 else:
-                    unchanged += 1
-            auto_str = f"${auto_cap:.4f}" if auto_cap is not None else "N/A"
-            print(f"  {iid:<40} {auto_str:>10} ${bm_cap:>9.4f} {est.budget_source:<20} {diff_str:>10} {est.budget_confidence:<10}")
+                    verdict = "ok"
+                    ok_count += 1
+            else:
+                verdict = "not_comparable"
+                not_comp += 1
+
+            print(
+                f"  {iid:<40} {strat:<28} {old_src:<16} {old_str:>10} "
+                f"${bm_cap:>9.4f} {actual_str:>13} {verdict:>16}"
+            )
+
         print()
-        print(f"Summary: underbudget_fixed={under_count} overbudget_reduced={over_count} unchanged={unchanged} risky=0")
+        print(
+            f"Summary: underbudget={under_count} overbudget={over_count} ok={ok_count} "
+            f"not_comparable={not_comp} tasks={len(tasks)} auto_budget={auto_cap_available}"
+        )
         sys.exit(0)
+
+    # ── Provider signature check (AFTER dry-run/gate-only to avoid API calls) ──
+    if not args.no_provider_signature_check:
+        from budgetflow.provider_signature import check_required_signatures  # noqa: E402
+
+        signature_results = check_required_signatures(_required_backends_for_strategies(strategies))
+        for result in signature_results:
+            state = "PASS" if result.ok else "FAIL"
+            print(
+                f"{tag('preflight', bold=False)} {state} backend={result.backend} "
+                f"provider={result.provider} model={result.model} latency_ms={result.latency_ms} "
+                f"status={result.status_code or '-'} error={result.error_type or '-'}",
+                flush=True,
+            )
+        failed = [r for r in signature_results if not r.ok]
+        if failed:
+            raise SystemExit(
+                "provider signature check failed: "
+                + ", ".join(f"{r.backend}:{r.error_type or r.status_code}" for r in failed)
+            )
 
     # ── BudgetMemory normal mode ──
     budget_memory: BudgetMemory | None = None
     budget_memory_enabled = not args.disable_budget_memory
+    budget_memory_source_paths = ""
     budget_memory_estimates: dict[str, BudgetMemoryEstimate] = {}
     if budget_memory_enabled and args.budget_memory:
         bm_paths = [Path(p.strip()) for p in args.budget_memory.split(",")]
@@ -1741,6 +1823,7 @@ def main() -> None:
             budget_memory = BudgetMemory.from_jsonl(valid_paths)
             budget_memory_enabled = True
             src_str = ",".join(str(p) for p in valid_paths)
+            budget_memory_source_paths = src_str
             print(
                 f"{tag('budget_memory', bold=True)} loaded from {src_str} "
                 f"records={budget_memory.record_count} tasks={budget_memory.task_count} "
@@ -2018,6 +2101,7 @@ def main() -> None:
             task_caps=auto_budget_task_caps,
             budget_estimates=auto_budget_estimates,
             budget_memory_estimates=budget_memory_estimates if budget_memory_enabled else None,
+            budget_memory_source_paths=budget_memory_source_paths,
             run_series=series,
             heartbeat_writer=heartbeat_writer,
         )
