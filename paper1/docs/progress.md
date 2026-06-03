@@ -26,22 +26,22 @@
 
 ### 最新改动（2026-06-03）
 
-- 已写：`reports/006.md`、`007.md`、`008.md`、`009.md`，其中 009 是 overnight batch loop 总结。
+- **011**：P0 fix — `.1f` cost 展示四舍五入污染真实 USD 可观测性，已加 `_fmt_usd()` 自适应格式。31 个新回归测试（pricing/worktree/resolved/memory/format）。59/59 pass。
+- **010**：P0 修复（API 价格校准、worktree crash、resolved=None）+ 009 成本重解 $34K→$10.63。`reports/010.md`。
+- **009**：Overnight batch loop。56 recorded rows，BudgetFlow 正向信号但数据不够干净。3 个新 SymPy gold-PASS task。`reports/009.md`。
+- **008**：首次 model matrix。14/15 records。`reports/008.md`。
+- 已写：`reports/006.md`、`007.md`、`008.md`、`009.md`、`010.md`、`011.md`。
 - 已补：mini-swe-agent 依赖，compare runner import/`--help`/全链路恢复。
-- 已实现/接入：Automatic Budgeting v1 与 memory 写入；`resolved=None` 污染问题已报告为已修，但仍需清理旧 memory 并回归验证。
-- 已修/部分修：SymPy `py.test` compat；Django `django.setup()` compat。但 Django 新 task 仍卡 `INSTALLED_APPS`，不能扩 Django pool。
-- 已确认：`--jobs` 能并行多个 policy；worktree 隔离大体有效，但 `budget_only_tight` 系统性 worktree crash/缺行。
-- 已确认：GPT-5.4 / `all_pro` 有非确定性，同一 task 单次 PASS/FAIL 不能当稳定天花板，需要重复或更大样本。
-- 已观察：`django__django-12113` 和 `sympy__sympy-21612` 目前像 ceiling/unsolvable task；不适合拿来证明 budget policy 差。
+- 已实现/接入：Automatic Budgeting v1 与 memory 写入。Memory 已清理（备份至 `.bak_010`），下次运行自动新建。
+- 已修/部分修：SymPy `py.test` compat；Django `django.setup()` compat。但 Django 新 task 仍卡 `INSTALLED_APPS`。
+- 已确认：`--jobs` 并行 worktree 隔离；GPT-5.4 非确定性；`django-12113`/`sympy-21612` 是 ceiling task。
 
 ### 下一步
 
-1. P0：修 worktree 清理。`git worktree add` 前必须能处理 stale dir / stale registration，解决 `budget_only_tight` 缺行。
-2. P0：验证 checkpoint/JSONL/summary 幂等性。resume 后同一 `(instance_id, strategy)` 只能有一个可信完成记录。
-3. P0：清理 auto-budget memory，移除 `resolved=None` 污染记录；新增回归测试，确保只用 `harness_resolved` 写 learning signal。
-4. P1：校准真实 API 价格，把内部 cost unit 映射为真实成本；否则 paper 里不能写真实费用结论。
-5. P1：小 batch 回归后再扩 5×15/5×30。先用 gold-PASS、solvable、非 ceiling task，避免把任务难度噪声当 policy 失败。
-6. P1：Django 新 task 要先修 `INSTALLED_APPS` adapter；Requests 先保留 gold sanity，不急进主矩阵。
+1. **验证跑**：`postfix_011_sanity` — 3-5 tasks × 5 strategies，`--jobs 5`，gold-PASS，验证 010 修复生效且 worktree 不再 crash。
+2. 验证 checkpoint/JSONL/summary 幂等性。resume 后同一 `(instance_id, strategy)` 只能有一个可信完成记录。
+3. Django 新 task 要先修 `INSTALLED_APPS` adapter。
+4. 小 batch 回归后再扩 5×15/5×30。
 
 ---
 
@@ -70,11 +70,12 @@
 | `run_mini_swe_compare` dependency recovery | ✅ 见 `reports/006.md` |
 | 008/009 model batches | ⚠️ 56 recorded rows，数据有缺行/崩溃噪声 |
 | `run_mini_swe_compare --resume` idempotency | ⚠️ 006 暴露重复 JSONL 行，待验证修复 |
-| Worktree resilience | ⛔ `budget_only_tight` 系统性 crash/缺行 |
-| Automatic Budgeting v1 | ⚠️ 已接入，但 memory 污染和 cap floor 需修 |
+| Worktree resilience | ✅ 3 层兜底清理，待实跑验证 |
+| Automatic Budgeting v1 | ✅ Memory 清洁，cap 已校准为真实 USD |
 | Automatic Budgeting continuous learning | ⚠️ 已有方向，必须基于 clean rows |
 | Django new-task harness | ⚠️ `INSTALLED_APPS` / bare-pytest gap |
-| Real-world cost calibration | ⛔ 内部 cost unit 未映射真实 API 价格 |
+| Real-world cost calibration | ✅ API 价格已校准（T1/T2 DashScope，T3 aicode007） |
+| Cost display observability | ✅ `_fmt_usd()` 自适应格式 |
 
 ---
 

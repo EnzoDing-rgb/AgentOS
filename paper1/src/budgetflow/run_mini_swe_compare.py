@@ -72,6 +72,23 @@ RUNS_DIR = REPO_ROOT / "data" / "runs"
 UNCAPPED_BUDGET = 1_000_000.0
 
 
+def _fmt_usd(value: float | None) -> str:
+    """Adaptive USD formatting for real-dollar costs (post price calibration).
+
+    Values are now in the $0.01–$10 range, so fixed ``.1f`` destroys
+    observability on sub-dollar task costs and caps.
+    """
+    if value is None:
+        return "uncapped"
+    if value == 0:
+        return "0"
+    if value < 0.01:
+        return f"{value:.6f}"
+    if value < 1.0:
+        return f"{value:.4f}"
+    return f"{value:.2f}"
+
+
 @dataclass(frozen=True)
 class CompareStrategy:
     name: str
@@ -309,8 +326,8 @@ def _print_run_done(record: dict, *, done: int, total: int, strategy: str) -> No
         tier_line = f" models: last={last} mix T1={t1:.0f}% T2={t2:.0f}% T3={t3:.0f}%"
     print(
         f"{banner} {record['instance_id']} {strategy} "
-        f"turns={record.get('llm_turns')} cost={record.get('task_cost', record.get('total_cost', 0)):.1f} "
-        f"batch_left={float(record.get('batch_available') or 0):.1f} "
+        f"turns={record.get('llm_turns')} cost={_fmt_usd(record.get('task_cost', record.get('total_cost', 0)))} "
+        f"batch_left={_fmt_usd(float(record.get('batch_available') or 0))} "
         f"exit={record.get('exit_status')} elapsed={record.get('elapsed_s')}s{tier_line}",
         flush=True,
     )
@@ -338,7 +355,7 @@ def _tier_ratio(picks: list[str], tier: int) -> float:
 def _append_summary(lines: list[str], record: dict, *, index: int, total: int) -> None:
     status = "PASS" if record["harness_resolved"] else "FAIL"
     cap = record.get("batch_budget_cap")
-    cap_s = "uncapped" if cap is None else f"{cap:.1f}"
+    cap_s = _fmt_usd(cap)
     task_cost = float(record.get("task_cost") or record.get("total_cost") or 0.0)
     picks = record.get("backend_picks") or []
     spark_pct = _spark_ratio(picks) * 100.0
@@ -349,8 +366,8 @@ def _append_summary(lines: list[str], record: dict, *, index: int, total: int) -
         f"exit={record.get('exit_status')} reason={record.get('exit_reason')} turns={record.get('llm_turns')} "
         f"class={record.get('failure_class', classify_failure(record))} "
         f"axis={(record.get('forensic_summary') or {}).get('primary_axis', '-')} "
-        f"task_cost={task_cost:.2f} batch_cap={cap_s} batch_avail={record.get('batch_available')} "
-        f"batch_spent={record.get('batch_spent')} T1={spark_pct:.0f}% T2={flash_pct:.0f}% "
+        f"task_cost={_fmt_usd(task_cost)} batch_cap={cap_s} batch_avail={_fmt_usd(record.get('batch_available'))} "
+        f"batch_spent={_fmt_usd(record.get('batch_spent'))} T1={spark_pct:.0f}% T2={flash_pct:.0f}% "
         f"T3={pro_pct:.0f}% elapsed={record.get('elapsed_s')}s"
     )
     if record.get("backend_picks"):
@@ -393,7 +410,7 @@ def _format_strategy_totals(
         resolved_n = sum(1 for f in flags if f)
         batch_spent = batch_spent_by_strategy.get(key, 0.0)
         cap = batch_caps.get(key)
-        cap_s = f"{cap:.1f}" if cap is not None else "uncapped"
+        cap_s = _fmt_usd(cap)
         cap_flag = ""
         if cap is not None and batch_spent > cap + 0.01:
             cap_flag = " OVER_CAP"
@@ -403,8 +420,8 @@ def _format_strategy_totals(
         avg_flash = sum(flash) / len(flash) if flash else 0.0
         avg_pro = sum(pro) / len(pro) if pro else 0.0
         lines.append(
-            f"{key:<28} {resolved_n}/{len(flags):<7} {batch_spent:11.2f} {cap_s:>10}{cap_flag} "
-            f"{avg_cost:9.2f} {avg_turns:10.1f} {avg_spark * 100:4.0f}% "
+            f"{key:<28} {resolved_n}/{len(flags):<7} {_fmt_usd(batch_spent):>11} {cap_s:>10}{cap_flag} "
+            f"{_fmt_usd(avg_cost):>9} {avg_turns:10.1f} {avg_spark * 100:4.0f}% "
             f"{avg_flash * 100:4.0f}% {avg_pro * 100:4.0f}%"
         )
         if failures:
@@ -467,12 +484,12 @@ def _format_live_snapshot(
         avg_pro = sum(pro) / len(pro) if pro else 0.0
         batch_spent = batch_spent_by_strategy.get(name, 0.0)
         cap = batch_caps.get(name)
-        cap_s = f"{cap:.0f}" if cap is not None else "uncapped"
+        cap_s = _fmt_usd(cap)
         lines.append(
             f"{name:<28} {done_n:>4} {tasks_per_strategy:>4} {pass_n:>5} {fail_n:>5} {rate:>6} "
-            f"{avg_cost:>8.1f} {avg_turns:>7.1f} {avg_spark*100:>4.0f}% "
+            f"{_fmt_usd(avg_cost):>8} {avg_turns:>7.1f} {avg_spark*100:>4.0f}% "
             f"{avg_flash*100:>4.0f}% {avg_pro*100:>4.0f}% "
-            f"{batch_spent:>11.1f} {cap_s:>10}"
+            f"{_fmt_usd(batch_spent):>11} {cap_s:>10}"
         )
         if failures:
             fail_s = ", ".join(f"{k}={v}" for k, v in sorted(failures.items()))
@@ -590,16 +607,16 @@ def _run_strategy_batch(
         if task_caps is not None:
             cap_label = "auto_budget_per_task"
         else:
-            cap_label = f"per_task_cap={per_task_cap:.1f}" if per_task_cap else "per_task"
+            cap_label = f"per_task_cap={_fmt_usd(per_task_cap)}" if per_task_cap else "per_task"
         if max_overrun > 0:
-            cap_label += f"+overrun={max_overrun:.1f}"
+            cap_label += f"+overrun={_fmt_usd(max_overrun)}"
     else:
-        cap_label = f"shared_cap={batch_budget_cap:.1f}"
+        cap_label = f"shared_cap={_fmt_usd(batch_budget_cap)}"
         if soft_budget is not None:
-            cap_label += f" soft={soft_budget:.1f}+overrun={max_overrun:.1f}"
+            cap_label += f" soft={_fmt_usd(soft_budget)}+overrun={_fmt_usd(max_overrun)}"
     _log(
         f"{tag('batch', bold=False)} strategy={cfg.name} tasks={len(tasks)} "
-        f"{cap_label} spent_resume={initial_spent:.1f} mode=serial_tasks"
+        f"{cap_label} spent_resume={_fmt_usd(initial_spent)} mode=serial_tasks"
     )
 
     records: list[dict] = []
@@ -914,12 +931,12 @@ def _ingest_batch_footer(
     if not batch_records:
         return
     with io_lock:
-        state.summary_lines.append(f"=== BATCH START strategy={cfg.name} shared_cap={batch_cap:.1f} ===")
+        state.summary_lines.append(f"=== BATCH START strategy={cfg.name} shared_cap={_fmt_usd(batch_cap)} ===")
         state.batch_spent_by_strategy[cfg.name] = batch_spent
         state.summary_lines.append(
             f"=== BATCH END strategy={cfg.name} resolved="
             f"{sum(1 for r in batch_records if r['harness_resolved'])}/{len(batch_records)} "
-            f"batch_spent={batch_spent:.2f} batch_avail={_governor_avail(batch_records):.2f} ==="
+            f"batch_spent={_fmt_usd(batch_spent)} batch_avail={_fmt_usd(_governor_avail(batch_records))} ==="
         )
         state.summary_lines.append("")
         _write_summary_file(
@@ -1310,7 +1327,7 @@ def main() -> None:
             auto_budget_task_caps = {iid: est.cap for iid, est in auto_budget_estimates.items()}
             print(
                 f"{tag('auto-budget', bold=False)} {est.instance_id} "
-                f"est={est.estimated_cost:.1f} cap={est.cap:.1f} "
+                f"est={_fmt_usd(est.estimated_cost)} cap={_fmt_usd(est.cap)} "
                 f"source={est.source} confidence={est.confidence}"
                 + (f" neighbors={est.memory_neighbors}" if est.memory_neighbors else ""),
                 flush=True,
