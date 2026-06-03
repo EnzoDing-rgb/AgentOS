@@ -93,6 +93,251 @@ def build_observability_status(record: dict) -> dict:
     }
 
 
+# ── Harness trust audit ──────────────────────────────────────────────────────
+
+def build_harness_trust(record: dict) -> dict:
+    """Audit harness trustworthiness per record.
+
+    Returns {harness_trust, harness_issues, harness_owner, severity}.
+
+    Trust levels:
+      - trusted: evidence complete, submission patch, no gaps
+      - trusted_fallback: evidence complete, but patch from worktree fallback (warn, not invalid)
+      - suspicious: PASS with missing harness evidence (may still be correct)
+      - invalid: PASS with blocking evidence gaps (fail_after/pass_to_pass missing)
+      - incomplete: FAIL with no patch or incomplete evidence
+
+    Severity:
+      - none: no issue
+      - warn: non-blocking gap (worktree fallback, missing test_patch)
+      - blocking: evidence gap that makes the pass unreliable
+    """
+    issues: list[str] = []
+    resolved = record.get("harness_resolved") in (True, "True", "true")
+
+    # Re-parse evidence with record's detail
+    evidence = parse_harness_evidence(str(record.get("detail") or ""))
+    patch_extracted = bool(record.get("patch_extracted"))
+    patch_source = str(record.get("patch_source") or "none")
+    submitted_patch = record.get("submitted_patch") or ""
+    agent_submitted = bool(record.get("agent_submitted"))
+    agent_attempted = bool(record.get("agent_attempted_submit"))
+    gold_edited = bool(record.get("agent_gold_edited"))
+    gold_files = record.get("agent_gold_files") or []
+
+    # Patch source audit
+    if not patch_extracted:
+        issues.append("no_patch_extracted")
+    elif patch_source == "worktree":
+        issues.append("patch_from_worktree_fallback")
+    elif patch_source == "submission" and not submitted_patch:
+        issues.append("submitted_patch_path_missing")
+    elif patch_source not in ("submission", "worktree", "none"):
+        issues.append(f"unknown_patch_source:{patch_source}")
+
+    # Submission consistency
+    if agent_submitted and not agent_attempted:
+        issues.append("submitted_without_attempt")
+    if agent_attempted and not agent_submitted:
+        issues.append("attempted_but_not_submitted")
+
+    # Harness evidence gaps
+    if not evidence.test_patch_ok:
+        issues.append("test_patch_not_ok")
+    if not evidence.fail_before_failed:
+        issues.append("fail_before_not_failed")
+    if not evidence.model_patch_ok:
+        issues.append("model_patch_not_ok")
+    if resolved and not evidence.fail_after_passed:
+        issues.append("resolved_but_fail_after_not_passed")
+    if resolved and not evidence.pass_to_pass_ok:
+        issues.append("resolved_but_pass_to_pass_not_ok")
+
+    # Gold file correspondence
+    if gold_edited and not gold_files:
+        issues.append("gold_edited_but_no_files_listed")
+
+    # ── Determine trust level ──────────────────────────────────────────
+    blocking_gaps = {"resolved_but_fail_after_not_passed", "resolved_but_pass_to_pass_not_ok"}
+    issue_set = set(issues)
+
+    if not patch_extracted and not resolved:
+        trust = "incomplete"
+    elif not evidence.evidence_complete:
+        if resolved:
+            if issue_set & blocking_gaps:
+                trust = "invalid"  # PASS but fail_after/pass_to_pass missing
+            else:
+                trust = "suspicious"  # PASS but evidence incomplete, non-blocking
+        else:
+            trust = "incomplete"
+    elif resolved and evidence.evidence_complete:
+        if patch_source == "worktree":
+            trust = "trusted_fallback"  # evidence ok, but patch from fallback
+        elif issue_set:
+            trust = "suspicious"
+        else:
+            trust = "trusted"
+    elif not resolved and evidence.evidence_complete:
+        trust = "trusted"  # properly failed with full evidence
+    else:
+        trust = "incomplete"
+
+    # ── Determine severity ─────────────────────────────────────────────
+    if not issues:
+        severity = "none"
+    elif issue_set & blocking_gaps:
+        severity = "blocking"
+    elif issue_set & {"fail_before_not_failed", "model_patch_not_ok",
+                       "resolved_but_fail_after_not_passed", "resolved_but_pass_to_pass_not_ok"}:
+        severity = "blocking"
+    elif "patch_from_worktree_fallback" in issue_set and evidence.evidence_complete:
+        severity = "warn"  # evidence says it's fine, just non-standard source
+    elif "no_patch_extracted" in issue_set:
+        severity = "blocking" if resolved else "warn"
+    else:
+        severity = "warn"
+
+    owner = _harness_owner(issues, resolved, evidence, patch_extracted, gold_edited)
+
+    return {
+        "harness_trust": trust,
+        "harness_issues": issues,
+        "harness_owner": owner,
+        "severity": severity,
+    }
+
+
+def _harness_owner(
+    issues: list[str],
+    resolved: bool,
+    evidence: HarnessEvidence,
+    patch_extracted: bool,
+    gold_edited: bool,
+) -> str:
+    """Infer who owns the trust gap."""
+    if not issues:
+        return "none"
+    harness_gaps = {"test_patch_not_ok", "fail_before_not_failed", "model_patch_not_ok",
+                    "resolved_but_fail_after_not_passed", "resolved_but_pass_to_pass_not_ok"}
+    model_gaps = {"submitted_without_attempt", "attempted_but_not_submitted",
+                  "gold_edited_but_no_files_listed"}
+    protocol_gaps = {"no_patch_extracted", "patch_from_worktree_fallback",
+                     "submitted_patch_path_missing", "unknown_patch_source"}
+
+    issue_set = set(issues)
+    if issue_set & harness_gaps:
+        return "harness"
+    if issue_set & protocol_gaps:
+        return "protocol"
+    if issue_set & model_gaps:
+        return "model"
+    return "infra"
+
+
+def audit_fallback_patch(record: dict) -> dict:
+    """Audit relationship between submitted and fallback (worktree) patches.
+
+    Returns:
+        fallback_patch_exists: bool
+        fallback_patch_lines: int | None
+        submitted_patch_exists: bool
+        submitted_vs_fallback: "same" | "different" | "no_submission" | "no_fallback" | "no_patch" | "unknown"
+        fallback_audit: "clean" | "warn" | "blocking"
+    """
+    result = {
+        "fallback_patch_exists": False,
+        "fallback_patch_lines": None,
+        "submitted_patch_exists": False,
+        "submitted_vs_fallback": "unknown",
+        "fallback_audit": "clean",
+    }
+
+    submitted_path = str(record.get("submitted_patch") or "")
+    patch_source = str(record.get("patch_source") or "none")
+    patch_extracted = bool(record.get("patch_extracted"))
+
+    # Check submitted patch file
+    if submitted_path:
+        sp = Path(submitted_path)
+        result["submitted_patch_exists"] = sp.is_file()
+
+    # Check fallback (worktree) patch
+    if patch_source == "worktree" and patch_extracted:
+        result["fallback_patch_exists"] = True
+        patch_text = str(record.get("patch_text") or "")
+        if patch_text:
+            result["fallback_patch_lines"] = len(patch_text.splitlines())
+    elif patch_source == "submission" and patch_extracted:
+        result["fallback_patch_exists"] = False
+
+    # Compare
+    if result["submitted_patch_exists"] and result["fallback_patch_exists"]:
+        submitted_text = ""
+        fallback_text = str(record.get("patch_text") or "")
+        if submitted_path:
+            try:
+                submitted_text = Path(submitted_path).read_text()
+            except Exception:
+                pass
+        if submitted_text and fallback_text:
+            if submitted_text.strip() == fallback_text.strip():
+                result["submitted_vs_fallback"] = "same"
+            else:
+                result["submitted_vs_fallback"] = "different"
+                result["fallback_audit"] = "warn"
+        else:
+            result["submitted_vs_fallback"] = "unknown"
+            result["fallback_audit"] = "warn"
+    elif result["submitted_patch_exists"] and not result["fallback_patch_exists"]:
+        result["submitted_vs_fallback"] = "no_fallback"
+    elif not result["submitted_patch_exists"] and result["fallback_patch_exists"]:
+        result["submitted_vs_fallback"] = "no_submission"
+        result["fallback_audit"] = "warn"
+    elif not result["submitted_patch_exists"] and not result["fallback_patch_exists"]:
+        if patch_extracted:
+            result["submitted_vs_fallback"] = "no_submission"
+            result["fallback_audit"] = "blocking"
+        else:
+            result["submitted_vs_fallback"] = "no_patch"
+            result["fallback_audit"] = "blocking"
+
+    return result
+
+
+def classify_incomplete_fail(record: dict) -> str:
+    """Classify incomplete FAIL records into sub-categories.
+
+    Returns:
+        "no_patch_fail": model/protocol didn't produce a patch
+        "harness_incomplete_fail": patch exists but harness evidence incomplete
+        "expected_fail_incomplete": failure with sufficient evidence to know it didn't pass
+        "not_applicable": record is PASS or not incomplete
+    """
+    if record.get("harness_resolved"):
+        return "not_applicable"
+
+    patch_extracted = bool(record.get("patch_extracted"))
+    evidence = parse_harness_evidence(str(record.get("detail") or ""))
+    trust = build_harness_trust(record)
+
+    if not patch_extracted:
+        return "no_patch_fail"
+
+    # Explicit failure signals in harness detail → expected, not incomplete
+    detail = str(record.get("detail") or "")
+    if "fail_after=fail" in detail or "model_patch=fail" in detail:
+        return "expected_fail_incomplete"
+
+    if evidence.evidence_complete:
+        return "expected_fail_incomplete"
+
+    if trust["harness_trust"] == "incomplete":
+        return "harness_incomplete_fail"
+
+    return "harness_incomplete_fail"
+
+
 def _evidence_summary(ev: HarnessEvidence) -> str:
     if ev.evidence_complete:
         return "complete"

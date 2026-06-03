@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
+from .observability import parse_harness_evidence
+
 
 _INFRA_STATUSES = {
     "BadRequestError",
@@ -226,3 +228,151 @@ def classify_failure(record: dict[str, Any]) -> str:
         return "loc_fail"
 
     return "repair_fail"
+
+
+def build_verdict(record: dict[str, Any]) -> dict[str, Any]:
+    """Produce per-row failure attribution fields for observability.
+
+    Returns dict with: verdict_axis, failure_owner, failure_stage,
+    evidence_complete, missing_evidence.
+    """
+    resolved = record.get("harness_resolved") in (True, "True", "true")
+    evidence = parse_harness_evidence(str(record.get("detail") or ""))
+    status = str(record.get("exit_status") or "")
+    reason = str(record.get("exit_reason") or "")
+    errors = _turn_error_types(record)
+    patch_extracted = bool(record.get("patch_extracted"))
+    gold_edited = bool(record.get("agent_gold_edited"))
+
+    # Determine verdict axis
+    if resolved:
+        axis = "pass"
+    elif _is_budget_exit(status, reason):
+        axis = "budget_fail"
+    elif _is_provider_unavailable(status, reason, errors):
+        axis = "routing_fail"
+    elif not patch_extracted and (errors or "format" in status.lower() or "format" in reason.lower()):
+        axis = "protocol_fail"
+    elif not evidence.evidence_complete and not resolved:
+        # Harness couldn't verify the result properly
+        if not evidence.test_patch_ok or not evidence.fail_before_failed:
+            axis = "harness_fail"
+        else:
+            axis = "model_fail"
+    elif not patch_extracted:
+        axis = "protocol_fail"
+    elif not gold_edited:
+        axis = "model_fail"
+    elif evidence.model_patch_ok is False or evidence.fail_after_passed is False:
+        axis = "model_fail"
+    elif _is_infra_exit(status):
+        axis = "infra_fail"
+    else:
+        axis = "model_fail"
+
+    # Determine failure owner
+    if axis == "pass":
+        owner = "none"
+    elif axis in ("budget_fail",):
+        owner = "budget"
+    elif axis in ("harness_fail",):
+        owner = "harness"
+    elif axis in ("protocol_fail", "routing_fail"):
+        owner = "protocol"
+    elif axis in ("infra_fail",):
+        owner = "infra"
+    else:
+        owner = "model"
+
+    # Determine failure stage
+    harness = _parse_harness_detail(str(record.get("detail") or ""))
+    if axis == "pass":
+        stage = "none"
+    elif axis == "budget_fail":
+        stage = "runtime"
+    elif axis == "protocol_fail":
+        stage = "extraction"
+    elif not gold_edited:
+        stage = "localization"
+    elif harness.get("model_patch") == "fail":
+        stage = "repair"
+    elif harness.get("fail_after") == "fail":
+        stage = "validation"
+    elif axis == "harness_fail":
+        if harness.get("test_patch") == "fail":
+            stage = "test_patch"
+        elif harness.get("fail_before") == "ok":
+            stage = "fail_before"
+        else:
+            stage = "harness"
+    else:
+        stage = "repair"
+
+    # Missing evidence
+    missing: list[str] = []
+    if not record.get("detail"):
+        missing.append("harness_detail")
+    if not record.get("turn_trace_count") and not record.get("turn_traces"):
+        missing.append("turn_traces")
+    if not patch_extracted and axis != "pass":
+        missing.append("patch_text")
+    if not record.get("agent_gold_edited") and axis == "model_fail":
+        pass  # gold_edited=False is itself the signal, not missing evidence
+
+    subtype = classify_failure_subtype(record, axis=axis, stage=stage)
+
+    return {
+        "verdict_axis": axis,
+        "failure_owner": owner,
+        "failure_stage": stage,
+        "failure_subtype": subtype,
+        "evidence_complete": evidence.evidence_complete and bool(record.get("turn_trace_count")),
+        "missing_evidence": missing,
+    }
+
+
+def classify_failure_subtype(
+    record: dict[str, Any],
+    *,
+    axis: str | None = None,
+    stage: str | None = None,
+) -> str:
+    """Fine-grained failure subtype for observability.
+
+    Returns one of:
+      pass, budget_exhausted_after_progress, budget_exhausted_no_progress,
+      loc_model_fail, repair_model_fail, validation_model_fail,
+      extraction_protocol_fail, harness_incomplete,
+      provider_or_parser_error, unknown
+    """
+    if axis is None or stage is None:
+        v = build_verdict(record)
+        axis = v["verdict_axis"]
+        stage = v["failure_stage"]
+
+    if axis == "pass":
+        return "pass"
+
+    if axis == "budget_fail":
+        has_progress = bool(record.get("patch_extracted")) or bool(record.get("agent_gold_edited"))
+        return "budget_exhausted_after_progress" if has_progress else "budget_exhausted_no_progress"
+
+    if axis == "model_fail":
+        if stage == "localization":
+            return "loc_model_fail"
+        elif stage == "repair":
+            return "repair_model_fail"
+        elif stage == "validation":
+            return "validation_model_fail"
+        return "repair_model_fail"
+
+    if axis in ("protocol_fail",):
+        return "extraction_protocol_fail"
+
+    if axis in ("harness_fail",):
+        return "harness_incomplete"
+
+    if axis in ("infra_fail", "routing_fail"):
+        return "provider_or_parser_error"
+
+    return "unknown"

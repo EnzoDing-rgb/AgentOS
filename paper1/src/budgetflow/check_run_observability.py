@@ -16,6 +16,7 @@ from collections import Counter
 from pathlib import Path
 
 from budgetflow.observability import (
+    build_harness_trust,
     build_observability_status,
     heartbeat_is_stale,
     load_heartbeat,
@@ -103,6 +104,35 @@ def _check_desired_fields(records: list[dict]) -> list[str]:
             strat = rec.get("strategy", "?")
             issues.append(f"DESIRED_FIELDS row {i}: {inst} {strat} — missing={missing}")
     return issues
+
+
+def _check_harness_trust(records: list[dict]) -> tuple[list[str], dict[str, int], dict[str, int], dict[str, int]]:
+    """Audit harness trust across all records.
+
+    Returns (issues, trust_counts, owner_counts, severity_counts).
+    """
+    issues: list[str] = []
+    trust_counts: dict[str, int] = Counter()
+    owner_counts: dict[str, int] = Counter()
+    severity_counts: dict[str, int] = Counter()
+    for i, rec in enumerate(records):
+        ht = build_harness_trust(rec)
+        trust = ht["harness_trust"]
+        owner = ht["harness_owner"]
+        sev = ht.get("severity", "")
+        trust_counts[trust] += 1
+        if owner != "none":
+            owner_counts[owner] += 1
+        if sev and sev != "none":
+            severity_counts[sev] += 1
+        if trust in ("suspicious", "invalid"):
+            inst = rec.get("instance_id", "?")
+            strat = rec.get("strategy", "?")
+            issues.append(
+                f"HARNESS_{trust.upper()} row {i}: {inst} {strat} "
+                f"owner={owner} severity={sev} issues={ht['harness_issues']}"
+            )
+    return issues, dict(trust_counts), dict(owner_counts), dict(severity_counts)
 
 
 def _check_elapsed_sanity(records: list[dict]) -> list[str]:
@@ -279,6 +309,12 @@ def build_compact_audit(records: list[dict]) -> dict:
         for r in records if not r.get("harness_resolved")
     )
 
+    # Failure subtypes (020)
+    fail_subtypes = Counter(
+        str(r.get("failure_subtype") or "unknown")
+        for r in records if not r.get("harness_resolved") and r.get("failure_subtype")
+    )
+
     # Invoice accuracy: check if at least one record has provider actual cost
     invoice_accurate = any(_has_invoice_accurate_cost(r) for r in records)
 
@@ -303,6 +339,31 @@ def build_compact_audit(records: list[dict]) -> dict:
         if r.get("harness_resolved") and str(r.get("exit_status") or "").startswith("Stagnation")
     )
 
+    # Failure owner / verdict axis counts
+    owner_counts: dict[str, int] = {}
+    axis_counts: dict[str, int] = {}
+    for r in records:
+        owner = str(r.get("failure_owner") or "")
+        axis = str(r.get("verdict_axis") or "")
+        if owner:
+            owner_counts[owner] = owner_counts.get(owner, 0) + 1
+        if axis:
+            axis_counts[axis] = axis_counts.get(axis, 0) + 1
+
+    # Harness trust audit
+    trust_counts: dict[str, int] = {}
+    ht_owner_counts: dict[str, int] = {}
+    ht_severity_counts: dict[str, int] = {}
+    for r in records:
+        ht = build_harness_trust(r)
+        trust_counts[ht["harness_trust"]] = trust_counts.get(ht["harness_trust"], 0) + 1
+        ho = ht["harness_owner"]
+        if ho != "none":
+            ht_owner_counts[ho] = ht_owner_counts.get(ho, 0) + 1
+        sev = ht.get("severity", "")
+        if sev and sev != "none":
+            ht_severity_counts[sev] = ht_severity_counts.get(sev, 0) + 1
+
     return {
         "total": total,
         "pass": resolved,
@@ -325,11 +386,17 @@ def build_compact_audit(records: list[dict]) -> dict:
         "common_stats": common_stats,
         "fail_classes": dict(fail_classes.most_common()),
         "fail_exits": dict(fail_exits.most_common()),
+        "fail_subtypes": dict(fail_subtypes.most_common()),
         "invoice_accurate": invoice_accurate,
         "canonical_cost_available": total > 0,
         "policy_memory_used": policy_memory_used,
         "policy_memory_source": policy_memory_source,
         "prior_records": prior_records,
+        "verdict_owners": owner_counts,
+        "verdict_axes": axis_counts,
+        "harness_trust": trust_counts,
+        "harness_owner": ht_owner_counts,
+        "harness_severity": ht_severity_counts,
     }
 
 
@@ -380,6 +447,22 @@ def format_compact_audit(audit: dict) -> str:
             f"{k}={v}" for k, v in audit["fail_classes"].items()
         ))
 
+    # Failure subtypes
+    if audit.get("fail_subtypes"):
+        lines.append("FAILURE SUBTYPES: " + " | ".join(
+            f"{k}={v}" for k, v in audit["fail_subtypes"].items()
+        ))
+
+    # Verdict owner summary
+    if audit.get("verdict_owners"):
+        lines.append("OWNER SUMMARY: " + " | ".join(
+            f"{k}={v}" for k, v in sorted(audit["verdict_owners"].items())
+        ))
+    if audit.get("verdict_axes"):
+        lines.append("VERDICT AXES: " + " | ".join(
+            f"{k}={v}" for k, v in sorted(audit["verdict_axes"].items())
+        ))
+
     # Cost口径
     lines.append(banner)
     canonical_available = audit["total"] > 0
@@ -387,6 +470,21 @@ def format_compact_audit(audit: dict) -> str:
     if not audit["invoice_accurate"]:
         lines.append("   canonical_estimated_cost uses official API list price (paper's primary claim).")
         lines.append("   provider_actual_cost unavailable — no cache_hit/provider_actual_cost in trace data.")
+
+    # Harness trust
+    if audit.get("harness_trust"):
+        lines.append(banner)
+        lines.append("HARNESS TRUST: " + " | ".join(
+            f"{k}={v}" for k, v in sorted(audit["harness_trust"].items())
+        ))
+        if audit.get("harness_severity"):
+            lines.append("HARNESS SEVERITY: " + " | ".join(
+                f"{k}={v}" for k, v in sorted(audit["harness_severity"].items())
+            ))
+        if audit.get("harness_owner"):
+            lines.append("HARNESS OWNER: " + " | ".join(
+                f"{k}={v}" for k, v in sorted(audit["harness_owner"].items())
+            ))
 
     lines.append(banner)
     return "\n".join(lines)
@@ -416,6 +514,8 @@ def check_jsonl(jsonl_path: Path, heartbeat_stale_s: float = 600.0) -> dict:
     all_issues.extend(_check_missing_fields(records))
     all_issues.extend(_check_desired_fields(records))
     all_issues.extend(_check_elapsed_sanity(records))
+    ht_issues, ht_trust, ht_owner, ht_severity = _check_harness_trust(records)
+    all_issues.extend(ht_issues)
 
     resolved = sum(1 for r in records if r.get("harness_resolved"))
     suspicious = sum(
@@ -461,6 +561,11 @@ def check_jsonl(jsonl_path: Path, heartbeat_stale_s: float = 600.0) -> dict:
             pid = int(hb.get("current_pid") or 0)
             stale = heartbeat_is_stale(hb, heartbeat_stale_s)
             pid_alive = _pid_is_alive(pid)
+
+            # 0. Completed run: rows_done == total_expected → never stale
+            if status == "completed" and done >= total:
+                hb_statuses.append(f"{rs}: OK ({done}/{total} {status})")
+                continue
 
             # 1. Dead PID detection — applies to ALL non-terminal states
             if pid > 0 and not pid_alive and done < total and status not in ("completed",):

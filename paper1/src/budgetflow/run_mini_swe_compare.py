@@ -47,9 +47,10 @@ from budgetflow.compare_checkpoint import (  # noqa: E402
     checkpoint_path_for,
 )
 from budgetflow.auto_budget import AutoBudgetEstimator, AutoBudgetMemory, BudgetEstimate  # noqa: E402
+from budgetflow.budget_memory import BudgetMemory, BudgetEstimate as BudgetMemoryEstimate  # noqa: E402
 from budgetflow.console_log import backend_tier_label, dim, format_run_verdict, status_fail, status_pass, tag  # noqa: E402
 from budgetflow.deepseek_backend import load_env_file  # noqa: E402
-from budgetflow.failure_classification import build_forensic_summary, classify_failure  # noqa: E402
+from budgetflow.failure_classification import build_forensic_summary, build_verdict, classify_failure  # noqa: E402
 from budgetflow.governor import BudgetGovernor, GovernorConfig  # noqa: E402
 from budgetflow.observability import (  # noqa: E402
     HeartbeatWriter,
@@ -120,6 +121,8 @@ DEFAULT_STRATEGIES: tuple[CompareStrategy, ...] = (
 
 DIAGNOSTIC_STRATEGIES: tuple[CompareStrategy, ...] = (
     CompareStrategy("all_t3", "all_t3", None),
+    # 019: weak baseline — always cheapest tier, tight budget, no routing intelligence
+    CompareStrategy("budget_tight_dummy", "all_flash", "tight"),
 )
 
 _STRATEGY_ALIASES = {
@@ -132,6 +135,9 @@ _STRATEGY_ALIASES = {
     "all_gpt54": "all_t3",
     "budgetflow_auto_v2_tight": "budgetflow_equal_weight_tight",
     "budgetflow_auto_v2_loose": "budgetflow_equal_weight_loose",
+    # 019 strategy aliases
+    "budget_tight_smart": "budget_only_tight",
+    "budgetflow_tight": "budgetflow_full_tight",
 }
 
 
@@ -236,6 +242,7 @@ def _run_one(
     trace_max_turns: int = 200,
     trace_truncate_chars: int = 120,
     budget_estimate: BudgetEstimate | None = None,
+    budget_memory_estimate: BudgetMemoryEstimate | None = None,
     run_series: str = "",
     policy_lane: str = "",
 ) -> dict:
@@ -333,6 +340,14 @@ def _run_one(
     record["forensic_summary"] = build_forensic_summary(record)
     record["harness_evidence"] = parse_harness_evidence(str(record.get("detail") or "")).__dict__
     record["observability_status"] = build_observability_status(record)
+    # Verdict observability (019)
+    verdict = build_verdict(record)
+    record["verdict_axis"] = verdict["verdict_axis"]
+    record["failure_owner"] = verdict["failure_owner"]
+    record["failure_stage"] = verdict["failure_stage"]
+    record["failure_subtype"] = verdict.get("failure_subtype", "")
+    record["evidence_complete"] = verdict["evidence_complete"]
+    record["missing_evidence"] = verdict["missing_evidence"]
     # Auto-budget metadata.
     if budget_estimate is not None:
         record["auto_budget_enabled"] = True
@@ -344,6 +359,23 @@ def _run_one(
         record["budget_memory_used"] = budget_estimate.source.startswith("memory_")
         record["budget_memory_neighbors"] = budget_estimate.memory_neighbors
         record["auto_budget_features"] = budget_estimate.features
+    # BudgetMemory metadata (020)
+    if budget_memory_estimate is not None:
+        record["budget_memory_enabled"] = True
+        record["budget_memory_source"] = budget_memory_estimate.budget_source
+        record["budget_memory_estimated_budget"] = budget_memory_estimate.estimated_task_budget
+        record["budget_memory_predicted_cost"] = budget_memory_estimate.predicted_cost
+        record["budget_memory_confidence"] = budget_memory_estimate.budget_confidence
+        record["budget_memory_reason"] = budget_memory_estimate.budget_reason
+        record["budget_memory_hard_budget_used"] = budget_memory_estimate.hard_budget_used
+        record["budget_memory_risk_multiplier"] = budget_memory_estimate.risk_multiplier
+        effective_cap = float(record.get("batch_budget_cap") or 0)
+        record["budget_memory_applied"] = (
+            effective_cap > 0
+            and abs(effective_cap - budget_memory_estimate.estimated_task_budget) < 0.001
+        )
+    else:
+        record["budget_memory_enabled"] = False
     return record
 
 
@@ -611,6 +643,7 @@ def _run_strategy_batch(
     trace_truncate_chars: int = 120,
     task_caps: dict[str, float] | None = None,
     budget_estimates: dict[str, BudgetEstimate] | None = None,
+    budget_memory_estimates: dict[str, BudgetMemoryEstimate] | None = None,
     run_series: str = "",
     heartbeat_writer: object | None = None,
 ) -> tuple[list[dict], float]:
@@ -745,6 +778,7 @@ def _run_strategy_batch(
                 trace_max_turns=trace_max_turns,
                 trace_truncate_chars=trace_truncate_chars,
                 budget_estimate=budget_estimates.get(task.instance_id) if budget_estimates else None,
+                budget_memory_estimate=budget_memory_estimates.get(task.instance_id) if budget_memory_estimates else None,
                 run_series=run_series,
                 policy_lane=cfg.name,
             )
@@ -1443,6 +1477,30 @@ def main() -> None:
         default=None,
         help="override POLICY_REGRET_THRESHOLD for cap_t3 decisions (default from defaults.py)",
     )
+    parser.add_argument(
+        "--budget-memory",
+        type=str,
+        default=None,
+        help="comma-separated JSONL paths to load BudgetMemory from",
+    )
+    parser.add_argument(
+        "--disable-budget-memory",
+        action="store_true",
+        default=False,
+        help="explicitly disable BudgetMemory even if --budget-memory is given",
+    )
+    parser.add_argument(
+        "--budget-memory-dry-run",
+        action="store_true",
+        default=False,
+        help="compute BudgetMemory estimates, print old_cap vs new_cap table, then exit (no API calls)",
+    )
+    parser.add_argument(
+        "--budget-memory-gate-only",
+        action="store_true",
+        default=False,
+        help="load --budget-memory files, validate, print diagnostics, then exit (no API calls)",
+    )
     args = parser.parse_args()
 
     # ── Gate-only: load PolicyMemory, validate, print summary, exit ────────
@@ -1463,6 +1521,25 @@ def main() -> None:
         pm.rebuild_from_jsonl(pm_path)
         ok = _run_warmup_gate(pm, args.policy_memory)
         sys.exit(0 if ok else 1)
+
+    # ── Gate-only: load BudgetMemory from JSONL, validate, print diagnostics, exit ──
+    if args.budget_memory_gate_only:
+        if not args.budget_memory:
+            print("ERROR: --budget-memory-gate-only requires --budget-memory PATH[,PATH...]", flush=True)
+            sys.exit(1)
+        bm_paths = [Path(p.strip()) for p in args.budget_memory.split(",")]
+        for p in bm_paths:
+            p_abs = p if p.is_absolute() else REPO_ROOT / p
+            if not p_abs.is_file():
+                print(f"ERROR: --budget-memory file not found: {p_abs}", flush=True)
+                sys.exit(1)
+        bm = BudgetMemory.from_jsonl(bm_paths)
+        print(f"budget_memory gate-only: OK", flush=True)
+        print(f"  records={bm.record_count} tasks={bm.task_count} repos={bm.repo_count}")
+        print(f"  sources: {bm._source_paths}")
+        for line in bm.summary_lines():
+            print(f"  {line}")
+        sys.exit(0)
 
     # --worktree-root: set before any task execution so runtime worktrees
     # go to the correct scratch location.
@@ -1602,6 +1679,100 @@ def main() -> None:
         # Auto-budget implies per_task mode.
         if args.per_task_cap is None:
             args.per_task_cap = -1.0  # Sentinel: per-task with varying caps.
+
+    # ── BudgetMemory dry-run: load, compute estimates, print comparison, exit ──
+    if args.budget_memory_dry_run:
+        if not args.budget_memory:
+            print("ERROR: --budget-memory-dry-run requires --budget-memory PATH[,PATH...]", flush=True)
+            sys.exit(1)
+        bm_paths = [Path(p.strip()) for p in args.budget_memory.split(",")]
+        for p in bm_paths:
+            p_abs = p if p.is_absolute() else REPO_ROOT / p
+            if not p_abs.is_file():
+                print(f"ERROR: --budget-memory file not found: {p_abs}", flush=True)
+                sys.exit(1)
+        bm = BudgetMemory.from_jsonl(bm_paths)
+        print("=== BudgetMemory dry-run ===")
+        print(f"records={bm.record_count} tasks={bm.task_count} repos={bm.repo_count}")
+        print(f"sources: {bm._source_paths}")
+        print()
+        # Compare BudgetMemory estimates vs auto-budget or standard caps
+        auto_cap_available = auto_budget_task_caps is not None
+        print(f"  {'task':<40} {'auto_cap':>10} {'bm_cap':>10} {'bm_source':<20} {'diff':>10} {'confidence':>10}")
+        print(f"  {'-'*100}")
+        under_count = over_count = unchanged = 0
+        for task in tasks:
+            iid = task.instance_id
+            repo = getattr(task, "repo", "") or iid.split("__")[0] if "__" in iid else iid
+            hard_cap = args.per_task_cap if args.per_task_cap and args.per_task_cap > 0 else None
+            est = bm.estimate_task_budget(iid, repo=repo, strategy="budget_only_tight", hard_budget=hard_cap)
+            bm_cap = est.estimated_task_budget
+            auto_cap = auto_budget_task_caps.get(iid) if auto_budget_task_caps else None
+            diff_str = ""
+            if auto_cap is not None:
+                diff = bm_cap - auto_cap
+                diff_str = f"${diff:+.4f}"
+                if bm_cap > auto_cap * 1.5:
+                    over_count += 1
+                elif bm_cap < auto_cap * 0.5:
+                    under_count += 1
+                else:
+                    unchanged += 1
+            auto_str = f"${auto_cap:.4f}" if auto_cap is not None else "N/A"
+            print(f"  {iid:<40} {auto_str:>10} ${bm_cap:>9.4f} {est.budget_source:<20} {diff_str:>10} {est.budget_confidence:<10}")
+        print()
+        print(f"Summary: underbudget_fixed={under_count} overbudget_reduced={over_count} unchanged={unchanged} risky=0")
+        sys.exit(0)
+
+    # ── BudgetMemory normal mode ──
+    budget_memory: BudgetMemory | None = None
+    budget_memory_enabled = not args.disable_budget_memory
+    budget_memory_estimates: dict[str, BudgetMemoryEstimate] = {}
+    if budget_memory_enabled and args.budget_memory:
+        bm_paths = [Path(p.strip()) for p in args.budget_memory.split(",")]
+        valid_paths: list[Path] = []
+        for p in bm_paths:
+            p_abs = p if p.is_absolute() else REPO_ROOT / p
+            if p_abs.is_file():
+                valid_paths.append(p_abs)
+            else:
+                print(f"WARNING: --budget-memory file not found: {p_abs}", flush=True)
+        if valid_paths:
+            budget_memory = BudgetMemory.from_jsonl(valid_paths)
+            budget_memory_enabled = True
+            src_str = ",".join(str(p) for p in valid_paths)
+            print(
+                f"{tag('budget_memory', bold=True)} loaded from {src_str} "
+                f"records={budget_memory.record_count} tasks={budget_memory.task_count} "
+                f"repos={budget_memory.repo_count}",
+                flush=True,
+            )
+            # Compute per-task BudgetMemory estimates
+            for task in tasks:
+                repo = getattr(task, "repo", "") or task.instance_id.split("__")[0] if "__" in task.instance_id else task.instance_id
+                hard_cap = args.per_task_cap if args.per_task_cap and args.per_task_cap > 0 else None
+                est = budget_memory.estimate_task_budget(
+                    task.instance_id, repo=repo, strategy="budget_only_tight",
+                    hard_budget=hard_cap,
+                )
+                budget_memory_estimates[task.instance_id] = est
+            # Only use BudgetMemory as caps when auto-budget is NOT enabled
+            if not args.auto_budget:
+                auto_budget_task_caps = {iid: e.estimated_task_budget for iid, e in budget_memory_estimates.items()}
+                print(
+                    f"  Per-task caps from BudgetMemory (cascade: exact_task > repo > strategy > global)",
+                    flush=True,
+                )
+            else:
+                print(
+                    f"  BudgetMemory estimates stored (auto-budget takes priority for caps)",
+                    flush=True,
+                )
+        else:
+            print(f"{tag('budget_memory', bold=False)} disabled — no valid files found", flush=True)
+            budget_memory_enabled = False
+    elif budget_memory_enabled and not args.budget_memory:
+        budget_memory_enabled = False
 
     total_runs = len(tasks) * len(strategies)
     series = args.run_series or default_series_base(
@@ -1846,6 +2017,7 @@ def main() -> None:
             trace_truncate_chars=args.trace_truncate_chars,
             task_caps=auto_budget_task_caps,
             budget_estimates=auto_budget_estimates,
+            budget_memory_estimates=budget_memory_estimates if budget_memory_enabled else None,
             run_series=series,
             heartbeat_writer=heartbeat_writer,
         )
