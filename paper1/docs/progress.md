@@ -8,11 +8,12 @@
 
 - Local harness 已从 004 的 3/3 gold sanity 恢复，扩展到 009 的 gold-PASS pool：3 old trusted + 7 new SymPy + 1 Requests。Requests 暂不进主模型矩阵。
 - Runner 已恢复：依赖补齐，`run_mini_swe_compare` 能完成 worktree → compat → LLM → patch extraction → harness eval。
-- 008/009 已跑出 56 条 recorded rows。当前能看出 BudgetFlow 有正向信号，但数据还不够干净，不能直接上 5×30。
-- 当前最强 budget 策略是 `budgetflow_full_tight`：在可用记录里最接近 `all_pro`，且多次比 `all_pro` 更便宜通过。但 `all_pro` 总体仍更强，BudgetFlow 卖点还需要更干净、更大样本证明。
-- `all_pro` 是 uncapped GPT-5.4 ceiling/control，不属于 BudgetFlow，不应被 auto-budget cap 限制。
-- 当前 P0 是 **worktree/resume/JSONL 可信度 + auto-budget memory 清洁 + 成本口径校准**，不是继续盲目扩 batch。
-- 内部 `$cost` 目前只是 governor/provider 记录的内部 cost unit，不能直接写成真实 USD；真实 API 价格需要 web/API 价格表校准。
+- **012 完成关键验证：** worktree crash 已闭环修复，postfix_011_sanity 25/25 rows 干净收集，35/35 tests pass。无 crash、无缺行、无重复。
+- BudgetFlow Full (tight + loose): **10/10 PASS at $1.13 total**（平均 ~$0.06/task）。两者均 100% resolve，验证 routing 方法有效。
+- all_pro 仍是最便宜路径（5/5 PASS, $0.47），但 BudgetFlow 的 routing 逻辑已验证可为 hard task 留 headroom。
+- budget_only (without tiered routing) 丢失 1-2 tasks：tight 3/5, loose 4/5。
+- Auto-budget `_HISTORICAL_PRIOR` 已从 5 任务扩至 10 任务，`min_cap` $0.05→$0.10。
+- 下一步：开启 turn traces、扩 task pool、构建 consistency checker。
 
 ### Current active tier
 
@@ -26,11 +27,12 @@
 
 ### 最新改动（2026-06-03）
 
+- **012**：Worktree crash 闭环修复（`_remove_worktree` 5层清理 + `_worktree_add` retry）。Checkpoint `batch_cap:null` 修复。Auto-budget 扩充至 10 task + `min_cap` $0.05→$0.10。回归测试 31→35，全部通过。postfix_011_sanity 25/25 rows clean。`reports/012.md`。
 - **011**：P0 fix — `.1f` cost 展示四舍五入污染真实 USD 可观测性，已加 `_fmt_usd()` 自适应格式。31 个新回归测试（pricing/worktree/resolved/memory/format）。59/59 pass。
 - **010**：P0 修复（API 价格校准、worktree crash、resolved=None）+ 009 成本重解 $34K→$10.63。`reports/010.md`。
 - **009**：Overnight batch loop。56 recorded rows，BudgetFlow 正向信号但数据不够干净。3 个新 SymPy gold-PASS task。`reports/009.md`。
 - **008**：首次 model matrix。14/15 records。`reports/008.md`。
-- 已写：`reports/006.md`、`007.md`、`008.md`、`009.md`、`010.md`、`011.md`。
+- 已写：`reports/006.md`、`007.md`、`008.md`、`009.md`、`010.md`、`011.md`、`012.md`。
 - 已补：mini-swe-agent 依赖，compare runner import/`--help`/全链路恢复。
 - 已实现/接入：Automatic Budgeting v1 与 memory 写入。Memory 已清理（备份至 `.bak_010`），下次运行自动新建。
 - 已修/部分修：SymPy `py.test` compat；Django `django.setup()` compat。但 Django 新 task 仍卡 `INSTALLED_APPS`。
@@ -38,10 +40,11 @@
 
 ### 下一步
 
-1. **验证跑**：`postfix_011_sanity` — 3-5 tasks × 5 strategies，`--jobs 5`，gold-PASS，验证 010 修复生效且 worktree 不再 crash。
-2. 验证 checkpoint/JSONL/summary 幂等性。resume 后同一 `(instance_id, strategy)` 只能有一个可信完成记录。
-3. Django 新 task 要先修 `INSTALLED_APPS` adapter。
-4. 小 batch 回归后再扩 5×15/5×30。
+1. **开启 turn traces**：下一轮 run 加 `--trace-turns`，获得 turn-level 诊断能力。
+2. **构建 consistency checker**：checkpoint ↔ JSONL ↔ summary.log 一致性校验。
+3. **扩 task pool**：从 5 → 10+ Gold-PASS tasks，覆盖更多难度级别。
+4. **T1 启用评估**：小规模测试 qwen3-coder-flash 在 BudgetFlow 中的表现。
+5. **Runner 稳定后再上大矩阵**：不要在工作树崩溃/checkpoint 不一致/缺 turn trace 的情况下扩到 5×15 或 5×30。
 
 ---
 
@@ -69,17 +72,36 @@
 | local harness P2P trust | ✅ 3/3 gold sanity PASS，见 `reports/004.md` |
 | `run_mini_swe_compare` dependency recovery | ✅ 见 `reports/006.md` |
 | 008/009 model batches | ⚠️ 56 recorded rows，数据有缺行/崩溃噪声 |
-| `run_mini_swe_compare --resume` idempotency | ⚠️ 006 暴露重复 JSONL 行，待验证修复 |
-| Worktree resilience | ✅ 3 层兜底清理，待实跑验证 |
-| Automatic Budgeting v1 | ✅ Memory 清洁，cap 已校准为真实 USD |
+| `run_mini_swe_compare --resume` idempotency | ✅ 012 验证无重复、无缺行 |
+| Worktree resilience | ✅ 012 实跑验证，25/25 rows 无 crash |
+| Automatic Budgeting v1 | ✅ Memory 清洁，cap 已校准为真实 USD，10-task prior |
 | Automatic Budgeting continuous learning | ⚠️ 已有方向，必须基于 clean rows |
 | Django new-task harness | ⚠️ `INSTALLED_APPS` / bare-pytest gap |
 | Real-world cost calibration | ✅ API 价格已校准（T1/T2 DashScope，T3 aicode007） |
 | Cost display observability | ✅ `_fmt_usd()` 自适应格式 |
+| postfix_011_sanity validation run | ✅ 25/25 rows clean，22/25 PASS |
+| Turn traces | ❌ 下一轮开启 |
+| Consistency checker | ❌ 待构建 |
 
 ---
 
-## 任务难度系数（从 7×15 历史数据提取）
+## 012 实验结果：postfix_011_sanity
+
+**5 tasks × 5 strategies, 25 rows, 22/25 PASS, 0 crash, 0 missing.**
+
+| strategy | tasks | resolved | total_cost | avg_cost | avg_turn |
+|---|---|---|---:|---:|---:|---:|
+| all_pro | 5 | 5 | $0.47 | $0.094 | 5.8 |
+| budgetflow_full_tight | 5 | 5 | $0.53 | $0.105 | 6.4 |
+| budgetflow_full_loose | 5 | 5 | $0.60 | $0.120 | 6.6 |
+| budget_only_loose | 5 | 4 | $0.97 | $0.193 | 29.8 |
+| budget_only_tight | 5 | 3 | $1.48 | $0.295 | 38.2 |
+
+3 failures: budget_only_tight × django-10924 (repair_fail), budget_only_tight × sympy-18057 (repair_fail), budget_only_loose × sympy-18057 (budget_fail).
+
+---
+
+## 任务难度系数（从 7×15 历史数据提取 + 012 校准）
 
 `policy_5x7-0.jsonl`（旧 tier：codex-spark / gpt-5.4-mini / gpt-5.3-codex），35 records，5 easy sympy tasks × 7 strategies。
 
@@ -95,6 +117,8 @@
 
 难度系数跟模型无关——同一题在 all_flash 和 budgetflow_full 下按同一比例缩放。这个系数是 Automatic Budgeting 的核心。
 
+012 新增 5 task 的 real-USD 校准值已写入 `_HISTORICAL_PRIOR`（见 auto_budget.py）。
+
 ---
 
 ## Automatic Budgeting 路线图
@@ -105,8 +129,8 @@
 
 - 已有历史难度系数和 soft-budget 设计。
 - `GovernorConfig` 支持 `soft_budget` / `max_overrun`，`run_mini_swe_compare` 暴露对应参数。
-- 尚未实现 Automatic Budgeting：runner 还不会自动根据 task difficulty prior 估算 batch/per-task budget。
-- 006 证明手工 `tight=250` 容易把 3-task batch 变成“第一题吃满预算”，这正是 Automatic Budgeting 必须解决的问题。
+- **Automatic Budgeting v1 已上线：** `_HISTORICAL_PRIOR` 10-task 冷启动 + kNN memory learning + bucket fallback。
+- `min_cap` 已从 $0.05 校准至 $0.10（基于 real-USD 实测）。
 
 ### Plan B — Difficulty Bucket（冷启动）
 
@@ -183,6 +207,18 @@ FORCE_COLOR=1 PYTHONPATH=src:../external/mini-swe-agent/src \
   2>&1 | tee -a data/runs/policy_5x3-2.log
 ```
 
+**③ Auto-budget run（012 验证用）**
+
+```bash
+cd paper1 && PYTHONPATH=src:../external/mini-swe-agent/src \
+.venv/bin/python -u -m budgetflow.run_mini_swe_compare \
+  --auto-budget --auto-budget-scale 1.5 --auto-budget-min 0.10 --auto-budget-max 10.0 \
+  --strategies budget_only_tight,budget_only_loose,budgetflow_full_tight,budgetflow_full_loose,all_pro \
+  --jobs 5 --run-series postfix_011_sanity \
+  --ids sympy__sympy-14774,django__django-10924,sympy__sympy-18189,sympy__sympy-18057,sympy__sympy-18621 \
+  2>&1 | tee data/runs/postfix_011_sanity-N.log
+```
+
 产物：`data/runs/<run_id>.jsonl`、`.summary.log`、`.checkpoint.json`、`.log`。
 
 ---
@@ -193,6 +229,7 @@ FORCE_COLOR=1 PYTHONPATH=src:../external/mini-swe-agent/src \
 |---|---|---|---|
 | **policy_5x7-0** | 旧代码 7×5；已 rename 自 `t_policy_5x7` | **30/35** 中断 | `data/runs/policy_5x7-0.*` |
 | **policy_5x3-2** | 新代码 5×3；3 pilot tasks × 5 strategies；frozen caps | **15/15**，1 PASS | `data/runs/policy_5x3-2.*` |
+| **postfix_011_sanity-0** | 012 验证 run；5 tasks × 5 strategies；auto-budget | **25/25**，22 PASS | `data/runs/postfix_011_sanity-0.*` |
 
 ---
 
@@ -233,6 +270,27 @@ all_pro                | PASS           | FAIL rep_fail  | FAIL rep_fail
 
 **PASS: 1/15。** 所有 `ext_fail` = GPT-5.4 格式不兼容。所有 `rep_fail` = T2 输出正常但没修对。  
 **bf-T 在 16988 上唯一有价值的信号：** 36 turn、cost=2290、主要用 T2，跑了完整 BudgetFlow（routing/escalation/rescue），最终 `gold_rescue_stop_loss`。
+
+---
+
+## postfix_011_sanity-0 结果（25/25，当前 tier：qwen/GPT-5.4，auto-budget）
+
+**设置：** 5 tasks × 5 strategies；auto-budget scale=1.5 min=0.10 max=10.0；5 路并行。  
+**后端：** T1=skipped, T2=qwen3-coder-plus, T3=GPT-5.4。
+
+| strategy | resolved | total_cost | avg_cost | avg_turn |
+|---|---:|---:|---:|---:|
+| all_pro | 5/5 | $0.47 | $0.094 | 5.8 |
+| budgetflow_full_tight | 5/5 | $0.53 | $0.105 | 6.4 |
+| budgetflow_full_loose | 5/5 | $0.60 | $0.120 | 6.6 |
+| budget_only_loose | 4/5 | $0.97 | $0.193 | 29.8 |
+| budget_only_tight | 3/5 | $1.48 | $0.295 | 38.2 |
+
+**亮点：**
+- BudgetFlow Full 两档均 100% resolve，验证 routing 方法有效
+- budget_only 丢失 1-2 tasks，且总成本更高（多 turns 但修不好）
+- 0 crash, 0 missing rows, 0 duplicate — worktree 修复已验证
+- all_pro 仍最便宜（easy task 不需要 routing 开销）
 
 ---
 
@@ -296,15 +354,22 @@ Rubric 弱，**不能**当 resolved 结论。
 - `workflow_steps_ok` 当 resolved
 - eval 上 tune progress_table
 - 拿 `budgetflow_equal_weight` 当独立机制（它只是 `budgetflow_full` 的 w_i 消融）
+- 把 dirty/duplicate/missing rows 写进论文主表
+- 把未过 gold sanity 的 task 纳入模型结论
+- 把 local harness 结果直接写成 official SWE-bench 结果
+- 不在 runner 稳定时盲目上大规模矩阵
 
 ---
 
 ## 代码入口
 
-- `run_mini_swe_compare.py` — `--run-series` / `--resume` / `--task-set medium` / `--read-frozen-caps`
+- `run_mini_swe_compare.py` — `--run-series` / `--resume` / `--task-set medium` / `--read-frozen-caps` / `--auto-budget`
 - `run_series.py` — `policy_5x3-N` / `policy_5x7-N` 自增
 - `run_pilot.py` — 写 `data/frozen_caps.json`（跑一次，续用）
 - `protocol_caps.py` — `--read-frozen-caps` 读 JSON（`derive_batch_caps` + `write_frozen_caps`）
 - `lite_tasks.py` — easy 5 + medium 15 + pilot 3 固定列表
 - `adaptive_routing.py` — `AdaptiveRoutingState` + `EvidenceRescueState`（`budgetflow_full` 和 `budgetflow_equal_weight` 共用）
 - `stall_guard.py` + `run_trace.publish_live_progress` — anti-stall + 心跳与 route 同步
+- `auto_budget.py` — Automatic Budgeting v1: `_HISTORICAL_PRIOR` + kNN memory + bucket fallback
+- `local_harness.py` — worktree 管理 + harness eval（含 `_remove_worktree` / `_worktree_add`）
+- `compare_checkpoint.py` — checkpoint/resume 状态持久化

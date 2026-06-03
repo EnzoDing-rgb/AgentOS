@@ -1116,9 +1116,15 @@ def main() -> None:
     parser.add_argument(
         "--trace-turns",
         action="store_true",
-        default=False,
-        help="collect per-turn routing decision traces in JSONL output (off by default; enable for diagnostics)",
+        help="collect per-turn routing decision traces in JSONL output (on by default; --no-trace-turns to disable)",
     )
+    parser.add_argument(
+        "--no-trace-turns",
+        action="store_false",
+        dest="trace_turns",
+        help="disable per-turn trace collection in JSONL output",
+    )
+    parser.set_defaults(trace_turns=True)
     parser.add_argument(
         "--trace-max-turns",
         type=int,

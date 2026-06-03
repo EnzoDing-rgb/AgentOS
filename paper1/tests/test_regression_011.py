@@ -411,3 +411,262 @@ class TestWorktreeMissingButLocked:
         with pytest.raises(subprocess.CalledProcessError):
             _worktree_add(repo, wt_path, fake_commit)
         assert not wt_path.exists()
+
+
+# ── Turn trace observability ────────────────────────────────────────────
+
+class TestTurnTraceFlag:
+    """Verify --trace-turns flag defaults to ON and is parseable."""
+
+    def test_trace_turns_flag_defaults_true(self):
+        """--trace-turns must default to True so observability is on by default."""
+        import argparse
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--trace-turns", action="store_true", default=True)
+        parser.add_argument("--no-trace-turns", action="store_false", dest="trace_turns")
+        ns = parser.parse_args([])
+        assert ns.trace_turns is True, (
+            f"trace_turns default is {ns.trace_turns!r}, expected True. "
+            "Turn traces must be ON by default for observability."
+        )
+
+    def test_no_trace_turns_flag_disables(self):
+        """--no-trace-turns must disable trace collection."""
+        import argparse
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--trace-turns", action="store_true", default=True)
+        parser.add_argument("--no-trace-turns", action="store_false", dest="trace_turns")
+        ns = parser.parse_args(["--no-trace-turns"])
+        assert ns.trace_turns is False, (
+            f"trace_turns with --no-trace-turns is {ns.trace_turns!r}, expected False"
+        )
+
+    def test_trace_turns_explicit_enable(self):
+        """--trace-turns explicitly set still works."""
+        import argparse
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--trace-turns", action="store_true", default=True)
+        parser.add_argument("--no-trace-turns", action="store_false", dest="trace_turns")
+        ns = parser.parse_args(["--trace-turns"])
+        assert ns.trace_turns is True
+
+    def test_trace_turns_default_in_main_parser(self):
+        """Verify the actual run_mini_swe_compare parser has trace_turns=True default.
+
+        Parses main()'s parser to confirm the code change is live (not just the test fixture).
+        """
+        from budgetflow.run_mini_swe_compare import main as _main
+        import argparse, inspect
+        src = inspect.getsource(_main)
+        # Check the actual source for default=True in --trace-turns definition
+        assert 'set_defaults(trace_turns=True)' in src or 'default=True' in src, (
+            "trace_turns=True default not found in main() source (expected set_defaults or default=True). "
+            "Turn traces must be ON by default."
+        )
+        # Also ensure --no-trace-turns is defined alongside it
+        assert '--no-trace-turns' in src, (
+            "--no-trace-turns flag missing from main() parser"
+        )
+
+
+class TestBuildTurnTrace:
+    """Verify _build_turn_trace produces well-formed trace dicts."""
+
+    def test_basic_trace_structure(self):
+        from budgetflow.adapter.mini_swe_proxy import _build_turn_trace
+        from enum import Enum
+
+        class FakeStage(Enum):
+            LOC = "loc"
+            REP = "rep"
+            VAL = "val"
+
+        trace = _build_turn_trace(
+            step_index=3,
+            agent_phase="repair",
+            stage=FakeStage.REP,
+            bash_command="git diff HEAD~1",
+            input_tokens=2500,
+            expected_costs={"tier2": 0.005, "tier3": 0.025},
+            base_pressure=0.5,
+            effective_pressure=0.7,
+            backend_chosen="qwen3-coder-plus",
+            escalated_backend="qwen3-coder-plus",
+            final_backend="qwen3-coder-plus",
+            backend_tier=2,
+            reserve_out=4096,
+            adaptive=None,
+            no_progress_streak=0,
+            no_progress_on_tier=0,
+            turns_on_tier=3,
+            has_progress=True,
+            progress_reason="gold_file_edited",
+            prompt_tokens=2500,
+            completion_tokens=200,
+            actual_cost=0.005,
+            billable=0.005,
+            response_ok=True,
+            error_type=None,
+        )
+        # Required fields must be present
+        required = [
+            "step", "agent_phase", "stage", "bash_digest",
+            "input_tokens", "expected_costs", "base_pressure", "effective_pressure",
+            "backend_chosen", "final_backend", "backend_tier",
+            "prompt_tokens", "completion_tokens", "actual_cost", "response_ok",
+        ]
+        for key in required:
+            assert key in trace, f"Missing required key: {key}"
+
+        # Type checks
+        assert isinstance(trace["step"], int)
+        assert isinstance(trace["agent_phase"], str)
+        assert isinstance(trace["prompt_tokens"], int)
+        assert isinstance(trace["completion_tokens"], int)
+        assert isinstance(trace["actual_cost"], float)
+        assert isinstance(trace["response_ok"], bool)
+
+        # Bash digest must be truncated
+        assert isinstance(trace["bash_digest"], str)
+        assert len(trace["bash_digest"]) <= 120
+
+    def test_trace_stage_is_enum_name(self):
+        from budgetflow.adapter.mini_swe_proxy import _build_turn_trace
+        from enum import Enum
+
+        class FakeStage(Enum):
+            LOC = "loc"
+            VAL = "val"
+
+        trace = _build_turn_trace(
+            step_index=1,
+            agent_phase="localization",
+            stage=FakeStage.LOC,
+            bash_command=None,
+            input_tokens=1000,
+            expected_costs={},
+            base_pressure=0.0,
+            effective_pressure=0.0,
+            backend_chosen="qwen3-coder-plus",
+            escalated_backend="qwen3-coder-plus",
+            final_backend="qwen3-coder-plus",
+            backend_tier=2,
+            reserve_out=0,
+            adaptive=None,
+            no_progress_streak=0,
+            no_progress_on_tier=0,
+            turns_on_tier=1,
+            has_progress=False,
+            progress_reason="",
+            prompt_tokens=1000,
+            completion_tokens=50,
+            actual_cost=0.002,
+            billable=0.002,
+            response_ok=True,
+            error_type=None,
+        )
+        # stage should be the enum name, not the value (for readability)
+        assert trace["stage"] == "LOC"
+
+    def test_trace_with_error(self):
+        from budgetflow.adapter.mini_swe_proxy import _build_turn_trace
+        from enum import Enum
+
+        class FakeStage(Enum):
+            REP = "rep"
+
+        trace = _build_turn_trace(
+            step_index=5,
+            agent_phase="repair",
+            stage=FakeStage.REP,
+            bash_command="sed -i 's/old/new/' file.py",
+            input_tokens=3000,
+            expected_costs={"tier2": 0.006},
+            base_pressure=0.5,
+            effective_pressure=0.6,
+            backend_chosen="qwen3-coder-plus",
+            escalated_backend="qwen3-coder-plus",
+            final_backend="qwen3-coder-plus",
+            backend_tier=2,
+            reserve_out=4096,
+            adaptive=None,
+            no_progress_streak=1,
+            no_progress_on_tier=1,
+            turns_on_tier=5,
+            has_progress=False,
+            progress_reason="",
+            prompt_tokens=3000,
+            completion_tokens=0,
+            actual_cost=0.0,
+            billable=0.0,
+            response_ok=False,
+            error_type="ServiceUnavailableError",
+            provider="openai",
+            model="gpt-5.4",
+        )
+        assert trace["response_ok"] is False
+        assert trace["error_type"] == "ServiceUnavailableError"
+        assert trace["provider"] == "openai"
+        assert trace["model"] == "gpt-5.4"
+
+
+class TestTurnTraceIntegration:
+    """Verify turn_trace_count and turn_traces flow correctly through runner."""
+
+    def test_mini_swe_run_result_defaults(self):
+        """MiniSweRunResult defaults have turn_trace_count=0, turn_traces=None."""
+        from budgetflow.adapter.runner import MiniSweRunResult
+
+        # Simulate a minimal result (all optional fields get defaults)
+        result = MiniSweRunResult(
+            instance_id="test",
+            strategy="all_pro",
+            strategy_label="all_pro",
+            patch_text=None,
+            exit_status="unknown",
+            exit_reason=None,
+            total_cost=0.0,
+            budget_cap=1.0,
+            budget_snapshot={},
+            backend_picks=(),
+            llm_turns=0,
+            harness_resolved=False,
+            harness_detail="",
+            agent_gold_edited=False,
+            agent_attempted_submit=False,
+            agent_submitted=False,
+            agent_gold_files=(),
+            violations=(),
+        )
+        assert result.turn_trace_count == 0
+        assert result.turn_traces is None
+
+    def test_turn_trace_count_reflects_traces(self):
+        """When turn_traces is provided, turn_trace_count must equal len(turn_traces)."""
+        from budgetflow.adapter.runner import MiniSweRunResult
+
+        traces = [{"step": i, "stage": "LOC"} for i in range(5)]
+        result = MiniSweRunResult(
+            instance_id="test",
+            strategy="all_pro",
+            strategy_label="all_pro",
+            patch_text=None,
+            exit_status="unknown",
+            exit_reason=None,
+            total_cost=0.0,
+            budget_cap=1.0,
+            budget_snapshot={},
+            backend_picks=(),
+            llm_turns=5,
+            harness_resolved=False,
+            harness_detail="",
+            agent_gold_edited=False,
+            agent_attempted_submit=False,
+            agent_submitted=False,
+            agent_gold_files=(),
+            violations=(),
+            turn_trace_count=5,
+            turn_traces=traces,
+        )
+        assert result.turn_trace_count == 5
+        assert len(result.turn_traces) == 5

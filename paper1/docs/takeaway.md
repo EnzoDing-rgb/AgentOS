@@ -6,6 +6,24 @@
 
 ## 0. 最新关键判断（2026-06-03）
 
+### 012 核心 Takeaway
+
+1. **Worktree "missing but locked" 是真实崩溃模式，本地测试抓不到。** 010/011 的 3 层清理 + contract 测试通过了，但并行实验跑到 row 22 就 crash。"missing but locked"（目录已删，`.git/worktrees/<name>` 元数据还在）只在并行 worktree 场景出现。修复必须同时在 `_remove_worktree`（删除元数据 dir）和 `_worktree_add`（add 失败后 unlock+prune+retry）两处做防御。
+
+2. **BudgetFlow Full (tight + loose) 在这个 5-task pool 上均 100% resolve。** Tight $0.5259 total, Loose $0.5977 total。两者都 10/10 PASS。验证 routing 方法本身不制造假 fail。
+
+3. **budget_only (without tiered routing) 丢失 1-2 tasks。** Tight 3/5 ($1.48), Loose 4/5 ($0.97)。更差且更贵。原因：只用 T2 在 hard task 上需要更多 turns，总成本反而高。这支持 BudgetFlow 的 tiered routing 价值主张。
+
+4. **all_pro 仍然是这个 easy pool 上最便宜的解决方式（$0.47）。** GPT-5.4 5 turns 直接解决 sympy-14774、4 turns 解决 sympy-18057。但 BudgetFlow 的额外开销（routing overhead ~12%）在 easy task 上不显优势，在 hard task 上有价值。
+
+5. **min_cap=$0.10 比 $0.05 更合理。** 实测 easy task cost 范围 $0.05-$0.16。$0.05 对 T3 场景不够（all_pro 单个 14774 就 $0.05）。$0.10 是安全的 floor。
+
+6. **Checkpoint 韧性很重要。** `batch_cap:null` 在 JSON 中合法，但 `from_dict` 不处理 None 会导致 resume 崩溃。all_pro 的 null cap 是合法语义（uncapped），必须序列化/反序列化支持。
+
+7. **Auto-budget memory 从 5→10 task 冷启动能力增强，但仍小。** kNN 在老 task 上 exact match，新 task 上靠 bucket fallback。需要更多 clean rows 才能真正启用 continuous learning。
+
+8. **turn_trace_count=0 是严重缺陷。** 所有 25 rows 缺 turn traces。只能做 outcome 诊断，不能做 turn-level 细分析。下一轮必须开 `--trace-turns`。
+
 ### 竞争模型与论文定位
 
 Liquid LFM2.5、Ling-2.6-flash、OpenSquilla、Hermes/OpenClaw 会影响 paper 的表述方式，但不会直接打掉 BudgetFlow。
@@ -18,8 +36,8 @@ Liquid LFM2.5、Ling-2.6-flash、OpenSquilla、Hermes/OpenClaw 会影响 paper �
 
 BudgetFlow 的 claim 必须收窄：
 
-- 不说“通用 token efficiency 最强”。
-- 不说“最强模型路由器”。
+- 不说"通用 token efficiency 最强"。
+- 不说"最强模型路由器"。
 - 主张改成：**在固定经济预算下，BudgetFlow 用 workflow/progress-aware routing 提升 agentic code-repair 的 clean resolved per dollar**。
 - 关键差异是 fixed budget、batch governor、verified repair outcome、failure attribution、auto-budget learning，而不是单次调用更省 token。
 
@@ -42,19 +60,6 @@ BudgetFlow 的 claim 必须收窄：
 - local harness 继续做 inner loop：gold sanity、debug、failure attribution、BudgetFlow 对比。
 - official SWE-bench harness 做 outer audit：等 clean rows 出来后，把 prediction JSONL 拿到 Docker-capable 节点/VM/Modal/sb-cli 验证。
 - paper 里必须区分 `local harness resolved` 和 `official SWE-bench resolved`。headline 结果最终最好有 official audit 支撑。
-
-### `postfix_011_sanity` 当前状态
-
-不要把当前 run 解读成“14 个全过所以重大突破”。真实状态：
-
-- 已完成 22/25 rows，20/22 PASS，1 true budget fail，另有 1 crash 后 checkpoint/jsonl 状态需复核。
-- `all_pro` 已确认是 T3-only、`batch_budget_cap=null`、`budget_tier=uncapped`，不属于 BudgetFlow。
-- pass 的 local harness 证据基本强：`test_patch=ok; fail_before=fail; model_patch=ok; fail_after=pass; pass_to_pass=pass`。
-- 但所有 rows 缺 `turn_traces`，只能做 outcome-level attribution，不能做 turn-level 细诊断。
-- `budget_only_tight` 仍有 worktree add exit 128 崩溃，说明 010/011 的 worktree P0 没有实跑闭环。
-- `budget_only_loose × sympy-18057` 是真 budget/repair fail：gold file edited，patch extracted，P2P pass，但 F2P 仍 fail，cap 几乎耗尽。
-
-结论：当前实验值得继续，但必须先修/验证 worktree crash 和 checkpoint/jsonl 一致性；不要扩大到大矩阵。
 
 ## 1. 当前硬规则
 
@@ -85,6 +90,14 @@ export PIP_CACHE_DIR=/Lishun/.cache/pip
 - 并行度先保守，再扩。provider、worktree、harness 任一不稳，都不要盲目加 `--jobs`。
 - resume 后必须检查重复 `(instance_id, strategy)`；重复行不能进论文表。
 - 如果出现重复 JSONL、checkpoint 不一致、missing row，先判定 runner/observability bug，不要解释成模型或 BudgetFlow 失败。
+
+### Worktree 崩溃模式经验（012）
+
+"missing but locked" 是并行 worktree 场景的独特崩溃模式：
+
+- **触发条件：** worktree 目录被删（rmtree/手动），但 `.git/worktrees/<name>` 元数据残留。`git worktree add` 看到元数据认为 worktree 存在，尝试 lock 时发现目录不存在，报 "missing but locked"。
+- **修复层级：** 必须在 add 路径（`_worktree_add` stderr 解析 + retry）和 remove 路径（`_remove_worktree` 显式删除 meta_dir）两处防御。
+- **教训：** lab 单线程测试抓不到这个 bug。只有并行 run（多个 job 共享同一个 main repo）才会暴露。
 
 ## 1. Harness Gate
 
@@ -126,27 +139,36 @@ cd paper1 && PYTHONPATH=src:../external/mini-swe-agent/src \
 - SymPy 旧依赖兼容、Django SWE-bench test id mapping、Django `INSTALLED_APPS` 都是 harness 问题，不是模型能力问题。
 - local harness 是开发诊断工具；official SWE-bench 才是论文级验证工具。两者要分开解释。
 
-## 2. 当前实验判断（009 后）
+## 2. 当前实验判断（012 后）
 
-已有 008/009 model batches，共 56 recorded rows。能看到 BudgetFlow 正向信号，但数据还不够干净，不能直接上大矩阵当论文结论。
+已有 clean 25 rows (012) + 56 noisy rows (008/009) + 35 historical rows (7x15)。012 数据可信，可做初步分析。
 
 当前判断：
 
 - `all_pro` 是 uncapped GPT-5.4 ceiling/control，不属于 BudgetFlow，不应被 Automatic Budgeting cap 限制。
-- `budgetflow_full_tight` 是目前最强 budget 策略，接近 `all_pro`，且多次以更低 cost PASS。
-- `all_pro` 总体仍更强；BudgetFlow 的经济性卖点还需要更干净、更大样本证明。
+- `budgetflow_full_*` 两档均在 5-task easy pool 上 100% resolve，routing 方法已验证有效。
+- `budget_only_*` 无 tiered routing 时丢失 1-2 tasks 且总成本更高。这支持 BudgetFlow 核心主张。
+- 在 easy task 上 `all_pro` 最便宜（$0.47 for 5 tasks）。BudgetFlow 的 routing overhead 在 easy task 上不划算，但在 hard task 上提供 protection。
+- Worktree crash 已闭环：25/25 rows clean, 0 crash。修复覆盖 add 和 remove 两条路径。
 - GPT-5.4 有非确定性，同一 task 单次 PASS/FAIL 不能当稳定天花板。
-- `django__django-12113`、`sympy__sympy-21612` 目前像 ceiling/unsolvable task，不适合证明 budget policy 差。
-- `budget_only_tight` 系统性 worktree crash/缺行，修好前不能作为完整 baseline。
-- 内部 `$cost` 只是 governor/provider cost unit，不是真实 USD；真实世界 API 价格需要单独校准。
+- `django-12113`、`sympy-21612` 目前像 ceiling/unsolvable task，不适合证明 budget policy 差。
 
 当前 P0：
 
-- 修 worktree 清理：`git worktree add` 前必须处理 stale dir / stale registration。
-- 验证 checkpoint/JSONL/summary 幂等性。
-- 清理 auto-budget memory，移除 `resolved=None` 污染记录。
-- 新增回归测试，确保 learning signal 使用 `harness_resolved`。
-- 校准真实 API 价格，避免 paper 在错误成本口径上优化。
+- **开启 turn traces**：下一轮必须加 `--trace-turns`。
+- **构建 consistency checker**：checkpoint ↔ JSONL ↔ summary.log。
+- **扩 task pool**：从 5 → 10+ Gold-PASS tasks。
+- **T1 启用评估**：测试 qwen3-coder-flash 在 BudgetFlow 中的表现。
+
+已解决的 P0：
+
+- ✅ Worktree crash 修复并验证（012）
+- ✅ Checkpoint `batch_cap:null` 修复（012）
+- ✅ Auto-budget 记忆清理并扩充至 10 task（012）
+- ✅ `min_cap` $0.05→$0.10 校准（012）
+- ✅ 真实 API 价格校准并验证（010/011）
+- ✅ Cost display observability（011）
+- ✅ 回归测试 35/35 pass（012）
 
 ## 3. 证据解释原则
 
@@ -164,6 +186,20 @@ cd paper1 && PYTHONPATH=src:../external/mini-swe-agent/src \
 - provider/API/session/worktree 基础设施问题。
 
 所以论文核心不是只看 pass rate，而是看 failure attribution。
+
+### 012 新增：Harness Pass 证据链
+
+local harness 的 forensic_summary 提供完整的 pass/fail 证据链：
+
+```
+test_patch=ok → fail_before=fail → model_patch=ok → fail_after=pass → pass_to_pass=pass
+```
+
+22/25 PASS 全部满足上述链。无 P2P false pass。3 FAIL 的证据也完整：
+- 2 repair_fail：fail_after=fail（修了 gold file 但测试不过）
+- 1 budget_fail：cap 耗尽
+
+这个证据链应该是后续所有实验的验收标准。
 
 ### Observability 是决策压缩器
 
@@ -190,23 +226,26 @@ Patch extraction 也要分层：
 
 ## 4. BudgetFlow 论文判断
 
-BudgetFlow 的卖点不是“永远比 all_pro 强”，而是：在固定 batch 经济预算下，progress-aware routing 能否比 budget-only / cheap-only 获得更多 clean harness resolved。
+BudgetFlow 的卖点不是"永远比 all_pro 强"，而是：在固定 batch 经济预算下，progress-aware routing 能否比 budget-only / cheap-only 获得更多 clean harness resolved。
 
-当前正向信号：
+当前正向信号（012 强化）：
 
-- `budgetflow_full_tight` 在部分 solvable task 上比 `all_pro` 更便宜通过。
-- 在 Django-10924 等任务上，full routing 比 budget-only 更有效。
-- budget-only cheap model 经常 turn 多、修不好，最后总成本反而高；这反而支持 tiered routing 的必要性。
+- `budgetflow_full_*` 在 5-task easy pool 上 100% resolve（10/10），routing 方法验证有效。
+- `budget_only_*` 丢失 1-2 tasks 且总成本更高：tight 多花了 $1.48 只拿到 3/5，loose 多花了 $0.97 拿到 4/5。
+- BudgetFlow Full tight 总成本 $0.53，Full loose $0.60，两者都比 budget_only 便宜且更强。
+- Worktree crash 闭环验证，runner 稳定性达到可生产级别。
 
 当前负向信号：
 
-- `all_pro` 仍是强 baseline，且很多 easy task 一把梭更便宜。
-- routing 的 LOC/REP/VAL 多轮开销会吃掉 cheap model 节省。
-- auto-budget cap floor、history memory、worktree missing row 还会污染结果。
+- `all_pro` 仍是强 baseline，easy task 上一把梭更便宜（$0.47 for 5 tasks）。
+- BudgetFlow routing overhead ~12% 在 easy task 上不提供经济优势。
+- Turn traces 缺失，无法做 turn-level attribution。
+- Task pool 只有 5 easy tasks，hard task 上的相对优势未验证。
 
 下一步论文策略：
 
-- 先修 P0 bug，再做小 batch 回归。
+- 开启 turn traces，构建 consistency checker。
+- 扩 task pool 到 10+，覆盖更多难度级别。
 - 主表只收 clean rows：gold-PASS、无重复、无 missing、无 worktree crash、cost 口径明确。
 - unsolvable/ceiling task 单独标注，不拿来证明 policy 差。
 - `all_pro` ceiling、`budgetflow_full_*`、`budget_only_*` 必须同时保留。
@@ -215,12 +254,12 @@ BudgetFlow 的卖点不是“永远比 all_pro 强”，而是：在固定 batch
 
 Automatic Budgeting 是 BudgetFlow 的核心卖点之一，但必须从 clean history 学，不要靠拍脑袋 tight 值。
 
-已有信号：
+012 进展：
 
-- 历史 7×15 数据能提取 task difficulty prior。
-- 任务相对难度在不同策略下有稳定性。
-- 008/009 已经有 memory 写入和 auto-budget v1。
-- `resolved=None` 污染曾导致 underbudget 判断错误，必须清理旧 memory 并测试。
+- `_HISTORICAL_PRIOR` 从 5 → 10 task，覆盖当前 active 的 6 task（含 django-10924）。
+- `min_cap` $0.05→$0.10，基于 real-USD 实测。
+- kNN memory 在 exact match task 上可靠（budget_prior_source=memory_exact, confidence=high）。
+- 新 task 仍靠 bucket fallback + repo floor。
 
 设计原则：
 
@@ -247,12 +286,13 @@ Automatic Budgeting 是 BudgetFlow 的核心卖点之一，但必须从 clean hi
 - GPT-5.3 Codex 是历史 artifact，当前不可用。
 - GPT-5.5 过贵，不在当前 active path。
 - 模型池不稳定会污染成本、routing、paper baseline 三件事。
+- T1 仍 marked skipped，BudgetFlow 的低 tier 优势未经实验证明。
 
 ## 7. Agent / 工程协作经验
 
 小模型 / sub-agent 适合搬数据、读日志、跑局部检查、写初稿；最终研究判断不能外包。
 
-Claude Code / skills 的价值不是“装一堆技能”，而是把隐性协作规则固化到仓库：
+Claude Code / skills 的价值不是"装一堆技能"，而是把隐性协作规则固化到仓库：
 
 - `CLAUDE.md`：当前 tiers、禁止事项、常用命令、运行环境风险。
 - `CONTEXT.md`：统一术语，如 tier contract、action protocol、router decision、budget prior、soft cap、rescue、headroom、clean row、protocol fail、Automatic Budgeting。
@@ -260,13 +300,22 @@ Claude Code / skills 的价值不是“装一堆技能”，而是把隐性协�
 - 用 diagnose 思路：先建立可复现反馈回路，再猜原因。
 - 重构保持小 seam：ModelCatalog、ActionProtocolAdapter、RouterDecision、BudgetAllocator；不要重写 runner。
 
+### 012 工程经验
+
+- **Worktree bug 必须在并行场景测试。** 单线程 lab test 抓不到 "missing but locked"。下次改 worktree 代码，必须跑 `--jobs > 1` 的集成测试。
+- **Checkpoint schema 要向后兼容。** `batch_cap:null` 是合法语义（uncapped），新增 nullable 字段时必须确保 `from_dict` 处理 None。JSON 不区分 null 和 missing。
+- **Auto-budget prior 数据直接嵌入代码即可。** 10 task prior 很小，不需要外部文件。等历史数据 > 50 task 再考虑分离。
+- **回归测试从 31 → 35 是正常的增量增长。** 每次修一个 bug 加对应测试，不为了数字而写测试。
+
 ## 8. 当前不要做什么
 
 - 不把 dirty/duplicate/missing rows 写进论文主表。
 - 不把未过 gold sanity 的 task 纳入模型结论。
 - 不把 local harness 结果直接写成 official SWE-bench 结果。
 - 不把内部 cost unit 写成真实 USD。
-- 不在 P0 bug 未修时盲目上 5×30 / 5×50。
+- 不在 turn traces 缺失时做 turn-level 结论。
+- 不在 runner 不稳定时盲目上 5×30 / 5×50。
 - 不为了扩 repo 而忽略 Django/Requests adapter gap。
 - 不把 `budgetflow_equal_weight` 当独立机制；它只是 stage weight 消融。
 - 不让 harness compatibility edit 进入 submitted patch。
+- 不在单个 5-task easy pool 上过度推广结论。
