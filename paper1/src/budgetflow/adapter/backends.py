@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import os
+
 from ..defaults import (
     TIER1_BACKEND,
     TIER2_BACKEND,
+    TIER2_XFYUN_BACKEND,
     TIER3_BACKEND,
 )
 from ..types import Backend
@@ -58,8 +61,45 @@ def _build_all_backends() -> list[Backend]:
     ]
 
 
+def _alternative_backends() -> dict[str, Backend]:
+    """Optional provider alternatives keyed by stable backend name.
+
+    Keep alternatives out of _build_all_backends() so the paper's canonical
+    three-tier pool stays stable. Selection replaces a tier, it does not add a
+    fourth active tier unless a future strategy explicitly asks for that.
+    """
+    _R = 1.0 / 7.25
+    return {
+        TIER2_XFYUN_BACKEND: Backend(
+            name=TIER2_XFYUN_BACKEND,
+            tier=2,
+            # Limited-free MaaS backend: use qwen-coder-plus pricing as a
+            # conservative accounting proxy so smoke tests do not distort caps.
+            cost_per_input_token=0.004 / 1000 * _R,
+            cost_per_output_token=0.016 / 1000 * _R,
+            rpm_limit=300,
+            concurrency_limit=5,
+            mean_output_tokens=1024,
+            progress_score=0.22,
+            latency_ms=900,
+        )
+    }
+
+
+def _selected_t2_backend() -> str:
+    choice = os.environ.get("BUDGETFLOW_T2_BACKEND", "").strip().lower()
+    if choice in {"xfyun", "xfyun_qwen36", "qwen36", TIER2_XFYUN_BACKEND}:
+        return TIER2_XFYUN_BACKEND
+    return TIER2_BACKEND
+
+
 def build_compare_backends(*, include_t1: bool = False) -> list[Backend]:
     backends = _build_all_backends()
+    selected_t2 = _selected_t2_backend()
+    if selected_t2 != TIER2_BACKEND:
+        alternatives = _alternative_backends()
+        replacement = alternatives[selected_t2]
+        backends = [replacement if backend.name == TIER2_BACKEND else backend for backend in backends]
     if include_t1:
         return backends
     return [backend for backend in backends if backend.name != TIER1_BACKEND]

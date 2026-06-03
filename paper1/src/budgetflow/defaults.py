@@ -60,11 +60,14 @@ AICODE007_API_BASE = "https://api.aicode007.com/v1"
 # BudgetFlow uses stable tier identities; provider/model details live here.
 TIER1_BACKEND = "tier1"
 TIER2_BACKEND = "tier2"
+TIER2_XFYUN_BACKEND = "tier2_xfyun_qwen36"
 TIER3_BACKEND = "tier3"
 
 QWEN_CODER_FLASH_MODEL = "qwen3-coder-flash"
 QWEN_CODER_PLUS_MODEL = "qwen3-coder-plus"
+XFYUN_QWEN36_MODEL = "xopqwen36v35b"
 GPT54_MODEL = "openai/gpt-5.4"
+XFYUN_MAAS_API_BASE = "https://maas-api.cn-huabei-1.xf-yun.com/v2"
 
 TIER_CONFIGS: dict[str, TierConfig] = {
     TIER1_BACKEND: TierConfig(
@@ -84,6 +87,15 @@ TIER_CONFIGS: dict[str, TierConfig] = {
         api_base=DASHSCOPE_API_BASE,
         api_key_env="DASHSCOPE_API_KEY",
         display="qwen3-coder-plus",
+    ),
+    TIER2_XFYUN_BACKEND: TierConfig(
+        tier=2,
+        backend=TIER2_XFYUN_BACKEND,
+        model=f"openai/{XFYUN_QWEN36_MODEL}",
+        provider="xfyun_maas",
+        api_base=XFYUN_MAAS_API_BASE,
+        api_key_env="XFYUN_MAAS_API_KEY",
+        display="xfyun-qwen3.6-35b-a3b",
     ),
     TIER3_BACKEND: TierConfig(
         tier=3,
@@ -180,6 +192,10 @@ TIER_MAX_TURNS: dict[int, int] = {
     2: 35,
     3: 999,
 }
+
+# Once a worker has edited a gold/target file, long T2 repair loops are usually
+# expensive noise. Give T2 a short verification/patch-prep runway, then force T3.
+GOLD_EDIT_T2_REPAIR_TURN_LIMIT = 12
 
 # Adaptive routing (budgetflow_full only): rolling task feedback + in-run recovery.
 ADAPTIVE_WINDOW = 5

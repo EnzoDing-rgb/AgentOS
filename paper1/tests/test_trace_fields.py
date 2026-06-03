@@ -9,11 +9,14 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from budgetflow.adapter.mini_swe_proxy import (
+    BudgetFlowLitellmModel,
     _build_turn_trace,
     _router_trace_fields,
     _provider_trace_fields,
     _protocol_trace_fields,
 )
+from budgetflow.adapter.errors import BudgetFlowStagnationError
+from budgetflow.defaults import GOLD_EDIT_T2_REPAIR_TURN_LIMIT
 from budgetflow.adapter.strategies import RoutingContext, build_routing_context
 from budgetflow.types import Backend, Stage
 
@@ -143,6 +146,25 @@ class TestTraceExtension:
         assert trace["router_branch"] == "budget_only"
         assert trace["router_pressure"] == 0.01
 
+    def test_trace_includes_gold_edit_guard_state(self):
+        trace = _build_turn_trace(
+            step_index=1, agent_phase="edit_gold", stage=Stage.REPAIR,
+            bash_command="git diff", input_tokens=100,
+            expected_costs={}, base_pressure=0.01, effective_pressure=0.01,
+            backend_chosen="tier2", escalated_backend="tier3",
+            final_backend="tier3", backend_tier=3, reserve_out=256,
+            adaptive=None, no_progress_streak=0, no_progress_on_tier=0,
+            turns_on_tier=1, has_progress=True, progress_reason="repair_pattern",
+            prompt_tokens=100, completion_tokens=50,
+            actual_cost=0.5, billable=0.5, response_ok=True, error_type=None,
+            gold_edit_guard_turns=12,
+            gold_edit_guard_limit=12,
+            gold_edit_guard_active=True,
+        )
+        assert trace["gold_edit_guard_turns"] == 12
+        assert trace["gold_edit_guard_limit"] == 12
+        assert trace["gold_edit_guard_active"] is True
+
     def test_trace_old_fields_still_present(self):
         """Backward-compat: old fields survive the extension."""
         trace = _build_turn_trace(
@@ -185,3 +207,41 @@ class TestHelperFunctions:
         fields = _protocol_trace_fields("tier2", text_mode=False)
         assert fields["protocol"] == "tool_call"
         assert fields["text_mode"] is False
+
+
+class TestGoldEditRepairGuard:
+    def _model(self, backends):
+        model = object.__new__(BudgetFlowLitellmModel)
+        model.routing = type("Routing", (), {
+            "strategy": "budget_only",
+            "backends": backends,
+        })()
+        model.workflow_id = "test"
+        model.step_index = 13
+        model.agent_gold_edited = True
+        model._gold_edit_t2_repair_turns = GOLD_EDIT_T2_REPAIR_TURN_LIMIT
+        model._no_progress_on_current_tier = 3
+        model._turns_on_current_tier = 7
+        return model
+
+    def test_gold_edit_guard_forces_t3_after_t2_repair_limit(self):
+        t2 = Backend("tier2", 2, 0.001, 0.002, 60, 1, 1024, 0.6, 100)
+        t3 = Backend("tier3", 3, 0.01, 0.02, 60, 1, 1024, 0.8, 200)
+        model = self._model([t2, t3])
+
+        chosen = model._apply_gold_edit_repair_guard(t2, Stage.REPAIR)
+
+        assert chosen is t3
+        assert model._no_progress_on_current_tier == 0
+        assert model._turns_on_current_tier == 0
+
+    def test_gold_edit_guard_stops_when_no_higher_tier_available(self):
+        t2 = Backend("tier2", 2, 0.001, 0.002, 60, 1, 1024, 0.6, 100)
+        model = self._model([t2])
+
+        try:
+            model._apply_gold_edit_repair_guard(t2, Stage.REPAIR)
+        except BudgetFlowStagnationError as exc:
+            assert exc.exit_reason == "gold_edit_t2_repair_limit"
+        else:
+            raise AssertionError("expected BudgetFlowStagnationError")

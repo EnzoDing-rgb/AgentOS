@@ -12,6 +12,7 @@ from budgetflow import defaults
 def test_current_tiers_are_stable_budgetflow_ids() -> None:
     assert defaults.TIER1_BACKEND == "tier1"
     assert defaults.TIER2_BACKEND == "tier2"
+    assert defaults.TIER2_XFYUN_BACKEND == "tier2_xfyun_qwen36"
     assert defaults.TIER3_BACKEND == "tier3"
 
 
@@ -20,6 +21,8 @@ def test_current_tier_registry_maps_to_provider_models() -> None:
     assert defaults.TIER1_MODEL == "openai/qwen3-coder-flash"
     assert defaults.TIER2_DISPLAY == "qwen3-coder-plus"
     assert defaults.TIER2_MODEL == "openai/qwen3-coder-plus"
+    assert defaults.TIER_CONFIGS[defaults.TIER2_XFYUN_BACKEND].provider == "xfyun_maas"
+    assert defaults.TIER_CONFIGS[defaults.TIER2_XFYUN_BACKEND].api_key_env == "XFYUN_MAAS_API_KEY"
     assert defaults.TIER3_DISPLAY == "GPT-5.4"
     assert defaults.TIER3_MODEL == "openai/gpt-5.4"
     assert defaults.TIER_CONFIGS[defaults.TIER3_BACKEND].provider == "aicode007"

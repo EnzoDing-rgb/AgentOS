@@ -26,11 +26,11 @@ def _kwargs_for(backend: str) -> dict:
     config = TIER_CONFIGS[backend]
     if config.provider == "aicode007":
         ensure_aicode007_proxy()
-    api_base = (
-        os.environ.get("AICODE007_BASE_URL") or config.api_base
-        if config.provider == "aicode007"
-        else config.api_base
-    )
+        api_base = os.environ.get("AICODE007_BASE_URL") or config.api_base
+    elif config.provider == "xfyun_maas":
+        api_base = os.environ.get("XFYUN_MAAS_BASE_URL") or os.environ.get("XFYUN_MAAS_API_BASE") or config.api_base
+    else:
+        api_base = config.api_base
     return {
         "api_base": api_base,
         "api_key": os.environ.get(config.api_key_env),

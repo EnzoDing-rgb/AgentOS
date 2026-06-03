@@ -3,7 +3,18 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ..adaptive_routing import AdaptiveRoutingState
-from ..defaults import BUDGET_PRESSURE_INIT, ModelCatalog, PROGRESS_TABLE, TIER_ESCALATION_PATIENCE, W_I, active_w_i, active_w_i_profile_name
+from ..defaults import (
+    BUDGET_PRESSURE_INIT,
+    ModelCatalog,
+    PROGRESS_TABLE,
+    TIER1_BACKEND,
+    TIER2_BACKEND,
+    TIER3_BACKEND,
+    TIER_ESCALATION_PATIENCE,
+    W_I,
+    active_w_i,
+    active_w_i_profile_name,
+)
 from ..policies import BudgetOnlyStepRouter, WorkflowLevelRouter
 from ..selector import BudgetFlowSelector, RouterDecision, SelectionDecision
 from ..types import Backend, ProgressTable, Stage, TurnInfo
@@ -28,9 +39,13 @@ class RoutingContext:
 def build_progress_table_from_defaults(backends: list[Backend]) -> ProgressTable:
     ordered = sorted(backends, key=lambda backend: backend.tier)
     table: ProgressTable = {stage: {} for stage in PROGRESS_TABLE}
+    canonical_by_tier = {1: TIER1_BACKEND, 2: TIER2_BACKEND, 3: TIER3_BACKEND}
     for backend in ordered:
         for stage, values in PROGRESS_TABLE.items():
-            table[stage][backend.name] = values[backend.name]
+            canonical_name = backend.name if backend.name in values else canonical_by_tier.get(backend.tier)
+            if canonical_name is None:
+                raise KeyError(f"no progress prior for backend={backend.name} tier={backend.tier}")
+            table[stage][backend.name] = values[canonical_name]
     return table
 
 

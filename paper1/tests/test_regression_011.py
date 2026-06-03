@@ -1122,3 +1122,50 @@ class TestCheckerFunctions:
         issues = _check_missing_fields(records)
         assert len(issues) >= 1
         assert "MISSING_FIELDS" in issues[0]
+
+    def test_check_jsonl_flags_fresh_heartbeat_with_dead_pid(self, tmp_path):
+        import json
+        import time
+        from budgetflow.check_run_observability import check_jsonl
+
+        jsonl = tmp_path / "run-0.jsonl"
+        record = {
+            "instance_id": "x",
+            "strategy": "all_pro",
+            "routing": "all_pro",
+            "harness_resolved": False,
+            "exit_status": "Submitted",
+            "exit_reason": "submitted",
+            "total_cost": 0.1,
+            "llm_turns": 1,
+            "elapsed_s": 1,
+            "detail": "",
+            "turn_trace_count": 1,
+            "run_series": "run",
+            "policy_lane": "all_pro",
+            "task_order_index": 1,
+            "row_started_at": time.time() - 1,
+            "row_finished_at": time.time(),
+            "harness_evidence": {"evidence_complete": False},
+            "observability_status": {},
+            "failure_class": "repair_fail",
+            "forensic_summary": {},
+            "backend_picks": ["tier3"],
+            "submitted_patch": "patch.txt",
+            "attempt_id": "run_all_pro_x",
+        }
+        jsonl.write_text(json.dumps(record) + "\n")
+        (tmp_path / "run.heartbeat.json").write_text(json.dumps({
+            "started_at": time.time(),
+            "updated_at": time.time(),
+            "total_expected": 50,
+            "rows_done": 21,
+            "current_pid": 99999999,
+            "status": "running",
+            "run_series": "run",
+        }))
+
+        result = check_jsonl(jsonl)
+
+        assert result["errors"] >= 1
+        assert any("HEARTBEAT_DEAD_PID" in issue for issue in result["issues"])

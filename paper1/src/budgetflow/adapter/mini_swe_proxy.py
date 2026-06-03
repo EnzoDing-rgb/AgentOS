@@ -26,6 +26,7 @@ from ..litellm_quiet import configure_litellm_quiet
 from ..budget_pressure import live_budget_pressure
 from ..deepseek_backend import ensure_aicode007_proxy, ensure_direct_api, load_env_file
 from ..defaults import (
+    GOLD_EDIT_T2_REPAIR_TURN_LIMIT,
     PRESSURE_MAX,
     STRONGEST_DOWNGRADE_TIER,
     TIER_CONFIGS,
@@ -36,7 +37,7 @@ from ..defaults import (
 )
 from ..console_log import backend_tier_label, bold, dim, routing_stage_label, tag
 from ..governor import BudgetGovernor
-from ..types import Backend, TurnInfo, WorkflowStatus
+from ..types import Backend, Stage, TurnInfo, WorkflowStatus
 from .errors import BudgetFlowBudgetError, BudgetFlowStagnationError, BudgetFlowUpstreamError
 from ..run_guards import is_fatal_billing_error, record_billing_halt, record_upstream_error
 from .bash_stage import (
@@ -145,6 +146,9 @@ def _build_turn_trace(
     router_scores: dict[str, float] | None = None,
     router_pressure: float | None = None,
     router_branch: str | None = None,
+    gold_edit_guard_turns: int = 0,
+    gold_edit_guard_limit: int | None = None,
+    gold_edit_guard_active: bool = False,
 ) -> dict:
     """Build a single turn-trace dict for observability (no side effects)."""
     trace: dict[str, Any] = {
@@ -198,6 +202,9 @@ def _build_turn_trace(
         "router_scores": router_scores,
         "router_pressure": router_pressure,
         "router_branch": router_branch,
+        "gold_edit_guard_turns": gold_edit_guard_turns,
+        "gold_edit_guard_limit": gold_edit_guard_limit,
+        "gold_edit_guard_active": gold_edit_guard_active,
     }
     if adaptive is not None:
         trace["adaptive_ttl"] = getattr(adaptive, "ttl_steps_remaining", None)
@@ -358,6 +365,7 @@ class BudgetFlowLitellmModel:
         self._no_progress_streak = 0
         self._no_progress_on_current_tier = 0  # consecutive non-progress steps on current tier
         self._turns_on_current_tier = 0  # total turns on current tier (for turn cap)
+        self._gold_edit_t2_repair_turns = 0
         self._last_backend_tier: int = 0  # track tier changes to reset patience
         self._total_prompt_tokens = 0
         self._total_completion_tokens = 0
@@ -497,6 +505,7 @@ class BudgetFlowLitellmModel:
                 )
         prev_tier = self._last_backend_tier
         backend = self._apply_progress_escalation(backend)
+        backend = self._apply_gold_edit_repair_guard(backend, stage)
         escalated_backend = backend.name
         response = None
         text_mode = False
@@ -509,6 +518,8 @@ class BudgetFlowLitellmModel:
                 self._turns_on_current_tier = 0
             self._last_backend_tier = backend.tier
             self._turns_on_current_tier += 1
+            if self.agent_gold_edited and stage in (Stage.REPAIR, Stage.VALIDATION) and backend.tier == 2:
+                self._gold_edit_t2_repair_turns += 1
             self.routing.last_backend = backend
             self.backend_picks.append(backend.name)
             self.last_routing_stage = stage.value
@@ -569,6 +580,7 @@ class BudgetFlowLitellmModel:
                         **_provider_trace_fields(backend.name),
                         **_protocol_trace_fields(backend.name, text_mode=ActionProtocolAdapter.resolve(backend.name).protocol == "text_regex"),
                         **_router_trace_fields(self.routing),
+                        **self._gold_edit_guard_trace_fields(),
                         provider_status_code=getattr(exc, "status_code", None),
                         provider_error_body=str(exc)[:500],
                         reservation_id=self._last_reservation_id,
@@ -643,6 +655,7 @@ class BudgetFlowLitellmModel:
                     **_provider_trace_fields(backend.name),
                     **_protocol_trace_fields(backend.name, text_mode),
                     **_router_trace_fields(self.routing),
+                    **self._gold_edit_guard_trace_fields(),
                     assistant_content_head=_safe_content_head(response),
                     tool_call_summary=_tool_call_summary(response),
                     parser_input_snippet=_parser_input_snippet(response, text_mode),
@@ -691,6 +704,7 @@ class BudgetFlowLitellmModel:
                 **_provider_trace_fields(backend.name),
                 **_protocol_trace_fields(backend.name, text_mode),
                 **_router_trace_fields(self.routing),
+                **self._gold_edit_guard_trace_fields(),
                 assistant_content_head=_safe_content_head(response),
                 tool_call_summary=_tool_call_summary(response),
                 parser_input_snippet=_parser_input_snippet(response, text_mode),
@@ -710,7 +724,10 @@ class BudgetFlowLitellmModel:
             primary = []
         else:
             primary = [backend]
-        lower = [b for b in reversed(ordered) if b.tier < backend.tier]
+        if self._gold_edit_t2_repair_turns >= GOLD_EDIT_T2_REPAIR_TURN_LIMIT:
+            lower = []
+        else:
+            lower = [b for b in reversed(ordered) if b.tier < backend.tier]
         higher = [b for b in ordered if b.tier > backend.tier]
         seen: set[str] = set()
         candidates: list[Backend] = []
@@ -730,6 +747,13 @@ class BudgetFlowLitellmModel:
             self._last_reservation_id = None
             self._last_reserve_out = 0
             self.last_budget_snapshot = self.governor.budget_snapshot()
+
+    def _gold_edit_guard_trace_fields(self) -> dict[str, object]:
+        return {
+            "gold_edit_guard_turns": self._gold_edit_t2_repair_turns,
+            "gold_edit_guard_limit": GOLD_EDIT_T2_REPAIR_TURN_LIMIT,
+            "gold_edit_guard_active": self._gold_edit_t2_repair_turns >= GOLD_EDIT_T2_REPAIR_TURN_LIMIT,
+        }
 
     def _reserve_output_tokens(self, backend: Backend, input_tokens: int) -> int:
         remaining = self.governor.remaining_budget()
@@ -804,6 +828,49 @@ class BudgetFlowLitellmModel:
         self._turns_on_current_tier = 0
         return next_backend
 
+    def _apply_gold_edit_repair_guard(self, backend: Backend, stage) -> Backend:
+        """Avoid long T2 repair loops after the agent has touched a gold file."""
+        if self.routing.strategy not in (
+            "budgetflow_full",
+            "budgetflow_equal_weight",
+            "budgetflow_auto_v2",
+            "stage_blind",
+            "budget_only",
+        ):
+            return backend
+        if not self.agent_gold_edited or stage not in (Stage.REPAIR, Stage.VALIDATION):
+            return backend
+        if backend.tier != 2:
+            return backend
+        if self._gold_edit_t2_repair_turns < GOLD_EDIT_T2_REPAIR_TURN_LIMIT:
+            return backend
+
+        next_backend = next((b for b in self.routing.backends if b.tier > backend.tier), None)
+        if next_backend is None:
+            print(
+                f"{tag('stop', bold=False)} #{self.step_index} "
+                f"gold_edit_t2_repair_limit turns={self._gold_edit_t2_repair_turns}/"
+                f"{GOLD_EDIT_T2_REPAIR_TURN_LIMIT} no_higher_tier",
+                flush=True,
+            )
+            raise BudgetFlowStagnationError(
+                self.workflow_id,
+                exit_reason="gold_edit_t2_repair_limit",
+                step_index=self.step_index,
+                no_progress_streak=self._gold_edit_t2_repair_turns,
+            )
+
+        print(
+            f"{tag('guard', bold=False)} #{self.step_index} "
+            f"gold_edit_t2_repair_limit turns={self._gold_edit_t2_repair_turns}/"
+            f"{GOLD_EDIT_T2_REPAIR_TURN_LIMIT} "
+            f"{backend_tier_label(backend.name)} -> {backend_tier_label(next_backend.name)}",
+            flush=True,
+        )
+        self._no_progress_on_current_tier = 0
+        self._turns_on_current_tier = 0
+        return next_backend
+
     def _reserve_with_downgrade(self, backend: Backend, input_tokens: int) -> Backend:
         ordered = self.routing.backends
         start_index = ordered.index(backend)
@@ -848,11 +915,12 @@ class BudgetFlowLitellmModel:
             raise ValueError(f"unknown backend: {backend.name}")
         if config.provider == "aicode007":
             ensure_aicode007_proxy()
-        api_base = (
-            os.environ.get("AICODE007_BASE_URL") or config.api_base
-            if config.provider == "aicode007"
-            else config.api_base
-        )
+        if config.provider == "aicode007":
+            api_base = os.environ.get("AICODE007_BASE_URL") or config.api_base
+        elif config.provider == "xfyun_maas":
+            api_base = os.environ.get("XFYUN_MAAS_BASE_URL") or os.environ.get("XFYUN_MAAS_API_BASE") or config.api_base
+        else:
+            api_base = config.api_base
         return config.model, {
             "temperature": 0.0,
             "parallel_tool_calls": True,

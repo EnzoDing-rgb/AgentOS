@@ -38,6 +38,7 @@ for path in (str(SRC), str(MINI_SWE_SRC)):
 
 from collections.abc import Callable  # noqa: E402
 
+from budgetflow.adapter.backends import _selected_t2_backend  # noqa: E402
 from budgetflow.adapter.runner import run_mini_swe_task  # noqa: E402
 from budgetflow.compare_checkpoint import (  # noqa: E402
     CompareCheckpointStore,
@@ -143,16 +144,17 @@ def _strategy_catalog() -> tuple[CompareStrategy, ...]:
 
 def _required_backends_for_strategies(strategies: tuple[CompareStrategy, ...]) -> list[str]:
     required: set[str] = set()
+    t2_backend = _selected_t2_backend()
     for cfg in strategies:
         if cfg.routing == "all_flash":
             required.add(TIER1_BACKEND)
         elif cfg.routing in {"all_tier2"}:
-            required.add(TIER2_BACKEND)
+            required.add(t2_backend)
         elif cfg.routing in {"all_pro", "all_t3"}:
             required.add(TIER3_BACKEND)
         else:
-            required.update({TIER1_BACKEND, TIER2_BACKEND, TIER3_BACKEND})
-    return [b for b in (TIER1_BACKEND, TIER2_BACKEND, TIER3_BACKEND) if b in required]
+            required.update({TIER1_BACKEND, t2_backend, TIER3_BACKEND})
+    return [b for b in (TIER1_BACKEND, t2_backend, TIER3_BACKEND) if b in required]
 
 
 def _w_i_profile_for_record(routing: str) -> str:
@@ -1477,6 +1479,8 @@ def main() -> None:
     scoreboard = StrategyScoreboard(strategy_names)
     if completed:
         global_progress.seed_done(len(completed))
+    if args.append:
+        heartbeat_writer.pulse(rows_done=state.runs_done)
     if args.append and state.resolved_by_strategy:
         scoreboard.seed_from_resolved(state.resolved_by_strategy)
 

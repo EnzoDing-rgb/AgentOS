@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from collections import Counter
@@ -130,6 +131,16 @@ def _check_elapsed_sanity(records: list[dict]) -> list[str]:
     return issues
 
 
+def _pid_is_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
 def check_jsonl(jsonl_path: Path, heartbeat_stale_s: float = 600.0) -> dict:
     """Run all checks on a JSONL file. Returns summary dict."""
     records: list[dict] = []
@@ -194,10 +205,16 @@ def check_jsonl(jsonl_path: Path, heartbeat_stale_s: float = 600.0) -> dict:
                 done = hb.get("rows_done", 0)
                 total = hb.get("total_expected", 0)
                 status = hb.get("status", "?")
-                hb_statuses.append(f"{rs}: OK ({done}/{total} {status})")
+                pid = int(hb.get("current_pid") or 0)
+                if status == "running" and done < total and not _pid_is_alive(pid):
+                    all_issues.append(f"HEARTBEAT_DEAD_PID {rs}: pid={pid} status=running rows={done}/{total}")
+                    hb_stale = True
+                    hb_statuses.append(f"{rs}: DEAD_PID pid={pid} ({done}/{total} {status})")
+                else:
+                    hb_statuses.append(f"{rs}: OK ({done}/{total} {status})")
         hb_summary = "; ".join(hb_statuses)
 
-    error_count = sum(1 for i in all_issues if i.startswith(("DUPLICATE", "SUSPICIOUS", "MISSING_FIELDS")))
+    error_count = sum(1 for i in all_issues if i.startswith(("DUPLICATE", "SUSPICIOUS", "MISSING_FIELDS", "HEARTBEAT_DEAD_PID")))
     warn_count = len(all_issues) - error_count
 
     return {

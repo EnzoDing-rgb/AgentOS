@@ -64,6 +64,8 @@ def _model(strategy: str = "all_t3") -> tuple[BudgetFlowLitellmModel, BudgetGove
 
 def test_provider_unavailable_releases_reservation_and_falls_back(monkeypatch) -> None:
     monkeypatch.setattr("budgetflow.adapter.mini_swe_proxy.load_env_file", lambda: None)
+    monkeypatch.setenv("DASHSCOPE_API_KEY", "test")
+    monkeypatch.setenv("AICODE007_API_KEY", "test")
     model, governor = _model("all_t3")
     attempts: list[str] = []
 
@@ -90,6 +92,8 @@ def test_provider_unavailable_releases_reservation_and_falls_back(monkeypatch) -
 
 def test_provider_all_unavailable_releases_every_reservation(monkeypatch) -> None:
     monkeypatch.setattr("budgetflow.adapter.mini_swe_proxy.load_env_file", lambda: None)
+    monkeypatch.setenv("DASHSCOPE_API_KEY", "test")
+    monkeypatch.setenv("AICODE007_API_KEY", "test")
     model, governor = _model("budgetflow_full")
     attempts: list[str] = []
 
