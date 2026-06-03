@@ -493,7 +493,7 @@ def _format_live_snapshot(
         )
         if failures:
             fail_s = ", ".join(f"{k}={v}" for k, v in sorted(failures.items()))
-            lines.append(f"{'':<28} failures: {fail_s}")
+            lines.append(f"{'':<28} outcomes: {fail_s}")
     lines.append(f"jsonl={out_path}")
     lines.append("")
     lines.append("=== EVENT LOG (newest at bottom) ===")
