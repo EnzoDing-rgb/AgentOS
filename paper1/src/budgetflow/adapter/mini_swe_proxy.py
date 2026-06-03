@@ -509,6 +509,7 @@ class BudgetFlowLitellmModel:
                 self._turns_on_current_tier = 0
             self._last_backend_tier = backend.tier
             self._turns_on_current_tier += 1
+            self.routing.last_backend = backend
             self.backend_picks.append(backend.name)
             self.last_routing_stage = stage.value
             self.last_backend_name = backend.name
@@ -770,9 +771,10 @@ class BudgetFlowLitellmModel:
                 next_backend = ordered[STRONGEST_DOWNGRADE_TIER - 1]  # tier is 1-indexed
                 reason = f"T4-stop-loss streak={self._no_progress_on_current_tier}/{patience}"
             else:
-                next_tier_idx = backend.tier
-                if next_tier_idx < len(ordered):
-                    next_backend = ordered[next_tier_idx]
+                # Find the next-higher-tier backend (not index-based; works for
+                # non-contiguous tier pools like [T2, T3]).
+                next_backend = next((b for b in ordered if b.tier > backend.tier), None)
+                if next_backend is not None:
                     reason = f"streak={self._no_progress_on_current_tier}/{patience}"
 
         # Check turn cap
@@ -782,9 +784,11 @@ class BudgetFlowLitellmModel:
                 if backend.tier == 4:
                     next_backend = ordered[STRONGEST_DOWNGRADE_TIER - 1]
                     reason = f"T4-turn-cap turns={self._turns_on_current_tier}/{max_turns}"
-                elif backend.tier < len(ordered):
-                    next_backend = ordered[backend.tier]
-                    reason = f"turns={self._turns_on_current_tier}/{max_turns}"
+                else:
+                    # Find the next-higher-tier backend (not index-based).
+                    next_backend = next((b for b in ordered if b.tier > backend.tier), None)
+                    if next_backend is not None:
+                        reason = f"turns={self._turns_on_current_tier}/{max_turns}"
 
         if reason is None or next_backend is None or next_backend.tier == backend.tier:
             return backend

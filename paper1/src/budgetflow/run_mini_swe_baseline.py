@@ -291,9 +291,12 @@ def main() -> None:
     summary_path = RUNS_DIR / f"mini_swe_raw_{safe_model}_n{len(tasks)}.summary.log"
     predictions_path = RUNS_DIR / f"mini_swe_raw_{safe_model}_n{len(tasks)}.official_predictions.jsonl"
 
+    _m = '\033[95m'
+    _b = '\033[1m'
+    _w = '\033[97m'
     print(
-        f"{tag('run', color='\033[95m')} mini-SWE baseline "
-        f"n={paint(str(len(tasks)), '\033[1m', '\033[97m')} "
+        f"{tag('run', color=_m)} mini-SWE baseline "
+        f"n={paint(str(len(tasks)), _b, _w)} "
         f"model={dim(profile['model_name'])} provider={profile['provider']} step_limit={args.step_limit}"
     )
     print(f"{dim('runs_dir=' + str(RUNS_DIR))} heartbeat=30s {dim('FORCE_COLOR=1 if piping to tee')}")
@@ -310,9 +313,12 @@ def main() -> None:
     with out_path.open("w") as handle:
         predictions = []
         for index, task in enumerate(tasks, start=1):
-            banner = paint(f"{'=' * 16} TASK {index}/{len(tasks)} {'=' * 16}", "\033[1m", "\033[95m")
+            _bold = "\033[1m"
+            _magenta = "\033[95m"
+            _cyan = "\033[96m"
+            banner = paint(f"{'=' * 16} TASK {index}/{len(tasks)} {'=' * 16}", _bold, _magenta)
             print(f"\n{banner}", flush=True)
-            print(f"{tag('start')} {paint(task.instance_id, '\033[1m', '\033[96m')}", flush=True)
+            print(f"{tag('start')} {paint(task.instance_id, _bold, _cyan)}", flush=True)
             summary_lines.append(f"[{index}/{len(tasks)}] START {task.instance_id}")
             run_started = time.time()
             record = run_baseline_task(
@@ -356,7 +362,8 @@ def main() -> None:
     summary_path.write_text("\n".join(summary_lines) + "\n")
 
     final = ok_label(f"resolved={resolved}/{len(tasks)}") if resolved else fail_label(f"resolved={resolved}/{len(tasks)}")
-    print(f"\n{tag('final', color='\033[93m')} {final} elapsed={time.time() - started:.1f}s")
+    _yellow = '\033[93m'
+    print(f"\n{tag('final', color=_yellow)} {final} elapsed={time.time() - started:.1f}s")
     print(f"jsonl={out_path}")
     print(f"summary={summary_path}")
     print(f"official_predictions={predictions_path}")

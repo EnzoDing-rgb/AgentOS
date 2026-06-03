@@ -47,10 +47,17 @@ class BudgetFlowSelector:
                 upgraded = True
                 continue
 
-            score = turn_info.w_i * (delta_progress * PROGRESS_SCALE / delta_cost)
-            if score >= budget_pressure:
+            # Pressure required to justify this upgrade: higher delta_progress or
+            # lower delta_cost → lower threshold → easier to upgrade.
+            # As budget depletes / no-progress streaks boost pressure, it crosses
+            # the threshold and triggers escalation.
+            if delta_progress > 0:
+                upgrade_threshold = delta_cost / (delta_progress * PROGRESS_SCALE * turn_info.w_i)
+            else:
+                upgrade_threshold = float("inf")
+            if budget_pressure >= upgrade_threshold:
                 current = next_backend
-                current_score = score
+                current_score = upgrade_threshold
                 upgraded = True
                 continue
             break

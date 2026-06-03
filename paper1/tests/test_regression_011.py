@@ -670,3 +670,169 @@ class TestTurnTraceIntegration:
         )
         assert result.turn_trace_count == 5
         assert len(result.turn_traces) == 5
+
+
+# ── BudgetFlow routing: budgetflow_full vs all_pro tier selection ──────
+
+class TestBudgetFlowRouting:
+    """Verify budgetflow_full starts at T2 (not always T3) and can escalate."""
+
+    @staticmethod
+    def _make_backends(include_t1: bool = False):
+        from budgetflow.adapter.backends import build_compare_backends, build_ceiling_backends
+        if include_t1:
+            return build_ceiling_backends()
+        return build_compare_backends()
+
+    @staticmethod
+    def _make_turn(step_index: int = 1, stage: str = "localization",
+                   w_i: float = 1.0, context_len: int = 5000):
+        from budgetflow.types import Stage, TurnInfo
+        return TurnInfo(
+            workflow_id="test_task",
+            step_index=step_index,
+            stage=Stage(stage),
+            w_i=w_i,
+            context_len=context_len,
+        )
+
+    @staticmethod
+    def _make_ctx(strategy: str, backends=None, adaptive=None):
+        from budgetflow.adapter.strategies import build_routing_context
+        if backends is None:
+            backends = TestBudgetFlowRouting._make_backends()
+        return build_routing_context(
+            strategy=strategy,
+            backends=backends,
+            adaptive=adaptive,
+        )
+
+    @staticmethod
+    def _make_governor():
+        from budgetflow.governor import BudgetGovernor, GovernorConfig
+        from budgetflow.ledger import WorkflowLedgerStore
+        return BudgetGovernor(
+            GovernorConfig(total_budget=999_999.0, default_max_output_tokens=4096),
+            WorkflowLedgerStore(),
+        )
+
+    @staticmethod
+    def _make_expected_costs(governor, backends, turn):
+        from budgetflow.mock_backend import STAGE_OUTPUT_MULTIPLIER
+        return {
+            b.name: governor.estimate_cost(
+                b,
+                input_tokens=turn.context_len,
+                expected_output_tokens=max(8, round(b.mean_output_tokens * STAGE_OUTPUT_MULTIPLIER[turn.stage])),
+            ).expected_cost
+            for b in backends
+        }
+
+    def test_starting_tier_not_always_t3(self):
+        """Easy high-confidence fresh task: budgetflow_full must pick T2, not T3."""
+        from budgetflow.adapter.strategies import choose_backend
+        backends = self._make_backends()
+        ctx = self._make_ctx("budgetflow_full", backends=backends)
+        governor = self._make_governor()
+        turn = self._make_turn(step_index=1)
+        expected_costs = self._make_expected_costs(governor, backends, turn)
+
+        backend = choose_backend(ctx, turn, expected_costs)
+        assert backend.tier <= 2, (
+            f"budgetflow_full fresh task picked tier {backend.tier} ({backend.name}), "
+            f"expected tier <= 2"
+        )
+        assert ctx.last_decision is not None
+        assert ctx.last_decision.branch == "budgetflow_full"
+
+    def test_all_pro_still_t3(self):
+        """all_pro is fixed T3 -- must always pick the strongest backend."""
+        from budgetflow.adapter.strategies import choose_backend
+        backends = self._make_backends()
+        ctx = self._make_ctx("all_pro", backends=backends)
+        governor = self._make_governor()
+        turn = self._make_turn(step_index=1)
+        expected_costs = self._make_expected_costs(governor, backends, turn)
+
+        backend = choose_backend(ctx, turn, expected_costs)
+        strongest = max(backends, key=lambda b: b.tier)
+        assert backend.tier == strongest.tier, (
+            f"all_pro picked tier {backend.tier}, expected {strongest.tier}"
+        )
+        assert ctx.last_decision.branch == "all_pro"
+
+    def test_budgetflow_can_escalate_to_t3(self):
+        """After prior step used T3, max_tier=3 but selector picks T2 at low pressure.
+
+        At high pressure in REPAIR stage the upgrade threshold is crossed → T3."""
+        from budgetflow.adapter.strategies import choose_backend, build_routing_context
+        backends = self._make_backends()
+        governor = self._make_governor()
+
+        def _pick(step_index, pressure, stage="localization", w_i=1.0):
+            ctx = build_routing_context("budgetflow_full", backends, budget_pressure=pressure)
+            t3_backend = next(b for b in backends if b.tier == 3)
+            ctx.last_backend = t3_backend
+            turn = self._make_turn(step_index=step_index, stage=stage, w_i=w_i)
+            expected_costs = self._make_expected_costs(governor, backends, turn)
+            return choose_backend(ctx, turn, expected_costs), ctx
+
+        # Low pressure, any stage → selector picks T2 even though max_tier=3.
+        backend, ctx = _pick(6, 0.01)
+        assert backend.tier == 2, f"low pressure: expected T2, got tier {backend.tier}"
+        assert ctx.last_decision.branch == "budgetflow_full"
+
+        # Low pressure, REPAIR stage → still T2 (pressure hasn't risen yet).
+        backend, ctx = _pick(6, 0.01, stage="repair", w_i=3.0)
+        assert backend.tier == 2, f"low pressure repair: expected T2, got tier {backend.tier}"
+
+        # High pressure + REPAIR → selector crosses upgrade threshold → T3.
+        backend, ctx = _pick(6, 0.50, stage="repair", w_i=3.0)
+        assert backend.tier == 3, f"high pressure repair: expected T3, got tier {backend.tier}"
+        assert ctx.last_decision.branch == "budgetflow_full"
+
+    def test_budget_only_uses_t2_not_t3(self):
+        """budget_only with 2 backends picks the cheapest (T2), not T3."""
+        from budgetflow.adapter.strategies import choose_backend
+        backends = self._make_backends()
+        ctx = self._make_ctx("budget_only", backends=backends)
+        turn = self._make_turn(step_index=1)
+        expected_costs = {b.name: 0.01 for b in backends}
+
+        backend = choose_backend(ctx, turn, expected_costs)
+        assert backend.tier == 2, (
+            f"budget_only with 2 backends picked tier {backend.tier}, expected 2"
+        )
+
+    def test_budgetflow_full_step2_stays_t2(self):
+        """On step 2 (no escalation, fresh task), budgetflow_full stays at T2."""
+        from budgetflow.adapter.strategies import choose_backend
+        backends = self._make_backends()
+        ctx = self._make_ctx("budgetflow_full", backends=backends)
+        governor = self._make_governor()
+
+        # Simulate: previous step used T2 (no escalation)
+        t2_backend = next(b for b in backends if b.tier == 2)
+        ctx.last_backend = t2_backend
+
+        turn = self._make_turn(step_index=2)
+        expected_costs = self._make_expected_costs(governor, backends, turn)
+
+        backend = choose_backend(ctx, turn, expected_costs)
+        assert backend.tier <= 2, (
+            f"budgetflow_full step 2 (no escalation) picked tier {backend.tier}, expected <= 2"
+        )
+
+    def test_budgetflow_full_repair_stage_still_capped(self):
+        """Even heavy repair-stage tasks start at T2 for budgetflow_full."""
+        from budgetflow.adapter.strategies import choose_backend
+        backends = self._make_backends()
+        ctx = self._make_ctx("budgetflow_full", backends=backends)
+        governor = self._make_governor()
+        turn = self._make_turn(step_index=1, stage="repair", w_i=3.0)
+        expected_costs = self._make_expected_costs(governor, backends, turn)
+
+        backend = choose_backend(ctx, turn, expected_costs)
+        assert backend.tier <= 2, (
+            f"budgetflow_full repair stage picked tier {backend.tier}, expected <= 2"
+        )

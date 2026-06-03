@@ -157,9 +157,10 @@ PROGRESS_TABLE: dict[Stage, dict[str, float]] = {
     },
 }
 
-# Scale factor converting progress deltas (0-1 probabilities) to cost-comparable units.
-# Lower = more conservative about upgrading to expensive models.
-PROGRESS_SCALE: float = 18.0
+# Scale factor for upgrade thresholds: upgrade_threshold = delta_cost / (delta_progress * SCALE * w_i).
+# Lower = higher threshold = more conservative about upgrading to expensive models.
+# At 0.3, T2→T3 REPAIR threshold ≈ 0.11 (triggers after ~7% budget spent).
+PROGRESS_SCALE: float = 0.3
 
 # Per-tier escalation patience: cheaper tiers get less patience before upgrading.
 # Core BudgetFlow mechanism: "try cheap, escalate on failure within this task."

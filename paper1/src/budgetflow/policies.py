@@ -53,6 +53,12 @@ class BudgetOnlyStepRouter:
                 backend=ordered[0], reason=f"moderate_pressure={budget_pressure:.3f}", scores={},
                 pressure=budget_pressure, branch="budget_only",
             )
+        # When budget is mostly unspent, allow T3 to handle tasks T2 can't solve.
+        if n >= 3 and budget_pressure < 0.15:
+            return RouterDecision(
+                backend=ordered[2], reason=f"very_low_pressure={budget_pressure:.3f}_tier3", scores={},
+                pressure=budget_pressure, branch="budget_only",
+            )
         if budget_pressure >= 0.35:
             return RouterDecision(
                 backend=ordered[1], reason=f"low_pressure={budget_pressure:.3f}_tier2", scores={},

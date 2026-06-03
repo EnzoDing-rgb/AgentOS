@@ -3,9 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ..adaptive_routing import AdaptiveRoutingState
-from ..defaults import BUDGET_PRESSURE_INIT, ModelCatalog, PROGRESS_TABLE, W_I, active_w_i, active_w_i_profile_name
+from ..defaults import BUDGET_PRESSURE_INIT, ModelCatalog, PROGRESS_TABLE, TIER_ESCALATION_PATIENCE, W_I, active_w_i, active_w_i_profile_name
 from ..policies import BudgetOnlyStepRouter, WorkflowLevelRouter
-from ..selector import BudgetFlowSelector, RouterDecision
+from ..selector import BudgetFlowSelector, RouterDecision, SelectionDecision
 from ..types import Backend, ProgressTable, Stage, TurnInfo
 
 
@@ -22,6 +22,7 @@ class RoutingContext:
     budget_only_router: BudgetOnlyStepRouter | None = None
     workflow_router: WorkflowLevelRouter | None = None
     last_decision: RouterDecision | None = None
+    last_backend: Backend | None = None
 
 
 def build_progress_table_from_defaults(backends: list[Backend]) -> ProgressTable:
@@ -64,6 +65,24 @@ def build_routing_context(
 
 def _backend_by_tier(backends: list[Backend], tier: int) -> Backend:
     return next((backend for backend in backends if backend.tier == tier), backends[-1])
+
+
+def _budgetflow_max_tier(ctx: RoutingContext) -> int:
+    """Maximum tier for budgetflow_full on this step.
+
+    Default cap is T2.  T2→T3 escalation is gated by _apply_progress_escalation
+    (per-tier patience), not by the selector.  If the previous step already
+    used T3 (meaning escalation already fired), keep T3 to avoid ping-pong.
+    If adaptive routing recommends a higher starting tier, honour it.
+    """
+    max_tier: int = 2  # default cap: don't auto-upgrade to T3
+    if ctx.last_backend is not None and ctx.last_backend.tier >= 3:
+        max_tier = 3  # already escalated, keep T3
+    if ctx.adaptive is not None:
+        start_tier = ctx.adaptive.starting_tier()
+        if start_tier > max_tier:
+            max_tier = start_tier
+    return max_tier
 
 
 def choose_backend(ctx: RoutingContext, turn: TurnInfo, expected_costs: dict[str, float]) -> Backend:
@@ -117,6 +136,31 @@ def choose_backend(ctx: RoutingContext, turn: TurnInfo, expected_costs: dict[str
         decision = ctx.budget_only_router.choose_backend(turn, ctx.backends, ctx.budget_pressure)
         ctx.last_decision = decision
         return decision.backend
+    if ctx.strategy == "budgetflow_full":
+        # BudgetFlow Full: use selector but cap at default max tier (T2).
+        # T2→T3 escalation is gated by _apply_progress_escalation (per-tier
+        # patience), not by the selector.
+        max_tier = _budgetflow_max_tier(ctx)
+        sel = ctx.selector.select_backend(
+            turn_info=turn,
+            backends=ctx.backends,
+            budget_pressure=ctx.budget_pressure,
+            expected_costs=expected_costs,
+        )
+        if sel.backend.tier > max_tier:
+            capped = next(
+                (b for b in reversed(ctx.backends) if b.tier <= max_tier),
+                ctx.backends[0],
+            )
+            sel = SelectionDecision(backend=capped, score=sel.score, upgraded=False)
+        ctx.last_decision = RouterDecision(
+            backend=sel.backend,
+            reason=f"bf_full_max_tier={max_tier}" if max_tier < 3 else "bf_full_escalated_t3",
+            scores={sel.backend.name: sel.score},
+            pressure=ctx.budget_pressure,
+            branch="budgetflow_full",
+        )
+        return sel.backend
     sel = ctx.selector.select_backend(
         turn_info=turn,
         backends=ctx.backends,

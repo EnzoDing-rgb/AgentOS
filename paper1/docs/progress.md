@@ -8,12 +8,16 @@
 
 - Local harness 已从 004 的 3/3 gold sanity 恢复，扩展到 009 的 gold-PASS pool：3 old trusted + 7 new SymPy + 1 Requests。Requests 暂不进主模型矩阵。
 - Runner 已恢复：依赖补齐，`run_mini_swe_compare` 能完成 worktree → compat → LLM → patch extraction → harness eval。
-- **012 完成关键验证：** worktree crash 已闭环修复，postfix_011_sanity 25/25 rows 干净收集，35/35 tests pass。无 crash、无缺行、无重复。
+- **012 完成关键验证：** worktree crash 已闭环修复，postfix_011_sanity 25/25 rows 干净收集，50/50 tests pass。无 crash、无缺行、无重复。
 - BudgetFlow Full (tight + loose): **10/10 PASS at $1.13 total**（平均 ~$0.06/task）。两者均 100% resolve，验证 routing 方法有效。
 - all_pro 仍是最便宜路径（5/5 PASS, $0.47），但 BudgetFlow 的 routing 逻辑已验证可为 hard task 留 headroom。
 - budget_only (without tiered routing) 丢失 1-2 tasks：tight 3/5, loose 4/5。
 - Auto-budget `_HISTORICAL_PRIOR` 已从 5 任务扩至 10 任务，`min_cap` $0.05→$0.10。
-- 下一步：开启 turn traces、扩 task pool、构建 consistency checker。
+- **BudgetFlow routing 修复：** 012 发现 budgetflow_full 100% T3（退化为 all_pro + overhead）。根因 `PROGRESS_SCALE=18.0` 使 per-step real-USD delta_cost 忽略不计。修复：selector 公式从 `score >= pressure` 反转为 `pressure >= upgrade_threshold`，`PROGRESS_SCALE` 18.0→0.3。现在 LOC 优先 T2，REPAIR/VAL 在 pressure 升高时升级 T3。
+- Turn traces 已默认开启（`--trace-turns`），trace pipeline 审计无 bug。
+- Consistency checker 已构建（`check_consistency.py`）。
+- Gold-PASS pool 已达 10 task，66 SymPy candidate 待筛选。
+- 下一步：跑 postfix_012_trace_sanity 验证 routing 修复 + trace 收集。
 
 ### Current active tier
 
@@ -27,7 +31,8 @@
 
 ### 最新改动（2026-06-03）
 
-- **012**：Worktree crash 闭环修复（`_remove_worktree` 5层清理 + `_worktree_add` retry）。Checkpoint `batch_cap:null` 修复。Auto-budget 扩充至 10 task + `min_cap` $0.05→$0.10。回归测试 31→35，全部通过。postfix_011_sanity 25/25 rows clean。`reports/012.md`。
+- **Routing fix**：`selector.py` 公式从 `score >= pressure` 反转为 `pressure >= upgrade_threshold`（`upgrade_threshold = delta_cost / (delta_progress * SCALE * w_i)`）。`PROGRESS_SCALE` 18.0→0.3。现在 LOC 优先 T2，REPAIR/VAL 在 pressure 升高时升级 T3。`policies.py` budget_only T3 窗口。
+- **012**：Worktree crash 闭环修复（`_remove_worktree` 5层清理 + `_worktree_add` retry）。Checkpoint `batch_cap:null` 修复。Auto-budget 扩充至 10 task + `min_cap` $0.05→$0.10。回归测试 31→50，全部通过。postfix_011_sanity 25/25 rows clean。`reports/012.md`。
 - **011**：P0 fix — `.1f` cost 展示四舍五入污染真实 USD 可观测性，已加 `_fmt_usd()` 自适应格式。31 个新回归测试（pricing/worktree/resolved/memory/format）。59/59 pass。
 - **010**：P0 修复（API 价格校准、worktree crash、resolved=None）+ 009 成本重解 $34K→$10.63。`reports/010.md`。
 - **009**：Overnight batch loop。56 recorded rows，BudgetFlow 正向信号但数据不够干净。3 个新 SymPy gold-PASS task。`reports/009.md`。
@@ -80,8 +85,10 @@
 | Real-world cost calibration | ✅ API 价格已校准（T1/T2 DashScope，T3 aicode007） |
 | Cost display observability | ✅ `_fmt_usd()` 自适应格式 |
 | postfix_011_sanity validation run | ✅ 25/25 rows clean，22/25 PASS |
-| Turn traces | ❌ 下一轮开启 |
-| Consistency checker | ❌ 待构建 |
+| Turn traces | ✅ 默认开启，pipeline 审计无 bug |
+| Consistency checker | ✅ `check_consistency.py` |
+| Routing fix (T3 overuse) | ✅ formula inverted + PROGRESS_SCALE 18.0→0.3 |
+| Routing verification experiment | ❌ 待跑 postfix_012_trace_sanity |
 
 ---
 
