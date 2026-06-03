@@ -5,6 +5,7 @@ from __future__ import annotations
 import threading
 from collections import deque
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from .defaults import (
     ADAPTIVE_MIN_SAMPLES,
@@ -17,6 +18,9 @@ from .defaults import (
     PRESSURE_MAX,
 )
 from .types import Stage
+
+if TYPE_CHECKING:
+    from .policy_memory import PolicyMemory
 
 _STAGNATION_EXITS = frozenset(
     {
@@ -107,8 +111,25 @@ class EvidenceRescueState:
         return self.evidence_turns >= self.stop_loss_turns
 
 
-def rescue_state_for_strategy(strategy_name: str) -> EvidenceRescueState:
-    return EvidenceRescueState()
+def rescue_state_for_strategy(
+    strategy_name: str,
+    policy_memory: PolicyMemory | None = None,
+    instance_id: str | None = None,
+) -> EvidenceRescueState:
+    base = EvidenceRescueState()
+    if policy_memory is not None and instance_id is not None:
+        prior = policy_memory.routing_prior_summary(instance_id, Stage.REPAIR)
+        action = prior.get("learned_action", "default")
+        if action == "early_rescue":
+            base.trigger_turns = max(2, base.trigger_turns - 3)
+            base.window_turns = min(5, base.window_turns + 1)
+        elif action == "reduce_rescue":
+            base.trigger_turns = min(12, base.trigger_turns + 4)
+            base.window_turns = max(1, base.window_turns - 1)
+        elif action == "cap_t3":
+            base.window_turns = max(1, base.window_turns - 1)
+            base.stop_loss_turns = max(3, base.stop_loss_turns - 3)
+    return base
 
 
 @dataclass
@@ -129,9 +150,16 @@ class AdaptiveRoutingState:
     min_tier_floor: int = 1
     last_weak_stage: Stage | None = None
     rescue: EvidenceRescueState = field(default_factory=EvidenceRescueState)
+    policy_memory: object | None = None
+    _current_instance_id: str | None = None
+    _prior_summary: dict | None = None
 
     def __post_init__(self) -> None:
-        self.rescue = rescue_state_for_strategy(self.strategy_name)
+        self.rescue = rescue_state_for_strategy(
+            self.strategy_name,
+            policy_memory=getattr(self, 'policy_memory', None),
+            instance_id=getattr(self, '_current_instance_id', None),
+        )
 
     def record_task(self, record: dict) -> None:
         self._recent.append(record)
@@ -162,22 +190,44 @@ class AdaptiveRoutingState:
 
         0 consecutive fails → T1 (default)
         2+ consecutive fails → T2 (skip cheapest)
-        4+ consecutive fails → T3 (serious trouble, start strong)
-        A resolved task resets the streak to 0.
+        Policy "start_t2" action → T2 regardless of streak
+        Never returns T3 — T3 must be triggered by in-task evidence
+        (gold edit + repair/validation + bounded rescue window).
         """
+        if self._prior_summary and self._prior_summary.get("learned_action") == "start_t2":
+            return 2
         streak = 0
         for r in reversed(list(self._recent)):
             if r.get("harness_resolved"):
                 break
             streak += 1
-        if streak >= 4:
-            return 3
         if streak >= 2:
             return 2
         return 1
 
+    def set_task_context(self, instance_id: str) -> None:
+        """Set current task context and rebuild prior-informed rescue params."""
+        self._current_instance_id = instance_id
+        if self.policy_memory is not None:
+            self._prior_summary = self.policy_memory.routing_prior_summary(
+                instance_id, Stage.LOCALIZATION
+            )
+        self.rescue = rescue_state_for_strategy(
+            self.strategy_name,
+            policy_memory=self.policy_memory,
+            instance_id=instance_id,
+        )
+
     def reset_task_runtime(self) -> None:
-        self.rescue = rescue_state_for_strategy(self.strategy_name)
+        self.rescue = rescue_state_for_strategy(
+            self.strategy_name,
+            policy_memory=self.policy_memory,
+            instance_id=self._current_instance_id,
+        )
+        self._prior_summary = None
+
+    def prior_summary_for_trace(self) -> dict | None:
+        return self._prior_summary
 
     def status_snippet(self) -> str:
         rescue = (
@@ -254,9 +304,20 @@ class AdaptiveRoutingState:
 class AdaptiveRoutingRegistry:
     """Thread-safe registry: one adaptive state per budgetflow_full compare policy."""
 
-    def __init__(self) -> None:
+    def __init__(self, policy_memory: object | None = None) -> None:
         self._lock = threading.Lock()
         self._states: dict[str, AdaptiveRoutingState] = {}
+        self._policy_memory = policy_memory
+
+    @property
+    def policy_memory(self) -> object | None:
+        return self._policy_memory
+
+    def set_policy_memory(self, policy_memory: object) -> None:
+        self._policy_memory = policy_memory
+        with self._lock:
+            for state in self._states.values():
+                state.policy_memory = policy_memory
 
     def for_strategy(self, strategy_name: str, routing: str) -> AdaptiveRoutingState | None:
         if routing not in ("budgetflow_full", "budgetflow_equal_weight", "budgetflow_auto_v2", "stage_blind"):
@@ -264,7 +325,10 @@ class AdaptiveRoutingRegistry:
         with self._lock:
             state = self._states.get(strategy_name)
             if state is None:
-                state = AdaptiveRoutingState(strategy_name=strategy_name)
+                state = AdaptiveRoutingState(
+                    strategy_name=strategy_name,
+                    policy_memory=self._policy_memory,
+                )
                 self._states[strategy_name] = state
             return state
 
@@ -294,7 +358,10 @@ class AdaptiveRoutingRegistry:
             by_strategy.setdefault(name, []).append(record)
         with self._lock:
             for name, records in by_strategy.items():
-                state = AdaptiveRoutingState(strategy_name=name)
+                state = AdaptiveRoutingState(
+                    strategy_name=name,
+                    policy_memory=self._policy_memory,
+                )
                 state.rebuild_from_records(records)
                 self._states[name] = state
 

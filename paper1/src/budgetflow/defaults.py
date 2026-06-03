@@ -210,6 +210,11 @@ ADAPTIVE_TTL_STEPS = 15
 STAGNATION_REPEAT_CMD_LIMIT = 6
 STAGNATION_NO_PROGRESS_STEPS = 40
 
+# PolicyMemory regret threshold: when full_vs_tight_regret exceeds this,
+# budgetflow_full is auto-tightened (cap T3 window, early stop-loss).
+# Calibrated offline from postfix_017_10x5 data (P50 of positive regret distribution).
+POLICY_REGRET_THRESHOLD = 0.15
+
 BUDGET_PRESSURE_INIT = 0.01
 PRESSURE_MAX = 1.5
 UNCAPPED_BUDGET_THRESHOLD = 1_000_000.0

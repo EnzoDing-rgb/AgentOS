@@ -67,9 +67,11 @@ from budgetflow.defaults import (  # noqa: E402
 from budgetflow.heartbeat import run_with_heartbeat  # noqa: E402
 from budgetflow.ledger import WorkflowLedgerStore  # noqa: E402
 from budgetflow.lite_tasks import load_compare_easy_tasks, load_compare_medium_tasks, load_swebench_lite_tasks  # noqa: E402
+from budgetflow.local_harness import set_worktree_root  # noqa: E402
 from budgetflow.protocol_caps import read_protocol_caps  # noqa: E402
 from budgetflow.provider_signature import check_required_signatures  # noqa: E402
 from budgetflow.adaptive_routing import AdaptiveRoutingRegistry  # noqa: E402
+from budgetflow.policy_memory import PolicyMemory  # noqa: E402
 from budgetflow.run_guards import CompareRunGuards, set_active_guard  # noqa: E402
 from budgetflow.run_series import default_series_base, resolve_compare_stem  # noqa: E402
 from budgetflow.run_trace import TraceConsoleLevel  # noqa: E402
@@ -244,6 +246,7 @@ def _run_one(
         adaptive = adaptive_registry.for_strategy(cfg.name, cfg.routing)
     if adaptive is not None:
         adaptive.reset_task_runtime()
+        adaptive.set_task_context(task.instance_id)
     result = run_mini_swe_task(
         task,
         strategy=cfg.routing,
@@ -311,6 +314,21 @@ def _run_one(
         "row_finished_at": time.time(),
         "attempt_id": f"{run_series}_{cfg.name}_{task.instance_id}" if run_series else "",
     }
+    # PolicyMemory prior summary for trace audit
+    if adaptive is not None:
+        prior = adaptive.prior_summary_for_trace()
+        if prior:
+            record["routing_prior_summary"] = prior
+            record["policy_memory_enabled"] = True
+        else:
+            record["policy_memory_enabled"] = False
+    elif adaptive_registry is not None and adaptive_registry.policy_memory is not None:
+        pm = adaptive_registry.policy_memory
+        prior = pm.routing_prior_summary(task.instance_id)
+        record["routing_prior_summary"] = prior
+        record["policy_memory_enabled"] = True
+    else:
+        record["policy_memory_enabled"] = False
     record["failure_class"] = classify_failure(record)
     record["forensic_summary"] = build_forensic_summary(record)
     record["harness_evidence"] = parse_harness_evidence(str(record.get("detail") or "")).__dict__
@@ -594,6 +612,7 @@ def _run_strategy_batch(
     task_caps: dict[str, float] | None = None,
     budget_estimates: dict[str, BudgetEstimate] | None = None,
     run_series: str = "",
+    heartbeat_writer: object | None = None,
 ) -> tuple[list[dict], float]:
     def _log(msg: str) -> None:
         if print_lock:
@@ -668,6 +687,24 @@ def _run_strategy_batch(
 
         def _execute() -> dict:
             status_box["phase"] = "agent"
+            # Compute live prior visibility for heartbeat output.
+            pm = adaptive_registry.policy_memory if adaptive_registry is not None else None
+            if pm is not None and cfg.routing != "all_pro":
+                prior_summary = pm.routing_prior_summary(task.instance_id)
+                action = prior_summary.get("learned_action", "default")
+                regret = prior_summary.get("full_vs_tight_regret", 0)
+                prior_snippet = (
+                    f"prior_action={action} "
+                    f"regret={regret:.3f} "
+                    f"task_seen={prior_summary.get('task_seen', '?')}"
+                )
+            elif cfg.routing == "all_pro":
+                prior_snippet = "prior=off(all_pro)"
+            else:
+                prior_snippet = "prior=off"
+            status_box["status"] = (
+                f"strategy={cfg.name} task={task.instance_id} {prior_snippet}"
+            )
             task_governor = governor
             task_ledger = ledger
             effective_batch_cap = batch_budget_cap
@@ -714,7 +751,25 @@ def _run_strategy_batch(
 
         try:
             if heartbeat > 0:
-                record = run_with_heartbeat(label, _execute, interval_s=heartbeat, status_fn=_status)
+                # on_beat pulses the heartbeat file so external checkers see liveness.
+                _on_beat = None
+                if heartbeat_writer is not None:
+                    hw = heartbeat_writer
+                    _gp = global_progress
+                    _cfg_name = cfg.name
+                    _task_id = task.instance_id
+                    def _beat() -> None:
+                        _total, _rows, _running = _gp.snapshot()
+                        hw.pulse(
+                            rows_done=_rows,
+                            active_strategy=str(_cfg_name),
+                            active_instance=str(_task_id),
+                        )
+                    _on_beat = _beat
+                record = run_with_heartbeat(
+                    label, _execute, interval_s=heartbeat, status_fn=_status,
+                    on_beat=_on_beat,
+                )
             else:
                 record = _execute()
         finally:
@@ -999,6 +1054,134 @@ def _compare_paths(tasks_n: int, strategies_n: int, *, stem: str | None = None) 
     return RUNS_DIR / f"{base}.jsonl", RUNS_DIR / f"{base}.summary.log"
 
 
+def _run_warmup_gate(policy_memory: PolicyMemory | None, source_path: str) -> bool:
+    """Run warm-up gate checks without API calls. Returns True if all checks pass."""
+    from .types import Stage
+
+    banner = "=" * 72
+    print(banner)
+    print("WARM-UP GATE")
+    print(banner)
+
+    all_ok = True
+
+    # Check 1: policy_memory loaded
+    loaded = policy_memory is not None
+    print(f"  policy_memory_loaded = {loaded}")
+    if not loaded:
+        print("  FAIL: PolicyMemory not loaded. Provide --policy-memory PATH.")
+        all_ok = False
+
+    if policy_memory is None:
+        print(banner)
+        print("GATE RESULT: FAIL (no policy_memory)")
+        return False
+
+    # Check 2: records loaded
+    records = policy_memory._record_count
+    print(f"  records_loaded = {records}")
+    if records < 10:
+        print(f"  FAIL: Expected >= 10 records, got {records}")
+        all_ok = False
+
+    # Check 3: repos loaded
+    repos = len(policy_memory._repo_priors)
+    print(f"  repos_loaded = {repos}")
+    if repos < 1:
+        print(f"  FAIL: Expected >= 1 repos, got {repos}")
+        all_ok = False
+
+    # Check 4: tasks loaded
+    tasks_n = len(policy_memory._task_priors)
+    print(f"  tasks_loaded = {tasks_n}")
+    if tasks_n < 10:
+        print(f"  FAIL: Expected >= 10 tasks, got {tasks_n}")
+        all_ok = False
+
+    # Check 5: regret threshold
+    print(f"  regret_threshold = {policy_memory.regret_threshold}")
+
+    # Check 6: sample prior summaries (5 tasks)
+    print(banner)
+    print("PRIOR SUMMARIES (5 sample tasks)")
+    print(banner)
+    task_keys = sorted(policy_memory._task_priors.keys())
+    sample_count = 0
+    for iid in task_keys:
+        if sample_count >= 5:
+            break
+        summary = policy_memory.routing_prior_summary(iid)
+        print(f"  {iid}:")
+        for k, v in summary.items():
+            print(f"    {k} = {v}")
+        print()
+        sample_count += 1
+
+    # Check 7: sympy-17630 must have non-early_rescue action
+    print(banner)
+    sympy_17630 = "sympy__sympy-17630"
+    if sympy_17630 in policy_memory._task_priors:
+        summary_17630 = policy_memory.routing_prior_summary(sympy_17630)
+        action = summary_17630.get("learned_action", "?")
+        print(f"  {sympy_17630} learned_action = {action}")
+        if action == "early_rescue":
+            print(f"  WARNING: early_rescue on a task with known all_pro failures — may waste T3 budget")
+            # Not a hard failure — early_rescue could be valid if T2 repair success is truly low
+    else:
+        task_prior = policy_memory.task_prior(sympy_17630)
+        summary_17630 = policy_memory.routing_prior_summary(sympy_17630)
+        action = summary_17630.get("learned_action", "?")
+        print(f"  {sympy_17630} learned_action = {action} (not in priors, computed from repo)")
+
+    # Check 8: full_vs_tight_regret for sympy
+    print(banner)
+    print("FULL vs TIGHT REGRET")
+    print(banner)
+    for repo_key in sorted(policy_memory._policy_regrets.keys()):
+        reg = policy_memory._policy_regrets[repo_key]
+        print(f"  {repo_key}: full_avg=${reg.full_avg_cost:.4f} tight_avg=${reg.tight_avg_cost:.4f} "
+              f"regret={reg.regret:.3f} threshold={policy_memory.regret_threshold}")
+        if reg.regret > policy_memory.regret_threshold:
+            print(f"    → EXCEEDS threshold: cap_t3 would be triggered")
+        else:
+            print(f"    → below threshold: no auto-tightening")
+
+    # Check 9: next-run routing impact
+    print(banner)
+    print("NEXT-RUN ROUTING IMPACT")
+    print(banner)
+    actions_seen: dict[str, int] = {}
+    for iid in task_keys:
+        summary = policy_memory.routing_prior_summary(iid)
+        action = summary.get("learned_action", "default")
+        actions_seen[action] = actions_seen.get(action, 0) + 1
+    print("  Action distribution across all tasks:")
+    for action, count in sorted(actions_seen.items()):
+        print(f"    {action}: {count}/{tasks_n} tasks")
+    print()
+    print("  Impact summary:")
+    if "start_t2" in actions_seen:
+        print("    start_t2: N tasks will skip T1 in LOCALIZATION")
+    if "early_rescue" in actions_seen:
+        print("    early_rescue: N tasks will trigger T3 rescue earlier in REPAIR")
+    if "cap_t3" in actions_seen:
+        print("    cap_t3: N tasks will have reduced T3 rescue window")
+    if "reduce_rescue" in actions_seen:
+        print("    reduce_rescue: N tasks will have lengthened rescue trigger")
+    if "protocol_issue" in actions_seen:
+        print("    protocol_issue: N tasks flagged as protocol/parser problems")
+    if actions_seen.get("default", 0) == tasks_n:
+        print("    All tasks use default routing — prior has no strong signal yet")
+
+    print(banner)
+    if all_ok:
+        print("GATE RESULT: PASS")
+    else:
+        print("GATE RESULT: FAIL")
+    print(banner)
+    return all_ok
+
+
 def main() -> None:
     load_env_file()
     if not os.environ.get("NO_COLOR"):
@@ -1213,6 +1396,12 @@ def main() -> None:
         help="k for kNN fallback in auto-budget (default 3)",
     )
     parser.add_argument(
+        "--worktree-root",
+        type=str,
+        default=None,
+        help="runtime worktree root directory (default: /tmp/budgetflow_worktrees, fallback to NFS if unwritable)",
+    )
+    parser.add_argument(
         "--soft-budget",
         type=float,
         default=None,
@@ -1230,7 +1419,58 @@ def main() -> None:
         default=None,
         help="w_i ordering for budgetflow_full (stage_blind still forces 1.0); default repair_heavy",
     )
+    parser.add_argument(
+        "--policy-memory",
+        type=str,
+        default=None,
+        help="path to JSONL file to rebuild PolicyMemory priors from (e.g. data/runs/postfix_017_10x5-0.jsonl)",
+    )
+    parser.add_argument(
+        "--disable-policy-memory",
+        action="store_true",
+        default=False,
+        help="explicitly disable PolicyMemory even if --policy-memory is given",
+    )
+    parser.add_argument(
+        "--policy-memory-gate-only",
+        action="store_true",
+        default=False,
+        help="run warm-up gate check, print prior summary, then exit (no API calls)",
+    )
+    parser.add_argument(
+        "--regret-threshold",
+        type=float,
+        default=None,
+        help="override POLICY_REGRET_THRESHOLD for cap_t3 decisions (default from defaults.py)",
+    )
     args = parser.parse_args()
+
+    # ── Gate-only: load PolicyMemory, validate, print summary, exit ────────
+    # Must run BEFORE any provider check, output file creation, heartbeat, or
+    # strategy loading. Gate-only makes zero API calls.
+    if args.policy_memory_gate_only:
+        if not args.policy_memory:
+            print("ERROR: --policy-memory-gate-only requires --policy-memory PATH", flush=True)
+            sys.exit(1)
+        pm_path = Path(args.policy_memory)
+        if not pm_path.is_absolute():
+            pm_path = REPO_ROOT / pm_path
+        if not pm_path.is_file():
+            print(f"ERROR: --policy-memory file not found: {pm_path}", flush=True)
+            sys.exit(1)
+        regret_threshold = args.regret_threshold
+        pm = PolicyMemory(regret_threshold=regret_threshold)
+        pm.rebuild_from_jsonl(pm_path)
+        ok = _run_warmup_gate(pm, args.policy_memory)
+        sys.exit(0 if ok else 1)
+
+    # --worktree-root: set before any task execution so runtime worktrees
+    # go to the correct scratch location.
+    if args.worktree_root:
+        set_worktree_root(args.worktree_root)
+    elif os.environ.get("BUDGETFLOW_WORKTREE_ROOT"):
+        set_worktree_root(os.environ["BUDGETFLOW_WORKTREE_ROOT"])
+
     if args.w_profile:
         os.environ["BF_W_PROFILE"] = args.w_profile
     max_overrun = max(0.0, args.max_overrun)
@@ -1434,7 +1674,37 @@ def main() -> None:
     print(f"{dim('trace= data/runs/trace_<id>_<strategy>/steps.jsonl')}", flush=True)
     print(f"{dim('FORCE_COLOR=1 if piping to tee/nohup for ANSI colors')}", flush=True)
 
-    adaptive_registry = AdaptiveRoutingRegistry()
+    # ── PolicyMemory ────────────────────────────────────────────────────
+    policy_memory: PolicyMemory | None = None
+    policy_memory_enabled = not args.disable_policy_memory
+    policy_memory_source = ""
+    regret_threshold = args.regret_threshold  # None means use default from defaults.py
+    if policy_memory_enabled and args.policy_memory:
+        pm_path = Path(args.policy_memory)
+        if not pm_path.is_absolute():
+            pm_path = REPO_ROOT / pm_path
+        if pm_path.is_file():
+            policy_memory = PolicyMemory(regret_threshold=regret_threshold)
+            policy_memory.rebuild_from_jsonl(pm_path)
+            policy_memory_source = str(pm_path)
+            print(f"{tag('policy_memory', bold=True)} loaded from {policy_memory_source} "
+                  f"records={policy_memory._record_count} "
+                  f"repos={len(policy_memory._repo_priors)} "
+                  f"tasks={len(policy_memory._task_priors)} "
+                  f"threshold={policy_memory.regret_threshold}")
+        else:
+            print(f"{tag('policy_memory', bold=True)} WARNING: file not found: {pm_path}")
+    elif policy_memory_enabled and args.resume and out_path.is_file():
+        policy_memory = PolicyMemory(regret_threshold=regret_threshold)
+        policy_memory.rebuild_from_jsonl(out_path)
+        policy_memory_source = str(out_path)
+        print(f"{tag('policy_memory', bold=True)} loaded from resume output {policy_memory_source} "
+              f"records={policy_memory._record_count}")
+    elif policy_memory_enabled:
+        print(f"{tag('policy_memory', bold=False)} disabled — no --policy-memory path given")
+        policy_memory_enabled = False
+
+    adaptive_registry = AdaptiveRoutingRegistry(policy_memory=policy_memory)
     if args.append and out_path.is_file():
         adaptive_registry.rebuild_from_jsonl(out_path)
 
@@ -1577,6 +1847,7 @@ def main() -> None:
             task_caps=auto_budget_task_caps,
             budget_estimates=auto_budget_estimates,
             run_series=series,
+            heartbeat_writer=heartbeat_writer,
         )
         return cfg, records, batch_spent, batch_cap
 

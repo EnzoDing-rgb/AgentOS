@@ -1169,3 +1169,232 @@ class TestCheckerFunctions:
 
         assert result["errors"] >= 1
         assert any("HEARTBEAT_DEAD_PID" in issue for issue in result["issues"])
+
+
+# ── Compact audit ────────────────────────────────────────────────────────
+
+
+class TestCompactAudit:
+    """Tests for build_compact_audit and format_compact_audit."""
+
+    def _make_record(self, **overrides):
+        base = {
+            "instance_id": "sympy-14774",
+            "strategy": "all_pro",
+            "routing": "all_pro",
+            "harness_resolved": True,
+            "exit_status": "Submitted",
+            "exit_reason": "submitted",
+            "total_cost": 0.1,
+            "llm_turns": 5,
+            "elapsed_s": 100,
+            "detail": "",
+            "turn_trace_count": 5,
+            "run_series": "run",
+            "policy_lane": "all_pro",
+            "task_order_index": 1,
+            "row_started_at": 1.0,
+            "row_finished_at": 2.0,
+            "harness_evidence": {"evidence_complete": True},
+            "observability_status": {},
+            "failure_class": "pass",
+            "forensic_summary": {},
+            "backend_picks": ["tier3", "tier3", "tier3", "tier3", "tier3"],
+            "submitted_patch": "patch.txt",
+            "attempt_id": "run_all_pro_x",
+        }
+        base.update(overrides)
+        return base
+
+    def test_compact_audit_basic_counts(self):
+        from budgetflow.check_run_observability import build_compact_audit
+        records = [
+            self._make_record(strategy="all_pro", harness_resolved=True),
+            self._make_record(strategy="all_pro", harness_resolved=True),
+            self._make_record(strategy="bo_tight", harness_resolved=False, failure_class="repair_fail"),
+        ]
+        audit = build_compact_audit(records)
+        assert audit["total"] == 3
+        assert audit["pass"] == 2
+        assert audit["fail"] == 1
+        assert audit["suspicious"] == 0
+        assert abs(audit["total_cost"] - 0.3) < 0.01
+
+    def test_compact_audit_per_strategy_stats(self):
+        from budgetflow.check_run_observability import build_compact_audit
+        records = [
+            self._make_record(strategy="all_pro", total_cost=0.10, llm_turns=3,
+                              backend_picks=["tier3", "tier3", "tier3"]),
+            self._make_record(strategy="bo_tight", total_cost=0.05, llm_turns=5,
+                              backend_picks=["tier2", "tier2", "tier2", "tier2", "tier2"]),
+        ]
+        audit = build_compact_audit(records)
+        ap = audit["by_strategy"]["all_pro"]
+        assert ap["total"] == 1
+        assert ap["pass"] == 1
+        assert ap["t3_turns"] == 3
+        assert ap["t2_turns"] == 0
+        assert ap["t3_share"] == pytest.approx(1.0)
+
+        bt = audit["by_strategy"]["bo_tight"]
+        assert bt["t2_turns"] == 5
+        assert bt["t3_turns"] == 0
+        assert bt["t3_share"] == pytest.approx(0.0)
+
+    def test_compact_audit_common_tasks(self):
+        from budgetflow.check_run_observability import build_compact_audit
+        records = [
+            self._make_record(strategy="all_pro", instance_id="task-A"),
+            self._make_record(strategy="all_pro", instance_id="task-B"),
+            self._make_record(strategy="bo_tight", instance_id="task-A"),
+            self._make_record(strategy="bo_tight", instance_id="task-B"),
+            self._make_record(strategy="bf_loose", instance_id="task-A"),
+            self._make_record(strategy="bf_loose", instance_id="task-B"),
+        ]
+        audit = build_compact_audit(records)
+        assert audit["common_task_count"] == 2  # A and B seen by all strategies
+        assert "all_pro" in audit["common_stats"]
+        assert audit["common_stats"]["all_pro"]["tasks"] == 2
+        assert audit["common_stats"]["all_pro"]["pass"] == 2
+
+    def test_compact_audit_failure_classes(self):
+        from budgetflow.check_run_observability import build_compact_audit
+        records = [
+            self._make_record(harness_resolved=False, failure_class="repair_fail"),
+            self._make_record(harness_resolved=False, failure_class="repair_fail"),
+            self._make_record(harness_resolved=False, failure_class="loc_fail"),
+        ]
+        audit = build_compact_audit(records)
+        assert audit["fail_classes"]["repair_fail"] == 2
+        assert audit["fail_classes"]["loc_fail"] == 1
+
+    def test_compact_audit_invoice_accurate_false_by_default(self):
+        from budgetflow.check_run_observability import build_compact_audit
+        records = [self._make_record()]  # no turn_traces
+        audit = build_compact_audit(records)
+        assert audit["invoice_accurate"] is False
+
+    def test_compact_audit_invoice_accurate_true_with_provider_cost(self):
+        from budgetflow.check_run_observability import build_compact_audit
+        rec = self._make_record()
+        rec["turn_traces"] = [{"step": 1, "cache_hit": False, "provider_actual_cost": 0.01}]
+        audit = build_compact_audit([rec])
+        assert audit["invoice_accurate"] is True
+
+    def test_compact_audit_stagnation_pass_count(self):
+        from budgetflow.check_run_observability import build_compact_audit
+        records = [
+            self._make_record(harness_resolved=True, exit_status="StagnationExit"),
+            self._make_record(harness_resolved=True, exit_status="StagnationExit"),
+            self._make_record(harness_resolved=True, exit_status="Submitted"),
+        ]
+        audit = build_compact_audit(records)
+        assert audit["stagnation_pass"] == 2
+
+    def test_format_compact_audit_produces_string(self):
+        from budgetflow.check_run_observability import build_compact_audit, format_compact_audit
+        records = [
+            self._make_record(strategy="all_pro"),
+            self._make_record(strategy="bo_tight", harness_resolved=False, failure_class="repair_fail"),
+        ]
+        audit = build_compact_audit(records)
+        text = format_compact_audit(audit)
+        assert isinstance(text, str)
+        assert "COMPACT AUDIT" in text
+        assert "all_pro" in text
+        assert "bo_tight" in text
+        assert "FAILURE CLASSES" in text
+        assert "invoice_accurate=False" in text
+
+    def test_compact_audit_includes_t3_t2_mix(self):
+        from budgetflow.check_run_observability import build_compact_audit
+        records = [
+            self._make_record(strategy="all_pro", harness_resolved=True,
+                              llm_turns=10, backend_picks=["tier3"] * 10),
+            self._make_record(strategy="bo_tight", harness_resolved=True,
+                              llm_turns=8, backend_picks=["tier2"] * 5 + ["tier3"] * 3),
+        ]
+        audit = build_compact_audit(records)
+        assert audit["by_strategy"]["all_pro"]["t3_turns"] == 10
+        assert audit["by_strategy"]["all_pro"]["t3_share"] == pytest.approx(1.0)
+        assert audit["by_strategy"]["bo_tight"]["t2_turns"] == 5
+        assert audit["by_strategy"]["bo_tight"]["t3_turns"] == 3
+
+    def test_compact_audit_suspicious_pass_detected(self):
+        from budgetflow.check_run_observability import build_compact_audit
+        records = [
+            self._make_record(harness_resolved=True, harness_evidence={"evidence_complete": True}),
+            self._make_record(harness_resolved=True, harness_evidence={"evidence_complete": False}),
+        ]
+        audit = build_compact_audit(records)
+        assert audit["suspicious"] == 1
+
+    def test_compact_audit_t3_share_uses_tier_turns(self):
+        """T3% denominator = T1+T2+T3 turns, not llm_turns."""
+        from budgetflow.check_run_observability import build_compact_audit
+        records = [
+            self._make_record(strategy="all_pro", llm_turns=20,  # llm_turns != tier turns
+                              backend_picks=["tier1"] * 2 + ["tier2"] * 3 + ["tier3"] * 5),
+        ]
+        audit = build_compact_audit(records)
+        s = audit["by_strategy"]["all_pro"]
+        # llm_turns=20 but tier turns=2+3+5=10, T3=5 → T3% = 5/10 = 0.5
+        assert s["t3_turns"] == 5
+        assert s["t3_share"] == pytest.approx(0.5)
+        # Old behavior would have been 5/20=0.25
+
+    def test_compact_audit_t3_share_handles_zero_turns(self):
+        """T3% with zero tier turns → 0.0 (not NaN)."""
+        from budgetflow.check_run_observability import build_compact_audit
+        records = [
+            self._make_record(strategy="all_pro", llm_turns=0, backend_picks=[]),
+        ]
+        audit = build_compact_audit(records)
+        s = audit["by_strategy"]["all_pro"]
+        assert s["t3_share"] == 0.0
+
+    def test_compact_audit_shows_policy_memory_used_false_by_default(self):
+        """Without routing_prior_summary in records, policy_memory_used=False."""
+        from budgetflow.check_run_observability import build_compact_audit
+        records = [
+            self._make_record(strategy="all_pro"),
+            self._make_record(strategy="bo_tight"),
+        ]
+        audit = build_compact_audit(records)
+        assert audit["policy_memory_used"] is False
+        assert audit.get("policy_memory_source", "") == ""
+        assert audit.get("prior_records", 0) == 0
+
+    def test_compact_audit_shows_policy_memory_used_when_present(self):
+        """When records contain routing_prior_summary, policy_memory_used=True."""
+        from budgetflow.check_run_observability import build_compact_audit
+        records = [
+            self._make_record(
+                strategy="all_pro",
+                policy_memory_enabled=True,
+                routing_prior_summary={
+                    "repo": "sympy", "repo_t2_success": 0.5, "repo_t3_success": 0.6,
+                    "task_seen": 5, "task_pass_count": 3, "task_median_cost": 0.05,
+                    "task_all_pro_failures": 0, "recent_failure_axis": "",
+                    "full_vs_tight_regret": 0.0, "learned_action": "default",
+                    "regret_threshold": 0.15,
+                    "policy_memory_source": "data/runs/postfix_017_10x5-0.jsonl",
+                },
+            ),
+            self._make_record(
+                strategy="bo_tight",
+                policy_memory_enabled=True,
+                routing_prior_summary={
+                    "repo": "sympy", "repo_t2_success": 0.5, "repo_t3_success": 0.6,
+                    "task_seen": 5, "task_pass_count": 3, "task_median_cost": 0.05,
+                    "task_all_pro_failures": 0, "recent_failure_axis": "",
+                    "full_vs_tight_regret": 0.0, "learned_action": "default",
+                    "regret_threshold": 0.15,
+                    "policy_memory_source": "data/runs/postfix_017_10x5-0.jsonl",
+                },
+            ),
+        ]
+        audit = build_compact_audit(records)
+        assert audit["policy_memory_used"] is True
+        assert "postfix_017" in audit.get("policy_memory_source", "")
+        assert audit.get("prior_records", 0) >= 1

@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
-import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -24,8 +26,112 @@ from .console_log import (
 
 PAPER1_ROOT = Path(__file__).resolve().parents[2]
 CACHE_DIR = PAPER1_ROOT / "data" / "repo_cache"
-WORKTREE_ROOT = CACHE_DIR / "worktrees"
+NFS_WORKTREE_ROOT: Path = CACHE_DIR / "worktrees"
 LEGACY_CACHE_DIR = PAPER1_ROOT / "src" / "data" / "repo_cache"
+
+# ── Configurable runtime worktree root ──────────────────────────────────────
+# Priority: set_worktree_root() > BUDGETFLOW_WORKTREE_ROOT env > /tmp > NFS fallback
+
+_worktree_root: Path | None = None
+_worktree_root_source = "default"
+
+
+def _resolve_worktree_root() -> tuple[Path, str]:
+    """Return (root, source) for runtime worktrees. Source is 'cli', 'env', 'tmp', 'nfs-fallback'."""
+    global _worktree_root, _worktree_root_source
+    if _worktree_root is not None:
+        return _worktree_root, _worktree_root_source
+
+    env_root = os.environ.get("BUDGETFLOW_WORKTREE_ROOT")
+    if env_root:
+        p = Path(env_root)
+        p.mkdir(parents=True, exist_ok=True)
+        _worktree_root = p
+        _worktree_root_source = "env"
+        return p, "env"
+
+    # Default: /tmp scratch
+    tmp_root = Path("/tmp/budgetflow_worktrees")
+    try:
+        tmp_root.mkdir(parents=True, exist_ok=True)
+        # Quick writability check
+        test_file = tmp_root / ".write_test"
+        test_file.write_text("ok")
+        test_file.unlink()
+        # Check space: need at least 1G free
+        stat = os.statvfs(str(tmp_root))
+        free_gb = (stat.f_bavail * stat.f_frsize) / (1024 ** 3)
+        if free_gb >= 1.0:
+            _worktree_root = tmp_root
+            _worktree_root_source = "tmp"
+            return tmp_root, "tmp"
+    except (OSError, PermissionError):
+        pass
+
+    # Fallback to NFS
+    NFS_WORKTREE_ROOT.mkdir(parents=True, exist_ok=True)
+    _worktree_root = NFS_WORKTREE_ROOT
+    _worktree_root_source = "nfs-fallback"
+    print(
+        f"{tag('prep')} WARNING: /tmp/budgetflow_worktrees not writable or low space, "
+        f"falling back to NFS {NFS_WORKTREE_ROOT}",
+        flush=True,
+    )
+    return NFS_WORKTREE_ROOT, "nfs-fallback"
+
+
+def set_worktree_root(path: Path | str | None) -> None:
+    """Override worktree root at runtime (CLI integration). Call before first use."""
+    global _worktree_root, _worktree_root_source
+    if path is None:
+        _worktree_root = None
+        _worktree_root_source = "default"
+        return
+    p = Path(path)
+    p.mkdir(parents=True, exist_ok=True)
+    _worktree_root = p
+    _worktree_root_source = "cli"
+
+
+def get_worktree_root() -> Path:
+    """Return current worktree root."""
+    root, _ = _resolve_worktree_root()
+    return root
+
+
+def get_worktree_root_source() -> str:
+    """Return source of current worktree root: 'cli', 'env', 'tmp', 'nfs-fallback'."""
+    _resolve_worktree_root()
+    return _worktree_root_source
+
+
+# ── Cross-process file lock for git metadata ────────────────────────────────
+
+_LOCKS_DIR = CACHE_DIR / ".locks"
+_LOCKS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+@contextmanager
+def _repo_git_lock(slug: str):
+    """Cross-process file lock scoped to a single repo's git metadata operations.
+
+    Uses fcntl.flock so multiple processes (and threads within them) serialize
+    git worktree add/remove/prune without blocking agent execution or API calls.
+    """
+    lock_path = _LOCKS_DIR / f"{slug}.lock"
+    t0 = time.time()
+    try:
+        with open(lock_path, "w") as lf:
+            fcntl.flock(lf.fileno(), fcntl.LOCK_EX)
+            waited = time.time() - t0
+            if waited > 5.0:
+                print(
+                    f"{tag('lock')} {slug} waited={waited:.1f}s pid={os.getpid()}",
+                    flush=True,
+                )
+            yield
+    finally:
+        pass  # flock released on close
 
 _COLLECTIONS_ABC = frozenset(
     {
@@ -272,19 +378,6 @@ def apply_python_compat(repo_dir: Path) -> tuple[str, ...]:
 
 
 _LAST_COMPAT_FILES: tuple[str, ...] = ()
-_MAIN_REPO_LOCKS: dict[str, threading.Lock] = {}
-_MAIN_REPO_LOCKS_GUARD = threading.Lock()
-
-
-def _main_repo_lock(slug: str) -> threading.Lock:
-    with _MAIN_REPO_LOCKS_GUARD:
-        lock = _MAIN_REPO_LOCKS.get(slug)
-        if lock is None:
-            lock = threading.Lock()
-            _MAIN_REPO_LOCKS[slug] = lock
-        return lock
-
-
 def get_last_compat_files() -> tuple[str, ...]:
     return _LAST_COMPAT_FILES
 
@@ -397,144 +490,259 @@ def _ensure_main_repo(task: LiteTaskRecord) -> Path:
     return repo_dir
 
 
+def _timed_step(
+    step_name: str, fn, *,
+    warn_s: float = 120, stuck_s: float = 300,
+    repo_slug: str = "", workspace_key: str = "", root: str = "",
+) -> object:
+    """Run *fn* and log one structured line; warn if >warn_s, flag STUCK if >stuck_s."""
+    t0 = time.time()
+    try:
+        result = fn()
+    except Exception:
+        elapsed = time.time() - t0
+        _emit_step_log(step_name, elapsed, repo_slug, workspace_key, root, "error")
+        raise
+    elapsed = time.time() - t0
+    if elapsed > stuck_s:
+        status = "stuck"
+    elif elapsed > warn_s:
+        status = "warn"
+    else:
+        status = "ok"
+    _emit_step_log(step_name, elapsed, repo_slug, workspace_key, root, status)
+    return result, elapsed
+
+
+def _emit_step_log(
+    step_name: str, elapsed: float,
+    repo_slug: str, workspace_key: str, root: str, status: str,
+) -> None:
+    parts = [
+        f"prep_step={step_name}",
+        f"elapsed_s={elapsed:.1f}",
+        f"pid={os.getpid()}",
+        f"status={status}",
+    ]
+    if repo_slug:
+        parts.append(f"repo={repo_slug}")
+    if workspace_key:
+        parts.append(f"key={workspace_key}")
+    if root:
+        parts.append(f"root={root}")
+    print(f"{tag('prep_step')} {' '.join(parts)}", flush=True)
+
+
 def _remove_worktree(main_repo: Path, worktree_path: Path) -> None:
     import shutil
 
     worktree_name = worktree_path.name
     meta_dir = main_repo / ".git" / "worktrees" / worktree_name
 
-    # 1. Always unlock first — a stale lock prevents prune and re-add.
-    subprocess.run(
-        ["git", "worktree", "unlock", str(worktree_path)],
-        cwd=main_repo,
-        capture_output=True,
-        text=True,
-    )
-
-    # 2. Remove git worktree registration.
-    if worktree_path.exists():
+    def _do():
+        # 1. Always unlock first — a stale lock prevents prune and re-add.
         subprocess.run(
-            ["git", "worktree", "remove", "--force", str(worktree_path)],
+            ["git", "worktree", "unlock", str(worktree_path)],
+            cwd=main_repo,
+            capture_output=True,
+            text=True,
+        )
+        # 2. Remove git worktree registration.
+        if worktree_path.exists():
+            subprocess.run(
+                ["git", "worktree", "remove", "--force", str(worktree_path)],
+                cwd=main_repo,
+                capture_output=True,
+                text=True,
+            )
+        # 3. Nuke the git metadata dir so "missing but locked" worktrees
+        #    (directory gone, .git/worktrees/<name> still present) are cleaned.
+        if meta_dir.exists():
+            shutil.rmtree(meta_dir, ignore_errors=True)
+        # 4. Filesystem cleanup: nuke the directory regardless of git state.
+        if worktree_path.exists():
+            shutil.rmtree(worktree_path, ignore_errors=True)
+        # 5. Prune stale metadata.
+        subprocess.run(
+            ["git", "worktree", "prune"],
             cwd=main_repo,
             capture_output=True,
             text=True,
         )
 
-    # 3. Nuke the git metadata dir so "missing but locked" worktrees
-    #    (directory gone, .git/worktrees/<name> still present) are cleaned.
-    if meta_dir.exists():
-        shutil.rmtree(meta_dir, ignore_errors=True)
-
-    # 4. Filesystem cleanup: nuke the directory regardless of git state.
-    if worktree_path.exists():
-        shutil.rmtree(worktree_path, ignore_errors=True)
-
-    # 5. Prune stale metadata.
-    subprocess.run(
-        ["git", "worktree", "prune"],
-        cwd=main_repo,
-        capture_output=True,
-        text=True,
-    )
+    _timed_step(f"worktree_remove {worktree_name}", _do)
 
 
 def _worktree_add(main_repo: Path, worktree_path: Path, commit: str) -> None:
-    """``git worktree add`` with retries for transient git metadata issues."""
-    result = subprocess.run(
-        ["git", "worktree", "add", "--force", str(worktree_path), commit],
-        cwd=main_repo,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode == 0:
-        return
-    stderr = (result.stderr or "").strip()
-    # Commit may be missing from a shallow/blobless clone even after
-    # _ensure_commit_available succeeded — re-fetch deeply and retry once.
-    if "invalid reference" in stderr:
-        subprocess.run(
-            ["git", "fetch", "origin", commit],
-            cwd=main_repo,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        subprocess.run(
+    """``git worktree add`` with timeout + one retry for transient git issues."""
+    import shutil
+
+    worktree_name = worktree_path.name
+
+    def _try_add() -> subprocess.CompletedProcess:
+        return subprocess.run(
             ["git", "worktree", "add", "--force", str(worktree_path), commit],
             cwd=main_repo,
-            check=True,
             capture_output=True,
             text=True,
+            timeout=120,
         )
-        return
-    # "missing but locked" worktree: stale metadata from a previous crash.
-    # unlock + prune + nuke metadata, then retry.
-    if "missing but locked" in stderr or "locked worktree" in stderr:
-        worktree_name = worktree_path.name
-        meta_dir = main_repo / ".git" / "worktrees" / worktree_name
-        subprocess.run(
-            ["git", "worktree", "unlock", str(worktree_path)],
-            cwd=main_repo, capture_output=True, text=True,
-        )
-        import shutil
-        if meta_dir.exists():
-            shutil.rmtree(meta_dir, ignore_errors=True)
-        subprocess.run(
-            ["git", "worktree", "prune"],
-            cwd=main_repo, capture_output=True, text=True,
-        )
-        subprocess.run(
-            ["git", "worktree", "add", "--force", str(worktree_path), commit],
-            cwd=main_repo,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        return
-    result.check_returncode()
+
+    def _do():
+        try:
+            result = _try_add()
+        except subprocess.TimeoutExpired:
+            print(
+                f"{tag('prep_step')} worktree_add {worktree_name} TIMEOUT — "
+                f"checking git worktree list, cleaning stale metadata, retrying",
+                flush=True,
+            )
+            subprocess.run(
+                ["git", "worktree", "list"],
+                cwd=main_repo, capture_output=True, text=True,
+            )
+            # Clean stale metadata.
+            meta_dir = main_repo / ".git" / "worktrees" / worktree_name
+            subprocess.run(
+                ["git", "worktree", "unlock", str(worktree_path)],
+                cwd=main_repo, capture_output=True, text=True,
+            )
+            if meta_dir.exists():
+                shutil.rmtree(meta_dir, ignore_errors=True)
+            if worktree_path.exists():
+                shutil.rmtree(worktree_path, ignore_errors=True)
+            subprocess.run(
+                ["git", "worktree", "prune"],
+                cwd=main_repo, capture_output=True, text=True,
+            )
+            # Retry once.
+            result = subprocess.run(
+                ["git", "worktree", "add", "--force", str(worktree_path), commit],
+                cwd=main_repo,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            return
+
+        if result.returncode == 0:
+            return
+        stderr = (result.stderr or "").strip()
+        # Commit may be missing from a shallow/blobless clone even after
+        # _ensure_commit_available succeeded — re-fetch deeply and retry once.
+        if "invalid reference" in stderr:
+            subprocess.run(
+                ["git", "fetch", "origin", commit],
+                cwd=main_repo,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                ["git", "worktree", "add", "--force", str(worktree_path), commit],
+                cwd=main_repo,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            return
+        # "missing but locked" worktree: stale metadata from a previous crash.
+        # unlock + prune + nuke metadata, then retry.
+        if "missing but locked" in stderr or "locked worktree" in stderr:
+            wname = worktree_path.name
+            meta_dir = main_repo / ".git" / "worktrees" / wname
+            subprocess.run(
+                ["git", "worktree", "unlock", str(worktree_path)],
+                cwd=main_repo, capture_output=True, text=True,
+            )
+            if meta_dir.exists():
+                shutil.rmtree(meta_dir, ignore_errors=True)
+            subprocess.run(
+                ["git", "worktree", "prune"],
+                cwd=main_repo, capture_output=True, text=True,
+            )
+            subprocess.run(
+                ["git", "worktree", "add", "--force", str(worktree_path), commit],
+                cwd=main_repo,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            return
+        result.check_returncode()
+
+    _timed_step(f"worktree_add {worktree_name}", _do)
 
 
 def _prepare_worktree(task: LiteTaskRecord, workspace_key: str) -> Path:
     slug = repo_slug(task.repo)
-    with _main_repo_lock(slug):
-        main_repo = _ensure_main_repo(task)
-        worktree_path = WORKTREE_ROOT / slug / workspace_key
-        worktree_path.parent.mkdir(parents=True, exist_ok=True)
+    main_repo = _ensure_main_repo(task)
+    wt_root = get_worktree_root()
+    worktree_path = wt_root / slug / workspace_key
+    worktree_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with _repo_git_lock(slug):
         _remove_worktree(main_repo, worktree_path)
         _ensure_commit_available(main_repo, task.base_commit)
         inst = paint(task.instance_id, _BOLD, _BRIGHT_CYAN)
+        root_tag = get_worktree_root_source()
         print(
-            f"{tag('prep')} worktree {inst} key={workspace_key} @ {task.base_commit[:8]} ...",
+            f"{tag('prep')} worktree {inst} key={workspace_key} "
+            f"root={root_tag} @ {task.base_commit[:8]} ...",
             flush=True,
         )
         _worktree_add(main_repo, worktree_path, task.base_commit)
-        subprocess.run(
-            ["git", "reset", "--hard", task.base_commit],
-            cwd=worktree_path,
-            check=True,
-            capture_output=True,
-            text=True,
+        _timed_step(
+            f"git_reset {workspace_key}", lambda: subprocess.run(
+                ["git", "reset", "--hard", task.base_commit],
+                cwd=worktree_path, check=True, capture_output=True, text=True,
+            ),
+            repo_slug=slug, workspace_key=workspace_key, root=root_tag,
         )
-        subprocess.run(["git", "clean", "-fdx"], cwd=worktree_path, check=True, capture_output=True, text=True)
+        _timed_step(
+            f"git_clean {workspace_key}", lambda: subprocess.run(
+                ["git", "clean", "-fdx"], cwd=worktree_path,
+                check=True, capture_output=True, text=True,
+            ),
+            repo_slug=slug, workspace_key=workspace_key, root=root_tag,
+        )
     return worktree_path
 
 
 def _finalize_repo_workspace(repo_dir: Path, task: LiteTaskRecord) -> Path:
     global _LAST_COMPAT_FILES
-    _LAST_COMPAT_FILES = apply_python_compat(repo_dir)
+
+    def _do_compat():
+        return apply_python_compat(repo_dir)
+
+    _LAST_COMPAT_FILES, _elapsed = _timed_step(f"compat_patch {task.instance_id}", _do_compat)
+    n = len(_LAST_COMPAT_FILES)
+    print(
+        f"{tag('prep')} py3.11 collections compat {paint(str(n), _BRIGHT_GREEN)} files",
+        flush=True,
+    )
 
     marker = _pip_marker_path(repo_dir)
     if marker.exists() and marker.read_text().strip() == task.base_commit:
         print(f"{tag('prep')} pip skip {dim('(cached)')}", flush=True)
         return repo_dir
 
-    install = _pip_install_editable(repo_dir, task=task)
-    if install.returncode == 0:
+    install_result: subprocess.CompletedProcess | None = None
+
+    def _pip():
+        nonlocal install_result
+        install_result = _pip_install_editable(repo_dir, task=task)
+
+    _timed_step(f"pip_install {task.instance_id}", _pip)
+
+    if install_result is not None and install_result.returncode == 0:
         marker.parent.mkdir(parents=True, exist_ok=True)
         marker.write_text(task.base_commit)
         print(f"{tag('prep')} pip {paint('done', _BRIGHT_GREEN)}", flush=True)
     else:
-        print(f"{tag('prep')} pip failed (rc={install.returncode}), continuing anyway", flush=True)
+        rc = install_result.returncode if install_result else -1
+        print(f"{tag('prep')} pip failed (rc={rc}), continuing anyway", flush=True)
     return repo_dir
 
 
@@ -544,7 +752,7 @@ def clone_or_checkout(task: LiteTaskRecord, *, workspace_key: str | None = None)
         return _finalize_repo_workspace(repo_dir, task)
 
     slug = repo_slug(task.repo)
-    with _main_repo_lock(slug):
+    with _repo_git_lock(slug):
         global _LAST_COMPAT_FILES
         repo_dir = _ensure_main_repo(task)
         inst = paint(task.instance_id, _BOLD, _BRIGHT_CYAN)

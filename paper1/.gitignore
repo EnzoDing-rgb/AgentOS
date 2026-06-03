@@ -1,0 +1,22 @@
+# paper1 BudgetFlow runtime artifacts
+# NOTE: parent AgentOS/.gitignore already covers paper1/data/, __pycache__/, .pytest_cache/
+
+# Runtime worktrees (now default to /tmp/budgetflow_worktrees via env/CLI,
+# but NFS fallback may still write here)
+data/repo_cache/worktrees/
+
+# Cross-process lock files
+data/repo_cache/.locks/
+
+# Experiment run artifacts (heartbeat, checkpoint, JSONL)
+data/runs/*.heartbeat.json
+data/runs/*.checkpoint.json
+data/runs/*.tmp
+
+# Large trace dumps
+*.trace.jsonl
+*.trace.json
+
+# IDE / editor
+.vscode/
+.idea/

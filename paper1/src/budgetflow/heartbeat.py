@@ -14,8 +14,13 @@ def run_with_heartbeat(
     *,
     interval_s: float = 30.0,
     status_fn: Callable[[], str] | None = None,
+    on_beat: Callable[[], None] | None = None,
 ) -> Any:
-    """Run blocking fn; print heartbeat every interval_s until fn returns."""
+    """Run blocking fn; print heartbeat every interval_s until fn returns.
+
+    If *on_beat* is given, it is called after every heartbeat print (useful
+    for updating a heartbeat file so external checkers see liveness).
+    """
     stop = threading.Event()
     started = time.time()
 
@@ -27,6 +32,11 @@ def run_with_heartbeat(
             if extra:
                 line += f" | {extra}"
             print(line, flush=True)
+            if on_beat is not None:
+                try:
+                    on_beat()
+                except Exception:
+                    pass
 
     thread = threading.Thread(target=_loop, daemon=True)
     thread.start()

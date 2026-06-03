@@ -210,3 +210,78 @@ def test_legacy_auto_v2_alias_uses_equal_weight_rescue_parameters() -> None:
     assert legacy.stop_loss_turns == current.stop_loss_turns
     assert legacy.min_headroom_frac == current.min_headroom_frac
     assert legacy.rescue_tier == current.rescue_tier
+
+
+# ── T3 must be evidence-triggered (not from history) ─────────────────────────
+
+def test_starting_tier_never_returns_t3_from_history() -> None:
+    """Four consecutive fails should NOT push starting_tier to 3."""
+    state = AdaptiveRoutingState(strategy_name="budgetflow_full_tight")
+    for _ in range(4):
+        state.record_task(_fail_record())
+    assert state.starting_tier() == 2  # capped at T2, never T3
+
+
+def test_starting_tier_returns_t2_after_two_fails() -> None:
+    """Two consecutive fails allow skipping T1 but not T2."""
+    state = AdaptiveRoutingState(strategy_name="budgetflow_full_loose")
+    state.record_task(_fail_record())
+    state.record_task(_fail_record())
+    assert state.starting_tier() == 2
+
+
+def test_starting_tier_resets_after_pass() -> None:
+    """A resolved task resets the streak to 0 → T1."""
+    state = AdaptiveRoutingState(strategy_name="budgetflow_full_tight")
+    state.record_task(_fail_record())
+    state.record_task(_fail_record())
+    assert state.starting_tier() == 2
+    state.record_task({"harness_resolved": True, "patch_extracted": True})
+    assert state.starting_tier() == 1
+
+
+def test_starting_tier_ten_fails_still_t2() -> None:
+    """Even with many consecutive fails, starting_tier stays at T2."""
+    state = AdaptiveRoutingState(strategy_name="budgetflow_full_loose")
+    for _ in range(10):
+        state.record_task(_fail_record())
+    assert state.starting_tier() == 2
+
+
+def test_t3_rescue_only_triggers_with_gold_edit_plus_repair() -> None:
+    """T3 rescue window requires gold_edited=True AND repair/validation stage."""
+    rescue = EvidenceRescueState(trigger_turns=2, window_turns=2, min_headroom_frac=0.10)
+
+    # Without gold edit: no T3
+    assert rescue.forced_min_tier(
+        stage=Stage.REPAIR, gold_edited=False, current_tier=2,
+        remaining_budget=100, total_budget=100,
+    ) is None
+
+    # Gold edit in LOCALIZATION stage: no T3 (must be REPAIR or VALIDATION)
+    assert rescue.forced_min_tier(
+        stage=Stage.LOCALIZATION, gold_edited=True, current_tier=2,
+        remaining_budget=100, total_budget=100,
+    ) is None
+
+
+def test_rescue_window_closes_and_stop_loss_fires() -> None:
+    """Rescue window is bounded: after window exhausted, stop_loss fires."""
+    rescue = EvidenceRescueState(trigger_turns=1, window_turns=2, stop_loss_turns=5)
+
+    assert rescue.forced_min_tier(
+        stage=Stage.REPAIR, gold_edited=True, current_tier=2,
+        remaining_budget=100, total_budget=100,
+    ) == 3
+    assert rescue.forced_min_tier(
+        stage=Stage.REPAIR, gold_edited=True, current_tier=2,
+        remaining_budget=100, total_budget=100,
+    ) == 3
+    # Window exhausted, evidence turns = 2
+    assert rescue.forced_min_tier(
+        stage=Stage.REPAIR, gold_edited=True, current_tier=2,
+        remaining_budget=100, total_budget=100,
+    ) is None
+    assert not rescue.should_stop_loss(gold_edited=True)  # stop_loss=5, evidence=3
+    rescue.evidence_turns = 5
+    assert rescue.should_stop_loss(gold_edited=True)  # now exceeds stop_loss
