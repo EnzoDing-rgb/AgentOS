@@ -1492,6 +1492,13 @@ def main() -> None:
         help="comma-separated JSONL paths to load BudgetMemory from",
     )
     parser.add_argument(
+        "--budget-memory-exclude-ids",
+        type=str,
+        nargs="*",
+        default=None,
+        help="instance_ids to exclude from BudgetMemory training (for leave-one-task-out generalization test)",
+    )
+    parser.add_argument(
         "--disable-budget-memory",
         action="store_true",
         default=False,
@@ -1510,6 +1517,18 @@ def main() -> None:
         help="load --budget-memory files, validate, print diagnostics, then exit (no API calls)",
     )
     args = parser.parse_args()
+
+    # ── Parse exclude_ids once, shared by gate-only, dry-run, and normal mode ──
+    bm_exclude: set[str] | None = None
+    if args.budget_memory_exclude_ids:
+        bm_exclude = set()
+        for raw in args.budget_memory_exclude_ids:
+            for part in raw.split(","):
+                part = part.strip()
+                if part:
+                    bm_exclude.add(part)
+        if not bm_exclude:
+            bm_exclude = None
 
     # ── Gate-only: load PolicyMemory, validate, print summary, exit ────────
     # Must run BEFORE any provider check, output file creation, heartbeat, or
@@ -1541,7 +1560,7 @@ def main() -> None:
             if not p_abs.is_file():
                 print(f"ERROR: --budget-memory file not found: {p_abs}", flush=True)
                 sys.exit(1)
-        bm = BudgetMemory.from_jsonl(bm_paths)
+        bm = BudgetMemory.from_jsonl(bm_paths, exclude_ids=bm_exclude)
         print(f"budget_memory gate-only: OK", flush=True)
         print(f"  records={bm.record_count} tasks={bm.task_count} repos={bm.repo_count}")
         print(f"  sources: {bm._source_paths}")
@@ -1684,7 +1703,7 @@ def main() -> None:
             if not p_abs.is_file():
                 print(f"ERROR: --budget-memory file not found: {p_abs}", flush=True)
                 sys.exit(1)
-        bm = BudgetMemory.from_jsonl(bm_paths)
+        bm = BudgetMemory.from_jsonl(bm_paths, exclude_ids=bm_exclude)
         print("=== BudgetMemory dry-run ===")
         print(f"records={bm.record_count} tasks={bm.task_count} repos={bm.repo_count}")
         print(f"sources: {bm._source_paths}")
@@ -1726,11 +1745,10 @@ def main() -> None:
         print(f"  {'-'*125}")
 
         under_count = over_count = ok_count = not_comp = 0
+        strat = ""  # no strategy bias in estimate
         for task in tasks:
             iid = task.instance_id
-            repo = getattr(task, "repo", "") or iid.split("__")[0] if "__" in iid else iid
-            strat = "budget_only_tight"
-            est = bm.estimate_task_budget(iid, repo=repo, strategy=strat, hard_budget=per_task_hard)
+            est = bm.estimate_task_budget(iid, hard_budget=per_task_hard)
             bm_cap = est.estimated_task_budget
 
             # Resolve old_cap and old_cap_source (priority order)
@@ -1822,7 +1840,7 @@ def main() -> None:
             else:
                 print(f"WARNING: --budget-memory file not found: {p_abs}", flush=True)
         if valid_paths:
-            budget_memory = BudgetMemory.from_jsonl(valid_paths)
+            budget_memory = BudgetMemory.from_jsonl(valid_paths, exclude_ids=bm_exclude)
             budget_memory_enabled = True
             src_str = ",".join(str(p) for p in valid_paths)
             budget_memory_source_paths = src_str
@@ -1834,11 +1852,9 @@ def main() -> None:
             )
             # Compute per-task BudgetMemory estimates
             for task in tasks:
-                repo = getattr(task, "repo", "") or task.instance_id.split("__")[0] if "__" in task.instance_id else task.instance_id
                 hard_cap = args.per_task_cap if args.per_task_cap and args.per_task_cap > 0 else None
                 est = budget_memory.estimate_task_budget(
-                    task.instance_id, repo=repo, strategy="budget_only_tight",
-                    hard_budget=hard_cap,
+                    task.instance_id, hard_budget=hard_cap,
                 )
                 budget_memory_estimates[task.instance_id] = est
             # Only use BudgetMemory as caps when auto-budget is NOT enabled

@@ -17,8 +17,22 @@ from pathlib import Path
 from typing import Iterable
 
 
+def normalize_repo_key(raw: str) -> str:
+    """Normalize repo identifiers to canonical short key.
+
+    Handles:
+      instance_id:  "sympy__sympy-13480" -> "sympy"
+      repo slug:    "sympy__sympy"       -> "sympy"
+      repo slug:    "sympy/sympy"        -> "sympy"
+      plain key:    "sympy"              -> "sympy"
+    """
+    if not raw:
+        return raw
+    return raw.replace("/", "__").split("__")[0]
+
+
 def _extract_repo(instance_id: str) -> str:
-    return instance_id.split("__")[0] if "__" in instance_id else instance_id
+    return normalize_repo_key(instance_id)
 
 
 @dataclass
@@ -78,8 +92,16 @@ class BudgetMemory:
     # ── Factory ───────────────────────────────────────────────────────────
 
     @classmethod
-    def from_jsonl(cls, paths: str | Path | Iterable[str | Path]) -> BudgetMemory:
-        """Build BudgetMemory from one or more JSONL files."""
+    def from_jsonl(
+        cls,
+        paths: str | Path | Iterable[str | Path],
+        exclude_ids: set[str] | None = None,
+    ) -> BudgetMemory:
+        """Build BudgetMemory from one or more JSONL files.
+
+        If *exclude_ids* is given, records matching those instance_ids are
+        excluded from training (used for leave-one-task-out validation).
+        """
         bm = cls()
         if isinstance(paths, (str, Path)):
             paths = [Path(paths)]
@@ -99,13 +121,15 @@ class BudgetMemory:
                     records.append(json.loads(line))
                 except json.JSONDecodeError:
                     pass
-        bm._learn(records)
+        bm._learn(records, exclude_ids=exclude_ids)
         return bm
 
     # ── Learning ──────────────────────────────────────────────────────────
 
-    def _learn(self, records: list[dict]) -> None:
-        self._record_count = len(records)
+    def _learn(self, records: list[dict], exclude_ids: set[str] | None = None) -> None:
+        exclude = exclude_ids or set()
+        filtered = [r for r in records if str(r.get("instance_id") or "") not in exclude]
+        self._record_count = len(filtered)
 
         # Group costs
         task_costs: dict[str, list[float]] = defaultdict(list)
@@ -117,7 +141,7 @@ class BudgetMemory:
         task_budget_exhausted: dict[str, int] = defaultdict(int)
         repo_budget_exhausted: dict[str, int] = defaultdict(int)
 
-        for r in records:
+        for r in filtered:
             iid = str(r.get("instance_id") or "")
             if not iid:
                 continue
@@ -155,7 +179,7 @@ class BudgetMemory:
             stats.fail_median_cost = _median(task_fail_costs.get(iid, []))
             stats.budget_exhaustion_rate = task_budget_exhausted[iid] / max(stats.count, 1)
             # Per-strategy median costs for this task
-            task_recs = [r for r in records if r.get("instance_id") == iid]
+            task_recs = [r for r in filtered if r.get("instance_id") == iid]
             strat_groups: dict[str, list[float]] = defaultdict(list)
             for r in task_recs:
                 s = str(r.get("strategy") or "unknown")
@@ -191,6 +215,8 @@ class BudgetMemory:
         """
         if not repo:
             repo = _extract_repo(instance_id)
+        else:
+            repo = normalize_repo_key(repo)
         hard_budget_used = hard_budget is not None and hard_budget > 0
 
         # 1. Exact task match

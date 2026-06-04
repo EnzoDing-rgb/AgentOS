@@ -598,6 +598,11 @@ def check_jsonl(jsonl_path: Path, heartbeat_stale_s: float = 600.0) -> dict:
                 hb_statuses.append(f"{rs}: OK ({done}/{total} {status})")
                 continue
 
+            # 0.5. Known-aborted runs: explicitly terminated, not current orphans
+            if status.startswith("aborted"):
+                hb_statuses.append(f"{rs}: ABORTED ({done}/{total} {status})")
+                continue
+
             # 1. Dead PID detection — applies to ALL non-terminal states
             if pid > 0 and not pid_alive and done < total and status not in ("completed",):
                 all_issues.append(
