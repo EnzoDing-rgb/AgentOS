@@ -107,7 +107,7 @@ def get_worktree_root_source() -> str:
 
 # ── Cross-process file lock for git metadata ────────────────────────────────
 
-_LOCKS_DIR = CACHE_DIR / ".locks"
+_LOCKS_DIR = Path("/tmp/budgetflow_locks")
 _LOCKS_DIR.mkdir(parents=True, exist_ok=True)
 
 
