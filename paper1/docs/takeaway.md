@@ -4,7 +4,23 @@
 
 该 commit 就 commit，该 push 就 push。关键节点必须 commit，能同步远端就同步远端。
 
-## 0. 最新关键判断（2026-06-03）
+## 0. 最新关键判断（2026-06-04）
+
+### 030 / BudgetMemory / 决策纪律 Takeaway
+
+1. **`harness_resolved` 是唯一 PASS/FAIL 主口径。** `exit_reason` 只是过程解释。030 里 `rescue_timeout_gold_edited` 5 个中 4 个是 PASS；把它们按 exit_reason 全算 FAIL，会把 `bf_tight` 从 7/10 错报成 5/10，直接扭曲论文结论。
+
+2. **030 是 cold-start fallback test，不是 LOO generalization。** 这次排除了全部 10 个已知 task，训练数据变成 0 records，BudgetMemory 全部走 `global_fallback`。因此它只能证明 fallback safety，不证明 repo_median 泛化，也不证明 BudgetFlow 优势。
+
+3. **BudgetFlow > BudgetOnly 仍未稳定成立。** 030 中双方 7/10 打平，但 BudgetFlow 更贵。此前 023/024/029 有正向信号，但样本小、方差高、部分 run 语义被 BudgetMemory source bug 污染。当前主张必须收窄为：机制在逐步变干净，但优势还需要真正 LOO + repeats 验证。
+
+4. **BudgetMemory 的核心风险是 reward hacking / exact-task leakage。** warm-start exact_task 能跑通不等于泛化。论文级证据必须区分 exact_task、repo_median、global_fallback；真正 LOO 要 held-out 当前 tasks，同时保留其它历史 tasks，避免把训练集排空。
+
+5. **worker agent 不能决定研究路线。** worker 可以跑实验、写报告、修 bug、交付证据，但“下一步推荐”只能作为输入材料。主 agent 必须用 JSONL/checker/heartbeat/log 自己判断，否则会被错误报告和局部指标带偏。
+
+6. **当前最佳下一步不是扩大规模。** 先重跑一个真正的 5x2 LOO，验收点是 `repo_median` source 命中、0 exact_task leakage、checker clean、pass/cost 口径正确。机制过关后再做 repeats 或 10-task 方差实验。
+
+7. **工作目录迁移是工程纪律，不是实验变量。** 交互开发使用 `/root/.dev/AgentOS`；旧 `/Lishun` 路径只作为持久数据来源。Git 慢、status 卡、NFS 小文件 I/O 不能再混入 BudgetFlow 实验结论。
 
 ### 012 核心 Takeaway
 

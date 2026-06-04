@@ -2,7 +2,24 @@
 
 > 单一入口：进度、跑法、历史结果。
 
-## 当前快照（2026-06-03）
+## 当前快照（2026-06-04）
+
+### 030 后权威状态
+
+- **工作目录已迁移：** 当前主开发目录是 `/root/.dev/AgentOS`。`/Lishun/.../AgentOS` 仍可作为旧持久化来源，但不要再作为交互开发主目录，避免 Git/NFS 小文件 I/O 卡顿污染判断。
+- **云端同步点：** `feature/issue-1` 已 push 到 GitHub，当前 HEAD 为 `18f14eb Add autoresearch guard and 030 fallback report`。
+- **030 口径修正：** `postfix_030_loo_10x2` 不是 LOO generalization，而是 cold-start fallback test。因为排除了全部 10 个已知 task，BudgetMemory 训练集变成 0 records，所有任务走 `global_fallback`，cap=$1.50。
+- **030 真实结果按 `harness_resolved` 统计：** `budget_only_tight` 7/10 PASS, $1.59；`budgetflow_tight` 7/10 PASS, $2.03。双方 pass 打平，BudgetFlow 更贵。之前把 `rescue_timeout_gold_edited` 直接算 FAIL 是错误口径；5 个该 exit_reason 中 4 个 harness_resolved=True。
+- **论文 claim 状态：** BudgetMemory fallback safety 成立；BudgetMemory 泛化未由 030 证明；BudgetFlow > BudgetOnly 未稳定成立。当前不能用 030 讲泛化或优势，只能讲 fallback 不崩与 pass/fail 口径修正。
+- **下一步主线：** 不扩到 15/20 task。先做真正 LOO 5x2：held-out 5 tasks，但训练数据中保留其它 task，确认 `repo_median` cascade 在真实 run 中可复现，再讨论 repeats/scale。
+- **分工规则：** worker agent 只执行实验、交付 JSONL/checker/report/log/test 证据；下一步策略判断由主 agent 做，不接受 worker 的“推荐下一步”作为决策依据。
+
+### 仍然有效的硬门槛
+
+- PASS/FAIL 主口径永远是 `harness_resolved`，不是 `exit_reason`。
+- 报告不是事实源；JSONL、checker、heartbeat、summary log 是事实源。报告只能是这些证据的 ledger。
+- `data/runs` 体积大且高 churn，不默认提交 Git；需要审计某次实验时，先明确要同步哪些小型 JSONL/summary/report。
+- 所有新实验必须先过 gate：无 orphan/stuck heartbeat、无 suspicious pass、无 no_trace、BudgetMemory source 分布符合实验语义。
 
 ### 结论
 
