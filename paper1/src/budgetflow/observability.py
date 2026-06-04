@@ -410,6 +410,8 @@ class HeartbeatWriter:
         s.current_pid = os.getpid()
         if s.rows_done >= s.total_expected and s.total_expected > 0:
             s.status = "completed"
+        elif active_strategy and active_instance and s.status == "preparing":
+            s.status = "running"
         self._write()
 
     def mark_done(self) -> None:

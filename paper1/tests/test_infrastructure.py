@@ -494,6 +494,32 @@ class TestCheckJsonlHeartbeat:
         assert result["heartbeat_suspicious"]
         assert any("ZERO_PROGRESS" in i for i in result["issues"])
 
+    def test_preparing_with_active_task_detected(self, tmp_path):
+        """check_jsonl detects status=preparing with active_elapsed_s > 60s."""
+        rs = "test_preparing_active_run"
+        hb_path = tmp_path / f"{rs}.heartbeat.json"
+
+        hb = {
+            "started_at": time.time() - 300,
+            "updated_at": time.time() - 5,
+            "total_expected": 10,
+            "rows_done": 0,
+            "current_pid": os.getpid(),
+            "status": "preparing",
+            "run_series": rs,
+            "active_elapsed_s": 270.0,
+            "active_strategy": "budget_tight_dummy",
+            "active_instance": "django__django-10924",
+        }
+        hb_path.write_text(json.dumps(hb))
+
+        jsonl_path = tmp_path / "test.jsonl"
+        jsonl_path.write_text("")
+
+        result = check_jsonl(jsonl_path, heartbeat_stale_s=600)
+        assert result["heartbeat_suspicious"]
+        assert any("PREPARING_WITH_ACTIVE_TASK" in i for i in result["issues"])
+
     def test_ok_heartbeat_not_suspicious(self, tmp_path):
         """Healthy heartbeat should not trigger any issues."""
         rs = "test_ok_run"

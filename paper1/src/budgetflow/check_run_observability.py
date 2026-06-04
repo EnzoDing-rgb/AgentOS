@@ -607,6 +607,21 @@ def check_jsonl(jsonl_path: Path, heartbeat_stale_s: float = 600.0) -> dict:
                 hb_statuses.append(f"{rs}: DEAD_PID pid={pid} ({done}/{total} {status})")
                 continue
 
+            # 1.5 PREPARING_WITH_ACTIVE_TASK: status says preparing but task is running
+            active_elapsed = float(hb.get("active_elapsed_s") or 0)
+            active_str = str(hb.get("active_strategy") or "")
+            active_inst = str(hb.get("active_instance") or "")
+            if (status == "preparing" and active_str and active_inst
+                    and active_elapsed > max(heartbeat_stale_s * 0.1, 30.0)):
+                all_issues.append(
+                    f"PREPARING_WITH_ACTIVE_TASK {rs}: status=preparing but "
+                    f"active={active_str}:{active_inst} active_elapsed_s={active_elapsed:.0f}s "
+                    f"rows={done}/{total} (pulse() may not transition preparing→running)"
+                )
+                hb_suspicious = True
+                hb_statuses.append(f"{rs}: PREPARING_WITH_ACTIVE active_elapsed_s={active_elapsed:.0f}s")
+                # Continue checking other conditions (may also be stuck/stale)
+
             # 2. Stale heartbeat — no update for too long
             if stale:
                 hb_stale = True
