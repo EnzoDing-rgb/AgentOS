@@ -382,7 +382,7 @@ class HeartbeatWriter:
             updated_at=time.time(),
             total_expected=total_expected,
             current_pid=os.getpid(),
-            status="running",
+            status="preparing",
             run_series=run_series,
         )
         self._write()

@@ -798,12 +798,14 @@ def _run_strategy_batch(
                     _gp = global_progress
                     _cfg_name = cfg.name
                     _task_id = task.instance_id
+                    _task_started = time.time()
                     def _beat() -> None:
                         _total, _rows, _running = _gp.snapshot()
                         hw.pulse(
                             rows_done=_rows,
                             active_strategy=str(_cfg_name),
                             active_instance=str(_task_id),
+                            active_elapsed_s=time.time() - _task_started,
                         )
                     _on_beat = _beat
                 record = run_with_heartbeat(

@@ -184,19 +184,43 @@ def _rows_stuck(hb: dict, stale_seconds: float) -> tuple[bool, str]:
     status = str(hb.get("status") or "")
     updated_at = float(hb.get("updated_at") or 0)
     started_at = float(hb.get("started_at") or 0)
+    active_elapsed_s = float(hb.get("active_elapsed_s") or 0)
+    active_strategy = str(hb.get("active_strategy") or "")
+    active_instance = str(hb.get("active_instance") or "")
     now = time.time()
     since_update = now - updated_at
     elapsed = now - started_at
 
-    # Completed but incomplete → crashed before finishing
+    # Completed but incomplete -> crashed before finishing
     if status == "completed" and rows_done < total:
         return True, f"status=completed but rows={rows_done}/{total} (crashed?)"
 
-    # Aborted but pid still recorded as alive → inconsistent
+    # Aborted but pid still recorded as alive -> inconsistent
     if status.startswith("aborted") and rows_done < total:
         return True, f"status={status} rows={rows_done}/{total}"
 
-    # Heartbeat not updating AND run not finished → stuck
+    # Zero-progress stuck: fresh heartbeat but no rows and task stuck in prep
+    if rows_done == 0 and elapsed > stale_seconds:
+        has_active = bool(active_strategy) or bool(active_instance)
+        if has_active and active_elapsed_s == 0:
+            return True, (
+                f"ZERO_PROGRESS rows=0/{total} elapsed={elapsed:.0f}s "
+                f"active={active_strategy}:{active_instance} active_elapsed_s=0 "
+                f"(stuck in prep, no task actually started)"
+            )
+        if has_active and active_elapsed_s > 0 and active_elapsed_s > stale_seconds:
+            return True, (
+                f"ZERO_PROGRESS rows=0/{total} elapsed={elapsed:.0f}s "
+                f"active_elapsed_s={active_elapsed_s:.0f}s "
+                f"(single task stuck for too long)"
+            )
+        if not has_active and elapsed > stale_seconds:
+            return True, (
+                f"ZERO_PROGRESS rows=0/{total} elapsed={elapsed:.0f}s "
+                f"no active task (setup or thread pool blocked?)"
+            )
+
+    # Heartbeat not updating AND run not finished -> stuck
     if since_update > stale_seconds:
         return True, (
             f"no update for {since_update:.0f}s, rows={rows_done}/{total}, "
@@ -541,12 +565,19 @@ def check_jsonl(jsonl_path: Path, heartbeat_stale_s: float = 600.0) -> dict:
             by_strategy[strat]["suspicious_pass"] += 1
 
     # Heartbeat check
+    # Detect heartbeat files from JSONL run_series fields, AND from .heartbeat.json files
+    # in the same directory (handles 0-record JSONL cases).
+    runs_dir = jsonl_path.parent
     run_series_set = {str(r.get("run_series", "")) for r in records if r.get("run_series")}
+    # Also scan for orphaned heartbeat files (JSONL has 0 rows but heartbeat exists)
+    for hb_path in sorted(runs_dir.glob("*.heartbeat.json")):
+        rs = hb_path.stem.replace(".heartbeat", "")
+        if rs:
+            run_series_set.add(rs)
     hb_stale = False
     hb_suspicious = False
     hb_summary = "no heartbeat files found"
     if run_series_set:
-        runs_dir = jsonl_path.parent
         hb_statuses: list[str] = []
         for rs in sorted(run_series_set):
             hb_path = runs_dir / f"{rs}.heartbeat.json"

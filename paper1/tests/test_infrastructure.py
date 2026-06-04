@@ -300,6 +300,82 @@ class TestRowsStuck:
         stuck, reason = _rows_stuck(hb, 600)
         assert not stuck
 
+    def test_zero_progress_rows_done_zero_active_fresh_heartbeat(self):
+        """rows_done=0 + running + elapsed > stale + active_elapsed_s=0 => stuck."""
+        hb = {
+            "rows_done": 0, "total_expected": 10,
+            "status": "running",
+            "updated_at": time.time(),  # fresh heartbeat
+            "started_at": time.time() - 901,
+            "active_elapsed_s": 0.0,
+            "active_strategy": "budget_tight_dummy",
+            "active_instance": "django__django-10924",
+        }
+        stuck, reason = _rows_stuck(hb, 600)
+        assert stuck, f"zero-progress fresh heartbeat should be stuck: {reason}"
+        assert "ZERO_PROGRESS" in reason
+        assert "rows=0/10" in reason
+
+    def test_zero_progress_no_active_task_blocked_setup(self):
+        """rows_done=0 + elapsed > stale + no active task => stuck (setup blocked)."""
+        hb = {
+            "rows_done": 0, "total_expected": 10,
+            "status": "preparing",
+            "updated_at": time.time(),
+            "started_at": time.time() - 901,
+            "active_elapsed_s": 0.0,
+            "active_strategy": "",
+            "active_instance": "",
+        }
+        stuck, reason = _rows_stuck(hb, 600)
+        assert stuck, f"zero-progress no active should be stuck: {reason}"
+        assert "ZERO_PROGRESS" in reason
+        assert "no active task" in reason
+
+    def test_zero_progress_single_task_stuck_too_long(self):
+        """rows_done=0 + active_elapsed_s > stale => single task stuck."""
+        hb = {
+            "rows_done": 0, "total_expected": 10,
+            "status": "running",
+            "updated_at": time.time(),
+            "started_at": time.time() - 2000,
+            "active_elapsed_s": 1500.0,
+            "active_strategy": "budget_tight_dummy",
+            "active_instance": "django__django-10924",
+        }
+        stuck, reason = _rows_stuck(hb, 600)
+        assert stuck, f"single task stuck for too long should be stuck: {reason}"
+        assert "ZERO_PROGRESS" in reason
+        assert "single task stuck" in reason
+
+    def test_zero_progress_under_threshold_not_stuck(self):
+        """rows_done=0 but elapsed < stale => not stuck yet (still in startup)."""
+        hb = {
+            "rows_done": 0, "total_expected": 10,
+            "status": "running",
+            "updated_at": time.time(),
+            "started_at": time.time() - 100,
+            "active_elapsed_s": 50.0,
+            "active_strategy": "budget_tight_dummy",
+            "active_instance": "django__django-10924",
+        }
+        stuck, reason = _rows_stuck(hb, 600)
+        assert not stuck, f"under threshold should not be stuck: {reason}"
+
+    def test_completed_heartbeat_not_stale_with_all_done(self):
+        """Completed heartbeat with all rows done should never be stale."""
+        hb = {
+            "rows_done": 10, "total_expected": 10,
+            "status": "completed",
+            "updated_at": time.time() - 901,
+            "started_at": time.time() - 2000,
+            "active_elapsed_s": 0.0,
+            "active_strategy": "",
+            "active_instance": "",
+        }
+        stuck, reason = _rows_stuck(hb, 600)
+        assert not stuck, f"completed all done should not be stuck: {reason}"
+
 
 class TestCheckJsonlHeartbeat:
     def test_dead_pid_detected(self, tmp_path):
@@ -391,6 +467,32 @@ class TestCheckJsonlHeartbeat:
         result = check_jsonl(jsonl_path, heartbeat_stale_s=600)
         assert result["heartbeat_stale"]
         assert any("HEARTBEAT_STUCK" in i for i in result["issues"])
+
+    def test_zero_progress_fresh_heartbeat_detected(self, tmp_path):
+        """check_jsonl detects zero-progress stuck even with fresh heartbeat."""
+        rs = "test_zero_progress_run"
+        hb_path = tmp_path / f"{rs}.heartbeat.json"
+
+        hb = {
+            "started_at": time.time() - 2000,
+            "updated_at": time.time() - 5,  # fresh
+            "total_expected": 10,
+            "rows_done": 0,
+            "current_pid": os.getpid(),
+            "status": "running",
+            "run_series": rs,
+            "active_elapsed_s": 0.0,
+            "active_strategy": "budget_tight_dummy",
+            "active_instance": "django__django-10924",
+        }
+        hb_path.write_text(json.dumps(hb))
+
+        jsonl_path = tmp_path / "test.jsonl"
+        jsonl_path.write_text("")  # 0 rows
+
+        result = check_jsonl(jsonl_path, heartbeat_stale_s=600)
+        assert result["heartbeat_suspicious"]
+        assert any("ZERO_PROGRESS" in i for i in result["issues"])
 
     def test_ok_heartbeat_not_suspicious(self, tmp_path):
         """Healthy heartbeat should not trigger any issues."""
