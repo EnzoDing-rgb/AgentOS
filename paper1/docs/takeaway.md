@@ -26,6 +26,8 @@
 8. **Safe commit/push 需要多层 gate。** 至少需要：`git diff --check`（检测冲突标记）、secret scan（API key/token 模式）、可选的 pytest。只 stage 特定目录（`.autoresearch/`、`docs/`），不要 `git add -A`。
 9. **`.gitignore` 的 trailing slash 陷阱。** `dir/` 只匹配目录，不匹配同名 symlink。如果一个路径既可能是目录也可能是 symlink，需要在 `.gitignore` 里写两行（`dir/` 和 `dir`）。
 10. **goal-loop 测试不能用预创建 metadata 的方式测 WARN。** 因为 goal-loop 会 re-run worker 并覆盖。正确做法：写一个 custom worker command 产出 WARN-triggering 输出（real API profile + marker_appended）。
+11. **Dispatch wrapper 比 per-issue worker-cmd 更轻量。** 不需要修改 goal-loop 架构，只需在 prompt 里加 `<!-- WORKER:fake -->` 或 `<!-- WORKER:api -->` HTML comment marker。一个 worker-cmd 就能同时支持 fake 和 real API profile。
+12. **Real API smoke 必须考虑模型输出截断。** deepseek-v4-flash max_tokens=2048 时，长篇 prompt + 大段 doc 会导致输出在 marker 前截断。修复：缩短 prompt + 引用真正会被 worker 发送的 docs。
 
 ### 031 / True LOO / BudgetMemory Cascade Takeaway
 

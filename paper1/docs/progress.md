@@ -81,7 +81,7 @@
 
 ### 最新改动（2026-06-05）
 
-- **Phase K (041)**：AutoResearch 闭环。`goal-loop` 一键命令、owner_decision.md Codex 前端、safe commit/push、goal summary 自洽、6 个 goal-loop 测试、Goal 041 smoke ALL PASS。详细报告：`paper1/docs/reports/041.md`。
+- **Phase L (042)**：Real API goal-loop smoke。Dispatch wrapper (`<!-- WORKER:fake/worker:api -->`) + real API worker → goal-loop → deterministic review → all PASS。Push-path validated（secret scan / diff --check / test suite / commit / push）。总 API cost ~$0.002，远在 $0.05 cap 内。详细报告：`paper1/docs/reports/042.md`。
 - **Phase J-fix (040)**：Evidence gate hardening。Goal completion invariants、fake worker auto-detect、factual heuristic 上下文感知、marker_appended 强制 WARN。040 报告更新为 COMPLETE ALL PASS。
 - **Phase J (040)**：Evidence ledger + review gate。7-check deterministic review、fake/real worker auto-detect、worker_metadata.json + factual header 审计 trail。`paper1/docs/reports/040.md`。
 - **039**：Real API goal smoke。两次 DeepSeek API 调用，成本 ~$0.002。Goal summary 自洽性修复。`paper1/docs/reports/039.md`。
@@ -95,7 +95,7 @@
 - **010**：P0 修复（API 价格校准、worktree crash、resolved=None）+ 009 成本重解 $34K→$10.63。`reports/010.md`。
 - **009**：Overnight batch loop。56 recorded rows，BudgetFlow 正向信号但数据不够干净。3 个新 SymPy gold-PASS task。`reports/009.md`。
 - **008**：首次 model matrix。14/15 records。`reports/008.md`。
-- 已写：`reports/006.md`、`007.md`、`008.md`、`009.md`、`010.md`、`011.md`、`012.md`、`015.md`、`016.md`、`039.md`、`040.md`、`041.md`。
+- 已写：`reports/006.md`、`007.md`、`008.md`、`009.md`、`010.md`、`011.md`、`012.md`、`015.md`、`016.md`、`039.md`、`040.md`、`041.md`、`042.md`。
 - 已补：mini-swe-agent 依赖，compare runner import/`--help`/全链路恢复。
 - 已实现/接入：Automatic Budgeting v1 与 memory 写入。Memory 已清理（备份至 `.bak_010`），下次运行自动新建。
 - 已修/部分修：SymPy `py.test` compat；Django `django.setup()` compat。但 Django 新 task 仍卡 `INSTALLED_APPS`。
@@ -179,6 +179,7 @@ total_resolved_value_under_budget = sum(value_i * harness_resolved_i)
 | AutoResearch goal loop | ✅ 039 real API goal smoke PASS；Phase K 完成 goal-loop 闭环 |
 | AutoResearch evidence ledger + review gate | ✅ Phase J：evidence 自洽；deterministic review gate 硬化 |
 | AutoResearch goal-loop + owner_decision + commit/push | ✅ Phase K：`goal-loop` 一键闭环；owner_decision.md；safe commit/push |
+| AutoResearch real API goal-loop smoke + dispatch | ✅ Phase L：dispatch wrapper；real API goal-loop；push-path validated |
 
 ---
 
