@@ -521,18 +521,17 @@ def diagnose_localization_progress(
     data_dir: str | Path,
     manifest: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Offline diagnostic: why is LOCALIZATION has_progress always 0?
+    """Offline diagnostic for LOCALIZATION file-exploration activity.
 
-    Extracts file paths from bash_digest and assistant_content_head for
-    localization turns. Reports file-activity metrics without requiring
-    gold patch data. If gold files are unavailable, reports "missing evidence"
-    rather than pretending progress is 0.
+    Prefers the runtime ``touched_file_paths`` field when present (Task A
+    output). Falls back to regex extraction from ``bash_digest`` and
+    ``assistant_content_head`` for traces produced before the field was added.
 
-    Returns a diagnostic summary with per-task file activity.
+    Returns a diagnostic summary with per-task file activity and extraction
+    method breakdown.
     """
     data_dir = Path(data_dir)
 
-    # Collect all clean runs
     if manifest is not None:
         jsonl_files = [data_dir / entry["file"] for entry in manifest["runs"]]
     else:
@@ -540,11 +539,14 @@ def diagnose_localization_progress(
 
     loc_turns = 0
     loc_with_files = 0
+    runtime_field_turns = 0
+    fallback_regex_turns = 0
     task_file_activity: dict[str, dict] = defaultdict(lambda: {
         "loc_turns": 0,
         "loc_with_files": 0,
+        "runtime_field_turns": 0,
+        "fallback_regex_turns": 0,
         "unique_files": set(),
-        "all_files": [],
     })
 
     for fp in jsonl_files:
@@ -567,34 +569,47 @@ def diagnose_localization_progress(
                 loc_turns += 1
                 task_file_activity[iid]["loc_turns"] += 1
 
-                # Extract file paths from bash_digest and assistant_content_head
-                files_found = set()
-                bash_digest = str(t.get("bash_digest", "") or "")
-                content_head = str(t.get("assistant_content_head", "") or "")
+                files_found: set[str] = set()
+                used_runtime = False
 
-                # Bash digest: commands like grep/sed/python with file paths
-                for m in _FILE_PATH_RE.finditer(bash_digest):
-                    p = m.group(1)
-                    # Filter out non-source paths (test outputs, temp files, etc.)
-                    if not p.startswith("test_") and "/tmp/" not in p:
-                        files_found.add(p)
-
-                # Content head: THOUGHT blocks mention file paths
-                for m in _FILE_PATH_RE.finditer(content_head):
-                    p = m.group(1)
-                    if not p.startswith("test_") and "/tmp/" not in p:
-                        files_found.add(p)
+                # Preferred: runtime touched_file_paths field (Task A)
+                tfp = t.get("touched_file_paths")
+                if tfp is not None and isinstance(tfp, list):
+                    used_runtime = True
+                    runtime_field_turns += 1
+                    task_file_activity[iid]["runtime_field_turns"] += 1
+                    for p in tfp:
+                        p_str = str(p).strip()
+                        if p_str and "/tmp/" not in p_str:
+                            files_found.add(p_str)
+                else:
+                    # Fallback: regex extraction from bash_digest / content_head
+                    fallback_regex_turns += 1
+                    task_file_activity[iid]["fallback_regex_turns"] += 1
+                    bash_digest = str(t.get("bash_digest", "") or "")
+                    content_head = str(t.get("assistant_content_head", "") or "")
+                    for m in _FILE_PATH_RE.finditer(bash_digest):
+                        p = m.group(1)
+                        if not p.startswith("test_") and "/tmp/" not in p:
+                            files_found.add(p)
+                    for m in _FILE_PATH_RE.finditer(content_head):
+                        p = m.group(1)
+                        if not p.startswith("test_") and "/tmp/" not in p:
+                            files_found.add(p)
 
                 if files_found:
                     loc_with_files += 1
                     task_file_activity[iid]["loc_with_files"] += 1
                     task_file_activity[iid]["unique_files"].update(files_found)
-                    task_file_activity[iid]["all_files"].extend(sorted(files_found))
 
     # Build per-task summary
     tasks_summary = {}
     for iid, activity in sorted(task_file_activity.items()):
         unique = sorted(activity["unique_files"])
+        runtime_frac = (
+            round(activity["runtime_field_turns"] / activity["loc_turns"], 4)
+            if activity["loc_turns"] > 0 else 0.0
+        )
         tasks_summary[iid] = {
             "loc_turns": activity["loc_turns"],
             "loc_with_files": activity["loc_with_files"],
@@ -602,29 +617,28 @@ def diagnose_localization_progress(
                 activity["loc_with_files"] / activity["loc_turns"], 4
             ) if activity["loc_turns"] > 0 else 0.0,
             "unique_files_count": len(unique),
-            "top_files": unique[:10],  # first 10 unique files
+            "top_files": unique[:10],
+            "runtime_field_fraction": runtime_frac,
         }
 
     overall_rate = loc_with_files / loc_turns if loc_turns > 0 else 0.0
+    runtime_available = runtime_field_turns > 0
 
     return {
         "meta": {
-            "note": "Offline diagnostic. Extracts file paths from bash_digest and "
-                    "assistant_content_head in LOCALIZATION turns. Does NOT require "
-                    "gold patch data. Reports file activity, not verification.",
+            "note": "Prefers runtime touched_file_paths field when present; "
+                    "falls back to regex extraction from bash_digest / "
+                    "assistant_content_head for legacy traces.",
             "caveat": "has_progress is always False for LOCALIZATION in runtime "
                       "traces because the progress signal only fires on file "
-                      "modifications (REPAIR/VALIDATION), not on file exploration. "
-                      "This diagnostic recovers the missing signal from bash "
-                      "command text.",
+                      "modifications (REPAIR/VALIDATION), not on file exploration.",
             "total_loc_turns": loc_turns,
             "loc_turns_with_files": loc_with_files,
             "overall_file_activity_rate": round(overall_rate, 4),
+            "runtime_field_available": runtime_available,
+            "runtime_field_turns": runtime_field_turns,
+            "fallback_regex_turns": fallback_regex_turns,
             "gold_patch_available": False,
-            "recommendation": "Runtime should track opened/read file paths "
-                              "explicitly. Until then, this offline diagnostic "
-                              "provides a lower-bound estimate of localization "
-                              "activity.",
         },
         "per_task": tasks_summary,
     }

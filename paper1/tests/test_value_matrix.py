@@ -887,3 +887,69 @@ class TestLocalizationDiagnostic:
             # Check top_files contains extracted paths
             assert any("utils.py" in f for f in ts["top_files"]) or \
                    any("helpers.py" in f for f in ts["top_files"])
+
+    def test_runtime_field_preferred_over_fallback(self):
+        """touched_file_paths should be used directly when present."""
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            _write_jsonl(data_dir / "test.jsonl", [
+                {"instance_id": "a", "strategy": "bf", "turn_traces": [
+                    {"stage": "LOCALIZATION", "backend_tier": 2,
+                     "has_progress": False,
+                     "bash_digest": "grep x wrong_file.py",
+                     "assistant_content_head": "also wrong_file2.py",
+                     "touched_file_paths": ["src/real.py", "tests/real_test.py"]},
+                ]},
+            ])
+            result = diagnose_localization_progress(data_dir)
+            assert result["meta"]["runtime_field_available"] is True
+            assert result["meta"]["runtime_field_turns"] == 1
+            assert result["meta"]["fallback_regex_turns"] == 0
+            assert result["meta"]["loc_turns_with_files"] == 1
+            ts = result["per_task"]["a"]
+            assert ts["unique_files_count"] >= 2  # got both runtime paths
+            assert ts["runtime_field_fraction"] == 1.0
+
+    def test_fallback_when_touched_file_paths_absent(self):
+        """Old traces without touched_file_paths should use regex fallback."""
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            _write_jsonl(data_dir / "test.jsonl", [
+                {"instance_id": "a", "strategy": "bf", "turn_traces": [
+                    {"stage": "LOCALIZATION", "backend_tier": 2,
+                     "has_progress": False,
+                     "bash_digest": "cat src/main.py",
+                     "assistant_content_head": ""},
+                ]},
+            ])
+            result = diagnose_localization_progress(data_dir)
+            assert result["meta"]["runtime_field_available"] is False
+            assert result["meta"]["runtime_field_turns"] == 0
+            assert result["meta"]["fallback_regex_turns"] == 1
+            assert result["meta"]["loc_turns_with_files"] == 1
+
+    def test_mixed_runtime_and_fallback(self):
+        """Mixture of traces with and without the field."""
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            _write_jsonl(data_dir / "test.jsonl", [
+                {"instance_id": "a", "strategy": "bf", "turn_traces": [
+                    {"stage": "LOCALIZATION", "backend_tier": 2,
+                     "has_progress": False,
+                     "bash_digest": "cat src/a.py",
+                     "assistant_content_head": "",
+                     "touched_file_paths": ["src/a.py"]},
+                    {"stage": "LOCALIZATION", "backend_tier": 2,
+                     "has_progress": False,
+                     "bash_digest": "cat src/b.py",
+                     "assistant_content_head": ""},
+                ]},
+            ])
+            result = diagnose_localization_progress(data_dir)
+            assert result["meta"]["runtime_field_available"] is True
+            assert result["meta"]["runtime_field_turns"] == 1
+            assert result["meta"]["fallback_regex_turns"] == 1
+            # Both turns found files
+            assert result["meta"]["loc_turns_with_files"] == 2
+            ts = result["per_task"]["a"]
+            assert ts["runtime_field_fraction"] == 0.5

@@ -45,6 +45,7 @@ from .bash_stage import (
     _VALIDATION_AGENT_PHASES,
     bash_has_progress,
     classify_routing_stage,
+    extract_touched_file_paths,
 )
 from .stall_guard import check_stagnation, normalize_bash_command
 from .message_utils import estimate_input_tokens, extract_bash_context
@@ -149,6 +150,7 @@ def _build_turn_trace(
     gold_edit_guard_turns: int = 0,
     gold_edit_guard_limit: int | None = None,
     gold_edit_guard_active: bool = False,
+    touched_file_paths: list[str] | None = None,
 ) -> dict:
     """Build a single turn-trace dict for observability (no side effects)."""
     trace: dict[str, Any] = {
@@ -156,6 +158,7 @@ def _build_turn_trace(
         "agent_phase": agent_phase,
         "stage": stage.name if stage else None,
         "bash_digest": (bash_command or "")[:120],
+        "touched_file_paths": touched_file_paths or [],
         "input_tokens": input_tokens,
         "expected_costs": expected_costs,
         "base_pressure": round(base_pressure, 4),
@@ -556,6 +559,7 @@ class BudgetFlowLitellmModel:
                         agent_phase=self.agent_phase,
                         stage=stage,
                         bash_command=bash_command,
+                        touched_file_paths=extract_touched_file_paths(bash_command),
                         input_tokens=input_tokens,
                         expected_costs=expected_costs,
                         base_pressure=base_pressure,
@@ -631,6 +635,7 @@ class BudgetFlowLitellmModel:
                     agent_phase=self.agent_phase,
                     stage=stage,
                     bash_command=bash_command,
+                    touched_file_paths=extract_touched_file_paths(bash_command),
                     input_tokens=input_tokens,
                     expected_costs=expected_costs,
                     base_pressure=base_pressure,
@@ -680,6 +685,7 @@ class BudgetFlowLitellmModel:
                 agent_phase=self.agent_phase,
                 stage=stage,
                 bash_command=bash_command,
+                touched_file_paths=extract_touched_file_paths(bash_command),
                 input_tokens=input_tokens,
                 expected_costs=expected_costs,
                 base_pressure=base_pressure,

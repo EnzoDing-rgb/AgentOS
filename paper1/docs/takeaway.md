@@ -16,6 +16,14 @@
 
 5. **Two-strategy task pools make discriminative profiles useless.** With rarity ∈ {0, 1}, `discriminative_rarity` is flat at 1.0 for all tasks. A minimum of 3 strategies is needed for intermediate rarity values. This is a data constraint, not a formula problem — the tests verify the formula is correct.
 
+### Phase Q / Runtime Trace + Diagnostic + Paid Smoke Gate Takeaway
+
+1. **Runtime fields beat regex recovery every time.** Adding `touched_file_paths` to turn traces is a one-function change in the bash executor. It replaces a fragile offline regex diagnostic that recovers ~63% of paths from truncated bash_digest text. Capture data at generation time — don't reconstruct it later. The cost is zero: a regex on the bash command string at trace-build time.
+
+2. **Two-pass regex avoids quoted-fragment noise.** Quoted paths with spaces (e.g., `cat 'src/foo bar.py'`) require a separate quoted-path regex before the unquoted-path pass. Without stripping quoted substrings first, the unquoted regex will match fragments like `bar.py` and produce false paths.
+
+3. **API key gate is always step zero.** Even a $0.50 paid smoke can't run without keys. Check env vars before designing the experiment. The smoke design (2 tasks, 2-3 strategies, ≤$0.50) is ready — but blocked until keys exist.
+
 ### Phase O / Value Matrix + Progress Calibration Takeaway
 
 1. **Selection-bias is the central challenge for progress calibration.** From 639 turns, REPAIR T2=41% vs T3=24% and VALIDATION T2=50% vs T3=19%. These negative deltas do NOT mean T3 is worse — T3 turns are selected on harder situations. Any naive plug of these rates into `expected_progress_gain` would encode the bias into the router. De-biasing requires held-out calibration or instrumental variable design.

@@ -4,6 +4,17 @@
 
 ## 当前快照（2026-06-05）
 
+### 047 后 Phase Q 状态
+
+- **Phase Q 部分完成：** Tasks A/B/C/E 完成，Task D (paid smoke) BLOCKED — API keys 未设置。详细报告：`docs/reports/047.md`。
+- **Task A — runtime touched_file_paths：** 在 `bash_stage.py` 添加 `extract_touched_file_paths()`，支持 quoted paths (含空格) 和 unquoted paths，排除 glob/URL。`_build_turn_trace()` 所有 3 个 call site 已接入。22 tests pass (+17 新)。
+- **Task B — 离线诊断更新：** `diagnose_localization_progress()` 优先读 `touched_file_paths`，老 trace fallback regex。Artifact 区分 `runtime_field_available` / `runtime_field_turns` / `fallback_regex_turns`。10 tests pass (+3 新)。
+- **Task C — Clean universe 扩展：** 扫描所有 JSONL，确认只有 2 strategies (BO, BF)。无 3rd strategy 数据。047 manifest 保留 046 条目，记录 limitation。discriminative_rarity 仍需 3+ strategies 才生效。
+- **Task D — Paid smoke：** BLOCKED。DEEPSEEK_API_KEY 和 OPENAI_API_KEY 均未设置。Smoke design 已就绪 ($0.50, 2 tasks × 2-3 strategies)，等待 key。
+- **Task E — AutoResearch 回归：** 186/186 focused tests pass。Goal-loop smoke (047-phase-q-smoke) exit 0。
+- **322 total tests pass，git diff --check CLEAN。**
+- **关键变化：** `touched_file_paths` 字段现已存在于每个 turn trace，localization file-exploration 信号从 "dead" 变为 "recoverable at runtime"。等 paid smoke 产生带此字段的数据后，runtime_field_available 将从 false 变为 true。
+
 ### 046 后 Phase P 状态
 
 - **Phase P 完成：** 修复 Phase O 审稿风险。`solve_rarity` 替换为 `discriminative_rarity` (peak at r=0.5) + `unsolved_difficulty` (ceiling candidate)，叙事与公式一致。新增 clean-run manifest (`value_matrix_clean_runs.json`) + `--manifest` CLI。离线 localization 诊断：136/215 turns (63.3%) 有可识别文件路径，progress signal 可恢复。Matched-task de-bias：23 对 task 内 T2/T3 比较，8/12 非 tie 对显示 T3 更低（within-task selection bias 确认）。79 new tests。297 total tests pass。**不建议启动 paid run，数据限制（2 strategies, 10 tasks）使 discriminative_rarity flat。** 详细报告：`docs/reports/046.md`。
