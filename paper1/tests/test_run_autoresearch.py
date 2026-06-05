@@ -122,7 +122,7 @@ class TestWorkerBridge:
         _run(paper1_tmp, "create", "--issue-id", "042-fix-bug", "--prompt-file", str(prompt_file))
         rc = _run(
             paper1_tmp, "run", "--issue-id", "042-fix-bug",
-            "--worker-cmd", "echo 'worker done' > {output}",
+            "--worker-cmd", "cat {prompt} > /dev/null; echo 'worker done' > {output}",
         )
         assert rc == 0
         output = paper1_tmp / ".autoresearch" / "workflows" / "042-fix-bug" / "attempts" / "001" / "worker_output.md"
@@ -133,13 +133,104 @@ class TestWorkerBridge:
         _run(paper1_tmp, "create", "--issue-id", "042-fix-bug", "--prompt-file", str(prompt_file))
         rc = _run(
             paper1_tmp, "run", "--issue-id", "042-fix-bug",
-            "--worker-cmd", "exit 1",
+            "--worker-cmd", "cat {prompt} > /dev/null; echo fail > {output}; exit 1",
         )
-        assert rc == 0  # CLI returns 0, but workflow should be failed
+        assert rc == 1  # CLI returns 1 on worker failure
         from budgetflow.autoresearch_coordinator import AutoResearchCoordinator
         c = AutoResearchCoordinator(paper1_root=paper1_tmp)
         state = c.load_state("042-fix-bug")
         assert state.status == "failed"
+
+
+# ── Worker-cmd validation ────────────────────────────────────────────────────
+
+class TestWorkerCmdValidation:
+    def test_missing_prompt_rejected(self, paper1_tmp, prompt_file):
+        _run(paper1_tmp, "create", "--issue-id", "test", "--prompt-file", str(prompt_file))
+        with pytest.raises(SystemExit) as exc:
+            _run(paper1_tmp, "run", "--issue-id", "test", "--worker-cmd", "cat {output}")
+        assert exc.value.code == 1
+
+    def test_missing_output_rejected(self, paper1_tmp, prompt_file):
+        _run(paper1_tmp, "create", "--issue-id", "test", "--prompt-file", str(prompt_file))
+        with pytest.raises(SystemExit) as exc:
+            _run(paper1_tmp, "run", "--issue-id", "test", "--worker-cmd", "cat {prompt}")
+        assert exc.value.code == 1
+
+    def test_both_missing_rejected(self, paper1_tmp, prompt_file):
+        _run(paper1_tmp, "create", "--issue-id", "test", "--prompt-file", str(prompt_file))
+        with pytest.raises(SystemExit) as exc:
+            _run(paper1_tmp, "run", "--issue-id", "test", "--worker-cmd", "echo hello")
+        assert exc.value.code == 1
+
+    def test_both_present_accepted(self, paper1_tmp, prompt_file):
+        _run(paper1_tmp, "create", "--issue-id", "test", "--prompt-file", str(prompt_file))
+        rc = _run(
+            paper1_tmp, "run", "--issue-id", "test",
+            "--worker-cmd", "cat {prompt} > {output}",
+        )
+        assert rc == 0
+
+
+# ── List filters ─────────────────────────────────────────────────────────────
+
+class TestListFilters:
+    def test_list_filter_by_status(self, paper1_tmp, prompt_file):
+        _run(paper1_tmp, "create", "--issue-id", "task-a", "--prompt-file", str(prompt_file))
+        _run(paper1_tmp, "run", "--issue-id", "task-a", "--dry-run")
+        _run(paper1_tmp, "create", "--issue-id", "task-b", "--prompt-file", str(prompt_file))
+        rc = _run(paper1_tmp, "list", "--status", "running")
+        assert rc == 0
+
+    def test_list_filter_paused_only(self, paper1_tmp, prompt_file):
+        _run(paper1_tmp, "create", "--issue-id", "task-a", "--prompt-file", str(prompt_file))
+        _run(paper1_tmp, "run", "--issue-id", "task-a", "--paid-3x10", "3", "10")
+        _run(paper1_tmp, "create", "--issue-id", "task-b", "--prompt-file", str(prompt_file))
+        rc = _run(paper1_tmp, "list", "--paused-only")
+        assert rc == 0
+
+    def test_list_filter_none_found(self, paper1_tmp, prompt_file):
+        _run(paper1_tmp, "create", "--issue-id", "task-a", "--prompt-file", str(prompt_file))
+        rc = _run(paper1_tmp, "list", "--status", "complete")
+        assert rc == 0
+
+
+# ── Next command ──────────────────────────────────────────────────────────────
+
+class TestNext:
+    def test_next_pending(self, paper1_tmp, prompt_file):
+        _run(paper1_tmp, "create", "--issue-id", "task", "--prompt-file", str(prompt_file))
+        rc = _run(paper1_tmp, "next", "--issue-id", "task")
+        assert rc == 0
+
+    def test_next_running(self, paper1_tmp, prompt_file):
+        _run(paper1_tmp, "create", "--issue-id", "task", "--prompt-file", str(prompt_file))
+        _run(paper1_tmp, "run", "--issue-id", "task", "--dry-run")
+        rc = _run(paper1_tmp, "next", "--issue-id", "task")
+        assert rc == 0
+
+    def test_next_failed_retry_allowed(self, paper1_tmp, prompt_file):
+        _run(paper1_tmp, "create", "--issue-id", "task", "--prompt-file", str(prompt_file))
+        _run(paper1_tmp, "run", "--issue-id", "task", "--worker-cmd", "cat {prompt} > /dev/null; echo fail > {output}; exit 1")
+        rc = _run(paper1_tmp, "next", "--issue-id", "task")
+        assert rc == 0
+
+    def test_next_paused(self, paper1_tmp, prompt_file):
+        _run(paper1_tmp, "create", "--issue-id", "task", "--prompt-file", str(prompt_file))
+        _run(paper1_tmp, "run", "--issue-id", "task", "--paid-3x10", "3", "10")
+        rc = _run(paper1_tmp, "next", "--issue-id", "task")
+        assert rc == 0
+
+    def test_next_complete(self, paper1_tmp, prompt_file):
+        _run(paper1_tmp, "create", "--issue-id", "task", "--prompt-file", str(prompt_file))
+        _run(paper1_tmp, "run", "--issue-id", "task", "--dry-run")
+        _run(paper1_tmp, "mark-complete", "--issue-id", "task")
+        rc = _run(paper1_tmp, "next", "--issue-id", "task")
+        assert rc == 0
+
+    def test_next_nonexistent(self, paper1_tmp):
+        rc = _run(paper1_tmp, "next", "--issue-id", "nonexistent")
+        assert rc == 1
 
 
 # ── Status ────────────────────────────────────────────────────────────────────
@@ -270,14 +361,14 @@ class TestEndToEnd:
         """create → run (worker fails) → retry → mark-failed."""
         _run(paper1_tmp, "create", "--issue-id", "task", "--prompt-file", str(prompt_file))
         # First run: worker fails.
-        _run(paper1_tmp, "run", "--issue-id", "task", "--worker-cmd", "exit 1")
+        _run(paper1_tmp, "run", "--issue-id", "task", "--worker-cmd", "cat {prompt} > /dev/null; echo fail > {output}; exit 1")
         from budgetflow.autoresearch_coordinator import AutoResearchCoordinator
         c = AutoResearchCoordinator(paper1_root=paper1_tmp)
         state = c.load_state("task")
         assert state.status == "failed"
         assert state.attempt == 1
         # Second run: retry succeeds.
-        _run(paper1_tmp, "run", "--issue-id", "task", "--worker-cmd", "echo ok > {output}")
+        _run(paper1_tmp, "run", "--issue-id", "task", "--worker-cmd", "cat {prompt} > /dev/null; echo ok > {output}")
         state = c.load_state("task")
         assert state.status == "complete"
         assert state.attempt == 2
