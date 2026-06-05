@@ -1,5 +1,123 @@
 # BudgetFlow AutoResearch Workflow
 
+## Current Status — 2026-06-05
+
+AutoResearch is not yet a usable autonomous research loop in this repository.
+It currently consists of:
+
+- this workflow design document;
+- `.autoresearch/` prompts, issue templates, workflow logs, and one read-only smoke;
+- `src/budgetflow/autoresearch_guard.py` safety policy;
+- `tests/test_autoresearch_guard.py` guard tests.
+
+The previous read-only smoke was created before the directory migration and
+still records the old `/Lishun/_archive/.../AgentOS/paper1` project path. Treat
+that smoke as historical evidence that the concept was tested once, not as proof
+that AutoResearch is installed or runnable in the current `/root/.dev/AgentOS`
+workspace.
+
+Current implementation stage:
+
+```text
+design + guard policy + stale read-only smoke
+!= runnable coordinator
+```
+
+## Confirmed Direction
+
+AutoResearch exists to remove the owner from the manual copy-paste loop between
+Codex and the Worker. It should not become a fully autonomous system that
+silently changes research direction or starts expensive experiments.
+
+The intended interaction model is:
+
+```text
+Owner <-> Codex front-end/reviewer <-> AutoResearch coordinator <-> Worker
+```
+
+Codex remains the research lead, reviewer, and owner-facing front-end.
+AutoResearch is the local coordinator that writes prompts, invokes the Worker,
+captures outputs, stores checkpoints, and asks Codex for a gate decision.
+
+Worker agents may modify `src/`, `tests/`, docs, and reports when an issue
+explicitly authorizes that work. AutoResearch itself should not expand scope. It
+records and coordinates the authorized work.
+
+## Implementation Principles
+
+| Principle | Rule |
+|---|---|
+| Non-invasive by default | AutoResearch must be removable without changing BudgetFlow experiment semantics. |
+| Human intervention preserved | The owner can pause, override, or manually continue at any point. |
+| Codex gate required | Worker self-report is never enough; Codex reviews artifacts before acceptance. |
+| Two retries for small tasks | A failed bounded issue may be retried automatically up to two times. The third failure escalates to Codex/owner judgment. |
+| Frequent commits | Accepted small changes should be committed and pushed regularly, with a practical target around ten-minute cadence rather than every tiny file write. |
+| Every interaction lands on disk | Worker prompts, worker outputs, Codex reviews, status, and final reports must be written under `.autoresearch/` and/or `docs/reports/`. |
+| Paid experiment gate | Any paid 3x10 or larger experiment requires owner approval before execution. |
+| Runtime locality | High-churn workflow runtime belongs under `/tmp`; durable state belongs under `.autoresearch/`, `docs/reports/`, and git history. |
+
+## Pause Conditions
+
+AutoResearch must stop and ask the owner through Codex before:
+
+- any paid 3 policies x 10 tasks experiment or larger run;
+- changing the paper's main claim, North Star, or evaluation metric;
+- large runner, workflow, harness, or storage architecture rewrites;
+- deleting, migrating, or bulk-cleaning experiment data;
+- official SWE-bench Docker runs or other high-operational-risk harness runs;
+- worker failure after two automatic retries;
+- any action whose expected cost, runtime, or rollback risk is materially higher
+  than the current issue scope.
+
+## Target Directory Layout
+
+```text
+paper1/
+  .autoresearch/
+    program.md
+    agents/
+      codex.md
+      worker.md
+    issues/
+      034-runtime-fix.md
+    workflows/
+      034/
+        state.json
+        worker_prompt.md
+        worker_output.md
+        codex_review.md
+        attempts/
+          001/
+          002/
+        final.md
+  docs/
+    autoresearch_workflow.md
+    reports/
+      034.md
+```
+
+High-churn temporary files, subprocess logs, scratch checkouts, and intermediate
+Worker runtime state should go under a `/tmp/budgetflow-autoresearch-<goal>/`
+runtime root. Accepted prompts, reviews, reports, and checkpoint summaries
+belong under `.autoresearch/` and `docs/reports/`.
+
+## Minimum Viable Coordinator
+
+The first useful AutoResearch implementation should support:
+
+1. create an issue from a Codex-approved prompt;
+2. write the Worker prompt to `.autoresearch/workflows/<id>/worker_prompt.md`;
+3. invoke the Worker through a local CLI/script in the current workspace;
+4. capture stdout/stderr and require a Markdown worker report on disk;
+5. ask Codex to review artifacts;
+6. retry a bounded failed issue up to two times;
+7. stop on pause conditions;
+8. commit and push accepted small changes after Codex gate approval;
+9. write a final workflow summary so work can resume after a server crash.
+
+This is deliberately lighter than a full autonomous merge/experiment system. It
+is enough to remove manual message carrying while preserving owner control.
+
 ## Goal
 
 Use AutoResearch to remove the human operator from the message-passing loop between Codex and Claude Code.
