@@ -10,8 +10,8 @@
 - **Value Proposition 已更新：** 论文主指标应从 `resolved tasks per dollar` / per-task cost 转为 `resolved value per dollar`。也就是在同一 hard budget 下，系统是否解决了价值量最高的一批任务，而不是只比较每个任务花多少钱。
 - **BudgetMemory 的定位也随之改变：** 它不只是 task cost memory；长期应学习 task value、difficulty、model success、cap sufficiency、failure axis 和 marginal escalation benefit，服务 value-cost allocation。
 - **现有 030/031 实验仍有工程价值，但不再足够支撑新主张。** 031 证明了 true LOO BudgetMemory cascade 干净；030/031 也证明在 equal-value 假设下 BudgetFlow 暂未稳定 beat BudgetOnly。但在新 Value Proposition 下，下一轮必须重设 Key Indicator 和 task value model 后再做实验。
-- **AutoResearch 进展很大：** 034 coordinator、035 CLI、036 no-paid smoke、037 `claude -p` real worker blocker、038 thin API worker、039 goal-level loop + real API smoke 已形成从 issue 到 workflow artifact 的可恢复闭环原型。
-- **AutoResearch 当前判断：** 低成本 Real API smoke 已证明 thin API worker 路线可行；039 的两次 DeepSeek-backed API 调用成本约 $0.002。但 goal-level evidence ledger 仍有一致性缺陷：goal JSON / summary status 不一致，`total_api_calls` 未聚合，review 还会被 PASS marker 带偏。下一步应先做 evidence ledger + deterministic review gate hardening，而不是继续扩大功能。
+- **AutoResearch Phase K 完成：闭环。** 034-041 已完成完整闭环：coordinator → CLI → fake/real workers → goal-loop → deterministic review gate → owner_decision → safe commit/push → 报告。Owner 现在可以用一条 `goal-loop` 命令跑完整 cycle，exit code 区分 complete/owner-review/failure。
+- **AutoResearch 当前判断：** Phase K 已把 AutoResearch 从"能跑 smoke"推进到"基本减少 owner 人肉搬运"。goal-loop 自动化了 issue 遍历 + review + mark-complete/retry/pause + 报告生成 + commit/push。证据 ledger 自洽（goal JSON ↔ summary ↔ metadata ↔ review）。下一步应做 real API goal-loop smoke 验证和 `_safe_commit_push` 实战测试。
 - **运行环境结论：** 当前开发目录 `/root/.dev/AgentOS` 和 `/tmp/budgetflow-runtime` 避开了 `/Lishun` NFS 小文件 I/O。runtime-root 重构已把 worktrees、repo cache、locks、trace scratch 迁出 repo/NFS。`external/mini-swe-agent` symlink 仍是待清理技术债，不要提交。
 - **最新实验卡点：** BudgetFlow paid benchmark 暂停推进。最近 clean BudgetFlow 实验仍是 031；之后的 034-039 是 AutoResearch / workflow infrastructure。037 卡点是 `claude -p` session overhead 超出小额 smoke budget；038 用 thin API worker 绕过。
 - **下一条并行主线：** 重新设计 Key Indicator：为 SWE-bench task 赋予 value / difficulty / expected payoff，评估 `sum(value * resolved) / cost` 或同 hard budget 下 resolved value total。该实验设计与 AutoResearch 证据闭环是并行任务。
@@ -79,7 +79,12 @@
 
 注：当前 main pool T1 标记为 "skipped"，可用 tier 实际为 [T2, T3]。
 
-### 最新改动（2026-06-03）
+### 最新改动（2026-06-05）
+
+- **Phase K (041)**：AutoResearch 闭环。`goal-loop` 一键命令、owner_decision.md Codex 前端、safe commit/push、goal summary 自洽、6 个 goal-loop 测试、Goal 041 smoke ALL PASS。详细报告：`paper1/docs/reports/041.md`。
+- **Phase J-fix (040)**：Evidence gate hardening。Goal completion invariants、fake worker auto-detect、factual heuristic 上下文感知、marker_appended 强制 WARN。040 报告更新为 COMPLETE ALL PASS。
+- **Phase J (040)**：Evidence ledger + review gate。7-check deterministic review、fake/real worker auto-detect、worker_metadata.json + factual header 审计 trail。`paper1/docs/reports/040.md`。
+- **039**：Real API goal smoke。两次 DeepSeek API 调用，成本 ~$0.002。Goal summary 自洽性修复。`paper1/docs/reports/039.md`。
 
 - **016**：3 bug fixes + routing verification。bf_tight 5/5 (100%)。all_pro stability audit 11/11 PASS。`reports/016.md`。
 - **015**：postfix_012_trace_sanity 完成。25/25 rows，0 crashes。Routing fix verified — bf_tight 84% T2, bf_loose 77% T2。12 passes 全部 authentic。`reports/015.md`。
@@ -90,7 +95,7 @@
 - **010**：P0 修复（API 价格校准、worktree crash、resolved=None）+ 009 成本重解 $34K→$10.63。`reports/010.md`。
 - **009**：Overnight batch loop。56 recorded rows，BudgetFlow 正向信号但数据不够干净。3 个新 SymPy gold-PASS task。`reports/009.md`。
 - **008**：首次 model matrix。14/15 records。`reports/008.md`。
-- 已写：`reports/006.md`、`007.md`、`008.md`、`009.md`、`010.md`、`011.md`、`012.md`、`015.md`、`016.md`。
+- 已写：`reports/006.md`、`007.md`、`008.md`、`009.md`、`010.md`、`011.md`、`012.md`、`015.md`、`016.md`、`039.md`、`040.md`、`041.md`。
 - 已补：mini-swe-agent 依赖，compare runner import/`--help`/全链路恢复。
 - 已实现/接入：Automatic Budgeting v1 与 memory 写入。Memory 已清理（备份至 `.bak_010`），下次运行自动新建。
 - 已修/部分修：SymPy `py.test` compat；Django `django.setup()` compat。但 Django 新 task 仍卡 `INSTALLED_APPS`。
@@ -101,7 +106,7 @@
 当前下一步分两条并行线：
 
 1. **BudgetFlow paper 线：重设 Key Indicator。** 为 SWE-bench task 构造 value / difficulty proxy，先明确 `value_i` 如何从 historical trajectories、gold patch complexity、known solve difficulty、repo/task family、model success/cost 等信号得到。然后重跑小规模 value-aware 评估，主表改为 `resolved_value_per_dollar` 和 fixed-budget resolved value。
-2. **AutoResearch 线：修 evidence ledger。** 先让 goal JSON、summary、metadata、codex_review 事实自洽，禁止 wrapper 伪造 PASS marker，建立 deterministic review gate。039 证明能低成本跑 Real API，但还没证明 review gate 可靠。
+2. **AutoResearch 线：已闭环，后续做 real API goal-loop smoke 和实战 commit/push 测试。** Phase K 完成 goal-loop、owner_decision、safe commit/push、报告生成。下一步用真实 API (≤$0.02) 验证 goal-loop + review gate 全链路，以及 `--commit-after-pass --push-after-commit` 在真实 git remote 上的行为。
 3. **实验 hygiene 保持不变：** 所有新 BudgetFlow paid run 仍必须先过 gate：无 orphan/stuck heartbeat、无 suspicious pass、无 no_trace、BudgetMemory source 分布符合实验语义。
 4. **不要直接扩规模。** 在新 indicator 未定义前，继续 5×10/10×N 只会烧钱并强化旧问题。先做 value model + 2-3 个 baseline 的小型验证。
 5. **Runner/环境稳定性继续保持：** runtime-root 已修复高 churn 路径；新 paid run 使用 `/tmp/budgetflow-runtime`，不要回到 `/Lishun` worktree/repo cache。
@@ -171,7 +176,9 @@ total_resolved_value_under_budget = sum(value_i * harness_resolved_i)
 | AutoResearch coordinator | ✅ 034：非侵入 state machine + pause/retry/manual mode |
 | AutoResearch CLI + worker bridge | ✅ 035/036：CLI + fake-worker full no-paid smoke |
 | AutoResearch real worker adapter | ⚠️ 037 `claude -p` overhead blocked；038 thin API worker PASS |
-| AutoResearch goal loop | ⚠️ 039 real API goal smoke PASS，但 evidence ledger/review gate 仍需硬化 |
+| AutoResearch goal loop | ✅ 039 real API goal smoke PASS；Phase K 完成 goal-loop 闭环 |
+| AutoResearch evidence ledger + review gate | ✅ Phase J：evidence 自洽；deterministic review gate 硬化 |
+| AutoResearch goal-loop + owner_decision + commit/push | ✅ Phase K：`goal-loop` 一键闭环；owner_decision.md；safe commit/push |
 
 ---
 

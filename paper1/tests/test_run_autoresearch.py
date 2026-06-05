@@ -449,3 +449,132 @@ AUTORESEARCH_REAL_API_SMOKE:PASS
         review_path.write_text("VERDICT: FAIL\nSCORE: 0/100\nAUTORESEARCH_RESULT:FAIL\n")
         rc = _run(paper1_tmp, "mark-complete", "--issue-id", "task")
         assert rc == 1
+
+
+# ── Goal-loop tests ────────────────────────────────────────────────────────────
+
+FAKE_WORKER_CMD = "cat {prompt} > /dev/null; python3 scripts/autoresearch_fake_worker.py {prompt} {output}"
+
+
+class TestGoalLoop:
+    def test_loop_all_pass_completes(self, paper1_tmp, prompt_file):
+        """goal-loop with fake workers should PASS all issues and exit 0."""
+        _run(paper1_tmp, "goal-create", "--goal-id", "g1", "--title", "Loop Test")
+        _run(paper1_tmp, "create", "--issue-id", "task-a", "--prompt-file", str(prompt_file))
+        _run(paper1_tmp, "create", "--issue-id", "task-b", "--prompt-file", str(prompt_file))
+        _run(paper1_tmp, "goal-add-issue", "--goal-id", "g1", "--issue-id", "task-a")
+        _run(paper1_tmp, "goal-add-issue", "--goal-id", "g1", "--issue-id", "task-b")
+
+        rc = _run(paper1_tmp, "goal-loop", "--goal-id", "g1",
+                  "--worker-cmd", FAKE_WORKER_CMD, "--max-steps", "5")
+        assert rc == 0
+
+        # Verify goal is complete.
+        from budgetflow.autoresearch_goal import GoalManager
+        gm = GoalManager(paper1_root=paper1_tmp)
+        goal = gm.load_goal("g1")
+        assert goal.status == "complete"
+
+    def test_loop_warn_exits_2(self, paper1_tmp, prompt_file, tmp_path):
+        """goal-loop with WARN review exits 2 and writes owner_decision.md.
+
+        Uses a custom worker that writes real-API output with
+        marker_appended_by_wrapper=true, so the review gate produces WARN
+        (not auto-detected as fake worker, and not clean enough for PASS).
+        """
+        # Write a helper that produces WARN-triggering output.
+        # Uses \n (literal in the raw string) which the helper's Python
+        # interpreter converts to real newlines in the output file.
+        helper = tmp_path / "warn_worker.py"
+        helper.write_text(r"""import json, sys
+from pathlib import Path
+
+output_path = Path(sys.argv[2])
+output_path.parent.mkdir(parents=True, exist_ok=True)
+
+output = (
+    '<!-- AutoResearch API Worker -- factual metadata\n'
+    '  model: test\n'
+    '  input_tokens: 50\n'
+    '  output_tokens: 20\n'
+    '  metadata: worker_metadata.json\n'
+    '-->\n'
+    '# Report\n'
+    '\n'
+    'AUTORESEARCH_REAL_API_SMOKE:PASS\n'
+)
+output_path.write_text(output)
+
+meta = {
+    "model": "test", "input_tokens": 50, "output_tokens": 20,
+    "status_code": 200, "marker_present_in_model_output": True,
+    "marker_appended_by_wrapper": True, "error": None,
+}
+meta_path = output_path.parent / "worker_metadata.json"
+meta_path.write_text(json.dumps(meta))
+print(f"[warn_worker] wrote output and metadata to {output_path.parent}")
+""")
+
+        WARN_CMD = f"python3 {helper} {{prompt}} {{output}}"
+
+        _run(paper1_tmp, "goal-create", "--goal-id", "g1", "--title", "Warn Loop")
+        _run(paper1_tmp, "create", "--issue-id", "task-a", "--prompt-file", str(prompt_file))
+        _run(paper1_tmp, "goal-add-issue", "--goal-id", "g1", "--issue-id", "task-a")
+
+        rc = _run(paper1_tmp, "goal-loop", "--goal-id", "g1",
+                  "--worker-cmd", WARN_CMD, "--max-steps", "5")
+        assert rc == 2  # WARN → exit 2
+
+        # Verify owner_decision.md was written.
+        from budgetflow.autoresearch_coordinator import AutoResearchCoordinator
+        c = AutoResearchCoordinator(paper1_root=paper1_tmp)
+        dp = c.workflow_dir("task-a") / "owner_decision.md"
+        assert dp.is_file()
+        content = dp.read_text()
+        assert "Owner Decision Required" in content
+        assert "Why Paused" in content
+
+    def test_loop_respects_max_steps(self, paper1_tmp, prompt_file):
+        """goal-loop with max-steps=1 processes at most 1 issue."""
+        _run(paper1_tmp, "goal-create", "--goal-id", "g1", "--title", "Max Step Test")
+        _run(paper1_tmp, "create", "--issue-id", "task-a", "--prompt-file", str(prompt_file))
+        _run(paper1_tmp, "create", "--issue-id", "task-b", "--prompt-file", str(prompt_file))
+        _run(paper1_tmp, "goal-add-issue", "--goal-id", "g1", "--issue-id", "task-a")
+        _run(paper1_tmp, "goal-add-issue", "--goal-id", "g1", "--issue-id", "task-b")
+
+        rc = _run(paper1_tmp, "goal-loop", "--goal-id", "g1",
+                  "--worker-cmd", FAKE_WORKER_CMD, "--max-steps", "1")
+        # Should not complete (only 1 step for 2 issues).
+        assert rc == 1  # max steps exceeded
+
+    def test_loop_worker_cmd_validation(self, paper1_tmp):
+        """goal-loop rejects worker-cmd without {prompt} and {output}."""
+        _run(paper1_tmp, "goal-create", "--goal-id", "g1", "--title", "Bad Worker")
+        with pytest.raises(SystemExit) as exc_info:
+            _run(paper1_tmp, "goal-loop", "--goal-id", "g1",
+                  "--worker-cmd", "echo bad > /tmp/out", "--max-steps", "2")
+        assert exc_info.value.code == 1
+
+    def test_loop_nonexistent_goal(self, paper1_tmp):
+        """goal-loop returns 1 for nonexistent goal."""
+        rc = _run(paper1_tmp, "goal-loop", "--goal-id", "no-goal",
+                  "--worker-cmd", FAKE_WORKER_CMD, "--max-steps", "2")
+        assert rc == 1
+
+    def test_owner_decision_on_paid_pause(self, paper1_tmp, prompt_file):
+        """goal-loop writes owner_decision.md when paid_3x10 triggers pause."""
+        _run(paper1_tmp, "goal-create", "--goal-id", "g1", "--title", "Paid Loop")
+        _run(paper1_tmp, "create", "--issue-id", "task-a", "--prompt-file", str(prompt_file))
+        _run(paper1_tmp, "goal-add-issue", "--goal-id", "g1", "--issue-id", "task-a")
+
+        rc = _run(paper1_tmp, "goal-loop", "--goal-id", "g1",
+                  "--worker-cmd", FAKE_WORKER_CMD, "--max-steps", "3",
+                  "--paid-3x10", "3", "10")
+        assert rc == 2  # Paused
+
+        # owner_decision should be written at goal level.
+        from budgetflow.autoresearch_coordinator import AutoResearchCoordinator
+        c = AutoResearchCoordinator(paper1_root=paper1_tmp)
+        dp = paper1_tmp / ".autoresearch" / "goals" / "owner_decision.md"
+        assert dp.is_file()
+        assert "Owner Decision Required" in dp.read_text()

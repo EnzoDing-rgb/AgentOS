@@ -18,6 +18,7 @@ are substituted as filesystem paths.
 from __future__ import annotations
 
 import argparse
+import re
 import subprocess
 import sys
 import time
@@ -143,6 +144,22 @@ def build_parser() -> argparse.ArgumentParser:
     gr.add_argument("--data-migration", action="store_true")
     gr.add_argument("--swebench-docker", action="store_true")
     gr.add_argument("--higher-risk", action="store_true")
+
+    # goal-loop
+    gl = sub.add_parser("goal-loop", help="Run full AutoResearch loop for a Goal")
+    gl.add_argument("--goal-id", required=True, help="Goal identifier")
+    gl.add_argument("--worker-cmd", required=True, help="Shell command template with {prompt} and {output}")
+    gl.add_argument("--max-steps", type=int, default=10, help="Max loop iterations (default: 10)")
+    gl.add_argument("--commit-after-pass", action="store_true", help="Git commit after each PASS review")
+    gl.add_argument("--push-after-commit", action="store_true", help="Git push after each commit")
+    gl.add_argument("--owner-override", help="Auto-approve WARN reviews with this reason")
+    # Pause flags
+    gl.add_argument("--paid-3x10", nargs=2, type=int, metavar=("P", "T"))
+    gl.add_argument("--northstar-change", action="store_true")
+    gl.add_argument("--large-refactor", action="store_true")
+    gl.add_argument("--data-migration", action="store_true")
+    gl.add_argument("--swebench-docker", action="store_true")
+    gl.add_argument("--higher-risk", action="store_true")
 
     return p
 
@@ -484,6 +501,322 @@ def cmd_goal_run(args: argparse.Namespace, coordinator: AutoResearchCoordinator)
     return 0
 
 
+def _write_owner_decision(
+    workflow_dir: Path,
+    issue_id: str,
+    why: str,
+    evidence_files: list[str],
+    recommendation: str,
+    resume_command: str,
+    what_happens_if_approved: str,
+) -> Path:
+    """Write owner_decision.md for a paused issue."""
+    lines = [
+        f"# Owner Decision Required — {issue_id}",
+        "",
+        "## Why Paused",
+        "",
+        why,
+        "",
+        "## Evidence Files",
+        "",
+    ]
+    for ef in evidence_files:
+        lines.append(f"- {ef}")
+    lines.extend([
+        "",
+        "## Recommended Decision",
+        "",
+        recommendation,
+        "",
+        "## Resume Command",
+        "",
+        "```bash",
+        resume_command,
+        "```",
+        "",
+        "## What Happens If Approved",
+        "",
+        what_happens_if_approved,
+        "",
+        "---",
+        f"Generated: {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}",
+    ])
+    dp = workflow_dir / "owner_decision.md"
+    dp.write_text("\n".join(lines) + "\n")
+    return dp
+
+
+_DEFAULT_SECRET_PATTERNS = [
+    re.compile(r"sk-[a-zA-Z0-9_-]{20,}"),
+    re.compile(r"x-api-key:\s*[a-zA-Z0-9_-]{10,}"),
+    re.compile(r"ANTHROPIC_API_KEY\s*=\s*[a-zA-Z0-9_-]{10,}"),
+    re.compile(r"ANTHROPIC_AUTH_TOKEN\s*=\s*[a-zA-Z0-9_-]{10,}"),
+]
+
+
+def _scan_staged_for_secrets(repo_root: Path) -> list[str]:
+    """Scan staged files for secret-like patterns. Returns list of findings."""
+    import re as _re
+    findings = []
+    result = subprocess.run(
+        ["git", "diff", "--cached", "--name-only"],
+        capture_output=True, text=True, cwd=str(repo_root),
+    )
+    staged = [f for f in result.stdout.strip().split("\n") if f]
+    if not staged:
+        return findings
+    for fpath in staged:
+        full = repo_root / fpath
+        if not full.is_file():
+            continue
+        try:
+            content = full.read_text()
+        except Exception:
+            continue
+        for pat in _DEFAULT_SECRET_PATTERNS:
+            if pat.search(content):
+                findings.append(f"{fpath}: possible secret ({pat.pattern[:40]}...)")
+    return findings
+
+
+def _safe_commit_push(
+    coordinator,
+    goal_id: str,
+    *,
+    push: bool = False,
+    pytest_cmd: str | None = None,
+) -> tuple[int, str]:
+    """Post-gate commit/push with safety checks.
+
+    Returns (exit_code, message).
+    """
+    repo_root = coordinator.git_root or coordinator.paper1_root
+
+    # 1. git diff --check
+    diff_check = subprocess.run(
+        ["git", "diff", "--check"],
+        capture_output=True, text=True, cwd=str(repo_root),
+    )
+    if diff_check.returncode != 0:
+        return 1, f"git diff --check failed:\n{diff_check.stderr[:500]}"
+
+    # 2. Secret scan
+    secrets = _scan_staged_for_secrets(repo_root)
+    if secrets:
+        return 1, f"Secret scan found issues:\n" + "\n".join(secrets)
+
+    # 3. pytest (if provided)
+    if pytest_cmd:
+        pytest_result = subprocess.run(
+            pytest_cmd, shell=True, capture_output=True, text=True, cwd=str(repo_root),
+        )
+        if pytest_result.returncode != 0:
+            return 1, f"pytest failed (rc={pytest_result.returncode}):\n{pytest_result.stdout[-500:]}\n{pytest_result.stderr[-500:]}"
+
+    # 4. Stage relevant files: .autoresearch/, docs/reports/, src/, tests/, scripts/
+    stage_paths = [
+        ".autoresearch/",
+        "docs/reports/",
+        "src/",
+        "tests/",
+        "scripts/",
+    ]
+    for sp in stage_paths:
+        full = repo_root / "paper1" / sp if (repo_root / "paper1").is_dir() else repo_root / sp
+        if full.exists():
+            subprocess.run(["git", "add", str(full.relative_to(repo_root))],
+                          capture_output=True, cwd=str(repo_root))
+
+    # 5. Commit
+    commit_msg = f"AutoResearch: complete {goal_id}\n\nCo-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
+    commit_result = subprocess.run(
+        ["git", "commit", "-m", commit_msg],
+        capture_output=True, text=True, cwd=str(repo_root),
+    )
+    if commit_result.returncode != 0:
+        return 1, f"git commit failed:\n{commit_result.stderr[:500]}"
+
+    commit_hash = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        capture_output=True, text=True, cwd=str(repo_root),
+    ).stdout.strip()[:12]
+
+    # 6. Push
+    if push:
+        push_result = subprocess.run(
+            ["git", "push"],
+            capture_output=True, text=True, cwd=str(repo_root),
+        )
+        if push_result.returncode != 0:
+            return 1, f"git push failed (commit={commit_hash}):\n{push_result.stderr[:500]}"
+        return 0, f"committed {commit_hash} and pushed"
+
+    return 0, f"committed {commit_hash} (not pushed)"
+
+
+def cmd_goal_loop(args: argparse.Namespace, coordinator: AutoResearchCoordinator) -> int:
+    """Run the full AutoResearch loop for a Goal."""
+    from .autoresearch_goal import GoalManager
+    from .autoresearch_codex_gate import review_issue, write_codex_review
+
+    _validate_worker_cmd(args.worker_cmd)
+
+    gm = GoalManager(paper1_root=coordinator.paper1_root, coordinator=coordinator)
+    goal = gm.load_goal(args.goal_id)
+    if goal is None:
+        print(f"No goal found for {args.goal_id}", file=sys.stderr)
+        return 1
+
+    owner_override = getattr(args, "owner_override", None)
+    paid_scale = tuple(args.paid_3x10) if args.paid_3x10 else None
+
+    step = 0
+    while step < args.max_steps:
+        step += 1
+        print(f"\n--- goal-loop step {step}/{args.max_steps} ---")
+
+        # Run one step of the goal.
+        result = gm.run_goal(
+            args.goal_id,
+            worker_cmd=args.worker_cmd,
+            paid_experiment_scale=paid_scale,
+            northstar_change=args.northstar_change,
+            large_refactor=args.large_refactor,
+            data_migration=args.data_migration,
+            swebench_docker=args.swebench_docker,
+            higher_risk=args.higher_risk,
+        )
+
+        gs = result.get("goal_status", "?")
+        issue_id = result.get("issue_id")
+
+        # Handle goal-level terminal states.
+        if gs == "paused":
+            pause_reason = result.get("pause_reason", "unknown")
+            print(f"Goal paused: {pause_reason}")
+            # Write owner_decision for the paused issue or at goal level.
+            if issue_id:
+                wf_dir = coordinator.workflow_dir(issue_id)
+            else:
+                wf_dir = coordinator.paper1_root / ".autoresearch" / "goals"
+            _write_owner_decision(
+                wf_dir, issue_id or args.goal_id,
+                why=f"AutoResearch paused: {pause_reason}",
+                evidence_files=[str(gm._goal_path(args.goal_id))],
+                recommendation="Review the pause reason. If safe, re-run with appropriate flags cleared.",
+                resume_command=f"PYTHONPATH=src python3 -m budgetflow.run_autoresearch goal-loop --goal-id {args.goal_id} --worker-cmd '{args.worker_cmd}'",
+                what_happens_if_approved="The goal-loop will resume from the current position.",
+            )
+            return 2
+
+        if gs == "failed":
+            print(f"Goal failed: {result.get('action', 'unknown')}")
+            return 1
+
+        if gs == "review_required":
+            print(f"Goal requires review: {result.get('action', 'unknown')}")
+            return 2
+
+        if gs == "complete":
+            print(f"Goal complete: {result.get('action', '')}")
+            gm.write_goal_summary(args.goal_id)
+            if args.commit_after_pass:
+                rc, msg = _safe_commit_push(
+                    coordinator, args.goal_id,
+                    push=args.push_after_commit,
+                )
+                print(msg)
+                if rc != 0:
+                    return 1
+            return 0
+
+        if gs == "error":
+            print(f"Goal error: {result.get('error', 'unknown')}")
+            return 1
+
+        # gs == "running": an issue was processed.
+        if issue_id is None:
+            print("No issue processed — continuing loop.")
+            continue
+
+        wf_dir = coordinator.workflow_dir(issue_id)
+        print(f"Processed issue: {issue_id} status={result.get('issue_status', '?')}")
+
+        # Run deterministic review.
+        review_result = review_issue(wf_dir)
+        review_path = wf_dir / "codex_review.md"
+        write_codex_review(review_result, review_path)
+        print(f"  review: {review_result.verdict} ({review_result.score}/100)")
+
+        if review_result.verdict == "PASS":
+            # Mark complete (or keep complete if already).
+            state = coordinator.load_state(issue_id)
+            if state and state.status != "complete":
+                coordinator.mark_complete(state)
+            print(f"  -> PASS, marked complete.")
+
+            # Optional commit after each PASS.
+            if args.commit_after_pass:
+                rc, msg = _safe_commit_push(
+                    coordinator, f"{args.goal_id}/{issue_id}",
+                    push=args.push_after_commit,
+                )
+                print(f"  commit: {msg}")
+                if rc != 0:
+                    return 1
+
+        elif review_result.verdict == "WARN":
+            if owner_override:
+                state = coordinator.load_state(issue_id)
+                if state:
+                    coordinator.mark_complete(state)
+                    final_path = Path(state.final_path)
+                    existing = final_path.read_text() if final_path.is_file() else ""
+                    override_note = f"\n## Owner Override (goal-loop)\n\nReason: {owner_override}\nOverride at: {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}\n"
+                    final_path.write_text(existing + override_note)
+                print(f"  -> WARN overridden by owner: {owner_override}")
+            else:
+                _write_owner_decision(
+                    wf_dir, issue_id,
+                    why=f"Deterministic review returned WARN ({review_result.score}/100).\nWarnings: {'; '.join(review_result.warnings) if review_result.warnings else 'none'}",
+                    evidence_files=[str(review_path), str(wf_dir / "attempts" / "001" / "worker_output.md"), str(wf_dir / "attempts" / "001" / "worker_metadata.json")],
+                    recommendation="Review the warnings. If acceptable, approve with --owner-override.",
+                    resume_command=f"PYTHONPATH=src python3 -m budgetflow.run_autoresearch goal-loop --goal-id {args.goal_id} --worker-cmd '{args.worker_cmd}' --owner-override 'Reviewed WARN, acceptable'",
+                    what_happens_if_approved="The issue will be marked complete and the goal-loop will continue to the next issue.",
+                )
+                goal.status = "review_required"
+                gm._write_goal(goal)
+                print(f"  -> WARN: owner_decision.md written, goal set to review_required")
+                return 2
+
+        elif review_result.verdict == "FAIL":
+            # Check retry state.
+            state = coordinator.load_state(issue_id)
+            if state and state.attempt < state.max_retries:
+                print(f"  -> FAIL, retry available (attempt {state.attempt}/{state.max_retries})")
+                # Leave as failed — next loop iteration will retry.
+            else:
+                _write_owner_decision(
+                    wf_dir, issue_id,
+                    why=f"Deterministic review returned FAIL ({review_result.score}/100). Retries exhausted ({state.attempt if state else '?'}/{state.max_retries if state else '?'}).",
+                    evidence_files=[str(review_path), str(wf_dir / "attempts" / "001" / "worker_output.md")],
+                    recommendation="Investigate the failure. May need prompt or worker fix, then retry.",
+                    resume_command=f"PYTHONPATH=src python3 -m budgetflow.run_autoresearch goal-loop --goal-id {args.goal_id} --worker-cmd '{args.worker_cmd}'",
+                    what_happens_if_approved="The issue will be retried with a new worker attempt.",
+                )
+                goal.status = "paused"
+                gm._write_goal(goal)
+                print(f"  -> FAIL, retries exhausted: owner_decision.md written")
+                return 1
+
+        # Write fresh goal summary.
+        gm.write_goal_summary(args.goal_id)
+
+    print(f"goal-loop: max steps ({args.max_steps}) reached.")
+    return 1
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -505,6 +838,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "goal-run": cmd_goal_run,
         "review": cmd_review,
         "goal-review": cmd_goal_review,
+        "goal-loop": cmd_goal_loop,
     }
 
     handler = handlers.get(args.command)

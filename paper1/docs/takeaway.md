@@ -19,8 +19,13 @@
 1. **AutoResearch 的产品目标是减少 owner 人肉搬运，而不是替 owner 做重大决策。** Codex 仍是 review front-end；Worker 可以改代码/测试/文档，但重大事项必须暂停给 owner/Codex gate。
 2. **非侵入式路线已经跑通原型。** 034 coordinator、035 CLI、036 fake-worker smoke、038 thin API worker、039 goal loop 证明 workflow artifact 可以落盘、恢复、审计。
 3. **`claude -p` 不是合适的小任务 Worker adapter。** 037 证明 Claude Code session overhead 会吞掉小额预算；thin API worker 才适合 low-cost smoke。
-4. **039 还不能算最终可信闭环。** Real API smoke 成功，但 goal JSON/summary/api-call ledger 不一致，review gate 还可能被 PASS marker 或模型幻觉带偏。下一步是 evidence ledger + deterministic review gate hardening。
-5. **所有 Worker 交付必须落盘 MD。** 口头 summary 只能辅助；Codex review 的事实源应是 state.json、worker_output.md、worker_metadata.json、codex_review.md、报告和测试输出。
+4. **Phase K 已实现真正的闭环。** goal-loop 自动化了 issue 遍历 → worker 执行 → 确定性 review → mark-complete/retry/pause → owner_decision → 报告 → commit/push。Exit code 0/1/2 让调用方（CI/CD 或 owner shell）能判断下一步动作。
+5. **owner_decision.md 是合适的 Codex 前端。** 它不是复杂的 UI，就是结构化 markdown。Owner 读到 "Why Paused" → "Recommended Decision" → "Resume Command"，一分钟内决定 approve/reject/retry。简单，但有效。
+6. **所有 Worker 交付必须落盘 MD。** 口头 summary 只能辅助；Codex review 的事实源应是 state.json、worker_output.md、worker_metadata.json、codex_review.md、报告和测试输出。
+7. **goal-loop exit code 设计要能区分三种结果。** 0=all complete（可自动 proceed），2=owner review required（有人读 owner_decision.md 后 approve），1=actual failure（需要 debug）。这个三态设计比 pass/fail 更适合半自动流程。
+8. **Safe commit/push 需要多层 gate。** 至少需要：`git diff --check`（检测冲突标记）、secret scan（API key/token 模式）、可选的 pytest。只 stage 特定目录（`.autoresearch/`、`docs/`），不要 `git add -A`。
+9. **`.gitignore` 的 trailing slash 陷阱。** `dir/` 只匹配目录，不匹配同名 symlink。如果一个路径既可能是目录也可能是 symlink，需要在 `.gitignore` 里写两行（`dir/` 和 `dir`）。
+10. **goal-loop 测试不能用预创建 metadata 的方式测 WARN。** 因为 goal-loop 会 re-run worker 并覆盖。正确做法：写一个 custom worker command 产出 WARN-triggering 输出（real API profile + marker_appended）。
 
 ### 031 / True LOO / BudgetMemory Cascade Takeaway
 

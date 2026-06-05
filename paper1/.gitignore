@@ -17,6 +17,16 @@ data/runs/*.tmp
 *.trace.jsonl
 *.trace.json
 
+# Runtime logs and temp dirs (build, evaluation, scratch)
+logs/
+tmp/
+
 # IDE / editor
 .vscode/
 .idea/
+
+# Deliberately NOT ignored — AutoResearch evidence ledger:
+#   .autoresearch/issues/
+#   .autoresearch/workflows/
+#   .autoresearch/goals/
+#   docs/reports/*.md
