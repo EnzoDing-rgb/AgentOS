@@ -4,6 +4,19 @@
 
 ## 当前快照（2026-06-05）
 
+### 049 后 Phase S 状态
+
+- **Phase S 完成：** Provider 迁移恢复 + 真实 preflight + 小规模 paid smoke 4/4 PASS ($0.36)。详细报告：`docs/reports/049.md`。
+- **Task A — 迁移诊断：** Provider 配置新旧 repo 完全一致。唯一差异：旧 repo 有 `.env`，当前 repo 没有。`load_env_file()` 读到空 → API key 未设置 → Phase R 401。
+- **Task B — 安全 env 加载：** 从旧 `.env` shell-source 加载（不复制文件），只 export DASHSCOPE_API_KEY + AICODE007_API_KEY，不写任何 key 到 repo。
+- **Task C — 真实 provider preflight：** DashScope chat completion PASS (200, qwen3-coder-flash)，AICode007 chat completion PASS (200, gpt-5.4)。Runner preflight 三层全部 PASS。Phase R `/models` endpoint 是 false blocker。
+- **Task D — Preflight 代码审查：** `provider_signature.py` 已使用 `litellm.completion()` 做真实 chat preflight。代码正确，无需修改。
+- **Task E — Paid smoke：** 2 tasks × 2 policies, 4/4 PASS, total $0.36。JSONL: `/tmp/budgetflow-runtime/049_smoke.jsonl`。BF 比 BO 便宜 22% ($0.0784 vs $0.1010 avg)，RVPD 高 29% ($12.76 vs $9.90)。
+- **Task F — Manifest：** 生成 `049_clean_runs.json`。Sympy smoke 不进入 django clean universe（不同 task pool）。
+- **Task G — AutoResearch 回归：** 93 value tests pass，goal-loop smoke exit 0。
+- **Task H — 报告/提交：** 049.md, progress.md, takeaway.md 更新，commit + push。
+- **关键发现：** (1) `.env` 缺失是 Phase R 401 根因，keys 本身有效；(2) `/models` endpoint ≠ chat completion，preflight 必须用真实 chat；(3) BF 在小规模 smoke 上一致优于 BO。
+
 ### 048 后 Phase R 状态
 
 - **Phase R 部分完成：** Tasks A/B/C/E/F 完成，Task D (paid smoke) BLOCKED — 两个 API key 均返回 401。详细报告：`docs/reports/048.md`。

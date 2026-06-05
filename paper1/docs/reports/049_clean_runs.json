@@ -1,0 +1,26 @@
+{
+  "meta": {
+    "phase": "Phase S",
+    "description": "Paid smoke \u2014 2 sympy tasks \u00d7 2 policies (BO, BF) with value observability",
+    "created": "2026-06-05",
+    "run_id": "/tmp/budgetflow-runtime/049_smoke",
+    "note": "Sympy easy tasks. NOT merged into django clean universe. Separate task pool for smoke validation only."
+  },
+  "runs": [
+    {
+      "file": "/tmp/budgetflow-runtime/049_smoke.jsonl",
+      "rows": 4,
+      "strategies": [
+        "budget_only_tight",
+        "budgetflow_full_tight"
+      ],
+      "tasks": [
+        "sympy__sympy-13480",
+        "sympy__sympy-13647"
+      ],
+      "total_cost": 0.3589,
+      "resolved": 4,
+      "resolved_value": 4.0
+    }
+  ]
+}

@@ -34,6 +34,16 @@
 
 4. **Preflight check pays for itself.** Both API keys were set in env vars but returned HTTP 401. Without the provider preflight, the paid smoke would have launched workers that all fail with opaque authentication errors — wasting time and possibly burning budget on partial completions. The preflight caught it in under 2 seconds.
 
+### Phase S / Provider Migration Recovery + Paid Smoke Takeaway
+
+1. **`.env` absence is a silent failure mode.** `load_env_file()` silently returns without setting any keys when `.env` is missing. No error, no warning — the runner just hits 401 at the first API call. A startup check for "are any required env vars actually set?" would catch this before the preflight phase.
+
+2. **`/models` endpoint is not a valid preflight for chat APIs.** Some OpenAI-compatible endpoints return different auth responses for `/models` vs `/chat/completions`. The only valid preflight is a real minimal chat completion (max_tokens=8, prompt="Return exactly: OK"). The runner already does this correctly via `provider_signature.py`.
+
+3. **Shell-sourcing beats file-copying for env migration.** When migrating from a legacy repo, `source /old/path/.env` in the same shell that runs the experiment avoids touching any file in the current repo. No `.env` file, no copy, no commit risk. The keys live only in the transient shell process.
+
+4. **Serial mode (`--jobs 1`) prevents git clone rate limits.** Parallel strategy batches (`--jobs 2`) trigger simultaneous `git clone` calls for the same repo, which GitHub rate-limits aggressively. Serial mode eliminates this race condition at a modest wall-clock cost (339s for 4 runs).
+
 ### Phase O / Value Matrix + Progress Calibration Takeaway
 
 1. **Selection-bias is the central challenge for progress calibration.** From 639 turns, REPAIR T2=41% vs T3=24% and VALIDATION T2=50% vs T3=19%. These negative deltas do NOT mean T3 is worse — T3 turns are selected on harder situations. Any naive plug of these rates into `expected_progress_gain` would encode the bias into the router. De-biasing requires held-out calibration or instrumental variable design.
