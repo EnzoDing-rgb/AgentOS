@@ -4,8 +4,9 @@
 
 ## 当前快照（2026-06-05）
 
-### 043 前论文转向状态
+### 043 后 Phase M 状态
 
+- **Phase M 完成：** AutoResearch infra 验收 PASS（186 tests, no-paid goal-loop smoke exit 0）。Paper 文档一致性审计 PASS（4 docs, claim ladder 无矛盾）。详细报告：`docs/reports/043.md`。
 - **Paper claim ladder 已明确：** First Claim 是 value-driven token efficiency，即 shared hard budget 下最大化 verified resolved value per dollar。Second Claim 是原始 BudgetFlow 机制，即 stage/progress-aware routing 是否还能比 dummy / budget-only / market routing policy 更省钱或更高效。
 - **不再把 routing 公式当唯一支柱。** 当前代码确实实现了 `stage weight × expected progress gain / marginal cost` 的逐步路由，并叠加 progress/stagnation/gold-edit escalation/stop-loss；但它可能付出 KV / prefix-cache loss 和切换开销。该机制先保留为 second-claim hypothesis，后续用实验验证，不提前否定也不盲目护航。
 - **North Star 文档已补 claim ladder。** 论文主目标是 value-aware shared budget governance；SWE-bench 只是可复现 proxy，不是系统边界。系统要防止对 SWE-bench 过拟合，保留可插拔 task value、budget context、history、runtime adapter、verifier。
@@ -89,6 +90,7 @@
 
 ### 最新改动（2026-06-05）
 
+- **Phase M (043)**：AutoResearch infra 验收 + paper doc 一致性审计。No-paid goal-loop smoke (2/2 PASS, exit 0)。186 tests pass。4 docs 审计无矛盾。takeaway.md 竞争定位段标注 pre-pivot 上下文。详细报告：`paper1/docs/reports/043.md`。
 - **Phase L (042)**：Real API goal-loop smoke。Dispatch wrapper (`<!-- WORKER:fake/worker:api -->`) + real API worker → goal-loop → deterministic review → all PASS。Push-path validated（secret scan / diff --check / test suite / commit / push）。总 API cost ~$0.002，远在 $0.05 cap 内。详细报告：`paper1/docs/reports/042.md`。
 - **Phase J-fix (040)**：Evidence gate hardening。Goal completion invariants、fake worker auto-detect、factual heuristic 上下文感知、marker_appended 强制 WARN。040 报告更新为 COMPLETE ALL PASS。
 - **Phase J (040)**：Evidence ledger + review gate。7-check deterministic review、fake/real worker auto-detect、worker_metadata.json + factual header 审计 trail。`paper1/docs/reports/040.md`。
@@ -103,7 +105,7 @@
 - **010**：P0 修复（API 价格校准、worktree crash、resolved=None）+ 009 成本重解 $34K→$10.63。`reports/010.md`。
 - **009**：Overnight batch loop。56 recorded rows，BudgetFlow 正向信号但数据不够干净。3 个新 SymPy gold-PASS task。`reports/009.md`。
 - **008**：首次 model matrix。14/15 records。`reports/008.md`。
-- 已写：`reports/006.md`、`007.md`、`008.md`、`009.md`、`010.md`、`011.md`、`012.md`、`015.md`、`016.md`、`039.md`、`040.md`、`041.md`、`042.md`。
+- 已写：`reports/006.md`、`007.md`、`008.md`、`009.md`、`010.md`、`011.md`、`012.md`、`015.md`、`016.md`、`039.md`、`040.md`、`041.md`、`042.md`、`043.md`。
 - 已补：mini-swe-agent 依赖，compare runner import/`--help`/全链路恢复。
 - 已实现/接入：Automatic Budgeting v1 与 memory 写入。Memory 已清理（备份至 `.bak_010`），下次运行自动新建。
 - 已修/部分修：SymPy `py.test` compat；Django `django.setup()` compat。但 Django 新 task 仍卡 `INSTALLED_APPS`。
@@ -188,6 +190,7 @@ total_resolved_value_under_budget = sum(value_i * harness_resolved_i)
 | AutoResearch evidence ledger + review gate | ✅ Phase J：evidence 自洽；deterministic review gate 硬化 |
 | AutoResearch goal-loop + owner_decision + commit/push | ✅ Phase K：`goal-loop` 一键闭环；owner_decision.md；safe commit/push |
 | AutoResearch real API goal-loop smoke + dispatch | ✅ Phase L：dispatch wrapper；real API goal-loop；push-path validated |
+| AutoResearch infra audit + paper doc consistency | ✅ Phase M：186 tests pass；no-paid smoke exit 0；4 docs audit clean |
 
 ---
 

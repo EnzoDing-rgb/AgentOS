@@ -111,6 +111,7 @@ BudgetFlow 的 claim 必须收窄：
 - 不说"最强模型路由器"。
 - 主张改成：**在固定经济预算下，BudgetFlow 用 workflow/progress-aware routing 提升 agentic code-repair 的 clean resolved per dollar**。
 - 关键差异是 fixed budget、batch governor、verified repair outcome、failure attribution、auto-budget learning，而不是单次调用更省 token。
+- **2026-06-05 更新：** 以上竞争定位写于 paper pivot 前。当前 First Claim 已转向 value-driven shared budget governance（见 §0 North Star Takeaway）。本节保留为竞争格局历史参考，第二 claim 的 routing/cost 主张仍是机制层的有效假设。
 
 远期增强方向：
 
