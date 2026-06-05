@@ -1,0 +1,86 @@
+{
+  "meta": {
+    "task_count": 3,
+    "profiles": [
+      "equal",
+      "difficulty",
+      "discriminative_rarity"
+    ],
+    "note": "Phase T expanded smoke. Difficulty values from avg_cost normalized across 3 tasks. discriminative_rarity flat (all tasks solved by both strategies). Uses current schema: tasks[id].values[profile].",
+    "manifest": {
+      "description": "Clean-run manifest for 050 smoke. P0 value matrix lookup fix verified — all rows show value_source=value_matrix.",
+      "created": "2026-06-05",
+      "phase": "Phase T",
+      "note": "3 sympy tasks × 2 strategies. 6/6 PASS. BF 36% cheaper, 56% higher RVPD. discriminative_rarity flat — need 3+ strategies or different task subsets."
+    },
+    "source": "manifest — 050 smoke allowlist"
+  },
+  "tasks": {
+    "sympy__sympy-13480": {
+      "instance_id": "sympy__sympy-13480",
+      "repo": "sympy",
+      "total_rows": 2,
+      "resolved_rows": 2,
+      "resolve_rate": 1.0,
+      "avg_cost": 0.0561,
+      "solve_rarity": 1.0,
+      "strategies_seen": [
+        "budget_only_tight",
+        "budgetflow_full_tight"
+      ],
+      "strategies_resolved": [
+        "budget_only_tight",
+        "budgetflow_full_tight"
+      ],
+      "values": {
+        "equal": 1.0,
+        "difficulty": 0.0662,
+        "discriminative_rarity": 1.0
+      }
+    },
+    "sympy__sympy-13647": {
+      "instance_id": "sympy__sympy-13647",
+      "repo": "sympy",
+      "total_rows": 2,
+      "resolved_rows": 2,
+      "resolve_rate": 1.0,
+      "avg_cost": 0.2222,
+      "solve_rarity": 1.0,
+      "strategies_seen": [
+        "budget_only_tight",
+        "budgetflow_full_tight"
+      ],
+      "strategies_resolved": [
+        "budget_only_tight",
+        "budgetflow_full_tight"
+      ],
+      "values": {
+        "equal": 1.0,
+        "difficulty": 0.0970,
+        "discriminative_rarity": 1.0
+      }
+    },
+    "sympy__sympy-14774": {
+      "instance_id": "sympy__sympy-14774",
+      "repo": "sympy",
+      "total_rows": 2,
+      "resolved_rows": 2,
+      "resolve_rate": 1.0,
+      "avg_cost": 0.0541,
+      "solve_rarity": 1.0,
+      "strategies_seen": [
+        "budget_only_tight",
+        "budgetflow_full_tight"
+      ],
+      "strategies_resolved": [
+        "budget_only_tight",
+        "budgetflow_full_tight"
+      ],
+      "values": {
+        "equal": 1.0,
+        "difficulty": 0.0591,
+        "discriminative_rarity": 1.0
+      }
+    }
+  }
+}

@@ -4,6 +4,18 @@
 
 该 commit 就 commit，该 push 就 push。关键节点必须 commit，能同步远端就同步远端。
 
+### Phase T / P0 Value Matrix Fix + Expanded Paid Smoke Takeaway
+
+1. **Artifact schema migration must be tracked in code, not in memory.** The 048+ artifact schema changed from `artifact["matrix"][profile][id]` to `artifact["tasks"][id]["values"][profile]`, but `_init_value_observability()` still read the old key. Since the old key was always `{}` in new artifacts, all lookups failed silently — returning `value_source=default_equal` and `task_value=1.0` for every row. A schema version field or a try-both approach with explicit fallback reporting prevents this.
+
+2. **Silent fallback to default is worse than a crash.** The bug went undetected through Phase S because `_enrich_record_with_value()` silently used `default_equal` when the lookup returned None. If it had crashed on "profile not found in matrix," the bug would have been caught immediately. The fix adds `value_source="missing_profile_fallback"` to make the fallback explicit and auditable.
+
+3. **Value observability is only as good as the lookup it depends on.** All 6 value fields (`task_value`, `resolved_value`, `value_source`, etc.) are computed downstream from a single lookup. If the lookup is wrong, every downstream metric — RVPD, strategy comparison, claim attribution — is corrupted. The fix doubled the test coverage (10→13 tests) and added CurrentSchema-specific tests that validate against real 050 smoke data.
+
+4. **touched_file_paths needs text_regex coverage.** In GPT text_regex mode, file paths appear in `assistant_content_head` and `parser_input_snippet`, not in `bash_command`. Without extracting from these sources, text_regex turns have empty `touched_file_paths` — losing localization signal. The fix added two extractors (text + trace) with 9 tests and updated both call sites in `mini_swe_proxy.py`. Cost: zero tokens, zero API calls, one regex pass.
+
+5. **Both claims survive independent smoke tests:** BF beats BO on cost efficiency (22-36% cheaper, 049+050) and RVPD (29-56% higher). But RVPD differences are primarily driven by cost savings when both strategies resolve the same tasks. First Claim needs task-set variation (different tasks for different strategies) to show value differentiation independently of cost efficiency.
+
 ### Phase P / Profile Fix + Manifest + Localization Diag Takeaway
 
 1. **Narrative/code consistency is a P0 review risk.** Phase O's `solve_rarity` formula gave 5.0 to no-one-solved tasks while the report said "no-one-solved less informative." This contradiction was caught in review. Fix: rename + re-formula so both match. discriminative_rarity peaks at r=0.5; unsolved_difficulty separately handles "hard/expensive" tasks with clear ceiling-candidate labeling.

@@ -45,7 +45,7 @@ from .bash_stage import (
     _VALIDATION_AGENT_PHASES,
     bash_has_progress,
     classify_routing_stage,
-    extract_touched_file_paths,
+    extract_touched_file_paths, extract_trace_file_paths,
 )
 from .stall_guard import check_stagnation, normalize_bash_command
 from .message_utils import estimate_input_tokens, extract_bash_context
@@ -559,7 +559,7 @@ class BudgetFlowLitellmModel:
                         agent_phase=self.agent_phase,
                         stage=stage,
                         bash_command=bash_command,
-                        touched_file_paths=extract_touched_file_paths(bash_command),
+                        touched_file_paths=extract_trace_file_paths(bash_command=bash_command),
                         input_tokens=input_tokens,
                         expected_costs=expected_costs,
                         base_pressure=base_pressure,
@@ -630,12 +630,18 @@ class BudgetFlowLitellmModel:
             actions = self._parse_actions(response, text_mode=text_mode, backend_tier=backend.tier)
         except Exception as exc:
             if self._enable_turn_trace:
+                content_head = _safe_content_head(response)
+                parser_snippet = _parser_input_snippet(response, text_mode)
                 self.turn_traces.append(_build_turn_trace(
                     step_index=self.step_index,
                     agent_phase=self.agent_phase,
                     stage=stage,
                     bash_command=bash_command,
-                    touched_file_paths=extract_touched_file_paths(bash_command),
+                    touched_file_paths=extract_trace_file_paths(
+                        bash_command=bash_command,
+                        assistant_content_head=content_head,
+                        parser_input_snippet=parser_snippet,
+                    ),
                     input_tokens=input_tokens,
                     expected_costs=expected_costs,
                     base_pressure=base_pressure,
@@ -661,9 +667,9 @@ class BudgetFlowLitellmModel:
                     **_protocol_trace_fields(backend.name, text_mode),
                     **_router_trace_fields(self.routing),
                     **self._gold_edit_guard_trace_fields(),
-                    assistant_content_head=_safe_content_head(response),
+                    assistant_content_head=content_head,
                     tool_call_summary=_tool_call_summary(response),
-                    parser_input_snippet=_parser_input_snippet(response, text_mode),
+                    parser_input_snippet=parser_snippet,
                     parser_error_type=type(exc).__name__,
                     parser_error_message=str(exc)[:500],
                     reservation_id=reservation_id,
@@ -680,12 +686,18 @@ class BudgetFlowLitellmModel:
             "text_mode": text_mode,
         }
         if self._enable_turn_trace:
+            content_head = _safe_content_head(response)
+            parser_snippet = _parser_input_snippet(response, text_mode)
             self.turn_traces.append(_build_turn_trace(
                 step_index=self.step_index,
                 agent_phase=self.agent_phase,
                 stage=stage,
                 bash_command=bash_command,
-                touched_file_paths=extract_touched_file_paths(bash_command),
+                touched_file_paths=extract_trace_file_paths(
+                    bash_command=bash_command,
+                    assistant_content_head=content_head,
+                    parser_input_snippet=parser_snippet,
+                ),
                 input_tokens=input_tokens,
                 expected_costs=expected_costs,
                 base_pressure=base_pressure,
@@ -711,9 +723,9 @@ class BudgetFlowLitellmModel:
                 **_protocol_trace_fields(backend.name, text_mode),
                 **_router_trace_fields(self.routing),
                 **self._gold_edit_guard_trace_fields(),
-                assistant_content_head=_safe_content_head(response),
+                assistant_content_head=content_head,
                 tool_call_summary=_tool_call_summary(response),
-                parser_input_snippet=_parser_input_snippet(response, text_mode),
+                parser_input_snippet=parser_snippet,
                 reservation_id=reservation_id,
                 reserved_cost=round(actual_cost, 6),
                 reservation_settled=True,

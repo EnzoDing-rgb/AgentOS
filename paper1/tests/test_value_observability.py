@@ -78,9 +78,9 @@ class TestEnrichRecord:
         record = _enrich_record_with_value({
             "instance_id": "task_a", "harness_resolved": True, "task_cost": 0.5,
         })
-        # Falls back to equal
+        # Falls back to equal, but reports the fallback honestly
         assert record["task_value"] == 1.0
-        assert record["value_source"] == "default_equal"
+        assert record["value_source"] == "missing_profile_fallback"
 
     def test_resolved_value_zero_when_not_resolved(self):
         _init_value_observability(value_profile="equal")
@@ -121,6 +121,63 @@ class TestValueSummary:
         assert s["resolved_count"] == 0
         assert s["total_cost"] == 0.0
         assert s["resolved_value_per_dollar"] == 0.0
+
+
+class TestCurrentSchema:
+    """Tests for the current artifact schema (tasks[id].values[profile])."""
+
+    def test_current_schema_loads_values(self):
+        artifact = {
+            "tasks": {
+                "sympy__sympy-13480": {"values": {"difficulty": 0.0662, "equal": 1.0}},
+                "sympy__sympy-13647": {"values": {"difficulty": 0.0970, "equal": 1.0}},
+            }
+        }
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(artifact, f)
+            tmp = f.name
+        try:
+            _init_value_observability(value_profile="difficulty", value_matrix_path=tmp)
+            r = _enrich_record_with_value({
+                "instance_id": "sympy__sympy-13480", "harness_resolved": True, "task_cost": 0.1,
+            })
+            assert r["task_value_profile"] == "difficulty"
+            assert r["task_value"] == 0.0662
+            assert r["resolved_value"] == 0.0662
+            assert r["value_source"] == "value_matrix"
+            assert r["value_matrix_artifact"] == tmp
+        finally:
+            Path(tmp).unlink()
+
+    def test_missing_profile_reports_fallback(self):
+        artifact = {"tasks": {"x": {"values": {"difficulty": 0.5}}}}
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(artifact, f)
+            tmp = f.name
+        try:
+            _init_value_observability(value_profile="nonexistent", value_matrix_path=tmp)
+            r = _enrich_record_with_value({
+                "instance_id": "x", "harness_resolved": True, "task_cost": 0.1,
+            })
+            assert r["task_value"] == 1.0
+            assert r["value_source"] == "missing_profile_fallback"
+        finally:
+            Path(tmp).unlink()
+
+    def test_backward_compat_legacy_schema(self):
+        artifact = {"matrix": {"difficulty": {"task_a": {"value": 2.0}}}}
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(artifact, f)
+            tmp = f.name
+        try:
+            _init_value_observability(value_profile="difficulty", value_matrix_path=tmp)
+            r = _enrich_record_with_value({
+                "instance_id": "task_a", "harness_resolved": True, "task_cost": 0.5,
+            })
+            assert r["task_value"] == 2.0
+            assert r["value_source"] == "value_matrix"
+        finally:
+            Path(tmp).unlink()
 
 
 class TestNoSecretLeak:

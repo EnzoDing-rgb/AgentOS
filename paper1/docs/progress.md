@@ -4,6 +4,18 @@
 
 ## 当前快照（2026-06-05）
 
+### 050 后 Phase T 状态
+
+- **Phase T 完成：** P0 value matrix lookup fix + touched_file_paths text_regex enhancement + 049 smoke checker validation + expanded paid smoke 6/6 PASS ($0.66)。详细报告：`docs/reports/050.md`。
+- **Task A — P0 Value Matrix Lookup Fix：** `_init_value_observability()` 从 `artifact["tasks"][instance_id]["values"][profile]` 读取（当前 schema），legacy `matrix[profile]` 作为 fallback。修复前所有 049 smoke rows 得到 `value_source=default_equal`、`task_value=1.0`（真实值 0.066-0.097）；修复后 050 smoke 全部 `value_source=value_matrix`。
+- **Task B — touched_file_paths text_regex：** `extract_text_file_paths()` + `extract_trace_file_paths()` 覆盖 bash_command、assistant_content_head、parser_input_snippet。9 新 tests。31/31 bash_stage tests pass。
+- **Task C — Checker Validation：** 049 smoke checker CLEAN (4/4 rows pass)，050 smoke checker CLEAN (6/6 rows pass)。
+- **Task D — Expanded Paid Smoke：** 3 tasks × 2 policies, 6/6 PASS, total $0.6648。BF 比 BO 便宜 36% ($0.0865 vs $0.1351 avg)，RVPD 高 56% ($0.86 vs $0.55)。JSONL: `/tmp/budgetflow-runtime/050_smoke.jsonl`。
+- **Task E — Value Matrix Update：** 生成 `050_clean_runs.json`、`050_value_matrix.json`。Sympy smoke 不进入 django clean universe。
+- **Task F — AutoResearch 回归：** 96 value tests pass (13 observability + 83 matrix)，31 bash_stage tests pass，goal-loop smoke exit 0。
+- **Task G — 报告/提交：** 050.md, progress.md, takeaway.md 更新，commit + push。
+- **关键发现：** (1) P0 bug 根因是 `artifact["matrix"]` 在 048+ artifact 中总是 `{}`；(2) touched_file_paths 增强使 text_regex 模式的路径提取覆盖完整；(3) BF 在两个独立 smoke 上一致优于 BO（049: 4/4, 050: 6/6）；(4) First Claim（RVPD）差异主要由 cost efficiency 驱动，需要不同 task subset 才能独立测试 value differentiation。
+
 ### 049 后 Phase S 状态
 
 - **Phase S 完成：** Provider 迁移恢复 + 真实 preflight + 小规模 paid smoke 4/4 PASS ($0.36)。详细报告：`docs/reports/049.md`。
@@ -141,6 +153,8 @@
 
 ### 最新改动（2026-06-05）
 
+- **Phase T (050)**：P0 value matrix lookup fix (wrong schema: `matrix[profile]` vs `tasks[id].values[profile]`)。touched_file_paths text_regex 增强。049 smoke checker CLEAN。Expanded paid smoke 6/6 PASS ($0.66)。BF 36% 更便宜，56% 更高 RVPD。127 tests pass。详细报告：`paper1/docs/reports/050.md`。
+- **Phase S (049)**：Provider migration recovery + real preflight + paid smoke 4/4 PASS ($0.36)。Diagnose Phase R 401 as false blocker (missing `.env`)。Shell-sourcing keys for secure migration。BF 22% cheaper, 29% higher RVPD。详细报告：`paper1/docs/reports/049.md`。
 - **Phase O (045)**：Value Matrix + Progress Calibration 基础设施。4 种 ex-ante value profile（equal/difficulty/solve_rarity/combined）+ sensitivity analysis + 自定义 profile。Progress calibration 从 639 turns 确认 selection-bias caveat。LOCALIZATION progress signal 发现为死信号（0% rate）。AutoResearch 回归 186 + goal-loop smoke exit 0。272 tests pass。建议暂不启动 paid run。详细报告：`paper1/docs/reports/045.md`。
 - **Phase N (044)**：Value-aware offline rescore。新增 `value_rescore.py`（equal/heuristic/custom profile）。030/031 re-score：BF 不赢 BO。Routing trace audit：second-claim evidence WEAK。建议暂不启动 paid run。32 tests pass。详细报告：`paper1/docs/reports/044.md`。
 - **Phase M (043)**：AutoResearch infra 验收 + paper doc 一致性审计。No-paid goal-loop smoke (2/2 PASS, exit 0)。186 tests pass。4 docs 审计无矛盾。takeaway.md 竞争定位段标注 pre-pivot 上下文。详细报告：`paper1/docs/reports/043.md`。

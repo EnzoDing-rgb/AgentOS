@@ -583,19 +583,17 @@ def diagnose_localization_progress(
                         if p_str and "/tmp/" not in p_str:
                             files_found.add(p_str)
                 else:
-                    # Fallback: regex extraction from bash_digest / content_head
+                    # Fallback: regex extraction from bash_digest / content_head / parser_input
                     fallback_regex_turns += 1
                     task_file_activity[iid]["fallback_regex_turns"] += 1
                     bash_digest = str(t.get("bash_digest", "") or "")
                     content_head = str(t.get("assistant_content_head", "") or "")
-                    for m in _FILE_PATH_RE.finditer(bash_digest):
-                        p = m.group(1)
-                        if not p.startswith("test_") and "/tmp/" not in p:
-                            files_found.add(p)
-                    for m in _FILE_PATH_RE.finditer(content_head):
-                        p = m.group(1)
-                        if not p.startswith("test_") and "/tmp/" not in p:
-                            files_found.add(p)
+                    parser_input = str(t.get("parser_input_snippet", "") or "")
+                    for source in (bash_digest, content_head, parser_input):
+                        for m in _FILE_PATH_RE.finditer(source):
+                            p = m.group(1)
+                            if not p.startswith("test_") and "/tmp/" not in p:
+                                files_found.add(p)
 
                 if files_found:
                     loc_with_files += 1

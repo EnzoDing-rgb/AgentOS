@@ -63,6 +63,45 @@ _UNQUOTED_PATH_RE = re.compile(
 )
 
 
+def extract_text_file_paths(text: str | None) -> list[str]:
+    """Extract file paths from arbitrary text (not just bash commands).
+
+    Conservative, sorted, deduped. Handles quoted and unquoted paths.
+    Filters out URLs, globs, and key-like strings.
+    """
+    text = (text or "").strip()
+    if not text:
+        return []
+    paths: set[str] = set()
+    stripped = text
+    for m in _QUOTED_PATH_RE.finditer(text):
+        raw = m.group(1).strip()
+        if raw and "*" not in raw and "?" not in raw:
+            paths.add(_normalize_path(raw))
+            stripped = stripped.replace(m.group(0), " ", 1)
+    for m in _UNQUOTED_PATH_RE.finditer(stripped):
+        raw = m.group(1).strip()
+        if raw and "*" not in raw and "?" not in raw:
+            paths.add(_normalize_path(raw))
+    return sorted(p for p in paths if not p.startswith(("http://", "https://", "git@")))
+
+
+def extract_trace_file_paths(
+    bash_command: str | None = None,
+    assistant_content_head: str | None = None,
+    parser_input_snippet: str | None = None,
+) -> list[str]:
+    """Extract touched file paths from all available text sources in a turn.
+
+    Merges paths from bash command, assistant content, and parser input.
+    Deduplicated and sorted.
+    """
+    all_paths: set[str] = set()
+    for source in (bash_command, assistant_content_head, parser_input_snippet):
+        all_paths.update(extract_text_file_paths(source))
+    return sorted(all_paths)
+
+
 def _normalize_path(raw: str) -> str:
     """Normalize a file path: strip leading ./ and collapse //."""
     clean = raw

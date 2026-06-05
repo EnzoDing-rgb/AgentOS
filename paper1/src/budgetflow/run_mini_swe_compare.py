@@ -399,7 +399,13 @@ _VALUE_MATRIX_PATH: str | None = None
 
 
 def _init_value_observability(*, value_profile: str = "equal", value_matrix_path: str | None = None) -> None:
-    """Set global value observability config. Called once at startup."""
+    """Set global value observability config. Called once at startup.
+
+    Supports two artifact schemas:
+      - Current:  ``artifact["tasks"][instance_id]["values"][profile]`` (048+)
+      - Legacy:   ``artifact["matrix"][profile][instance_id]`` — each entry is a dict
+                   with a ``"value"`` key.
+    """
     global _VALUE_LOOKUP, _VALUE_PROFILE, _VALUE_MATRIX_PATH
     _VALUE_PROFILE = value_profile
     _VALUE_MATRIX_PATH = value_matrix_path
@@ -408,14 +414,37 @@ def _init_value_observability(*, value_profile: str = "equal", value_matrix_path
         try:
             with open(value_matrix_path) as f:
                 artifact = json.loads(f.read())
-            matrix = artifact.get("matrix", {})
-            profile_data = matrix.get(value_profile) if isinstance(matrix, dict) else None
-            if profile_data and isinstance(profile_data, dict):
-                _VALUE_LOOKUP = {
-                    task_id: entry.get("value", 1.0)
-                    for task_id, entry in profile_data.items()
-                    if isinstance(entry, dict)
-                }
+
+            # Current schema: tasks → instance_id → values → profile
+            tasks = artifact.get("tasks")
+            if isinstance(tasks, dict) and tasks:
+                lookup: dict[str, float] = {}
+                for instance_id, task_data in tasks.items():
+                    if not isinstance(task_data, dict):
+                        continue
+                    values = task_data.get("values")
+                    if isinstance(values, dict) and value_profile in values:
+                        lookup[instance_id] = float(values[value_profile])
+                if lookup:
+                    _VALUE_LOOKUP = lookup
+
+            # Legacy schema fallback: matrix → profile → instance_id → {value: ...}
+            if _VALUE_LOOKUP is None:
+                matrix = artifact.get("matrix", {})
+                profile_data = matrix.get(value_profile) if isinstance(matrix, dict) else None
+                if profile_data and isinstance(profile_data, dict):
+                    _VALUE_LOOKUP = {
+                        task_id: entry.get("value", 1.0)
+                        for task_id, entry in profile_data.items()
+                        if isinstance(entry, dict)
+                    }
+
+            if _VALUE_LOOKUP is None and value_profile != "equal":
+                print(
+                    f"[value_observability] WARNING: profile '{value_profile}' not found "
+                    f"in value matrix {value_matrix_path}; falling back to equal",
+                    flush=True,
+                )
         except (OSError, json.JSONDecodeError, KeyError) as exc:
             print(f"[value_observability] WARNING: cannot load value matrix {value_matrix_path}: {exc}", flush=True)
             _VALUE_LOOKUP = None
@@ -429,12 +458,15 @@ def _enrich_record_with_value(record: dict) -> dict:
 
     # Determine task value
     task_value = 1.0
-    value_source = "default_equal"
     if _VALUE_LOOKUP is not None and instance_id in _VALUE_LOOKUP:
         task_value = float(_VALUE_LOOKUP[instance_id])
         value_source = "value_matrix"
     elif _VALUE_PROFILE == "equal":
         value_source = "default_equal"
+    else:
+        # Non-equal profile requested but lookup failed (missing task, missing
+        # profile, or matrix not loadable) — fall back to equal, but log it.
+        value_source = "missing_profile_fallback"
 
     resolved_value = task_value if resolved else 0.0
     resolved_value_per_dollar = resolved_value / task_cost if task_cost > 0 else 0.0
