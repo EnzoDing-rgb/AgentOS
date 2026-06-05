@@ -751,6 +751,31 @@ class TestScanWithManifest:
             assert "manifest" not in matrix["meta"]
             assert "source" not in matrix["meta"]
 
+    def test_manifest_provenance_distinguishes_different_manifests(self):
+        """Two manifests with different phase labels produce distinct artifacts."""
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            _write_jsonl(data_dir / "run.jsonl", [
+                {"instance_id": "a", "strategy": "s1", "harness_resolved": True,
+                 "total_cost": 0.1},
+            ])
+            manifest_a = {
+                "meta": {"phase": "Phase A", "description": "first"},
+                "runs": [{"file": "run.jsonl", "rows": 1, "strategies": ["s1"]}]
+            }
+            manifest_b = {
+                "meta": {"phase": "Phase B", "description": "second"},
+                "runs": [{"file": "run.jsonl", "rows": 1, "strategies": ["s1"]}]
+            }
+            records = scan_task_universe(data_dir, manifest=manifest_a)
+            matrix_a = build_value_matrix(records, PROFILES, manifest_meta=manifest_a)
+            matrix_b = build_value_matrix(records, PROFILES, manifest_meta=manifest_b)
+            assert matrix_a["meta"]["manifest"]["phase"] == "Phase A"
+            assert matrix_b["meta"]["manifest"]["phase"] == "Phase B"
+            # Same records, different provenance
+            assert matrix_a["meta"]["manifest"]["description"] != \
+                   matrix_b["meta"]["manifest"]["description"]
+
 
 # ── Localization diagnostic tests ──────────────────────────────────────────────
 

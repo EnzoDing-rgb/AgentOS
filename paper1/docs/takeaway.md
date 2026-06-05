@@ -24,6 +24,16 @@
 
 3. **API key gate is always step zero.** Even a $0.50 paid smoke can't run without keys. Check env vars before designing the experiment. The smoke design (2 tasks, 2-3 strategies, ≤$0.50) is ready — but blocked until keys exist.
 
+### Phase R / Value Observability + Q-fix Consistency + Paid Smoke Gate Takeaway
+
+1. **Value observability is a cheap add-on, not a routing change.** Adding 6 fields to each run record requires exactly 3 functions: init (set globals), enrich (mutate + return), summary (aggregate). No routing logic changes. The row enrichment call site is one line before `handle.write()`. Cost: zero tokens, zero API calls.
+
+2. **Module-level globals are the right pattern for startup-once config.** `_VALUE_LOOKUP`, `_VALUE_PROFILE`, `_VALUE_MATRIX_PATH` set once at startup via `_init_value_observability()`. The alternative (threading a config object through every function signature) would touch 10+ functions. Test isolation is handled by re-calling init in each test — a one-line cost.
+
+3. **Manifest provenance needs a test.** Regenerating a value matrix artifact with `--manifest <wrong_file>` produces subtly wrong metadata (Phase P vs Phase Q) while the matrix values look identical. A provenance test that asserts `meta.manifest.phase` catches copy-paste errors in artifact generation scripts.
+
+4. **Preflight check pays for itself.** Both API keys were set in env vars but returned HTTP 401. Without the provider preflight, the paid smoke would have launched workers that all fail with opaque authentication errors — wasting time and possibly burning budget on partial completions. The preflight caught it in under 2 seconds.
+
 ### Phase O / Value Matrix + Progress Calibration Takeaway
 
 1. **Selection-bias is the central challenge for progress calibration.** From 639 turns, REPAIR T2=41% vs T3=24% and VALIDATION T2=50% vs T3=19%. These negative deltas do NOT mean T3 is worse — T3 turns are selected on harder situations. Any naive plug of these rates into `expected_progress_gain` would encode the bias into the router. De-biasing requires held-out calibration or instrumental variable design.

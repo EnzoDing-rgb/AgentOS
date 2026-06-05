@@ -53,6 +53,7 @@ from budgetflow.budget_memory import BudgetMemory, BudgetEstimate as BudgetMemor
 from budgetflow.console_log import backend_tier_label, dim, format_run_verdict, status_fail, status_pass, tag  # noqa: E402
 from budgetflow.deepseek_backend import load_env_file  # noqa: E402
 from budgetflow.failure_classification import build_forensic_summary, build_verdict, classify_failure  # noqa: E402
+from budgetflow.value_matrix import PROFILES  # noqa: E402
 from budgetflow.governor import BudgetGovernor, GovernorConfig  # noqa: E402
 from budgetflow.observability import (  # noqa: E402
     HeartbeatWriter,
@@ -388,6 +389,84 @@ def _run_one(
     return record
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# Value Observability (Phase R)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_VALUE_LOOKUP: dict | None = None
+_VALUE_PROFILE: str = "equal"
+_VALUE_MATRIX_PATH: str | None = None
+
+
+def _init_value_observability(*, value_profile: str = "equal", value_matrix_path: str | None = None) -> None:
+    """Set global value observability config. Called once at startup."""
+    global _VALUE_LOOKUP, _VALUE_PROFILE, _VALUE_MATRIX_PATH
+    _VALUE_PROFILE = value_profile
+    _VALUE_MATRIX_PATH = value_matrix_path
+    _VALUE_LOOKUP = None
+    if value_matrix_path:
+        try:
+            with open(value_matrix_path) as f:
+                artifact = json.loads(f.read())
+            matrix = artifact.get("matrix", {})
+            profile_data = matrix.get(value_profile) if isinstance(matrix, dict) else None
+            if profile_data and isinstance(profile_data, dict):
+                _VALUE_LOOKUP = {
+                    task_id: entry.get("value", 1.0)
+                    for task_id, entry in profile_data.items()
+                    if isinstance(entry, dict)
+                }
+        except (OSError, json.JSONDecodeError, KeyError) as exc:
+            print(f"[value_observability] WARNING: cannot load value matrix {value_matrix_path}: {exc}", flush=True)
+            _VALUE_LOOKUP = None
+
+
+def _enrich_record_with_value(record: dict) -> dict:
+    """Add value-aware observability fields to a run record. Mutates and returns."""
+    instance_id = record.get("instance_id", "")
+    resolved = bool(record.get("harness_resolved"))
+    task_cost = float(record.get("task_cost") or record.get("total_cost") or 0)
+
+    # Determine task value
+    task_value = 1.0
+    value_source = "default_equal"
+    if _VALUE_LOOKUP is not None and instance_id in _VALUE_LOOKUP:
+        task_value = float(_VALUE_LOOKUP[instance_id])
+        value_source = "value_matrix"
+    elif _VALUE_PROFILE == "equal":
+        value_source = "default_equal"
+
+    resolved_value = task_value if resolved else 0.0
+    resolved_value_per_dollar = resolved_value / task_cost if task_cost > 0 else 0.0
+
+    record["task_value_profile"] = _VALUE_PROFILE
+    record["task_value"] = task_value
+    record["resolved_value"] = resolved_value
+    record["value_source"] = value_source
+    record["value_matrix_artifact"] = _VALUE_MATRIX_PATH
+    record["resolved_value_per_dollar"] = round(resolved_value_per_dollar, 6)
+
+    return record
+
+
+def _value_summary_for_strategy(records: list[dict]) -> dict:
+    """Compute value-aware summary metrics for a list of run records."""
+    resolved_count = sum(1 for r in records if r.get("harness_resolved"))
+    total_cost = sum(float(r.get("task_cost") or r.get("total_cost") or 0) for r in records)
+    resolved_value = sum(float(r.get("resolved_value") or 0) for r in records)
+    total_task_value = sum(float(r.get("task_value") or 1.0) for r in records)
+    rvpd = resolved_value / total_cost if total_cost > 0 else 0.0
+    return {
+        "resolved_count": resolved_count,
+        "total_cost": round(total_cost, 6),
+        "resolved_value": round(resolved_value, 6),
+        "total_task_value": round(total_task_value, 6),
+        "resolved_value_per_dollar": round(rvpd, 6),
+        "value_profile": _VALUE_PROFILE,
+        "value_source": _VALUE_MATRIX_PATH or "default_equal",
+    }
+
+
 def _print_run_done(record: dict, *, done: int, total: int, strategy: str) -> None:
     gold_file = (record.get("agent_gold_files") or ["-"])[0]
     resolved = record["harness_resolved"]
@@ -524,6 +603,8 @@ def _format_live_snapshot(
     out_path: Path,
     global_line: str | None = None,
     failure_by_strategy: dict[str, dict[str, int]] | None = None,
+    resolved_value_by_strategy: dict[str, list[float]] | None = None,
+    task_value_by_strategy: dict[str, list[float]] | None = None,
 ) -> list[str]:
     """Top-of-file dashboard: pass/fail + cost summary in one table."""
     total_pass = sum(sum(1 for flag in flags if flag) for flags in resolved_by_strategy.values())
@@ -571,6 +652,28 @@ def _format_live_snapshot(
             fail_s = ", ".join(f"{k}={v}" for k, v in sorted(failures.items()))
             lines.append(f"{'':<28} outcomes: {fail_s}")
     lines.append(f"jsonl={out_path}")
+    # ── Value observability summary ────────────────────────────────────
+    if resolved_value_by_strategy and task_value_by_strategy:
+        lines.append("")
+        lines.append("=== VALUE SUMMARY ===")
+        lines.append(
+            f"{'strategy':<28} {'resolved':>8} {'cost':>8} {'value':>8} "
+            f"{'rv_per_$':>9} {'v_profile':>12}"
+        )
+        lines.append("-" * 80)
+        for name in strategy_names:
+            rv_list = resolved_value_by_strategy.get(name, [])
+            tv_list = task_value_by_strategy.get(name, [])
+            resolved_val = sum(rv_list)
+            total_val = sum(tv_list)
+            total_cost = sum(task_cost_by_strategy.get(name, []))
+            rvpd = resolved_val / total_cost if total_cost > 0 else 0.0
+            lines.append(
+                f"{name:<28} {sum(1 for r in resolved_by_strategy.get(name, []) if r):>8} "
+                f"{_fmt_usd(total_cost):>8} {resolved_val:>8.2f} "
+                f"{rvpd:>9.2f} {_VALUE_PROFILE:>12}"
+            )
+        lines.append("")
     lines.append("")
     lines.append("=== EVENT LOG (newest at bottom) ===")
     lines.append("")
@@ -597,6 +700,8 @@ def _write_summary_file(
     total_runs: int,
     tasks_per_strategy: int,
     global_line: str | None = None,
+    resolved_value_by_strategy: dict[str, list[float]] | None = None,
+    task_value_by_strategy: dict[str, list[float]] | None = None,
 ) -> None:
     live = _format_live_snapshot(
         strategy_names=strategy_names,
@@ -615,6 +720,8 @@ def _write_summary_file(
         started=started,
         out_path=out_path,
         global_line=global_line,
+        resolved_value_by_strategy=resolved_value_by_strategy,
+        task_value_by_strategy=task_value_by_strategy,
     )
     lines = live + list(summary_lines)
     path.write_text("\n".join(lines) + "\n")
@@ -866,6 +973,8 @@ class _CompareState:
     flash_by_strategy: dict[str, list[float]]
     pro_by_strategy: dict[str, list[float]]
     failure_by_strategy: dict[str, dict[str, int]]
+    resolved_value_by_strategy: dict[str, list[float]] | None = None
+    task_value_by_strategy: dict[str, list[float]] | None = None
     runs_done: int = 0
 
 
@@ -880,6 +989,8 @@ def _rebuild_state_from_jsonl(path: Path, header_lines: list[str]) -> _CompareSt
         flash_by_strategy={},
         pro_by_strategy={},
         failure_by_strategy={},
+        resolved_value_by_strategy={},
+        task_value_by_strategy={},
     )
     for line in path.read_text().splitlines():
         if not line.strip():
@@ -906,6 +1017,15 @@ def _rebuild_state_from_jsonl(path: Path, header_lines: list[str]) -> _CompareSt
         failures = state.failure_by_strategy.setdefault(name, {})
         failures[failure_class] = failures.get(failure_class, 0) + 1
         state.batch_spent_by_strategy[name] = float(record.get("batch_spent") or 0.0)
+        # Value observability: enrich legacy records on resume
+        if record.get("task_value_profile") is None:
+            _enrich_record_with_value(record)
+        state.resolved_value_by_strategy.setdefault(name, []).append(
+            float(record.get("resolved_value") or 0.0)
+        )
+        state.task_value_by_strategy.setdefault(name, []).append(
+            float(record.get("task_value") or 1.0)
+        )
     return state
 
 
@@ -967,6 +1087,9 @@ def _persist_task_record(
         elif auto_budget_memory is not None and not no_auto_budget_learn:
             record["budget_learning_update_written"] = False
 
+        # Value observability enrichment (Phase R)
+        _enrich_record_with_value(record)
+
         handle.write(json.dumps(record, ensure_ascii=False) + "\n")
         handle.flush()
         state.runs_done += 1
@@ -984,6 +1107,15 @@ def _persist_task_record(
         failures = state.failure_by_strategy.setdefault(name, {})
         failures[failure_class] = failures.get(failure_class, 0) + 1
         state.batch_spent_by_strategy[name] = float(record.get("batch_spent") or 0.0)
+        # Value observability tracking
+        if state.resolved_value_by_strategy is not None:
+            state.resolved_value_by_strategy.setdefault(name, []).append(
+                float(record.get("resolved_value") or 0.0)
+            )
+        if state.task_value_by_strategy is not None:
+            state.task_value_by_strategy.setdefault(name, []).append(
+                float(record.get("task_value") or 1.0)
+            )
         if scoreboard is not None:
             scoreboard.record(name, resolved=bool(record.get("harness_resolved")))
         _write_summary_file(
@@ -1005,6 +1137,8 @@ def _persist_task_record(
             total_runs=total_runs,
             tasks_per_strategy=tasks_per_strategy,
             global_line=global_progress.format_global(scoreboard),
+            resolved_value_by_strategy=state.resolved_value_by_strategy,
+            task_value_by_strategy=state.task_value_by_strategy,
         )
 
 
@@ -1388,6 +1522,19 @@ def main() -> None:
         help="max chars for bash command digest in turn traces (default 120)",
     )
     parser.add_argument(
+        "--value-profile",
+        choices=("equal", "difficulty", "discriminative_rarity", "unsolved_difficulty", "combined"),
+        default="equal",
+        help="Value profile for task value assignment (default: equal)",
+    )
+    parser.add_argument(
+        "--value-matrix",
+        type=str,
+        default=None,
+        help="Path to value matrix JSON artifact (e.g. docs/reports/047_value_matrix.json). "
+        "If not specified, uses equal value (all tasks = 1.0) with value_source=default_equal.",
+    )
+    parser.add_argument(
         "--per-task-cap",
         type=float,
         default=None,
@@ -1584,6 +1731,12 @@ def main() -> None:
         for line in bm.summary_lines():
             print(f"  {line}")
         sys.exit(0)
+
+    # ── Value observability: init before any tasks run ───────────────────
+    _init_value_observability(
+        value_profile=args.value_profile,
+        value_matrix_path=args.value_matrix,
+    )
 
     # ── Runtime root: set before any path-dependent operations ────────────
     if args.runtime_root:
@@ -2047,6 +2200,8 @@ def main() -> None:
             flash_by_strategy={},
             pro_by_strategy={},
             failure_by_strategy={},
+            resolved_value_by_strategy={},
+            task_value_by_strategy={},
         )
     started = time.time()
     io_lock = threading.Lock()

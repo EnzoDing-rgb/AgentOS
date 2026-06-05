@@ -4,6 +4,18 @@
 
 ## 当前快照（2026-06-05）
 
+### 048 后 Phase R 状态
+
+- **Phase R 部分完成：** Tasks A/B/C/E/F 完成，Task D (paid smoke) BLOCKED — 两个 API key 均返回 401。详细报告：`docs/reports/048.md`。
+- **Task A — Q-fix consistency：** 修复 047.md 中错误的 API key gate（DeepSeek/OpenAI → DashScope/AICode007），regenerate 047_value_matrix.json 使用正确的 Phase Q manifest，新增 manifest provenance test。
+- **Task B — Value observability：** `_enrich_record_with_value()` 在每个 run JSONL row 写入 6 个新字段（task_value_profile, task_value, resolved_value, value_source, value_matrix_artifact, resolved_value_per_dollar）。新增 CLI flags `--value-profile` 和 `--value-matrix`。Summary 输出包含 per-strategy value metrics。不改变路由决策。
+- **Task C — Tests：** 10 new tests in `test_value_observability.py`（enrichment 6, summary 2, no-secret-leak 2）。93/93 value-related tests pass。
+- **Task D — Paid smoke：** BLOCKED。DASHSCOPE_API_KEY 和 AICODE007_API_KEY 均返回 HTTP 401。Preflight check 正确阻止了带无效 key 的 paid run。
+- **Task E — Artifact regeneration：** 生成 048_clean_runs.json 和 048_value_matrix.json（无新 paid data）。
+- **Task F — AutoResearch 回归：** 93 value tests pass + goal-loop smoke exit 0。
+- **333 total tests pass（33 pre-existing failures），git diff --check CLEAN。**
+- **关键变化：** 每个 run record 现在携带 value observability 字段，使事后分析可以从 JSONL 中直接读取 value 信息，无需回到 value matrix artifact。Summary 输出也包含 resolved_value 和 resolved_value_per_dollar，使 value-aware 比较成为一等公民。
+
 ### 047 后 Phase Q 状态
 
 - **Phase Q 部分完成：** Tasks A/B/C/E 完成，Task D (paid smoke) BLOCKED — API keys 未设置。详细报告：`docs/reports/047.md`。
