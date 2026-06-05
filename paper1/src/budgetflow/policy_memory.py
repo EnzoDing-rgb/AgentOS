@@ -250,7 +250,7 @@ class PolicyMemory:
         for r in records:
             iid = str(r.get("instance_id") or "")
             routing = str(r.get("routing") or "")
-            if "budgetflow_full" in routing or routing == "budgetflow_full":
+            if routing in ("budgetflow_full", "budgetflow_conservative") or "budgetflow_full" in routing:
                 by_task[iid]["full"].append(r)
             elif "budget_only" in routing:
                 by_task[iid]["tight"].append(r)

@@ -120,6 +120,10 @@ DEFAULT_STRATEGIES: tuple[CompareStrategy, ...] = (
     CompareStrategy("budgetflow_full_loose", "budgetflow_full", "loose"),
     CompareStrategy("budgetflow_equal_weight_loose", "budgetflow_equal_weight", "loose"),
     CompareStrategy("all_pro", "all_pro", None),
+    CompareStrategy("budget_only_t2_tight", "budget_only_t2", "tight"),
+    CompareStrategy("budget_only_t2_loose", "budget_only_t2", "loose"),
+    CompareStrategy("budgetflow_conservative_tight", "budgetflow_conservative", "tight"),
+    CompareStrategy("budgetflow_conservative_loose", "budgetflow_conservative", "loose"),
 )
 
 DIAGNOSTIC_STRATEGIES: tuple[CompareStrategy, ...] = (
