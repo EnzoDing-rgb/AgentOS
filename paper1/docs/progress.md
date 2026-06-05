@@ -4,6 +4,18 @@
 
 ## 当前快照（2026-06-04）
 
+### 031 后权威状态
+
+- **031 完成：真正 5x2 LOO BudgetMemory 泛化验证。** `postfix_031_loo_5x2`：5 held-out tasks, 2 strategies, 10/10 rows clean。BudgetMemory source 全部 `repo_median`，0 exact_task leakage。checker CLEAN。
+- **031 结果：** `budget_only_tight` 4/5 PASS ($0.49)；`budgetflow_full_tight` 4/5 PASS ($0.70)。双方均 budget_fail 在 sympy-18057。BudgetFlow 更贵且无 pass 优势（与 030 一致）。
+- **BudgetMemory LOO cascade 已验证：** held-out tasks → `repo_median`，training tasks → `exact_task`。gate 通过。Gate/dry-run 可用 `--budget-memory-dry-run` + `--budget-memory-exclude-ids` 在不调 API 下验证。
+- **Auto-budget 与 BudgetMemory 是两个独立系统：** auto-budget 的 `history_exact` 来自硬编码 `_HISTORICAL_PRIOR`，不是 leakage。两个 source 字段必须分开解读。
+- **详细报告：** `paper1/docs/reports/031.md`。
+- **阶段 B 路径审计完成：** `paper1/docs/reports/032.md`。发现 3 个 HIGH blocker：repo cache 在 paper1/data/repo_cache（NFS + Git 污染）、mini-swe-agent symlink 指向 /Lishun、CACHE_DIR 无 CLI 覆盖。Trace scratch 在 data/runs 也需迁到 /tmp。
+- **阶段 C2 完成：runtime-root 非侵入重构。** 所有高 churn 路径迁至 `/tmp/budgetflow-runtime/`（worktrees, repos, locks, traces）。新增 `--runtime-root` / `--allow-nfs-runtime` CLI。8/8 blocker 修复。21 测试通过。P0 review fixes 已完成。详细报告：`paper1/docs/reports/033.md`。
+- **阶段 D 完成：AutoResearch 最小闭环骨架。** 实现了非侵入式 coordinator state machine（`autoresearch_coordinator.py`），管理 workflow 目录、pause conditions、retry、dry-run/manual mode。37 新测试。不调用 Worker/API。详细报告：`paper1/docs/reports/034.md`。
+- **`budget_prior_source` vs `budget_memory_budget_source` 交叉审计：** 030 全部 `global_fallback`（空训练集），031 全部 `repo_median`（LOO cascade 正确）。两个字段是独立系统，不能混读。
+
 ### 030 后权威状态
 
 - **工作目录已迁移：** 当前主开发目录是 `/root/.dev/AgentOS`。`/Lishun/.../AgentOS` 仍可作为旧持久化来源，但不要再作为交互开发主目录，避免 Git/NFS 小文件 I/O 卡顿污染判断。
@@ -262,6 +274,7 @@ cd paper1 && PYTHONPATH=src:../external/mini-swe-agent/src \
 | **postfix_012_trace_sanity-1** | 015 验证 run；5×5；trace enabled；routing fix | **25/25**，12 PASS | `data/runs/postfix_012_trace_sanity-1.*` |
 | **postfix_015_fixes-1** | 016 验证 run；5×5；bo T3 + bf cap fix | **25/25**，19 PASS | `data/runs/postfix_015_fixes-1.*` |
 | **stability_audit** | all_pro 7 tasks × 3 rounds；T3-only uncapped | **11/21**（中断）| `data/runs/stability_audit_*.jsonl` |
+| **postfix_031_loo_5x2** | 真正 5×2 LOO；BudgetMemory exclude；auto-budget；trace on | **10/10**，8 PASS | `data/runs/postfix_031_loo_5x2.*` |
 
 ---
 

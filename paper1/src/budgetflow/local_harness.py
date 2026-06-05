@@ -23,92 +23,65 @@ from .console_log import (
     paint,
     tag,
 )
+from .runtime import (
+    get_locks_dir,
+    get_repo_cache_dir,
+    get_runtime_root,
+    get_worktree_root as _runtime_worktree_root,
+    resolve_runtime_root,
+)
 
 PAPER1_ROOT = Path(__file__).resolve().parents[2]
-CACHE_DIR = PAPER1_ROOT / "data" / "repo_cache"
-NFS_WORKTREE_ROOT: Path = CACHE_DIR / "worktrees"
-LEGACY_CACHE_DIR = PAPER1_ROOT / "src" / "data" / "repo_cache"
 
-# ── Configurable runtime worktree root ──────────────────────────────────────
-# Priority: set_worktree_root() > BUDGETFLOW_WORKTREE_ROOT env > /tmp > NFS fallback
+# Legacy repo cache locations (read-only fallback for existing clones).
+_LEGACY_REPO_CACHE = PAPER1_ROOT / "data" / "repo_cache"
+_LEGACY_REPO_CACHE_ALT = PAPER1_ROOT / "src" / "data" / "repo_cache"
 
-_worktree_root: Path | None = None
+# ── Configurable worktree root ──────────────────────────────────────────────
+# --worktree-root overrides the runtime-derived worktree root.
+# Prefer --runtime-root for new code; --worktree-root is a deprecated escape hatch.
+
+_worktree_root_override: Path | None = None
 _worktree_root_source = "default"
 
 
-def _resolve_worktree_root() -> tuple[Path, str]:
-    """Return (root, source) for runtime worktrees. Source is 'cli', 'env', 'tmp', 'nfs-fallback'."""
-    global _worktree_root, _worktree_root_source
-    if _worktree_root is not None:
-        return _worktree_root, _worktree_root_source
-
-    env_root = os.environ.get("BUDGETFLOW_WORKTREE_ROOT")
-    if env_root:
-        p = Path(env_root)
-        p.mkdir(parents=True, exist_ok=True)
-        _worktree_root = p
-        _worktree_root_source = "env"
-        return p, "env"
-
-    # Default: /tmp scratch
-    tmp_root = Path("/tmp/budgetflow_worktrees")
-    try:
-        tmp_root.mkdir(parents=True, exist_ok=True)
-        # Quick writability check
-        test_file = tmp_root / ".write_test"
-        test_file.write_text("ok")
-        test_file.unlink()
-        # Check space: need at least 1G free
-        stat = os.statvfs(str(tmp_root))
-        free_gb = (stat.f_bavail * stat.f_frsize) / (1024 ** 3)
-        if free_gb >= 1.0:
-            _worktree_root = tmp_root
-            _worktree_root_source = "tmp"
-            return tmp_root, "tmp"
-    except (OSError, PermissionError):
-        pass
-
-    # Fallback to NFS
-    NFS_WORKTREE_ROOT.mkdir(parents=True, exist_ok=True)
-    _worktree_root = NFS_WORKTREE_ROOT
-    _worktree_root_source = "nfs-fallback"
-    print(
-        f"{tag('prep')} WARNING: /tmp/budgetflow_worktrees not writable or low space, "
-        f"falling back to NFS {NFS_WORKTREE_ROOT}",
-        flush=True,
-    )
-    return NFS_WORKTREE_ROOT, "nfs-fallback"
-
-
 def set_worktree_root(path: Path | str | None) -> None:
-    """Override worktree root at runtime (CLI integration). Call before first use."""
-    global _worktree_root, _worktree_root_source
+    """Override worktree root (deprecated — prefer --runtime-root)."""
+    global _worktree_root_override, _worktree_root_source
     if path is None:
-        _worktree_root = None
+        _worktree_root_override = None
         _worktree_root_source = "default"
         return
     p = Path(path)
     p.mkdir(parents=True, exist_ok=True)
-    _worktree_root = p
+    _worktree_root_override = p
     _worktree_root_source = "cli"
 
 
 def get_worktree_root() -> Path:
-    """Return current worktree root."""
-    root, _ = _resolve_worktree_root()
-    return root
+    """Current worktree root: explicit override > runtime-derived."""
+    if _worktree_root_override is not None:
+        return _worktree_root_override
+    return _runtime_worktree_root()
 
 
 def get_worktree_root_source() -> str:
-    """Return source of current worktree root: 'cli', 'env', 'tmp', 'nfs-fallback'."""
-    _resolve_worktree_root()
-    return _worktree_root_source
+    if _worktree_root_override is not None:
+        return _worktree_root_source
+    return f"runtime:{resolve_runtime_root()[1]}"
+
+
+# ── Repo cache (mirror clones) ──────────────────────────────────────────────
+
+def _active_repo_cache_dir() -> Path:
+    """Active repo cache: runtime root (preferred) with legacy fallback for reads."""
+    return get_repo_cache_dir()
 
 
 # ── Cross-process file lock for git metadata ────────────────────────────────
 
-_LOCKS_DIR = Path("/tmp/budgetflow_locks")
-_LOCKS_DIR.mkdir(parents=True, exist_ok=True)
+def _locks_dir() -> Path:
+    return get_locks_dir()
 
 
 @contextmanager
@@ -118,7 +91,7 @@ def _repo_git_lock(slug: str):
     Uses fcntl.flock so multiple processes (and threads within them) serialize
     git worktree add/remove/prune without blocking agent execution or API calls.
     """
-    lock_path = _LOCKS_DIR / f"{slug}.lock"
+    lock_path = _locks_dir() / f"{slug}.lock"
     t0 = time.time()
     try:
         with open(lock_path, "w") as lf:
@@ -405,12 +378,13 @@ def repo_slug(repo: str) -> str:
 
 def repo_dir_for(task: LiteTaskRecord) -> Path:
     slug = repo_slug(task.repo)
-    primary = CACHE_DIR / slug
-    legacy = LEGACY_CACHE_DIR / slug
-    if primary.exists():
-        return primary
-    if legacy.exists():
-        return legacy
+    primary = get_repo_cache_dir() / slug
+    # Legacy fallback only when explicitly enabled via env var.
+    # Default: always use runtime repo cache, even if a legacy clone exists.
+    if os.environ.get("BUDGETFLOW_USE_LEGACY_REPO_CACHE") == "1":
+        for legacy in (_LEGACY_REPO_CACHE / slug, _LEGACY_REPO_CACHE_ALT / slug):
+            if legacy.exists():
+                return legacy
     return primary
 
 
@@ -478,7 +452,7 @@ def _pip_install_editable(repo_dir: Path, *, task: LiteTaskRecord) -> subprocess
 def _ensure_main_repo(task: LiteTaskRecord) -> Path:
     repo_dir = repo_dir_for(task)
     repo_url = f"https://github.com/{task.repo}.git"
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    repo_dir.parent.mkdir(parents=True, exist_ok=True)
     if not repo_dir.exists():
         print(f"{tag('prep')} git clone {paint(task.repo, _BRIGHT_CYAN)} ...", flush=True)
         subprocess.run(

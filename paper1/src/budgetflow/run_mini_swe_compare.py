@@ -31,7 +31,11 @@ from pathlib import Path
 
 SRC = Path(__file__).resolve().parents[1]
 REPO_ROOT = SRC.parent
-MINI_SWE_SRC = REPO_ROOT.parent / "external" / "mini-swe-agent" / "src"
+
+# Resolve mini-swe-agent via runtime module (handles env var / repo / fallback).
+from budgetflow.runtime import resolve_mini_swe_src  # noqa: E402
+
+MINI_SWE_SRC = resolve_mini_swe_src()
 for path in (str(SRC), str(MINI_SWE_SRC)):
     if path not in sys.path:
         sys.path.insert(0, path)
@@ -73,6 +77,7 @@ from budgetflow.policy_memory import PolicyMemory  # noqa: E402
 from budgetflow.run_guards import CompareRunGuards, set_active_guard  # noqa: E402
 from budgetflow.run_series import default_series_base, resolve_compare_stem  # noqa: E402
 from budgetflow.run_trace import TraceConsoleLevel  # noqa: E402
+from budgetflow.runtime import check_cwd, get_runtime_root, is_nfs_or_banned, print_runtime_info, resolve_runtime_root, set_runtime_root  # noqa: E402
 
 RUNS_DIR = REPO_ROOT / "data" / "runs"
 UNCAPPED_BUDGET = 1_000_000.0
@@ -1438,10 +1443,22 @@ def main() -> None:
         help="k for kNN fallback in auto-budget (default 3)",
     )
     parser.add_argument(
+        "--runtime-root",
+        type=str,
+        default=None,
+        help="runtime scratch root for high-churn artifacts (default: /tmp/budgetflow-runtime, env: BUDGETFLOW_RUNTIME_ROOT)",
+    )
+    parser.add_argument(
+        "--allow-nfs-runtime",
+        action="store_true",
+        default=False,
+        help="allow runtime root on NFS /Lishun paths (disabled by default to prevent NLM deadlocks)",
+    )
+    parser.add_argument(
         "--worktree-root",
         type=str,
         default=None,
-        help="runtime worktree root directory (default: /tmp/budgetflow_worktrees, fallback to NFS if unwritable)",
+        help="override worktree dir specifically (deprecated — prefer --runtime-root)",
     )
     parser.add_argument(
         "--soft-budget",
@@ -1567,6 +1584,23 @@ def main() -> None:
         for line in bm.summary_lines():
             print(f"  {line}")
         sys.exit(0)
+
+    # ── Runtime root: set before any path-dependent operations ────────────
+    if args.runtime_root:
+        set_runtime_root(args.runtime_root, allow_nfs=args.allow_nfs_runtime)
+    elif os.environ.get("BUDGETFLOW_RUNTIME_ROOT"):
+        set_runtime_root(os.environ["BUDGETFLOW_RUNTIME_ROOT"], allow_nfs=args.allow_nfs_runtime)
+    else:
+        # Resolve default; fail-fast if default resolves to /Lishun.
+        root, _ = resolve_runtime_root()
+        if not args.allow_nfs_runtime and is_nfs_or_banned(root):
+            raise SystemExit(
+                f"RUNTIME CONFIG ERROR: default runtime root resolves to banned /Lishun path: {root}\n"
+                f"  Use --runtime-root /tmp/budgetflow-runtime or set BUDGETFLOW_RUNTIME_ROOT.\n"
+                f"  Or pass --allow-nfs-runtime to bypass this safety check."
+            )
+
+    check_cwd()
 
     # --worktree-root: set before any task execution so runtime worktrees
     # go to the correct scratch location.
@@ -1907,6 +1941,8 @@ def main() -> None:
     }
 
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
+    runtime_root, _ = resolve_runtime_root()
+    print_runtime_info(runtime_root, RUNS_DIR, out_stem, policy_jobs)
     print(
         f"{tag('run_id', bold=False)} {out_stem} "
         f"series={series} mode={stem_mode}"

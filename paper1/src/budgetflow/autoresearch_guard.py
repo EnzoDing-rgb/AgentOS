@@ -55,7 +55,7 @@ class RuntimePolicy:
         """Environment defaults for high-churn subprocesses."""
         return {
             "TMPDIR": str(self.tmp_root),
-            "PIP_CACHE_DIR": "/Lishun/.cache/pip",
+            "PIP_CACHE_DIR": os.environ.get("PIP_CACHE_DIR", "/tmp/budgetflow-pip-cache"),
         }
 
 
@@ -128,8 +128,29 @@ class ArtifactPolicy:
             return False
         if parts[1] in {"program.md", "agents", "issues"}:
             return True
-        # Workflow logs are high-churn runtime state.  They may be inspected,
-        # but they are not accepted artifacts for durable checkpoints.
+        if parts[1] == "workflows":
+            return ArtifactPolicy._is_allowed_workflow_path(parts)
+        return False
+
+    @staticmethod
+    def _is_allowed_workflow_path(parts: tuple[str, ...]) -> bool:
+        """Whitelist specific durable files under .autoresearch/workflows/<id>/.
+
+        Allowed: state.json, worker_prompt.md, codex_review.md, final.md,
+        attempts/<NNN>/worker_output.md, attempts/<NNN>/worker_output.log.
+        """
+        if len(parts) < 3:
+            return False  # .autoresearch/workflows alone — no issue dir
+        # parts[0] = .autoresearch, parts[1] = workflows, parts[2] = <issue_id>
+        if len(parts) == 3:
+            return False  # issue dir itself, not a file
+        if len(parts) == 4:
+            # Top-level workflow files: state.json, worker_prompt.md, codex_review.md, final.md
+            return parts[3] in {"state.json", "worker_prompt.md", "codex_review.md", "final.md"}
+        if len(parts) >= 5 and parts[3] == "attempts":
+            # attempts/<NNN>/<file>
+            if len(parts) == 6:
+                return parts[5] in {"worker_output.md", "worker_output.log"}
         return False
 
     @staticmethod

@@ -6,6 +6,38 @@
 
 ## 0. 最新关键判断（2026-06-04）
 
+### 031 / True LOO / BudgetMemory Cascade Takeaway
+
+1. **True LOO BudgetMemory cascade works.** 5 held-out tasks with 030 JSONL as training (LOO excluded) → all held-out hit `repo_median`, 0 `exact_task` leakage. Gate verified via `--budget-memory-dry-run` before API calls.
+2. **BudgetFlow still not beating BudgetOnly.** 031: both 4/5 PASS, bf-T $0.70 vs bo-T $0.49. Same pattern as 030 (7/10 tied, bf more expensive). On easy tasks, routing overhead adds cost without pass gain.
+3. **Auto-budget `history_exact` is NOT leakage.** It comes from hardcoded `_HISTORICAL_PRIOR` (separate system from BudgetMemory). `budget_prior_source` and `budget_memory_budget_source` are different fields with different semantics.
+4. **sympy-18057 is a persistent budget_fail.** Failed for both strategies in 030 and 031. Auto-budget cap $0.12 insufficient — but task-specific, not cascade bug.
+5. **Gate/dry-run pipeline works without API.** `--budget-memory-dry-run` + `--budget-memory-exclude-ids` validates LOO source distribution offline.
+
+### 032 / Runner Path Audit Takeaway
+
+1. **Repo cache at `paper1/data/repo_cache/` is a HIGH blocker.** Full git clones inside the paper1 repo → NFS I/O lag on every fetch, risk of accidental commit. Must move to `/tmp/budgetflow-runtime/repos/`.
+2. **Trace scratch at `paper1/data/runs/trace_*/` should move to `/tmp`.** 031 traces = 1.3MB (10 dirs). At 10x5 scale = ~50MB of per-turn churn in the results directory. Trajectory files are audit trail, should be copied to results on completion.
+3. **`external/mini-swe-agent` symlink to `/Lishun` is fragile.** Breaks if archive is removed. Should be proper git submodule or pip-installed.
+4. **`budget_prior_source` ≠ `budget_memory_budget_source`.** 030 confirmed: auto-budget was OFF (field MISSING), BudgetMemory hit `global_fallback` (empty training). 031 confirmed: auto-budget = `history_exact` (hardcoded prior), BudgetMemory = `repo_median` (LOO cascade correct). Conflating these two fields would produce wrong conclusions.
+5. **Current lock design is correct in scope** (fcntl on worktree add/remove only) but does NOT cover repo cache clone/fetch. When jobs>1 with same-repo tasks, concurrent `_ensure_main_repo()` calls could race.
+
+### 033 / Runtime-Root Refactor Takeaway
+
+1. **Moving high-churn artifacts to /tmp is low-risk, high-reward.** Four path categories (worktrees, repos, locks, traces) moved from NFS/repo paths to `/tmp/budgetflow-runtime`. Zero experiment semantic changes. Persistent evidence stays in `paper1/data/runs`.
+2. **NFS fail-fast guard prevents recurrence.** `is_nfs_or_banned()` catches any `/Lishun` path at startup. Must explicitly pass `--allow-nfs-runtime` to bypass. This prevents the NLM fcntl deadlock that plagued earlier experiments.
+3. **Lock scope unchanged — do not expand.** The fcntl lock protects only git worktree add/remove. Agent repair is intentionally un-locked. Expanding lock scope to cover agent execution would create false contention.
+4. **jobs>1 is safe now.** With locks on local `/tmp` fs (no NFS NLM), worktrees on local fs, and repo caches on local fs, multi-process execution should not hit filesystem deadlocks.
+5. **Two symlinks remain as tech debt.** `external/mini-swe-agent` and `paper1/data/swebench_lite_export` are still symlinks to `/Lishun/_archive/`. The new resolution functions (`resolve_mini_swe_src()`, `resolve_swebench_export_dir()`) support env var overrides but the default fallback reads from NFS.
+
+### 034 / AutoResearch Coordinator Takeaway
+
+1. **Coordinator is a state machine, not an agent.** It manages workflow dirs, writes prompts, enforces pause conditions, and tracks retries. It does not call the Worker, make API calls, or auto-commit. Those are external integrations.
+2. **On-disk-first design.** Every state transition writes to disk immediately. Workflows survive crashes — reload from `state.json`.
+3. **Pause conditions are explicit flags.** The coordinator doesn't guess — the caller supplies flags like `paid_experiment_scale=(3,10)` or `northstar_change=True`. This keeps the coordinator non-invasive.
+4. **Manual mode bridges the gap.** When no Worker CLI exists, `manual_mode=True` prints the prompt path and output path so the operator can execute manually. This removes the copy-paste loop without requiring full automation.
+5. **Auto commit/push intentionally deferred.** The coordinator writes to `.autoresearch/` but does not touch git. Auto-commit should only be enabled after Codex gate approval is proven reliable in practice.
+
 ### 030 / BudgetMemory / 决策纪律 Takeaway
 
 1. **`harness_resolved` 是唯一 PASS/FAIL 主口径。** `exit_reason` 只是过程解释。030 里 `rescue_timeout_gold_edited` 5 个中 4 个是 PASS；把它们按 exit_reason 全算 FAIL，会把 `bf_tight` 从 7/10 错报成 5/10，直接扭曲论文结论。
