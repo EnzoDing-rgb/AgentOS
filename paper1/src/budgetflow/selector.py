@@ -109,8 +109,10 @@ class ConservativeSelector(BudgetFlowSelector):
                 upgrade_threshold = float("inf")
 
             # Conservation factor: as budget depletes, make escalation harder.
-            # At pressure=0.3: factor=1.0 (no change). At pressure=1.0: factor≈3.1.
-            conservation = 1.0 + max(0.0, budget_pressure - 0.3) * 3.0
+            # At pressure=0.3: factor=1.0 (no change). At pressure=1.0: factor≈2.05.
+            # Slope 1.5 (was 3.0) — 053 per-task data showed 3.0 was too aggressive
+            # for small per-task caps, preventing T3 entirely.
+            conservation = 1.0 + max(0.0, budget_pressure - 0.3) * 1.5
             effective_threshold = upgrade_threshold * conservation
 
             if budget_pressure >= effective_threshold:
