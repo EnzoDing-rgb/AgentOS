@@ -4,6 +4,18 @@
 
 ## 当前快照（2026-06-05）
 
+### 051 后 Phase U 状态
+
+- **Phase U 完成：** 首次 3-policy value-stress experiment。5 tasks × 3 strategies, 15/15 rows, $1.50 total。详细报告：`docs/reports/051.md`。
+- **Task A — 050 Review Fix：** Downgraded "First Claim supported" → "First Claim observability validated; independent evidence pending"。Added Phase U Review Fix section。
+- **Task B — Preregistration：** 3 policies (BO, SB, BF) × 5 tasks (value spread 4.87x)。Hypotheses preregistered。
+- **Task C — Observability：** Added `budget_source` field。127 tests pass。
+- **Task D — Paid experiment：** 15/15 rows ($1.50)。Checker WARN on 1 budget_exhausted zero-turn row。JSONL: `/tmp/budgetflow-runtime/051_value_stress.jsonl`。
+- **Task E — 关键发现：BF LOSES。** BO 4/5, SB 4/5, BF 3/5。BF 比 BO 贵 20%（commonly-solved tasks）。BF 在 hardest task (sympy-16988) 上 FAIL 而 BO/SB PASS。KV/cache downside 确认：BF rescue_timeout 在已解决 task 浪费 12 turns。
+- **Task F — AutoResearch：** exit 0。Infra healthy。
+- **Task G — 报告/提交：** 051.md, progress.md, takeaway.md 更新，commit + push。
+- **已知 blockers：** (1) Batch cap $0.50 太紧 — 最后一个 task 总是 budget_fail；(2) BF 在 easy task 上过度投资；(3) T3 ≠ 成功保证；(4) Identical resolved sets 无法测试 First Claim；(5) Task ordering effect 污染 comparison。
+
 ### 050 后 Phase T 状态
 
 - **Phase T 完成：** P0 value matrix lookup fix + touched_file_paths text_regex enhancement + 049 smoke checker validation + expanded paid smoke 6/6 PASS ($0.66)。详细报告：`docs/reports/050.md`。
@@ -153,6 +165,7 @@
 
 ### 最新改动（2026-06-05）
 
+- **Phase U (051)**：首次 3-policy value-stress experiment。5 tasks × 3 strategies (BO/SB/BF), 15/15 rows, $1.50。BF LOSES: 3/5 vs 4/5 PASS。BF 20% 更贵。First Claim 无独立证据。Second Claim 不支持。KV/cache downside 确认。详细报告：`paper1/docs/reports/051.md`。
 - **Phase T (050)**：P0 value matrix lookup fix (wrong schema: `matrix[profile]` vs `tasks[id].values[profile]`)。touched_file_paths text_regex 增强。049 smoke checker CLEAN。Expanded paid smoke 6/6 PASS ($0.66)。BF 36% 更便宜，56% 更高 RVPD。127 tests pass。详细报告：`paper1/docs/reports/050.md`。
 - **Phase S (049)**：Provider migration recovery + real preflight + paid smoke 4/4 PASS ($0.36)。Diagnose Phase R 401 as false blocker (missing `.env`)。Shell-sourcing keys for secure migration。BF 22% cheaper, 29% higher RVPD。详细报告：`paper1/docs/reports/049.md`。
 - **Phase O (045)**：Value Matrix + Progress Calibration 基础设施。4 种 ex-ante value profile（equal/difficulty/solve_rarity/combined）+ sensitivity analysis + 自定义 profile。Progress calibration 从 639 turns 确认 selection-bias caveat。LOCALIZATION progress signal 发现为死信号（0% rate）。AutoResearch 回归 186 + goal-loop smoke exit 0。272 tests pass。建议暂不启动 paid run。详细报告：`paper1/docs/reports/045.md`。

@@ -4,6 +4,20 @@
 
 该 commit 就 commit，该 push 就 push。关键节点必须 commit，能同步远端就同步远端。
 
+### Phase U / 3-Policy Value-Stress Experiment Takeaway
+
+1. **BF can lose — and did.** In the first 3-policy experiment (5 tasks × BO/SB/BF, $1.50), BF scored 3/5 PASS while BO and SB both scored 4/5. BF was 20% more expensive on commonly-solved tasks. BF failed the hardest task (sympy-16988) despite using 54% T3 — while BO solved it with only 5% T3. Honest negative results are more valuable than optimistic noise.
+
+2. **T3 escalation does not guarantee success.** BF used 36% T3 overall (vs 13-14% for BO/SB) but had the worst pass rate. On sympy-16988, BF's 54% T3 failed to repair, while BO's 5% T3 succeeded. The model tier matters less than how effectively the budget is spent.
+
+3. **Rescue mechanism can burn budget on already-solved tasks.** BF on sympy-13480: 17 turns with `rescue_timeout_gold_edited` exit — 12 more turns than BO for the same task. The gold file was already edited by turn 3, but rescue kept running. A rescue cost cap (max 3-5 turns) would prevent this budget drain.
+
+4. **Shared batch cap creates task-ordering confound.** All three strategies failed sympy-20212 because it was scheduled last and budget was exhausted. The strategy comparison on this task is meaningless — it measures batch position, not routing quality. Per-task caps or randomized task ordering would fix this.
+
+5. **Stage-blind (equal weights) matched BO and beat BF.** `stage_blind_tight` (w_i=1/1/1) achieved 4/5 PASS at $0.50 — identical to BO and better than BF (3/5). This suggests that adaptive routing without stage weights may be the sweet spot, and repair-heavy weights (w_i=1/3/2.5) may be harmful in the current calibration.
+
+6. **First Claim still lacks independent evidence.** With identical resolved sets across strategies (minus BF's extra failure), RVPD differences remain purely cost-driven. To test value allocation, strategies must demonstrate different task selection or different budget allocation patterns — not just the same tasks with different costs.
+
 ### Phase T / P0 Value Matrix Fix + Expanded Paid Smoke Takeaway
 
 1. **Artifact schema migration must be tracked in code, not in memory.** The 048+ artifact schema changed from `artifact["matrix"][profile][id]` to `artifact["tasks"][id]["values"][profile]`, but `_init_value_observability()` still read the old key. Since the old key was always `{}` in new artifacts, all lookups failed silently — returning `value_source=default_equal` and `task_value=1.0` for every row. A schema version field or a try-both approach with explicit fallback reporting prevents this.

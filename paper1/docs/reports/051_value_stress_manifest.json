@@ -1,0 +1,125 @@
+{
+  "meta": {
+    "phase": "Phase U",
+    "description": "Value-stress experiment: 5 sympy tasks × 3 policies testing value-aware observability and differential allocation",
+    "created": "2026-06-06",
+    "preregistered": true,
+    "note": "First experiment with 3 policies. Uses stage_blind_tight as value-agnostic control. Primary test: do different policies resolve DIFFERENT task/value sets? Secondary: does BF beat BO on cost efficiency consistently?"
+  },
+  "design": {
+    "policies": [
+      {
+        "name": "budget_only_tight",
+        "routing": "budget_only",
+        "description": "Cost-only routing. No stage awareness, no tier escalation based on progress. Cap tight (0.50). Baseline for cost efficiency comparison.",
+        "role": "cost-efficiency baseline"
+      },
+      {
+        "name": "budgetflow_full_tight",
+        "routing": "budgetflow_full",
+        "description": "Full BudgetFlow with stage-aware weights (w_i = repair-heavy 1/3/2.5). Adaptive routing escalates to T3 when progress stalls.",
+        "role": "value-aware treatment"
+      },
+      {
+        "name": "stage_blind_tight",
+        "routing": "stage_blind",
+        "description": "BudgetFlow with equal weights (w_i = 1/1/1). Still has adaptive routing and tier escalation, but no stage preference. Tests whether stage weighting adds value beyond basic adaptive routing.",
+        "role": "stage-weight ablation control"
+      }
+    ],
+    "tasks": [
+      {
+        "instance_id": "sympy__sympy-14774",
+        "repo": "sympy/sympy",
+        "difficulty_value": 0.0591,
+        "value_tier": "low",
+        "reason": "Easiest task in pool. Tests whether BF wastes T3 on already-easy tasks."
+      },
+      {
+        "instance_id": "sympy__sympy-13480",
+        "repo": "sympy/sympy",
+        "difficulty_value": 0.0662,
+        "value_tier": "low",
+        "reason": "Very easy task. Both BO and BF resolved in 049 and 050 smokes."
+      },
+      {
+        "instance_id": "sympy__sympy-13647",
+        "repo": "sympy/sympy",
+        "difficulty_value": 0.0970,
+        "value_tier": "low-mid",
+        "reason": "Moderate-easy task. BF consistently cheaper than BO in prior smokes."
+      },
+      {
+        "instance_id": "sympy__sympy-20212",
+        "repo": "sympy/sympy",
+        "difficulty_value": 0.1575,
+        "value_tier": "mid",
+        "reason": "Mid-difficulty task. Anchor for historical difficulty scaling (1.0x)."
+      },
+      {
+        "instance_id": "sympy__sympy-16988",
+        "repo": "sympy/sympy",
+        "difficulty_value": 0.2879,
+        "value_tier": "high",
+        "reason": "Hardest task in easy pool (6.58x the easiest). Tests whether BF escalation helps on hard tasks."
+      }
+    ],
+    "value_profile": "difficulty",
+    "value_spread": "4.87x (0.0591 to 0.2879)",
+    "total_rows_planned": 15,
+    "budget_cap": "$5.00 total, $3.00 soft warning",
+    "estimated_cost": "$1.50-$3.00 (based on prior smoke: ~$0.10-0.20 per task per policy)"
+  },
+  "hypotheses": {
+    "H1_first_claim": {
+      "description": "Different policies resolve DIFFERENT task/value subsets. Specifically, bf_full solves harder (higher-value) tasks that bo and stage_blind miss.",
+      "test": "Compare resolved sets across 3 policies. If sets differ, compute resolved_value and RVPD by policy. If bf_full has higher resolved_value (not just lower cost), First Claim gets independent evidence.",
+      "null_hypothesis": "All 3 policies resolve the same tasks. RVPD differences are purely cost-driven.",
+      "evidence_required": "At least one task resolved by bf_full but NOT by bo or stage_blind, AND that task must have non-trivial difficulty value."
+    },
+    "H2_second_claim": {
+      "description": "BudgetFlow (both bf_full and stage_blind) is cheaper per task than budget_only.",
+      "test": "Compare avg_cost, total_cost, turns, and RVPD across 3 policies.",
+      "null_hypothesis": "BF is not cheaper than BO, or the savings are within noise.",
+      "evidence_required": "BF policies show >= 15% cost reduction vs BO, consistent across tasks."
+    },
+    "H3_stage_weight_ablation": {
+      "description": "bf_full (stage-aware weights) outperforms stage_blind (equal weights) on hard tasks.",
+      "test": "Compare bf_full vs stage_blind on hardest task (sympy-16988). Check if bf_full uses more T3 on REPAIR stage.",
+      "null_hypothesis": "Stage weights make no difference; bf_full == stage_blind on all metrics.",
+      "evidence_required": "bf_full shows distinct routing behavior (more T3 on REPAIR) and either better pass rate or lower cost on hard tasks."
+    }
+  },
+  "claim_discipline": {
+    "if_all_same_solved_set": "Only Second Claim (cost efficiency) can be supported. First Claim remains 'observability validated; independent evidence pending.' Do NOT claim value allocation advantage.",
+    "if_different_solved_sets": "First Claim gets preliminary support. Report which tasks differ and whether the value spread is meaningful.",
+    "if_bf_loses": "Report honestly. Document whether the loss is cost-driven, pass-driven, or both. Do NOT spin."
+  },
+  "observability_requirements": {
+    "per_row_fields": [
+      "instance_id",
+      "strategy",
+      "harness_resolved",
+      "task_cost",
+      "total_cost",
+      "task_value",
+      "value_source",
+      "resolved_value",
+      "resolved_value_per_dollar",
+      "task_value_profile",
+      "value_matrix_artifact",
+      "exit_reason",
+      "tier_distribution",
+      "turn_count"
+    ],
+    "per_strategy_summary": [
+      "resolved_count",
+      "total_cost",
+      "avg_cost",
+      "resolved_value",
+      "resolved_value_per_dollar",
+      "T2_pct",
+      "T3_pct"
+    ]
+  }
+}

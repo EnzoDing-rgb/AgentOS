@@ -478,6 +478,14 @@ def _enrich_record_with_value(record: dict) -> dict:
     record["value_matrix_artifact"] = _VALUE_MATRIX_PATH
     record["resolved_value_per_dollar"] = round(resolved_value_per_dollar, 6)
 
+    # Budget source: always present for downstream analysis
+    if record.get("auto_budget_enabled"):
+        record["budget_source"] = "auto_budget"
+    elif record.get("budget_memory_enabled"):
+        record["budget_source"] = "budget_memory"
+    else:
+        record["budget_source"] = "frozen_caps"
+
     return record
 
 
