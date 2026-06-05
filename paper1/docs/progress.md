@@ -2,9 +2,28 @@
 
 > 单一入口：进度、跑法、历史结果。
 
-## 当前快照（2026-06-04）
+## 当前快照（2026-06-05）
 
-### 031 后权威状态
+### 039 后权威状态
+
+- **North Star 已完成重大转向：** BudgetFlow 不再只被定位为 smart routing / cost efficiency 系统，而是 value-aware shared budget governance。核心目标是让共享硬预算池中的 value flow 到最高价值、可验证完成的任务上。
+- **Value Proposition 已更新：** 论文主指标应从 `resolved tasks per dollar` / per-task cost 转为 `resolved value per dollar`。也就是在同一 hard budget 下，系统是否解决了价值量最高的一批任务，而不是只比较每个任务花多少钱。
+- **BudgetMemory 的定位也随之改变：** 它不只是 task cost memory；长期应学习 task value、difficulty、model success、cap sufficiency、failure axis 和 marginal escalation benefit，服务 value-cost allocation。
+- **现有 030/031 实验仍有工程价值，但不再足够支撑新主张。** 031 证明了 true LOO BudgetMemory cascade 干净；030/031 也证明在 equal-value 假设下 BudgetFlow 暂未稳定 beat BudgetOnly。但在新 Value Proposition 下，下一轮必须重设 Key Indicator 和 task value model 后再做实验。
+- **AutoResearch 进展很大：** 034 coordinator、035 CLI、036 no-paid smoke、037 `claude -p` real worker blocker、038 thin API worker、039 goal-level loop + real API smoke 已形成从 issue 到 workflow artifact 的可恢复闭环原型。
+- **AutoResearch 当前判断：** 低成本 Real API smoke 已证明 thin API worker 路线可行；039 的两次 DeepSeek-backed API 调用成本约 $0.002。但 goal-level evidence ledger 仍有一致性缺陷：goal JSON / summary status 不一致，`total_api_calls` 未聚合，review 还会被 PASS marker 带偏。下一步应先做 evidence ledger + deterministic review gate hardening，而不是继续扩大功能。
+- **运行环境结论：** 当前开发目录 `/root/.dev/AgentOS` 和 `/tmp/budgetflow-runtime` 避开了 `/Lishun` NFS 小文件 I/O。runtime-root 重构已把 worktrees、repo cache、locks、trace scratch 迁出 repo/NFS。`external/mini-swe-agent` symlink 仍是待清理技术债，不要提交。
+- **最新实验卡点：** BudgetFlow paid benchmark 暂停推进。最近 clean BudgetFlow 实验仍是 031；之后的 034-039 是 AutoResearch / workflow infrastructure。037 卡点是 `claude -p` session overhead 超出小额 smoke budget；038 用 thin API worker 绕过。
+- **下一条并行主线：** 重新设计 Key Indicator：为 SWE-bench task 赋予 value / difficulty / expected payoff，评估 `sum(value * resolved) / cost` 或同 hard budget 下 resolved value total。该实验设计与 AutoResearch 证据闭环是并行任务。
+
+### 当前必须区分的两条线
+
+| 线 | 当前目标 | 状态 |
+|---|---|---|
+| BudgetFlow paper | 从 cost-driven 转为 value-driven，重设 indicator 和实验 | 等待新指标设计；不再用 030/031 直接 claim 优势 |
+| AutoResearch | 减少 owner 人肉搬运，形成 Codex ↔ Worker 可恢复闭环 | 原型可跑；下一步修 evidence ledger 和 review gate |
+
+### 031 后权威状态（旧 cost/equal-value 口径）
 
 - **031 完成：真正 5x2 LOO BudgetMemory 泛化验证。** `postfix_031_loo_5x2`：5 held-out tasks, 2 strategies, 10/10 rows clean。BudgetMemory source 全部 `repo_median`，0 exact_task leakage。checker CLEAN。
 - **031 结果：** `budget_only_tight` 4/5 PASS ($0.49)；`budgetflow_full_tight` 4/5 PASS ($0.70)。双方均 budget_fail 在 sympy-18057。BudgetFlow 更贵且无 pass 优势（与 030 一致）。
@@ -79,19 +98,42 @@
 
 ### 下一步
 
-1. **开启 turn traces**：下一轮 run 加 `--trace-turns`，获得 turn-level 诊断能力。
-2. **构建 consistency checker**：checkpoint ↔ JSONL ↔ summary.log 一致性校验。
-3. **扩 task pool**：从 5 → 10+ Gold-PASS tasks，覆盖更多难度级别。
-4. **T1 启用评估**：小规模测试 qwen3-coder-flash 在 BudgetFlow 中的表现。
-5. **Runner 稳定后再上大矩阵**：不要在工作树崩溃/checkpoint 不一致/缺 turn trace 的情况下扩到 5×15 或 5×30。
+当前下一步分两条并行线：
+
+1. **BudgetFlow paper 线：重设 Key Indicator。** 为 SWE-bench task 构造 value / difficulty proxy，先明确 `value_i` 如何从 historical trajectories、gold patch complexity、known solve difficulty、repo/task family、model success/cost 等信号得到。然后重跑小规模 value-aware 评估，主表改为 `resolved_value_per_dollar` 和 fixed-budget resolved value。
+2. **AutoResearch 线：修 evidence ledger。** 先让 goal JSON、summary、metadata、codex_review 事实自洽，禁止 wrapper 伪造 PASS marker，建立 deterministic review gate。039 证明能低成本跑 Real API，但还没证明 review gate 可靠。
+3. **实验 hygiene 保持不变：** 所有新 BudgetFlow paid run 仍必须先过 gate：无 orphan/stuck heartbeat、无 suspicious pass、无 no_trace、BudgetMemory source 分布符合实验语义。
+4. **不要直接扩规模。** 在新 indicator 未定义前，继续 5×10/10×N 只会烧钱并强化旧问题。先做 value model + 2-3 个 baseline 的小型验证。
+5. **Runner/环境稳定性继续保持：** runtime-root 已修复高 churn 路径；新 paid run 使用 `/tmp/budgetflow-runtime`，不要回到 `/Lishun` worktree/repo cache。
 
 ---
 
 ## 论文问题
 
-固定 **batch 经济预算** 下，agentic SWE 能否在 hard cap 内靠 **progress-aware routing** 比 budget-only / all-tier1 换更多 **harness resolved**？
+固定 **shared hard budget** 下，BudgetFlow 能否比 cost-only routing / static quotas / simple baselines 创造更多 **verified resolved value per dollar**？
 
-**Contribution：** governor + shared batch pool + hard cap + RQ2（Full vs Only vs all_flash，同 harness / cap）。
+新主问题不是“每个任务谁更便宜”，而是：
+
+```text
+Given a shared budget pool and a batch/stream of tasks with unequal value,
+which policy resolves the highest total verified value within the same budget?
+```
+
+**核心指标：**
+
+```text
+resolved_value_per_dollar = sum(value_i * harness_resolved_i) / sum(cost_i)
+```
+
+也可以在 fixed budget 下报告：
+
+```text
+total_resolved_value_under_budget = sum(value_i * harness_resolved_i)
+```
+
+**Contribution：** value-aware shared budget governance + hard budget pool + task-level value/difficulty/cost learning + verified outcome accounting。Stage-aware routing（Localization/Repair/Validation）是一个实现机制，不是唯一贡献。
+
+**历史实验口径说明：** 012/030/031 默认 `value_i=1`，因此只能说明 equal-value setting 下的 routing/cascade/fallback 行为。它们仍然是工程与机制证据，但不能直接支撑最新 Value Proposition。
 
 ---
 
@@ -123,6 +165,13 @@
 | Consistency checker | ✅ `check_consistency.py` |
 | Routing fix (T3 overuse) | ✅ formula inverted + PROGRESS_SCALE 18.0→0.3 |
 | Routing verification experiment | ✅ postfix_015_fixes: bf_tight 5/5 (100%) |
+| Value-driven North Star | ✅ 2026-06-05 更新：shared budget pool + resolved value per dollar |
+| True LOO BudgetMemory cascade | ✅ 031 验证 `repo_median`，0 exact-task leakage |
+| Runtime root / NFS mitigation | ✅ 033：高 churn 路径迁至 `/tmp/budgetflow-runtime` |
+| AutoResearch coordinator | ✅ 034：非侵入 state machine + pause/retry/manual mode |
+| AutoResearch CLI + worker bridge | ✅ 035/036：CLI + fake-worker full no-paid smoke |
+| AutoResearch real worker adapter | ⚠️ 037 `claude -p` overhead blocked；038 thin API worker PASS |
+| AutoResearch goal loop | ⚠️ 039 real API goal smoke PASS，但 evidence ledger/review gate 仍需硬化 |
 
 ---
 
@@ -221,14 +270,14 @@ pilot 用 `all_pro`（实际 T2，非 T3）跑 3 题，median cost=2108.2。
 
 ## 跑法（绝对路径）
 
-环境：`cd` 到 `paper1`，用 `.venv/bin/python`，`PYTHONPATH=src:../external/mini-swe-agent/src`，日志建议 `FORCE_COLOR=1`。
+环境：`cd` 到 `/root/.dev/AgentOS/paper1`，用可用的 `python3` 或项目 `.venv/bin/python`，`PYTHONPATH=src:../external/mini-swe-agent/src`，日志建议 `FORCE_COLOR=1`。
 
 **① 5×3（3 tasks × 5 strategies，frozen caps）**
 
 ```bash
-cd /home/fengde/Projects/AI-learning/agent_learning/AgentOS/paper1 && \
+cd /root/.dev/AgentOS/paper1 && \
 FORCE_COLOR=1 PYTHONPATH=src:../external/mini-swe-agent/src \
-/home/fengde/Projects/AI-learning/agent_learning/AgentOS/.venv/bin/python -u -m budgetflow.run_mini_swe_compare \
+python3 -u -m budgetflow.run_mini_swe_compare \
   --read-frozen-caps --limit 3 --step-limit 150 \
   --strategies budget_only_tight,budget_only_loose,budgetflow_full_tight,budgetflow_full_loose,all_pro \
   --jobs 5 --run-series policy_5x3 \
@@ -239,9 +288,9 @@ FORCE_COLOR=1 PYTHONPATH=src:../external/mini-swe-agent/src \
 **② 中断恢复（固定 stem，不新开 ID）**
 
 ```bash
-cd /home/fengde/Projects/AI-learning/agent_learning/AgentOS/paper1 && \
+cd /root/.dev/AgentOS/paper1 && \
 FORCE_COLOR=1 PYTHONPATH=src:../external/mini-swe-agent/src \
-/home/fengde/Projects/AI-learning/agent_learning/AgentOS/.venv/bin/python -u -m budgetflow.run_mini_swe_compare \
+python3 -u -m budgetflow.run_mini_swe_compare \
   --read-frozen-caps --limit 3 --step-limit 150 \
   --strategies budget_only_tight,budget_only_loose,budgetflow_full_tight,budgetflow_full_loose,all_pro \
   --jobs 5 --out-stem policy_5x3-2 --resume \

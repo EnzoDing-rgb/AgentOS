@@ -1,0 +1,11 @@
+{
+  "model": "deepseek-v4-flash",
+  "input_tokens": 4900,
+  "output_tokens": 653,
+  "status_code": 200,
+  "output_path": "/root/.dev/AgentOS/paper1/.autoresearch/workflows/040-issue-b/attempts/001/worker_output.md",
+  "timestamp_utc": "2026-06-05T06:25:02Z",
+  "marker_present_in_model_output": true,
+  "marker_appended_by_wrapper": false,
+  "error": null
+}

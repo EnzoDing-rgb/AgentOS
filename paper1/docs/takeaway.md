@@ -4,7 +4,23 @@
 
 该 commit 就 commit，该 push 就 push。关键节点必须 commit，能同步远端就同步远端。
 
-## 0. 最新关键判断（2026-06-04）
+## 0. 最新关键判断（2026-06-05）
+
+### North Star / Value Proposition Takeaway
+
+1. **BudgetFlow 的核心价值是 shared budget governance，不是单点 smart routing。** 一个组织里的工程、文职、研究、运营任务共享同一预算池；系统应按任务价值、难度、成功概率和预算压力分配模型能力，而不是按人或团队硬切额度。
+2. **论文指标必须转向 `resolved value per dollar`。** 030/031 默认 `value_i=1`，所以只能说明 equal-value setting 下的成本/通过率；新主张必须衡量同一 hard budget 下解决了多少 verified value。
+3. **BudgetMemory 应升级为 value memory。** 它要学习的不只是 task cost，还包括 task value、difficulty、cap sufficiency、model success、failure axis 和 escalation 的 marginal value。
+4. **冷启动与 warm-up 要分开写。** Cold start 允许企业通过 easy API 注入 priority/value hints，也可用 heuristic 估 value；warm-up 依赖 verified outcomes 持续学习，而不是 hard-code 每个任务的 value。
+5. **030/031 没有失败，只是回答了旧问题。** 它们仍证明了 fallback safety、true LOO cascade、checker hygiene 和 BudgetMemory source discipline；但不能直接支撑最新 Value Proposition。
+
+### AutoResearch Takeaway
+
+1. **AutoResearch 的产品目标是减少 owner 人肉搬运，而不是替 owner 做重大决策。** Codex 仍是 review front-end；Worker 可以改代码/测试/文档，但重大事项必须暂停给 owner/Codex gate。
+2. **非侵入式路线已经跑通原型。** 034 coordinator、035 CLI、036 fake-worker smoke、038 thin API worker、039 goal loop 证明 workflow artifact 可以落盘、恢复、审计。
+3. **`claude -p` 不是合适的小任务 Worker adapter。** 037 证明 Claude Code session overhead 会吞掉小额预算；thin API worker 才适合 low-cost smoke。
+4. **039 还不能算最终可信闭环。** Real API smoke 成功，但 goal JSON/summary/api-call ledger 不一致，review gate 还可能被 PASS marker 或模型幻觉带偏。下一步是 evidence ledger + deterministic review gate hardening。
+5. **所有 Worker 交付必须落盘 MD。** 口头 summary 只能辅助；Codex review 的事实源应是 state.json、worker_output.md、worker_metadata.json、codex_review.md、报告和测试输出。
 
 ### 031 / True LOO / BudgetMemory Cascade Takeaway
 
@@ -113,23 +129,24 @@ BudgetFlow 的 claim 必须收窄：
 
 ### HPC / NFS / 容器
 
-当前实验运行在 HPC 的 Kubernetes/Docker 容器里。HPC 的价值是 CPU 并行空间大；GPU 暂时不是本论文实验关键资源。
+当前实验运行在容器环境里。HPC/容器的价值是 CPU 并行空间大；GPU 暂时不是本论文实验关键资源。
 
 `/Lishun` 是 NFS：持久，但小文件慢。`/tmp` 是本机临时盘：快，但不持久。实验前必须设置：
 
 ```bash
 export TMPDIR=/tmp
-export PIP_CACHE_DIR=/Lishun/.cache/pip
+export BUDGETFLOW_RUNTIME_ROOT=/tmp/budgetflow-runtime
 ```
 
 规则：
 
-- 临时构建、pytest tmp、解压、scratch 走 `/tmp`。
-- pip 缓存走 `/Lishun/.cache/pip`。
-- JSONL、checkpoint、report、final trace 必须落 `/Lishun`。
+- 临时构建、pytest tmp、解压、worktree、repo cache、lock、trace scratch 走 `/tmp/budgetflow-runtime`。
+- JSONL、checkpoint、report、final evidence 仍落 `paper1/data/runs` 或 `paper1/docs/reports`。
+- pip cache 不得硬编码 `/Lishun`；使用环境变量或 runtime/path resolver。
 - 避免在 `/Lishun` 上做大范围 `find`、`du`、全仓库扫描；优先精确路径、`rg --files`、`find -maxdepth`。
 - `exit 137` 通常是外部 `SIGKILL`，先查 cgroup/OOM/session log，再判断是不是代码问题。
 - 长实验不要依赖交互式 shell 生命周期；必须支持 `--resume`、checkpoint、run-series，必要时用 tmux/nohup。
+- `/root/.dev/AgentOS` 是当前开发目录；旧 `/Lishun/.../AgentOS` 只当历史来源，不作为交互开发主目录。
 
 ### 并行与 Resume
 
@@ -187,7 +204,9 @@ cd paper1 && PYTHONPATH=src:../external/mini-swe-agent/src \
 - SymPy 旧依赖兼容、Django SWE-bench test id mapping、Django `INSTALLED_APPS` 都是 harness 问题，不是模型能力问题。
 - local harness 是开发诊断工具；official SWE-bench 才是论文级验证工具。两者要分开解释。
 
-## 2. 当前实验判断（012 后）
+## 2. 当前实验判断（012 后，旧 equal-value 口径）
+
+本节保留为历史机制判断。012 证明 routing 修复和 runner 稳定性；但它默认任务 value 相等，不能直接作为 2026-06-05 之后 value-driven paper claim 的最终证据。
 
 已有 clean 25 rows (012) + 56 noisy rows (008/009) + 35 historical rows (7x15)。012 数据可信，可做初步分析。
 

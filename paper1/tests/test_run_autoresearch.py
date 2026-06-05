@@ -372,3 +372,80 @@ class TestEndToEnd:
         state = c.load_state("task")
         assert state.status == "complete"
         assert state.attempt == 2
+
+
+# ── Review CLI ─────────────────────────────────────────────────────────────────
+
+class TestReviewCLI:
+    def test_review_nonexistent_issue(self, paper1_tmp):
+        rc = _run(paper1_tmp, "review", "--issue-id", "nonexistent")
+        assert rc == 1
+
+    def test_review_existing_issue(self, paper1_tmp, prompt_file):
+        _run(paper1_tmp, "create", "--issue-id", "task", "--prompt-file", str(prompt_file))
+        rc = _run(paper1_tmp, "review", "--issue-id", "task")
+        # No metadata means FAIL, but command succeeds (rc=0 for WARN, rc=1 for FAIL)
+        assert rc == 1  # No metadata → FAIL → exit 1
+
+    def test_goal_review_nonexistent(self, paper1_tmp):
+        rc = _run(paper1_tmp, "goal-review", "--goal-id", "nonexistent")
+        assert rc == 1
+
+    def test_goal_review_existing(self, paper1_tmp, prompt_file):
+        _run(paper1_tmp, "goal-create", "--goal-id", "g1", "--title", "Review Goal")
+        _run(paper1_tmp, "create", "--issue-id", "task-a", "--prompt-file", str(prompt_file))
+        _run(paper1_tmp, "goal-add-issue", "--goal-id", "g1", "--issue-id", "task-a")
+        rc = _run(paper1_tmp, "goal-review", "--goal-id", "g1")
+        # No metadata → FAIL for each issue, overall FAIL → exit 1
+        assert rc == 1
+        # Verify codex_review.md was written.
+        from budgetflow.autoresearch_coordinator import AutoResearchCoordinator
+        c = AutoResearchCoordinator(paper1_root=paper1_tmp)
+        review_path = c.workflow_dir("task-a") / "codex_review.md"
+        assert review_path.is_file()
+        content = review_path.read_text()
+        assert "VERDICT:" in content
+        assert "AUTORESEARCH_RESULT:" in content
+
+    def test_goal_review_exits_2_on_warn(self, paper1_tmp, prompt_file):
+        """goal-review returns 2 when review produces WARN."""
+        _run(paper1_tmp, "goal-create", "--goal-id", "g1", "--title", "Warn Goal")
+        _run(paper1_tmp, "create", "--issue-id", "task-a", "--prompt-file", str(prompt_file))
+        _run(paper1_tmp, "goal-add-issue", "--goal-id", "g1", "--issue-id", "task-a")
+        # Create metadata with marker_appended=True (produces WARN).
+        import json as _json
+        from budgetflow.autoresearch_coordinator import AutoResearchCoordinator
+        c = AutoResearchCoordinator(paper1_root=paper1_tmp)
+        adir = c.attempt_dir("task-a", 1)
+        adir.mkdir(parents=True, exist_ok=True)
+        meta = {
+            "model": "test", "input_tokens": 50, "output_tokens": 20,
+            "status_code": 200, "marker_present_in_model_output": True,
+            "marker_appended_by_wrapper": True, "error": None,
+        }
+        (adir / "worker_metadata.json").write_text(_json.dumps(meta))
+        (adir / "worker_output.md").write_text("""<!-- AutoResearch API Worker — factual metadata
+  model: test
+  input_tokens: 50
+  output_tokens: 20
+  metadata: worker_metadata.json
+-->
+# Report
+AUTORESEARCH_REAL_API_SMOKE:PASS
+""")
+        state = c.load_state("task-a")
+        state.attempt = 1
+        c._write_state(state)
+
+        rc = _run(paper1_tmp, "goal-review", "--goal-id", "g1")
+        assert rc == 2  # WARN → exit 2
+
+    def test_mark_complete_rejects_fail_review(self, paper1_tmp, prompt_file):
+        """mark-complete exits 1 when codex_review.md has FAIL verdict."""
+        _run(paper1_tmp, "create", "--issue-id", "task", "--prompt-file", str(prompt_file))
+        from budgetflow.autoresearch_coordinator import AutoResearchCoordinator
+        c = AutoResearchCoordinator(paper1_root=paper1_tmp)
+        review_path = c.workflow_dir("task") / "codex_review.md"
+        review_path.write_text("VERDICT: FAIL\nSCORE: 0/100\nAUTORESEARCH_RESULT:FAIL\n")
+        rc = _run(paper1_tmp, "mark-complete", "--issue-id", "task")
+        assert rc == 1
