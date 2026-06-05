@@ -1,0 +1,678 @@
+{
+  "meta": {
+    "task_count": 10,
+    "profiles": [
+      "equal",
+      "difficulty",
+      "solve_rarity",
+      "combined"
+    ],
+    "note": "All profiles are ex-ante or cross-strategy. No BF-specific signals."
+  },
+  "tasks": {
+    "django__django-10924": {
+      "instance_id": "django__django-10924",
+      "repo": "django",
+      "total_rows": 4,
+      "resolved_rows": 3,
+      "resolve_rate": 0.75,
+      "avg_cost": 0.218357,
+      "solve_rarity": 1.0,
+      "strategies_seen": [
+        "budget_only_tight",
+        "budgetflow_full_tight"
+      ],
+      "strategies_resolved": [
+        "budget_only_tight",
+        "budgetflow_full_tight"
+      ],
+      "values": {
+        "equal": 1.0,
+        "difficulty": 0.2457,
+        "solve_rarity": 1.0,
+        "combined": 1.2197
+      },
+      "sensitivity": {
+        "cost_only": 0.2184,
+        "rate_only": 1.25,
+        "cost_heavy": 0.2729,
+        "rate_heavy": 1.5229,
+        "difficulty_default": 0.2457
+      }
+    },
+    "sympy__sympy-13480": {
+      "instance_id": "sympy__sympy-13480",
+      "repo": "sympy",
+      "total_rows": 6,
+      "resolved_rows": 6,
+      "resolve_rate": 1.0,
+      "avg_cost": 0.066225,
+      "solve_rarity": 1.0,
+      "strategies_seen": [
+        "budget_only_tight",
+        "budgetflow_full_tight"
+      ],
+      "strategies_resolved": [
+        "budget_only_tight",
+        "budgetflow_full_tight"
+      ],
+      "values": {
+        "equal": 1.0,
+        "difficulty": 0.0662,
+        "solve_rarity": 1.0,
+        "combined": 1.0641
+      },
+      "sensitivity": {
+        "cost_only": 0.0662,
+        "rate_only": 1.0,
+        "cost_heavy": 0.0662,
+        "rate_heavy": 1.0662,
+        "difficulty_default": 0.0662
+      }
+    },
+    "sympy__sympy-13647": {
+      "instance_id": "sympy__sympy-13647",
+      "repo": "sympy",
+      "total_rows": 4,
+      "resolved_rows": 4,
+      "resolve_rate": 1.0,
+      "avg_cost": 0.09698,
+      "solve_rarity": 1.0,
+      "strategies_seen": [
+        "budget_only_tight",
+        "budgetflow_full_tight"
+      ],
+      "strategies_resolved": [
+        "budget_only_tight",
+        "budgetflow_full_tight"
+      ],
+      "values": {
+        "equal": 1.0,
+        "difficulty": 0.097,
+        "solve_rarity": 1.0,
+        "combined": 1.0926
+      },
+      "sensitivity": {
+        "cost_only": 0.097,
+        "rate_only": 1.0,
+        "cost_heavy": 0.097,
+        "rate_heavy": 1.097,
+        "difficulty_default": 0.097
+      }
+    },
+    "sympy__sympy-14774": {
+      "instance_id": "sympy__sympy-14774",
+      "repo": "sympy",
+      "total_rows": 6,
+      "resolved_rows": 6,
+      "resolve_rate": 1.0,
+      "avg_cost": 0.059105,
+      "solve_rarity": 1.0,
+      "strategies_seen": [
+        "budget_only_tight",
+        "budgetflow_full_tight"
+      ],
+      "strategies_resolved": [
+        "budget_only_tight",
+        "budgetflow_full_tight"
+      ],
+      "values": {
+        "equal": 1.0,
+        "difficulty": 0.0591,
+        "solve_rarity": 1.0,
+        "combined": 1.0574
+      },
+      "sensitivity": {
+        "cost_only": 0.0591,
+        "rate_only": 1.0,
+        "cost_heavy": 0.0591,
+        "rate_heavy": 1.0591,
+        "difficulty_default": 0.0591
+      }
+    },
+    "sympy__sympy-16988": {
+      "instance_id": "sympy__sympy-16988",
+      "repo": "sympy",
+      "total_rows": 6,
+      "resolved_rows": 4,
+      "resolve_rate": 0.6667,
+      "avg_cost": 0.246733,
+      "solve_rarity": 1.0,
+      "strategies_seen": [
+        "budget_only_tight",
+        "budgetflow_full_tight"
+      ],
+      "strategies_resolved": [
+        "budget_only_tight",
+        "budgetflow_full_tight"
+      ],
+      "values": {
+        "equal": 1.0,
+        "difficulty": 0.2879,
+        "solve_rarity": 1.0,
+        "combined": 1.253
+      },
+      "sensitivity": {
+        "cost_only": 0.2467,
+        "rate_only": 1.3333,
+        "cost_heavy": 0.329,
+        "rate_heavy": 1.6623,
+        "difficulty_default": 0.2879
+      }
+    },
+    "sympy__sympy-17630": {
+      "instance_id": "sympy__sympy-17630",
+      "repo": "sympy",
+      "total_rows": 2,
+      "resolved_rows": 0,
+      "resolve_rate": 0.0,
+      "avg_cost": 0.274136,
+      "solve_rarity": 0.0,
+      "strategies_seen": [
+        "budget_only_tight",
+        "budgetflow_full_tight"
+      ],
+      "strategies_resolved": [],
+      "values": {
+        "equal": 1.0,
+        "difficulty": 0.4112,
+        "solve_rarity": 5.0,
+        "combined": 5.3444
+      },
+      "sensitivity": {
+        "cost_only": 0.2741,
+        "rate_only": 2.0,
+        "cost_heavy": 0.5483,
+        "rate_heavy": 2.5483,
+        "difficulty_default": 0.4112
+      }
+    },
+    "sympy__sympy-18057": {
+      "instance_id": "sympy__sympy-18057",
+      "repo": "sympy",
+      "total_rows": 4,
+      "resolved_rows": 0,
+      "resolve_rate": 0.0,
+      "avg_cost": 0.153254,
+      "solve_rarity": 0.0,
+      "strategies_seen": [
+        "budget_only_tight",
+        "budgetflow_full_tight"
+      ],
+      "strategies_resolved": [],
+      "values": {
+        "equal": 1.0,
+        "difficulty": 0.2299,
+        "solve_rarity": 5.0,
+        "combined": 5.2069
+      },
+      "sensitivity": {
+        "cost_only": 0.1533,
+        "rate_only": 2.0,
+        "cost_heavy": 0.3065,
+        "rate_heavy": 2.3065,
+        "difficulty_default": 0.2299
+      }
+    },
+    "sympy__sympy-18189": {
+      "instance_id": "sympy__sympy-18189",
+      "repo": "sympy",
+      "total_rows": 2,
+      "resolved_rows": 0,
+      "resolve_rate": 0.0,
+      "avg_cost": 0.186215,
+      "solve_rarity": 0.0,
+      "strategies_seen": [
+        "budget_only_tight",
+        "budgetflow_full_tight"
+      ],
+      "strategies_resolved": [],
+      "values": {
+        "equal": 1.0,
+        "difficulty": 0.2793,
+        "solve_rarity": 5.0,
+        "combined": 5.2463
+      },
+      "sensitivity": {
+        "cost_only": 0.1862,
+        "rate_only": 2.0,
+        "cost_heavy": 0.3724,
+        "rate_heavy": 2.3724,
+        "difficulty_default": 0.2793
+      }
+    },
+    "sympy__sympy-18621": {
+      "instance_id": "sympy__sympy-18621",
+      "repo": "sympy",
+      "total_rows": 2,
+      "resolved_rows": 2,
+      "resolve_rate": 1.0,
+      "avg_cost": 0.172313,
+      "solve_rarity": 1.0,
+      "strategies_seen": [
+        "budget_only_tight",
+        "budgetflow_full_tight"
+      ],
+      "strategies_resolved": [
+        "budget_only_tight",
+        "budgetflow_full_tight"
+      ],
+      "values": {
+        "equal": 1.0,
+        "difficulty": 0.1723,
+        "solve_rarity": 1.0,
+        "combined": 1.159
+      },
+      "sensitivity": {
+        "cost_only": 0.1723,
+        "rate_only": 1.0,
+        "cost_heavy": 0.1723,
+        "rate_heavy": 1.1723,
+        "difficulty_default": 0.1723
+      }
+    },
+    "sympy__sympy-20212": {
+      "instance_id": "sympy__sympy-20212",
+      "repo": "sympy",
+      "total_rows": 4,
+      "resolved_rows": 4,
+      "resolve_rate": 1.0,
+      "avg_cost": 0.15746,
+      "solve_rarity": 1.0,
+      "strategies_seen": [
+        "budget_only_tight",
+        "budgetflow_full_tight"
+      ],
+      "strategies_resolved": [
+        "budget_only_tight",
+        "budgetflow_full_tight"
+      ],
+      "values": {
+        "equal": 1.0,
+        "difficulty": 0.1575,
+        "solve_rarity": 1.0,
+        "combined": 1.1462
+      },
+      "sensitivity": {
+        "cost_only": 0.1575,
+        "rate_only": 1.0,
+        "cost_heavy": 0.1575,
+        "rate_heavy": 1.1575,
+        "difficulty_default": 0.1575
+      }
+    }
+  },
+  "rankings": {
+    "equal": [
+      {
+        "rank": 1,
+        "instance_id": "django__django-10924",
+        "value": 1.0
+      },
+      {
+        "rank": 2,
+        "instance_id": "sympy__sympy-13480",
+        "value": 1.0
+      },
+      {
+        "rank": 3,
+        "instance_id": "sympy__sympy-13647",
+        "value": 1.0
+      },
+      {
+        "rank": 4,
+        "instance_id": "sympy__sympy-14774",
+        "value": 1.0
+      },
+      {
+        "rank": 5,
+        "instance_id": "sympy__sympy-16988",
+        "value": 1.0
+      },
+      {
+        "rank": 6,
+        "instance_id": "sympy__sympy-17630",
+        "value": 1.0
+      },
+      {
+        "rank": 7,
+        "instance_id": "sympy__sympy-18057",
+        "value": 1.0
+      },
+      {
+        "rank": 8,
+        "instance_id": "sympy__sympy-18189",
+        "value": 1.0
+      },
+      {
+        "rank": 9,
+        "instance_id": "sympy__sympy-18621",
+        "value": 1.0
+      },
+      {
+        "rank": 10,
+        "instance_id": "sympy__sympy-20212",
+        "value": 1.0
+      }
+    ],
+    "difficulty": [
+      {
+        "rank": 1,
+        "instance_id": "sympy__sympy-17630",
+        "value": 0.4112
+      },
+      {
+        "rank": 2,
+        "instance_id": "sympy__sympy-16988",
+        "value": 0.2879
+      },
+      {
+        "rank": 3,
+        "instance_id": "sympy__sympy-18189",
+        "value": 0.2793
+      },
+      {
+        "rank": 4,
+        "instance_id": "django__django-10924",
+        "value": 0.2457
+      },
+      {
+        "rank": 5,
+        "instance_id": "sympy__sympy-18057",
+        "value": 0.2299
+      },
+      {
+        "rank": 6,
+        "instance_id": "sympy__sympy-18621",
+        "value": 0.1723
+      },
+      {
+        "rank": 7,
+        "instance_id": "sympy__sympy-20212",
+        "value": 0.1575
+      },
+      {
+        "rank": 8,
+        "instance_id": "sympy__sympy-13647",
+        "value": 0.097
+      },
+      {
+        "rank": 9,
+        "instance_id": "sympy__sympy-13480",
+        "value": 0.0662
+      },
+      {
+        "rank": 10,
+        "instance_id": "sympy__sympy-14774",
+        "value": 0.0591
+      }
+    ],
+    "solve_rarity": [
+      {
+        "rank": 1,
+        "instance_id": "sympy__sympy-17630",
+        "value": 5.0
+      },
+      {
+        "rank": 2,
+        "instance_id": "sympy__sympy-18057",
+        "value": 5.0
+      },
+      {
+        "rank": 3,
+        "instance_id": "sympy__sympy-18189",
+        "value": 5.0
+      },
+      {
+        "rank": 4,
+        "instance_id": "django__django-10924",
+        "value": 1.0
+      },
+      {
+        "rank": 5,
+        "instance_id": "sympy__sympy-13480",
+        "value": 1.0
+      },
+      {
+        "rank": 6,
+        "instance_id": "sympy__sympy-13647",
+        "value": 1.0
+      },
+      {
+        "rank": 7,
+        "instance_id": "sympy__sympy-14774",
+        "value": 1.0
+      },
+      {
+        "rank": 8,
+        "instance_id": "sympy__sympy-16988",
+        "value": 1.0
+      },
+      {
+        "rank": 9,
+        "instance_id": "sympy__sympy-18621",
+        "value": 1.0
+      },
+      {
+        "rank": 10,
+        "instance_id": "sympy__sympy-20212",
+        "value": 1.0
+      }
+    ],
+    "combined": [
+      {
+        "rank": 1,
+        "instance_id": "sympy__sympy-17630",
+        "value": 5.3444
+      },
+      {
+        "rank": 2,
+        "instance_id": "sympy__sympy-18189",
+        "value": 5.2463
+      },
+      {
+        "rank": 3,
+        "instance_id": "sympy__sympy-18057",
+        "value": 5.2069
+      },
+      {
+        "rank": 4,
+        "instance_id": "sympy__sympy-16988",
+        "value": 1.253
+      },
+      {
+        "rank": 5,
+        "instance_id": "django__django-10924",
+        "value": 1.2197
+      },
+      {
+        "rank": 6,
+        "instance_id": "sympy__sympy-18621",
+        "value": 1.159
+      },
+      {
+        "rank": 7,
+        "instance_id": "sympy__sympy-20212",
+        "value": 1.1462
+      },
+      {
+        "rank": 8,
+        "instance_id": "sympy__sympy-13647",
+        "value": 1.0926
+      },
+      {
+        "rank": 9,
+        "instance_id": "sympy__sympy-13480",
+        "value": 1.0641
+      },
+      {
+        "rank": 10,
+        "instance_id": "sympy__sympy-14774",
+        "value": 1.0574
+      }
+    ]
+  },
+  "rank_correlations": {
+    "equal": {
+      "equal": 1.0,
+      "difficulty": -0.2121,
+      "solve_rarity": 0.2727,
+      "combined": -0.3455
+    },
+    "difficulty": {
+      "equal": -0.2121,
+      "difficulty": 1.0,
+      "solve_rarity": 0.4424,
+      "combined": 0.9394
+    },
+    "solve_rarity": {
+      "equal": 0.2727,
+      "difficulty": 0.4424,
+      "solve_rarity": 1.0,
+      "combined": 0.6
+    },
+    "combined": {
+      "equal": -0.3455,
+      "difficulty": 0.9394,
+      "solve_rarity": 0.6,
+      "combined": 1.0
+    }
+  },
+  "progress_calibration": {
+    "meta": {
+      "note": "Selection-bias caveat: T3 turns happen when the agent is stuck or under pressure. Raw T3 progress rate may be lower than T2 even if T3 is better, because T3 faces harder turns. Use these rates for calibration direction, not as unbiased effect estimates.",
+      "total_turns": 639,
+      "total_progress_turns": 151
+    },
+    "stage_tier": {
+      "LOCALIZATION_T2": {
+        "stage": "LOCALIZATION",
+        "tier": 2,
+        "turns": 170,
+        "progress_turns": 0,
+        "progress_rate": 0.0,
+        "avg_cost": 0.003573,
+        "median_cost": 0.003279,
+        "p10_cost": 0.001294,
+        "p90_cost": 0.006383,
+        "confidence": "HIGH",
+        "strategies_seen": [
+          "budget_only_tight",
+          "budgetflow_full_tight"
+        ]
+      },
+      "LOCALIZATION_T3": {
+        "stage": "LOCALIZATION",
+        "tier": 3,
+        "turns": 45,
+        "progress_turns": 0,
+        "progress_rate": 0.0,
+        "avg_cost": 0.014769,
+        "median_cost": 0.01147,
+        "p10_cost": 0.006038,
+        "p90_cost": 0.02777,
+        "confidence": "MEDIUM",
+        "strategies_seen": [
+          "budget_only_tight",
+          "budgetflow_full_tight"
+        ]
+      },
+      "REPAIR_T2": {
+        "stage": "REPAIR",
+        "tier": 2,
+        "turns": 271,
+        "progress_turns": 111,
+        "progress_rate": 0.4096,
+        "avg_cost": 0.005531,
+        "median_cost": 0.005512,
+        "p10_cost": 0.001894,
+        "p90_cost": 0.009325,
+        "confidence": "HIGH",
+        "strategies_seen": [
+          "budget_only_tight",
+          "budgetflow_full_tight"
+        ]
+      },
+      "REPAIR_T3": {
+        "stage": "REPAIR",
+        "tier": 3,
+        "turns": 123,
+        "progress_turns": 30,
+        "progress_rate": 0.2439,
+        "avg_cost": 0.022556,
+        "median_cost": 0.01967,
+        "p10_cost": 0.009175,
+        "p90_cost": 0.04208,
+        "confidence": "HIGH",
+        "strategies_seen": [
+          "budget_only_tight",
+          "budgetflow_full_tight"
+        ]
+      },
+      "VALIDATION_T2": {
+        "stage": "VALIDATION",
+        "tier": 2,
+        "turns": 14,
+        "progress_turns": 7,
+        "progress_rate": 0.5,
+        "avg_cost": 0.005145,
+        "median_cost": 0.005102,
+        "p10_cost": 0.004446,
+        "p90_cost": 0.006104,
+        "confidence": "LOW",
+        "strategies_seen": [
+          "budget_only_tight",
+          "budgetflow_full_tight"
+        ]
+      },
+      "VALIDATION_T3": {
+        "stage": "VALIDATION",
+        "tier": 3,
+        "turns": 16,
+        "progress_turns": 3,
+        "progress_rate": 0.1875,
+        "avg_cost": 0.024038,
+        "median_cost": 0.018208,
+        "p10_cost": 0.007518,
+        "p90_cost": 0.05161,
+        "confidence": "LOW",
+        "strategies_seen": [
+          "budget_only_tight",
+          "budgetflow_full_tight"
+        ]
+      }
+    },
+    "deltas": [
+      {
+        "stage": "LOCALIZATION",
+        "t2_rate": 0.0,
+        "t3_rate": 0.0,
+        "delta_progress": 0.0,
+        "delta_cost": 0.011196,
+        "t2_turns": 170,
+        "t3_turns": 45,
+        "caveat": "Negative delta does NOT mean T3 is worse — T3 turns are selected on harder situations."
+      },
+      {
+        "stage": "REPAIR",
+        "t2_rate": 0.4096,
+        "t3_rate": 0.2439,
+        "delta_progress": -0.1657,
+        "delta_cost": 0.017025,
+        "t2_turns": 271,
+        "t3_turns": 123,
+        "caveat": "Negative delta does NOT mean T3 is worse — T3 turns are selected on harder situations."
+      },
+      {
+        "stage": "VALIDATION",
+        "t2_rate": 0.5,
+        "t3_rate": 0.1875,
+        "delta_progress": -0.3125,
+        "delta_cost": 0.018893,
+        "t2_turns": 14,
+        "t3_turns": 16,
+        "caveat": "Negative delta does NOT mean T3 is worse — T3 turns are selected on harder situations."
+      }
+    ]
+  }
+}
