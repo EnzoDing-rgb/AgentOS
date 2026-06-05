@@ -4,6 +4,14 @@
 
 该 commit 就 commit，该 push 就 push。关键节点必须 commit，能同步远端就同步远端。
 
+### Phase N / Value Rescore Takeaway
+
+1. **BF 仍然不赢 BO。** 030（10 tasks）和 031（5 tasks）在 equal-value 和 heuristic 两种 profile 下，BO 和 BF 解决的 task 完全相同，但 BF 更贵。Routing overhead ~28-42% 无 pass 回报。
+2. **Value profile 不改变相对排序当 task set 相同时。** 如果两种策略解决同一批 task，value profile 只会等比例放大 val/$ 的绝对数值，不会改变谁赢。Value profile 有意义的前提是策略解决了**不同**的 task（尤其是不同 value 的 task）。
+3. **Second-claim 证据是 WEAK。** Progress table 未 calibrate（tier2 score 恒为 0.0），`has_progress` < 30%。公式 `stage_weight × expected_progress_gain / marginal_cost` 在代码中存在但以 zero_calibration 运行。BF 的 stage-aware routing 是方向性的（REPAIR 更多 T3），但不能证明 cost efficiency。
+4. **下一轮 paid run 前必须做两件事：** (a) 设计 task value proxy，让 task pool 有异质 value；(b) calibrate progress table，从 public SWE-bench trajectory replay 或 held-out calibration split。缺任一，paid run 只会重复 BO ≥ BF 的结论。
+5. **离线 rescore 工具是正确的基础设施。** `value_rescore.py` 很小（~220 lines），32 tests，支持 equal/heuristic/custom profile。等 value proxy 定下来，改一行 `--profile custom --custom-map values.json` 就能重算。
+
 ## 0. 最新关键判断（2026-06-05）
 
 ### North Star / Value Proposition Takeaway
