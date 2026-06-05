@@ -2,26 +2,39 @@
 
 ## Current Status — 2026-06-05
 
-AutoResearch is not yet a usable autonomous research loop in this repository.
-It currently consists of:
+AutoResearch is now a usable semi-automatic research coordinator for bounded
+infrastructure tasks in this repository. It is not a fully autonomous research
+system and must not change the BudgetFlow paper direction or launch major paid
+experiments without Codex/owner approval.
 
-- this workflow design document;
-- `.autoresearch/` prompts, issue templates, workflow logs, and one read-only smoke;
-- `src/budgetflow/autoresearch_guard.py` safety policy;
-- `tests/test_autoresearch_guard.py` guard tests.
+Implemented pieces:
 
-The previous read-only smoke was created before the directory migration and
-still records the old `/Lishun/_archive/.../AgentOS/paper1` project path. Treat
-that smoke as historical evidence that the concept was tested once, not as proof
-that AutoResearch is installed or runnable in the current `/root/.dev/AgentOS`
-workspace.
+- `src/budgetflow/autoresearch_coordinator.py` state machine;
+- `src/budgetflow/autoresearch_goal.py` goal-level coordinator;
+- `src/budgetflow/run_autoresearch.py` CLI, including `goal-loop`,
+  `goal-review`, `owner_decision.md`, and safe post-gate commit/push;
+- `src/budgetflow/autoresearch_codex_gate.py` deterministic artifact review;
+- `scripts/autoresearch_fake_worker.py` no-paid Worker smoke;
+- `scripts/autoresearch_api_worker.py` thin real-API Worker;
+- `scripts/autoresearch_worker_dispatch.py` marker-based fake/API dispatch;
+- focused tests for coordinator, guard, gate, goal, CLI, fake worker, and API
+  worker;
+- reports `034.md` through `042.md`.
 
 Current implementation stage:
 
 ```text
-design + guard policy + stale read-only smoke
-!= runnable coordinator
+design + guard + coordinator + CLI + goal-loop + deterministic gate
++ fake worker + thin real-API worker + dispatch wrapper
++ safe commit/push path validated in Phase L
+= runnable semi-automatic coordinator
 ```
+
+Phase L (`docs/reports/042.md`) validated a real API goal-loop smoke with one
+fake-worker issue and one thin-API issue. The goal completed with PASS reviews,
+consistent metadata, and successful commit/push. The remaining boundary is
+strategic: AutoResearch should coordinate bounded Worker issues, not
+automatically iterate the BudgetFlow paper direction.
 
 ## Confirmed Direction
 

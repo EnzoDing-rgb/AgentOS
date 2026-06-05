@@ -111,6 +111,15 @@ BudgetFlow studies online budget-aware routing for multi-step agent tasks.
 
 SWE-bench is the controlled evaluation proxy: it gives repeatable tasks, clear pass/fail signals, and clean cost accounting. The real product setting is continuous enterprise agent work under shared budgets, quota limits, and model cost constraints.
 
+BudgetFlow now uses a two-level claim ladder.
+
+| Claim | Meaning | Status |
+|---|---|---|
+| First claim / North Star | Value-driven token efficiency: under a shared hard budget, complete the highest verified task value per dollar. | Primary paper direction. |
+| Second claim / mechanism | Workflow-stage and progress-aware routing can also beat dummy, budget-only, or market routing policies on per-step/per-task cost efficiency. | Still valuable, but must be empirically verified rather than assumed. |
+
+The second claim should not be used as the only foundation of the paper. It has real downsides, including tier-switching overhead and possible KV / prefix-cache loss. If experiments show that the stage/progress formula does not beat simpler routing, BudgetFlow should still be framed as a value-aware shared budget governor that can plug in a better allocator or learned policy. If both claims hold, the paper becomes stronger: BudgetFlow improves value allocation at the portfolio level and cost efficiency inside individual workflows.
+
 Paper objective:
 
 ```text
@@ -132,6 +141,8 @@ maximize sum(value(task) * resolved(task) - cost(task) - latency_penalty(task))
 The early controlled experiments may set `value(task)=1` to isolate harness trust, budget enforcement, and routing mechanics. That is a simplifying assumption, not the long-term claim. The stronger paper direction is value-cost efficiency: how much verified task value the system creates per dollar under a shared hard budget.
 
 For product use, value can come from priority, deadline, repo importance, customer tier, expected labor saved, strategic direction, or user-provided business impact. If users do not provide explicit values, BudgetFlow should estimate them from task features and history.
+
+For paper writing, SWE-bench must be defended as a proxy rather than the product itself. Generality matters more than overfitting a single benchmark. The benchmark supplies reproducible tasks and verifiers; the system abstraction is a pluggable `TaskContext`, `BudgetContext`, `HistoryContext`, runtime adapter, and verifier. Enterprise deployments can replace the value source and verifier without replacing the budget-governance layer.
 
 ## Value Model
 

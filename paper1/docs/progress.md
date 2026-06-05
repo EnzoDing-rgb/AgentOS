@@ -4,6 +4,14 @@
 
 ## 当前快照（2026-06-05）
 
+### 043 前论文转向状态
+
+- **Paper claim ladder 已明确：** First Claim 是 value-driven token efficiency，即 shared hard budget 下最大化 verified resolved value per dollar。Second Claim 是原始 BudgetFlow 机制，即 stage/progress-aware routing 是否还能比 dummy / budget-only / market routing policy 更省钱或更高效。
+- **不再把 routing 公式当唯一支柱。** 当前代码确实实现了 `stage weight × expected progress gain / marginal cost` 的逐步路由，并叠加 progress/stagnation/gold-edit escalation/stop-loss；但它可能付出 KV / prefix-cache loss 和切换开销。该机制先保留为 second-claim hypothesis，后续用实验验证，不提前否定也不盲目护航。
+- **North Star 文档已补 claim ladder。** 论文主目标是 value-aware shared budget governance；SWE-bench 只是可复现 proxy，不是系统边界。系统要防止对 SWE-bench 过拟合，保留可插拔 task value、budget context、history、runtime adapter、verifier。
+- **Concept 文档已开始转向。** `paper1_concept.md` 标题和核心问题从 workflow-aware budgeting 改为 value-aware budget governance；实验问题和指标加入 `resolved value @ fixed budget` 与 `resolved value per dollar`，旧 `cost_per_resolved` 保留为 second-claim / backward-compatible 指标。
+- **Value 第一版实现细节暂不落盘。** 当前文档只记录 abstract value-driven direction；具体 proxy、矩阵字段、重算脚本和实验命令留给下一轮 Worker 任务设计。
+
 ### 039 后权威状态
 
 - **North Star 已完成重大转向：** BudgetFlow 不再只被定位为 smart routing / cost efficiency 系统，而是 value-aware shared budget governance。核心目标是让共享硬预算池中的 value flow 到最高价值、可验证完成的任务上。

@@ -454,7 +454,8 @@ AUTORESEARCH_REAL_API_SMOKE:PASS
 
 # ── Goal-loop tests ────────────────────────────────────────────────────────────
 
-FAKE_WORKER_CMD = "cat {prompt} > /dev/null; python3 scripts/autoresearch_fake_worker.py {prompt} {output}"
+FAKE_WORKER = ROOT / "scripts" / "autoresearch_fake_worker.py"
+FAKE_WORKER_CMD = f"cat {{prompt}} > /dev/null; python3 {FAKE_WORKER} {{prompt}} {{output}}"
 
 
 class TestGoalLoop:

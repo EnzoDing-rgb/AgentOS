@@ -1,6 +1,8 @@
-# Spend Tokens Where They Matter: Workflow-Aware Budgeting for LLM Agents
+# Spend Tokens Where They Matter: Value-Aware Budget Governance for LLM Agents
 
-> **One-liner**: BudgetFlow is a runtime layer for concurrent LLM-agent workflows that enforces a hard budget, provider RPM limits, and concurrency slots while using workflow-stage signals to schedule scarce high-capability model calls.
+> **One-liner**: BudgetFlow is a value-aware budget governance layer for LLM-agent workflows: under a shared hard budget, it allocates scarce model spend toward the highest-value verified work, while retaining workflow-aware routing as a secondary mechanism for cost efficiency.
+
+> **2026-06-05 positioning update.** The paper now has two layers of claim. The **first claim** is value-driven token efficiency: a shared budget pool should maximize verified resolved value per dollar, not merely minimize the cost of each individual task. The **second claim** is the original BudgetFlow mechanism: stage/progress-aware routing may further improve per-step or per-task cost efficiency compared with budget-only or dummy routing. The second claim is valuable if it holds, but the first claim is the North Star.
 
 ---
 
@@ -8,25 +10,28 @@
 
 Today's LLM agents are usually composed of many model calls. Take SWE-bench as an example: a coding agent reads an issue, searches files, reads code, writes a patch, runs tests, and then iterates using failure logs. Each step consumes shared runtime resources: budget, model slots, provider RPM limits, and queue capacity. At the same time, steps differ in how much they affect the final trajectory: a wrong directory listing is often recoverable, while a wrong root-cause judgment after a test failure can ruin the repair.
 
-Many existing auto-routing systems, such as RouteLLM, CARROT, GPT-5 Auto, and LiteLLM-style routers, mainly answer: "Which model should serve this request?" BudgetFlow asks a different question: when many workflows share one budget and the same backend limits, how should money be allocated across workflow steps and across workflows? This shifts the unit of decision from an isolated request to a stateful batch of agent workflows.
+Many existing auto-routing systems, such as RouteLLM, CARROT, GPT-5 Auto, BoPO-style learned agent routing, and LiteLLM-style routers, mainly answer: "Which model should serve this request or this step?" BudgetFlow asks a different question: when many people, teams, and workflows share one budget, how should money be allocated across tasks and workflow steps so the organization completes the most verified value? This shifts the unit of decision from an isolated request to a stateful shared budget pool.
 
-We formalize this as **budget-governed agent execution**:
+We formalize this as **value-aware budget-governed agent execution**:
 
-> **Given many concurrent LLM-agent workflows sharing a global budget, model pool, provider RPM limits, and concurrency slots, how should a runtime admit, queue, downgrade, upgrade, switch, or cancel calls while preserving hard limits and completing more verifiable tasks?**
+> **Given a batch or stream of LLM-agent tasks sharing a global budget, model pool, provider limits, and concurrency slots, how should a runtime allocate task budgets, choose model tiers, escalate, stop, or cancel calls while preserving hard limits and completing the highest total verified value?**
 
 This problem has three key ingredients:
 
 1. **Hard runtime limits**: the total budget, provider RPM limits, and concurrency slots are given up front, and the runtime must enforce them during execution.
-2. **Workflow-stage heterogeneity**: directory browsing, code understanding, traceback analysis, patch generation, and validation place different demands on high-capability model calls.
-3. **Shared execution state**: many workflows run concurrently, sharing a global budget, backend model pool, queues, reservations, and failure-recovery mechanisms.
+2. **Unequal task value**: real organizations do not submit identical work. Strategic priorities, deadlines, customer impact, difficulty, and expected labor saved should change budget willingness.
+3. **Workflow-stage heterogeneity**: directory browsing, code understanding, traceback analysis, patch generation, and validation place different demands on high-capability model calls.
+4. **Shared execution state**: many workflows run concurrently, sharing a global budget, backend model pool, queues, reservations, and failure-recovery mechanisms.
 
 We propose **BudgetFlow**: a training-free, workflow-aware runtime governor for LLM-agent execution. The core systems object of this paper is the full agent workflow and its step sequence under shared runtime constraints, rather than isolated single-call model selection. BudgetFlow tracks where each call sits in the workflow, how budget is reserved and settled, and how backend pressure affects scheduling decisions. It sits at the LLM-call layer, maintains per-workflow ledgers, reserves and settles spend, enforces backend limits, schedules calls across concurrent workflows, and tracks workflow-stage signals. It integrates into existing agent loops via proxy, adapter, or SDK modes for LangChain / SWE-agent / AutoGen.
 
 The core contributions of BudgetFlow are:
 
-1. **Workflow-state-aware upgrade decisions**: BudgetFlow upgrades model tiers when the weighted `expected_progress_gain` per extra dollar is high enough under the current `budget_pressure`, while using workflow-stage signals to estimate which steps matter more.
+1. **Value-aware shared budget governance**: BudgetFlow treats a batch or stream of tasks as one budgeted portfolio and optimizes verified value under a hard budget, instead of assigning fixed per-user or per-team quotas.
 
-2. **Hard-budget governance with stop-loss control**: BudgetFlow enforces non-negotiable spend and backend limits through auditable reserve-and-settle accounting, workflow-level admission/scheduling control, and no-progress recovery.
+2. **Workflow-state-aware upgrade decisions**: BudgetFlow upgrades model tiers when the weighted `expected_progress_gain` per extra dollar is high enough under the current `budget_pressure`, while using workflow-stage signals to estimate which steps matter more.
+
+3. **Hard-budget governance with stop-loss control**: BudgetFlow enforces non-negotiable spend and backend limits through auditable reserve-and-settle accounting, workflow-level admission/scheduling control, and no-progress recovery.
 
 Motivating scenario: a researcher runs 50 SWE-agent instances on SWE-bench Verified with a fixed $50 budget. If each workflow averages 6-12 LLM turns, the batch can create roughly 300-600 LLM calls and a peak near 400 RPM. Without a runtime governor, the batch can hit provider 429s, spend the strong-model budget on early workflows, starve later workflows, or let stuck workflows hold slots.
 
@@ -40,6 +45,15 @@ Motivating scenario: a researcher runs 50 SWE-agent instances on SWE-bench Verif
 ---
 
 ## 1. Core insight: schedule by workflow state
+
+The long-term product insight is broader than workflow state: **allocate budget by expected value under scarcity**. In an enterprise budget pool, the right question is not whether a person, team, or job title deserves an expensive model. The right question is whether the current task and current workflow state justify scarce model spend.
+
+Workflow-stage routing is BudgetFlow's current concrete mechanism for estimating local marginal value. It does not yet fully model task-level business value; it approximates where a model upgrade is likely to buy useful progress inside one task. This is why the paper separates the claims:
+
+- **First claim:** the system should maximize verified resolved value per dollar under a shared hard budget.
+- **Second claim:** the current `stage weight × expected progress gain / marginal cost` mechanism may be a good way to spend less while preserving or improving resolved value.
+
+If the second claim is weak, the first claim still defines the system: BudgetFlow can use a simpler value-aware allocator, stronger value memory, or a learned policy while retaining the same budget account, verifier, ledger, and stop-loss interfaces.
 
 A coding agent on SWE-bench does not call the model once. It reads the issue, searches files, reads code, writes a patch, runs tests, and then iterates on failures. Every step spends tokens, and every step can change whether the final patch passes the harness.
 
@@ -267,6 +281,8 @@ Because $3 < 4$, BudgetFlow would not upgrade. This is the core behavior: a mode
 The exact numbers are uncertain because no runtime router knows the true future result before making the call. The formula does not require `expected_progress_gain` to perfectly predict the future. It only requires the estimate to be more informative than a random table or a table where every step gets the same value. Section 8 should test this with ablations.
 
 This creates a two-layer control loop. The progress table controls **which upgrades are worth buying on average**. The no-progress / loop signal controls **when to stop spending on this specific workflow**. A stuck workflow can still become a small negative sample for later sliding updates, but it should not immediately rewrite the global `expected_progress_gain` table.
+
+This mechanism has a real downside: switching model tiers can lose prefix / KV-cache locality and increase effective cost or latency. Therefore the routing formula is not assumed to be free. The paper must measure whether workflow-aware placement pays for its switching overhead. If it does, BudgetFlow gets both claims: value-driven shared budget governance and smarter per-step cost efficiency. If it does not, the formula becomes an ablation result and the paper should lean on the first claim.
 
 ### 3.3 How does BudgetFlow get $w_i$?
 
@@ -645,15 +661,18 @@ On trigger, BudgetFlow first sends a cancel / interrupt to the upper agent or pr
 
 | RQ | Question | Metrics |
 |---|---|---|
-| RQ1 | When many agent workflows run under one fixed budget and shared backend limits, where is budget wasted and which runtime limits are hit? | budget violations, 429 rate, queue latency, recovered budget, cancelled zombies |
-| RQ2 | Under the same budget, does using workflow-stage state to choose model tiers resolve more SWE-bench tasks than workflow-level or budget-only scheduling? | resolved rate @ fixed budget, BudgetFlow Full vs Workflow-Level Router vs Budget-Only Step Scheduler |
-| RQ3 | Even when model switching reduces prefix-cache locality, can workflow-stage scheduling still bring a net gain? | model-switch rate, prefill latency, cached-token ratio, BudgetFlow Full vs BudgetFlow Cache-Sticky |
+| RQ1 | Under one fixed shared budget, does BudgetFlow resolve more total verified value than static quotas, cost-only routing, or value-agnostic baselines? | total resolved value @ fixed budget, resolved value per dollar, value-weighted budget fail rate |
+| RQ2 | When many agent workflows run under one fixed budget and shared backend limits, where is budget wasted and which runtime limits are hit? | budget violations, 429 rate, queue latency, recovered budget, cancelled zombies |
+| RQ3 | Under the same budget, does using workflow-stage state to choose model tiers resolve more SWE-bench tasks or value than workflow-level or budget-only scheduling? | resolved rate @ fixed budget, resolved value @ fixed budget, BudgetFlow Full vs Workflow-Level Router vs Budget-Only Step Scheduler |
+| RQ4 | Even when model switching reduces prefix-cache locality, can workflow-stage scheduling still bring a net gain? | model-switch rate, prefill latency, cached-token ratio, BudgetFlow Full vs BudgetFlow Cache-Sticky |
 
 ### 8.3 Primary metrics
 
 | Metric | Meaning |
 |---|---|
-| Resolved rate @ fixed budget | how many SWE-bench tasks are resolved under the same budget |
+| Resolved value @ fixed budget | total verified task value completed under the same shared budget |
+| Resolved value per dollar | `sum(value_i * resolved_i) / sum(actual_cost_i)` |
+| Resolved rate @ fixed budget | how many SWE-bench tasks are resolved under the same budget; retained for backward compatibility with equal-value baselines |
 | Budget violation rate | whether the hard budget is exceeded |
 | 429 rate | whether provider RPM limits are hit |
 | p50/p99 queue latency | queuing delay |
@@ -662,17 +681,20 @@ On trigger, BudgetFlow first sends a cancel / interrupt to the upper agent or pr
 | Wasted reservation ratio | reserved budget that never becomes useful completed work |
 | Model-switch rate | how often a workflow changes model tier or backend |
 | Prefill / cache overhead | extra prefill latency or lower cached-token ratio after switching models |
-| Efficiency metric | spend per resolved task, reported as secondary context |
+| Efficiency metric | spend per resolved task, reported as secondary context for cost-driven comparisons |
+
+The old metric `cost_per_resolved` remains useful, but it is no longer the headline. It answers whether the second claim holds: does workflow-aware routing save money per task? The first claim asks whether the same budget produces more value, even when tasks have different costs and different importance.
 
 ### 8.4 Ablations
 
 The ablations should stay focused on where the gain comes from:
 
-1. **Step importance**: compare budget-only routing with $w_i \equiv 1$, random weights, simple task-type weights, and BudgetFlow Full.
+1. **Task value signal**: compare equal value (`value_i = 1`), a declared or proxy value signal, random value, and value-agnostic baselines under the same fixed budget. This tests the first claim: value-aware budget allocation should beat value-agnostic routing when tasks are not equally valuable.
+2. **Step importance**: compare budget-only routing with $w_i \equiv 1$, random weights, simple task-type weights, and BudgetFlow Full.
    - **Weight *ordering* sub-ablation (which stage deserves the money?).** Hold the mechanism fixed and swap only the $w_i$ profile: `repair_heavy` (current default: Loc 1.0 / Repair 3.0 / Val 2.5), `validation_heavy` (e.g. Loc 1.0 / Repair 2.0 / Val 3.5), and the `stage_blind` $w_i \equiv 1$ baseline. This tests an external hypothesis from multi-model code-review practice — **judging whether a patch is correct may be worth more than writing it**, i.e. Validation (not Repair) should pull the high tier. The current default asserts the opposite ordering; this ablation settles the direction empirically instead of by intuition. Primary readout: resolved @ fixed budget and per-stage tier mix (does `validation_heavy` actually route Validation turns to T3/T4?).
-2. **Progress table**: compare uniform `expected_progress_gain`, random progress gain, `zero_calibration` with only a conservative default table, and calibrated progress gain.
-3. **Stop-loss control**: compare BudgetFlow Full with and without no-progress / ZombieDetector logic, reporting wasted budget, recovered budget, queue latency, and resolved rate.
-4. **Signal robustness and transfer**: compare SDK / explicit signals, callback inference, proxy inference, and budget-only fallback; calibrate on one split or benchmark and test on a disjoint domain such as SWE-bench Verified or RepoBench.
+3. **Progress table**: compare uniform `expected_progress_gain`, random progress gain, `zero_calibration` with only a conservative default table, and calibrated progress gain.
+4. **Stop-loss control**: compare BudgetFlow Full with and without no-progress / ZombieDetector logic, reporting wasted budget, recovered budget, queue latency, resolved rate, and resolved value.
+5. **Signal robustness and transfer**: compare SDK / explicit signals, callback inference, proxy inference, and budget-only fallback; calibrate on one split or benchmark and test on a disjoint domain such as SWE-bench Verified or RepoBench.
 
 If calibrated progress gain beats uniform and random tables under the same fixed budget, the result supports the claim that historical step progress is useful for runtime budget allocation. If `zero_calibration` is close to calibrated performance, the gain mainly comes from workflow-aware budget pacing rather than the progress table.
 
@@ -720,9 +742,9 @@ The two tiers share **the same code**. The only differences are configuration, d
 
 ### 8.6 Minimum decisive experiment (stage signal vs budget-only pacing)
 
-Run BudgetFlow **Full** (three stages + default $w_i$ + progress table) and **Budget-Only Step Scheduler** under identical settings: same agent scaffold, same backend pool, same global budget, same concurrency knobs, same evaluation split. The only deliberate difference is that Budget-Only drops stage weights and the calibrated progress table, keeping ledger, reservation, admission, and `budget_pressure`.
+Run BudgetFlow **Full** (task value + three stages + default $w_i$ + progress table) and **Budget-Only Step Scheduler** under identical settings: same agent scaffold, same backend pool, same global budget, same concurrency knobs, same evaluation split. The first deliberate difference is task-value awareness. The second deliberate difference is that Budget-Only drops stage weights and the calibrated progress table, keeping ledger, reservation, admission, and `budget_pressure`.
 
-Report `resolved @ fixed budget` plus budget-health metrics. **If Full and Budget-Only track each other within noise**, the paper's headline contribution shifts to **shared-budget runtime governance**; the three borrowed stage names become supporting texture rather than the main claim. **If Full clearly wins**, keep the stage-aware story as a first-class result and invest in Tier-2 calibration (`Progress[stage, tier]` from §3.4).
+Report `resolved value @ fixed budget`, `resolved value per dollar`, old `resolved @ fixed budget`, and budget-health metrics. **If Full and Budget-Only track each other within noise on old resolved count but Full wins on resolved value**, the paper's headline contribution is the new North Star: value-aware shared-budget governance. **If Full also wins on old resolved count or cost per resolved**, keep the stage-aware story as a strong second claim and invest in Tier-2 calibration (`Progress[stage, tier]` from §3.4). **If neither value-aware allocation nor stage-aware routing wins**, the experiment is a negative result and the system should be redesigned before scaling.
 
 ---
 
