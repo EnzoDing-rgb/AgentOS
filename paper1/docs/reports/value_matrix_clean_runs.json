@@ -1,0 +1,34 @@
+{
+  "meta": {
+    "description": "Clean-run manifest for Value Matrix. Only runs listed here are allowed into the task universe. Dirty/unlisted runs are skipped with a warning.",
+    "created": "2026-06-05",
+    "phase": "Phase P — upgraded from Phase O directory-scan approach",
+    "note": "This is a clean-run foundation (10 tasks, 2 strategies), NOT the final paper value model."
+  },
+  "runs": [
+    {
+      "file": "postfix_029_loo_bm_5x2_fixed.jsonl",
+      "rows": 10,
+      "strategies": ["budget_only_tight", "budgetflow_full_tight"],
+      "clean": true,
+      "why_clean": "BudgetMemory fix run. 5 tasks × 2 strategies. No missing fields. Turn traces complete.",
+      "source_report": "docs/reports/029.md"
+    },
+    {
+      "file": "postfix_030_loo_10x2.jsonl",
+      "rows": 20,
+      "strategies": ["budget_only_tight", "budgetflow_full_tight"],
+      "clean": true,
+      "why_clean": "Largest clean run. 10 tasks × 2 strategies. Cold-start fallback (all global_fallback). Checker CLEAN.",
+      "source_report": "docs/reports/030.md"
+    },
+    {
+      "file": "postfix_031_loo_5x2.jsonl",
+      "rows": 10,
+      "strategies": ["budget_only_tight", "budgetflow_full_tight"],
+      "clean": true,
+      "why_clean": "True LOO BudgetMemory cascade. 5 held-out tasks × 2 strategies. All repo_median, 0 exact_task leakage.",
+      "source_report": "docs/reports/031.md"
+    }
+  ]
+}

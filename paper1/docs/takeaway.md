@@ -4,6 +4,18 @@
 
 该 commit 就 commit，该 push 就 push。关键节点必须 commit，能同步远端就同步远端。
 
+### Phase P / Profile Fix + Manifest + Localization Diag Takeaway
+
+1. **Narrative/code consistency is a P0 review risk.** Phase O's `solve_rarity` formula gave 5.0 to no-one-solved tasks while the report said "no-one-solved less informative." This contradiction was caught in review. Fix: rename + re-formula so both match. discriminative_rarity peaks at r=0.5; unsolved_difficulty separately handles "hard/expensive" tasks with clear ceiling-candidate labeling.
+
+2. **Directory-scan without allowlist is a data-governance gap.** `scan_task_universe()` scanning all `data/runs/*.jsonl` means a single dirty run can silently contaminate the value matrix. Fix: explicit clean-run manifest JSON with fail-fast on missing files. The manifest also serves as documentation of what data is trusted and why.
+
+3. **Progress signals can be dead without being absent.** LOCALIZATION has_progress=0% not because the agent is idle, but because the signal fires on file modifications only. Offline regex extraction recovered 63.3% file-activity rate from bash_digest text. Lesson: before concluding "no progress," check whether the instrumentation covers the activity type.
+
+4. **Within-task de-biasing is a cheap partial fix for selection bias.** Raw T2 vs T3 comparison conflates tier effect with task difficulty. Grouping by (stage, task) and only comparing T2/T3 within the same task removes task-level confounding. In our data, 8/12 non-tie within-task pairs still show T3 < T2 — confirming that even within the same task, T3 turns are selected on harder phases.
+
+5. **Two-strategy task pools make discriminative profiles useless.** With rarity ∈ {0, 1}, `discriminative_rarity` is flat at 1.0 for all tasks. A minimum of 3 strategies is needed for intermediate rarity values. This is a data constraint, not a formula problem — the tests verify the formula is correct.
+
 ### Phase O / Value Matrix + Progress Calibration Takeaway
 
 1. **Selection-bias is the central challenge for progress calibration.** From 639 turns, REPAIR T2=41% vs T3=24% and VALIDATION T2=50% vs T3=19%. These negative deltas do NOT mean T3 is worse — T3 turns are selected on harder situations. Any naive plug of these rates into `expected_progress_gain` would encode the bias into the router. De-biasing requires held-out calibration or instrumental variable design.

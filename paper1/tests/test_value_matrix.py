@@ -13,11 +13,14 @@ from budgetflow.value_matrix import (
     TaskRecord,
     build_value_matrix,
     calibrate_progress_table,
+    diagnose_localization_progress,
+    load_manifest,
     make_custom_profile,
     profile_combined,
     profile_difficulty,
+    profile_discriminative_rarity,
     profile_equal,
-    profile_solve_rarity,
+    profile_unsolved_difficulty,
     scan_task_universe,
     sensitivity_variants,
 )
@@ -84,23 +87,100 @@ class TestDifficultyProfile:
         assert "difficulty" in PROFILES
 
 
-class TestSolveRarityProfile:
+class TestDiscriminativeRarityProfile:
+    """Discriminative rarity: peak at moderate rarity, low at both extremes."""
+
     def test_all_solved_value_one(self):
         rec = _make_rec(strategies={"a", "b"}, strategies_resolved={"a", "b"})
-        assert profile_solve_rarity(rec) == pytest.approx(1.0)
+        # rarity=1.0 → 1 + 4*1*0 = 1.0
+        assert profile_discriminative_rarity(rec) == pytest.approx(1.0)
 
-    def test_none_solved_value_five(self):
+    def test_none_solved_value_one(self):
+        """No-one-solves should be LOW (1.0), not 5.0.
+        This is the key fix: no-one-solved tasks are NOT discriminative."""
         rec = _make_rec(strategies={"a", "b"}, strategies_resolved=set())
-        # rarity = 0/2 = 0 → 1 + 4*(1-0)^2 = 5.0
-        assert profile_solve_rarity(rec) == pytest.approx(5.0)
+        # rarity=0.0 → 1 + 4*0*1 = 1.0
+        assert profile_discriminative_rarity(rec) == pytest.approx(1.0)
 
-    def test_half_solved(self):
+    def test_half_solved_peak(self):
+        """Half-solved should be the PEAK value (2.0)."""
         rec = _make_rec(strategies={"a", "b"}, strategies_resolved={"a"})
-        # rarity = 0.5 → 1 + 4*(0.5)^2 = 1 + 4*0.25 = 2.0
-        assert profile_solve_rarity(rec) == pytest.approx(2.0)
+        # rarity=0.5 → 1 + 4*0.5*0.5 = 1 + 1.0 = 2.0
+        assert profile_discriminative_rarity(rec) == pytest.approx(2.0)
+
+    def test_one_of_three_solved(self):
+        """rarity=1/3 → 1 + 4*(1/3)*(2/3) ≈ 1.889"""
+        rec = _make_rec(strategies={"a", "b", "c"}, strategies_resolved={"a"})
+        expected = 1.0 + 4.0 * (1/3) * (2/3)  # ≈ 1.8889
+        assert profile_discriminative_rarity(rec) == pytest.approx(expected)
+
+    def test_one_of_four_solved(self):
+        """rarity=0.25 → 1 + 4*0.25*0.75 = 1.75"""
+        rec = _make_rec(strategies={"a", "b", "c", "d"}, strategies_resolved={"a"})
+        assert profile_discriminative_rarity(rec) == pytest.approx(1.75)
+
+    def test_peak_at_moderate_rarity(self):
+        """The function should peak at rarity=0.5, not at extremes."""
+        # rarity=0 → 1.0
+        none_solved = _make_rec(strategies={"a", "b", "c", "d"}, strategies_resolved=set())
+        # rarity=0.5 → 2.0 (peak)
+        half_solved = _make_rec(strategies={"a", "b", "c", "d"}, strategies_resolved={"a", "b"})
+        # rarity=1.0 → 1.0
+        all_solved = _make_rec(strategies={"a", "b", "c", "d"}, strategies_resolved={"a", "b", "c", "d"})
+
+        v_none = profile_discriminative_rarity(none_solved)
+        v_half = profile_discriminative_rarity(half_solved)
+        v_all = profile_discriminative_rarity(all_solved)
+
+        assert v_half > v_none, f"half={v_half} should be > none={v_none}"
+        assert v_half > v_all, f"half={v_half} should be > all={v_all}"
+        assert v_none == pytest.approx(v_all), f"none={v_none} should ≈ all={v_all}"
 
     def test_in_registry(self):
-        assert "solve_rarity" in PROFILES
+        assert "discriminative_rarity" in PROFILES
+
+    def test_old_solve_rarity_removed(self):
+        """The old 'solve_rarity' key should no longer be in PROFILES."""
+        assert "solve_rarity" not in PROFILES
+
+
+class TestUnsolvedDifficultyProfile:
+    """Unsolved difficulty: high for expensive, unsolved tasks. Ceiling candidate."""
+
+    def test_fully_resolved_low_penalty(self):
+        rec = _make_rec(total=1, resolved=1, cost=0.1)
+        # avg_cost=0.1, rate=1.0, penalty=1.0 → 0.1
+        assert profile_unsolved_difficulty(rec) == pytest.approx(0.1)
+
+    def test_never_resolved_double_penalty(self):
+        rec = _make_rec(total=1, resolved=0, cost=0.1)
+        # avg_cost=0.1, rate=0.0, penalty=2.0 → 0.2
+        assert profile_unsolved_difficulty(rec) == pytest.approx(0.2)
+
+    def test_partially_resolved_intermediate(self):
+        rec = _make_rec(total=2, resolved=1, cost=0.2)
+        # avg_cost=0.1, rate=0.5, penalty=1.5 → 0.15
+        assert profile_unsolved_difficulty(rec) == pytest.approx(0.15)
+
+    def test_floor_at_001(self):
+        rec = _make_rec(total=4, resolved=4, cost=0.0)
+        # avg_cost=0.0, floor to 0.01, penalty=1.0 → 0.01
+        assert profile_unsolved_difficulty(rec) == 0.01
+
+    def test_label_ceiling_candidate(self):
+        """This profile is for ceiling/hardness, not discriminative value."""
+        # total=1 so avg_cost=1.0. All strategies fail → high unsolved_difficulty
+        hard = _make_rec(iid="hard", total=1, resolved=0, cost=1.0,
+                         strategies={"bo", "bf", "ap"}, strategies_resolved=set())
+        # discriminative_rarity is low (no one solves = not discriminative)
+        disc_val = profile_discriminative_rarity(hard)
+        unsolved_val = profile_unsolved_difficulty(hard)
+        # avg_cost=1.0, rate=0 → 1.0 * 2.0 = 2.0 > 1.0
+        assert disc_val < unsolved_val, \
+            f"discriminative={disc_val} should be < unsolved={unsolved_val} for no-one-solved task"
+
+    def test_in_registry(self):
+        assert "unsolved_difficulty" in PROFILES
 
 
 class TestCombinedProfile:
@@ -109,13 +189,19 @@ class TestCombinedProfile:
         v = profile_combined(rec)
         assert v > 1.0
 
-    def test_monotonic_with_difficulty(self):
-        """More difficult tasks should have higher combined value."""
-        easy = _make_rec(iid="easy", cost=0.01, total=4, resolved=4,
-                         strategies={"a"}, strategies_resolved={"a"})
-        hard = _make_rec(iid="hard", cost=1.0, total=4, resolved=0,
-                         strategies={"a"}, strategies_resolved=set())
-        assert profile_combined(hard) > profile_combined(easy)
+    def test_unsolved_not_automatically_highest(self):
+        """Combined should NOT automatically push no-one-solved to highest value."""
+        hard_unsolved = _make_rec(iid="hard", cost=0.5, total=4, resolved=0,
+                                  strategies={"bo", "bf"}, strategies_resolved=set())
+        easy_half = _make_rec(iid="easy_half", cost=0.01, total=4, resolved=4,
+                              strategies={"bo", "bf", "ap"}, strategies_resolved={"bo"})
+        v_unsolved = profile_combined(hard_unsolved)
+        v_half = profile_combined(easy_half)
+        # Both should be reasonable; unsolved doesn't dominate
+        assert v_unsolved > 0
+        assert v_half > 0
+        # The half-solved task should not be crushed by unsolved
+        assert v_half >= 1.0
 
     def test_in_registry(self):
         assert "combined" in PROFILES
@@ -152,25 +238,24 @@ class TestNoBFLeakage:
         rec = _make_rec(cost=1.0)  # cross-strategy avg_cost
         assert profile_difficulty(rec) > 0
 
-    def test_solve_rarity_is_cross_strategy(self):
-        """Solve rarity counts how many strategies solve, not just BF."""
+    def test_discriminative_rarity_is_cross_strategy(self):
+        """Discriminative rarity counts how many strategies solve, not just BF."""
         rec = _make_rec(strategies={"bo", "bf", "all_pro"}, strategies_resolved={"bo"})
-        # rarity = 1/3 ≈ 0.33 → 1 + 4*(0.67)^2 ≈ 2.78
-        val = profile_solve_rarity(rec)
+        # rarity=1/3 → 1 + 4*(1/3)*(2/3) ≈ 1.889
+        val = profile_discriminative_rarity(rec)
         assert val > 1.0
 
     def test_bf_solving_does_not_boost_value(self):
-        """A task where only BF solves it should get higher rarity value (fewer solvers),
+        """A task where only BF solves it should get moderate discriminative value,
         but value should not be computed from 'did BF solve' as a binary flag."""
-        # BF-only solve
+        # BF-only solve (rarity=0.5 → discriminative peak)
         rec = _make_rec(strategies={"bo", "bf"}, strategies_resolved={"bf"})
-        val_bf_only = profile_solve_rarity(rec)
-        # Everyone solves
+        val_bf_only = profile_discriminative_rarity(rec)
+        # Everyone solves (rarity=1.0 → low discriminative)
         rec2 = _make_rec(strategies={"bo", "bf"}, strategies_resolved={"bo", "bf"})
-        val_all = profile_solve_rarity(rec2)
-        # BF-only should have higher rarity value (fewer solvers = rarer)
-        # But this is cross-strategy, not BF-specific — any strategy that solo-solves
-        # creates the same signal
+        val_all = profile_discriminative_rarity(rec2)
+        # BF-only has half-solved → peak discriminative value
+        # But this is cross-strategy: any strategy that solo-solves creates same signal
         assert val_bf_only > val_all
 
 
@@ -560,3 +645,245 @@ class TestMissingTaskHandling:
         # Rankings should be empty
         for pname in PROFILES:
             assert len(matrix["rankings"][pname]) == 0
+
+
+# ── Manifest tests ──────────────────────────────────────────────────────────────
+
+
+class TestLoadManifest:
+    def test_loads_valid_manifest(self):
+        with tempfile.TemporaryDirectory() as td:
+            mp = Path(td) / "manifest.json"
+            mp.write_text(json.dumps({
+                "meta": {"description": "test"},
+                "runs": [{"file": "a.jsonl", "rows": 10, "strategies": ["s1"]}]
+            }))
+            m = load_manifest(mp)
+            assert len(m["runs"]) == 1
+            assert m["runs"][0]["file"] == "a.jsonl"
+
+    def test_missing_file_raises(self):
+        with pytest.raises(FileNotFoundError):
+            load_manifest("/nonexistent/manifest.json")
+
+    def test_missing_runs_key_raises(self):
+        with tempfile.TemporaryDirectory() as td:
+            mp = Path(td) / "manifest.json"
+            mp.write_text('{"meta": {}}')
+            with pytest.raises(ValueError, match="runs"):
+                load_manifest(mp)
+
+
+class TestScanWithManifest:
+    def test_only_allowlisted_files_scanned(self):
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            # Create an allowlisted file and a dirty file
+            _write_jsonl(data_dir / "clean.jsonl", [
+                {"instance_id": "a", "strategy": "s1", "harness_resolved": True,
+                 "total_cost": 0.1},
+            ])
+            _write_jsonl(data_dir / "dirty.jsonl", [
+                {"instance_id": "b", "strategy": "s2", "harness_resolved": True,
+                 "total_cost": 0.2},
+            ])
+            manifest = {
+                "meta": {}, "runs": [
+                    {"file": "clean.jsonl", "rows": 1, "strategies": ["s1"]}
+                ]
+            }
+            records = scan_task_universe(data_dir, manifest=manifest)
+            assert "a" in records
+            assert "b" not in records  # dirty file not in manifest
+
+    def test_missing_manifest_entry_raises(self):
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            manifest = {
+                "meta": {}, "runs": [
+                    {"file": "nonexistent.jsonl", "rows": 1, "strategies": ["s1"]}
+                ]
+            }
+            with pytest.raises(FileNotFoundError, match="nonexistent"):
+                scan_task_universe(data_dir, manifest=manifest)
+
+    def test_manifest_metadata_in_artifact(self):
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            _write_jsonl(data_dir / "run.jsonl", [
+                {"instance_id": "a", "strategy": "s1", "harness_resolved": True,
+                 "total_cost": 0.1},
+            ])
+            manifest = {
+                "meta": {"description": "test manifest", "phase": "test"},
+                "runs": [
+                    {"file": "run.jsonl", "rows": 1, "strategies": ["s1"],
+                     "clean": True, "why_clean": "test", "source_report": "test.md"}
+                ]
+            }
+            records = scan_task_universe(data_dir, manifest=manifest)
+            matrix = build_value_matrix(records, PROFILES, manifest_meta=manifest)
+            assert "manifest" in matrix["meta"]
+            assert matrix["meta"]["manifest"]["description"] == "test manifest"
+            assert matrix["meta"]["source"] == "manifest — clean-run allowlist"
+            assert len(matrix["meta"]["manifest_runs"]) == 1
+            assert matrix["meta"]["manifest_runs"][0]["file"] == "run.jsonl"
+
+    def test_no_manifest_falls_back_to_directory_scan(self):
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            _write_jsonl(data_dir / "test.jsonl", [
+                {"instance_id": "a", "strategy": "s1", "harness_resolved": True,
+                 "total_cost": 0.1},
+            ])
+            records = scan_task_universe(data_dir, manifest=None)
+            assert "a" in records
+
+    def test_no_manifest_artifact_has_no_manifest_key(self):
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            _write_jsonl(data_dir / "test.jsonl", [
+                {"instance_id": "a", "strategy": "s1", "harness_resolved": True,
+                 "total_cost": 0.1},
+            ])
+            records = scan_task_universe(data_dir, manifest=None)
+            matrix = build_value_matrix(records, PROFILES, manifest_meta=None)
+            assert "manifest" not in matrix["meta"]
+            assert "source" not in matrix["meta"]
+
+
+# ── Localization diagnostic tests ──────────────────────────────────────────────
+
+
+class TestLocalizationDiagnostic:
+    def test_extracts_file_paths_from_bash_digest(self):
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            _write_jsonl(data_dir / "test.jsonl", [
+                {"instance_id": "a", "strategy": "bf", "turn_traces": [
+                    {"stage": "LOCALIZATION", "backend_tier": 2,
+                     "has_progress": False,
+                     "bash_digest": "grep -n 'class Foo' ./django/forms/fields.py",
+                     "assistant_content_head": "Looking at forms/fields.py"},
+                    {"stage": "REPAIR", "backend_tier": 3,
+                     "has_progress": True,
+                     "bash_digest": "sed -i 's/x/y/' django/forms/fields.py",
+                     "assistant_content_head": "Fixed"},
+                ]},
+            ])
+            result = diagnose_localization_progress(data_dir)
+            assert result["meta"]["total_loc_turns"] == 1
+            assert result["meta"]["loc_turns_with_files"] == 1
+            assert result["meta"]["overall_file_activity_rate"] == 1.0
+            ts = result["per_task"]["a"]
+            assert ts["unique_files_count"] >= 1
+
+    def test_no_localization_turns_handled(self):
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            _write_jsonl(data_dir / "test.jsonl", [
+                {"instance_id": "a", "strategy": "bf", "turn_traces": [
+                    {"stage": "REPAIR", "backend_tier": 2,
+                     "has_progress": True, "bash_digest": "sed -i file.py",
+                     "assistant_content_head": "fix"},
+                ]},
+            ])
+            result = diagnose_localization_progress(data_dir)
+            assert result["meta"]["total_loc_turns"] == 0
+            assert result["meta"]["overall_file_activity_rate"] == 0.0
+
+    def test_missing_turns_handled(self):
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            _write_jsonl(data_dir / "test.jsonl", [
+                {"instance_id": "a", "strategy": "bf"},
+            ])
+            result = diagnose_localization_progress(data_dir)
+            assert result["meta"]["total_loc_turns"] == 0
+
+    def test_stage_filtering(self):
+        """Only LOCALIZATION turns are counted, not REPAIR or VALIDATION."""
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            _write_jsonl(data_dir / "test.jsonl", [
+                {"instance_id": "a", "strategy": "bf", "turn_traces": [
+                    {"stage": "LOCALIZATION", "backend_tier": 2,
+                     "has_progress": False,
+                     "bash_digest": "cat django/views.py",
+                     "assistant_content_head": "checking views"},
+                    {"stage": "REPAIR", "backend_tier": 2,
+                     "has_progress": True,
+                     "bash_digest": "sed -i django/views.py",
+                     "assistant_content_head": "editing"},
+                    {"stage": "VALIDATION", "backend_tier": 2,
+                     "has_progress": True,
+                     "bash_digest": "python test.py",
+                     "assistant_content_head": "testing"},
+                ]},
+            ])
+            result = diagnose_localization_progress(data_dir)
+            assert result["meta"]["total_loc_turns"] == 1
+
+    def test_manifest_mode(self):
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            _write_jsonl(data_dir / "clean.jsonl", [
+                {"instance_id": "a", "strategy": "bf", "turn_traces": [
+                    {"stage": "LOCALIZATION", "backend_tier": 2,
+                     "has_progress": False,
+                     "bash_digest": "grep -n thing ./module/file.py",
+                     "assistant_content_head": ""},
+                ]},
+            ])
+            _write_jsonl(data_dir / "dirty.jsonl", [
+                {"instance_id": "b", "strategy": "bf", "turn_traces": [
+                    {"stage": "LOCALIZATION", "backend_tier": 2,
+                     "has_progress": False,
+                     "bash_digest": "grep -n other ./another/file.py",
+                     "assistant_content_head": ""},
+                ]},
+            ])
+            manifest = {
+                "meta": {}, "runs": [
+                    {"file": "clean.jsonl", "rows": 1, "strategies": ["bf"]}
+                ]
+            }
+            result = diagnose_localization_progress(data_dir, manifest=manifest)
+            assert result["meta"]["total_loc_turns"] == 1
+            assert "a" in result["per_task"]
+            assert "b" not in result["per_task"]
+
+    def test_gold_patch_unavailable(self):
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            _write_jsonl(data_dir / "test.jsonl", [
+                {"instance_id": "a", "strategy": "bf", "turn_traces": [
+                    {"stage": "LOCALIZATION", "backend_tier": 2,
+                     "has_progress": False,
+                     "bash_digest": "grep pattern ./src/main.py",
+                     "assistant_content_head": ""},
+                ]},
+            ])
+            result = diagnose_localization_progress(data_dir)
+            assert result["meta"]["gold_patch_available"] is False
+
+    def test_diagnostic_summary_has_per_task(self):
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            _write_jsonl(data_dir / "test.jsonl", [
+                {"instance_id": "task_a", "strategy": "bf", "turn_traces": [
+                    {"stage": "LOCALIZATION", "backend_tier": 2,
+                     "has_progress": False,
+                     "bash_digest": "cat ./lib/utils.py ./lib/helpers.py",
+                     "assistant_content_head": "need to check utils"},
+                ]},
+            ])
+            result = diagnose_localization_progress(data_dir)
+            ts = result["per_task"]["task_a"]
+            assert ts["loc_turns"] == 1
+            assert ts["loc_with_files"] == 1
+            assert ts["file_activity_rate"] == 1.0
+            assert ts["unique_files_count"] >= 1
+            # Check top_files contains extracted paths
+            assert any("utils.py" in f for f in ts["top_files"]) or \
+                   any("helpers.py" in f for f in ts["top_files"])

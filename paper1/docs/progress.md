@@ -4,6 +4,13 @@
 
 ## 当前快照（2026-06-05）
 
+### 046 后 Phase P 状态
+
+- **Phase P 完成：** 修复 Phase O 审稿风险。`solve_rarity` 替换为 `discriminative_rarity` (peak at r=0.5) + `unsolved_difficulty` (ceiling candidate)，叙事与公式一致。新增 clean-run manifest (`value_matrix_clean_runs.json`) + `--manifest` CLI。离线 localization 诊断：136/215 turns (63.3%) 有可识别文件路径，progress signal 可恢复。Matched-task de-bias：23 对 task 内 T2/T3 比较，8/12 非 tie 对显示 T3 更低（within-task selection bias 确认）。79 new tests。297 total tests pass。**不建议启动 paid run，数据限制（2 strategies, 10 tasks）使 discriminative_rarity flat。** 详细报告：`docs/reports/046.md`。
+- **关键修复：** discriminative_rarity 公式 `1+4r(1-r)` 在 r=0 和 r=1 都返回 1.0（低值），峰值在 r=0.5（2.0）。当前只有 2 strategies，所有 task rarity 都是 0 或 1，所以该 profile 暂时 flat。需要 3+ strategies 才能 differentiate。
+- **Localization 根因：** runtime `has_progress` 只在文件修改时触发（REPAIR/VALIDATION），不在文件探索时触发（LOCALIZATION）。离线诊断通过 regex 从 bash_digest 恢复文件路径，证明 agent 确实在探索文件。建议加 `touched_file_paths` 到 trace。
+- **Paid-run readiness：** Gate checklist 6/7 PASS。唯一未满足：3+ strategy task pool for discriminative_rarity。给出了 $0.50 paid smoke design（2 tasks × 2 strategies），但建议等 touched_file_paths 修复后再执行。
+
 ### 045 后 Phase O 状态
 
 - **Phase O 完成：** Value Matrix + Progress Calibration 基础设施已建成。`src/budgetflow/value_matrix.py` 支持 4 种 ex-ante/cross-strategy value profile（equal, difficulty, solve_rarity, combined）+ sensitivity analysis + 自定义 profile。Progress calibration 从 639 turns 中提取 (stage, tier) 进度率，确认 selection-bias caveat。AutoResearch 回归 186 tests + goal-loop smoke exit 0。**结论与 Phase N 一致：暂不启动 paid run。** 详细报告：`docs/reports/045.md`。
@@ -115,7 +122,7 @@
 - **010**：P0 修复（API 价格校准、worktree crash、resolved=None）+ 009 成本重解 $34K→$10.63。`reports/010.md`。
 - **009**：Overnight batch loop。56 recorded rows，BudgetFlow 正向信号但数据不够干净。3 个新 SymPy gold-PASS task。`reports/009.md`。
 - **008**：首次 model matrix。14/15 records。`reports/008.md`。
-- 已写：`reports/006.md`、`007.md`、`008.md`、`009.md`、`010.md`、`011.md`、`012.md`、`015.md`、`016.md`、`039.md`、`040.md`、`041.md`、`042.md`、`043.md`、`044.md`、`045.md`。
+- 已写：`reports/006.md`、`007.md`、`008.md`、`009.md`、`010.md`、`011.md`、`012.md`、`015.md`、`016.md`、`039.md`、`040.md`、`041.md`、`042.md`、`043.md`、`044.md`、`045.md`、`046.md`。
 - 已补：mini-swe-agent 依赖，compare runner import/`--help`/全链路恢复。
 - 已实现/接入：Automatic Budgeting v1 与 memory 写入。Memory 已清理（备份至 `.bak_010`），下次运行自动新建。
 - 已修/部分修：SymPy `py.test` compat；Django `django.setup()` compat。但 Django 新 task 仍卡 `INSTALLED_APPS`。
@@ -199,7 +206,8 @@ total_resolved_value_under_budget = sum(value_i * harness_resolved_i)
 | AutoResearch goal loop | ✅ 039 real API goal smoke PASS；Phase K 完成 goal-loop 闭环 |
 | AutoResearch evidence ledger + review gate | ✅ Phase J：evidence 自洽；deterministic review gate 硬化 |
 | Value Matrix + Progress Calibration | ✅ Phase O：4 profiles, sensitivity, 639-turn calibration, selection-bias documented |
-| Paid-run readiness | ⚠️ Phase O 判断不变：暂不启动，需 value model 选定 + LOCALIZATION progress fix |
+| Paid-run readiness | ⚠️ Phase P 判断：gate 6/7 PASS，缺 3+ strategy pool + touched_file_paths trace fix |
+| Value matrix profile fix + manifest + localization diag | ✅ Phase P：discriminative_rarity + unsolved_difficulty, manifest, 63.3% loc activity recovered |
 | AutoResearch goal-loop + owner_decision + commit/push | ✅ Phase K：`goal-loop` 一键闭环；owner_decision.md；safe commit/push |
 | AutoResearch real API goal-loop smoke + dispatch | ✅ Phase L：dispatch wrapper；real API goal-loop；push-path validated |
 | AutoResearch infra audit + paper doc consistency | ✅ Phase M：186 tests pass；no-paid smoke exit 0；4 docs audit clean |
