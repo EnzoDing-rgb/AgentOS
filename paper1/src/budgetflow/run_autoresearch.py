@@ -593,28 +593,7 @@ def _safe_commit_push(
     """
     repo_root = coordinator.git_root or coordinator.paper1_root
 
-    # 1. git diff --check
-    diff_check = subprocess.run(
-        ["git", "diff", "--check"],
-        capture_output=True, text=True, cwd=str(repo_root),
-    )
-    if diff_check.returncode != 0:
-        return 1, f"git diff --check failed:\n{diff_check.stderr[:500]}"
-
-    # 2. Secret scan
-    secrets = _scan_staged_for_secrets(repo_root)
-    if secrets:
-        return 1, f"Secret scan found issues:\n" + "\n".join(secrets)
-
-    # 3. pytest (if provided)
-    if pytest_cmd:
-        pytest_result = subprocess.run(
-            pytest_cmd, shell=True, capture_output=True, text=True, cwd=str(repo_root),
-        )
-        if pytest_result.returncode != 0:
-            return 1, f"pytest failed (rc={pytest_result.returncode}):\n{pytest_result.stdout[-500:]}\n{pytest_result.stderr[-500:]}"
-
-    # 4. Stage relevant files: .autoresearch/, docs/reports/, src/, tests/, scripts/
+    # 1. Stage only allowed evidence/code paths before scanning staged content.
     stage_paths = [
         ".autoresearch/",
         "docs/reports/",
@@ -625,8 +604,33 @@ def _safe_commit_push(
     for sp in stage_paths:
         full = repo_root / "paper1" / sp if (repo_root / "paper1").is_dir() else repo_root / sp
         if full.exists():
-            subprocess.run(["git", "add", str(full.relative_to(repo_root))],
-                          capture_output=True, cwd=str(repo_root))
+            stage_result = subprocess.run(
+                ["git", "add", str(full.relative_to(repo_root))],
+                capture_output=True, text=True, cwd=str(repo_root),
+            )
+            if stage_result.returncode != 0:
+                return 1, f"git add failed for {sp}:\n{stage_result.stderr[:500]}"
+
+    # 2. Check staged diff whitespace/conflict-marker health.
+    diff_check = subprocess.run(
+        ["git", "diff", "--cached", "--check"],
+        capture_output=True, text=True, cwd=str(repo_root),
+    )
+    if diff_check.returncode != 0:
+        return 1, f"git diff --cached --check failed:\n{diff_check.stdout[:500]}{diff_check.stderr[:500]}"
+
+    # 3. Secret scan over the exact staged set.
+    secrets = _scan_staged_for_secrets(repo_root)
+    if secrets:
+        return 1, f"Secret scan found issues:\n" + "\n".join(secrets)
+
+    # 4. pytest (if provided)
+    if pytest_cmd:
+        pytest_result = subprocess.run(
+            pytest_cmd, shell=True, capture_output=True, text=True, cwd=str(repo_root),
+        )
+        if pytest_result.returncode != 0:
+            return 1, f"pytest failed (rc={pytest_result.returncode}):\n{pytest_result.stdout[-500:]}\n{pytest_result.stderr[-500:]}"
 
     # 5. Commit
     commit_msg = f"AutoResearch: complete {goal_id}\n\nCo-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"

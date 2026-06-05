@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -578,3 +579,50 @@ print(f"[warn_worker] wrote output and metadata to {output_path.parent}")
         dp = paper1_tmp / ".autoresearch" / "goals" / "owner_decision.md"
         assert dp.is_file()
         assert "Owner Decision Required" in dp.read_text()
+
+
+class TestSafeCommitPush:
+    def _git(self, repo: Path, *args: str) -> subprocess.CompletedProcess:
+        return subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True)
+
+    def _init_repo(self, tmp_path: Path) -> Path:
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        self._git(repo, "init")
+        self._git(repo, "config", "user.email", "test@example.com")
+        self._git(repo, "config", "user.name", "AutoResearch Test")
+        (repo / "paper1").mkdir()
+        return repo
+
+    def test_safe_commit_push_blocks_secret_after_staging(self, tmp_path):
+        """Secret scan must run after _safe_commit_push stages allowed paths."""
+        from budgetflow.autoresearch_coordinator import AutoResearchCoordinator
+        from budgetflow.run_autoresearch import _safe_commit_push
+
+        repo = self._init_repo(tmp_path)
+        scripts = repo / "paper1" / "scripts"
+        scripts.mkdir(parents=True)
+        (scripts / "leak.py").write_text("ANTHROPIC_API_KEY=sk-this-is-a-very-long-secret-key\n")
+
+        coordinator = AutoResearchCoordinator(paper1_root=repo / "paper1", git_root=repo)
+        rc, msg = _safe_commit_push(coordinator, "g1", push=False)
+
+        assert rc == 1
+        assert "Secret scan found" in msg
+        assert self._git(repo, "rev-list", "--count", "HEAD").returncode != 0
+
+    def test_safe_commit_push_commits_allowed_clean_files(self, tmp_path):
+        from budgetflow.autoresearch_coordinator import AutoResearchCoordinator
+        from budgetflow.run_autoresearch import _safe_commit_push
+
+        repo = self._init_repo(tmp_path)
+        reports = repo / "paper1" / "docs" / "reports"
+        reports.mkdir(parents=True)
+        (reports / "999.md").write_text("# Clean report\n")
+
+        coordinator = AutoResearchCoordinator(paper1_root=repo / "paper1", git_root=repo)
+        rc, msg = _safe_commit_push(coordinator, "g1", push=False)
+
+        assert rc == 0
+        assert "committed" in msg
+        assert self._git(repo, "rev-list", "--count", "HEAD").stdout.strip() == "1"
