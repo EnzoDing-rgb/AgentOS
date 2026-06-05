@@ -4,6 +4,20 @@
 
 该 commit 就 commit，该 push 就 push。关键节点必须 commit，能同步远端就同步远端。
 
+### Phase V / Root-Cause Forensic + Conservative Fix Takeaway
+
+1. **BudgetOnlyStepRouter is a FALSE baseline.** It uses T3 when `budget_pressure < 0.15`, making it a pressure-gated strategy, not a "dumb cost-only" baseline. All previous comparisons using `budget_only_tight` as a baseline are comparing BudgetFlow against a strategy that front-loads expensive T3 on early tasks. Fix: `BudgetOnlyT2Router` — always picks cheapest tier, never escalates.
+
+2. **BudgetFlowSelector's pressure direction is INVERTED for budget conservation.** Higher pressure → lower upgrade_threshold → easier T3 escalation. This is correct for no-progress streaks but WRONG for budget depletion. When the shared budget is running low, the router should become MORE conservative, not MORE aggressive. Fix: `ConservativeSelector` — multiplies upgrade threshold by `1.0 + max(0, p - 0.3) * 3.0`, making T3 escalation progressively harder as budget depletes.
+
+3. **T3 escalation under budget pressure burns money on unsolvable tasks.** In 051, BF used 33% T3 overall vs BO's 6%. On sympy-16988 (the hardest task), BF used 54% T3 and still FAILED at $0.25 — while BO solved it with only 5% T3 at $0.33. BF's extra T3 didn't buy success; it just consumed budget.
+
+4. **Shared batch cap + task ordering is a systematic evaluation confound.** All three strategies failed the 5th task (sympy-20212) because budget was exhausted. This measures batch position, not routing quality. Per-task caps eliminate this confound.
+
+5. **Naming matters — misleading baseline names corrupt the entire evidence chain.** The name "budget_only" implies cost-only routing, but the code does pressure-gated T3 escalation. Researchers reading the 051 report would conclude BF is worse than a "dumb" baseline — when in fact BO is a smart pressure router with a different heuristic. Audit baseline code before trusting comparison results.
+
+6. **Always verify baseline code, never trust the name.** The 051 falsification was driven by comparing BF against a cheaper-but-smarter baseline that front-loaded T3 before the shared budget ran out. Two hours of code audit saved weeks of chasing false signals.
+
 ### Phase U / 3-Policy Value-Stress Experiment Takeaway
 
 1. **BF can lose — and did.** In the first 3-policy experiment (5 tasks × BO/SB/BF, $1.50), BF scored 3/5 PASS while BO and SB both scored 4/5. BF was 20% more expensive on commonly-solved tasks. BF failed the hardest task (sympy-16988) despite using 54% T3 — while BO solved it with only 5% T3. Honest negative results are more valuable than optimistic noise.

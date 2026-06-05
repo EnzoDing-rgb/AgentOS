@@ -2,7 +2,18 @@
 
 > 单一入口：进度、跑法、历史结果。
 
-## 当前快照（2026-06-05）
+## 当前快照（2026-06-06）
+
+### 052 后 Phase V 状态
+
+- **Phase V CODE READY — paid validation blocked (no API keys)**
+- **Root causes found**: (1) BudgetOnlyStepRouter is a false baseline (uses T3 at low pressure). (2) BudgetFlowSelector pressure direction is inverted (escalates T3 as budget depletes).
+- **Fixes implemented**: BudgetOnlyT2Router (true cost-only baseline, never escalates) + ConservativeSelector (makes T3 harder as budget depletes, conservation factor 1.0+max(0,p-0.3)*3.0).
+- **Strategy registration**: 4 new strategies (`budget_only_t2_tight`, `budget_only_t2_loose`, `budgetflow_conservative_tight`, `budgetflow_conservative_loose`).
+- **Integration**: adaptive_routing, mini_swe_proxy (rescue/gold-edit/reserve), policy_memory, compare_checkpoint — all updated.
+- **Tests**: 12/12 new focused tests pass, 129/129 core regression pass. 8 pre-existing failures (auto_budget, budgetflow_runtime, snapshot formatting) — not regressions.
+- **Commit**: `ad9bfc0` (9 files, +273/-12).
+- **Known blockers**: (1) No API keys for paid validation. (2) No --fake-mode in mini-swe-agent CLI for no-paid smoke.
 
 ### 051 后 Phase U 状态
 
