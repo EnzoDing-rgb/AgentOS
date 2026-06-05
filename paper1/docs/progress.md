@@ -4,16 +4,17 @@
 
 ## 当前快照（2026-06-06）
 
-### 052 后 Phase V 状态
+### 053 后 Phase W 状态
 
-- **Phase V CODE READY — paid validation blocked (no API keys)**
-- **Root causes found**: (1) BudgetOnlyStepRouter is a false baseline (uses T3 at low pressure). (2) BudgetFlowSelector pressure direction is inverted (escalates T3 as budget depletes).
-- **Fixes implemented**: BudgetOnlyT2Router (true cost-only baseline, never escalates) + ConservativeSelector (makes T3 harder as budget depletes, conservation factor 1.0+max(0,p-0.3)*3.0).
-- **Strategy registration**: 4 new strategies (`budget_only_t2_tight`, `budget_only_t2_loose`, `budgetflow_conservative_tight`, `budgetflow_conservative_loose`).
-- **Integration**: adaptive_routing, mini_swe_proxy (rescue/gold-edit/reserve), policy_memory, compare_checkpoint — all updated.
-- **Tests**: 12/12 new focused tests pass, 129/129 core regression pass. 8 pre-existing failures (auto_budget, budgetflow_runtime, snapshot formatting) — not regressions.
-- **Commit**: `ad9bfc0` (9 files, +273/-12).
-- **Known blockers**: (1) No API keys for paid validation. (2) No --fake-mode in mini-swe-agent CLI for no-paid smoke.
+- **Phase W COMPLETE — 27 paid rows, $3.76 total**
+- **BFC WINS shared budget**: 3/3 PASS vs BO 2/3, BO2 2/3, BF 2/3. First strategy to achieve 3/3 under shared cap.
+- **Bug found & fixed**: BFC T3 double-penalty (hard cap + conservation). Fix: lower T3 gate 0.15→0.05 for BFC, reduce conservation slope 3.0→1.5.
+- **Per-task results**: BO 3/3 ($0.34, 12% T3), BF 3/3 ($0.34, 32% T3), BFC 2/3 ($0.30, 19% T3), BO2 2/3 ($0.25, 0% T3). BF wastes T3, BFC balanced but per-task $0.15 too tight for hard task.
+- **Checker**: ALL CLEAN (0 suspicious_pass, 0 no_trace across 27 rows)
+- **North Star**: First evidence of value-driven allocation. BFC allocates T3 by task difficulty, BO anti-correlates (58% T3 on easiest task).
+- **Commit**: `aa12e80` (fixes), `4d0e63c` (052 report), `ad9bfc0` (Phase V code).
+
+### 052 后 Phase V 状态
 
 ### 051 后 Phase U 状态
 

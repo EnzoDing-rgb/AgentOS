@@ -4,6 +4,18 @@
 
 该 commit 就 commit，该 push 就 push。关键节点必须 commit，能同步远端就同步远端。
 
+### Phase W / Conservative BudgetFlow Validation Takeaway
+
+1. **BFC is the first strategy to solve 3/3 in shared-budget mode.** BO (false baseline), BO2 (T2-only), and BF (unconstrained) all achieve 2/3 with the same $0.45 shared cap. BFC achieves 3/3 with 16% T3 vs competitors' 33% — same budget, better allocation, better outcomes.
+
+2. **Conservation factor works but needs per-scenario tuning.** The original slope of 3.0 (designed for $0.50/5-task shared pools) was too aggressive for per-task $0.15 caps. At slope 1.5, BFC balances T3 restraint with task-solving capability. The ideal slope likely depends on budget size: larger pools tolerate steeper conservation.
+
+3. **Hard T2 cap + conservation = double penalty.** `_budgetflow_max_tier()` blocks T3 until pressure >= 0.15, then the conservation factor makes the upgrade threshold even higher. In per-task mode with small budgets, T3 never triggers before budget exhausts. Fix: trust the selector's restraint and lower the cap's T3 gate.
+
+4. **Per-task caps create a different environment than shared budgets.** BFC solves 2/3 per-task but 3/3 shared because shared pools allow unused budget from easy tasks to flow to hard tasks. Per-task caps prevent this cross-task allocation — which is exactly the mechanism the North Star requires. Shared-budget experiments are the correct test environment.
+
+5. **BF uses 2.7× more T3 than BO for the same pass rate (per-task).** 32% vs 12% T3 with identical 3/3 outcomes. BF's unconstrained escalation wastes T3 on easy tasks — sympy-13480 gets 27% T3 at $0.07 when BO solves it with 15% T3 at $0.04. The waste doesn't buy extra capability.
+
 ### Phase V / Root-Cause Forensic + Conservative Fix Takeaway
 
 1. **BudgetOnlyStepRouter is a FALSE baseline.** It uses T3 when `budget_pressure < 0.15`, making it a pressure-gated strategy, not a "dumb cost-only" baseline. All previous comparisons using `budget_only_tight` as a baseline are comparing BudgetFlow against a strategy that front-loads expensive T3 on early tasks. Fix: `BudgetOnlyT2Router` — always picks cheapest tier, never escalates.
