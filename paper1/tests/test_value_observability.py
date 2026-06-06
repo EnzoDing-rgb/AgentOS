@@ -73,14 +73,10 @@ class TestEnrichRecord:
         finally:
             Path(tmp).unlink()
 
-    def test_missing_matrix_fallback_to_equal(self):
-        _init_value_observability(value_profile="difficulty", value_matrix_path="/nonexistent/path.json")
-        record = _enrich_record_with_value({
-            "instance_id": "task_a", "harness_resolved": True, "task_cost": 0.5,
-        })
-        # Falls back to equal, but reports the fallback honestly
-        assert record["task_value"] == 1.0
-        assert record["value_source"] == "missing_profile_fallback"
+    def test_missing_matrix_file_raises(self):
+        # Phase X fail-fast: nonexistent matrix file raises FileNotFoundError
+        with pytest.raises(FileNotFoundError):
+            _init_value_observability(value_profile="difficulty", value_matrix_path="/nonexistent/path.json")
 
     def test_resolved_value_zero_when_not_resolved(self):
         _init_value_observability(value_profile="equal")
@@ -149,18 +145,18 @@ class TestCurrentSchema:
         finally:
             Path(tmp).unlink()
 
-    def test_missing_profile_reports_fallback(self):
+    def test_missing_profile_fails_enrich(self):
+        # Phase X fail-fast: profile not in matrix + non-equal → SystemExit on enrich
         artifact = {"tasks": {"x": {"values": {"difficulty": 0.5}}}}
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(artifact, f)
             tmp = f.name
         try:
             _init_value_observability(value_profile="nonexistent", value_matrix_path=tmp)
-            r = _enrich_record_with_value({
-                "instance_id": "x", "harness_resolved": True, "task_cost": 0.1,
-            })
-            assert r["task_value"] == 1.0
-            assert r["value_source"] == "missing_profile_fallback"
+            with pytest.raises(SystemExit, match="FATAL"):
+                _enrich_record_with_value({
+                    "instance_id": "x", "harness_resolved": True, "task_cost": 0.1,
+                })
         finally:
             Path(tmp).unlink()
 
@@ -193,10 +189,17 @@ class TestNoSecretLeak:
         assert "sk-" not in record_str.lower()
 
     def test_value_matrix_path_not_leaking_key(self):
-        # The value_matrix_artifact just stores a file path, not key content
-        _init_value_observability(value_profile="equal", value_matrix_path="/some/path/matrix.json")
-        r = _enrich_record_with_value({
-            "instance_id": "x", "harness_resolved": True, "task_cost": 0.5,
-        })
-        assert r["value_matrix_artifact"] == "/some/path/matrix.json"
-        assert "key" not in str(r["value_matrix_artifact"]).lower()
+        # Phase X: must use valid matrix file (fail-fast prevents fake paths)
+        artifact = {"tasks": {"x": {"values": {"equal": 1.0}}}}
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(artifact, f)
+            tmp = f.name
+        try:
+            _init_value_observability(value_profile="equal", value_matrix_path=tmp)
+            r = _enrich_record_with_value({
+                "instance_id": "x", "harness_resolved": True, "task_cost": 0.5,
+            })
+            assert r["value_matrix_artifact"] == tmp
+            assert "key" not in str(r["value_matrix_artifact"]).lower()
+        finally:
+            Path(tmp).unlink()
