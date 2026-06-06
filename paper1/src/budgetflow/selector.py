@@ -69,6 +69,79 @@ class BudgetFlowSelector:
         return stage_table[stronger_backend] - stage_table[cheaper_backend]
 
 
+class ValueAwareSelector(BudgetFlowSelector):
+    """BudgetFlow selector with task-value awareness.
+
+    Scales stage w_i by a value_multiplier so that high-value tasks get
+    easier T3 access (lower effective upgrade threshold) while low-value
+    tasks get more conservative routing.
+
+    Also applies budget conservation (same formula as ConservativeSelector).
+    When all tasks have equal value (multiplier=1), behaviour is identical
+    to ConservativeSelector.
+
+    multiplier = clamp(task_value / median_task_value, 0.5, 2.0)
+    """
+
+    def __init__(self, progress_table: ProgressTable, median_task_value: float = 1.0) -> None:
+        super().__init__(progress_table)
+        self.median_task_value = median_task_value
+        self._last_multiplier: float = 1.0
+
+    @property
+    def last_multiplier(self) -> float:
+        return self._last_multiplier
+
+    def select_backend(
+        self,
+        turn_info: TurnInfo,
+        backends: list[Backend],
+        budget_pressure: float,
+        expected_costs: dict[str, float],
+        task_value: float | None = None,
+    ) -> SelectionDecision:
+        tv = task_value if task_value is not None else self.median_task_value
+        raw = tv / max(0.001, self.median_task_value)
+        value_multiplier = max(0.5, min(2.0, raw))
+        self._last_multiplier = value_multiplier
+
+        effective_w_i = turn_info.w_i * value_multiplier
+
+        from dataclasses import replace as _replace
+
+        adjusted_turn = _replace(turn_info, w_i=effective_w_i)
+
+        ordered = sorted(backends, key=lambda backend: backend.tier)
+        current = ordered[0]
+        current_score = 0.0
+        upgraded = False
+
+        for next_backend in ordered[1:]:
+            delta_progress = self._delta_progress(adjusted_turn.stage, current.name, next_backend.name)
+            delta_cost = expected_costs[next_backend.name] - expected_costs[current.name]
+            if delta_cost <= 0:
+                current = next_backend
+                upgraded = True
+                continue
+
+            if delta_progress > 0:
+                upgrade_threshold = delta_cost / (delta_progress * PROGRESS_SCALE * adjusted_turn.w_i)
+            else:
+                upgrade_threshold = float("inf")
+
+            conservation = 1.0 + max(0.0, budget_pressure - 0.3) * 1.5
+            effective_threshold = upgrade_threshold * conservation
+
+            if budget_pressure >= effective_threshold:
+                current = next_backend
+                current_score = effective_threshold
+                upgraded = True
+                continue
+            break
+
+        return SelectionDecision(backend=current, score=current_score, upgraded=upgraded)
+
+
 class ConservativeSelector(BudgetFlowSelector):
     """BudgetFlowSelector with budget-conservation pressure.
 

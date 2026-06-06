@@ -320,7 +320,7 @@ class AdaptiveRoutingRegistry:
                 state.policy_memory = policy_memory
 
     def for_strategy(self, strategy_name: str, routing: str) -> AdaptiveRoutingState | None:
-        if routing not in ("budgetflow_full", "budgetflow_conservative", "budgetflow_equal_weight", "budgetflow_auto_v2", "stage_blind"):
+        if routing not in ("budgetflow_full", "budgetflow_conservative", "budgetflow_value_aware", "budgetflow_equal_weight", "budgetflow_auto_v2", "stage_blind"):
             return None
         with self._lock:
             state = self._states.get(strategy_name)
@@ -350,7 +350,7 @@ class AdaptiveRoutingRegistry:
                 record = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if record.get("routing") not in ("budgetflow_full", "budgetflow_conservative", "stage_blind"):
+            if record.get("routing") not in ("budgetflow_full", "budgetflow_conservative", "budgetflow_value_aware", "stage_blind"):
                 continue
             name = record.get("strategy")
             if not name:
@@ -370,7 +370,7 @@ class AdaptiveRoutingRegistry:
             states = list(self._states.values())
         if not states:
             return []
-        lines = ["adaptive_routing (budgetflow_full / budgetflow_conservative, always on):"]
+        lines = ["adaptive_routing (budgetflow_full / budgetflow_conservative / budgetflow_value_aware, always on):"]
         for state in sorted(states, key=lambda s: s.strategy_name):
             lines.append(f"  {state.strategy_name}: {state.status_snippet()}")
         return lines

@@ -109,6 +109,8 @@ def run_mini_swe_task(
     workspace_key: str | None = None,
     adaptive: AdaptiveRoutingState | None = None,
     enable_turn_trace: bool = False,
+    task_value: float = 1.0,
+    median_task_value: float = 1.0,
 ) -> MiniSweRunResult:
     label = strategy_label or strategy
     ledger = ledger or WorkflowLedgerStore()
@@ -141,6 +143,8 @@ def run_mini_swe_task(
         budget_pressure=budget_pressure,
         pressure_max=pressure_max,
         adaptive=adaptive,
+        task_value=task_value,
+        median_task_value=median_task_value,
     )
     model_cfg = config.get("model", {})
     model = BudgetFlowLitellmModel(

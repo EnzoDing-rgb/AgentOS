@@ -151,6 +151,10 @@ def _build_turn_trace(
     gold_edit_guard_limit: int | None = None,
     gold_edit_guard_active: bool = False,
     touched_file_paths: list[str] | None = None,
+    # --- value-aware routing fields ---
+    task_value: float | None = None,
+    task_value_multiplier: float | None = None,
+    value_aware_active: bool = False,
 ) -> dict:
     """Build a single turn-trace dict for observability (no side effects)."""
     trace: dict[str, Any] = {
@@ -208,6 +212,10 @@ def _build_turn_trace(
         "gold_edit_guard_turns": gold_edit_guard_turns,
         "gold_edit_guard_limit": gold_edit_guard_limit,
         "gold_edit_guard_active": gold_edit_guard_active,
+        # Value-aware routing fields
+        "task_value": task_value,
+        "task_value_multiplier": task_value_multiplier,
+        "value_aware_active": value_aware_active,
     }
     if adaptive is not None:
         trace["adaptive_ttl"] = getattr(adaptive, "ttl_steps_remaining", None)
@@ -231,6 +239,18 @@ def _router_trace_fields(routing) -> dict[str, Any]:
         "router_scores": d.scores,
         "router_pressure": d.pressure,
         "router_branch": d.branch,
+    }
+
+
+def _value_aware_trace_fields(routing) -> dict[str, Any]:
+    """Extract value-aware routing fields when active."""
+    if routing.strategy != "budgetflow_value_aware":
+        return {}
+    multiplier = getattr(routing.selector, "last_multiplier", 1.0)
+    return {
+        "task_value": routing.task_value,
+        "task_value_multiplier": multiplier,
+        "value_aware_active": True,
     }
 
 
@@ -473,6 +493,7 @@ class BudgetFlowLitellmModel:
         if self.routing.adaptive is not None and self.routing.strategy in (
             "budgetflow_full",
             "budgetflow_conservative",
+            "budgetflow_value_aware",
             "budgetflow_equal_weight",
             "budgetflow_auto_v2",
             "stage_blind",
@@ -585,6 +606,7 @@ class BudgetFlowLitellmModel:
                         **_provider_trace_fields(backend.name),
                         **_protocol_trace_fields(backend.name, text_mode=ActionProtocolAdapter.resolve(backend.name).protocol == "text_regex"),
                         **_router_trace_fields(self.routing),
+                        **_value_aware_trace_fields(self.routing),
                         **self._gold_edit_guard_trace_fields(),
                         provider_status_code=getattr(exc, "status_code", None),
                         provider_error_body=str(exc)[:500],
@@ -667,6 +689,7 @@ class BudgetFlowLitellmModel:
                     **_provider_trace_fields(backend.name),
                     **_protocol_trace_fields(backend.name, text_mode),
                     **_router_trace_fields(self.routing),
+                        **_value_aware_trace_fields(self.routing),
                     **self._gold_edit_guard_trace_fields(),
                     assistant_content_head=content_head,
                     tool_call_summary=_tool_call_summary(response),
@@ -723,6 +746,7 @@ class BudgetFlowLitellmModel:
                 **_provider_trace_fields(backend.name),
                 **_protocol_trace_fields(backend.name, text_mode),
                 **_router_trace_fields(self.routing),
+                        **_value_aware_trace_fields(self.routing),
                 **self._gold_edit_guard_trace_fields(),
                 assistant_content_head=content_head,
                 tool_call_summary=_tool_call_summary(response),
@@ -852,6 +876,7 @@ class BudgetFlowLitellmModel:
         if self.routing.strategy not in (
             "budgetflow_full",
             "budgetflow_conservative",
+            "budgetflow_value_aware",
             "budgetflow_equal_weight",
             "budgetflow_auto_v2",
             "stage_blind",

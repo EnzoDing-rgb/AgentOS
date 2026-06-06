@@ -4,6 +4,22 @@
 
 ## 当前快照（2026-06-06）
 
+### 055 后 Phase Y 状态
+
+- **Phase Y COMPLETE — BudgetFlowValueAware (BFV) implemented and validated**
+- **BFV WINS on both Tier 1 and Tier 2**: 6/6 combined resolution, RVPD=0.977 vs BFC=0.741 vs BO=0.473
+- **BFV is the only strategy to resolve the highest-value task** (sympy-16988, value=0.329): BFC spent $0.028 then stagnated, BO exhausted budget, BFV spent $0.279 and succeeded with multiplier=1.48
+- **Value-aware multiplier works**: 0.50 for below-median tasks → conservative, 1.48 for high-value outlier → aggressive. T3 allocation: 8% low-value → 32% high-value.
+- **BFC's value-blind conservation backfires on the most valuable task**: conservation factor prevented T3 escalation, task stagnated after 7 turns and $0.028. BFV's value_multiplier counterbalances this.
+- **Implementation**: ValueAwareSelector (72 lines), cleanly separated from ConservativeSelector. `_build_turn_trace()` bug found and fixed (missing value-aware kwargs).
+- **Proxy noise**: BFV winner stability 96-100% at ±50% noise on RVPD, 100% on total value.
+- **Combined evidence: 3x3 (primary) + 3x5 (supplementary) = 18 paid rows**. 3x3 had full task coverage (all 3 tasks, value spread 5x). 3x5 budget-exhausted before reaching high-value tasks.
+- **Total cost Phase Y**: $3.00 (v1 crash $0.90 + v2 3x3 $1.14 + v2 3x5 $0.96)
+- **Running total all phases**: ~$9.14 (exceeds original $8 cap for phases through X; Phase Y authorized as new phase)
+- **Commit**: TBD
+- **16 unit tests** in `test_value_aware.py` — all passing
+- **Bug fixed mid-phase**: `_build_turn_trace()` TypeError — missing `task_value`, `task_value_multiplier`, `value_aware_active` parameters
+
 ### 053 后 Phase W 状态
 
 - **Phase W COMPLETE — 27 paid rows, $3.76 total**

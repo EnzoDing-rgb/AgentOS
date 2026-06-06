@@ -4,6 +4,22 @@
 
 该 commit 就 commit，该 push 就 push。关键节点必须 commit，能同步远端就同步远端。
 
+### Phase Y / BudgetFlowValueAware Takeaway
+
+0. **BFV resolves the highest-value task that BO and BFC both fail.** The value_multiplier (1.48 for value=0.329) counterbalances the conservation factor, allowing T3 access when value justifies it. Without value awareness, BFC's conservation locks out T3 and the task stagnates after $0.028.
+
+1. **Value-aware routing works on a small scale.** 6/6 resolution with RVPD=0.977 — 2.1× BO, 1.3× BFC. Value multiplier drives T3 allocation gradient: 8% T3 at multiplier=0.50 → 32% T3 at multiplier=1.48.
+
+2. **BFC remains the correct value-blind Tier 2 baseline.** Its conservation mechanism proves that routing restraint alone improves cost efficiency (RVPD 0.741 vs BO 0.473). But value-blindness means it saves budget on the WRONG task — the high-value one. BFV fixes this by injecting task value into the same routing framework.
+
+3. **The value_multiplier approach is clean and testable.** Clamp(task_value / median_task_value, 0.5, 2.0) gives a 4× range between lowest and highest value tasks. No ML, no RL — just a deterministic scaling of the existing progress table weights.
+
+4. **Integration bugs hide in trace code paths that unit tests miss.** `_value_aware_trace_fields()` passed all 16 tests in isolation but the returned keys were unpacked into `_build_turn_trace()` which didn't accept them. The bug only surfaced in the paid experiment. When adding trace fields, always verify the full call chain — not just the field-producing function.
+
+5. **Budget sizing matters for value-aware experiments.** The 3x5 with $0.45/5 tasks only completed 3 tasks before exhaustion, never reaching the high-value tasks. For value-aware experiments to show differential allocation, the budget must be large enough to cover all tasks. Rule of thumb: budget ≥ (median task cost × number of tasks).
+
+6. **Keep BFV and BFC as separate strategies.** BFC tests "does conservation reduce waste?" (Tier 2). BFV tests "does value-aware routing improve value per dollar?" (Tier 1). They answer different questions with different evidence requirements.
+
 ### Phase 055 / Experiment Execution Discipline Takeaway
 
 1. **Prompt instructions are not enough; experiment preflight must be explicit.** The main Agent can still miss a constraint it knows conceptually, as happened when a three-policy paid comparison was allowed to start with `--jobs 1`. Before launching or delegating any paid experiment, explicitly check: number of policies, number of tasks, `--jobs`, value profile, value matrix path, output stem, and budget cap.

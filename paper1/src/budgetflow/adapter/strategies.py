@@ -16,7 +16,7 @@ from ..defaults import (
     active_w_i_profile_name,
 )
 from ..policies import BudgetOnlyStepRouter, BudgetOnlyT2Router, WorkflowLevelRouter
-from ..selector import BudgetFlowSelector, ConservativeSelector, RouterDecision, SelectionDecision
+from ..selector import BudgetFlowSelector, ConservativeSelector, RouterDecision, SelectionDecision, ValueAwareSelector
 from ..types import Backend, ProgressTable, Stage, TurnInfo
 
 
@@ -34,6 +34,8 @@ class RoutingContext:
     workflow_router: WorkflowLevelRouter | None = None
     last_decision: RouterDecision | None = None
     last_backend: Backend | None = None
+    task_value: float = 1.0
+    median_task_value: float = 1.0
 
 
 def build_progress_table_from_defaults(backends: list[Backend]) -> ProgressTable:
@@ -56,6 +58,8 @@ def build_routing_context(
     *,
     pressure_max: float | None = None,
     adaptive: AdaptiveRoutingState | None = None,
+    task_value: float = 1.0,
+    median_task_value: float = 1.0,
 ) -> RoutingContext:
     ordered = sorted(backends, key=lambda backend: backend.tier)
     pressure = BUDGET_PRESSURE_INIT if budget_pressure is None else budget_pressure
@@ -68,6 +72,8 @@ def build_routing_context(
         expected_costs={},
         pressure_max=pressure_max,
         adaptive=adaptive,
+        task_value=task_value,
+        median_task_value=median_task_value,
     )
     if strategy == "workflow_level":
         ctx.workflow_router = WorkflowLevelRouter()
@@ -79,6 +85,8 @@ def build_routing_context(
         ctx.budget_only_router = BudgetOnlyT2Router()
     if strategy == "budgetflow_conservative":
         ctx.selector = ConservativeSelector(build_progress_table_from_defaults(backends))
+    if strategy == "budgetflow_value_aware":
+        ctx.selector = ValueAwareSelector(build_progress_table_from_defaults(backends), median_task_value=median_task_value)
     return ctx
 
 
@@ -106,7 +114,7 @@ def _budgetflow_max_tier(ctx: RoutingContext) -> int:
         max_tier = 3  # already escalated, keep T3
     # Conservative selector has its own restraint mechanism — let it access
     # T3 earlier to avoid double-penalizing escalation decisions.
-    t3_threshold: float = 0.05 if ctx.strategy == "budgetflow_conservative" else 0.15
+    t3_threshold: float = 0.05 if ctx.strategy in ("budgetflow_conservative", "budgetflow_value_aware") else 0.15
     if ctx.budget_pressure >= t3_threshold:
         max_tier = 3
     if ctx.adaptive is not None:
@@ -167,25 +175,35 @@ def choose_backend(ctx: RoutingContext, turn: TurnInfo, expected_costs: dict[str
         decision = ctx.budget_only_router.choose_backend(turn, ctx.backends, ctx.budget_pressure)
         ctx.last_decision = decision
         return decision.backend
-    if ctx.strategy in {"budgetflow_full", "budgetflow_conservative"}:
-        # BudgetFlow Full: use selector but cap at default max tier (T2).
-        # T2→T3 escalation is gated by _apply_progress_escalation (per-tier
-        # patience), not by the selector.
+    if ctx.strategy in {"budgetflow_full", "budgetflow_conservative", "budgetflow_value_aware"}:
         max_tier = _budgetflow_max_tier(ctx)
-        sel = ctx.selector.select_backend(
+        sel_kwargs: dict = dict(
             turn_info=turn,
             backends=ctx.backends,
             budget_pressure=ctx.budget_pressure,
             expected_costs=expected_costs,
         )
+        if ctx.strategy == "budgetflow_value_aware":
+            sel_kwargs["task_value"] = ctx.task_value
+        sel = ctx.selector.select_backend(**sel_kwargs)
         if sel.backend.tier > max_tier:
             capped = next(
                 (b for b in reversed(ctx.backends) if b.tier <= max_tier),
                 ctx.backends[0],
             )
             sel = SelectionDecision(backend=capped, score=sel.score, upgraded=False)
-        branch = "budgetflow_conservative" if ctx.strategy == "budgetflow_conservative" else "budgetflow_full"
-        reason_prefix = "bf_cons" if ctx.strategy == "budgetflow_conservative" else "bf_full"
+        branch_map = {
+            "budgetflow_conservative": "budgetflow_conservative",
+            "budgetflow_value_aware": "budgetflow_value_aware",
+            "budgetflow_full": "budgetflow_full",
+        }
+        reason_map = {
+            "budgetflow_conservative": "bf_cons",
+            "budgetflow_value_aware": "bf_va",
+            "budgetflow_full": "bf_full",
+        }
+        branch = branch_map.get(ctx.strategy, "budgetflow_full")
+        reason_prefix = reason_map.get(ctx.strategy, "bf_full")
         ctx.last_decision = RouterDecision(
             backend=sel.backend,
             reason=f"{reason_prefix}_max_tier={max_tier}" if max_tier < 3 else f"{reason_prefix}_escalated_t3",

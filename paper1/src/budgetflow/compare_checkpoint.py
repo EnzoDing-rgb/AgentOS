@@ -112,6 +112,8 @@ _STRATEGY_ABBREV: dict[str, str] = {
     "budget_only_t2_loose": "bo2-L",
     "budgetflow_conservative_tight": "bfc-T",
     "budgetflow_conservative_loose": "bfc-L",
+    "budgetflow_value_aware_tight": "bfv-T",
+    "budgetflow_value_aware_loose": "bfv-L",
 }
 
 

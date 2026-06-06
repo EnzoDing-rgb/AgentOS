@@ -124,6 +124,8 @@ DEFAULT_STRATEGIES: tuple[CompareStrategy, ...] = (
     CompareStrategy("budget_only_t2_loose", "budget_only_t2", "loose"),
     CompareStrategy("budgetflow_conservative_tight", "budgetflow_conservative", "tight"),
     CompareStrategy("budgetflow_conservative_loose", "budgetflow_conservative", "loose"),
+    CompareStrategy("budgetflow_value_aware_tight", "budgetflow_value_aware", "tight"),
+    CompareStrategy("budgetflow_value_aware_loose", "budgetflow_value_aware", "loose"),
 )
 
 DIAGNOSTIC_STRATEGIES: tuple[CompareStrategy, ...] = (
@@ -275,6 +277,20 @@ def _run_one(
         adaptive.set_task_context(task.instance_id)
     from budgetflow.adapter.runner import run_mini_swe_task  # noqa: E402
 
+    # Compute task_value and batch median for value-aware routing.
+    _task_value = 1.0
+    _median_task_value = 1.0
+    if _VALUE_LOOKUP is not None:
+        _task_value = float(_VALUE_LOOKUP.get(task.instance_id, 1.0))
+        all_values = [float(v) for v in _VALUE_LOOKUP.values()]
+        if all_values:
+            all_values.sort()
+            n = len(all_values)
+            if n % 2 == 0:
+                _median_task_value = (all_values[n // 2 - 1] + all_values[n // 2]) / 2.0
+            else:
+                _median_task_value = all_values[n // 2]
+
     result = run_mini_swe_task(
         task,
         strategy=cfg.routing,
@@ -290,6 +306,8 @@ def _run_one(
         pressure_max=pressure_max,
         adaptive=adaptive,
         enable_turn_trace=enable_turn_trace,
+        task_value=_task_value,
+        median_task_value=_median_task_value,
     )
     batch_snapshot = governor.budget_snapshot()
     record = {
