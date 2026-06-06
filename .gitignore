@@ -20,6 +20,7 @@ CLAUDE.md
 
 # External deps (clone separately; see external/PINNED_COMMIT)
 external/mini-swe-agent/
+external/mini-swe-agent
 
 # Local data & experiment artifacts
 paper1/data/

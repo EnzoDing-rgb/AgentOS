@@ -77,6 +77,22 @@ class BudgetOnlyStepRouter:
         )
 
 
+class BudgetOnlyT2Router:
+    """True cost-only baseline: always picks cheapest available tier (T2).
+
+    Unlike BudgetOnlyStepRouter, this never escalates to T3 regardless of
+    budget pressure. This is the correct "dumb" baseline for cost-efficiency
+    comparison — it proves that any strategy using T3 must justify the extra
+    cost with better outcomes.
+    """
+    def choose_backend(self, turn_info: TurnInfo, backends: list[Backend], budget_pressure: float) -> RouterDecision:
+        ordered = sorted(backends, key=lambda backend: backend.tier)
+        return RouterDecision(
+            backend=ordered[0], reason="t2_only_baseline", scores={},
+            pressure=budget_pressure, branch="budget_only_t2",
+        )
+
+
 def summarize_policy_run(policy_name: str, results: list[WorkflowResult]) -> PolicyRunSummary:
     return PolicyRunSummary(
         policy_name=policy_name,

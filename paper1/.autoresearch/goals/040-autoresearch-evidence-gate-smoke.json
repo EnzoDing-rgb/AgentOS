@@ -1,0 +1,15 @@
+{
+  "goal_id": "040-autoresearch-evidence-gate-smoke",
+  "title": "Evidence Gate Smoke",
+  "status": "complete",
+  "issue_ids": [
+    "040-issue-a",
+    "040-issue-b"
+  ],
+  "current_issue_index": 2,
+  "max_retries_per_issue": 2,
+  "real_api_budget_cap_usd": 0.02,
+  "total_api_calls": 1,
+  "created_at": "2026-06-05T06:24:28Z",
+  "updated_at": "2026-06-05T06:49:23Z"
+}

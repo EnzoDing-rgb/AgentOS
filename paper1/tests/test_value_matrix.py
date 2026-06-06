@@ -1,0 +1,980 @@
+"""Tests for budgetflow.value_matrix — Value Matrix and Progress Calibration."""
+
+from __future__ import annotations
+
+import json
+import tempfile
+from pathlib import Path
+
+import pytest
+
+from budgetflow.value_matrix import (
+    PROFILES,
+    TaskRecord,
+    build_value_matrix,
+    calibrate_progress_table,
+    diagnose_localization_progress,
+    load_manifest,
+    make_custom_profile,
+    profile_combined,
+    profile_difficulty,
+    profile_discriminative_rarity,
+    profile_equal,
+    profile_unsolved_difficulty,
+    scan_task_universe,
+    sensitivity_variants,
+)
+
+
+# ── Test helpers ──────────────────────────────────────────────────────────────
+
+
+def _make_rec(
+    iid="a", total=4, resolved=3, cost=0.2,
+    strategies=None, strategies_resolved=None,
+) -> TaskRecord:
+    rec = TaskRecord(instance_id=iid, repo="test/test")
+    rec.total_rows = total
+    rec.resolved_rows = resolved
+    rec.total_cost = cost
+    rec.strategies_seen = strategies if strategies is not None else {"s1", "s2"}
+    rec.strategies_resolved = strategies_resolved if strategies_resolved is not None else {"s1", "s2"}
+    return rec
+
+
+def _write_jsonl(path: Path, rows: list[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w") as f:
+        for r in rows:
+            f.write(json.dumps(r) + "\n")
+
+
+# ── Profile tests ─────────────────────────────────────────────────────────────
+
+
+class TestEqualProfile:
+    def test_always_one(self):
+        assert profile_equal("any", _make_rec()) == 1.0
+        assert profile_equal("sympy-16988", _make_rec(cost=5.0)) == 1.0
+
+    def test_in_registry(self):
+        assert "equal" in PROFILES
+
+
+class TestDifficultyProfile:
+    def test_resolved_task_no_penalty(self):
+        # total=1 so avg_cost = total_cost = 0.1
+        rec = _make_rec(total=1, resolved=1, cost=0.1)
+        assert profile_difficulty(rec) == 0.1
+
+    def test_partially_resolved_has_penalty(self):
+        # avg_cost = 0.1/4 = 0.025; rate=0.5; penalty = 1 + 0.5*0.5 = 1.25
+        # value = 0.025 * 1.25 = 0.03125
+        rec = _make_rec(total=4, resolved=2, cost=0.1)
+        assert profile_difficulty(rec) == pytest.approx(0.03125)
+
+    def test_never_resolved_max_penalty(self):
+        # total=1 so avg_cost = 0.1; rate=0; penalty = 1 + 0.5*1.0 = 1.5
+        # value = 0.1 * 1.5 = 0.15
+        rec = _make_rec(total=1, resolved=0, cost=0.1)
+        assert profile_difficulty(rec) == pytest.approx(0.15)
+
+    def test_floor_at_001(self):
+        rec = _make_rec(total=4, resolved=4, cost=0.0)
+        assert profile_difficulty(rec) == 0.01
+
+    def test_in_registry(self):
+        assert "difficulty" in PROFILES
+
+
+class TestDiscriminativeRarityProfile:
+    """Discriminative rarity: peak at moderate rarity, low at both extremes."""
+
+    def test_all_solved_value_one(self):
+        rec = _make_rec(strategies={"a", "b"}, strategies_resolved={"a", "b"})
+        # rarity=1.0 → 1 + 4*1*0 = 1.0
+        assert profile_discriminative_rarity(rec) == pytest.approx(1.0)
+
+    def test_none_solved_value_one(self):
+        """No-one-solves should be LOW (1.0), not 5.0.
+        This is the key fix: no-one-solved tasks are NOT discriminative."""
+        rec = _make_rec(strategies={"a", "b"}, strategies_resolved=set())
+        # rarity=0.0 → 1 + 4*0*1 = 1.0
+        assert profile_discriminative_rarity(rec) == pytest.approx(1.0)
+
+    def test_half_solved_peak(self):
+        """Half-solved should be the PEAK value (2.0)."""
+        rec = _make_rec(strategies={"a", "b"}, strategies_resolved={"a"})
+        # rarity=0.5 → 1 + 4*0.5*0.5 = 1 + 1.0 = 2.0
+        assert profile_discriminative_rarity(rec) == pytest.approx(2.0)
+
+    def test_one_of_three_solved(self):
+        """rarity=1/3 → 1 + 4*(1/3)*(2/3) ≈ 1.889"""
+        rec = _make_rec(strategies={"a", "b", "c"}, strategies_resolved={"a"})
+        expected = 1.0 + 4.0 * (1/3) * (2/3)  # ≈ 1.8889
+        assert profile_discriminative_rarity(rec) == pytest.approx(expected)
+
+    def test_one_of_four_solved(self):
+        """rarity=0.25 → 1 + 4*0.25*0.75 = 1.75"""
+        rec = _make_rec(strategies={"a", "b", "c", "d"}, strategies_resolved={"a"})
+        assert profile_discriminative_rarity(rec) == pytest.approx(1.75)
+
+    def test_peak_at_moderate_rarity(self):
+        """The function should peak at rarity=0.5, not at extremes."""
+        # rarity=0 → 1.0
+        none_solved = _make_rec(strategies={"a", "b", "c", "d"}, strategies_resolved=set())
+        # rarity=0.5 → 2.0 (peak)
+        half_solved = _make_rec(strategies={"a", "b", "c", "d"}, strategies_resolved={"a", "b"})
+        # rarity=1.0 → 1.0
+        all_solved = _make_rec(strategies={"a", "b", "c", "d"}, strategies_resolved={"a", "b", "c", "d"})
+
+        v_none = profile_discriminative_rarity(none_solved)
+        v_half = profile_discriminative_rarity(half_solved)
+        v_all = profile_discriminative_rarity(all_solved)
+
+        assert v_half > v_none, f"half={v_half} should be > none={v_none}"
+        assert v_half > v_all, f"half={v_half} should be > all={v_all}"
+        assert v_none == pytest.approx(v_all), f"none={v_none} should ≈ all={v_all}"
+
+    def test_in_registry(self):
+        assert "discriminative_rarity" in PROFILES
+
+    def test_old_solve_rarity_removed(self):
+        """The old 'solve_rarity' key should no longer be in PROFILES."""
+        assert "solve_rarity" not in PROFILES
+
+
+class TestUnsolvedDifficultyProfile:
+    """Unsolved difficulty: high for expensive, unsolved tasks. Ceiling candidate."""
+
+    def test_fully_resolved_low_penalty(self):
+        rec = _make_rec(total=1, resolved=1, cost=0.1)
+        # avg_cost=0.1, rate=1.0, penalty=1.0 → 0.1
+        assert profile_unsolved_difficulty(rec) == pytest.approx(0.1)
+
+    def test_never_resolved_double_penalty(self):
+        rec = _make_rec(total=1, resolved=0, cost=0.1)
+        # avg_cost=0.1, rate=0.0, penalty=2.0 → 0.2
+        assert profile_unsolved_difficulty(rec) == pytest.approx(0.2)
+
+    def test_partially_resolved_intermediate(self):
+        rec = _make_rec(total=2, resolved=1, cost=0.2)
+        # avg_cost=0.1, rate=0.5, penalty=1.5 → 0.15
+        assert profile_unsolved_difficulty(rec) == pytest.approx(0.15)
+
+    def test_floor_at_001(self):
+        rec = _make_rec(total=4, resolved=4, cost=0.0)
+        # avg_cost=0.0, floor to 0.01, penalty=1.0 → 0.01
+        assert profile_unsolved_difficulty(rec) == 0.01
+
+    def test_label_ceiling_candidate(self):
+        """This profile is for ceiling/hardness, not discriminative value."""
+        # total=1 so avg_cost=1.0. All strategies fail → high unsolved_difficulty
+        hard = _make_rec(iid="hard", total=1, resolved=0, cost=1.0,
+                         strategies={"bo", "bf", "ap"}, strategies_resolved=set())
+        # discriminative_rarity is low (no one solves = not discriminative)
+        disc_val = profile_discriminative_rarity(hard)
+        unsolved_val = profile_unsolved_difficulty(hard)
+        # avg_cost=1.0, rate=0 → 1.0 * 2.0 = 2.0 > 1.0
+        assert disc_val < unsolved_val, \
+            f"discriminative={disc_val} should be < unsolved={unsolved_val} for no-one-solved task"
+
+    def test_in_registry(self):
+        assert "unsolved_difficulty" in PROFILES
+
+
+class TestCombinedProfile:
+    def test_positive(self):
+        rec = _make_rec(cost=1.0, total=2, resolved=1)
+        v = profile_combined(rec)
+        assert v > 1.0
+
+    def test_unsolved_not_automatically_highest(self):
+        """Combined should NOT automatically push no-one-solved to highest value."""
+        hard_unsolved = _make_rec(iid="hard", cost=0.5, total=4, resolved=0,
+                                  strategies={"bo", "bf"}, strategies_resolved=set())
+        easy_half = _make_rec(iid="easy_half", cost=0.01, total=4, resolved=4,
+                              strategies={"bo", "bf", "ap"}, strategies_resolved={"bo"})
+        v_unsolved = profile_combined(hard_unsolved)
+        v_half = profile_combined(easy_half)
+        # Both should be reasonable; unsolved doesn't dominate
+        assert v_unsolved > 0
+        assert v_half > 0
+        # The half-solved task should not be crushed by unsolved
+        assert v_half >= 1.0
+
+    def test_in_registry(self):
+        assert "combined" in PROFILES
+
+
+class TestCustomProfile:
+    def test_explicit_mapping(self):
+        fn = make_custom_profile({"a": 5.0, "b": 0.3})
+        assert fn("a", _make_rec(iid="a")) == 5.0
+        assert fn("b", _make_rec(iid="b")) == 0.3
+
+    def test_unknown_default(self):
+        fn = make_custom_profile({})
+        assert fn("x", _make_rec(iid="x")) == 1.0
+
+
+# ── No BF-specific leakage tests ─────────────────────────────────────────────
+
+
+class TestNoBFLeakage:
+    """All profiles must be computable without BF-specific signals."""
+
+    def test_profiles_only_use_cross_strategy_stats(self):
+        """Verify profiles don't need BF-specific fields."""
+        rec = _make_rec()
+        # All built-in profiles should work
+        for pname, pfn in PROFILES.items():
+            val = pfn(rec.instance_id, rec)
+            assert isinstance(val, (int, float))
+            assert val >= 0
+
+    def test_difficulty_uses_cross_strategy_cost(self):
+        """Difficulty is based on avg_cost across ALL strategies, not BF only."""
+        rec = _make_rec(cost=1.0)  # cross-strategy avg_cost
+        assert profile_difficulty(rec) > 0
+
+    def test_discriminative_rarity_is_cross_strategy(self):
+        """Discriminative rarity counts how many strategies solve, not just BF."""
+        rec = _make_rec(strategies={"bo", "bf", "all_pro"}, strategies_resolved={"bo"})
+        # rarity=1/3 → 1 + 4*(1/3)*(2/3) ≈ 1.889
+        val = profile_discriminative_rarity(rec)
+        assert val > 1.0
+
+    def test_bf_solving_does_not_boost_value(self):
+        """A task where only BF solves it should get moderate discriminative value,
+        but value should not be computed from 'did BF solve' as a binary flag."""
+        # BF-only solve (rarity=0.5 → discriminative peak)
+        rec = _make_rec(strategies={"bo", "bf"}, strategies_resolved={"bf"})
+        val_bf_only = profile_discriminative_rarity(rec)
+        # Everyone solves (rarity=1.0 → low discriminative)
+        rec2 = _make_rec(strategies={"bo", "bf"}, strategies_resolved={"bo", "bf"})
+        val_all = profile_discriminative_rarity(rec2)
+        # BF-only has half-solved → peak discriminative value
+        # But this is cross-strategy: any strategy that solo-solves creates same signal
+        assert val_bf_only > val_all
+
+
+# ── Sensitivity tests ────────────────────────────────────────────────────────
+
+
+class TestSensitivityVariants:
+    def test_produces_five_variants(self):
+        variants = sensitivity_variants(_make_rec())
+        expected_keys = {"cost_only", "rate_only", "cost_heavy", "rate_heavy", "difficulty_default"}
+        assert set(variants.keys()) == expected_keys
+
+    def test_all_values_positive(self):
+        variants = sensitivity_variants(_make_rec(cost=0.1, total=4, resolved=4))
+        for k, v in variants.items():
+            assert v >= 0.0, f"{k} should be non-negative"
+
+    def test_ordering_preserved_for_different_difficulties(self):
+        easy = _make_rec(cost=0.01, total=4, resolved=4)
+        hard = _make_rec(cost=1.0, total=4, resolved=0)
+        easy_v = sensitivity_variants(easy)
+        hard_v = sensitivity_variants(hard)
+        # For cost-based variants, hard > easy
+        assert hard_v["cost_only"] > easy_v["cost_only"]
+        assert hard_v["cost_heavy"] > easy_v["cost_heavy"]
+        # For rate-based variants, hard > easy
+        assert hard_v["rate_only"] > easy_v["rate_only"]
+
+
+# ── Determinism tests ─────────────────────────────────────────────────────────
+
+
+class TestDeterminism:
+    def test_profiles_deterministic(self):
+        rec = _make_rec()
+        for pname, pfn in PROFILES.items():
+            v1 = pfn(rec.instance_id, rec)
+            v2 = pfn(rec.instance_id, rec)
+            assert v1 == v2, f"{pname} should be deterministic"
+
+    def test_sensitivity_deterministic(self):
+        rec = _make_rec()
+        v1 = sensitivity_variants(rec)
+        v2 = sensitivity_variants(rec)
+        assert v1 == v2
+
+
+# ── TaskRecord tests ──────────────────────────────────────────────────────────
+
+
+class TestTaskRecord:
+    def test_resolve_rate(self):
+        rec = _make_rec(total=10, resolved=7)
+        assert rec.resolve_rate == 0.7
+
+    def test_resolve_rate_zero_rows(self):
+        rec = _make_rec(total=0, resolved=0)
+        assert rec.resolve_rate == 0.0
+
+    def test_avg_cost(self):
+        rec = _make_rec(total=5, cost=1.0)
+        assert rec.avg_cost == 0.2
+
+    def test_solve_rarity(self):
+        rec = _make_rec(strategies={"a", "b", "c"}, strategies_resolved={"a"})
+        assert rec.solve_rarity == pytest.approx(1.0 / 3.0)
+
+    def test_solve_rarity_no_strategies(self):
+        rec = _make_rec(strategies=set(), strategies_resolved=set())
+        assert rec.solve_rarity == 0.0
+
+    def test_repo_name(self):
+        rec = TaskRecord(instance_id="sympy__sympy-14774", repo="sympy/sympy")
+        assert rec.repo_name == "sympy"
+
+
+# ── Build value matrix tests ──────────────────────────────────────────────────
+
+
+class TestBuildValueMatrix:
+    def test_empty_records(self):
+        matrix = build_value_matrix({}, PROFILES)
+        assert len(matrix["tasks"]) == 0
+
+    def test_single_task_all_profiles(self):
+        records = {"a": _make_rec(iid="a")}
+        matrix = build_value_matrix(records, PROFILES)
+        assert "a" in matrix["tasks"]
+        t = matrix["tasks"]["a"]
+        for pname in PROFILES:
+            assert pname in t["values"]
+            assert isinstance(t["values"][pname], (int, float))
+
+    def test_rankings_present(self):
+        records = {f"task_{i}": _make_rec(iid=f"task_{i}", cost=float(i)) for i in range(1, 4)}
+        matrix = build_value_matrix(records, PROFILES)
+        for pname in PROFILES:
+            assert pname in matrix["rankings"]
+            assert len(matrix["rankings"][pname]) == 3
+
+    def test_rank_correlations_present(self):
+        records = {f"task_{i}": _make_rec(iid=f"task_{i}", cost=float(i)) for i in range(1, 4)}
+        matrix = build_value_matrix(records, PROFILES)
+        assert "rank_correlations" in matrix
+        for p1 in PROFILES:
+            for p2 in PROFILES:
+                assert matrix["rank_correlations"][p1][p2] is not None
+
+    def test_sensitivity_per_task(self):
+        records = {"a": _make_rec(iid="a")}
+        matrix = build_value_matrix(records, PROFILES)
+        t = matrix["tasks"]["a"]
+        assert "sensitivity" in t
+        assert len(t["sensitivity"]) == 5
+
+    def test_meta_includes_profiles(self):
+        records = {"a": _make_rec()}
+        matrix = build_value_matrix(records, {"equal": PROFILES["equal"]})
+        assert matrix["meta"]["profiles"] == ["equal"]
+        assert matrix["meta"]["task_count"] == 1
+
+
+# ── Scan task universe tests ──────────────────────────────────────────────────
+
+
+class TestScanTaskUniverse:
+    def test_basic_scan(self):
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            _write_jsonl(data_dir / "test.jsonl", [
+                {"instance_id": "a", "strategy": "s1", "harness_resolved": True,
+                 "total_cost": 0.1, "task_cost": 0.0},
+                {"instance_id": "b", "strategy": "s1", "harness_resolved": False,
+                 "total_cost": 0.2, "task_cost": 0.0},
+                {"instance_id": "a", "strategy": "s2", "harness_resolved": True,
+                 "total_cost": 0.3, "task_cost": 0.0},
+            ])
+            records = scan_task_universe(data_dir)
+            assert len(records) == 2
+            assert records["a"].total_rows == 2
+            assert records["a"].resolved_rows == 2
+            assert records["a"].strategies_seen == {"s1", "s2"}
+            assert records["b"].total_rows == 1
+            assert records["b"].resolved_rows == 0
+
+    def test_skips_auto_budget_files(self):
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            _write_jsonl(data_dir / "auto_budget_memory.jsonl", [
+                {"instance_id": "x", "strategy": "s", "harness_resolved": True,
+                 "total_cost": 1.0},
+            ])
+            _write_jsonl(data_dir / "real.jsonl", [
+                {"instance_id": "y", "strategy": "s", "harness_resolved": False,
+                 "total_cost": 0.5},
+            ])
+            records = scan_task_universe(data_dir)
+            assert "y" in records
+            assert "x" not in records
+
+    def test_handles_bad_jsonl(self):
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            bad_path = data_dir / "bad.jsonl"
+            bad_path.write_text("not valid json\n")
+            records = scan_task_universe(data_dir)
+            assert len(records) == 0  # skipped silently
+
+    def test_task_cost_fallback(self):
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            _write_jsonl(data_dir / "test.jsonl", [
+                {"instance_id": "a", "strategy": "s1", "harness_resolved": True,
+                 "task_cost": 0.55},
+            ])
+            records = scan_task_universe(data_dir)
+            assert records["a"].avg_cost == pytest.approx(0.55)
+
+    def test_missing_task_id_skipped(self):
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            _write_jsonl(data_dir / "test.jsonl", [
+                {"strategy": "s", "harness_resolved": True, "total_cost": 0.1},
+                {"instance_id": "valid", "strategy": "s", "harness_resolved": True,
+                 "total_cost": 0.2},
+            ])
+            records = scan_task_universe(data_dir)
+            assert len(records) == 1
+            assert "valid" in records
+
+
+# ── Progress calibration tests ────────────────────────────────────────────────
+
+
+class TestProgressCalibration:
+    def _make_trace_jsonl(self, data_dir: Path, rows: list[dict]) -> None:
+        _write_jsonl(data_dir / "test_run.jsonl", rows)
+
+    def test_basic_calibration(self):
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            self._make_trace_jsonl(data_dir, [
+                {"instance_id": "a", "strategy": "bf", "turn_traces": [
+                    {"stage": "LOCALIZATION", "backend_tier": 2, "has_progress": False,
+                     "billable_cost": 0.01},
+                    {"stage": "REPAIR", "backend_tier": 2, "has_progress": True,
+                     "billable_cost": 0.005},
+                    {"stage": "REPAIR", "backend_tier": 3, "has_progress": True,
+                     "billable_cost": 0.02},
+                ]},
+            ])
+            result = calibrate_progress_table(data_dir)
+            assert result["meta"]["total_turns"] == 3
+            assert result["meta"]["total_progress_turns"] == 2
+            st = result["stage_tier"]
+            assert st["LOCALIZATION_T2"]["turns"] == 1
+            assert st["LOCALIZATION_T2"]["progress_rate"] == 0.0
+            assert st["REPAIR_T2"]["turns"] == 1
+            assert st["REPAIR_T2"]["progress_rate"] == 1.0
+            assert st["REPAIR_T3"]["turns"] == 1
+            assert st["REPAIR_T3"]["progress_rate"] == 1.0
+
+    def test_low_sample_confidence(self):
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            traces = []
+            for i in range(5):  # Only 5 turns
+                traces.append({
+                    "instance_id": f"a{i}", "strategy": "bf",
+                    "turn_traces": [
+                        {"stage": "LOCALIZATION", "backend_tier": 2,
+                         "has_progress": False, "billable_cost": 0.01}
+                    ],
+                })
+            self._make_trace_jsonl(data_dir, traces)
+            result = calibrate_progress_table(data_dir)
+            st = result["stage_tier"]["LOCALIZATION_T2"]
+            assert st["confidence"] == "INSUFFICIENT"
+
+    def test_medium_confidence(self):
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            traces = []
+            for i in range(15):  # 15 turns = LOW
+                traces.append({
+                    "instance_id": f"a{i}", "strategy": "bf",
+                    "turn_traces": [
+                        {"stage": "LOCALIZATION", "backend_tier": 2,
+                         "has_progress": True, "billable_cost": 0.01}
+                    ],
+                })
+            self._make_trace_jsonl(data_dir, traces)
+            result = calibrate_progress_table(data_dir)
+            st = result["stage_tier"]["LOCALIZATION_T2"]
+            assert st["confidence"] == "LOW"
+            assert st["turns"] == 15
+
+    def test_high_confidence(self):
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            traces = []
+            for i in range(100):
+                traces.append({
+                    "instance_id": f"a{i}", "strategy": "bf",
+                    "turn_traces": [
+                        {"stage": "REPAIR", "backend_tier": 2,
+                         "has_progress": True, "billable_cost": 0.01}
+                    ],
+                })
+            self._make_trace_jsonl(data_dir, traces)
+            result = calibrate_progress_table(data_dir)
+            st = result["stage_tier"]["REPAIR_T2"]
+            assert st["confidence"] == "HIGH"
+
+    def test_missing_traces_handled(self):
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            self._make_trace_jsonl(data_dir, [
+                {"instance_id": "a", "strategy": "bf", "turn_traces": []},
+                {"instance_id": "b", "strategy": "bo"},  # no turn_traces key
+            ])
+            result = calibrate_progress_table(data_dir)
+            assert result["meta"]["total_turns"] == 0  # nothing to aggregate
+
+    def test_none_cost_handled(self):
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            self._make_trace_jsonl(data_dir, [
+                {"instance_id": "a", "strategy": "bf", "turn_traces": [
+                    {"stage": "REPAIR", "backend_tier": 2, "has_progress": True,
+                     "billable_cost": None, "actual_cost": None}
+                ]},
+            ])
+            result = calibrate_progress_table(data_dir)
+            st = result["stage_tier"]["REPAIR_T2"]
+            assert st["avg_cost"] == 0.0
+
+    def test_deltas_computed_when_data_sufficient(self):
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            traces = []
+            for i in range(10):
+                traces.append({
+                    "instance_id": f"a{i}", "strategy": "bf",
+                    "turn_traces": [
+                        {"stage": "REPAIR", "backend_tier": 2, "has_progress": True,
+                         "billable_cost": 0.01},
+                        {"stage": "REPAIR", "backend_tier": 3, "has_progress": False,
+                         "billable_cost": 0.02},
+                    ],
+                })
+            self._make_trace_jsonl(data_dir, traces)
+            result = calibrate_progress_table(data_dir)
+            # Both have >= 5 turns, so delta should be computed
+            deltas = [d for d in result["deltas"] if d["stage"] == "REPAIR"]
+            assert len(deltas) == 1
+            assert "selected" in str(deltas[0]["caveat"]).lower()
+
+    def test_cost_stats(self):
+        """Verify median, p10, p90 cost stats."""
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            # Create 10 turns with different costs
+            traces = []
+            for i in range(10):
+                traces.append({
+                    "instance_id": f"a{i}", "strategy": "bf",
+                    "turn_traces": [
+                        {"stage": "REPAIR", "backend_tier": 2, "has_progress": True,
+                         "billable_cost": float(i + 1) * 0.01}
+                    ],
+                })
+            self._make_trace_jsonl(data_dir, traces)
+            result = calibrate_progress_table(data_dir)
+            st = result["stage_tier"]["REPAIR_T2"]
+            assert st["median_cost"] > 0
+            assert st["p10_cost"] >= 0
+            assert st["p90_cost"] >= st["p10_cost"]
+            # With 10 costs 0.01 to 0.10: p10 ≈ 0.01, p90 ≈ 0.09
+            assert st["p10_cost"] <= st["median_cost"] <= st["p90_cost"]
+
+    def test_strategies_tracked(self):
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            self._make_trace_jsonl(data_dir, [
+                {"instance_id": "a", "strategy": "budget_only_tight", "turn_traces": [
+                    {"stage": "REPAIR", "backend_tier": 2, "has_progress": True,
+                     "billable_cost": 0.01}
+                ]},
+                {"instance_id": "b", "strategy": "budgetflow_full_tight", "turn_traces": [
+                    {"stage": "REPAIR", "backend_tier": 2, "has_progress": False,
+                     "billable_cost": 0.01}
+                ]},
+            ])
+            result = calibrate_progress_table(data_dir)
+            st = result["stage_tier"]["REPAIR_T2"]
+            assert "budget_only_tight" in st["strategies_seen"]
+            assert "budgetflow_full_tight" in st["strategies_seen"]
+
+    def test_skips_auto_budget(self):
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            _write_jsonl(data_dir / "auto_budget_memory.jsonl", [
+                {"instance_id": "x", "strategy": "s", "turn_traces": [
+                    {"stage": "REPAIR", "backend_tier": 2, "has_progress": True,
+                     "billable_cost": 0.01}
+                ]},
+            ])
+            result = calibrate_progress_table(data_dir)
+            assert result["meta"]["total_turns"] == 0
+
+
+# ── Missing task handling tests ────────────────────────────────────────────────
+
+
+class TestMissingTaskHandling:
+    def test_unknown_task_in_matrix(self):
+        """Tasks not in record set should be handled gracefully by profiles."""
+        # custom profile with explicit mapping handles unknown tasks
+        fn = make_custom_profile({"known": 5.0})
+        assert fn("unknown", _make_rec(iid="unknown")) == 1.0
+
+    def test_empty_universe_build(self):
+        matrix = build_value_matrix({}, PROFILES)
+        assert len(matrix["tasks"]) == 0
+        assert matrix["meta"]["task_count"] == 0
+        # Rankings should be empty
+        for pname in PROFILES:
+            assert len(matrix["rankings"][pname]) == 0
+
+
+# ── Manifest tests ──────────────────────────────────────────────────────────────
+
+
+class TestLoadManifest:
+    def test_loads_valid_manifest(self):
+        with tempfile.TemporaryDirectory() as td:
+            mp = Path(td) / "manifest.json"
+            mp.write_text(json.dumps({
+                "meta": {"description": "test"},
+                "runs": [{"file": "a.jsonl", "rows": 10, "strategies": ["s1"]}]
+            }))
+            m = load_manifest(mp)
+            assert len(m["runs"]) == 1
+            assert m["runs"][0]["file"] == "a.jsonl"
+
+    def test_missing_file_raises(self):
+        with pytest.raises(FileNotFoundError):
+            load_manifest("/nonexistent/manifest.json")
+
+    def test_missing_runs_key_raises(self):
+        with tempfile.TemporaryDirectory() as td:
+            mp = Path(td) / "manifest.json"
+            mp.write_text('{"meta": {}}')
+            with pytest.raises(ValueError, match="runs"):
+                load_manifest(mp)
+
+
+class TestScanWithManifest:
+    def test_only_allowlisted_files_scanned(self):
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            # Create an allowlisted file and a dirty file
+            _write_jsonl(data_dir / "clean.jsonl", [
+                {"instance_id": "a", "strategy": "s1", "harness_resolved": True,
+                 "total_cost": 0.1},
+            ])
+            _write_jsonl(data_dir / "dirty.jsonl", [
+                {"instance_id": "b", "strategy": "s2", "harness_resolved": True,
+                 "total_cost": 0.2},
+            ])
+            manifest = {
+                "meta": {}, "runs": [
+                    {"file": "clean.jsonl", "rows": 1, "strategies": ["s1"]}
+                ]
+            }
+            records = scan_task_universe(data_dir, manifest=manifest)
+            assert "a" in records
+            assert "b" not in records  # dirty file not in manifest
+
+    def test_missing_manifest_entry_raises(self):
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            manifest = {
+                "meta": {}, "runs": [
+                    {"file": "nonexistent.jsonl", "rows": 1, "strategies": ["s1"]}
+                ]
+            }
+            with pytest.raises(FileNotFoundError, match="nonexistent"):
+                scan_task_universe(data_dir, manifest=manifest)
+
+    def test_manifest_metadata_in_artifact(self):
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            _write_jsonl(data_dir / "run.jsonl", [
+                {"instance_id": "a", "strategy": "s1", "harness_resolved": True,
+                 "total_cost": 0.1},
+            ])
+            manifest = {
+                "meta": {"description": "test manifest", "phase": "test"},
+                "runs": [
+                    {"file": "run.jsonl", "rows": 1, "strategies": ["s1"],
+                     "clean": True, "why_clean": "test", "source_report": "test.md"}
+                ]
+            }
+            records = scan_task_universe(data_dir, manifest=manifest)
+            matrix = build_value_matrix(records, PROFILES, manifest_meta=manifest)
+            assert "manifest" in matrix["meta"]
+            assert matrix["meta"]["manifest"]["description"] == "test manifest"
+            assert matrix["meta"]["source"] == "manifest — clean-run allowlist"
+            assert len(matrix["meta"]["manifest_runs"]) == 1
+            assert matrix["meta"]["manifest_runs"][0]["file"] == "run.jsonl"
+
+    def test_no_manifest_falls_back_to_directory_scan(self):
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            _write_jsonl(data_dir / "test.jsonl", [
+                {"instance_id": "a", "strategy": "s1", "harness_resolved": True,
+                 "total_cost": 0.1},
+            ])
+            records = scan_task_universe(data_dir, manifest=None)
+            assert "a" in records
+
+    def test_no_manifest_artifact_has_no_manifest_key(self):
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            _write_jsonl(data_dir / "test.jsonl", [
+                {"instance_id": "a", "strategy": "s1", "harness_resolved": True,
+                 "total_cost": 0.1},
+            ])
+            records = scan_task_universe(data_dir, manifest=None)
+            matrix = build_value_matrix(records, PROFILES, manifest_meta=None)
+            assert "manifest" not in matrix["meta"]
+            assert "source" not in matrix["meta"]
+
+    def test_manifest_provenance_distinguishes_different_manifests(self):
+        """Two manifests with different phase labels produce distinct artifacts."""
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            _write_jsonl(data_dir / "run.jsonl", [
+                {"instance_id": "a", "strategy": "s1", "harness_resolved": True,
+                 "total_cost": 0.1},
+            ])
+            manifest_a = {
+                "meta": {"phase": "Phase A", "description": "first"},
+                "runs": [{"file": "run.jsonl", "rows": 1, "strategies": ["s1"]}]
+            }
+            manifest_b = {
+                "meta": {"phase": "Phase B", "description": "second"},
+                "runs": [{"file": "run.jsonl", "rows": 1, "strategies": ["s1"]}]
+            }
+            records = scan_task_universe(data_dir, manifest=manifest_a)
+            matrix_a = build_value_matrix(records, PROFILES, manifest_meta=manifest_a)
+            matrix_b = build_value_matrix(records, PROFILES, manifest_meta=manifest_b)
+            assert matrix_a["meta"]["manifest"]["phase"] == "Phase A"
+            assert matrix_b["meta"]["manifest"]["phase"] == "Phase B"
+            # Same records, different provenance
+            assert matrix_a["meta"]["manifest"]["description"] != \
+                   matrix_b["meta"]["manifest"]["description"]
+
+
+# ── Localization diagnostic tests ──────────────────────────────────────────────
+
+
+class TestLocalizationDiagnostic:
+    def test_extracts_file_paths_from_bash_digest(self):
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            _write_jsonl(data_dir / "test.jsonl", [
+                {"instance_id": "a", "strategy": "bf", "turn_traces": [
+                    {"stage": "LOCALIZATION", "backend_tier": 2,
+                     "has_progress": False,
+                     "bash_digest": "grep -n 'class Foo' ./django/forms/fields.py",
+                     "assistant_content_head": "Looking at forms/fields.py"},
+                    {"stage": "REPAIR", "backend_tier": 3,
+                     "has_progress": True,
+                     "bash_digest": "sed -i 's/x/y/' django/forms/fields.py",
+                     "assistant_content_head": "Fixed"},
+                ]},
+            ])
+            result = diagnose_localization_progress(data_dir)
+            assert result["meta"]["total_loc_turns"] == 1
+            assert result["meta"]["loc_turns_with_files"] == 1
+            assert result["meta"]["overall_file_activity_rate"] == 1.0
+            ts = result["per_task"]["a"]
+            assert ts["unique_files_count"] >= 1
+
+    def test_no_localization_turns_handled(self):
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            _write_jsonl(data_dir / "test.jsonl", [
+                {"instance_id": "a", "strategy": "bf", "turn_traces": [
+                    {"stage": "REPAIR", "backend_tier": 2,
+                     "has_progress": True, "bash_digest": "sed -i file.py",
+                     "assistant_content_head": "fix"},
+                ]},
+            ])
+            result = diagnose_localization_progress(data_dir)
+            assert result["meta"]["total_loc_turns"] == 0
+            assert result["meta"]["overall_file_activity_rate"] == 0.0
+
+    def test_missing_turns_handled(self):
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            _write_jsonl(data_dir / "test.jsonl", [
+                {"instance_id": "a", "strategy": "bf"},
+            ])
+            result = diagnose_localization_progress(data_dir)
+            assert result["meta"]["total_loc_turns"] == 0
+
+    def test_stage_filtering(self):
+        """Only LOCALIZATION turns are counted, not REPAIR or VALIDATION."""
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            _write_jsonl(data_dir / "test.jsonl", [
+                {"instance_id": "a", "strategy": "bf", "turn_traces": [
+                    {"stage": "LOCALIZATION", "backend_tier": 2,
+                     "has_progress": False,
+                     "bash_digest": "cat django/views.py",
+                     "assistant_content_head": "checking views"},
+                    {"stage": "REPAIR", "backend_tier": 2,
+                     "has_progress": True,
+                     "bash_digest": "sed -i django/views.py",
+                     "assistant_content_head": "editing"},
+                    {"stage": "VALIDATION", "backend_tier": 2,
+                     "has_progress": True,
+                     "bash_digest": "python test.py",
+                     "assistant_content_head": "testing"},
+                ]},
+            ])
+            result = diagnose_localization_progress(data_dir)
+            assert result["meta"]["total_loc_turns"] == 1
+
+    def test_manifest_mode(self):
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            _write_jsonl(data_dir / "clean.jsonl", [
+                {"instance_id": "a", "strategy": "bf", "turn_traces": [
+                    {"stage": "LOCALIZATION", "backend_tier": 2,
+                     "has_progress": False,
+                     "bash_digest": "grep -n thing ./module/file.py",
+                     "assistant_content_head": ""},
+                ]},
+            ])
+            _write_jsonl(data_dir / "dirty.jsonl", [
+                {"instance_id": "b", "strategy": "bf", "turn_traces": [
+                    {"stage": "LOCALIZATION", "backend_tier": 2,
+                     "has_progress": False,
+                     "bash_digest": "grep -n other ./another/file.py",
+                     "assistant_content_head": ""},
+                ]},
+            ])
+            manifest = {
+                "meta": {}, "runs": [
+                    {"file": "clean.jsonl", "rows": 1, "strategies": ["bf"]}
+                ]
+            }
+            result = diagnose_localization_progress(data_dir, manifest=manifest)
+            assert result["meta"]["total_loc_turns"] == 1
+            assert "a" in result["per_task"]
+            assert "b" not in result["per_task"]
+
+    def test_gold_patch_unavailable(self):
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            _write_jsonl(data_dir / "test.jsonl", [
+                {"instance_id": "a", "strategy": "bf", "turn_traces": [
+                    {"stage": "LOCALIZATION", "backend_tier": 2,
+                     "has_progress": False,
+                     "bash_digest": "grep pattern ./src/main.py",
+                     "assistant_content_head": ""},
+                ]},
+            ])
+            result = diagnose_localization_progress(data_dir)
+            assert result["meta"]["gold_patch_available"] is False
+
+    def test_diagnostic_summary_has_per_task(self):
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            _write_jsonl(data_dir / "test.jsonl", [
+                {"instance_id": "task_a", "strategy": "bf", "turn_traces": [
+                    {"stage": "LOCALIZATION", "backend_tier": 2,
+                     "has_progress": False,
+                     "bash_digest": "cat ./lib/utils.py ./lib/helpers.py",
+                     "assistant_content_head": "need to check utils"},
+                ]},
+            ])
+            result = diagnose_localization_progress(data_dir)
+            ts = result["per_task"]["task_a"]
+            assert ts["loc_turns"] == 1
+            assert ts["loc_with_files"] == 1
+            assert ts["file_activity_rate"] == 1.0
+            assert ts["unique_files_count"] >= 1
+            # Check top_files contains extracted paths
+            assert any("utils.py" in f for f in ts["top_files"]) or \
+                   any("helpers.py" in f for f in ts["top_files"])
+
+    def test_runtime_field_preferred_over_fallback(self):
+        """touched_file_paths should be used directly when present."""
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            _write_jsonl(data_dir / "test.jsonl", [
+                {"instance_id": "a", "strategy": "bf", "turn_traces": [
+                    {"stage": "LOCALIZATION", "backend_tier": 2,
+                     "has_progress": False,
+                     "bash_digest": "grep x wrong_file.py",
+                     "assistant_content_head": "also wrong_file2.py",
+                     "touched_file_paths": ["src/real.py", "tests/real_test.py"]},
+                ]},
+            ])
+            result = diagnose_localization_progress(data_dir)
+            assert result["meta"]["runtime_field_available"] is True
+            assert result["meta"]["runtime_field_turns"] == 1
+            assert result["meta"]["fallback_regex_turns"] == 0
+            assert result["meta"]["loc_turns_with_files"] == 1
+            ts = result["per_task"]["a"]
+            assert ts["unique_files_count"] >= 2  # got both runtime paths
+            assert ts["runtime_field_fraction"] == 1.0
+
+    def test_fallback_when_touched_file_paths_absent(self):
+        """Old traces without touched_file_paths should use regex fallback."""
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            _write_jsonl(data_dir / "test.jsonl", [
+                {"instance_id": "a", "strategy": "bf", "turn_traces": [
+                    {"stage": "LOCALIZATION", "backend_tier": 2,
+                     "has_progress": False,
+                     "bash_digest": "cat src/main.py",
+                     "assistant_content_head": ""},
+                ]},
+            ])
+            result = diagnose_localization_progress(data_dir)
+            assert result["meta"]["runtime_field_available"] is False
+            assert result["meta"]["runtime_field_turns"] == 0
+            assert result["meta"]["fallback_regex_turns"] == 1
+            assert result["meta"]["loc_turns_with_files"] == 1
+
+    def test_mixed_runtime_and_fallback(self):
+        """Mixture of traces with and without the field."""
+        with tempfile.TemporaryDirectory() as td:
+            data_dir = Path(td)
+            _write_jsonl(data_dir / "test.jsonl", [
+                {"instance_id": "a", "strategy": "bf", "turn_traces": [
+                    {"stage": "LOCALIZATION", "backend_tier": 2,
+                     "has_progress": False,
+                     "bash_digest": "cat src/a.py",
+                     "assistant_content_head": "",
+                     "touched_file_paths": ["src/a.py"]},
+                    {"stage": "LOCALIZATION", "backend_tier": 2,
+                     "has_progress": False,
+                     "bash_digest": "cat src/b.py",
+                     "assistant_content_head": ""},
+                ]},
+            ])
+            result = diagnose_localization_progress(data_dir)
+            assert result["meta"]["runtime_field_available"] is True
+            assert result["meta"]["runtime_field_turns"] == 1
+            assert result["meta"]["fallback_regex_turns"] == 1
+            # Both turns found files
+            assert result["meta"]["loc_turns_with_files"] == 2
+            ts = result["per_task"]["a"]
+            assert ts["runtime_field_fraction"] == 0.5

@@ -1267,3 +1267,294 @@ class TestNoLitellmInOfflineMode:
         assert "[preflight]" not in output, (
             f"gate-only output must NOT contain [preflight]:\n{output}"
         )
+
+
+class TestLOOBudgetMemory:
+    """Leave-one-task-out BudgetMemory generalization tests."""
+
+    def test_exclude_ids_prevents_exact_task_match(self, tmp_path):
+        """When exclude_ids contains a task, its records must NOT be used for estimation."""
+        from budgetflow.budget_memory import BudgetMemory
+
+        jl = tmp_path / "data.jsonl"
+        recs = [
+            _make_record(instance_id="a__task1", total_cost=0.1),
+            _make_record(instance_id="a__task1", total_cost=0.2),
+            _make_record(instance_id="a__task2", total_cost=0.3),
+            _make_record(instance_id="a__task2", total_cost=0.4),
+        ]
+        jl.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+
+        # Without exclude — task1 should hit exact_task (2 records >= threshold)
+        bm_full = BudgetMemory.from_jsonl([jl])
+        est_full = bm_full.estimate_task_budget("a__task1")
+        assert est_full.budget_source == "exact_task", f"expected exact_task, got {est_full.budget_source}"
+
+        # With exclude — task1 should fall to repo_median or higher
+        bm_excl = BudgetMemory.from_jsonl([jl], exclude_ids={"a__task1"})
+        est_excl = bm_excl.estimate_task_budget("a__task1")
+        assert est_excl.budget_source != "exact_task", (
+            f"exclude_ids should prevent exact_task, got {est_excl.budget_source}"
+        )
+        assert est_excl.budget_source in ("repo_median", "strategy_median", "global_fallback")
+
+    def test_exclude_ids_cascade_to_repo_median(self, tmp_path):
+        """With a multi-task repo, excluding one task should cascade to repo_median."""
+        from budgetflow.budget_memory import BudgetMemory
+
+        jl = tmp_path / "data.jsonl"
+        recs = []
+        # 4 tasks in same repo, 3 records each = repo has 12 records
+        for tid in range(1, 5):
+            for _ in range(3):
+                recs.append(_make_record(
+                    instance_id=f"repo__task{tid}",
+                    total_cost=0.1 + tid * 0.05,
+                ))
+        jl.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+
+        bm = BudgetMemory.from_jsonl([jl], exclude_ids={"repo__task2"})
+        est = bm.estimate_task_budget("repo__task2")
+        # repo has 3 other tasks * 3 records = 9 records, so repo_median should trigger
+        assert est.budget_source == "repo_median", f"expected repo_median, got {est.budget_source}"
+        assert est.budget_confidence == "medium"
+
+    def test_exclude_ids_cascade_to_strategy_median(self, tmp_path):
+        """When repo has < 3 records after exclusion, cascade to strategy level."""
+        from budgetflow.budget_memory import BudgetMemory
+
+        jl = tmp_path / "data.jsonl"
+        recs = []
+        # Only 1 task in repo, but strategy has enough records
+        for _ in range(5):
+            recs.append(_make_record(
+                instance_id="solo__onlytask",
+                total_cost=0.25,
+                strategy="budget_only_tight",
+            ))
+        # Another repo's task to provide strategy-level records
+        for _ in range(3):
+            recs.append(_make_record(
+                instance_id="other__othertask",
+                total_cost=0.15,
+                strategy="budget_only_tight",
+            ))
+        jl.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+
+        bm = BudgetMemory.from_jsonl([jl], exclude_ids={"solo__onlytask"})
+        est = bm.estimate_task_budget("solo__onlytask", strategy="budget_only_tight")
+        # solo repo has 0 records after exclusion, repo_median requires >= 3
+        # strategy_median: budget_only_tight has 3 records from other__othertask >= 2
+        assert est.budget_source == "strategy_median", f"expected strategy_median, got {est.budget_source}"
+
+    def test_exclude_ids_global_fallback_when_no_data(self, tmp_path):
+        """When all tiers exhausted, estimation falls to global_fallback."""
+        from budgetflow.budget_memory import BudgetMemory
+
+        jl = tmp_path / "data.jsonl"
+        recs = []
+        for _ in range(2):
+            recs.append(_make_record(instance_id="x__t1", total_cost=0.1))
+        jl.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+
+        bm = BudgetMemory.from_jsonl([jl], exclude_ids={"x__t1"})
+        est = bm.estimate_task_budget("x__t1", strategy="nonexistent")
+        # 0 records after exclusion, no repo data, no strategy data
+        assert est.budget_source == "global_fallback", f"expected global_fallback, got {est.budget_source}"
+
+    def test_loo_no_exact_task_with_multiple_files(self, tmp_path):
+        """LOO across multiple files must produce 0 exact_task matches."""
+        from budgetflow.budget_memory import BudgetMemory
+
+        jl1 = tmp_path / "run1.jsonl"
+        jl2 = tmp_path / "run2.jsonl"
+
+        for jl in (jl1, jl2):
+            recs = []
+            for tid in range(1, 4):
+                for _ in range(2):
+                    recs.append(_make_record(instance_id=f"pkg__task{tid}", total_cost=0.1 * tid))
+            jl.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+
+        for held_out_id in ("pkg__task1", "pkg__task2", "pkg__task3"):
+            bm = BudgetMemory.from_jsonl([jl1, jl2], exclude_ids={held_out_id})
+            est = bm.estimate_task_budget(held_out_id)
+            assert est.budget_source != "exact_task", (
+                f"LOO held-out {held_out_id} must not use exact_task, got {est.budget_source}"
+            )
+
+    def test_offline_replay_loo_cli(self, tmp_path):
+        """The --loo-budget-memory CLI mode produces valid output."""
+        import subprocess
+        import os
+
+        jl = tmp_path / "test_data.jsonl"
+        recs = []
+        for tid in range(1, 6):
+            for _ in range(3):
+                recs.append(_make_record(instance_id=f"test__task{tid}", total_cost=0.05 * tid))
+        jl.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+
+        env = os.environ.copy()
+        env["PYTHONPATH"] = os.path.join(
+            os.path.dirname(__file__), "..", "src"
+        )
+        result = subprocess.run(
+            ["python", "-m", "budgetflow.offline_replay",
+             "--loo-budget-memory", str(jl)],
+            capture_output=True, text=True, timeout=15, env=env,
+        )
+        assert result.returncode == 0, f"stderr: {result.stderr}"
+        assert "LOO BUDGET MEMORY" in result.stdout
+        assert "exact_task: 0/" in result.stdout
+        assert "Source Distribution" in result.stdout
+        assert "GATE A" in result.stdout
+
+
+class TestRepoKeyNormalization:
+    """Repo key normalization: instance_id, task.repo slug -> canonical short key."""
+
+    def test_normalize_instance_id(self):
+        from budgetflow.budget_memory import normalize_repo_key
+        assert normalize_repo_key("sympy__sympy-13480") == "sympy"
+        assert normalize_repo_key("django__django-10924") == "django"
+
+    def test_normalize_repo_slug_double_underscore(self):
+        from budgetflow.budget_memory import normalize_repo_key
+        assert normalize_repo_key("sympy__sympy") == "sympy"
+
+    def test_normalize_repo_slug_slash(self):
+        from budgetflow.budget_memory import normalize_repo_key
+        assert normalize_repo_key("sympy/sympy") == "sympy"
+
+    def test_normalize_already_short(self):
+        from budgetflow.budget_memory import normalize_repo_key
+        assert normalize_repo_key("sympy") == "sympy"
+
+    def test_repo_key_match_in_estimate(self, tmp_path):
+        """estimate_task_budget with repo='sympy/sympy' must hit repo_median."""
+        from budgetflow.budget_memory import BudgetMemory
+
+        jl = tmp_path / "data.jsonl"
+        recs = []
+        for tid in range(1, 4):
+            for _ in range(4):
+                recs.append(_make_record(instance_id=f"sympy__sympy-{10000+tid}", total_cost=0.15))
+        jl.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+
+        bm = BudgetMemory.from_jsonl([jl])
+        # Pass SWE-bench lite repo slug
+        est = bm.estimate_task_budget("sympy__sympy-99999", repo="sympy/sympy")
+        assert est.budget_source == "repo_median", (
+            f"repo='sympy/sympy' should normalize to 'sympy' and hit repo_median, "
+            f"got {est.budget_source}: {est.budget_reason}"
+        )
+
+    def test_repo_key_match_repo_slug_double_underscore(self, tmp_path):
+        """estimate_task_budget with repo='sympy__sympy' must hit repo_median."""
+        from budgetflow.budget_memory import BudgetMemory
+
+        jl = tmp_path / "data.jsonl"
+        recs = []
+        for tid in range(1, 4):
+            for _ in range(4):
+                recs.append(_make_record(instance_id=f"sympy__sympy-{10000+tid}", total_cost=0.15))
+        jl.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+
+        bm = BudgetMemory.from_jsonl([jl])
+        est = bm.estimate_task_budget("sympy__sympy-99999", repo="sympy__sympy")
+        assert est.budget_source == "repo_median", (
+            f"repo='sympy__sympy' should normalize to 'sympy' and hit repo_median, "
+            f"got {est.budget_source}"
+        )
+
+
+class TestBudgetMemoryNoStrategyBias:
+    """estimate_task_budget without strategy parameter must not use strategy_median."""
+
+    def test_no_strategy_bias_for_held_out_task(self, tmp_path):
+        """When strategy not passed, cascade skips strategy_median."""
+        from budgetflow.budget_memory import BudgetMemory
+
+        jl = tmp_path / "data.jsonl"
+        recs = []
+        # 3 tasks in same repo, all using budget_only_tight
+        for tid in range(1, 4):
+            for _ in range(3):
+                recs.append(_make_record(
+                    instance_id=f"pkg__task{tid}",
+                    total_cost=0.1 * tid,
+                    strategy="budget_only_tight",
+                ))
+        jl.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+
+        # Exclude task2 — it should fall to repo_median, NOT strategy_median
+        bm = BudgetMemory.from_jsonl([jl], exclude_ids={"pkg__task2"})
+        est = bm.estimate_task_budget("pkg__task2")
+        # No strategy passed -> cascade: exact_task -> repo_median -> global_fallback
+        assert est.budget_source != "strategy_median", (
+            f"Without strategy param, should not use strategy_median, got {est.budget_source}"
+        )
+        assert est.budget_source in ("repo_median", "global_fallback")
+
+    def test_django_loo_holdout_no_strategy_median(self, tmp_path):
+        """LOO holdout django without strategy must NOT hit strategy_median.
+
+        Mirrors real scenario: django is the only task in its repo, so
+        repo_median misses. cascade must fall to global_fallback, not leak
+        into strategy_median.
+        """
+        from budgetflow.budget_memory import BudgetMemory
+
+        jl = tmp_path / "data.jsonl"
+        recs = []
+        # django: single task, single repo
+        for _ in range(10):
+            recs.append(_make_record(
+                instance_id="django__django-10924",
+                total_cost=0.12,
+                strategy="budget_only_tight",
+            ))
+        # sympy tasks provide training data
+        for tid in ["17630", "18057"]:
+            for _ in range(5):
+                recs.append(_make_record(
+                    instance_id=f"sympy__sympy-{tid}",
+                    total_cost=0.10,
+                    strategy="budget_only_tight",
+                ))
+        jl.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+
+        bm = BudgetMemory.from_jsonl([jl], exclude_ids={"django__django-10924"})
+        est = bm.estimate_task_budget("django__django-10924")
+        assert est.budget_source != "strategy_median", (
+            f"django LOO without strategy must not hit strategy_median, got {est.budget_source}"
+        )
+        assert est.budget_source == "global_fallback", (
+            f"django LOO should get global_fallback (single-task repo, no strategy), got {est.budget_source}"
+        )
+
+    def test_strategy_only_used_when_explicit(self, tmp_path):
+        """strategy_median should only be used when strategy is explicitly passed."""
+        from budgetflow.budget_memory import BudgetMemory
+
+        jl = tmp_path / "data.jsonl"
+        recs = []
+        # Single-task repo so repo_median misses. Add other tasks with same
+        # strategy so strategy_median has >= 2 records.
+        for _ in range(3):
+            recs.append(_make_record(instance_id="solo__t1", total_cost=0.15, strategy="my_strat"))
+        for _ in range(3):
+            recs.append(_make_record(instance_id="other__t2", total_cost=0.10, strategy="my_strat"))
+        jl.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+
+        bm = BudgetMemory.from_jsonl([jl], exclude_ids={"solo__t1"})
+        est_no_strat = bm.estimate_task_budget("solo__t1")
+        assert est_no_strat.budget_source == "global_fallback", (
+            f"Without strategy, should skip strategy_median, got {est_no_strat.budget_source}"
+        )
+
+        est_with_strat = bm.estimate_task_budget("solo__t1", strategy="my_strat")
+        assert est_with_strat.budget_source == "strategy_median", (
+            f"With explicit strategy, should use strategy_median, got {est_with_strat.budget_source}"
+        )

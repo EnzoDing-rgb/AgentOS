@@ -1,0 +1,36 @@
+{
+  "meta": {
+    "description": "Clean-run manifest for Value Matrix (Phase Q). Preserves 046 manifest entries. Only runs listed here are allowed into the task universe.",
+    "created": "2026-06-05",
+    "phase": "Phase Q",
+    "preserves": "docs/reports/value_matrix_clean_runs.json (Phase P / 046)",
+    "note": "Still 2 strategies (BO, BF). Scanned all data/runs/*.jsonl and trace_*/steps.jsonl — no 3rd strategy found. discriminative_rarity remains flat at 1.0 for all tasks. Need a paid run with budgetflow_equal_weight_tight or budgetflow_stage_blind to unlock the profile.",
+    "strategy_limitation": "With only 2 strategies, all solve_rarity values are in {0.0, 1.0}, making discriminative_rarity = 1.0 for every task. The formula peaks at r=0.5 (value=2.0) but needs 3+ strategies to observe intermediate rarity."
+  },
+  "runs": [
+    {
+      "file": "postfix_029_loo_bm_5x2_fixed.jsonl",
+      "rows": 10,
+      "strategies": ["budget_only_tight", "budgetflow_full_tight"],
+      "clean": true,
+      "why_clean": "BudgetMemory fix run. 5 tasks x 2 strategies. No missing fields. Turn traces complete.",
+      "source_report": "docs/reports/029.md"
+    },
+    {
+      "file": "postfix_030_loo_10x2.jsonl",
+      "rows": 20,
+      "strategies": ["budget_only_tight", "budgetflow_full_tight"],
+      "clean": true,
+      "why_clean": "Largest clean run. 10 tasks x 2 strategies. Cold-start fallback (all global_fallback). Checker CLEAN.",
+      "source_report": "docs/reports/030.md"
+    },
+    {
+      "file": "postfix_031_loo_5x2.jsonl",
+      "rows": 10,
+      "strategies": ["budget_only_tight", "budgetflow_full_tight"],
+      "clean": true,
+      "why_clean": "True LOO BudgetMemory cascade. 5 held-out tasks x 2 strategies. All repo_median, 0 exact_task leakage.",
+      "source_report": "docs/reports/031.md"
+    }
+  ]
+}

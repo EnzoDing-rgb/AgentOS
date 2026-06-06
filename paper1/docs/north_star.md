@@ -2,9 +2,11 @@
 
 ## Vision
 
-BudgetFlow is a budget-aware online router for multi-step agent workflows.
+BudgetFlow is a value-aware budget governance layer for multi-step agent workflows.
 
-It manages model choice, task budget, escalation, and stop decisions under a shared budget account. The target is to complete more valuable verified tasks per dollar, not simply to minimize tokens for a single request.
+It manages model choice, task budget, escalation, and stop decisions under a shared budget account. The target is to make value flow through an organization under hard budget constraints: complete the highest-value verified work per dollar, not simply minimize tokens for a single request.
+
+The core product problem is organizational rather than only technical. A company may have engineers, analysts, operations staff, and researchers sharing one AI budget. Fixed per-person or per-team quotas force awkward manual exceptions and can discriminate against non-technical work whose value is real but harder to price. BudgetFlow allocates spend by task value, expected payoff, difficulty, and budget pressure instead of by identity or role.
 
 ## Generality Beyond SWE-bench
 
@@ -17,6 +19,9 @@ Different organizations should be able to inject their own context:
 | Enterprise Input | BudgetFlow Use |
 |---|---|
 | Task priority | Convert business value into budget willingness. |
+| Task batch | Evaluate a stable stream of work against one shared budget pool. |
+| Business direction | Bias allocation toward strategic areas without hard-coding per-team budgets. |
+| Value signal | Weight tasks by impact when known; fall back to heuristics when unknown. |
 | Historical outcomes | Estimate task cap, success probability, and escalation timing. |
 | Department or project budget | Select the relevant budget account and time window. |
 | Model price table | Compute real cost for local, proxy, or API models. |
@@ -33,6 +38,7 @@ class TaskContext:
     task_type: str
     description: str
     value: float
+    priority_hint: str | None
     features: dict[str, float | str | bool]
     verifier: Verifier
     runtime: AgentRuntime
@@ -51,9 +57,12 @@ class HistoryContext:
     similar_tasks: list[OutcomeRecord]
     model_success_rates: dict[str, float]
     cost_priors: dict[str, float]
+    value_priors: dict[str, float]
+    difficulty_priors: dict[str, float]
     escalation_priors: dict[str, float]
 
 class BudgetFlowPolicy:
+    def estimate_value(self, task: TaskContext, history: HistoryContext) -> float: ...
     def estimate_cap(self, task: TaskContext, budget: BudgetContext, history: HistoryContext) -> float: ...
     def choose_backend(self, task: TaskContext, state: WorkflowState, budget: BudgetContext) -> str: ...
     def should_escalate(self, task: TaskContext, state: WorkflowState, history: HistoryContext) -> bool: ...
@@ -85,6 +94,7 @@ BudgetFlow should become a governance layer above existing agent runtimes such a
 
 A user, team, project, or organization owns a budget account. Tasks arrive over time. For each task, BudgetFlow decides:
 
+- what value the task appears to have;
 - what budget cap the task deserves;
 - which model tier to start with;
 - when to escalate to a stronger model;
@@ -93,16 +103,27 @@ A user, team, project, or organization owns a budget account. Tasks arrive over 
 
 The product interface should be task-oriented rather than role-oriented. A programmer, analyst, researcher, or operations user can all submit work. The system allocates budget based on task value, difficulty, progress, and historical evidence.
 
+The budget pool should be shared by default. For example, an organization may allocate one quarterly AI budget across three teams while temporarily prioritizing a World Model team. BudgetFlow should accept that directional priority through a simple API, but it should not blindly give every World Model task a premium model. Some tasks in a high-priority team are token-intensive but not intelligence-intensive. Some tasks in a lower-priority team are urgent and high-value. The system should decide at the task level which work deserves scarce model budget.
+
 ## Core Claim
 
 BudgetFlow studies online budget-aware routing for multi-step agent tasks.
 
 SWE-bench is the controlled evaluation proxy: it gives repeatable tasks, clear pass/fail signals, and clean cost accounting. The real product setting is continuous enterprise agent work under shared budgets, quota limits, and model cost constraints.
 
+BudgetFlow now uses a two-level claim ladder.
+
+| Claim | Meaning | Status |
+|---|---|---|
+| First claim / North Star | Value-driven token efficiency: under a shared hard budget, complete the highest verified task value per dollar. | Primary paper direction. |
+| Second claim / mechanism | Workflow-stage and progress-aware routing can also beat dummy, budget-only, or market routing policies on per-step/per-task cost efficiency. | Still valuable, but must be empirically verified rather than assumed. |
+
+The second claim should not be used as the only foundation of the paper. It has real downsides, including tier-switching overhead and possible KV / prefix-cache loss. If experiments show that the stage/progress formula does not beat simpler routing, BudgetFlow should still be framed as a value-aware shared budget governor that can plug in a better allocator or learned policy. If both claims hold, the paper becomes stronger: BudgetFlow improves value allocation at the portfolio level and cost efficiency inside individual workflows.
+
 Paper objective:
 
 ```text
-maximize resolved tasks per dollar under a hard budget
+maximize resolved value per dollar under a hard budget
 ```
 
 Product objective:
@@ -111,7 +132,45 @@ Product objective:
 maximize sum(value(task) * success(task)) under budget, quota, and latency constraints
 ```
 
-For the paper, `value(task)=1` is acceptable. For product use, value can come from priority, deadline, repo importance, customer tier, expected labor saved, or user-provided business impact.
+Equivalently:
+
+```text
+maximize sum(value(task) * resolved(task) - cost(task) - latency_penalty(task))
+```
+
+The early controlled experiments may set `value(task)=1` to isolate harness trust, budget enforcement, and routing mechanics. That is a simplifying assumption, not the long-term claim. The stronger paper direction is value-cost efficiency: how much verified task value the system creates per dollar under a shared hard budget.
+
+For product use, value can come from priority, deadline, repo importance, customer tier, expected labor saved, strategic direction, or user-provided business impact. If users do not provide explicit values, BudgetFlow should estimate them from task features and history.
+
+For paper writing, SWE-bench must be defended as a proxy rather than the product itself. Generality matters more than overfitting a single benchmark. The benchmark supplies reproducible tasks and verifiers; the system abstraction is a pluggable `TaskContext`, `BudgetContext`, `HistoryContext`, runtime adapter, and verifier. Enterprise deployments can replace the value source and verifier without replacing the budget-governance layer.
+
+## Value Model
+
+Task value is hard to measure across organizations. BudgetFlow should support two operating modes.
+
+| Mode | Source of Value | Role |
+|---|---|---|
+| Cold start | User-provided priority, SLA, customer tier, project direction, heuristic difficulty/value proxies | Start making reasonable allocation decisions without a trained model. |
+| Warm up | Verified outcomes, observed cost, model success, cap sufficiency, human feedback, realized business signals | Learn task value, difficulty, success probability, and marginal model benefit over time. |
+
+Cold start should be easy for enterprises. They should be able to submit a batch of tasks and optional value hints through a small API rather than maintain a precise value table for every task. Hints can be ordinal or directional: "this project is strategically favored this quarter", "customer-tier tasks matter more", "deadline-critical tasks should receive higher willingness to spend".
+
+Warm up should make the system smarter without hard-coding every task. BudgetFlow should learn:
+
+- expected value by task type, project, customer tier, and deadline;
+- task difficulty and likely cost distribution;
+- model success probability by task family and stage;
+- cap sufficiency and underbudget risk;
+- whether escalation or rescue changed the verified outcome;
+- which high-cost tasks were worth their spend and which were not.
+
+The policy should optimize expected marginal value:
+
+```text
+route_score = expected_value_gain(task, action) / expected_marginal_cost(action)
+```
+
+This makes BudgetMemory a value-learning component, not only a cost memory. Its job is to estimate cost, success, cap sufficiency, and value signals from verified outcomes so BudgetFlow can maximize value per dollar.
 
 ## Budget Account Model
 
@@ -127,6 +186,8 @@ BudgetFlow should support budget windows rather than only static batches.
 | Time window | Daily, weekly, monthly, or campaign-level budget. |
 
 A batch experiment is just a compressed version of a time-window budget: instead of tasks arriving across a week, they arrive together in a reproducible benchmark run.
+
+Batching is central to the product shape. In an organization, service demand over a time window is often stable enough to evaluate as a pool: many people and teams submit work, the system sees the batch or stream, and a shared governor allocates budget dynamically. Teams can be added or removed without re-cutting fixed quotas. Strategic priorities steer the allocation, but individual task value and expected payoff decide the spend.
 
 ## Routing Model
 
@@ -153,6 +214,8 @@ Core actions:
 | Stop | Avoid wasting budget when evidence suggests low success probability. |
 | Resume | Continue safely after crashes, interruptions, or external kills. |
 
+Stage-aware routing is one mechanism, not the whole contribution. Localization, repair, and validation can provide useful progress signals, but the larger claim is value-driven budget allocation under a shared hard budget. If a better runtime or learned policy replaces hand-coded stages, the BudgetFlow account, value model, memory, and verifier interfaces should still apply.
+
 ## Continuous Learning Path
 
 Rules are the cold-start policy. Memory is the warm-start policy. A learned router is the long-term direction.
@@ -160,14 +223,15 @@ Rules are the cold-start policy. Memory is the warm-start policy. A learned rout
 | Version | Mechanism | Role |
 |---|---|---|
 | v1 Rule-based | Stage weights, pressure, cap, rescue, stop-loss | Explainable baseline and paper-friendly control. |
-| v2 Continuous memory | Learn cost, cap, success, failure axis from verified runs | Improve automatic budgeting and escalation thresholds. |
-| v3 Learned router | Supervised model or contextual bandit | Predict start tier, cap, escalate/stop from task and history. |
+| v2 Continuous memory | Learn cost, value, difficulty, cap, success, failure axis from verified runs | Improve automatic budgeting, value estimates, and escalation thresholds. |
+| v3 Learned router | Supervised model or contextual bandit | Predict value, start tier, cap, escalate/stop from task and history. |
 
 Training signal should come from verified outcomes, not self-reported agent success.
 
 Useful logged fields:
 
 - task id, repo, patch size, failing tests, pass-to-pass tests;
+- task value hint, priority source, deadline, project/team context;
 - model tier sequence;
 - prompt/completion tokens and real USD cost;
 - stage sequence and progress markers;
@@ -182,6 +246,8 @@ Possible reward:
 reward = value(task) * resolved - lambda_cost * spend - lambda_time * latency
 ```
 
+The strongest learning signal remains verified outcome. User value hints are inputs, not truth. The system should calibrate them against accepted work, downstream feedback, repeated task patterns, and observed difficulty.
+
 ## Evaluation Strategy
 
 The evaluation must separate mechanism, cost, and correctness.
@@ -191,7 +257,8 @@ The evaluation must separate mechanism, cost, and correctness.
 | Harness trust | Is PASS a real PASS and FAIL a real FAIL? |
 | Ceiling control | What can the strongest model solve uncapped? |
 | Budget-only baseline | What happens with cheap models under cap but no progress-aware routing? |
-| BudgetFlow full | Does routing improve resolved-per-dollar under fixed budget? |
+| Value-only allocator | What happens if task value changes caps but routing is static? |
+| BudgetFlow full | Does value-aware allocation and routing improve resolved-value-per-dollar under fixed budget? |
 | Stability audit | Are results stable across repeats? |
 | Official audit | Do local-harness conclusions hold under official SWE-bench harness? |
 
@@ -202,11 +269,12 @@ Current local harness is the inner loop. Official SWE-bench Docker harness shoul
 | Module | Responsibility |
 |---|---|
 | Budget Governor | Enforce hard cap, soft cap, reservation, settlement, and shared budget accounting. |
-| Automatic Budgeting | Estimate task cap from history, task features, model costs, and prior outcomes. |
+| Value Estimator | Estimate task value from injected hints, heuristics, and learned historical evidence. |
+| Automatic Budgeting | Estimate task cap from value, history, task features, model costs, and prior outcomes. |
 | Adaptive Routing | Select model tier per stage and escalate/de-escalate from progress and pressure. |
 | Observability | Persist JSONL, turn traces, cost, backend mix, patch source, and failure axis. |
 | Harness Adapter | Verify patches with fail-before, fail-after, and pass-to-pass evidence. |
-| Memory Store | Learn task cost, cap sufficiency, success rate, and routing outcomes over time. |
+| Memory Store | Learn task value, cost, difficulty, cap sufficiency, success rate, and routing outcomes over time. |
 
 ## Enterprise Value
 
@@ -217,11 +285,14 @@ Instead of assigning fixed model budgets by role, the system allocates spend by 
 This gives the organization:
 
 - shared budget control;
+- value-driven allocation instead of identity-driven quota;
 - fewer manual quota exceptions;
 - model spend tied to business value;
 - automatic escalation only when justified;
 - auditable cost and outcome records;
 - continuous improvement from prior tasks.
+
+The product promise is not that a more senior or more technical user receives better models. The promise is that higher-value work receives the model budget it deserves, regardless of who submitted it. This avoids awkward quota lending between teammates and avoids blaming individuals for token spend when the real question is whether the task deserved the spend.
 
 ## Parallel Execution Model
 
@@ -261,7 +332,7 @@ On the current HPC container, `/Lishun` is persistent NFS and `/tmp` is faster l
 | Resource | Preferred Use |
 |---|---|
 | `/tmp` | temporary build files, pytest temp, scratch, short-lived work. |
-| `/Lishun` | JSONL, checkpoints, reports, final traces, persistent repo cache. |
+| `/Lishun` | JSONL, checkpoints, reports, final audit artifacts. |
 | NFS worktrees | limited parallelism with strong cleanup and checkpointing. |
 | API providers | bounded concurrency to avoid rate-limit noise. |
 | Harness eval | parallel only after worktree cleanup is stable. |
@@ -291,9 +362,12 @@ For the current environment, more parallelism helps only when it does not amplif
 BudgetFlow's contribution is budget governance for agent workflows:
 
 - hard budget control across multi-step tasks;
+- shared budget pools across users, teams, projects, and time windows;
+- value-aware allocation under hard budget constraints;
 - progress-aware model routing;
 - automatic cap estimation from history;
+- cold-start value injection and warm-start value learning;
 - verified outcome learning;
 - failure attribution for cost, model, routing, and harness errors.
 
-The strongest paper claim should be about clean resolved-per-dollar under budget, with transparent ablations against all-pro and budget-only baselines.
+The strongest paper claim should be about clean resolved-value-per-dollar under budget, with transparent controls against all-pro, budget-only, and value-agnostic baselines.

@@ -11,8 +11,14 @@ import pandas as pd
 from .loop import WorkflowSpec, WorkflowStep
 from .types import Stage
 
+from .runtime import resolve_swebench_export_dir
+
 PAPER1_ROOT = Path(__file__).resolve().parents[2]
-LOCAL_EXPORT_DIR = PAPER1_ROOT / "data" / "swebench_lite_export"
+
+
+def _local_export_dir() -> Path | None:
+    """Resolve SWE-bench lite export directory via runtime (env > local > archive)."""
+    return resolve_swebench_export_dir()
 
 
 @dataclass(frozen=True)
@@ -135,14 +141,20 @@ def load_compare_medium_tasks(limit: int = 15) -> list[LiteTaskRecord]:
 
 
 def load_local_swebench_lite_export() -> list[dict] | None:
-    test_jsonl = LOCAL_EXPORT_DIR / "test.jsonl"
+    export_dir = _local_export_dir()
+    if export_dir is None:
+        return None
+    test_jsonl = export_dir / "test.jsonl"
     if not test_jsonl.exists():
         return None
     return [json.loads(line) for line in test_jsonl.read_text().splitlines() if line.strip()]
 
 
 def load_local_swebench_lite_parquet() -> list[dict] | None:
-    test_parquet = LOCAL_EXPORT_DIR / "test.parquet"
+    export_dir = _local_export_dir()
+    if export_dir is None:
+        return None
+    test_parquet = export_dir / "test.parquet"
     if not test_parquet.exists():
         return None
     frame = pd.read_parquet(test_parquet)

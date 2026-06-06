@@ -1,0 +1,27 @@
+{
+  "meta": {
+    "phase": "Phase T",
+    "description": "Expanded paid smoke — 3 sympy tasks × 2 policies (BO, BF) with P0 value matrix fix",
+    "created": "2026-06-05",
+    "run_id": "/tmp/budgetflow-runtime/050_smoke",
+    "note": "Sympy easy tasks. NOT merged into django clean universe. Separate task pool for smoke validation. Value source verified as value_matrix on all 6 rows after P0 fix."
+  },
+  "runs": [
+    {
+      "file": "/tmp/budgetflow-runtime/050_smoke.jsonl",
+      "rows": 6,
+      "strategies": [
+        "budget_only_tight",
+        "budgetflow_full_tight"
+      ],
+      "tasks": [
+        "sympy__sympy-13480",
+        "sympy__sympy-13647",
+        "sympy__sympy-14774"
+      ],
+      "total_cost": 0.6648,
+      "resolved": 6,
+      "resolved_value": 0.2223
+    }
+  ]
+}

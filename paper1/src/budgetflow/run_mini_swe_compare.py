@@ -31,7 +31,11 @@ from pathlib import Path
 
 SRC = Path(__file__).resolve().parents[1]
 REPO_ROOT = SRC.parent
-MINI_SWE_SRC = REPO_ROOT.parent / "external" / "mini-swe-agent" / "src"
+
+# Resolve mini-swe-agent via runtime module (handles env var / repo / fallback).
+from budgetflow.runtime import resolve_mini_swe_src  # noqa: E402
+
+MINI_SWE_SRC = resolve_mini_swe_src()
 for path in (str(SRC), str(MINI_SWE_SRC)):
     if path not in sys.path:
         sys.path.insert(0, path)
@@ -49,6 +53,7 @@ from budgetflow.budget_memory import BudgetMemory, BudgetEstimate as BudgetMemor
 from budgetflow.console_log import backend_tier_label, dim, format_run_verdict, status_fail, status_pass, tag  # noqa: E402
 from budgetflow.deepseek_backend import load_env_file  # noqa: E402
 from budgetflow.failure_classification import build_forensic_summary, build_verdict, classify_failure  # noqa: E402
+from budgetflow.value_matrix import PROFILES  # noqa: E402
 from budgetflow.governor import BudgetGovernor, GovernorConfig  # noqa: E402
 from budgetflow.observability import (  # noqa: E402
     HeartbeatWriter,
@@ -73,6 +78,7 @@ from budgetflow.policy_memory import PolicyMemory  # noqa: E402
 from budgetflow.run_guards import CompareRunGuards, set_active_guard  # noqa: E402
 from budgetflow.run_series import default_series_base, resolve_compare_stem  # noqa: E402
 from budgetflow.run_trace import TraceConsoleLevel  # noqa: E402
+from budgetflow.runtime import check_cwd, get_runtime_root, is_nfs_or_banned, print_runtime_info, resolve_runtime_root, set_runtime_root  # noqa: E402
 
 RUNS_DIR = REPO_ROOT / "data" / "runs"
 UNCAPPED_BUDGET = 1_000_000.0
@@ -114,6 +120,10 @@ DEFAULT_STRATEGIES: tuple[CompareStrategy, ...] = (
     CompareStrategy("budgetflow_full_loose", "budgetflow_full", "loose"),
     CompareStrategy("budgetflow_equal_weight_loose", "budgetflow_equal_weight", "loose"),
     CompareStrategy("all_pro", "all_pro", None),
+    CompareStrategy("budget_only_t2_tight", "budget_only_t2", "tight"),
+    CompareStrategy("budget_only_t2_loose", "budget_only_t2", "loose"),
+    CompareStrategy("budgetflow_conservative_tight", "budgetflow_conservative", "tight"),
+    CompareStrategy("budgetflow_conservative_loose", "budgetflow_conservative", "loose"),
 )
 
 DIAGNOSTIC_STRATEGIES: tuple[CompareStrategy, ...] = (
@@ -383,6 +393,124 @@ def _run_one(
     return record
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# Value Observability (Phase R)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_VALUE_LOOKUP: dict | None = None
+_VALUE_PROFILE: str = "equal"
+_VALUE_MATRIX_PATH: str | None = None
+
+
+def _init_value_observability(*, value_profile: str = "equal", value_matrix_path: str | None = None) -> None:
+    """Set global value observability config. Called once at startup.
+
+    Supports two artifact schemas:
+      - Current:  ``artifact["tasks"][instance_id]["values"][profile]`` (048+)
+      - Legacy:   ``artifact["matrix"][profile][instance_id]`` — each entry is a dict
+                   with a ``"value"`` key.
+    """
+    global _VALUE_LOOKUP, _VALUE_PROFILE, _VALUE_MATRIX_PATH
+    _VALUE_PROFILE = value_profile
+    _VALUE_MATRIX_PATH = value_matrix_path
+    _VALUE_LOOKUP = None
+    if value_matrix_path:
+        try:
+            with open(value_matrix_path) as f:
+                artifact = json.loads(f.read())
+
+            # Current schema: tasks → instance_id → values → profile
+            tasks = artifact.get("tasks")
+            if isinstance(tasks, dict) and tasks:
+                lookup: dict[str, float] = {}
+                for instance_id, task_data in tasks.items():
+                    if not isinstance(task_data, dict):
+                        continue
+                    values = task_data.get("values")
+                    if isinstance(values, dict) and value_profile in values:
+                        lookup[instance_id] = float(values[value_profile])
+                if lookup:
+                    _VALUE_LOOKUP = lookup
+
+            # Legacy schema fallback: matrix → profile → instance_id → {value: ...}
+            if _VALUE_LOOKUP is None:
+                matrix = artifact.get("matrix", {})
+                profile_data = matrix.get(value_profile) if isinstance(matrix, dict) else None
+                if profile_data and isinstance(profile_data, dict):
+                    _VALUE_LOOKUP = {
+                        task_id: entry.get("value", 1.0)
+                        for task_id, entry in profile_data.items()
+                        if isinstance(entry, dict)
+                    }
+
+            if _VALUE_LOOKUP is None and value_profile != "equal":
+                print(
+                    f"[value_observability] WARNING: profile '{value_profile}' not found "
+                    f"in value matrix {value_matrix_path}; falling back to equal",
+                    flush=True,
+                )
+        except (OSError, json.JSONDecodeError, KeyError) as exc:
+            print(f"[value_observability] WARNING: cannot load value matrix {value_matrix_path}: {exc}", flush=True)
+            _VALUE_LOOKUP = None
+
+
+def _enrich_record_with_value(record: dict) -> dict:
+    """Add value-aware observability fields to a run record. Mutates and returns."""
+    instance_id = record.get("instance_id", "")
+    resolved = bool(record.get("harness_resolved"))
+    task_cost = float(record.get("task_cost") or record.get("total_cost") or 0)
+
+    # Determine task value
+    task_value = 1.0
+    if _VALUE_LOOKUP is not None and instance_id in _VALUE_LOOKUP:
+        task_value = float(_VALUE_LOOKUP[instance_id])
+        value_source = "value_matrix"
+    elif _VALUE_PROFILE == "equal":
+        value_source = "default_equal"
+    else:
+        # Non-equal profile requested but lookup failed (missing task, missing
+        # profile, or matrix not loadable) — fall back to equal, but log it.
+        value_source = "missing_profile_fallback"
+
+    resolved_value = task_value if resolved else 0.0
+    resolved_value_per_dollar = resolved_value / task_cost if task_cost > 0 else 0.0
+
+    record["task_value_profile"] = _VALUE_PROFILE
+    record["task_value"] = task_value
+    record["resolved_value"] = resolved_value
+    record["value_source"] = value_source
+    record["value_matrix_artifact"] = _VALUE_MATRIX_PATH
+    record["resolved_value_per_dollar"] = round(resolved_value_per_dollar, 6)
+
+    # Budget source: always present for downstream analysis
+    if record.get("auto_budget_enabled"):
+        record["budget_source"] = "auto_budget"
+    elif record.get("budget_memory_enabled"):
+        record["budget_source"] = "budget_memory"
+    else:
+        record["budget_source"] = "frozen_caps"
+
+    return record
+
+
+def _value_summary_for_strategy(records: list[dict]) -> dict:
+    """Compute value-aware summary metrics for a list of run records."""
+    resolved_count = sum(1 for r in records if r.get("harness_resolved"))
+    total_cost = sum(float(r.get("task_cost") or r.get("total_cost") or 0) for r in records)
+    resolved_value = sum(float(r.get("resolved_value") or 0) for r in records)
+    total_task_value = sum(float(r.get("task_value") or 1.0) for r in records)
+    rvpd = resolved_value / total_cost if total_cost > 0 else 0.0
+    return {
+        "resolved_count": resolved_count,
+        "total_cost": round(total_cost, 6),
+        "resolved_value": round(resolved_value, 6),
+        "total_task_value": round(total_task_value, 6),
+        "resolved_value_per_dollar": round(rvpd, 6),
+        "value_profile": _VALUE_PROFILE,
+        "value_source": _VALUE_MATRIX_PATH or "default_equal",
+    }
+
+
 def _print_run_done(record: dict, *, done: int, total: int, strategy: str) -> None:
     gold_file = (record.get("agent_gold_files") or ["-"])[0]
     resolved = record["harness_resolved"]
@@ -519,6 +647,8 @@ def _format_live_snapshot(
     out_path: Path,
     global_line: str | None = None,
     failure_by_strategy: dict[str, dict[str, int]] | None = None,
+    resolved_value_by_strategy: dict[str, list[float]] | None = None,
+    task_value_by_strategy: dict[str, list[float]] | None = None,
 ) -> list[str]:
     """Top-of-file dashboard: pass/fail + cost summary in one table."""
     total_pass = sum(sum(1 for flag in flags if flag) for flags in resolved_by_strategy.values())
@@ -566,6 +696,28 @@ def _format_live_snapshot(
             fail_s = ", ".join(f"{k}={v}" for k, v in sorted(failures.items()))
             lines.append(f"{'':<28} outcomes: {fail_s}")
     lines.append(f"jsonl={out_path}")
+    # ── Value observability summary ────────────────────────────────────
+    if resolved_value_by_strategy and task_value_by_strategy:
+        lines.append("")
+        lines.append("=== VALUE SUMMARY ===")
+        lines.append(
+            f"{'strategy':<28} {'resolved':>8} {'cost':>8} {'value':>8} "
+            f"{'rv_per_$':>9} {'v_profile':>12}"
+        )
+        lines.append("-" * 80)
+        for name in strategy_names:
+            rv_list = resolved_value_by_strategy.get(name, [])
+            tv_list = task_value_by_strategy.get(name, [])
+            resolved_val = sum(rv_list)
+            total_val = sum(tv_list)
+            total_cost = sum(task_cost_by_strategy.get(name, []))
+            rvpd = resolved_val / total_cost if total_cost > 0 else 0.0
+            lines.append(
+                f"{name:<28} {sum(1 for r in resolved_by_strategy.get(name, []) if r):>8} "
+                f"{_fmt_usd(total_cost):>8} {resolved_val:>8.2f} "
+                f"{rvpd:>9.2f} {_VALUE_PROFILE:>12}"
+            )
+        lines.append("")
     lines.append("")
     lines.append("=== EVENT LOG (newest at bottom) ===")
     lines.append("")
@@ -592,6 +744,8 @@ def _write_summary_file(
     total_runs: int,
     tasks_per_strategy: int,
     global_line: str | None = None,
+    resolved_value_by_strategy: dict[str, list[float]] | None = None,
+    task_value_by_strategy: dict[str, list[float]] | None = None,
 ) -> None:
     live = _format_live_snapshot(
         strategy_names=strategy_names,
@@ -610,6 +764,8 @@ def _write_summary_file(
         started=started,
         out_path=out_path,
         global_line=global_line,
+        resolved_value_by_strategy=resolved_value_by_strategy,
+        task_value_by_strategy=task_value_by_strategy,
     )
     lines = live + list(summary_lines)
     path.write_text("\n".join(lines) + "\n")
@@ -861,6 +1017,8 @@ class _CompareState:
     flash_by_strategy: dict[str, list[float]]
     pro_by_strategy: dict[str, list[float]]
     failure_by_strategy: dict[str, dict[str, int]]
+    resolved_value_by_strategy: dict[str, list[float]] | None = None
+    task_value_by_strategy: dict[str, list[float]] | None = None
     runs_done: int = 0
 
 
@@ -875,6 +1033,8 @@ def _rebuild_state_from_jsonl(path: Path, header_lines: list[str]) -> _CompareSt
         flash_by_strategy={},
         pro_by_strategy={},
         failure_by_strategy={},
+        resolved_value_by_strategy={},
+        task_value_by_strategy={},
     )
     for line in path.read_text().splitlines():
         if not line.strip():
@@ -901,6 +1061,15 @@ def _rebuild_state_from_jsonl(path: Path, header_lines: list[str]) -> _CompareSt
         failures = state.failure_by_strategy.setdefault(name, {})
         failures[failure_class] = failures.get(failure_class, 0) + 1
         state.batch_spent_by_strategy[name] = float(record.get("batch_spent") or 0.0)
+        # Value observability: enrich legacy records on resume
+        if record.get("task_value_profile") is None:
+            _enrich_record_with_value(record)
+        state.resolved_value_by_strategy.setdefault(name, []).append(
+            float(record.get("resolved_value") or 0.0)
+        )
+        state.task_value_by_strategy.setdefault(name, []).append(
+            float(record.get("task_value") or 1.0)
+        )
     return state
 
 
@@ -962,6 +1131,9 @@ def _persist_task_record(
         elif auto_budget_memory is not None and not no_auto_budget_learn:
             record["budget_learning_update_written"] = False
 
+        # Value observability enrichment (Phase R)
+        _enrich_record_with_value(record)
+
         handle.write(json.dumps(record, ensure_ascii=False) + "\n")
         handle.flush()
         state.runs_done += 1
@@ -979,6 +1151,15 @@ def _persist_task_record(
         failures = state.failure_by_strategy.setdefault(name, {})
         failures[failure_class] = failures.get(failure_class, 0) + 1
         state.batch_spent_by_strategy[name] = float(record.get("batch_spent") or 0.0)
+        # Value observability tracking
+        if state.resolved_value_by_strategy is not None:
+            state.resolved_value_by_strategy.setdefault(name, []).append(
+                float(record.get("resolved_value") or 0.0)
+            )
+        if state.task_value_by_strategy is not None:
+            state.task_value_by_strategy.setdefault(name, []).append(
+                float(record.get("task_value") or 1.0)
+            )
         if scoreboard is not None:
             scoreboard.record(name, resolved=bool(record.get("harness_resolved")))
         _write_summary_file(
@@ -1000,6 +1181,8 @@ def _persist_task_record(
             total_runs=total_runs,
             tasks_per_strategy=tasks_per_strategy,
             global_line=global_progress.format_global(scoreboard),
+            resolved_value_by_strategy=state.resolved_value_by_strategy,
+            task_value_by_strategy=state.task_value_by_strategy,
         )
 
 
@@ -1383,6 +1566,19 @@ def main() -> None:
         help="max chars for bash command digest in turn traces (default 120)",
     )
     parser.add_argument(
+        "--value-profile",
+        choices=("equal", "difficulty", "discriminative_rarity", "unsolved_difficulty", "combined"),
+        default="equal",
+        help="Value profile for task value assignment (default: equal)",
+    )
+    parser.add_argument(
+        "--value-matrix",
+        type=str,
+        default=None,
+        help="Path to value matrix JSON artifact (e.g. docs/reports/047_value_matrix.json). "
+        "If not specified, uses equal value (all tasks = 1.0) with value_source=default_equal.",
+    )
+    parser.add_argument(
         "--per-task-cap",
         type=float,
         default=None,
@@ -1438,10 +1634,22 @@ def main() -> None:
         help="k for kNN fallback in auto-budget (default 3)",
     )
     parser.add_argument(
+        "--runtime-root",
+        type=str,
+        default=None,
+        help="runtime scratch root for high-churn artifacts (default: /tmp/budgetflow-runtime, env: BUDGETFLOW_RUNTIME_ROOT)",
+    )
+    parser.add_argument(
+        "--allow-nfs-runtime",
+        action="store_true",
+        default=False,
+        help="allow runtime root on NFS /Lishun paths (disabled by default to prevent NLM deadlocks)",
+    )
+    parser.add_argument(
         "--worktree-root",
         type=str,
         default=None,
-        help="runtime worktree root directory (default: /tmp/budgetflow_worktrees, fallback to NFS if unwritable)",
+        help="override worktree dir specifically (deprecated — prefer --runtime-root)",
     )
     parser.add_argument(
         "--soft-budget",
@@ -1492,6 +1700,13 @@ def main() -> None:
         help="comma-separated JSONL paths to load BudgetMemory from",
     )
     parser.add_argument(
+        "--budget-memory-exclude-ids",
+        type=str,
+        nargs="*",
+        default=None,
+        help="instance_ids to exclude from BudgetMemory training (for leave-one-task-out generalization test)",
+    )
+    parser.add_argument(
         "--disable-budget-memory",
         action="store_true",
         default=False,
@@ -1510,6 +1725,18 @@ def main() -> None:
         help="load --budget-memory files, validate, print diagnostics, then exit (no API calls)",
     )
     args = parser.parse_args()
+
+    # ── Parse exclude_ids once, shared by gate-only, dry-run, and normal mode ──
+    bm_exclude: set[str] | None = None
+    if args.budget_memory_exclude_ids:
+        bm_exclude = set()
+        for raw in args.budget_memory_exclude_ids:
+            for part in raw.split(","):
+                part = part.strip()
+                if part:
+                    bm_exclude.add(part)
+        if not bm_exclude:
+            bm_exclude = None
 
     # ── Gate-only: load PolicyMemory, validate, print summary, exit ────────
     # Must run BEFORE any provider check, output file creation, heartbeat, or
@@ -1541,13 +1768,36 @@ def main() -> None:
             if not p_abs.is_file():
                 print(f"ERROR: --budget-memory file not found: {p_abs}", flush=True)
                 sys.exit(1)
-        bm = BudgetMemory.from_jsonl(bm_paths)
+        bm = BudgetMemory.from_jsonl(bm_paths, exclude_ids=bm_exclude)
         print(f"budget_memory gate-only: OK", flush=True)
         print(f"  records={bm.record_count} tasks={bm.task_count} repos={bm.repo_count}")
         print(f"  sources: {bm._source_paths}")
         for line in bm.summary_lines():
             print(f"  {line}")
         sys.exit(0)
+
+    # ── Value observability: init before any tasks run ───────────────────
+    _init_value_observability(
+        value_profile=args.value_profile,
+        value_matrix_path=args.value_matrix,
+    )
+
+    # ── Runtime root: set before any path-dependent operations ────────────
+    if args.runtime_root:
+        set_runtime_root(args.runtime_root, allow_nfs=args.allow_nfs_runtime)
+    elif os.environ.get("BUDGETFLOW_RUNTIME_ROOT"):
+        set_runtime_root(os.environ["BUDGETFLOW_RUNTIME_ROOT"], allow_nfs=args.allow_nfs_runtime)
+    else:
+        # Resolve default; fail-fast if default resolves to /Lishun.
+        root, _ = resolve_runtime_root()
+        if not args.allow_nfs_runtime and is_nfs_or_banned(root):
+            raise SystemExit(
+                f"RUNTIME CONFIG ERROR: default runtime root resolves to banned /Lishun path: {root}\n"
+                f"  Use --runtime-root /tmp/budgetflow-runtime or set BUDGETFLOW_RUNTIME_ROOT.\n"
+                f"  Or pass --allow-nfs-runtime to bypass this safety check."
+            )
+
+    check_cwd()
 
     # --worktree-root: set before any task execution so runtime worktrees
     # go to the correct scratch location.
@@ -1684,7 +1934,7 @@ def main() -> None:
             if not p_abs.is_file():
                 print(f"ERROR: --budget-memory file not found: {p_abs}", flush=True)
                 sys.exit(1)
-        bm = BudgetMemory.from_jsonl(bm_paths)
+        bm = BudgetMemory.from_jsonl(bm_paths, exclude_ids=bm_exclude)
         print("=== BudgetMemory dry-run ===")
         print(f"records={bm.record_count} tasks={bm.task_count} repos={bm.repo_count}")
         print(f"sources: {bm._source_paths}")
@@ -1726,11 +1976,10 @@ def main() -> None:
         print(f"  {'-'*125}")
 
         under_count = over_count = ok_count = not_comp = 0
+        strat = ""  # no strategy bias in estimate
         for task in tasks:
             iid = task.instance_id
-            repo = getattr(task, "repo", "") or iid.split("__")[0] if "__" in iid else iid
-            strat = "budget_only_tight"
-            est = bm.estimate_task_budget(iid, repo=repo, strategy=strat, hard_budget=per_task_hard)
+            est = bm.estimate_task_budget(iid, hard_budget=per_task_hard)
             bm_cap = est.estimated_task_budget
 
             # Resolve old_cap and old_cap_source (priority order)
@@ -1822,7 +2071,7 @@ def main() -> None:
             else:
                 print(f"WARNING: --budget-memory file not found: {p_abs}", flush=True)
         if valid_paths:
-            budget_memory = BudgetMemory.from_jsonl(valid_paths)
+            budget_memory = BudgetMemory.from_jsonl(valid_paths, exclude_ids=bm_exclude)
             budget_memory_enabled = True
             src_str = ",".join(str(p) for p in valid_paths)
             budget_memory_source_paths = src_str
@@ -1834,11 +2083,9 @@ def main() -> None:
             )
             # Compute per-task BudgetMemory estimates
             for task in tasks:
-                repo = getattr(task, "repo", "") or task.instance_id.split("__")[0] if "__" in task.instance_id else task.instance_id
                 hard_cap = args.per_task_cap if args.per_task_cap and args.per_task_cap > 0 else None
                 est = budget_memory.estimate_task_budget(
-                    task.instance_id, repo=repo, strategy="budget_only_tight",
-                    hard_budget=hard_cap,
+                    task.instance_id, hard_budget=hard_cap,
                 )
                 budget_memory_estimates[task.instance_id] = est
             # Only use BudgetMemory as caps when auto-budget is NOT enabled
@@ -1891,6 +2138,8 @@ def main() -> None:
     }
 
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
+    runtime_root, _ = resolve_runtime_root()
+    print_runtime_info(runtime_root, RUNS_DIR, out_stem, policy_jobs)
     print(
         f"{tag('run_id', bold=False)} {out_stem} "
         f"series={series} mode={stem_mode}"
@@ -1995,6 +2244,8 @@ def main() -> None:
             flash_by_strategy={},
             pro_by_strategy={},
             failure_by_strategy={},
+            resolved_value_by_strategy={},
+            task_value_by_strategy={},
         )
     started = time.time()
     io_lock = threading.Lock()

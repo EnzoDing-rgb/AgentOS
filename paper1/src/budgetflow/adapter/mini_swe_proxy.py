@@ -45,6 +45,7 @@ from .bash_stage import (
     _VALIDATION_AGENT_PHASES,
     bash_has_progress,
     classify_routing_stage,
+    extract_touched_file_paths, extract_trace_file_paths,
 )
 from .stall_guard import check_stagnation, normalize_bash_command
 from .message_utils import estimate_input_tokens, extract_bash_context
@@ -149,6 +150,7 @@ def _build_turn_trace(
     gold_edit_guard_turns: int = 0,
     gold_edit_guard_limit: int | None = None,
     gold_edit_guard_active: bool = False,
+    touched_file_paths: list[str] | None = None,
 ) -> dict:
     """Build a single turn-trace dict for observability (no side effects)."""
     trace: dict[str, Any] = {
@@ -156,6 +158,7 @@ def _build_turn_trace(
         "agent_phase": agent_phase,
         "stage": stage.name if stage else None,
         "bash_digest": (bash_command or "")[:120],
+        "touched_file_paths": touched_file_paths or [],
         "input_tokens": input_tokens,
         "expected_costs": expected_costs,
         "base_pressure": round(base_pressure, 4),
@@ -469,6 +472,7 @@ class BudgetFlowLitellmModel:
                 )
         if self.routing.adaptive is not None and self.routing.strategy in (
             "budgetflow_full",
+            "budgetflow_conservative",
             "budgetflow_equal_weight",
             "budgetflow_auto_v2",
             "stage_blind",
@@ -556,6 +560,7 @@ class BudgetFlowLitellmModel:
                         agent_phase=self.agent_phase,
                         stage=stage,
                         bash_command=bash_command,
+                        touched_file_paths=extract_trace_file_paths(bash_command=bash_command),
                         input_tokens=input_tokens,
                         expected_costs=expected_costs,
                         base_pressure=base_pressure,
@@ -626,11 +631,18 @@ class BudgetFlowLitellmModel:
             actions = self._parse_actions(response, text_mode=text_mode, backend_tier=backend.tier)
         except Exception as exc:
             if self._enable_turn_trace:
+                content_head = _safe_content_head(response)
+                parser_snippet = _parser_input_snippet(response, text_mode)
                 self.turn_traces.append(_build_turn_trace(
                     step_index=self.step_index,
                     agent_phase=self.agent_phase,
                     stage=stage,
                     bash_command=bash_command,
+                    touched_file_paths=extract_trace_file_paths(
+                        bash_command=bash_command,
+                        assistant_content_head=content_head,
+                        parser_input_snippet=parser_snippet,
+                    ),
                     input_tokens=input_tokens,
                     expected_costs=expected_costs,
                     base_pressure=base_pressure,
@@ -656,9 +668,9 @@ class BudgetFlowLitellmModel:
                     **_protocol_trace_fields(backend.name, text_mode),
                     **_router_trace_fields(self.routing),
                     **self._gold_edit_guard_trace_fields(),
-                    assistant_content_head=_safe_content_head(response),
+                    assistant_content_head=content_head,
                     tool_call_summary=_tool_call_summary(response),
-                    parser_input_snippet=_parser_input_snippet(response, text_mode),
+                    parser_input_snippet=parser_snippet,
                     parser_error_type=type(exc).__name__,
                     parser_error_message=str(exc)[:500],
                     reservation_id=reservation_id,
@@ -675,11 +687,18 @@ class BudgetFlowLitellmModel:
             "text_mode": text_mode,
         }
         if self._enable_turn_trace:
+            content_head = _safe_content_head(response)
+            parser_snippet = _parser_input_snippet(response, text_mode)
             self.turn_traces.append(_build_turn_trace(
                 step_index=self.step_index,
                 agent_phase=self.agent_phase,
                 stage=stage,
                 bash_command=bash_command,
+                touched_file_paths=extract_trace_file_paths(
+                    bash_command=bash_command,
+                    assistant_content_head=content_head,
+                    parser_input_snippet=parser_snippet,
+                ),
                 input_tokens=input_tokens,
                 expected_costs=expected_costs,
                 base_pressure=base_pressure,
@@ -705,9 +724,9 @@ class BudgetFlowLitellmModel:
                 **_protocol_trace_fields(backend.name, text_mode),
                 **_router_trace_fields(self.routing),
                 **self._gold_edit_guard_trace_fields(),
-                assistant_content_head=_safe_content_head(response),
+                assistant_content_head=content_head,
                 tool_call_summary=_tool_call_summary(response),
-                parser_input_snippet=_parser_input_snippet(response, text_mode),
+                parser_input_snippet=parser_snippet,
                 reservation_id=reservation_id,
                 reserved_cost=round(actual_cost, 6),
                 reservation_settled=True,
@@ -778,7 +797,7 @@ class BudgetFlowLitellmModel:
         Turn cap: "making progress but too slowly → force upgrade."
         - T1:25, T2:40, T3:60 turns
         """
-        if self.routing.strategy not in ("budgetflow_full", "budgetflow_equal_weight", "budgetflow_auto_v2", "stage_blind"):
+        if self.routing.strategy not in ("budgetflow_full", "budgetflow_conservative", "budgetflow_equal_weight", "budgetflow_auto_v2", "stage_blind"):
             return backend
         ordered = self.routing.backends
         if len(ordered) < 2:
@@ -832,6 +851,7 @@ class BudgetFlowLitellmModel:
         """Avoid long T2 repair loops after the agent has touched a gold file."""
         if self.routing.strategy not in (
             "budgetflow_full",
+            "budgetflow_conservative",
             "budgetflow_equal_weight",
             "budgetflow_auto_v2",
             "stage_blind",
@@ -876,7 +896,7 @@ class BudgetFlowLitellmModel:
         start_index = ordered.index(backend)
         min_tier = 1
         adaptive = self.routing.adaptive
-        if adaptive is not None and self.routing.strategy in ("budgetflow_full", "budgetflow_equal_weight", "budgetflow_auto_v2", "stage_blind"):
+        if adaptive is not None and self.routing.strategy in ("budgetflow_full", "budgetflow_conservative", "budgetflow_equal_weight", "budgetflow_auto_v2", "stage_blind"):
             min_tier = adaptive.min_tier_for_reserve()
         reserve_out = None
         last_reason: str | None = None

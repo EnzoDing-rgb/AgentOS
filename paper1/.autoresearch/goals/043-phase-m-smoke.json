@@ -1,0 +1,15 @@
+{
+  "goal_id": "043-phase-m-smoke",
+  "title": "Phase M No-Paid Goal-Loop Smoke",
+  "status": "complete",
+  "issue_ids": [
+    "043-issue-a",
+    "043-issue-b"
+  ],
+  "current_issue_index": 2,
+  "max_retries_per_issue": 2,
+  "real_api_budget_cap_usd": 0.0,
+  "total_api_calls": 0,
+  "created_at": "2026-06-05T08:22:21Z",
+  "updated_at": "2026-06-05T08:22:25Z"
+}

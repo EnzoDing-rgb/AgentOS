@@ -15,8 +15,8 @@ from ..defaults import (
     active_w_i,
     active_w_i_profile_name,
 )
-from ..policies import BudgetOnlyStepRouter, WorkflowLevelRouter
-from ..selector import BudgetFlowSelector, RouterDecision, SelectionDecision
+from ..policies import BudgetOnlyStepRouter, BudgetOnlyT2Router, WorkflowLevelRouter
+from ..selector import BudgetFlowSelector, ConservativeSelector, RouterDecision, SelectionDecision
 from ..types import Backend, ProgressTable, Stage, TurnInfo
 
 
@@ -75,6 +75,10 @@ def build_routing_context(
         ctx.workflow_level_backend = ctx.workflow_router.choose_backend(avg_w, ordered, pressure)
     if strategy == "budget_only":
         ctx.budget_only_router = BudgetOnlyStepRouter()
+    if strategy == "budget_only_t2":
+        ctx.budget_only_router = BudgetOnlyT2Router()
+    if strategy == "budgetflow_conservative":
+        ctx.selector = ConservativeSelector(build_progress_table_from_defaults(backends))
     return ctx
 
 
@@ -83,24 +87,27 @@ def _backend_by_tier(backends: list[Backend], tier: int) -> Backend:
 
 
 def _budgetflow_max_tier(ctx: RoutingContext) -> int:
-    """Maximum tier for budgetflow_full on this step.
+    """Maximum tier for budgetflow_full / budgetflow_conservative on this step.
 
     Default cap is T2.  T2→T3 escalation is gated by _apply_progress_escalation
     (per-tier patience), not by the selector.  If the previous step already
     used T3 (meaning escalation already fired), keep T3 to avoid ping-pong.
-    When budget pressure is elevated (>= 0.15), lift the cap — the fixed
-    selector formula (pressure >= upgrade_threshold) already prefers T2 at
-    low pressure and only picks T3 when the cost/progress tradeoff justifies it.
+    When budget pressure is elevated, lift the cap — the fixed selector formula
+    (pressure >= upgrade_threshold) already prefers T2 at low pressure and only
+    picks T3 when the cost/progress tradeoff justifies it.
     If adaptive routing recommends a higher starting tier, honour it.
+
+    Conservative variant uses a lower pressure threshold (0.05 vs 0.15) because
+    the ConservativeSelector's conservation factor already makes T3 escalation
+    progressively harder.  The hard cap would double-penalize T3 access.
     """
     max_tier: int = 2  # default cap: don't auto-upgrade to T3
     if ctx.last_backend is not None and ctx.last_backend.tier >= 3:
         max_tier = 3  # already escalated, keep T3
-    # When budget pressure is moderate, let the selector decide.
-    # upgrade_threshold for T2→T3 REPAIR ≈ 0.46, so at 0.15 the selector
-    # still won't pick T3 — this just removes the artificial ceiling for
-    # later steps when pressure genuinely crosses the threshold.
-    if ctx.budget_pressure >= 0.15:
+    # Conservative selector has its own restraint mechanism — let it access
+    # T3 earlier to avoid double-penalizing escalation decisions.
+    t3_threshold: float = 0.05 if ctx.strategy == "budgetflow_conservative" else 0.15
+    if ctx.budget_pressure >= t3_threshold:
         max_tier = 3
     if ctx.adaptive is not None:
         start_tier = ctx.adaptive.starting_tier()
@@ -155,12 +162,12 @@ def choose_backend(ctx: RoutingContext, turn: TurnInfo, expected_costs: dict[str
             scores={}, pressure=ctx.budget_pressure, branch="workflow_level",
         )
         return ctx.workflow_level_backend
-    if ctx.strategy == "budget_only":
+    if ctx.strategy in {"budget_only", "budget_only_t2"}:
         assert ctx.budget_only_router is not None
         decision = ctx.budget_only_router.choose_backend(turn, ctx.backends, ctx.budget_pressure)
         ctx.last_decision = decision
         return decision.backend
-    if ctx.strategy == "budgetflow_full":
+    if ctx.strategy in {"budgetflow_full", "budgetflow_conservative"}:
         # BudgetFlow Full: use selector but cap at default max tier (T2).
         # T2→T3 escalation is gated by _apply_progress_escalation (per-tier
         # patience), not by the selector.
@@ -177,12 +184,14 @@ def choose_backend(ctx: RoutingContext, turn: TurnInfo, expected_costs: dict[str
                 ctx.backends[0],
             )
             sel = SelectionDecision(backend=capped, score=sel.score, upgraded=False)
+        branch = "budgetflow_conservative" if ctx.strategy == "budgetflow_conservative" else "budgetflow_full"
+        reason_prefix = "bf_cons" if ctx.strategy == "budgetflow_conservative" else "bf_full"
         ctx.last_decision = RouterDecision(
             backend=sel.backend,
-            reason=f"bf_full_max_tier={max_tier}" if max_tier < 3 else "bf_full_escalated_t3",
+            reason=f"{reason_prefix}_max_tier={max_tier}" if max_tier < 3 else f"{reason_prefix}_escalated_t3",
             scores={sel.backend.name: sel.score},
             pressure=ctx.budget_pressure,
-            branch="budgetflow_full",
+            branch=branch,
         )
         return sel.backend
     sel = ctx.selector.select_backend(

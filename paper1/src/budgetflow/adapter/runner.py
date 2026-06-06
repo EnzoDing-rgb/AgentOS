@@ -6,8 +6,10 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[4]
-MINI_SWE_SRC = REPO_ROOT / "external" / "mini-swe-agent" / "src"
+from ..runtime import get_trace_dir, resolve_mini_swe_src
+
+# Resolve mini-swe-agent source dir before importing from it.
+MINI_SWE_SRC = resolve_mini_swe_src()
 if str(MINI_SWE_SRC) not in sys.path:
     sys.path.insert(0, str(MINI_SWE_SRC))
 
@@ -35,17 +37,12 @@ from .mini_swe_proxy import BudgetFlowLitellmModel
 from ..adaptive_routing import AdaptiveRoutingState
 from .strategies import build_routing_context
 
-SWEBENCH_CONFIG = REPO_ROOT / "external" / "mini-swe-agent" / "src" / "minisweagent" / "config" / "benchmarks" / "swebench.yaml"
-SWEBENCH_TEXT_CONFIG = (
-    REPO_ROOT
-    / "external"
-    / "mini-swe-agent"
-    / "src"
-    / "minisweagent"
-    / "config"
-    / "benchmarks"
-    / "swebench_backticks.yaml"
-)
+# Config paths derived from resolved mini-swe-agent src.
+_SWE_AGENT_BASE = MINI_SWE_SRC.parent  # external/mini-swe-agent/
+SWEBENCH_CONFIG = MINI_SWE_SRC / "minisweagent" / "config" / "benchmarks" / "swebench.yaml"
+SWEBENCH_TEXT_CONFIG = MINI_SWE_SRC / "minisweagent" / "config" / "benchmarks" / "swebench_backticks.yaml"
+
+REPO_ROOT = Path(__file__).resolve().parents[4]
 RUNS_DIR = REPO_ROOT / "paper1" / "data" / "runs"
 
 
@@ -125,7 +122,7 @@ def run_mini_swe_task(
         cap = governor.config.total_budget
     repo_dir = clone_or_checkout(task, workspace_key=workspace_key)
     compat_files = get_last_compat_files()
-    trace_dir = RUNS_DIR / f"trace_{task.instance_id}_{label}"
+    trace_dir = get_trace_dir(task.instance_id, label)
     trace = RunTraceLogger(
         instance_id=task.instance_id,
         repo_dir=repo_dir,

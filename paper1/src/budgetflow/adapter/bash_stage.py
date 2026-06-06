@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 from ..types import Stage
 
@@ -46,6 +47,99 @@ _VALIDATION_PATTERNS = (
 
 _REPAIR_AGENT_PHASES = frozenset({"edit_gold", "edit_target", "edit_related", "edit_other", "patch_prep"})
 _VALIDATION_AGENT_PHASES = frozenset({"test", "submit"})
+
+
+_FILE_EXT = (
+    r"py|pyx|pxd|pxi|md|rst|txt|cfg|ini|yml|yaml|json|toml|sh|bash|"
+    r"js|ts|tsx|jsx|java|rs|go|c|cpp|h|hpp|css|scss|html|xml|sql|rb"
+)
+
+# Quoted paths: allow spaces between quotes
+_QUOTED_PATH_RE = re.compile(r"""['"]([^'"]+\.(?:""" + _FILE_EXT + r"""))['"]""")
+
+# Unquoted paths: conservative, no spaces, lookahead trailing boundary
+_UNQUOTED_PATH_RE = re.compile(
+    r"(?:^|\s)([a-zA-Z0-9_\-./]+\.(?:" + _FILE_EXT + r"))(?=[\s\"'`]|\Z)",
+)
+
+
+def extract_text_file_paths(text: str | None) -> list[str]:
+    """Extract file paths from arbitrary text (not just bash commands).
+
+    Conservative, sorted, deduped. Handles quoted and unquoted paths.
+    Filters out URLs, globs, and key-like strings.
+    """
+    text = (text or "").strip()
+    if not text:
+        return []
+    paths: set[str] = set()
+    stripped = text
+    for m in _QUOTED_PATH_RE.finditer(text):
+        raw = m.group(1).strip()
+        if raw and "*" not in raw and "?" not in raw:
+            paths.add(_normalize_path(raw))
+            stripped = stripped.replace(m.group(0), " ", 1)
+    for m in _UNQUOTED_PATH_RE.finditer(stripped):
+        raw = m.group(1).strip()
+        if raw and "*" not in raw and "?" not in raw:
+            paths.add(_normalize_path(raw))
+    return sorted(p for p in paths if not p.startswith(("http://", "https://", "git@")))
+
+
+def extract_trace_file_paths(
+    bash_command: str | None = None,
+    assistant_content_head: str | None = None,
+    parser_input_snippet: str | None = None,
+) -> list[str]:
+    """Extract touched file paths from all available text sources in a turn.
+
+    Merges paths from bash command, assistant content, and parser input.
+    Deduplicated and sorted.
+    """
+    all_paths: set[str] = set()
+    for source in (bash_command, assistant_content_head, parser_input_snippet):
+        all_paths.update(extract_text_file_paths(source))
+    return sorted(all_paths)
+
+
+def _normalize_path(raw: str) -> str:
+    """Normalize a file path: strip leading ./ and collapse //."""
+    clean = raw
+    while clean.startswith("./"):
+        clean = clean[2:]
+    while "//" in clean:
+        clean = clean.replace("//", "/")
+    return clean
+
+
+def extract_touched_file_paths(bash_command: str | None) -> list[str]:
+    """Extract file paths touched by a bash command (conservative, sorted, deduped).
+
+    Supports paths from: sed, cat, grep, rg, find, ls, python, pytest, etc.
+    Handles quoted paths (with spaces) and unquoted paths. Returns stable-sorted,
+    deduplicated list. Empty list if no recognizable paths or command is None.
+    """
+    command = (bash_command or "").strip()
+    if not command:
+        return []
+    paths: set[str] = set()
+
+    # Quoted paths first (may contain spaces); remove matched substrings
+    # to prevent the unquoted regex from matching fragments of quoted paths.
+    stripped = command
+    for m in _QUOTED_PATH_RE.finditer(command):
+        raw = m.group(1).strip()
+        if raw and "*" not in raw and "?" not in raw:
+            paths.add(_normalize_path(raw))
+            stripped = stripped.replace(m.group(0), " ", 1)
+
+    # Unquoted paths
+    for m in _UNQUOTED_PATH_RE.finditer(stripped):
+        raw = m.group(1).strip()
+        if raw and "*" not in raw and "?" not in raw:
+            paths.add(_normalize_path(raw))
+
+    return sorted(p for p in paths if not p.startswith(("http://", "https://", "git@")))
 
 
 def bash_has_progress(bash_command: str | None) -> tuple[bool, str]:
