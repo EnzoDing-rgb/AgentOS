@@ -4,6 +4,17 @@
 
 ## 当前快照（2026-06-06）
 
+### 062 后 Auto-Budget Gate 与 3x3 fresh validation
+
+- **062 COMPLETE — Value-Driven Budget Allocation learning gate + fresh 3-policy validation.** 新增 `--auto-budget-dry-run`，可零 API 审计 learned caps；修复 `not_enough_evidence` 低证据失败污染 learned median 的 P0 bug。
+- **Fresh run:** `062_autobudget_3x3`，3 tasks × 3 policies，`--jobs 3` policy-parallel，`--auto-budget` learned caps，包含 1 个 Django task。9/9 rows complete，API cost **$1.1337**。
+- **结果:** BFV 3/3，resolved value 0.6610，cost $0.4622，RVPD 1.430；BO 2/3，value 0.3320，cost $0.2253，RVPD 1.474；BFC 2/3，value 0.3881，cost $0.4463，RVPD 0.870。
+- **Tier 1 判断:** 正信号但非 headline。BFV 是唯一解决全部任务的策略，并解决 BO 失败的高价值 `sympy__sympy-16988`；但 RVPD 略低于 BO，说明现在证据更支持“resolved value under budget”，不是简单 per-task cost win。
+- **Tier 2 判断:** 062 不支持 BFC routing efficiency。BFC 比 BO 更贵、turns 更多，虽然能 rescue `16988`，但成本效率不干净。
+- **新 P0 runtime bug:** gold-file edit 后 fallback/evaluation 太晚。多条 row 在 first repair 后继续消耗 5-18 turns，最终靠 `StagnationExit` worktree diff 评测。worktree fallback 有价值，但 `rescue_timeout_gold_edited evidence_turns=10` 太慢。
+- **Summary bug fixed after run:** raw JSONL 的 dynamic per-task caps 正确；summary 误把 auto-budget sentinel 显示成 shared `batch_cap=100.00`。代码已区分 `dynamic_task_caps`，历史 summary 不回写。
+- **下一步:** 不扩大到 3×5/3×8；先修 gold-edit fallback/evaluation timing，再 rerun 同一个 062 3×3。
+
 ### 061 后术语与 continual-learning 闭环状态
 
 - **术语统一：** 新 canonical term 是 **Value-Driven Budget Allocation**。旧称 Automatic Budgeting 和 CLI `--auto-budget` 只保留为 backward-compatible implementation name。

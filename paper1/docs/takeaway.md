@@ -18,6 +18,18 @@
 
 5. **Skills are tools, not governance.** Use skills only when they lower risk or reduce cognitive load. For BudgetFlow paper decisions, the main agent must still act like a reviewer-author: inspect evidence, identify root causes, and make the research judgment directly. Do not turn skill invocation into ritual.
 
+### 062 / Auto-Budget Gate Takeaway
+
+0. **Weak evidence must not train budget allocation.** A 1-step smoke row with `cap_was_sufficient=not_enough_evidence` is observability, not a cost prior. Learned cap medians now include only `sufficient`, `likely_underbudget`, and `underbudget_or_model`.
+
+1. **Dry-run gates should exist before paid gates.** `--auto-budget-dry-run` lets us audit cap/source/confidence/neighbors without provider calls or run artifacts. If we cannot inspect caps offline, paid experiments will keep debugging preventable budget bugs.
+
+2. **Dynamic caps are not shared caps.** Auto-budget uses per-task learned caps, not a single shared `tight=100`. Summary tables now have a separate `dynamic_task_caps` mode. JSONL remains the source of truth; summaries are derived and need tests.
+
+3. **062 gives Tier 1 signal, not Tier 2 signal.** BFV solves all 3 tasks and doubles BO's resolved value, but BFC is slower and more expensive than BO. Do not claim routing-efficiency victory from this run.
+
+4. **Worktree-diff fallback is useful but currently too late.** Multiple rows edited the right file and then burned 5-18 extra turns before fallback evaluation. The next runtime fix should evaluate sooner after a gold edit instead of waiting for `rescue_timeout_gold_edited evidence_turns=10`.
+
 ### 060 / Runtime-Clean Evidence Takeaway
 
 0. **Do not trust a clean JSONL to imply a clean summary.** 060 rows were schema-clean and checker-clean, but the batch footer still displayed `per_task_cap=100.00` because footer display reused the shared tight cap. Treat JSONL as primary evidence, summary as a derived view that needs its own tests.

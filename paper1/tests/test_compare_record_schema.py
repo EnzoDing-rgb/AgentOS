@@ -281,6 +281,27 @@ def test_per_task_cap_summary_uses_total_planned_cap():
     assert "OVER_CAP" not in text
 
 
+def test_auto_budget_summary_uses_dynamic_task_caps():
+    lines = _format_strategy_totals(
+        strategy_names=["budgetflow_value_aware_tight"],
+        resolved_by_strategy={"budgetflow_value_aware_tight": [True, True, False]},
+        task_cost_by_strategy={"budgetflow_value_aware_tight": [0.05, 0.20, 0.10]},
+        batch_spent_by_strategy={"budgetflow_value_aware_tight": 0.35},
+        turns_by_strategy={"budgetflow_value_aware_tight": [3, 10, 5]},
+        spark_by_strategy={"budgetflow_value_aware_tight": [0.0, 0.0, 0.0]},
+        flash_by_strategy={"budgetflow_value_aware_tight": [0.7, 0.7, 0.7]},
+        pro_by_strategy={"budgetflow_value_aware_tight": [0.3, 0.3, 0.3]},
+        failure_by_strategy={"budgetflow_value_aware_tight": {"pass": 2, "repair_fail": 1}},
+        batch_caps={"budgetflow_value_aware_tight": 1.507436646551724},
+        budget_modes={"budgetflow_value_aware_tight": "dynamic_task_caps"},
+    )
+
+    text = "\n".join(lines)
+    assert "per-task cap" in text
+    assert "1.51" in text
+    assert "100.00" not in text
+
+
 def test_per_task_cap_batch_footer_uses_per_task_cap_not_shared_cap(tmp_path):
     state = _CompareState(
         summary_lines=[],
@@ -318,3 +339,46 @@ def test_per_task_cap_batch_footer_uses_per_task_cap_not_shared_cap(tmp_path):
     text = summary_path.read_text()
     assert "per_task_cap=0.5000" in text
     assert "per_task_cap=100.00" not in text
+
+
+def test_dynamic_task_caps_batch_footer_uses_planned_remaining(tmp_path):
+    state = _CompareState(
+        summary_lines=[],
+        resolved_by_strategy={"budgetflow_value_aware_tight": [True, False]},
+        task_cost_by_strategy={"budgetflow_value_aware_tight": [0.2, 0.3]},
+        batch_spent_by_strategy={"budgetflow_value_aware_tight": 0.5},
+        turns_by_strategy={"budgetflow_value_aware_tight": [3, 7]},
+        spark_by_strategy={"budgetflow_value_aware_tight": [0.0, 0.0]},
+        flash_by_strategy={"budgetflow_value_aware_tight": [1.0, 1.0]},
+        pro_by_strategy={"budgetflow_value_aware_tight": [0.0, 0.0]},
+        failure_by_strategy={"budgetflow_value_aware_tight": {"pass": 1, "repair_fail": 1}},
+        resolved_value_by_strategy={},
+        task_value_by_strategy={},
+    )
+    summary_path = tmp_path / "summary.log"
+
+    _ingest_batch_footer(
+        state,
+        CompareStrategy("budgetflow_value_aware_tight", "budgetflow_value_aware", "tight"),
+        [
+            {"harness_resolved": True, "batch_available": 0.3},
+            {"harness_resolved": False, "batch_available": 0.7},
+        ],
+        batch_spent=0.5,
+        batch_cap=100.0,
+        strategy_names=["budgetflow_value_aware_tight"],
+        batch_caps={"budgetflow_value_aware_tight": 1.5},
+        budget_modes={"budgetflow_value_aware_tight": "dynamic_task_caps"},
+        summary_path=summary_path,
+        started=0.0,
+        out_path=tmp_path / "out.jsonl",
+        total_runs=2,
+        tasks_per_strategy=2,
+        io_lock=threading.Lock(),
+        global_progress=GlobalRunProgress(2),
+    )
+
+    text = summary_path.read_text()
+    assert "planned_cap=1.50" in text
+    assert "batch_spent=0.5000 batch_avail=1.00" in text
+    assert "batch_avail=0.7000" not in text

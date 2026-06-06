@@ -652,7 +652,7 @@ def _format_strategy_totals(
     batch_caps: dict[str, float | None],
     budget_modes: dict[str, str] | None = None,
 ) -> list[str]:
-    has_per_task = any(mode == "per_task_cap" for mode in (budget_modes or {}).values())
+    has_per_task = any(mode in {"per_task_cap", "dynamic_task_caps"} for mode in (budget_modes or {}).values())
     cap_label = "planned_cap" if has_per_task else "batch_cap"
     mode_label = "per-task cap" if has_per_task else "shared pool"
     lines = [f"=== BATCH RESOLVED + COST BY STRATEGY (governor units, {mode_label}) ==="]
@@ -730,7 +730,8 @@ def _format_live_snapshot(
     lines.append(
         f"{'strategy':<28} {'done':>4} {'plan':>4} {'PASS':>5} {'FAIL':>5} {'rate':>6} "
         f"{'avg_cost':>8} {'avg_turn':>7} {'T1':>5} {'T2':>5} {'T3':>5} "
-        f"{'batch_spent':>11} {'planned_cap' if any(mode == 'per_task_cap' for mode in (budget_modes or {}).values()) else 'batch_cap':>10}"
+        f"{'batch_spent':>11} "
+        f"{'planned_cap' if any(mode in {'per_task_cap', 'dynamic_task_caps'} for mode in (budget_modes or {}).values()) else 'batch_cap':>10}"
     )
     lines.append("-" * 110)
     for name in strategy_names:
@@ -1313,16 +1314,21 @@ def _ingest_batch_footer(
         return
     with io_lock:
         mode = budget_modes.get(cfg.name, "shared")
-        cap_label = "per_task_cap" if mode == "per_task_cap" else "shared_cap"
-        display_cap = batch_caps.get(cfg.name) if mode == "per_task_cap" else batch_cap
+        cap_label = "planned_cap" if mode == "dynamic_task_caps" else "per_task_cap" if mode == "per_task_cap" else "shared_cap"
+        display_cap = batch_caps.get(cfg.name) if mode in {"per_task_cap", "dynamic_task_caps"} else batch_cap
         state.summary_lines.append(
             f"=== BATCH START strategy={cfg.name} {cap_label}={_fmt_usd(display_cap)} ==="
         )
         state.batch_spent_by_strategy[cfg.name] = batch_spent
+        batch_avail = (
+            max(0.0, float(display_cap or 0.0) - batch_spent)
+            if mode in {"per_task_cap", "dynamic_task_caps"} and display_cap is not None
+            else _governor_avail(batch_records)
+        )
         state.summary_lines.append(
             f"=== BATCH END strategy={cfg.name} resolved="
             f"{sum(1 for r in batch_records if r['harness_resolved'])}/{len(batch_records)} "
-            f"batch_spent={_fmt_usd(batch_spent)} batch_avail={_fmt_usd(_governor_avail(batch_records))} ==="
+            f"batch_spent={_fmt_usd(batch_spent)} batch_avail={_fmt_usd(batch_avail)} ==="
         )
         state.summary_lines.append("")
         _write_summary_file(
@@ -2258,17 +2264,27 @@ def main() -> None:
     if args.skip_completed and completed:
         print(f"{tag('resume', bold=False)} skip {len(completed)} completed (strategy,task) pairs", flush=True)
     checkpoint = CompareCheckpointStore(checkpoint_path, stem=out_stem, total_runs=total_runs)
-    use_per_task_cap = args.per_task_cap is not None and args.per_task_cap > 0
+    use_fixed_per_task_cap = args.per_task_cap is not None and args.per_task_cap > 0
+    use_dynamic_task_caps = auto_budget_task_caps is not None
+    planned_dynamic_cap = sum(auto_budget_task_caps.values()) if auto_budget_task_caps else None
     batch_caps: dict[str, float | None] = {
         s.name: (
             args.per_task_cap
-            if use_per_task_cap
+            if use_fixed_per_task_cap
+            else planned_dynamic_cap
+            if use_dynamic_task_caps and s.budget_tier is not None
             else None if s.budget_tier is None else budget_caps[s.budget_tier]
         )
         for s in strategies
     }
     budget_modes: dict[str, str] = {
-        s.name: "per_task_cap" if use_per_task_cap and s.budget_tier is not None else "shared"
+        s.name: (
+            "per_task_cap"
+            if use_fixed_per_task_cap and s.budget_tier is not None
+            else "dynamic_task_caps"
+            if use_dynamic_task_caps and s.budget_tier is not None
+            else "shared"
+        )
         for s in strategies
     }
 
