@@ -239,6 +239,9 @@ def classify_failure(record: dict[str, Any]) -> str:
     if _is_infra_exit(status):
         return "infra_fail"
 
+    if not record.get("patch_extracted") and reason.startswith("stagnation_"):
+        return "loc_fail"
+
     if not record.get("patch_extracted"):
         return "extract_fail"
 
@@ -268,6 +271,26 @@ def _is_conservation_lockout(record: dict[str, Any]) -> bool:
         return False
     if record.get("patch_extracted") or record.get("agent_gold_edited"):
         return False
+    traces = record.get("turn_traces") or []
+    if not isinstance(traces, list) or not traces:
+        return False
+    saw_lockout_reason = False
+    saw_t3_access = False
+    for trace in traces:
+        if not isinstance(trace, dict):
+            continue
+        if int(trace.get("backend_tier") or 0) >= 3 or str(trace.get("final_backend") or "") == "tier3":
+            saw_t3_access = True
+        reason_text = " ".join(
+            str(trace.get(key) or "")
+            for key in ("router_reason", "router_branch")
+        ).lower()
+        if "max_tier=2" in reason_text or "conservation" in reason_text or "lockout" in reason_text:
+            saw_lockout_reason = True
+    if saw_t3_access:
+        return False
+    if not saw_lockout_reason:
+        return False
     return True
 
 
@@ -296,6 +319,8 @@ def build_verdict(record: dict[str, Any]) -> dict[str, Any]:
         axis = "protocol_fail"
     elif _is_infra_exit(status) or _is_provider_unavailable(status, reason, errors):
         axis = "infra_fail"
+    elif not patch_extracted and reason.startswith("stagnation_"):
+        axis = "model_fail"
     elif not evidence.evidence_complete and not resolved:
         # Harness couldn't verify the result properly
         if not evidence.test_patch_ok or not evidence.fail_before_failed:

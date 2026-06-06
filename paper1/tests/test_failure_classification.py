@@ -176,6 +176,14 @@ def _bfc_lockout_record(**overrides):
         "patch_extracted": False,
         "agent_gold_edited": False,
         "forensic_summary": {"budget": {"exhausted": False, "spent": 0.03, "available": 0.31}},
+        "turn_traces": [
+            {
+                "backend_tier": 2,
+                "final_backend": "tier2",
+                "router_reason": "bf_cons_max_tier=2",
+                "router_branch": "budgetflow_conservative",
+            }
+        ],
         **overrides,
     }
 
@@ -201,7 +209,7 @@ def test_conservation_lockout_verdict_axis() -> None:
 def test_conservation_lockout_not_triggered_for_bo() -> None:
     rec = _bfc_lockout_record(routing="budget_only")
     assert _is_conservation_lockout(rec) is False
-    assert classify_failure(rec) == "extract_fail"
+    assert classify_failure(rec) == "loc_fail"
 
 
 def test_conservation_lockout_not_triggered_when_budget_exhausted() -> None:
@@ -231,3 +239,33 @@ def test_conservation_lockout_detected_for_bfv() -> None:
 def test_conservation_lockout_not_triggered_non_stagnation() -> None:
     rec = _bfc_lockout_record(exit_reason="format_error_no_tool_calls")
     assert _is_conservation_lockout(rec) is False
+
+
+def test_conservation_lockout_not_triggered_after_t3_access() -> None:
+    rec = _bfc_lockout_record(
+        turn_traces=[
+            {"backend_tier": 2, "final_backend": "tier2", "router_reason": "bf_cons_max_tier=2"},
+            {"backend_tier": 3, "final_backend": "tier3", "router_reason": "bf_cons_escalated_t3"},
+        ]
+    )
+
+    assert _is_conservation_lockout(rec) is False
+    assert classify_failure(rec) == "loc_fail"
+    verdict = build_verdict(rec)
+    assert verdict["verdict_axis"] == "model_fail"
+    assert verdict["failure_stage"] == "localization"
+    assert verdict["failure_subtype"] == "loc_model_fail"
+
+
+def test_stagnation_without_patch_is_localization_fail_not_extract_fail() -> None:
+    rec = {
+        "harness_resolved": False,
+        "exit_reason": "stagnation_no_progress",
+        "exit_status": "StagnationExit",
+        "routing": "budgetflow_value_aware",
+        "patch_extracted": False,
+        "agent_gold_edited": False,
+        "turn_traces": [{"backend_tier": 3, "final_backend": "tier3"}],
+    }
+
+    assert classify_failure(rec) == "loc_fail"
