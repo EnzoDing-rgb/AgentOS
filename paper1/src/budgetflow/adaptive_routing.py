@@ -64,7 +64,7 @@ class EvidenceRescueState:
 
     trigger_turns: int = 6
     window_turns: int = 3
-    stop_loss_turns: int = 10
+    stop_loss_turns: int = 6
     min_headroom_frac: float = 0.18
     rescue_tier: int = 3
     evidence_turns: int = 0

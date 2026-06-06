@@ -201,6 +201,12 @@ def test_equal_weight_uses_same_rescue_parameters_as_budgetflow_full() -> None:
     assert equal_weight.rescue_tier == current.rescue_tier
 
 
+def test_default_rescue_stop_loss_is_tight_after_gold_edit() -> None:
+    rescue = rescue_state_for_strategy("budgetflow_value_aware")
+
+    assert rescue.stop_loss_turns <= 6
+
+
 def test_legacy_auto_v2_alias_uses_equal_weight_rescue_parameters() -> None:
     current = rescue_state_for_strategy("budgetflow_full")
     legacy = rescue_state_for_strategy("budgetflow_auto_v2")
