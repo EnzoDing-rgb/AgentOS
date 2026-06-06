@@ -4,6 +4,16 @@
 
 ## 当前快照（2026-06-06）
 
+### 065 / Value-aware salvage gate and post-run infra fixes
+
+- **065_value_salvage_3x3 COMPLETE — fresh BFV salvage gate.** Same 3 tasks × 3 policies, `--jobs 3`, `--auto-budget`, cost about **$1.09**, 9/9 rows complete. JSONL checker: 0 suspicious pass, 0 no trace.
+- **Tier 1 mechanism signal:** On highest-value `sympy__sympy-16988` (value 0.329), BFV triggered value salvage (`task_value_multiplier=1.478`), patched `sympy/sets/sets.py`, and passed. BO and BFC both stopped with no patch. This supports value-aware stop/continue as a mechanism.
+- **Aggregate result is mixed/negative:** BO 2/3, $0.2180, RVPD 1.523; BFC 2/3, $0.3354, RVPD 0.990; BFV 2/3, $0.5332, RVPD 0.728. BFV resolves more value than BO/BFC but spends too much and fails Django 10924.
+- **Tier 2 not supported:** BFC does not beat BO on pass, cost, or RVPD. It passes Django but takes 25 turns versus BO's 8.
+- **Post-run infra fixes:** heartbeat writer race fixed (`10041ef`), concrete `out_stem` now becomes `run_series` for new artifacts (`10041ef`), and live summary strategy spend aggregation fixed (`65fb6a5`). Historical 065 JSONL is not edited; summary/heartbeat are forensic.
+- **No-paid gate after fixes:** `066_dryrun_identity_gate --auto-budget-dry-run` created no run artifacts and read high-confidence exact memory caps: 14774 $0.1000, 16988 $0.3547, Django 10924 $1.0000.
+- **Next direction:** run a fresh paid 3x3/3x5 only after schema/summary/heartbeat stay clean on the post-fix path. Main policy question: BFV needs better mid-high-value Django behavior, either through lower salvage threshold or better post-gold-edit repair quality.
+
 ### 064 / Anti-spin validation and classifier correction
 
 - **064_antispin_3x3 COMPLETE — fresh post anti-spin run.** Same 3 tasks × 3 policies, `--jobs 3`, `--auto-budget`, cost about **$0.74**, 9/9 rows complete.

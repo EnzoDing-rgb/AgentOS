@@ -4,6 +4,18 @@
 
 该 commit 就 commit，该 push 就 push。关键节点必须 commit，能同步远端就同步远端。
 
+### 065 / Value-Aware Salvage Takeaway
+
+0. **Value-aware salvage can work, but it is not a free lunch.** On `sympy__sympy-16988`, BFV used task value to override early stagnation, entered a bounded strong-model salvage window, patched, and passed while BO/BFC stopped with no patch. That is real Tier 1 mechanism evidence.
+
+1. **Aggregate RVPD still matters.** The same run shows BFV losing aggregate RVPD because it fails Django 10924 after spending 30 turns. A single high-value rescue is useful, but the policy must avoid turning every mid-high value task into an expensive repair-quality failure.
+
+2. **T2 remains unproven.** BFC stayed value-blind as intended, but in 065 it was more expensive than BO for the same pass count and resolved value. Do not use BFV's value-aware success to claim value-blind routing efficiency.
+
+3. **Summary logs are derived evidence, not primary evidence.** 065 JSONL/checker totals were correct, but the live summary table had a strategy-spend aggregation bug. Any metric used in prose should be recomputed from JSONL or checker, not copied blindly from summary text.
+
+4. **Run identity must be concrete.** If `--out-stem` is `065_value_salvage_3x3`, new rows and heartbeat must use that exact run identity. Generic `compare_3x3` run_series causes cross-run heartbeat overwrites and duplicate-analysis confusion.
+
 ### 064 / Anti-Spin Takeaway
 
 0. **Repair phase is not progress.** A read-only grep/sed inside an edit phase should not reset anti-spin counters. Stage classification and progress detection are different concepts.
