@@ -53,6 +53,7 @@ from budgetflow.budget_memory import BudgetMemory, BudgetEstimate as BudgetMemor
 from budgetflow.console_log import backend_tier_label, dim, format_run_verdict, status_fail, status_pass, tag  # noqa: E402
 from budgetflow.deepseek_backend import load_env_file  # noqa: E402
 from budgetflow.failure_classification import build_forensic_summary, build_verdict, classify_failure  # noqa: E402
+from budgetflow.experiment_observability import enrich_routing_observability  # noqa: E402
 from budgetflow.value_matrix import PROFILES  # noqa: E402
 from budgetflow.governor import BudgetGovernor, GovernorConfig  # noqa: E402
 from budgetflow.observability import (  # noqa: E402
@@ -69,6 +70,7 @@ from budgetflow.defaults import (  # noqa: E402
     active_w_i_profile_name,
 )
 from budgetflow.heartbeat import run_with_heartbeat  # noqa: E402
+from budgetflow.learning_context import load_policy_memory_context  # noqa: E402
 from budgetflow.ledger import WorkflowLedgerStore  # noqa: E402
 from budgetflow.lite_tasks import load_compare_easy_tasks, load_compare_medium_tasks, load_swebench_lite_tasks  # noqa: E402
 from budgetflow.local_harness import set_worktree_root  # noqa: E402
@@ -79,6 +81,7 @@ from budgetflow.run_guards import CompareRunGuards, set_active_guard  # noqa: E4
 from budgetflow.run_series import resolve_run_identity  # noqa: E402
 from budgetflow.run_trace import TraceConsoleLevel  # noqa: E402
 from budgetflow.runtime import check_cwd, get_runtime_root, is_nfs_or_banned, print_runtime_info, resolve_runtime_root, set_runtime_root  # noqa: E402
+from budgetflow.value_efficiency import ValueEfficiencyContext  # noqa: E402
 
 RUNS_DIR = REPO_ROOT / "data" / "runs"
 UNCAPPED_BUDGET = 1_000_000.0
@@ -280,20 +283,9 @@ def _run_one(
     from budgetflow.adapter.runner import run_mini_swe_task  # noqa: E402
 
     # Compute task_value and batch median for value-aware routing.
-    _task_value = 1.0
-    _median_task_value = 1.0
-    if _VALUE_LOOKUP is not None:
-        _task_value = float(_VALUE_LOOKUP.get(task.instance_id, 1.0))
-        all_values = [float(v) for v in _VALUE_LOOKUP.values()]
-        if all_values:
-            all_values.sort()
-            n = len(all_values)
-            if n % 2 == 0:
-                _median_task_value = (all_values[n // 2 - 1] + all_values[n // 2]) / 2.0
-            else:
-                _median_task_value = all_values[n // 2]
-            global _MEDIAN_TASK_VALUE
-            _MEDIAN_TASK_VALUE = _median_task_value
+    _sync_value_context_from_compat_globals()
+    _task_value, _ = _VALUE_CONTEXT.task_value(task.instance_id)
+    _median_task_value = _VALUE_CONTEXT.median_task_value
 
     result = run_mini_swe_task(
         task,
@@ -442,134 +434,48 @@ _VALUE_LOOKUP: dict | None = None
 _VALUE_PROFILE: str = "equal"
 _VALUE_MATRIX_PATH: str | None = None
 _MEDIAN_TASK_VALUE: float = 1.0
+_VALUE_CONTEXT = ValueEfficiencyContext()
+
+
+def _sync_value_context_from_compat_globals() -> None:
+    """Keep legacy ``_VALUE_*`` globals as compatibility inputs.
+
+    Older tests and a few debug paths still mutate these globals directly. The
+    new implementation lives in ``ValueEfficiencyContext``, so wrappers sync
+    before reading to avoid cross-test or resume contamination.
+    """
+    if (
+        _VALUE_CONTEXT.profile != _VALUE_PROFILE
+        or _VALUE_CONTEXT.matrix_path != _VALUE_MATRIX_PATH
+        or _VALUE_CONTEXT.lookup is not _VALUE_LOOKUP
+        or _VALUE_CONTEXT.median_task_value != _MEDIAN_TASK_VALUE
+    ):
+        _VALUE_CONTEXT.profile = _VALUE_PROFILE
+        _VALUE_CONTEXT.matrix_path = _VALUE_MATRIX_PATH
+        _VALUE_CONTEXT.lookup = _VALUE_LOOKUP
+        _VALUE_CONTEXT.median_task_value = _MEDIAN_TASK_VALUE
 
 
 def _init_value_observability(*, value_profile: str = "equal", value_matrix_path: str | None = None) -> None:
-    """Set global value observability config. Called once at startup.
-
-    Supports two artifact schemas:
-      - Current:  ``artifact["tasks"][instance_id]["values"][profile]`` (048+)
-      - Legacy:   ``artifact["matrix"][profile][instance_id]`` — each entry is a dict
-                   with a ``"value"`` key.
-    """
-    global _VALUE_LOOKUP, _VALUE_PROFILE, _VALUE_MATRIX_PATH
-    _VALUE_PROFILE = value_profile
-    _VALUE_MATRIX_PATH = value_matrix_path
-    _VALUE_LOOKUP = None
-    if value_matrix_path:
-        with open(value_matrix_path) as f:
-            artifact = json.loads(f.read())
-
-        # Current schema: tasks → instance_id → values → profile
-        tasks = artifact.get("tasks")
-        if isinstance(tasks, dict) and tasks:
-            lookup: dict[str, float] = {}
-            for instance_id, task_data in tasks.items():
-                if not isinstance(task_data, dict):
-                    continue
-                values = task_data.get("values")
-                if isinstance(values, dict) and value_profile in values:
-                    lookup[instance_id] = float(values[value_profile])
-            if lookup:
-                _VALUE_LOOKUP = lookup
-
-        # Legacy schema fallback: matrix → profile → instance_id → {value: ...}
-        if _VALUE_LOOKUP is None:
-            matrix = artifact.get("matrix", {})
-            profile_data = matrix.get(value_profile) if isinstance(matrix, dict) else None
-            if profile_data and isinstance(profile_data, dict):
-                _VALUE_LOOKUP = {
-                    task_id: entry.get("value", 1.0)
-                    for task_id, entry in profile_data.items()
-                    if isinstance(entry, dict)
-                }
-
-        if _VALUE_LOOKUP is None and value_profile != "equal":
-            print(
-                f"[value_observability] WARNING: profile '{value_profile}' not found "
-                f"in value matrix {value_matrix_path}",
-                flush=True,
-            )
-            # Caller must check _VALUE_LOOKUP after init and decide whether to fail.
+    """Set global value observability config. Called once at startup."""
+    global _VALUE_LOOKUP, _VALUE_PROFILE, _VALUE_MATRIX_PATH, _MEDIAN_TASK_VALUE
+    _VALUE_CONTEXT.init(value_profile=value_profile, value_matrix_path=value_matrix_path)
+    _VALUE_LOOKUP = _VALUE_CONTEXT.lookup
+    _VALUE_PROFILE = _VALUE_CONTEXT.profile
+    _VALUE_MATRIX_PATH = _VALUE_CONTEXT.matrix_path
+    _MEDIAN_TASK_VALUE = _VALUE_CONTEXT.median_task_value
 
 
 def _enrich_record_with_value(record: dict) -> dict:
     """Add value-aware observability fields to a run record. Mutates and returns."""
-    instance_id = record.get("instance_id", "")
-    resolved = bool(record.get("harness_resolved"))
-    task_cost = float(record.get("task_cost") or record.get("total_cost") or 0)
-
-    # Determine task value
-    task_value = 1.0
-    if _VALUE_LOOKUP is not None and instance_id in _VALUE_LOOKUP:
-        task_value = float(_VALUE_LOOKUP[instance_id])
-        value_source = "value_matrix"
-    elif _VALUE_PROFILE == "equal":
-        value_source = "default_equal"
-    else:
-        # Non-equal profile requested but task not found in matrix.
-        # This should not happen if the CLI validation passed — the matrix
-        # exists and has the profile. Missing task means the value matrix
-        # doesn't cover this task; fail-fast to force data quality.
-        raise SystemExit(
-            f"[value_observability] FATAL: instance_id='{instance_id}' not found "
-            f"in value matrix {_VALUE_MATRIX_PATH} for profile '{_VALUE_PROFILE}'. "
-            f"Either add this task to the matrix or use --value-profile=equal."
-        )
-
-    resolved_value = task_value if resolved else 0.0
-    resolved_value_per_dollar = resolved_value / task_cost if task_cost > 0 else 0.0
-
-    record["task_value_profile"] = _VALUE_PROFILE
-    record["task_value"] = task_value
-    record["resolved_value"] = resolved_value
-    record["value_source"] = value_source
-    record["value_matrix_artifact"] = _VALUE_MATRIX_PATH
-    record["resolved_value_per_dollar"] = round(resolved_value_per_dollar, 6)
-
-    # Value-aware routing observability
-    routing = str(record.get("routing", ""))
-    va_active = routing == "budgetflow_value_aware"
-    record["va_active"] = va_active
-    if va_active:
-        median = _MEDIAN_TASK_VALUE
-        if median == 1.0 and _VALUE_LOOKUP is not None:
-            all_vals = sorted(float(v) for v in _VALUE_LOOKUP.values())
-            if all_vals:
-                n = len(all_vals)
-                median = (all_vals[n // 2 - 1] + all_vals[n // 2]) / 2.0 if n % 2 == 0 else all_vals[n // 2]
-        raw = task_value / max(0.001, median) if median > 0 else 1.0
-        record["task_value_multiplier"] = round(max(0.5, min(2.0, raw)), 4)
-    else:
-        record["task_value_multiplier"] = None
-
-    # Budget source: always present for downstream analysis
-    if record.get("auto_budget_enabled"):
-        record["budget_source"] = "auto_budget"
-    elif record.get("budget_memory_enabled"):
-        record["budget_source"] = "budget_memory"
-    else:
-        record["budget_source"] = "frozen_caps"
-
-    return record
+    _sync_value_context_from_compat_globals()
+    return _VALUE_CONTEXT.enrich_record(record)
 
 
 def _value_summary_for_strategy(records: list[dict]) -> dict:
     """Compute value-aware summary metrics for a list of run records."""
-    resolved_count = sum(1 for r in records if r.get("harness_resolved"))
-    total_cost = sum(float(r.get("task_cost") or r.get("total_cost") or 0) for r in records)
-    resolved_value = sum(float(r.get("resolved_value") or 0) for r in records)
-    total_task_value = sum(float(r.get("task_value") or 1.0) for r in records)
-    rvpd = resolved_value / total_cost if total_cost > 0 else 0.0
-    return {
-        "resolved_count": resolved_count,
-        "total_cost": round(total_cost, 6),
-        "resolved_value": round(resolved_value, 6),
-        "total_task_value": round(total_task_value, 6),
-        "resolved_value_per_dollar": round(rvpd, 6),
-        "value_profile": _VALUE_PROFILE,
-        "value_source": _VALUE_MATRIX_PATH or "default_equal",
-    }
+    _sync_value_context_from_compat_globals()
+    return _VALUE_CONTEXT.summary_for_strategy(records)
 
 
 def _print_run_done(record: dict, *, done: int, total: int, strategy: str) -> None:
@@ -1214,6 +1120,7 @@ def _persist_task_record(
 
         # Value observability enrichment (Phase R)
         _enrich_record_with_value(record)
+        enrich_routing_observability(record)
 
         handle.write(json.dumps(record, ensure_ascii=False) + "\n")
         handle.flush()
@@ -2040,26 +1947,6 @@ def main() -> None:
         if args.per_task_cap is None:
             args.per_task_cap = -1.0  # Sentinel: per-task with varying caps.
 
-    # ── AutoBudget dry-run: compute learned caps and exit before provider/run files ──
-    if args.auto_budget_dry_run:
-        print("=== AutoBudget dry-run (Value-Driven Budget Allocation) ===", flush=True)
-        print(f"memory={memory_path}", flush=True)
-        print(f"records={len(auto_budget_memory.records) if auto_budget_memory is not None else 0}", flush=True)
-        print(
-            f"  {'task':<40} {'source':<20} {'est_cost':>10} {'cap':>10} "
-            f"{'confidence':<10} {'neighbors':>9}",
-            flush=True,
-        )
-        print(f"  {'-'*105}", flush=True)
-        for task in tasks:
-            est = auto_budget_estimates[task.instance_id]
-            print(
-                f"  {task.instance_id:<40} {est.source:<20} {_fmt_usd(est.estimated_cost):>10} "
-                f"{_fmt_usd(est.cap):>10} {est.confidence:<10} {est.memory_neighbors:>9}",
-                flush=True,
-            )
-        sys.exit(0)
-
     # ── BudgetMemory dry-run: load, compute estimates, print comparison, exit ──
     # Must run BEFORE provider signature check — no API calls, no run files.
     if args.budget_memory_dry_run:
@@ -2172,6 +2059,54 @@ def main() -> None:
             f"Summary: underbudget={under_count} overbudget={over_count} ok={ok_count} "
             f"not_comparable={not_comp} tasks={len(tasks)} auto_budget={auto_cap_available}"
         )
+        sys.exit(0)
+
+    # ── AutoBudget dry-run: learned cap + routing-memory gate, no API calls or run files ──
+    if args.auto_budget_dry_run:
+        policy_ctx = load_policy_memory_context(
+            runs_dir=RUNS_DIR,
+            repo_root=REPO_ROOT,
+            explicit_path=args.policy_memory,
+            resume=False,
+            resume_path=None,
+            disable=args.disable_policy_memory,
+            regret_threshold=args.regret_threshold,
+        )
+        if policy_ctx.enabled and policy_ctx.memory is not None and policy_ctx.source is not None:
+            print(
+                f"{tag('policy_memory', bold=True)} loaded from {policy_ctx.source} "
+                f"source={policy_ctx.source_kind} records={policy_ctx.memory._record_count} "
+                f"repos={len(policy_ctx.memory._repo_priors)} tasks={len(policy_ctx.memory._task_priors)} "
+                f"threshold={policy_ctx.memory.regret_threshold}",
+                flush=True,
+            )
+        else:
+            print(
+                f"{tag('policy_memory', bold=False)} disabled — {policy_ctx.reason or 'no usable run JSONL source found'}",
+                flush=True,
+            )
+
+        print("=== AutoBudget dry-run (Value-Driven Budget Allocation) ===", flush=True)
+        print(f"memory={memory_path}", flush=True)
+        print(f"records={len(auto_budget_memory.records) if auto_budget_memory is not None else 0}", flush=True)
+        print(
+            f"policy_memory={'on' if policy_ctx.memory is not None else 'off'}"
+            + (f" source={policy_ctx.source}" if policy_ctx.source else ""),
+            flush=True,
+        )
+        print(
+            f"  {'task':<40} {'source':<20} {'est_cost':>10} {'cap':>10} "
+            f"{'confidence':<10} {'neighbors':>9}",
+            flush=True,
+        )
+        print(f"  {'-'*105}", flush=True)
+        for task in tasks:
+            est = auto_budget_estimates[task.instance_id]
+            print(
+                f"  {task.instance_id:<40} {est.source:<20} {_fmt_usd(est.estimated_cost):>10} "
+                f"{_fmt_usd(est.cap):>10} {est.confidence:<10} {est.memory_neighbors:>9}",
+                flush=True,
+            )
         sys.exit(0)
 
     # ── Provider signature check (AFTER dry-run/gate-only to avoid API calls) ──
@@ -2330,34 +2265,26 @@ def main() -> None:
     print(f"{dim('FORCE_COLOR=1 if piping to tee/nohup for ANSI colors')}", flush=True)
 
     # ── PolicyMemory ────────────────────────────────────────────────────
-    policy_memory: PolicyMemory | None = None
-    policy_memory_enabled = not args.disable_policy_memory
-    policy_memory_source = ""
-    regret_threshold = args.regret_threshold  # None means use default from defaults.py
-    if policy_memory_enabled and args.policy_memory:
-        pm_path = Path(args.policy_memory)
-        if not pm_path.is_absolute():
-            pm_path = REPO_ROOT / pm_path
-        if pm_path.is_file():
-            policy_memory = PolicyMemory(regret_threshold=regret_threshold)
-            policy_memory.rebuild_from_jsonl(pm_path)
-            policy_memory_source = str(pm_path)
-            print(f"{tag('policy_memory', bold=True)} loaded from {policy_memory_source} "
-                  f"records={policy_memory._record_count} "
-                  f"repos={len(policy_memory._repo_priors)} "
-                  f"tasks={len(policy_memory._task_priors)} "
-                  f"threshold={policy_memory.regret_threshold}")
-        else:
-            print(f"{tag('policy_memory', bold=True)} WARNING: file not found: {pm_path}")
-    elif policy_memory_enabled and args.resume and out_path.is_file():
-        policy_memory = PolicyMemory(regret_threshold=regret_threshold)
-        policy_memory.rebuild_from_jsonl(out_path)
-        policy_memory_source = str(out_path)
-        print(f"{tag('policy_memory', bold=True)} loaded from resume output {policy_memory_source} "
-              f"records={policy_memory._record_count}")
-    elif policy_memory_enabled:
-        print(f"{tag('policy_memory', bold=False)} disabled — no --policy-memory path given")
-        policy_memory_enabled = False
+    policy_ctx = load_policy_memory_context(
+        runs_dir=RUNS_DIR,
+        repo_root=REPO_ROOT,
+        explicit_path=args.policy_memory,
+        resume=args.resume,
+        resume_path=out_path,
+        disable=args.disable_policy_memory,
+        regret_threshold=args.regret_threshold,
+        exclude=out_path,
+    )
+    policy_memory = policy_ctx.memory
+    if policy_ctx.enabled and policy_memory is not None and policy_ctx.source is not None:
+        print(f"{tag('policy_memory', bold=True)} loaded from {policy_ctx.source} "
+              f"source={policy_ctx.source_kind} "
+              f"records={policy_memory._record_count} "
+              f"repos={len(policy_memory._repo_priors)} "
+              f"tasks={len(policy_memory._task_priors)} "
+              f"threshold={policy_memory.regret_threshold}")
+    else:
+        print(f"{tag('policy_memory', bold=False)} disabled — {policy_ctx.reason or 'no usable run JSONL source found'}")
 
     adaptive_registry = AdaptiveRoutingRegistry(policy_memory=policy_memory)
     if args.append and out_path.is_file():

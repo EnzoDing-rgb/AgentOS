@@ -116,12 +116,13 @@ BudgetFlow now uses a two-level claim ladder.
 | Claim | Meaning | Status |
 |---|---|---|
 | First claim / North Star | Value-driven token efficiency: under a shared hard budget, complete the highest verified task value per dollar. | Primary paper direction. |
-| Second claim / mechanism | Workflow-stage and progress-aware routing can also beat dummy, budget-only, or market routing policies on per-step/per-task cost efficiency. | Still valuable, but must be empirically verified rather than assumed. |
+| Second claim / mechanism | Workflow-stage and progress-aware routing explains how the system reduces waste under fixed or equal task value. It is a mechanism ablation inside the Tier 1 objective, not a separate North Star. | Valuable as an ablation and related-work bridge, but subordinate to Tier 1. |
 
 Evidence discipline:
 
 - A Tier 1 result requires non-equal task values from an explicit value source. If a run falls back to `value_i=1`, it can only support Tier 2 or instrumentation claims.
-- A Tier 2 result can be shown with equal values, but it should be reported as routing/cost evidence rather than value-allocation evidence.
+- A Tier 2 result can be shown with equal values, but it should be reported as routing/cost evidence rather than value-allocation evidence. Equal-value Tier 2 is the special case of Tier 1 where all task values are constant.
+- Do not optimize Tier 2 in a way that sacrifices Tier 1. Pure routing/cost savings are useful only when they preserve or improve value-weighted outcomes.
 - Task value is a proxy. The current cold-start direction is model success rarity / solve rarity: tasks solved by fewer capable models or policies receive higher value. The long-term system should learn value, difficulty, model success probability, progress quality, and cost online from verified outcomes.
 
 Strategy discipline:
@@ -129,6 +130,7 @@ Strategy discipline:
 - Preserve a value-blind mechanism strategy for Tier 2. Current name: `budgetflow_conservative`. It should test whether budget-pressure and progress-aware routing reduce waste without using task value.
 - Add a separate value-aware strategy for Tier 1. Working name: `budgetflow_value_aware`. It should multiply task-wise value into routing, escalation, and stop/continue decisions. Task value belongs to the whole workflow, not to a single stage.
 - Keep baseline names explicit. `budget_only_tight` is a smart budget-pressure baseline, not a dumb cost-only baseline. `budget_only_t2_tight` is the true cheapest-tier baseline and is useful as an ablation, but the main comparison should include the stronger budget baseline.
+- With continual learning, BudgetFlow should not remain weaker than `budget_only_tight` indefinitely. In the worst case, learned routing can imitate the stronger baseline's successful behavior. If BFC or BFV repeatedly underperform BO on the same task families, treat it as a runtime, observability, learning, or heuristic bug before treating it as evidence against the paper.
 
 The canonical near-term comparison should therefore separate the claims:
 
@@ -140,7 +142,15 @@ The canonical near-term comparison should therefore separate the claims:
 
 `budget_only_t2_tight` remains useful as a true dummy / cheapest-tier control, but it should not be the only baseline because it is weaker than the routing baselines a reviewer will expect.
 
-The second claim should not be used as the only foundation of the paper. It has real downsides, including tier-switching overhead and possible KV / prefix-cache loss. If experiments show that the stage/progress formula does not beat simpler routing, BudgetFlow should still be framed as a value-aware shared budget governor that can plug in a better allocator or learned policy. If both claims hold, the paper becomes stronger: BudgetFlow improves value allocation at the portfolio level and cost efficiency inside individual workflows.
+The second claim should not be used as the only foundation of the paper. It has real downsides, including tier-switching overhead and possible KV / prefix-cache loss. If experiments show that the hand-written stage/progress formula does not beat simpler routing before learning, that does not invalidate BudgetFlow. It means the pure routing heuristic is insufficient by itself. The paper should frame Tier 2 as a mechanism study: it preserves valuable data, connects to related work on routing and budgeted inference, and highlights why Tier 1 needs task-wise value and continual learning.
+
+The optimization hierarchy is:
+
+```text
+primary objective: maximize value-weighted verified outcomes per dollar
+mechanism objective: reduce routing waste when value is fixed or controlled
+debug invariant: learned BudgetFlow should be able to imitate a stronger baseline when its own heuristic is worse
+```
 
 Paper objective:
 

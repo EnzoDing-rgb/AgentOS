@@ -60,16 +60,24 @@ Canonical term for the old "Automatic Budgeting" system. It estimates task budge
 
 Two modes:
 - **Cold start:** embedded historical priors + task feature buckets.
-- **Continual learning:** append every normal verified outcome to `auto_budget_memory.jsonl`, then use exact-task / same-task / repo-kNN estimates when `--auto-budget` is enabled.
+- **Continual learning:** append every normal verified outcome to cap/value-cost memory, then use exact-task / same-task / repo-kNN estimates when `--auto-budget` is enabled.
 
 Current state: the memory writer is on by default for normal runs unless `--no-auto-budget-learn` is passed. Applying learned caps remains opt-in via `--auto-budget` or `--budget-memory`, so evidence collection and budget policy changes are decoupled.
+
+### continual-learning stores
+BudgetFlow has two distinct memory stores.
+
+- `auto_budget_memory.jsonl` is cap/value-cost memory. It can estimate task caps and cap sufficiency. It must not be used as routing memory.
+- Run JSONL files are routing memory. They contain policy, backend picks, turn traces, failure axis, and verified outcome, so `PolicyMemory` can learn routing priors.
+
+New runs should load routing memory through `learning_context.py`, not by ad hoc file scans in the runner. A dry-run gate should show both sources separately: cap memory path and routing policy-memory source.
 
 ## Current Decisions
 
 - Main development branch is `main`; `feature/issue-1` has been merged.
 - AutoResearch / Auto-reset coordinator exists and is useful for infra loops, but it is paused as a paper-iteration engine. Codex remains the reviewer/front-end for owner decisions.
 - Tier 1 is the paper compass: maximize verified resolved value per dollar under a shared hard budget.
-- Tier 2 is a mechanism claim: route stages/models more efficiently than simpler baselines.
+- Tier 2 is an equal-value mechanism ablation inside Tier 1, not a separate North Star. It is useful for related work and debugging routing waste, but it must not be optimized in a way that sacrifices Tier 1 value-weighted outcomes.
 - Current P0 for experiments: non-equal value profiles must fail fast when the value matrix/profile/task lookup misses. Silent fallback to equal values corrupts Tier 1 evidence.
 - Use "Value-Driven Budget Allocation" in new docs and paper text. Treat "Automatic Budgeting" / `auto_budget` as legacy implementation names, not the research concept.
 

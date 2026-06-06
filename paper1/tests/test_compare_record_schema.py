@@ -1,3 +1,4 @@
+import json
 import threading
 from types import SimpleNamespace
 
@@ -139,6 +140,75 @@ def test_persist_task_record_writes_learning_memory_for_normal_run(tmp_path):
     assert learned[0]["f2p_count"] == 1
     assert learned[0]["run_series"] == "061_schema_test"
     assert learned[0]["run_id"] == "061_schema_test_budget_only_tight_sympy__sympy-14774"
+
+
+def test_persist_task_record_writes_value_and_routing_schema(tmp_path):
+    state = _CompareState(
+        summary_lines=[],
+        resolved_by_strategy={},
+        task_cost_by_strategy={},
+        batch_spent_by_strategy={},
+        turns_by_strategy={},
+        spark_by_strategy={},
+        flash_by_strategy={},
+        pro_by_strategy={},
+        failure_by_strategy={},
+        resolved_value_by_strategy={},
+        task_value_by_strategy={},
+    )
+    record = {
+        "instance_id": "sympy__sympy-14774",
+        "strategy": "budgetflow_value_aware_tight",
+        "routing": "budgetflow_value_aware",
+        "harness_resolved": True,
+        "patch_extracted": True,
+        "agent_gold_edited": True,
+        "agent_gold_files": ["sympy/printing/latex.py"],
+        "llm_turns": 2,
+        "turns": 2,
+        "task_cost": 0.25,
+        "total_cost": 0.25,
+        "batch_spent": 0.25,
+        "backend_picks": ["tier2", "tier3"],
+        "failure_class": "pass",
+        "forensic_summary": {"primary_axis": "pass"},
+        "detail": "test_patch=ok; fail_before=fail; model_patch=ok; fail_after=pass; pass_to_pass=pass",
+        "task_features": {"patch_lines": 12, "f2p_count": 1, "p2p_count": 114, "problem_length": 500},
+        "routing_prior_summary": {
+            "learned_action": "early_rescue",
+            "policy_memory_source": "data/runs/066_postfix_3x3.jsonl",
+        },
+        "run_series": "067_schema_test",
+        "attempt_id": "067_schema_test_budgetflow_value_aware_tight_sympy__sympy-14774",
+    }
+    out_path = tmp_path / "out.jsonl"
+    with out_path.open("w") as handle:
+        _persist_task_record(
+            state,
+            record,
+            handle=handle,
+            io_lock=threading.Lock(),
+            total_runs=1,
+            tasks_per_strategy=1,
+            global_progress=GlobalRunProgress(1),
+            scoreboard=None,
+            summary_path=tmp_path / "summary.log",
+            strategy_names=["budgetflow_value_aware_tight"],
+            batch_caps={"budgetflow_value_aware_tight": 0.5},
+            budget_modes={"budgetflow_value_aware_tight": "per_task_cap"},
+            started=0.0,
+            out_path=out_path,
+        )
+
+    persisted = json.loads(out_path.read_text().splitlines()[0])
+    assert persisted["value_objective"] == "t2_equal_value_ablation"
+    assert persisted["task_value"] == 1.0
+    assert persisted["resolved_value_per_dollar"] == 4.0
+    assert persisted["routing_objective"] == "t2_equal_value_ablation"
+    assert persisted["routing_policy_family"] == "bfv_equal_value_ablation"
+    assert persisted["routing_learned_action"] == "early_rescue"
+    assert persisted["routing_policy_memory_source"].endswith("066_postfix_3x3.jsonl")
+    assert persisted["routing_decision_schema"] == "v1"
 
 
 def test_persist_task_record_accumulates_strategy_spend_for_live_summary(tmp_path):

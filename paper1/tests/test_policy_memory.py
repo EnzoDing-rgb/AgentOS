@@ -432,14 +432,14 @@ def test_rescue_cap_t3_shortens_window() -> None:
     pm.rebuild_from_records(records)
     rescue = rescue_state_for_strategy("budgetflow_full", pm, "repo__task-c0")
     assert rescue.window_turns < 3  # default is 3, cap_t3 reduces by 1 → 2
-    assert rescue.stop_loss_turns < 10  # default is 10, cap_t3 reduces by 3 → 7
+    assert rescue.stop_loss_turns < 6  # default is 6, cap_t3 tightens further
 
 
 def test_rescue_no_policy_memory_returns_default() -> None:
     rescue = rescue_state_for_strategy("budgetflow_full", None, None)
     assert rescue.trigger_turns == 6
     assert rescue.window_turns == 3
-    assert rescue.stop_loss_turns == 10
+    assert rescue.stop_loss_turns == 6
 
 
 # ── AdaptiveRoutingState with PolicyMemory ──────────────────────────────────
@@ -720,6 +720,26 @@ def _gate_cli_cmd(*extra_args: str) -> list[str]:
         "--policy-memory-gate-only",
         *extra_args,
     ]
+
+
+def test_auto_budget_dry_run_loads_default_policy_memory_source() -> None:
+    result = subprocess.run(
+        [
+            sys.executable, "-m", "budgetflow.run_mini_swe_compare",
+            "--ids", "sympy__sympy-14774",
+            "--strategies", "budgetflow_value_aware_tight",
+            "--auto-budget",
+            "--auto-budget-dry-run",
+            "--auto-budget-memory", "data/runs/auto_budget_memory.jsonl",
+        ],
+        capture_output=True, text=True,
+        cwd=str(ROOT),
+        env={**dict(__import__("os").environ), "PYTHONPATH": f"{ROOT/'src'}:{ROOT/'..'/'external'/'mini-swe-agent'/'src'}"},
+    )
+    assert result.returncode == 0, f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    assert "[policy_memory] loaded from" in result.stdout
+    policy_line = next(line for line in result.stdout.splitlines() if "policy_memory=on source=" in line)
+    assert "auto_budget_memory.jsonl" not in policy_line
 
 
 def test_gate_only_without_policy_memory_exits_1() -> None:

@@ -1,0 +1,55 @@
+from budgetflow.experiment_observability import enrich_routing_observability
+
+
+def test_routing_observability_marks_bfv_as_t1_family() -> None:
+    record = {
+        "routing": "budgetflow_value_aware",
+        "value_objective": "t1_value_efficiency",
+        "routing_prior_summary": {
+            "learned_action": "early_rescue",
+            "policy_memory_source": "data/runs/066.jsonl",
+        },
+    }
+
+    enrich_routing_observability(record)
+
+    assert record["routing_objective"] == "t1_value_efficiency"
+    assert record["routing_policy_family"] == "bfv_t1_value_aware"
+    assert record["routing_learned_action"] == "early_rescue"
+    assert record["routing_policy_memory_source"] == "data/runs/066.jsonl"
+    assert record["routing_decision_schema"] == "v1"
+
+
+def test_routing_observability_marks_bfc_as_mechanism_ablation() -> None:
+    record = {
+        "routing": "budgetflow_conservative",
+        "task_value_profile": "equal",
+    }
+
+    enrich_routing_observability(record)
+
+    assert record["routing_objective"] == "t2_equal_value_ablation"
+    assert record["routing_policy_family"] == "bfc_t2_mechanism"
+    assert record["routing_learned_action"] == "none"
+    assert record["routing_imitation_active"] is False
+
+
+def test_routing_observability_marks_equal_value_bfv_as_ablation() -> None:
+    record = {
+        "routing": "budgetflow_value_aware",
+        "task_value_profile": "equal",
+    }
+
+    enrich_routing_observability(record)
+
+    assert record["routing_objective"] == "t2_equal_value_ablation"
+    assert record["routing_policy_family"] == "bfv_equal_value_ablation"
+
+
+def test_routing_observability_marks_bo_as_baseline() -> None:
+    record = {"routing": "budget_only", "task_value_profile": "difficulty"}
+
+    enrich_routing_observability(record)
+
+    assert record["routing_objective"] == "t1_value_efficiency"
+    assert record["routing_policy_family"] == "bo_baseline"
