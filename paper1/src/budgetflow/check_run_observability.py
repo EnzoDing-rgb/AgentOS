@@ -140,6 +140,33 @@ def _check_observability_schema(records: list[dict]) -> list[str]:
     return issues
 
 
+def _routing_memory_source(record: dict) -> str:
+    """Return the standard routing-memory source, with legacy fallback."""
+    source = record.get("routing_policy_memory_source")
+    if source:
+        return str(source)
+    prior = record.get("routing_prior_summary") or {}
+    if isinstance(prior, dict):
+        return str(prior.get("policy_memory_source") or "")
+    return ""
+
+
+def _routing_prior_task_seen(record: dict) -> int:
+    prior = record.get("routing_prior_summary") or {}
+    if not isinstance(prior, dict):
+        return 0
+    return int(prior.get("task_seen", 0) or 0)
+
+
+def _routing_memory_used(record: dict) -> bool:
+    """Use the standardized row schema first, then legacy run fields."""
+    if record.get("routing_policy_memory_source"):
+        return True
+    if record.get("routing_learned_action") not in (None, "", "none", "default"):
+        return True
+    return bool(record.get("policy_memory_enabled"))
+
+
 def _check_harness_trust(records: list[dict]) -> tuple[list[str], dict[str, int], dict[str, int], dict[str, int]]:
     """Audit harness trust across all records.
 
@@ -390,20 +417,17 @@ def build_compact_audit(records: list[dict]) -> dict:
     # Invoice accuracy: check if at least one record has provider actual cost
     invoice_accurate = any(_has_invoice_accurate_cost(r) for r in records)
 
-    # PolicyMemory detection from records
-    policy_memory_used = any(r.get("policy_memory_enabled") for r in records)
+    # PolicyMemory detection from standardized records, with legacy fallback.
+    policy_memory_used = any(_routing_memory_used(r) for r in records)
     policy_memory_source = ""
     prior_records = 0
     if policy_memory_used:
         for r in records:
-            prior = r.get("routing_prior_summary") or {}
-            if prior.get("policy_memory_source"):
-                policy_memory_source = prior["policy_memory_source"]
+            source = _routing_memory_source(r)
+            if source:
+                policy_memory_source = source
                 break
-        prior_records = int(max(
-            (r.get("routing_prior_summary") or {}).get("task_seen", 0)
-            for r in records if r.get("routing_prior_summary")
-        ) or 0)
+        prior_records = int(max((_routing_prior_task_seen(r) for r in records), default=0) or 0)
 
     # StagnationExit PASS rate
     stag_pass = sum(

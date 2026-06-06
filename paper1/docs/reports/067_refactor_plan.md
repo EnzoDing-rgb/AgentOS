@@ -93,11 +93,12 @@ Status: implemented and no-paid verified.
 - Added `value_efficiency.py` so T1/T2 value semantics are centralized outside the runner.
 - Added `experiment_observability.py` so persisted rows expose routing objective, policy family, memory source, learned action, imitation fields, and schema version.
 - Fixed a schema bug caught during review: `budgetflow_value_aware` under `value_profile=equal` is now labeled `bfv_equal_value_ablation`, not `bfv_t1_value_aware`.
+- Updated the compact checker to consume standardized `routing_policy_memory_source` / `routing_learned_action` first, while keeping legacy `routing_prior_summary` fallback for old artifacts.
 - No paid experiment was run in this phase.
 
 Verification:
 
-- `166 passed, 8 skipped` focused tests.
+- `183 passed, 8 skipped` focused tests.
 - `py_compile` passed for the touched runtime modules.
 - `git diff --check` passed.
 - `--auto-budget-dry-run` loaded cap memory from `data/runs/auto_budget_memory.jsonl` and routing memory from `data/runs/066_postfix_3x3.jsonl`, with no provider preflight.

@@ -1438,3 +1438,40 @@ class TestCompactAudit:
         assert audit["policy_memory_used"] is True
         assert "postfix_017" in audit.get("policy_memory_source", "")
         assert audit.get("prior_records", 0) >= 1
+
+    def test_compact_audit_prefers_standard_policy_memory_source_field(self):
+        """New schema should not require legacy routing_prior_summary."""
+        from budgetflow.check_run_observability import build_compact_audit
+        records = [
+            self._make_record(
+                strategy="bfv",
+                routing_policy_memory_source="data/runs/066_postfix_3x3.jsonl",
+                routing_learned_action="early_rescue",
+            )
+        ]
+
+        audit = build_compact_audit(records)
+
+        assert audit["policy_memory_used"] is True
+        assert audit["policy_memory_source"] == "data/runs/066_postfix_3x3.jsonl"
+        assert audit["prior_records"] == 0
+
+    def test_compact_audit_keeps_legacy_policy_memory_source_fallback(self):
+        """Old artifacts remain readable without editing historical JSONL."""
+        from budgetflow.check_run_observability import build_compact_audit
+        records = [
+            self._make_record(
+                strategy="bfv",
+                policy_memory_enabled=True,
+                routing_prior_summary={
+                    "task_seen": 4,
+                    "policy_memory_source": "data/runs/legacy.jsonl",
+                },
+            )
+        ]
+
+        audit = build_compact_audit(records)
+
+        assert audit["policy_memory_used"] is True
+        assert audit["policy_memory_source"] == "data/runs/legacy.jsonl"
+        assert audit["prior_records"] == 4

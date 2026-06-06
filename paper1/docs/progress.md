@@ -9,9 +9,9 @@
 - **067 COMPLETE — no-paid core refactor.** No historical JSONL was edited and no paid experiment was run.
 - **Architecture change:** `learning_context.py` now separates cap/value-cost memory (`auto_budget_memory.jsonl`) from routing memory (run JSONL with routing traces). Auto-budget dry-run shows both sources separately.
 - **Value semantics change:** `value_efficiency.py` owns T1/T2 value fields and treats T2 as the equal-value special case of T1, not a competing North Star.
-- **Routing observability change:** `experiment_observability.py` adds persisted row fields for routing objective, policy family, policy-memory source, learned action, imitation fields, and schema version.
+- **Routing observability change:** `experiment_observability.py` adds persisted row fields for routing objective, policy family, policy-memory source, learned action, imitation fields, and schema version. The compact checker now reads these standard fields first, with legacy fallback for old JSONL.
 - **Bug fixed during review:** BFV under `value_profile=equal` is now labeled `bfv_equal_value_ablation`, not `bfv_t1_value_aware`; equal-value runs cannot be mislabeled as Tier 1 value-allocation evidence.
-- **No-paid gate:** focused suite `167 passed, 8 skipped`; py_compile and `git diff --check` pass. `--auto-budget-dry-run` loads cap memory from `data/runs/auto_budget_memory.jsonl` and routing memory from `data/runs/066_postfix_3x3.jsonl` without provider preflight.
+- **No-paid gate:** focused suite `183 passed, 8 skipped`; py_compile and `git diff --check` pass. `--auto-budget-dry-run` loads cap memory from `data/runs/auto_budget_memory.jsonl` and routing memory from `data/runs/066_postfix_3x3.jsonl` without provider preflight.
 - **Evidence status:** `066_postfix_3x3.jsonl` remains forensic/pre-refactor evidence only (`policy_memory_used=False`, incomplete invoice trace). It can seed routing memory, but it should not be used as a post-refactor claim result.
 - **Residual risk:** `run_mini_swe_compare.py` still keeps `_VALUE_*` compatibility globals around `ValueEfficiencyContext`. This is acceptable for this phase but should be removed after old tests/callers migrate.
 
