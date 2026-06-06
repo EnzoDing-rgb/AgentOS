@@ -4,6 +4,20 @@
 
 该 commit 就 commit，该 push 就 push。关键节点必须 commit，能同步远端就同步远端。
 
+### Phase Z / Debugging & Validation Loop Takeaway
+
+0. **BFC conservation lockout on high-value tasks is now a 3× reproduced pattern.** sympy-16988 (value=0.329) fails at 7 turns, ~$0.03 in 055_3x3_v2, 055_3x5_v2, and 056_5x1_v1. Conservation factor progressively blocks T3 as shared budget depletes. Value-blind routing that saves budget on the wrong task is a systematic flaw, not noise.
+
+1. **BFV 5/5 in medium validation confirms the pattern holds at scale.** The value multiplier gradient (0.50→0.71→1.48) correctly allocates T3 share (14%→24%→47%) and budget ($0.06→$0.21→$0.27) across the value range. No experiment has yet contradicted BFV > BFC > BO on resolved value per dollar.
+
+2. **Shared-budget experiments have a systemic starvation problem.** When budget exhausts before reaching later tasks, higher task_order_index tasks never execute. Per-task caps eliminate this artifact. For experiments with non-trivial task counts (5+), prefer `--per-task-cap` over shared `--tight`/`--loose`.
+
+3. **Automated checker warnings catch what manual report review misses.** The 5 new Phase Z checks (CROSS_SERIES_DUPLICATE, PARTIAL_RUN, SHARED_CAP_STARVATION, VALUE_FALLBACK, SEQUENTIAL_POLICY) automated the manual audit findings from 055. These should run on every experiment before report writing.
+
+4. **GPT-5.4 provider stalls happen.** On sympy-20212, a single T3 repair call hung for 121s+ without returning. The process needed a manual kill. Consider per-call timeouts or provider retry logic for large experiments.
+
+5. **BO is the weakest baseline and the most expensive to run.** BO consistently underperforms BFC and BFV on both resolution rate and RVPD. For larger experiments, consider dropping BO in favor of BFC + BFV + equal-weight ablation to conserve budget.
+
 ### Phase Y / BudgetFlowValueAware Takeaway
 
 0. **BFV resolves the highest-value task that BO and BFC both fail.** The value_multiplier (1.48 for value=0.329) counterbalances the conservation factor, allowing T3 access when value justifies it. Without value awareness, BFC's conservation locks out T3 and the task stagnates after $0.028.

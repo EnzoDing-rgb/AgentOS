@@ -290,6 +290,8 @@ def _run_one(
                 _median_task_value = (all_values[n // 2 - 1] + all_values[n // 2]) / 2.0
             else:
                 _median_task_value = all_values[n // 2]
+            global _MEDIAN_TASK_VALUE
+            _MEDIAN_TASK_VALUE = _median_task_value
 
     result = run_mini_swe_task(
         task,
@@ -427,6 +429,7 @@ def _run_one(
 _VALUE_LOOKUP: dict | None = None
 _VALUE_PROFILE: str = "equal"
 _VALUE_MATRIX_PATH: str | None = None
+_MEDIAN_TASK_VALUE: float = 1.0
 
 
 def _init_value_observability(*, value_profile: str = "equal", value_matrix_path: str | None = None) -> None:
@@ -511,6 +514,22 @@ def _enrich_record_with_value(record: dict) -> dict:
     record["value_source"] = value_source
     record["value_matrix_artifact"] = _VALUE_MATRIX_PATH
     record["resolved_value_per_dollar"] = round(resolved_value_per_dollar, 6)
+
+    # Value-aware routing observability
+    routing = str(record.get("routing", ""))
+    va_active = routing == "budgetflow_value_aware"
+    record["va_active"] = va_active
+    if va_active:
+        median = _MEDIAN_TASK_VALUE
+        if median == 1.0 and _VALUE_LOOKUP is not None:
+            all_vals = sorted(float(v) for v in _VALUE_LOOKUP.values())
+            if all_vals:
+                n = len(all_vals)
+                median = (all_vals[n // 2 - 1] + all_vals[n // 2]) / 2.0 if n % 2 == 0 else all_vals[n // 2]
+        raw = task_value / max(0.001, median) if median > 0 else 1.0
+        record["task_value_multiplier"] = round(max(0.5, min(2.0, raw)), 4)
+    else:
+        record["task_value_multiplier"] = None
 
     # Budget source: always present for downstream analysis
     if record.get("auto_budget_enabled"):

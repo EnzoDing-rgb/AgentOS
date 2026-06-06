@@ -218,6 +218,9 @@ def classify_failure(record: dict[str, Any]) -> str:
     if _is_budget_exit(status, reason):
         return "budget_fail"
 
+    if _is_conservation_lockout(record):
+        return "budget_fail"
+
     if _is_infra_exit(status):
         return "infra_fail"
 
@@ -228,6 +231,29 @@ def classify_failure(record: dict[str, Any]) -> str:
         return "loc_fail"
 
     return "repair_fail"
+
+
+def _is_conservation_lockout(record: dict[str, Any]) -> bool:
+    """Detect when stagnation exit is caused by conservation factor blocking T3.
+
+    Signals: stagnation exit + budget not exhausted + conservation strategy +
+    no patch extracted. When the conservation factor (1.0 + max(0, pressure-0.3)*1.5)
+    blocks T3 access, the agent stagnates at lower tiers — but the root cause
+    is budget policy, not model behavior.
+    """
+    reason = str(record.get("exit_reason") or "")
+    if not reason.startswith("stagnation_"):
+        return False
+    routing = str(record.get("routing") or "")
+    if "conservative" not in routing and "value_aware" not in routing:
+        return False
+    forensic = record.get("forensic_summary") or {}
+    budget = forensic.get("budget") or {}
+    if budget.get("exhausted"):
+        return False
+    if record.get("patch_extracted") or record.get("agent_gold_edited"):
+        return False
+    return True
 
 
 def build_verdict(record: dict[str, Any]) -> dict[str, Any]:
@@ -248,6 +274,8 @@ def build_verdict(record: dict[str, Any]) -> dict[str, Any]:
     if resolved:
         axis = "pass"
     elif _is_budget_exit(status, reason):
+        axis = "budget_fail"
+    elif _is_conservation_lockout(record):
         axis = "budget_fail"
     elif _is_provider_unavailable(status, reason, errors):
         axis = "routing_fail"
@@ -341,6 +369,7 @@ def classify_failure_subtype(
 
     Returns one of:
       pass, budget_exhausted_after_progress, budget_exhausted_no_progress,
+      conservation_lockout,
       loc_model_fail, repair_model_fail, validation_model_fail,
       extraction_protocol_fail, harness_incomplete,
       provider_or_parser_error, unknown
@@ -354,6 +383,8 @@ def classify_failure_subtype(
         return "pass"
 
     if axis == "budget_fail":
+        if _is_conservation_lockout(record):
+            return "conservation_lockout"
         has_progress = bool(record.get("patch_extracted")) or bool(record.get("agent_gold_edited"))
         return "budget_exhausted_after_progress" if has_progress else "budget_exhausted_no_progress"
 

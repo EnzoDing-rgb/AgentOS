@@ -1,27 +1,11 @@
 from __future__ import annotations
 
-import importlib.util
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[1]
-MODULE = ROOT / "src" / "budgetflow" / "failure_classification.py"
-
-
-def _module():
-    spec = importlib.util.spec_from_file_location("failure_classification_for_test", MODULE)
-    assert spec is not None
-    assert spec.loader is not None
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
-def classify_failure(record: dict) -> str:
-    return _module().classify_failure(record)
-
-
-def build_forensic_summary(record: dict) -> dict:
-    return _module().build_forensic_summary(record)
+from budgetflow.failure_classification import (
+    _is_conservation_lockout,
+    build_forensic_summary,
+    build_verdict,
+    classify_failure,
+)
 
 
 def test_classify_pass() -> None:
@@ -142,3 +126,71 @@ def test_forensic_summary_budget_after_patch() -> None:
     assert summary["patch"]["source"] == "worktree"
     assert summary["harness"]["fail_after"] == "fail"
     assert "budget_exhausted" in summary["failure_chain"]
+
+
+# ── Phase AA: Conservation lockout tests ──────────────────────────────────────
+
+def _bfc_lockout_record(**overrides):
+    return {
+        "harness_resolved": False,
+        "exit_reason": "stagnation_repeat_command",
+        "exit_status": "StagnationExit",
+        "routing": "budgetflow_conservative",
+        "patch_extracted": False,
+        "agent_gold_edited": False,
+        "forensic_summary": {"budget": {"exhausted": False, "spent": 0.03, "available": 0.31}},
+        **overrides,
+    }
+
+
+def test_conservation_lockout_detected() -> None:
+    rec = _bfc_lockout_record()
+    assert _is_conservation_lockout(rec) is True
+
+
+def test_conservation_lockout_classify_as_budget_fail() -> None:
+    rec = _bfc_lockout_record()
+    assert classify_failure(rec) == "budget_fail"
+
+
+def test_conservation_lockout_verdict_axis() -> None:
+    rec = _bfc_lockout_record()
+    v = build_verdict(rec)
+    assert v["verdict_axis"] == "budget_fail"
+    assert v["failure_owner"] == "budget"
+    assert v["failure_subtype"] == "conservation_lockout"
+
+
+def test_conservation_lockout_not_triggered_for_bo() -> None:
+    rec = _bfc_lockout_record(routing="budget_only")
+    assert _is_conservation_lockout(rec) is False
+    assert classify_failure(rec) == "extract_fail"
+
+
+def test_conservation_lockout_not_triggered_when_budget_exhausted() -> None:
+    rec = _bfc_lockout_record(
+        forensic_summary={"budget": {"exhausted": True, "spent": 1.0, "available": 0.0}},
+    )
+    assert _is_conservation_lockout(rec) is False
+
+
+def test_conservation_lockout_not_triggered_when_patch_extracted() -> None:
+    rec = _bfc_lockout_record(patch_extracted=True)
+    assert _is_conservation_lockout(rec) is False
+
+
+def test_conservation_lockout_not_triggered_for_pass() -> None:
+    rec = _bfc_lockout_record(harness_resolved=True, patch_extracted=True, agent_gold_edited=True)
+    assert _is_conservation_lockout(rec) is False
+    assert classify_failure(rec) == "pass"
+
+
+def test_conservation_lockout_detected_for_bfv() -> None:
+    rec = _bfc_lockout_record(routing="budgetflow_value_aware")
+    assert _is_conservation_lockout(rec) is True
+    assert classify_failure(rec) == "budget_fail"
+
+
+def test_conservation_lockout_not_triggered_non_stagnation() -> None:
+    rec = _bfc_lockout_record(exit_reason="format_error_no_tool_calls")
+    assert _is_conservation_lockout(rec) is False

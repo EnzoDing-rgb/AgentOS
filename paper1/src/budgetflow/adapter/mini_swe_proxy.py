@@ -86,7 +86,12 @@ def _is_provider_unavailable(exc: Exception) -> bool:
     status_code = getattr(exc, "status_code", None)
     if status_code in {404, 503}:
         return True
-    text = f"{type(exc).__name__} {exc}".lower()
+    exc_name = type(exc).__name__
+    if exc_name in ("APITimeoutError", "Timeout", "APIConnectionError", "APIStatusError"):
+        return True
+    text = f"{exc_name} {exc}".lower()
+    if "timeout" in text or "timed out" in text or "connection" in text:
+        return True
     return any(marker in text for marker in _PROVIDER_UNAVAILABLE_MARKERS)
 
 
@@ -997,6 +1002,7 @@ class BudgetFlowLitellmModel:
                 return litellm.completion(
                     model=model_name,
                     messages=prepared,
+                    timeout=300,
                     **({} if text_mode else {"tools": [BASH_TOOL]}),
                     **kwargs_merged,
                 )

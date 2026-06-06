@@ -4,6 +4,20 @@
 
 ## 当前快照（2026-06-06）
 
+### 056 后 Phase Z 状态
+
+- **Phase Z IN PROGRESS — Debugging & validation loop for BFV**
+- **当前定位不是 paper-level 结论。** Phase Z 的目标是修 inference、value observability、checker/evaluator、BudgetFlow runtime 的系统性 bug；小实验只作为 gate，跑稳后再扩大，不把单轮 worker summary 升级成论文结论。
+- **决策纪律：worker recommendation 只作为输入材料。** 下一步方向由主 Agent / reviewer 基于 JSONL、checkpoint、summary log、checker 和 trace 独立判断；报告中的建议不能自动成为路线。
+- **BFV 5/5 resolves all 5 tasks** in medium validation (056_5x1_v1). Only strategy to achieve full resolution.
+- **BFC conservation lockout on high-value tasks REPRODUCED 3x**: sympy-16988 (value=0.329) fails at 7 turns across 055_3x3_v2, 055_3x5_v2, 056_5x1_v1. Conservation factor progressively locks out T3 as shared budget depletes.
+- **BO hung on sympy-20212**: GPT-5.4 call stalled (121s/step, 1000+ seconds), never returned. Killed process. Missing 2 rows (20212, 16988).
+- **Phase Z checker**: 5 new automated warnings + 16 regression tests in `test_phase_z_checker.py`
+- **Value multiplier gradient confirmed**: 0.50 → 0.71 → 1.48 drives T3 share (14% → 24% → 47%)
+- **Total cost Phase Z**: $1.61 (056_5x1_v1, 13/15 rows). Running total ~$10.75.
+- **Remaining Phase Z cap**: $13.39 of $15.00
+- **Commit**: TBD
+
 ### 055 后 Phase Y 状态
 
 - **Phase Y COMPLETE — BudgetFlowValueAware (BFV) implemented and validated**

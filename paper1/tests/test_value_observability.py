@@ -203,3 +203,87 @@ class TestNoSecretLeak:
             assert "key" not in str(r["value_matrix_artifact"]).lower()
         finally:
             Path(tmp).unlink()
+
+
+class TestVaActiveAndMultiplier:
+    """Phase AA: va_active and task_value_multiplier must be in top-level records."""
+
+    def test_va_active_true_for_bfv_routing(self):
+        _init_value_observability(value_profile="equal")
+        r = _enrich_record_with_value({
+            "instance_id": "x", "harness_resolved": True, "task_cost": 0.5,
+            "routing": "budgetflow_value_aware",
+        })
+        assert r["va_active"] is True
+        assert "task_value_multiplier" in r
+
+    def test_va_active_false_for_bfc_routing(self):
+        _init_value_observability(value_profile="equal")
+        r = _enrich_record_with_value({
+            "instance_id": "x", "harness_resolved": True, "task_cost": 0.5,
+            "routing": "budgetflow_conservative",
+        })
+        assert r["va_active"] is False
+        assert r["task_value_multiplier"] is None
+
+    def test_va_active_false_for_bo_routing(self):
+        _init_value_observability(value_profile="equal")
+        r = _enrich_record_with_value({
+            "instance_id": "x", "harness_resolved": True, "task_cost": 0.5,
+            "routing": "budget_only",
+        })
+        assert r["va_active"] is False
+        assert r["task_value_multiplier"] is None
+
+    def test_multiplier_clamped_low_with_matrix(self):
+        artifact = {"tasks": {"low": {"values": {"difficulty": 0.05}},
+                             "mid": {"values": {"difficulty": 0.30}}}}
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(artifact, f)
+            tmp = f.name
+        try:
+            _init_value_observability(value_profile="difficulty", value_matrix_path=tmp)
+            r = _enrich_record_with_value({
+                "instance_id": "low", "harness_resolved": True, "task_cost": 0.1,
+                "routing": "budgetflow_value_aware",
+            })
+            # median = (0.05+0.30)/2 = 0.175, raw = 0.05/0.175 = 0.286 → clamp to 0.5
+            assert r["va_active"] is True
+            assert r["task_value_multiplier"] == 0.5
+        finally:
+            Path(tmp).unlink()
+
+    def test_multiplier_clamped_high_with_matrix(self):
+        artifact = {"tasks": {"low": {"values": {"difficulty": 0.05}},
+                             "high": {"values": {"difficulty": 0.80}}}}
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(artifact, f)
+            tmp = f.name
+        try:
+            _init_value_observability(value_profile="difficulty", value_matrix_path=tmp)
+            r = _enrich_record_with_value({
+                "instance_id": "high", "harness_resolved": True, "task_cost": 0.1,
+                "routing": "budgetflow_value_aware",
+            })
+            # median = (0.05+0.80)/2 = 0.425, raw = 0.80/0.425 = 1.882 → clamp to 1.882
+            assert r["va_active"] is True
+            assert abs(r["task_value_multiplier"] - 1.8824) < 0.01
+        finally:
+            Path(tmp).unlink()
+
+    def test_multiplier_rounds_to_4_decimals(self):
+        artifact = {"tasks": {"a": {"values": {"d": 0.1}}, "b": {"values": {"d": 0.2}},
+                             "c": {"values": {"d": 0.3}}}}
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(artifact, f)
+            tmp = f.name
+        try:
+            _init_value_observability(value_profile="d", value_matrix_path=tmp)
+            r = _enrich_record_with_value({
+                "instance_id": "c", "harness_resolved": True, "task_cost": 0.1,
+                "routing": "budgetflow_value_aware",
+            })
+            # median=0.2, raw=0.3/0.2=1.5
+            assert r["task_value_multiplier"] == 1.5
+        finally:
+            Path(tmp).unlink()
