@@ -266,6 +266,8 @@ def _run_one(
     budget_memory_source_paths: str = "",
     run_series: str = "",
     policy_lane: str = "",
+    budget_mode: str = "shared",
+    per_task_cap: float | None = None,
 ) -> dict:
     started = time.time()
     workspace_key = _workspace_key(cfg, task.instance_id)
@@ -337,6 +339,7 @@ def _run_one(
         "total_cost": result.total_cost,
         "backend_picks": list(result.backend_picks),
         "llm_turns": result.llm_turns,
+        "turns": result.llm_turns,
         "violations": list(result.violations),
         "detail": result.harness_detail,
         "agent_gold_edited": result.agent_gold_edited,
@@ -357,6 +360,8 @@ def _run_one(
         if enable_turn_trace and result.turn_traces else None,
         "run_series": run_series,
         "policy_lane": policy_lane,
+        "budget_mode": budget_mode,
+        "per_task_cap": per_task_cap,
         "task_order_index": task_index,
         "row_started_at": started,
         "row_finished_at": time.time(),
@@ -992,6 +997,8 @@ def _run_strategy_batch(
                 budget_memory_source_paths=budget_memory_source_paths,
                 run_series=run_series,
                 policy_lane=cfg.name,
+                budget_mode="per_task_cap" if task_cap is not None else "shared",
+                per_task_cap=task_cap,
             )
 
         try:

@@ -10,9 +10,11 @@
 - **3 bugs fixed**: (1) BFV missing from escalation/reserve allowlists, (2) HTTP timeout retry-loop → 50-min stalls, (3) BFC conservation lockout misclassification as protocol_fail
 - **25 regression tests added**, all passing. 0 regressions in existing suite.
 - **Validation experiment (058_5x1_v1)**: 15/15 rows, 3 strategies × 5 tasks, per-task cap $0.50, jobs=3
-- **All 3 strategies resolve 4/5 (80%)**. 16988 (hardest, value=0.329) fails across the board: BO=repair_fail, BFC/BFV=infra_fail (billing guard on dashscope T2)
-- **BFV lowest total cost on resolved tasks**: $0.698 vs BO $0.683 vs BFC $0.802 (BFV essentially tied with BO)
-- **Phase AB observability confirmed**: va_active/task_value_multiplier correct in all 15 rows, BFV escalation working, zero timeout retry loops
+- **Reviewer correction:** 058 is an engineering/evaluator signal, not Tier 1 evidence. All 3 strategies resolve the same 4/5 tasks, so resolved value is identical (0.3798). BFV has the best RVPD/cost among the 4 resolved tasks, but this is cost efficiency, not value allocation.
+- **16988 not evaluable in 058:** highest-value task (value=0.329) fails across the board. BFC/BFV hit provider/billing guard on dashscope T2; BO fails with repair/protocol behavior. This row cannot decide whether BFV rescues high-value tasks.
+- **Phase AB runtime signals partially confirmed**: va_active/task_value_multiplier correct in all 15 rows, BFV escalation working, zero timeout retry loops. Post-review replay now flags 058 as old-schema artifact: missing `turns` alias and explicit `budget_mode` on all 15 rows, plus 2 stale verdict fields.
+- **Post-review evaluator fixes:** compact audit now recomputes verdict fields from current classifier instead of trusting stale JSONL cache; per-task-cap budget exhaustion no longer triggers SHARED_CAP_STARVATION; new rows write `turns == llm_turns`, `budget_mode`, and `per_task_cap`.
+- **Official harness caveat:** all current BudgetFlow pass/fail numbers are local-harness results. Official SWE-bench Docker audit is still required before paper headline claims.
 - **Total cost Phase AB**: $2.34. Running total ~$17.50.
 - **Commit**: TBD
 

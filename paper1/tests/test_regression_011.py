@@ -1002,7 +1002,7 @@ class TestHeartbeatWriter:
         assert hb is not None
         assert hb["run_series"] == "test_series"
         assert hb["total_expected"] == 50
-        assert hb["status"] == "running"
+        assert hb["status"] == "preparing"
 
     def test_pulse_updates_fields(self, tmp_path):
         from budgetflow.observability import HeartbeatWriter, load_heartbeat
@@ -1260,9 +1260,24 @@ class TestCompactAudit:
     def test_compact_audit_failure_classes(self):
         from budgetflow.check_run_observability import build_compact_audit
         records = [
-            self._make_record(harness_resolved=False, failure_class="repair_fail"),
-            self._make_record(harness_resolved=False, failure_class="repair_fail"),
-            self._make_record(harness_resolved=False, failure_class="loc_fail"),
+            self._make_record(
+                harness_resolved=False,
+                patch_extracted=True,
+                agent_gold_edited=True,
+                detail="test_patch=ok; fail_before=fail; model_patch=ok; fail_after=fail",
+            ),
+            self._make_record(
+                harness_resolved=False,
+                patch_extracted=True,
+                agent_gold_edited=True,
+                detail="test_patch=ok; fail_before=fail; model_patch=ok; fail_after=fail",
+            ),
+            self._make_record(
+                harness_resolved=False,
+                patch_extracted=True,
+                agent_gold_edited=False,
+                detail="test_patch=ok; fail_before=fail; model_patch=ok; fail_after=fail",
+            ),
         ]
         audit = build_compact_audit(records)
         assert audit["fail_classes"]["repair_fail"] == 2

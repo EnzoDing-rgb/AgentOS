@@ -15,6 +15,7 @@ import time
 from collections import Counter
 from pathlib import Path
 
+from budgetflow.failure_classification import build_verdict, classify_failure
 from budgetflow.observability import (
     build_harness_trust,
     build_observability_status,
@@ -103,6 +104,32 @@ def _check_desired_fields(records: list[dict]) -> list[str]:
             inst = rec.get("instance_id", "?")
             strat = rec.get("strategy", "?")
             issues.append(f"DESIRED_FIELDS row {i}: {inst} {strat} — missing={missing}")
+    return issues
+
+
+def _check_observability_schema(records: list[dict]) -> list[str]:
+    """Warn when record schema can silently confuse downstream evaluation.
+
+    These are warnings for old artifacts, but new experiment rows should be
+    clean. Do not mutate historical JSONL; replay should reveal its limits.
+    """
+    issues: list[str] = []
+    for i, rec in enumerate(records):
+        inst = rec.get("instance_id", "?")
+        strat = rec.get("strategy", "?")
+        llm_turns = rec.get("llm_turns")
+        turns = rec.get("turns")
+        if llm_turns not in (None, "") and turns != llm_turns:
+            issues.append(
+                f"TURN_ALIAS_MISMATCH row {i}: {inst} {strat} — "
+                f"turns={turns!r} llm_turns={llm_turns!r}"
+            )
+        has_budget_cap = rec.get("batch_budget_cap") not in (None, "", 0, 0.0)
+        if has_budget_cap and not rec.get("budget_mode"):
+            issues.append(
+                f"BUDGET_MODE_MISSING row {i}: {inst} {strat} — "
+                "cannot distinguish shared-cap from per-task-cap semantics"
+            )
     return issues
 
 
@@ -269,6 +296,7 @@ def build_compact_audit(records: list[dict]) -> dict:
     resolved = sum(1 for r in records if r.get("harness_resolved"))
     failed = total - resolved
     total_cost = sum(float(r.get("total_cost") or 0) for r in records)
+    verdicts = {id(r): build_verdict(r) for r in records}
 
     suspicious = sum(
         1 for r in records
@@ -325,7 +353,7 @@ def build_compact_audit(records: list[dict]) -> dict:
 
     # Failure axis / class counts
     fail_classes = Counter(
-        str(r.get("failure_class") or "unknown")
+        classify_failure(r)
         for r in records if not r.get("harness_resolved")
     )
     fail_exits = Counter(
@@ -335,9 +363,22 @@ def build_compact_audit(records: list[dict]) -> dict:
 
     # Failure subtypes (020)
     fail_subtypes = Counter(
-        str(r.get("failure_subtype") or "unknown")
-        for r in records if not r.get("harness_resolved") and r.get("failure_subtype")
+        str(verdicts[id(r)].get("failure_subtype") or "unknown")
+        for r in records if not r.get("harness_resolved")
     )
+    stored_verdict_mismatches = 0
+    for r in records:
+        verdict = verdicts[id(r)]
+        for stored_key, recomputed_key in (
+            ("verdict_axis", "verdict_axis"),
+            ("failure_owner", "failure_owner"),
+            ("failure_stage", "failure_stage"),
+            ("failure_subtype", "failure_subtype"),
+        ):
+            stored = r.get(stored_key)
+            if stored not in (None, "") and str(stored) != str(verdict.get(recomputed_key)):
+                stored_verdict_mismatches += 1
+                break
 
     # Invoice accuracy: check if at least one record has provider actual cost
     invoice_accurate = any(_has_invoice_accurate_cost(r) for r in records)
@@ -367,8 +408,9 @@ def build_compact_audit(records: list[dict]) -> dict:
     owner_counts: dict[str, int] = {}
     axis_counts: dict[str, int] = {}
     for r in records:
-        owner = str(r.get("failure_owner") or "")
-        axis = str(r.get("verdict_axis") or "")
+        verdict = verdicts[id(r)]
+        owner = str(verdict.get("failure_owner") or "")
+        axis = str(verdict.get("verdict_axis") or "")
         if owner:
             owner_counts[owner] = owner_counts.get(owner, 0) + 1
         if axis:
@@ -411,6 +453,7 @@ def build_compact_audit(records: list[dict]) -> dict:
         "fail_classes": dict(fail_classes.most_common()),
         "fail_exits": dict(fail_exits.most_common()),
         "fail_subtypes": dict(fail_subtypes.most_common()),
+        "stored_verdict_mismatches": stored_verdict_mismatches,
         "invoice_accurate": invoice_accurate,
         "canonical_cost_available": total > 0,
         "policy_memory_used": policy_memory_used,
@@ -486,6 +529,11 @@ def format_compact_audit(audit: dict) -> str:
         lines.append("VERDICT AXES: " + " | ".join(
             f"{k}={v}" for k, v in sorted(audit["verdict_axes"].items())
         ))
+    if audit.get("stored_verdict_mismatches"):
+        lines.append(
+            f"STORED VERDICT MISMATCHES: {audit['stored_verdict_mismatches']} "
+            "(compact audit uses recomputed classifier output)"
+        )
 
     # Cost口径
     lines.append(banner)
@@ -594,6 +642,32 @@ def _check_partial_run(records: list[dict], runs_dir: Path | None = None) -> lis
     return issues
 
 
+def _is_per_task_budget_series(recs: list[dict]) -> bool:
+    if any(str(r.get("budget_mode") or "").startswith("per_task") for r in recs):
+        return True
+    if any(r.get("per_task_cap") not in (None, "", 0, 0.0) for r in recs):
+        return True
+
+    # Backward-compatible inference for older rows: in per-task mode each task
+    # row records an independent cap and batch_spent resets instead of
+    # accumulating across the policy lane.
+    by_strategy: dict[str, list[dict]] = {}
+    for rec in recs:
+        by_strategy.setdefault(str(rec.get("strategy") or ""), []).append(rec)
+    for strat_rows in by_strategy.values():
+        if len(strat_rows) < 2:
+            continue
+        caps = {float(r.get("batch_budget_cap") or 0.0) for r in strat_rows}
+        if len(caps) != 1 or next(iter(caps)) <= 0:
+            continue
+        spent = [float(r.get("batch_spent") or 0.0) for r in strat_rows]
+        if len(set(round(x, 8) for x in spent)) < len(spent):
+            return True
+        if any(later + 1e-9 < earlier for earlier, later in zip(spent, spent[1:])):
+            return True
+    return False
+
+
 def _check_shared_cap_starvation(records: list[dict]) -> list[str]:
     """(c) Detect shared-cap starvation: budget exhausted before all tasks ran.
 
@@ -608,7 +682,8 @@ def _check_shared_cap_starvation(records: list[dict]) -> list[str]:
         if not rs:
             continue
         if rs not in by_series:
-            by_series[rs] = {"ran": {}, "starved": []}
+            by_series[rs] = {"ran": {}, "rows": []}
+        by_series[rs]["rows"].append(rec)
         iid = str(rec.get("instance_id", ""))
         strat = str(rec.get("strategy", ""))
         tv = rec.get("task_value")
@@ -616,6 +691,8 @@ def _check_shared_cap_starvation(records: list[dict]) -> list[str]:
         key = (iid, strat)
         by_series[rs]["ran"][key] = {"value": tv, "exit": exit_reason}
     for rs, data in sorted(by_series.items()):
+        if _is_per_task_budget_series(data["rows"]):
+            continue
         starved = [
             f"{iid}/{strat} (exit={info['exit']})"
             for (iid, strat), info in data["ran"].items()
@@ -747,6 +824,7 @@ def check_jsonl(jsonl_path: Path, heartbeat_stale_s: float = 600.0) -> dict:
     all_issues.extend(_check_trace_coverage(records))
     all_issues.extend(_check_missing_fields(records))
     all_issues.extend(_check_desired_fields(records))
+    all_issues.extend(_check_observability_schema(records))
     all_issues.extend(_check_elapsed_sanity(records))
     ht_issues, ht_trust, ht_owner, ht_severity = _check_harness_trust(records)
     all_issues.extend(ht_issues)
@@ -871,6 +949,13 @@ def check_jsonl(jsonl_path: Path, heartbeat_stale_s: float = 600.0) -> dict:
             hb_statuses.append(f"{rs}: OK ({done}/{total} {status})")
         hb_summary = "; ".join(hb_statuses)
 
+    compact = build_compact_audit(records)
+    if compact.get("stored_verdict_mismatches"):
+        all_issues.append(
+            f"STALE_VERDICT_FIELDS: {compact['stored_verdict_mismatches']} rows have "
+            "stored verdict fields that differ from current classifier output"
+        )
+
     error_count = sum(1 for i in all_issues if i.startswith((
         "DUPLICATE", "SUSPICIOUS", "MISSING_FIELDS",
         "HEARTBEAT_DEAD_PID", "HEARTBEAT_STUCK",
@@ -878,8 +963,6 @@ def check_jsonl(jsonl_path: Path, heartbeat_stale_s: float = 600.0) -> dict:
         "VALUE_FALLBACK", "SEQUENTIAL_POLICY",
     )))
     warn_count = len(all_issues) - error_count
-
-    compact = build_compact_audit(records)
 
     return {
         "records": len(records),

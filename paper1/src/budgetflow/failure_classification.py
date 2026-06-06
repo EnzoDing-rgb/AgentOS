@@ -17,6 +17,10 @@ _INFRA_STATUSES = {
     "infra_error",
 }
 
+_PROTOCOL_STATUSES = {
+    "FormatError",
+}
+
 _PROVIDER_UNAVAILABLE = {
     "ServiceUnavailableError",
     "provider_all_unavailable",
@@ -52,7 +56,9 @@ def _is_budget_exit(status: str, reason: str) -> bool:
 
 def _is_infra_exit(status: str) -> bool:
     status_l = status.lower()
-    return status in _INFRA_STATUSES or "error" in status_l
+    if status in _PROTOCOL_STATUSES or "format" in status_l:
+        return False
+    return status in _INFRA_STATUSES or "apierror" in status_l or "provider" in status_l
 
 
 def _is_provider_unavailable(status: str, reason: str, errors: set[str]) -> bool:
@@ -70,6 +76,12 @@ def _is_provider_unavailable(status: str, reason: str, errors: set[str]) -> bool
             "503",
         )
     )
+
+
+def _is_protocol_error(status: str, reason: str) -> bool:
+    values = {status, reason}
+    lowered = " ".join(values).lower()
+    return status in _PROTOCOL_STATUSES or "format" in lowered
 
 
 def _parse_harness_detail(detail: str) -> dict[str, str]:
@@ -221,6 +233,9 @@ def classify_failure(record: dict[str, Any]) -> str:
     if _is_conservation_lockout(record):
         return "budget_fail"
 
+    if _is_protocol_error(status, reason) and not record.get("patch_extracted"):
+        return "extract_fail"
+
     if _is_infra_exit(status):
         return "infra_fail"
 
@@ -277,10 +292,10 @@ def build_verdict(record: dict[str, Any]) -> dict[str, Any]:
         axis = "budget_fail"
     elif _is_conservation_lockout(record):
         axis = "budget_fail"
-    elif _is_provider_unavailable(status, reason, errors):
-        axis = "routing_fail"
-    elif not patch_extracted and (errors or "format" in status.lower() or "format" in reason.lower()):
+    elif not patch_extracted and _is_protocol_error(status, reason):
         axis = "protocol_fail"
+    elif _is_infra_exit(status) or _is_provider_unavailable(status, reason, errors):
+        axis = "infra_fail"
     elif not evidence.evidence_complete and not resolved:
         # Harness couldn't verify the result properly
         if not evidence.test_patch_ok or not evidence.fail_before_failed:
@@ -317,6 +332,8 @@ def build_verdict(record: dict[str, Any]) -> dict[str, Any]:
     if axis == "pass":
         stage = "none"
     elif axis == "budget_fail":
+        stage = "runtime"
+    elif axis in ("infra_fail", "routing_fail"):
         stage = "runtime"
     elif axis == "protocol_fail":
         stage = "extraction"

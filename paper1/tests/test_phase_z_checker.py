@@ -5,7 +5,9 @@ import tempfile
 from pathlib import Path
 
 from budgetflow.check_run_observability import (
+    build_compact_audit,
     _check_cross_series_duplicates,
+    _check_observability_schema,
     _check_partial_run,
     _check_shared_cap_starvation,
     _check_value_profile_fallback,
@@ -122,6 +124,32 @@ class TestSharedCapStarvation:
         assert len(issues) == 1
         assert "t3/bfv" in issues[0]
 
+    def test_per_task_cap_budget_exhaustion_is_not_shared_starvation(self):
+        rows = [
+            _row(
+                "t1",
+                "bfv",
+                exit_reason="budget_exhausted",
+                budget_mode="per_task_cap",
+                per_task_cap=0.5,
+            ),
+            _row(
+                "t2",
+                "bfv",
+                exit_reason="submitted",
+                budget_mode="per_task_cap",
+                per_task_cap=0.5,
+            ),
+        ]
+        assert _check_shared_cap_starvation(rows) == []
+
+    def test_infers_per_task_cap_from_repeated_batch_spent_resets(self):
+        rows = [
+            _row("t1", "bfv", exit_reason="budget_exhausted", batch_budget_cap=0.5, batch_spent=0.5),
+            _row("t2", "bfv", exit_reason="budget_exhausted", batch_budget_cap=0.5, batch_spent=0.5),
+        ]
+        assert _check_shared_cap_starvation(rows) == []
+
 
 # ── (d) Value profile fallback detection ─────────────────────────────────────
 
@@ -173,6 +201,51 @@ class TestPolicyParallel:
             _row("t1", "bo", row_started_at=t),
         ]
         assert _check_policy_parallel(rows) == []
+
+
+class TestCompactAuditRecomputesVerdict:
+    def test_stale_billing_guard_verdict_is_recomputed(self):
+        rows = [
+            _row(
+                "sympy__sympy-16988",
+                "budgetflow_value_aware_tight",
+                harness_resolved=False,
+                exit_status="UpstreamExit",
+                exit_reason="billing_guard backend=tier2 sample=litellm.BadRequestError",
+                patch_extracted=False,
+                agent_gold_edited=False,
+                detail="no model patch extracted",
+                turn_trace_count=1,
+                turn_traces=[{"error_type": "BudgetFlowUpstreamError"}],
+                failure_class="infra_fail",
+                verdict_axis="protocol_fail",
+                failure_owner="protocol",
+                failure_subtype="extraction_protocol_fail",
+            )
+        ]
+
+        audit = build_compact_audit(rows)
+
+        assert audit["verdict_axes"] == {"infra_fail": 1}
+        assert audit["verdict_owners"] == {"infra": 1}
+        assert audit["fail_subtypes"] == {"provider_or_parser_error": 1}
+        assert audit["stored_verdict_mismatches"] == 1
+
+    def test_observability_schema_flags_missing_turns_alias_and_budget_mode(self):
+        rows = [
+            _row(
+                "sympy__sympy-16988",
+                "budgetflow_value_aware_tight",
+                llm_turns=9,
+                turns=None,
+                batch_budget_cap=0.5,
+            )
+        ]
+
+        issues = _check_observability_schema(rows)
+
+        assert any("TURN_ALIAS_MISMATCH" in issue for issue in issues)
+        assert any("BUDGET_MODE_MISSING" in issue for issue in issues)
 
     def test_flags_sequential_strategies(self):
         # bfv runs first (0-100), bfc runs later (200-300) → sequential

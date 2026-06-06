@@ -74,6 +74,43 @@ def test_forensic_summary_provider_unavailable_axis() -> None:
     assert "ServiceUnavailableError" in summary["failure_chain"]
 
 
+def test_billing_guard_verdict_is_infra_not_protocol() -> None:
+    record = {
+        "harness_resolved": False,
+        "patch_extracted": False,
+        "agent_gold_edited": False,
+        "exit_status": "UpstreamExit",
+        "exit_reason": "billing_guard backend=tier2 sample=litellm.BadRequestError: access denied",
+        "detail": "no model patch extracted",
+        "turn_trace_count": 1,
+        "turn_traces": [{"error_type": "BudgetFlowUpstreamError"}],
+    }
+
+    assert classify_failure(record) == "infra_fail"
+    verdict = build_verdict(record)
+    assert verdict["verdict_axis"] == "infra_fail"
+    assert verdict["failure_owner"] == "infra"
+    assert verdict["failure_subtype"] == "provider_or_parser_error"
+
+
+def test_format_error_verdict_is_protocol_not_infra() -> None:
+    record = {
+        "harness_resolved": False,
+        "patch_extracted": False,
+        "agent_gold_edited": False,
+        "exit_status": "FormatError",
+        "exit_reason": "format_error_no_tool_calls",
+        "detail": "no model patch extracted",
+        "turn_trace_count": 1,
+    }
+
+    assert classify_failure(record) == "extract_fail"
+    verdict = build_verdict(record)
+    assert verdict["verdict_axis"] == "protocol_fail"
+    assert verdict["failure_owner"] == "protocol"
+    assert verdict["failure_subtype"] == "extraction_protocol_fail"
+
+
 def test_classify_budget_fail_from_budget_exit_with_progress() -> None:
     assert (
         classify_failure(
