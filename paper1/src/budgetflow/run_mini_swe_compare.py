@@ -1679,6 +1679,12 @@ def main() -> None:
         help="enable Value-Driven Budget Allocation per-task cap estimation from historical prior",
     )
     parser.add_argument(
+        "--auto-budget-dry-run",
+        action="store_true",
+        default=False,
+        help="print Value-Driven Budget Allocation cap estimates and exit without provider calls or run files",
+    )
+    parser.add_argument(
         "--auto-budget-scale",
         type=float,
         default=1.5,
@@ -2005,7 +2011,7 @@ def main() -> None:
         auto_budget_memory = AutoBudgetMemory(memory_path if memory_path.is_file() else None)
         if auto_budget_memory._path is None:
             auto_budget_memory._path = memory_path
-    if args.auto_budget:
+    if args.auto_budget or args.auto_budget_dry_run:
         estimator = AutoBudgetEstimator(memory=auto_budget_memory, k=args.auto_budget_k)
         for task in tasks:
             est = estimator.estimate(
@@ -2026,6 +2032,26 @@ def main() -> None:
         # Value-Driven Budget Allocation implies per_task mode.
         if args.per_task_cap is None:
             args.per_task_cap = -1.0  # Sentinel: per-task with varying caps.
+
+    # ── AutoBudget dry-run: compute learned caps and exit before provider/run files ──
+    if args.auto_budget_dry_run:
+        print("=== AutoBudget dry-run (Value-Driven Budget Allocation) ===", flush=True)
+        print(f"memory={memory_path}", flush=True)
+        print(f"records={len(auto_budget_memory.records) if auto_budget_memory is not None else 0}", flush=True)
+        print(
+            f"  {'task':<40} {'source':<20} {'est_cost':>10} {'cap':>10} "
+            f"{'confidence':<10} {'neighbors':>9}",
+            flush=True,
+        )
+        print(f"  {'-'*105}", flush=True)
+        for task in tasks:
+            est = auto_budget_estimates[task.instance_id]
+            print(
+                f"  {task.instance_id:<40} {est.source:<20} {_fmt_usd(est.estimated_cost):>10} "
+                f"{_fmt_usd(est.cap):>10} {est.confidence:<10} {est.memory_neighbors:>9}",
+                flush=True,
+            )
+        sys.exit(0)
 
     # ── BudgetMemory dry-run: load, compute estimates, print comparison, exit ──
     # Must run BEFORE provider signature check — no API calls, no run files.

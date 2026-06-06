@@ -826,6 +826,79 @@ class TestDryRunOutputFields:
         assert "auto_budget" in output, f"expected auto_budget source in:\n{output}"
 
 
+class TestAutoBudgetDryRun:
+    def test_auto_budget_dry_run_no_provider_or_run_files(self, tmp_path, monkeypatch):
+        """Auto-budget dry-run audits learned caps without API calls or run files."""
+        import io
+        import sys as _sys
+        from unittest.mock import MagicMock
+
+        from budgetflow import provider_signature
+        from budgetflow.run_mini_swe_compare import main
+        import budgetflow.run_mini_swe_compare as rm
+
+        preflight_called = []
+
+        def _fake_check(backends):
+            preflight_called.append(True)
+            raise AssertionError("provider preflight must NOT be called during auto-budget dry-run")
+
+        monkeypatch.setattr(provider_signature, "check_required_signatures", _fake_check)
+
+        _fake_task = MagicMock()
+        _fake_task.instance_id = "sympy__sympy-99999"
+        _fake_task.repo = "sympy/sympy"
+        _fake_task.patch = "line1\nline2\n"
+        _fake_task.fail_to_pass = ("t1",)
+        _fake_task.pass_to_pass = ("p1",)
+        monkeypatch.setattr(rm, "load_compare_easy_tasks", lambda n: [_fake_task])
+        monkeypatch.setattr(rm, "load_compare_medium_tasks", lambda n: [_fake_task])
+        monkeypatch.setattr(rm, "load_swebench_lite_tasks", lambda instance_ids=None: [_fake_task])
+
+        runs_tmp = tmp_path / "runs"
+        runs_tmp.mkdir()
+        monkeypatch.setattr(rm, "RUNS_DIR", runs_tmp)
+
+        mem = tmp_path / "auto_budget_memory.jsonl"
+        mem.write_text(json.dumps({
+            "instance_id": "sympy__sympy-99999",
+            "repo": "sympy/sympy",
+            "total_cost": 0.20,
+            "cap_was_sufficient": "sufficient",
+            "resolved": True,
+            "patch_lines": 2,
+            "f2p_count": 1,
+            "p2p_count": 1,
+        }) + "\n")
+
+        before_files = set(str(p.relative_to(tmp_path)) for p in tmp_path.rglob("*") if p.is_file())
+        captured = io.StringIO()
+        monkeypatch.setattr(_sys, "stdout", captured)
+
+        _orig_argv = _sys.argv[:]
+        try:
+            _sys.argv = [
+                "run_mini_swe_compare",
+                "--auto-budget-dry-run",
+                "--auto-budget-memory", str(mem),
+                "--preset", "3x3",
+            ]
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+            assert exc_info.value.code == 0
+        finally:
+            _sys.argv = _orig_argv
+
+        output = captured.getvalue()
+        assert "AutoBudget dry-run" in output
+        assert "sympy__sympy-99999" in output
+        assert "memory_exact" in output
+        assert "neighbors" in output
+        assert not preflight_called
+        after_files = set(str(p.relative_to(tmp_path)) for p in tmp_path.rglob("*") if p.is_file())
+        assert after_files == before_files
+
+
 # ── P1.2: Trusted fallback audit section ─────────────────────────────────────
 
 
