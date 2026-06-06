@@ -238,6 +238,8 @@ class TestCompactAuditRecomputesVerdict:
                 "budgetflow_value_aware_tight",
                 llm_turns=9,
                 turns=None,
+                harness_resolved=True,
+                resolved=None,
                 batch_budget_cap=0.5,
             )
         ]
@@ -245,6 +247,7 @@ class TestCompactAuditRecomputesVerdict:
         issues = _check_observability_schema(rows)
 
         assert any("TURN_ALIAS_MISMATCH" in issue for issue in issues)
+        assert any("RESOLVED_ALIAS_MISMATCH" in issue for issue in issues)
         assert any("BUDGET_MODE_MISSING" in issue for issue in issues)
 
     def test_flags_sequential_strategies(self):

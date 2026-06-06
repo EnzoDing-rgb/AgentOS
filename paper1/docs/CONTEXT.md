@@ -19,6 +19,8 @@ AutoResearch is implemented as a semi-automatic coordinator, but it is currently
 ### current research discipline
 Treat JSONL, checker output, summary logs, and turn traces as facts. Treat Worker reports as ledgers that must be checked against artifacts. A small paid run can support Tier 2 routing behavior, but Tier 1 requires non-equal task values loaded from an explicit value source. If a non-equal value profile falls back to equal values, the run is invalid for Tier 1.
 
+Skills and sub-agents are tools, not governance. Use them when they reduce risk or remove mechanical work; do not mechanically invoke a framework when direct inspection is clearer. The invariant is evidence first: identify the root cause before changing runtime/evaluation behavior, and do not keep iterating paper claims on known-bad observability.
+
 ### tier contract
 A tier is a stable system identity (T1/T2/T3), not a specific model. T1 = cheapest, T3 = strongest. Each tier has a fixed cost per token, provider, and action protocol. Models behind tiers can change, but the contract stays the same. This means `all_pro` should always mean strongest tier, regardless of what model sits at T3.
 
@@ -84,4 +86,5 @@ These constraints apply to Codex prompts, Worker runs, and handoffs. They are pa
 - Historical JSONL is immutable evidence, not something to patch in place. If an old artifact has stale verdict fields, missing schema fields, wrong cost semantics, or unknown budget mode, mark it forensic-only and start a fresh `--out-stem` after the runtime fix.
 - Provider billing, authentication, model access, or signature-preflight failure is a front-end blocker. Stop, report the exact provider/backend/status/error to the owner, and wait for key/account repair or an explicitly approved provider substitution. Do not bypass preflight and then explain the resulting failures as model or routing behavior.
 - JSONL is the primary experiment artifact; summary logs are derived views. Summary display code must have tests for budget mode, cap semantics, value fields, and final/footer consistency. A checker-clean JSONL does not by itself validate summary prose.
+- New JSONL rows must expose compatibility aliases for common analysis fields: `resolved == harness_resolved` and `turns == llm_turns`. Missing or mismatched aliases are schema warnings for old artifacts and blockers for new evidence.
 - Dataset expansion is an infra audit before it is a paper-scale experiment. When adding a new SWE-bench repo/category, start with a small policy-parallel gate to expose harness/protocol/env issues, then scale only after schema, checker, and trace quality remain clean.

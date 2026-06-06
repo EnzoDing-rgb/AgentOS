@@ -18,6 +18,20 @@
 
 5. **Skills are tools, not governance.** Use skills only when they lower risk or reduce cognitive load. For BudgetFlow paper decisions, the main agent must still act like a reviewer-author: inspect evidence, identify root causes, and make the research judgment directly. Do not turn skill invocation into ritual.
 
+### 063 / Fragility and Schema Takeaway
+
+0. **Negative reruns are first-class evidence.** 062b reverses the 062 BFV win: BO 3/3, BFC 3/3, BFV 1/3. This does not kill the North Star, but it proves the current BFV runtime is not stable enough for larger experiments.
+
+1. **Continual learning makes reruns non-stationary unless memory is frozen.** Between 062 and 062b, learned cap estimates changed because the system now writes budget memory by default. That is the desired product loop, but reports must record cap source/confidence/neighbors and experiments that need exact repeatability must freeze or copy the memory file.
+
+2. **Schema aliases are not cosmetic.** If fresh JSONL lacks `resolved == harness_resolved`, downstream scripts can silently report `None` or false negatives. New runtime writes the alias; checker flags mismatches. Historical JSONL stays immutable and should be marked forensic-only when schema is weak.
+
+3. **BFV failure must be debugged as decision quality, not paper narrative.** On 062b, BFV value multipliers were active but high-value tasks still failed. The next debugging target is whether value-aware routing is overusing/underusing T3 at the wrong moment, whether repair patches are worse, and whether worktree fallback evaluates too late.
+
+4. **Patch audit beats metric speculation.** 062b BFV failures are not obvious local-harness false negatives: the Django patch calculates `path` but fails to use it and edits unrelated field classes. When a strategy loses, inspect the patch before blaming evaluation.
+
+5. **Do not scale unstable behavior.** A 3×5 or 3×8 run before resolving the 062/062b contradiction would mostly buy more noisy rows. The correct next paid run is another small policy-parallel gate after runtime/evaluation fixes.
+
 ### 062 / Auto-Budget Gate Takeaway
 
 0. **Weak evidence must not train budget allocation.** A 1-step smoke row with `cap_was_sufficient=not_enough_evidence` is observability, not a cost prior. Learned cap medians now include only `sufficient`, `likely_underbudget`, and `underbudget_or_model`.

@@ -66,6 +66,8 @@ def test_run_one_records_turns_alias(monkeypatch):
 
     assert record["llm_turns"] == 2
     assert record["turns"] == 2
+    assert record["harness_resolved"] is True
+    assert record["resolved"] is True
     assert record["task_features"]["patch_lines"] == 1
     assert record["task_features"]["f2p_count"] == 0
     assert record["task_features"]["p2p_count"] == 0

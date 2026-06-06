@@ -124,6 +124,13 @@ def _check_observability_schema(records: list[dict]) -> list[str]:
                 f"TURN_ALIAS_MISMATCH row {i}: {inst} {strat} — "
                 f"turns={turns!r} llm_turns={llm_turns!r}"
             )
+        harness_resolved = rec.get("harness_resolved")
+        resolved = rec.get("resolved")
+        if harness_resolved is not None and resolved != harness_resolved:
+            issues.append(
+                f"RESOLVED_ALIAS_MISMATCH row {i}: {inst} {strat} — "
+                f"resolved={resolved!r} harness_resolved={harness_resolved!r}"
+            )
         has_budget_cap = rec.get("batch_budget_cap") not in (None, "", 0, 0.0)
         if has_budget_cap and not rec.get("budget_mode"):
             issues.append(

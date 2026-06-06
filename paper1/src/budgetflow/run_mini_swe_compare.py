@@ -331,6 +331,7 @@ def _run_one(
         "task_index_in_batch": task_index,
         "workspace_key": workspace_key,
         "harness_resolved": result.harness_resolved,
+        "resolved": result.harness_resolved,
         "patch_extracted": bool(result.patch_text),
         "patch_source": result.patch_source,
         "submitted_patch": result.submitted_patch_path,

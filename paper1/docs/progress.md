@@ -4,6 +4,16 @@
 
 ## 当前快照（2026-06-06）
 
+### 063 / 062b rerun fragility audit
+
+- **062b_gold_stoploss_3x3 is negative/fragility evidence, not a hidden success.** Same 3 tasks × 3 policies after the stop-loss tweak produced BO 3/3, BFC 3/3, BFV 1/3. Cost was about **$1.41**.
+- **Tier 1 judgment:** 062's positive BFV signal is not stable enough for scale-up. 062b shows BFV can lose both high-value tasks (`sympy__sympy-16988`, `django__django-10924`) even when value multipliers are active.
+- **Tier 2 judgment:** BFC can solve all three tasks, but it is still inefficient: 84 turns and about $0.67 versus BO's 31 turns and about $0.22. This does not support a clean routing-efficiency claim.
+- **Patch-level audit:** BFV failures are real repair-quality failures, not obvious evaluator false negatives. On Django 10924, BFV computes `path` but still passes `self.path`, and pollutes unrelated field classes; BO/BFC produce compact passing patches. On SymPy 16988, BFV makes a broader multi-branch patch while BO/BFC make narrower passing duplicate-removal changes.
+- **Continual-learning implication:** learned caps changed between 062 and 062b, which is expected now that Value-Driven Budget Allocation writes memory by default. Reports must record cap source/confidence/neighbors; repeated runs are not identical unless memory is frozen.
+- **Observability fix after audit:** fresh rows now write top-level `resolved == harness_resolved`; checker warns on `RESOLVED_ALIAS_MISMATCH`. Historical JSONL is not edited and should be treated as forensic-only when aliases or stale verdict fields are missing.
+- **Next direction:** do not launch 3×5/3×8 yet. First debug BFV decision quality and worktree/gold-edit evaluation timing on the 062/062b traces, then run another small policy-parallel rerun.
+
 ### 062 后 Auto-Budget Gate 与 3x3 fresh validation
 
 - **062 COMPLETE — Value-Driven Budget Allocation learning gate + fresh 3-policy validation.** 新增 `--auto-budget-dry-run`，可零 API 审计 learned caps；修复 `not_enough_evidence` 低证据失败污染 learned median 的 P0 bug。
