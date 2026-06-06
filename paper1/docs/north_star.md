@@ -118,6 +118,12 @@ BudgetFlow now uses a two-level claim ladder.
 | First claim / North Star | Value-driven token efficiency: under a shared hard budget, complete the highest verified task value per dollar. | Primary paper direction. |
 | Second claim / mechanism | Workflow-stage and progress-aware routing can also beat dummy, budget-only, or market routing policies on per-step/per-task cost efficiency. | Still valuable, but must be empirically verified rather than assumed. |
 
+Evidence discipline:
+
+- A Tier 1 result requires non-equal task values from an explicit value source. If a run falls back to `value_i=1`, it can only support Tier 2 or instrumentation claims.
+- A Tier 2 result can be shown with equal values, but it should be reported as routing/cost evidence rather than value-allocation evidence.
+- Task value is a proxy. The current cold-start direction is model success rarity / solve rarity: tasks solved by fewer capable models or policies receive higher value. The long-term system should learn value, difficulty, model success probability, progress quality, and cost online from verified outcomes.
+
 The second claim should not be used as the only foundation of the paper. It has real downsides, including tier-switching overhead and possible KV / prefix-cache loss. If experiments show that the stage/progress formula does not beat simpler routing, BudgetFlow should still be framed as a value-aware shared budget governor that can plug in a better allocator or learned policy. If both claims hold, the paper becomes stronger: BudgetFlow improves value allocation at the portfolio level and cost efficiency inside individual workflows.
 
 Paper objective:

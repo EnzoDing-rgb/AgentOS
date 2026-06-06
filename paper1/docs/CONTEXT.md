@@ -4,6 +4,21 @@ Shared vocabulary for agents and researchers working on this project.
 
 ## Domain Terms
 
+### Tier 1 claim
+The paper's North Star claim: under a hard shared budget pool, the system should maximize verified resolved value per dollar. This is a governance/allocation claim, not merely a per-task cost claim. A run only supports this claim when task values are non-equal and the JSONL rows show a real `value_source=value_matrix` (or another explicit non-equal source), not fallback equal values.
+
+### Tier 2 claim
+The mechanism claim: the routing heuristic should reduce waste from strong models and improve cost efficiency or pass/cost tradeoffs against static, dummy, or simpler routing baselines. Tier 2 can be supported by equal-value routing evidence, but it does not by itself prove Tier 1.
+
+### task value proxy
+Task value is an observable proxy, not ground truth. Current preferred cold-start proxy is model success rarity / solve rarity: tasks solved by fewer capable policies or models receive higher value. Do not describe the current primary proxy as human-effort value. Long term, the system should learn value, difficulty, model success probability, progress signal quality, and cost online from verified outcomes.
+
+### AutoResearch / Auto-reset coordinator
+AutoResearch is implemented as a semi-automatic coordinator, but it is currently an infrastructure tool, not the driver of the BudgetFlow paper. It may run bounded Worker issues, collect reports, retry small failures, and preserve on-disk evidence. It must not autonomously change Tier 1/Tier 2 claims, launch large paid experiments, or iterate paper direction without Codex/owner approval.
+
+### current research discipline
+Treat JSONL, checker output, summary logs, and turn traces as facts. Treat Worker reports as ledgers that must be checked against artifacts. A small paid run can support Tier 2 routing behavior, but Tier 1 requires non-equal task values loaded from an explicit value source. If a non-equal value profile falls back to equal values, the run is invalid for Tier 1.
+
 ### tier contract
 A tier is a stable system identity (T1/T2/T3), not a specific model. T1 = cheapest, T3 = strongest. Each tier has a fixed cost per token, provider, and action protocol. Models behind tiers can change, but the contract stays the same. This means `all_pro` should always mean strongest tier, regardless of what model sits at T3.
 
@@ -44,3 +59,11 @@ Task budget estimation from historical priors, not per-task-set pilot runs. Two 
 - **Plan C (continuous)**: kNN over `task_cost_history.jsonl` once ≥10 records exist.
 
 Current state: historical ETL exists, soft-cap recommendations exist, runtime wiring waits for clean traces.
+
+## Current Decisions
+
+- Main development branch is `main`; `feature/issue-1` has been merged.
+- AutoResearch / Auto-reset coordinator exists and is useful for infra loops, but it is paused as a paper-iteration engine. Codex remains the reviewer/front-end for owner decisions.
+- Tier 1 is the paper compass: maximize verified resolved value per dollar under a shared hard budget.
+- Tier 2 is a mechanism claim: route stages/models more efficiently than simpler baselines.
+- Current P0 for experiments: non-equal value profiles must fail fast when the value matrix/profile/task lookup misses. Silent fallback to equal values corrupts Tier 1 evidence.

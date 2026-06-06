@@ -1,6 +1,21 @@
 # BudgetFlow AutoResearch Workflow
 
-## Current Status — 2026-06-05
+## Current Status — 2026-06-06
+
+Current decision: AutoResearch / Auto-reset is implemented enough to coordinate
+bounded infrastructure work, but it is **not** the active mechanism for iterating
+the BudgetFlow paper direction. The BudgetFlow paper has two explicit claims:
+Tier 1 is value-driven shared-budget allocation; Tier 2 is routing/cost
+efficiency. AutoResearch may help execute small, Codex-approved tasks, but it
+must not change these claims or launch large paid experiments without
+Codex/owner approval.
+
+The near-term paper loop remains manual-Codex-led: Codex reviews JSONL/checker
+evidence, writes Worker goals, and decides whether results affect Tier 1, Tier
+2, or only instrumentation. AutoResearch can be reintroduced when the evidence
+gate is strong enough for paper experiments.
+
+## Previous Status — 2026-06-05
 
 AutoResearch is now a usable semi-automatic research coordinator for bounded
 infrastructure tasks in this repository. It is not a fully autonomous research

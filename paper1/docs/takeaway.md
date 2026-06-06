@@ -6,6 +6,8 @@
 
 ### Phase W / Conservative BudgetFlow Validation Takeaway
 
+0. **Do not claim value allocation when value observability fell back to equal.** Phase W produced a real routing-positive signal (BFC 3/3 under shared cap), but all 053 runtime rows had `value_source=missing_profile_fallback` and `task_value=1.0`. That means the run cannot support Tier 1 / value-allocation claims. Non-equal profiles must fail fast on missing matrix/profile/task lookup.
+
 1. **BFC is the first strategy to solve 3/3 in shared-budget mode.** BO (false baseline), BO2 (T2-only), and BF (unconstrained) all achieve 2/3 with the same $0.45 shared cap. BFC achieves 3/3 with 16% T3 vs competitors' 33% — same budget, better allocation, better outcomes.
 
 2. **Conservation factor works but needs per-scenario tuning.** The original slope of 3.0 (designed for $0.50/5-task shared pools) was too aggressive for per-task $0.15 caps. At slope 1.5, BFC balances T3 restraint with task-solving capability. The ideal slope likely depends on budget size: larger pools tolerate steeper conservation.

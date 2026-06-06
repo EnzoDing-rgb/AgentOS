@@ -7,14 +7,19 @@
 ### 053 后 Phase W 状态
 
 - **Phase W COMPLETE — 27 paid rows, $3.76 total**
-- **BFC WINS shared budget**: 3/3 PASS vs BO 2/3, BO2 2/3, BF 2/3. First strategy to achieve 3/3 under shared cap.
+- **BFC WINS shared budget on outcome**: 3/3 PASS vs BO 2/3, BO2 2/3, BF 2/3. First strategy to achieve 3/3 under shared cap in this small pool.
 - **Bug found & fixed**: BFC T3 double-penalty (hard cap + conservation). Fix: lower T3 gate 0.15→0.05 for BFC, reduce conservation slope 3.0→1.5.
 - **Per-task results**: BO 3/3 ($0.34, 12% T3), BF 3/3 ($0.34, 32% T3), BFC 2/3 ($0.30, 19% T3), BO2 2/3 ($0.25, 0% T3). BF wastes T3, BFC balanced but per-task $0.15 too tight for hard task.
 - **Checker**: ALL CLEAN (0 suspicious_pass, 0 no_trace across 27 rows)
-- **North Star**: First evidence of value-driven allocation. BFC allocates T3 by task difficulty, BO anti-correlates (58% T3 on easiest task).
-- **Commit**: `aa12e80` (fixes), `4d0e63c` (052 report), `ad9bfc0` (Phase V code).
+- **P0 review finding after Phase W**: all 053 runtime rows have `value_source=missing_profile_fallback` and `task_value=1.0`. Therefore 053 is **NOT Tier 1 value-allocation evidence**. It is a Tier 2 routing-positive signal only.
+- **Current interpretation**: BFC's shared-budget 3/3 supports the conservative-routing direction, but value observer fail-fast must be fixed before any claim about value-driven allocation.
+- **Commit**: `760233c` (Phase W report), `aa12e80` (BFC fix), `4d0e63c` (052 report), `ad9bfc0` (Phase V code).
 
 ### 052 后 Phase V 状态
+
+- **Phase V root-cause forensic complete.** Confirmed two implementation/evaluation bugs behind 051's negative signal: `budget_only_tight` was a false baseline that can front-load T3, and BudgetFlow pressure semantics made T3 easier as budget depleted.
+- **Code fixes:** added true cost-only `budget_only_t2_*` strategies and `budgetflow_conservative_*` with a conservation factor that makes T3 escalation harder under depletion pressure.
+- **Remaining requirement:** any non-equal value-profile run must fail fast when the value matrix/profile/task lookup misses. Silent fallback corrupts Tier 1 metrics.
 
 ### 051 后 Phase U 状态
 
