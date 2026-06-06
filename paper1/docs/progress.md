@@ -4,6 +4,16 @@
 
 ## 当前快照（2026-06-06）
 
+### 061 后术语与 continual-learning 闭环状态
+
+- **术语统一：** 新 canonical term 是 **Value-Driven Budget Allocation**。旧称 Automatic Budgeting 和 CLI `--auto-budget` 只保留为 backward-compatible implementation name。
+- **重要修复：** continual learning 代码没有消失，但此前默认 run 不会写 learning memory；只有 `--auto-budget` 开启时才写。这意味着 058/059/060 这类 paid run 产生了 outcome，却默认没有进入 `auto_budget_memory.jsonl`。
+- **现在行为：** normal run 默认创建 Value-Driven Budget Allocation memory writer，并把每个完成 row 写入 `auto_budget_memory.jsonl`，除非显式传 `--no-auto-budget-learn`。
+- **策略边界不变：** 默认只收集学习数据，不默认用学习结果改变 cap；应用 learned cap 仍需显式 `--auto-budget` 或 `--budget-memory`。这样避免悄悄改变实验协议。
+- **新增 observability：** JSONL row 写 `budget_learning_update_written`、`budget_learning_memory_path`、`budget_learning_applied_to_cap`，并带 `task_features`，使后续 exact-task / repo-kNN learning 可审计。
+- **fresh runtime smoke：** `061_learning_smoke_v2`（1 task × 1 strategy, step_limit=1, cost ~$0.0013）验证新 row 真实写入 learning memory；memory record 带 `run_series` 和 `run_id=attempt_id`，可追溯。
+- **下一步重点：** 用 `--auto-budget` 做小规模 Value-Driven Budget Allocation gate，检查 learned caps 是否合理；不要把 058/059/060 旧 row 回写成 learning evidence。
+
 ### 060 后 runtime/evaluator 修复状态
 
 - **060_runtime_fix_3x3 COMPLETE — fresh post-fix validation.** 3 tasks × 3 strategies, `--jobs 3`, per-task cap $0.50, `unsolved_difficulty` value profile, all provider preflight PASS.
@@ -261,7 +271,7 @@
 - **008**：首次 model matrix。14/15 records。`reports/008.md`。
 - 已写：`reports/006.md`、`007.md`、`008.md`、`009.md`、`010.md`、`011.md`、`012.md`、`015.md`、`016.md`、`039.md`、`040.md`、`041.md`、`042.md`、`043.md`、`044.md`、`045.md`、`046.md`。
 - 已补：mini-swe-agent 依赖，compare runner import/`--help`/全链路恢复。
-- 已实现/接入：Automatic Budgeting v1 与 memory 写入。Memory 已清理（备份至 `.bak_010`），下次运行自动新建。
+- 已实现/接入：Value-Driven Budget Allocation v1（旧称 Automatic Budgeting）与 memory 写入。Memory 已清理（备份至 `.bak_010`），下次运行自动新建。
 - 已修/部分修：SymPy `py.test` compat；Django `django.setup()` compat。但 Django 新 task 仍卡 `INSTALLED_APPS`。
 - 已确认：`--jobs` 并行 worktree 隔离；GPT-5.4 非确定性；`django-12113`/`sympy-21612` 是 ceiling task。
 
@@ -324,8 +334,8 @@ total_resolved_value_under_budget = sum(value_i * harness_resolved_i)
 | 008/009 model batches | ⚠️ 56 recorded rows，数据有缺行/崩溃噪声 |
 | `run_mini_swe_compare --resume` idempotency | ✅ 012 验证无重复、无缺行 |
 | Worktree resilience | ✅ 012 实跑验证，25/25 rows 无 crash |
-| Automatic Budgeting v1 | ✅ Memory 清洁，cap 已校准为真实 USD，10-task prior |
-| Automatic Budgeting continuous learning | ⚠️ 已有方向，必须基于 clean rows |
+| Value-Driven Budget Allocation v1 | ✅ Memory 清洁，cap 已校准为真实 USD，10-task prior |
+| Value-Driven Budget Allocation continual learning | ✅ 默认写 memory；应用 learned cap 仍需显式开启 |
 | Django new-task harness | ⚠️ `INSTALLED_APPS` / bare-pytest gap |
 | Real-world cost calibration | ✅ API 价格已校准（T1/T2 DashScope，T3 aicode007） |
 | Cost display observability | ✅ `_fmt_usd()` 自适应格式 |
@@ -382,13 +392,13 @@ total_resolved_value_under_budget = sum(value_i * harness_resolved_i)
 | sympy__sympy-20212 | 284 | **1.00×**（锚） |
 | sympy__sympy-16988 | 1868 | **6.58×** |
 
-难度系数跟模型无关——同一题在 all_flash 和 budgetflow_full 下按同一比例缩放。这个系数是 Automatic Budgeting 的核心。
+难度系数跟模型无关——同一题在 all_flash 和 budgetflow_full 下按同一比例缩放。这个系数是 Value-Driven Budget Allocation 的冷启动核心。
 
 012 新增 5 task 的 real-USD 校准值已写入 `_HISTORICAL_PRIOR`（见 auto_budget.py）。
 
 ---
 
-## Automatic Budgeting 路线图
+## Value-Driven Budget Allocation 路线图
 
 **目标：不跑 pilot，直接给任务估 budget。**
 
@@ -396,7 +406,7 @@ total_resolved_value_under_budget = sum(value_i * harness_resolved_i)
 
 - 已有历史难度系数和 soft-budget 设计。
 - `GovernorConfig` 支持 `soft_budget` / `max_overrun`，`run_mini_swe_compare` 暴露对应参数。
-- **Automatic Budgeting v1 已上线：** `_HISTORICAL_PRIOR` 10-task 冷启动 + kNN memory learning + bucket fallback。
+- **Value-Driven Budget Allocation v1 已上线：** `_HISTORICAL_PRIOR` 10-task 冷启动 + kNN memory learning + bucket fallback。
 - `min_cap` 已从 $0.05 校准至 $0.10（基于 real-USD 实测）。
 
 ### Plan B — Difficulty Bucket（冷启动）
@@ -641,6 +651,6 @@ Rubric 弱，**不能**当 resolved 结论。
 - `lite_tasks.py` — easy 5 + medium 15 + pilot 3 固定列表
 - `adaptive_routing.py` — `AdaptiveRoutingState` + `EvidenceRescueState`（`budgetflow_full` 和 `budgetflow_equal_weight` 共用）
 - `stall_guard.py` + `run_trace.publish_live_progress` — anti-stall + 心跳与 route 同步
-- `auto_budget.py` — Automatic Budgeting v1: `_HISTORICAL_PRIOR` + kNN memory + bucket fallback
+- `auto_budget.py` — Value-Driven Budget Allocation v1: `_HISTORICAL_PRIOR` + kNN memory + bucket fallback
 - `local_harness.py` — worktree 管理 + harness eval（含 `_remove_worktree` / `_worktree_add`）
 - `compare_checkpoint.py` — checkpoint/resume 状态持久化

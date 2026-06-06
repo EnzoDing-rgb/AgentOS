@@ -9,8 +9,10 @@ from budgetflow.run_mini_swe_compare import (
     _CompareState,
     _format_strategy_totals,
     _ingest_batch_footer,
+    _persist_task_record,
     _run_one,
 )
+from budgetflow.auto_budget import AutoBudgetMemory
 
 
 def test_run_one_records_turns_alias(monkeypatch):
@@ -41,7 +43,12 @@ def test_run_one_records_turns_alias(monkeypatch):
         )
 
     monkeypatch.setattr(runner, "run_mini_swe_task", fake_run_mini_swe_task)
-    task = SimpleNamespace(instance_id="sympy__sympy-13480")
+    task = SimpleNamespace(
+        instance_id="sympy__sympy-13480",
+        patch="diff --git a/x b/x\n",
+        fail_to_pass=(),
+        pass_to_pass=(),
+    )
     governor = BudgetGovernor(
         GovernorConfig(total_budget=1.0, default_max_output_tokens=4096),
         WorkflowLedgerStore(),
@@ -59,6 +66,198 @@ def test_run_one_records_turns_alias(monkeypatch):
 
     assert record["llm_turns"] == 2
     assert record["turns"] == 2
+    assert record["task_features"]["patch_lines"] == 1
+    assert record["task_features"]["f2p_count"] == 0
+    assert record["task_features"]["p2p_count"] == 0
+
+
+def test_persist_task_record_writes_learning_memory_for_normal_run(tmp_path):
+    state = _CompareState(
+        summary_lines=[],
+        resolved_by_strategy={},
+        task_cost_by_strategy={},
+        batch_spent_by_strategy={},
+        turns_by_strategy={},
+        spark_by_strategy={},
+        flash_by_strategy={},
+        pro_by_strategy={},
+        failure_by_strategy={},
+        resolved_value_by_strategy={},
+        task_value_by_strategy={},
+    )
+    record = {
+        "instance_id": "sympy__sympy-14774",
+        "strategy": "budget_only_tight",
+        "routing": "budget_only",
+        "harness_resolved": True,
+        "patch_extracted": True,
+        "agent_gold_edited": True,
+        "agent_gold_files": ["sympy/printing/latex.py"],
+        "llm_turns": 2,
+        "turns": 2,
+        "task_cost": 0.01,
+        "total_cost": 0.01,
+        "batch_spent": 0.01,
+        "backend_picks": ["tier2"],
+        "failure_class": "pass",
+        "forensic_summary": {"primary_axis": "pass"},
+        "detail": "test_patch=ok; fail_before=fail; model_patch=ok; fail_after=pass; pass_to_pass=pass",
+        "task_features": {"patch_lines": 12, "f2p_count": 1, "p2p_count": 114, "problem_length": 500},
+        "run_series": "061_schema_test",
+        "attempt_id": "061_schema_test_budget_only_tight_sympy__sympy-14774",
+    }
+    memory_path = tmp_path / "learning.jsonl"
+    memory = AutoBudgetMemory(memory_path)
+
+    with (tmp_path / "out.jsonl").open("w") as handle:
+        _persist_task_record(
+            state,
+            record,
+            handle=handle,
+            io_lock=threading.Lock(),
+            total_runs=1,
+            tasks_per_strategy=1,
+            global_progress=GlobalRunProgress(1),
+            scoreboard=None,
+            summary_path=tmp_path / "summary.log",
+            strategy_names=["budget_only_tight"],
+            batch_caps={"budget_only_tight": 0.5},
+            budget_modes={"budget_only_tight": "per_task_cap"},
+            started=0.0,
+            out_path=tmp_path / "out.jsonl",
+            auto_budget_memory=memory,
+            no_auto_budget_learn=False,
+        )
+
+    assert record["budget_learning_update_written"] is True
+    assert record["budget_learning_applied_to_cap"] is False
+    learned = AutoBudgetMemory(memory_path).records
+    assert len(learned) == 1
+    assert learned[0]["patch_lines"] == 12
+    assert learned[0]["f2p_count"] == 1
+    assert learned[0]["run_series"] == "061_schema_test"
+    assert learned[0]["run_id"] == "061_schema_test_budget_only_tight_sympy__sympy-14774"
+
+
+def test_persist_task_record_can_disable_learning_write(tmp_path):
+    state = _CompareState(
+        summary_lines=[],
+        resolved_by_strategy={},
+        task_cost_by_strategy={},
+        batch_spent_by_strategy={},
+        turns_by_strategy={},
+        spark_by_strategy={},
+        flash_by_strategy={},
+        pro_by_strategy={},
+        failure_by_strategy={},
+        resolved_value_by_strategy={},
+        task_value_by_strategy={},
+    )
+    record = {
+        "instance_id": "sympy__sympy-14774",
+        "strategy": "budget_only_tight",
+        "routing": "budget_only",
+        "harness_resolved": True,
+        "patch_extracted": True,
+        "agent_gold_edited": True,
+        "agent_gold_files": [],
+        "llm_turns": 1,
+        "turns": 1,
+        "task_cost": 0.01,
+        "total_cost": 0.01,
+        "batch_spent": 0.01,
+        "backend_picks": ["tier2"],
+        "failure_class": "pass",
+        "forensic_summary": {"primary_axis": "pass"},
+        "detail": "test_patch=ok; fail_before=fail; model_patch=ok; fail_after=pass; pass_to_pass=pass",
+        "task_features": {"patch_lines": 1, "f2p_count": 1, "p2p_count": 1, "problem_length": 1},
+    }
+    memory_path = tmp_path / "learning.jsonl"
+    memory = AutoBudgetMemory(memory_path)
+
+    with (tmp_path / "out.jsonl").open("w") as handle:
+        _persist_task_record(
+            state,
+            record,
+            handle=handle,
+            io_lock=threading.Lock(),
+            total_runs=1,
+            tasks_per_strategy=1,
+            global_progress=GlobalRunProgress(1),
+            scoreboard=None,
+            summary_path=tmp_path / "summary.log",
+            strategy_names=["budget_only_tight"],
+            batch_caps={"budget_only_tight": 0.5},
+            budget_modes={"budget_only_tight": "per_task_cap"},
+            started=0.0,
+            out_path=tmp_path / "out.jsonl",
+            auto_budget_memory=memory,
+            no_auto_budget_learn=True,
+        )
+
+    assert record["budget_learning_update_written"] is False
+    assert record["budget_learning_memory_path"] == str(memory_path)
+    assert record["budget_learning_applied_to_cap"] is False
+    assert not memory_path.exists()
+
+
+def test_persist_task_record_marks_learning_unavailable_without_memory(tmp_path):
+    state = _CompareState(
+        summary_lines=[],
+        resolved_by_strategy={},
+        task_cost_by_strategy={},
+        batch_spent_by_strategy={},
+        turns_by_strategy={},
+        spark_by_strategy={},
+        flash_by_strategy={},
+        pro_by_strategy={},
+        failure_by_strategy={},
+        resolved_value_by_strategy={},
+        task_value_by_strategy={},
+    )
+    record = {
+        "instance_id": "sympy__sympy-14774",
+        "strategy": "budget_only_tight",
+        "routing": "budget_only",
+        "harness_resolved": True,
+        "patch_extracted": True,
+        "agent_gold_edited": True,
+        "agent_gold_files": [],
+        "llm_turns": 1,
+        "turns": 1,
+        "task_cost": 0.01,
+        "total_cost": 0.01,
+        "batch_spent": 0.01,
+        "backend_picks": ["tier2"],
+        "failure_class": "pass",
+        "forensic_summary": {"primary_axis": "pass"},
+        "detail": "test_patch=ok; fail_before=fail; model_patch=ok; fail_after=pass; pass_to_pass=pass",
+        "task_features": {"patch_lines": 1, "f2p_count": 1, "p2p_count": 1, "problem_length": 1},
+    }
+
+    with (tmp_path / "out.jsonl").open("w") as handle:
+        _persist_task_record(
+            state,
+            record,
+            handle=handle,
+            io_lock=threading.Lock(),
+            total_runs=1,
+            tasks_per_strategy=1,
+            global_progress=GlobalRunProgress(1),
+            scoreboard=None,
+            summary_path=tmp_path / "summary.log",
+            strategy_names=["budget_only_tight"],
+            batch_caps={"budget_only_tight": 0.5},
+            budget_modes={"budget_only_tight": "per_task_cap"},
+            started=0.0,
+            out_path=tmp_path / "out.jsonl",
+            auto_budget_memory=None,
+            no_auto_budget_learn=True,
+        )
+
+    assert record["budget_learning_update_written"] is False
+    assert record["budget_learning_memory_path"] == ""
+    assert record["budget_learning_applied_to_cap"] is False
 
 
 def test_per_task_cap_summary_uses_total_planned_cap():

@@ -4,6 +4,18 @@
 
 该 commit 就 commit，该 push 就 push。关键节点必须 commit，能同步远端就同步远端。
 
+### 061 / Value-Driven Budget Allocation Learning Takeaway
+
+0. **Continual learning existed as modules, but the default loop was broken.** `AutoBudgetMemory` and `PolicyMemory` were present, yet ordinary paid runs did not write budget-learning memory unless `--auto-budget` was enabled. That wastes paid outcomes. Fix: collect learning records by default; applying learned caps remains opt-in.
+
+1. **Separate data collection from policy application.** Writing verified outcomes to memory is low-risk observability. Letting learned priors change caps is an experiment-design choice. The code now records `budget_learning_applied_to_cap` so we can tell whether a row merely trained the system or actually used learned allocation.
+
+2. **"Automatic Budgeting" is now a legacy implementation name.** The research concept is Value-Driven Budget Allocation: task value, difficulty, historical success/cost, and budget pressure decide allocation. The CLI can keep `--auto-budget`; paper prose should not.
+
+3. **Task features must be captured even when allocation is off.** Memory records need patch lines, fail-to-pass count, pass-to-pass count, and problem length for future kNN estimates. These are now written into every row as `task_features`.
+
+4. **Old paid rows are not retroactively fixed.** 058/059/060 remain valid runtime evidence, but they did not train default memory at run time. Do not edit historical JSONL; use new runs after the fix to build continual-learning evidence.
+
 ### 060 / Runtime-Clean Evidence Takeaway
 
 0. **Do not trust a clean JSONL to imply a clean summary.** 060 rows were schema-clean and checker-clean, but the batch footer still displayed `per_task_cap=100.00` because footer display reused the shared tight cap. Treat JSONL as primary evidence, summary as a derived view that needs its own tests.
@@ -402,7 +414,7 @@ cd paper1 && PYTHONPATH=src:../external/mini-swe-agent/src \
 
 当前判断：
 
-- `all_pro` 是 uncapped GPT-5.4 ceiling/control，不属于 BudgetFlow，不应被 Automatic Budgeting cap 限制。
+- `all_pro` 是 uncapped GPT-5.4 ceiling/control，不属于 BudgetFlow，不应被 Value-Driven Budget Allocation cap 限制。
 - `budgetflow_full_*` 两档均在 5-task easy pool 上 100% resolve，routing 方法已验证有效。
 - `budget_only_*` 无 tiered routing 时丢失 1-2 tasks 且总成本更高。这支持 BudgetFlow 核心主张。
 - 在 easy task 上 `all_pro` 最便宜（$0.47 for 5 tasks）。BudgetFlow 的 routing overhead 在 easy task 上不划算，但在 hard task 上提供 protection。
@@ -507,9 +519,9 @@ BudgetFlow 的卖点不是"永远比 all_pro 强"，而是：在固定 batch 经
 - unsolvable/ceiling task 单独标注，不拿来证明 policy 差。
 - `all_pro` ceiling、`budgetflow_full_*`、`budget_only_*` 必须同时保留。
 
-## 5. Automatic Budgeting
+## 5. Value-Driven Budget Allocation
 
-Automatic Budgeting 是 BudgetFlow 的核心卖点之一，但必须从 clean history 学，不要靠拍脑袋 tight 值。
+Value-Driven Budget Allocation 是 BudgetFlow 的核心卖点之一，但必须从 clean history 学，不要靠拍脑袋 tight 值。Automatic Budgeting 是旧称和旧 CLI 前缀。
 
 012 进展：
 
@@ -552,7 +564,7 @@ Automatic Budgeting 是 BudgetFlow 的核心卖点之一，但必须从 clean hi
 Claude Code / skills 的价值不是"装一堆技能"，而是把隐性协作规则固化到仓库：
 
 - `CLAUDE.md`：当前 tiers、禁止事项、常用命令、运行环境风险。
-- `CONTEXT.md`：统一术语，如 tier contract、action protocol、router decision、budget prior、soft cap、rescue、headroom、clean row、protocol fail、Automatic Budgeting。
+- `CONTEXT.md`：统一术语，如 tier contract、action protocol、router decision、budget prior、soft cap、rescue、headroom、clean row、protocol fail、Value-Driven Budget Allocation。
 - 每次实验后更新 progress/report/takeaway，不靠聊天记忆。
 - 用 diagnose 思路：先建立可复现反馈回路，再猜原因。
 - 重构保持小 seam：ModelCatalog、ActionProtocolAdapter、RouterDecision、BudgetAllocator；不要重写 runner。

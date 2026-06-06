@@ -363,6 +363,12 @@ def _run_one(
         "budget_mode": budget_mode,
         "per_task_cap": per_task_cap,
         "task_order_index": task_index,
+        "task_features": {
+            "patch_lines": len(str(getattr(task, "patch", "") or "").splitlines()),
+            "f2p_count": len(getattr(task, "fail_to_pass", ()) or ()),
+            "p2p_count": len(getattr(task, "pass_to_pass", ()) or ()),
+            "problem_length": len(str(getattr(task, "problem_statement", "") or "")),
+        },
         "row_started_at": started,
         "row_finished_at": time.time(),
         "attempt_id": f"{run_series}_{cfg.name}_{task.instance_id}" if run_series else "",
@@ -394,7 +400,7 @@ def _run_one(
     record["failure_subtype"] = verdict.get("failure_subtype", "")
     record["evidence_complete"] = verdict["evidence_complete"]
     record["missing_evidence"] = verdict["missing_evidence"]
-    # Auto-budget metadata.
+    # Value-Driven Budget Allocation metadata (legacy field prefix: auto_budget).
     if budget_estimate is not None:
         record["auto_budget_enabled"] = True
         record["estimated_task_cap"] = budget_estimate.cap
@@ -967,7 +973,7 @@ def _run_strategy_batch(
             task_governor = governor
             task_ledger = ledger
             effective_batch_cap = batch_budget_cap
-            # Resolve per-task cap: task_caps dict (auto-budget) takes precedence.
+            # Resolve per-task cap: learned/allocation task_caps dict takes precedence.
             # Only budget strategies get per-task caps; all_pro stays uncapped.
             task_cap: float | None = None
             if cfg.budget_tier is not None:
@@ -1143,6 +1149,7 @@ def _rebuild_state_from_jsonl(path: Path, header_lines: list[str]) -> _CompareSt
 def _write_budget_memory(memory: AutoBudgetMemory, record: dict) -> None:
     """Build a memory record from a run record and write it to the learning memory."""
     forensic = record.get("forensic_summary") or {}
+    features = record.get("auto_budget_features") or record.get("task_features") or {}
     mem = AutoBudgetMemory.build_record(
         instance_id=str(record.get("instance_id", "")),
         repo=str(record.get("instance_id", "")).rsplit("__", 1)[0].replace("__", "/"),
@@ -1158,13 +1165,13 @@ def _write_budget_memory(memory: AutoBudgetMemory, record: dict) -> None:
         patch_extracted=bool(record.get("patch_extracted")),
         agent_gold_edited=bool(record.get("agent_gold_edited")),
         llm_turns=int(record.get("llm_turns") or 0),
-        patch_lines=int((record.get("auto_budget_features") or {}).get("patch_lines", 0)),
-        f2p_count=int((record.get("auto_budget_features") or {}).get("f2p_count", 0)),
-        p2p_count=int((record.get("auto_budget_features") or {}).get("p2p_count", 0)),
-        problem_length=len(str(record.get("problem_statement") or "")),
+        patch_lines=int(features.get("patch_lines", 0)),
+        f2p_count=int(features.get("f2p_count", 0)),
+        p2p_count=int(features.get("p2p_count", 0)),
+        problem_length=int(features.get("problem_length", 0)),
         gold_file_count=len(record.get("agent_gold_files") or []),
         run_series=str(record.get("run_series", "")),
-        run_id=str(record.get("run_id", "")),
+        run_id=str(record.get("run_id") or record.get("attempt_id") or record.get("run_series") or ""),
         dominant_tier=str(record.get("dominant_tier") or ""),
         exit_status=str(record.get("exit_status") or ""),
         detail=str(record.get("detail") or ""),
@@ -1192,12 +1199,16 @@ def _persist_task_record(
     no_auto_budget_learn: bool = False,
 ) -> None:
     with io_lock:
-        # Write auto-budget memory record (before JSONL so memory is updated first).
-        if auto_budget_memory is not None and not no_auto_budget_learn and record.get("auto_budget_enabled"):
+        record["budget_learning_update_written"] = False
+        record["budget_learning_memory_path"] = (
+            str(auto_budget_memory._path or "") if auto_budget_memory is not None else ""
+        )
+        record["budget_learning_applied_to_cap"] = bool(record.get("auto_budget_enabled"))
+        # Write learning memory for every normal outcome. Using learned caps is
+        # opt-in, but collecting verified outcomes should be the default loop.
+        if auto_budget_memory is not None and not no_auto_budget_learn:
             _write_budget_memory(auto_budget_memory, record)
             record["budget_learning_update_written"] = True
-        elif auto_budget_memory is not None and not no_auto_budget_learn:
-            record["budget_learning_update_written"] = False
 
         # Value observability enrichment (Phase R)
         _enrich_record_with_value(record)
@@ -1665,7 +1676,7 @@ def main() -> None:
         "--auto-budget",
         action="store_true",
         default=False,
-        help="enable automatic per-task budget estimation from historical prior",
+        help="enable Value-Driven Budget Allocation per-task cap estimation from historical prior",
     )
     parser.add_argument(
         "--auto-budget-scale",
@@ -1695,13 +1706,14 @@ def main() -> None:
         "--auto-budget-memory",
         type=str,
         default=None,
-        help="path to auto-budget memory file for continuous learning (default data/auto_budget_memory.jsonl)",
+        help="path to Value-Driven Budget Allocation memory file for continual learning "
+        "(default data/auto_budget_memory.jsonl)",
     )
     parser.add_argument(
         "--no-auto-budget-learn",
         action="store_true",
         default=False,
-        help="disable writing new records to auto-budget memory after run",
+        help="disable writing new records to Value-Driven Budget Allocation memory after run",
     )
     parser.add_argument(
         "--auto-budget-k",
@@ -1982,22 +1994,18 @@ def main() -> None:
         tasks = load_compare_easy_tasks(tasks_n)
     tasks = _order_tasks_easy_first(tasks, task_set=args.task_set)
 
-    # Auto-budget: compute per-task caps from historical prior + online memory.
+    # Value-Driven Budget Allocation: always keep a learning memory writer so
+    # normal paid runs produce reusable priors. Applying those priors to caps
+    # remains opt-in via --auto-budget or --budget-memory.
     auto_budget_estimates: dict[str, BudgetEstimate] = {}
     auto_budget_task_caps: dict[str, float] | None = None
+    memory_path = Path(args.auto_budget_memory) if args.auto_budget_memory else RUNS_DIR / "auto_budget_memory.jsonl"
     auto_budget_memory: AutoBudgetMemory | None = None
-    if args.auto_budget:
-        memory_path: Path | None = None
-        if args.auto_budget_memory:
-            memory_path = Path(args.auto_budget_memory)
-        else:
-            default_memory = RUNS_DIR / "auto_budget_memory.jsonl"
-            memory_path = default_memory
+    if not args.no_auto_budget_learn:
         auto_budget_memory = AutoBudgetMemory(memory_path if memory_path.is_file() else None)
-        # Always set path so we can write new records.
         if auto_budget_memory._path is None:
             auto_budget_memory._path = memory_path
-
+    if args.auto_budget:
         estimator = AutoBudgetEstimator(memory=auto_budget_memory, k=args.auto_budget_k)
         for task in tasks:
             est = estimator.estimate(
@@ -2015,7 +2023,7 @@ def main() -> None:
                 + (f" neighbors={est.memory_neighbors}" if est.memory_neighbors else ""),
                 flush=True,
             )
-        # Auto-budget implies per_task mode.
+        # Value-Driven Budget Allocation implies per_task mode.
         if args.per_task_cap is None:
             args.per_task_cap = -1.0  # Sentinel: per-task with varying caps.
 
@@ -2185,7 +2193,7 @@ def main() -> None:
                     task.instance_id, hard_budget=hard_cap,
                 )
                 budget_memory_estimates[task.instance_id] = est
-            # Only use BudgetMemory as caps when auto-budget is NOT enabled
+            # Only use BudgetMemory as caps when Value-Driven Budget Allocation is NOT enabled.
             if not args.auto_budget:
                 auto_budget_task_caps = {iid: e.estimated_task_budget for iid, e in budget_memory_estimates.items()}
                 print(
@@ -2194,7 +2202,7 @@ def main() -> None:
                 )
             else:
                 print(
-                    f"  BudgetMemory estimates stored (auto-budget takes priority for caps)",
+                    f"  BudgetMemory estimates stored (Value-Driven Budget Allocation takes priority for caps)",
                     flush=True,
                 )
         else:

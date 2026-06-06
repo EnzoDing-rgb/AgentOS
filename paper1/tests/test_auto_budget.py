@@ -46,9 +46,9 @@ class TestAutoBudgetEstimator:
         result = est.estimate(task, scale=1.5, min_cap=0.05, max_cap=10.0)
         assert result.instance_id == "sympy__sympy-14774"
         assert result.source == "history_exact"
-        assert result.confidence == "high"  # 7/7 resolved
-        assert result.estimated_cost == 0.01
-        assert result.cap == 0.05  # 0.01 * 1.5 = 0.015, clamped to min 0.05
+        assert result.confidence == "high"
+        assert result.estimated_cost == 0.05
+        assert result.cap == pytest.approx(0.075)  # 0.05 * 1.5 = 0.075
 
     def test_exact_history_match_medium_confidence(self):
         est = AutoBudgetEstimator()
@@ -63,7 +63,7 @@ class TestAutoBudgetEstimator:
         est = AutoBudgetEstimator()
         task = _make_task("sympy__sympy-14774")
         result = est.estimate(task, scale=1.0, min_cap=0.10, max_cap=10.0)
-        assert result.cap == 0.10  # 0.01 * 1.0 = 0.01 < 0.10
+        assert result.cap == 0.10  # 0.05 * 1.0 = 0.05 < 0.10
 
     def test_exact_history_clamps_to_max(self):
         est = AutoBudgetEstimator()
@@ -174,15 +174,15 @@ class TestAutoBudgetEstimator:
         est = AutoBudgetEstimator.from_history(Path("/nonexistent/file.jsonl"))
         task = _make_task("sympy__sympy-14774")
         result = est.estimate(task, scale=1.5, min_cap=0.05, max_cap=10.0)
-        assert result.estimated_cost == 0.01  # embedded prior
+        assert result.estimated_cost == 0.05  # embedded prior
 
     def test_default_scale_and_min_cap(self):
-        """v1 defaults: scale=1.5, min_cap=0.05."""
+        """v1 defaults: scale=1.5, min_cap=0.10."""
         est = AutoBudgetEstimator()
         task = _make_task("sympy__sympy-14774")
         result = est.estimate(task)  # default params
-        # cap = max(0, 0.05, 0.01*1.5=0.015) = 0.05
-        assert result.cap == 0.05
+        # cap = max(0, 0.10, 0.05*1.5=0.075) = 0.10
+        assert result.cap == 0.10
 
     def test_django_repo_floor(self):
         """Django tasks get repo floor of $1.00 estimated_cost."""
@@ -300,7 +300,7 @@ class TestAutoBudgetMemory:
         result = est.estimate(task, scale=2.5, min_cap=0.05, max_cap=10.0)
         # Harness failure excluded → falls back to history_exact
         assert result.source == "history_exact"
-        assert result.estimated_cost == 0.01
+        assert result.estimated_cost == 0.05
 
     def test_knn_fallback_same_repo(self):
         mem = AutoBudgetMemory()

@@ -53,12 +53,14 @@ Exit caused by parser/format mismatch, not model capability. `exit_reason` start
 ### equal-weight ablation
 A BudgetFlow variant where all workflow stages (LOC/REP/VAL) get `w_i=1.0` instead of the default repair-heavy profile (1.0/3.0/2.5). Strategy name: `budgetflow_equal_weight`. Legacy name `budgetflow_auto_v2` aliases to this. Used to test whether repair-weighting matters.
 
-### Automatic Budgeting
-Task budget estimation from historical priors, not per-task-set pilot runs. Two phases:
-- **Plan B (cold start)**: difficulty bucket from task features + pilot calibration.
-- **Plan C (continuous)**: kNN over `task_cost_history.jsonl` once ≥10 records exist.
+### Value-Driven Budget Allocation
+Canonical term for the old "Automatic Budgeting" system. It estimates task budgets from task value, historical priors, task features, verified outcomes, and budget pressure. The legacy CLI name `--auto-budget` remains as a backward-compatible entry point, but paper prose should use Value-Driven Budget Allocation.
 
-Current state: historical ETL exists, soft-cap recommendations exist, runtime wiring waits for clean traces.
+Two modes:
+- **Cold start:** embedded historical priors + task feature buckets.
+- **Continual learning:** append every normal verified outcome to `auto_budget_memory.jsonl`, then use exact-task / same-task / repo-kNN estimates when `--auto-budget` is enabled.
+
+Current state: the memory writer is on by default for normal runs unless `--no-auto-budget-learn` is passed. Applying learned caps remains opt-in via `--auto-budget` or `--budget-memory`, so evidence collection and budget policy changes are decoupled.
 
 ## Current Decisions
 
@@ -67,6 +69,7 @@ Current state: historical ETL exists, soft-cap recommendations exist, runtime wi
 - Tier 1 is the paper compass: maximize verified resolved value per dollar under a shared hard budget.
 - Tier 2 is a mechanism claim: route stages/models more efficiently than simpler baselines.
 - Current P0 for experiments: non-equal value profiles must fail fast when the value matrix/profile/task lookup misses. Silent fallback to equal values corrupts Tier 1 evidence.
+- Use "Value-Driven Budget Allocation" in new docs and paper text. Treat "Automatic Budgeting" / `auto_budget` as legacy implementation names, not the research concept.
 
 ## Experiment Execution Constraints
 
