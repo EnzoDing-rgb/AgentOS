@@ -157,6 +157,15 @@ def _strategy_catalog() -> tuple[CompareStrategy, ...]:
     return DEFAULT_STRATEGIES + DIAGNOSTIC_STRATEGIES
 
 
+def _effective_policy_jobs(requested_jobs: int | None, strategy_count: int) -> int:
+    """Policy comparisons run policy-parallel; tasks remain serial per policy."""
+    if strategy_count < 1:
+        raise ValueError("strategy_count must be positive")
+    if requested_jobs is None:
+        return strategy_count
+    return max(1, requested_jobs, strategy_count)
+
+
 def _required_backends_for_strategies(strategies: tuple[CompareStrategy, ...]) -> list[str]:
     from budgetflow.adapter.backends import _selected_t2_backend  # noqa: E402
 
@@ -1889,7 +1898,13 @@ def main() -> None:
             raise SystemExit("no strategies selected")
     else:
         strategies = all_strategies
-    policy_jobs = len(strategies) if args.jobs is None else max(1, args.jobs)
+    policy_jobs = _effective_policy_jobs(args.jobs, len(strategies))
+    if args.jobs is not None and len(strategies) > 1 and args.jobs < len(strategies):
+        print(
+            f"{tag('policy-jobs', bold=False)} upgraded --jobs {args.jobs} -> {policy_jobs} "
+            f"for {len(strategies)} policy-parallel strategies",
+            flush=True,
+        )
 
     budget_caps = {"loose": loose, "tight": tight}
     if args.ids:
