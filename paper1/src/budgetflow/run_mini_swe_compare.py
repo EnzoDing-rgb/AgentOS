@@ -1135,7 +1135,7 @@ def _rebuild_state_from_jsonl(path: Path, header_lines: list[str]) -> _CompareSt
         failure_class = str(record.get("failure_class") or classify_failure(record))
         failures = state.failure_by_strategy.setdefault(name, {})
         failures[failure_class] = failures.get(failure_class, 0) + 1
-        state.batch_spent_by_strategy[name] = float(record.get("batch_spent") or 0.0)
+        state.batch_spent_by_strategy[name] = sum(state.task_cost_by_strategy.get(name, []))
         # Value observability: enrich legacy records on resume
         if record.get("task_value_profile") is None:
             _enrich_record_with_value(record)
@@ -1231,7 +1231,7 @@ def _persist_task_record(
         failure_class = str(record.get("failure_class") or classify_failure(record))
         failures = state.failure_by_strategy.setdefault(name, {})
         failures[failure_class] = failures.get(failure_class, 0) + 1
-        state.batch_spent_by_strategy[name] = float(record.get("batch_spent") or 0.0)
+        state.batch_spent_by_strategy[name] = sum(state.task_cost_by_strategy.get(name, []))
         # Value observability tracking
         if state.resolved_value_by_strategy is not None:
             state.resolved_value_by_strategy.setdefault(name, []).append(

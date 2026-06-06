@@ -141,6 +141,86 @@ def test_persist_task_record_writes_learning_memory_for_normal_run(tmp_path):
     assert learned[0]["run_id"] == "061_schema_test_budget_only_tight_sympy__sympy-14774"
 
 
+def test_persist_task_record_accumulates_strategy_spend_for_live_summary(tmp_path):
+    state = _CompareState(
+        summary_lines=[],
+        resolved_by_strategy={},
+        task_cost_by_strategy={},
+        batch_spent_by_strategy={},
+        turns_by_strategy={},
+        spark_by_strategy={},
+        flash_by_strategy={},
+        pro_by_strategy={},
+        failure_by_strategy={},
+        resolved_value_by_strategy={},
+        task_value_by_strategy={},
+    )
+    base_record = {
+        "strategy": "budgetflow_value_aware_tight",
+        "routing": "budgetflow_value_aware",
+        "harness_resolved": True,
+        "patch_extracted": True,
+        "agent_gold_edited": True,
+        "agent_gold_files": ["x.py"],
+        "llm_turns": 2,
+        "turns": 2,
+        "backend_picks": ["tier2"],
+        "failure_class": "pass",
+        "forensic_summary": {"primary_axis": "pass"},
+        "detail": "test_patch=ok; fail_before=fail; model_patch=ok; fail_after=pass; pass_to_pass=pass",
+        "task_features": {"patch_lines": 12, "f2p_count": 1, "p2p_count": 1, "problem_length": 500},
+        "run_series": "summary_accumulation",
+    }
+    records = [
+        {
+            **base_record,
+            "instance_id": "sympy__sympy-14774",
+            "task_cost": 0.10,
+            "total_cost": 0.10,
+            "batch_spent": 0.10,
+            "attempt_id": "summary_accumulation_budgetflow_value_aware_tight_sympy__sympy-14774",
+        },
+        {
+            **base_record,
+            "instance_id": "sympy__sympy-16988",
+            "task_cost": 0.25,
+            "total_cost": 0.25,
+            "batch_spent": 0.25,
+            "attempt_id": "summary_accumulation_budgetflow_value_aware_tight_sympy__sympy-16988",
+        },
+    ]
+
+    progress = GlobalRunProgress(2)
+    progress.start_task()
+    progress.finish_task()
+    progress.start_task()
+    progress.finish_task()
+    with (tmp_path / "out.jsonl").open("w") as handle:
+        for record in records:
+            _persist_task_record(
+                state,
+                record,
+                handle=handle,
+                io_lock=threading.Lock(),
+                total_runs=2,
+                tasks_per_strategy=2,
+                global_progress=progress,
+                scoreboard=None,
+                summary_path=tmp_path / "summary.log",
+                strategy_names=["budgetflow_value_aware_tight"],
+                batch_caps={"budgetflow_value_aware_tight": 1.0},
+                budget_modes={"budgetflow_value_aware_tight": "per_task_cap"},
+                started=0.0,
+                out_path=tmp_path / "out.jsonl",
+            )
+
+    assert state.task_cost_by_strategy["budgetflow_value_aware_tight"] == [0.10, 0.25]
+    assert state.batch_spent_by_strategy["budgetflow_value_aware_tight"] == 0.35
+    text = (tmp_path / "summary.log").read_text()
+    assert "budgetflow_value_aware_tight" in text
+    assert text.count("0.3500") >= 2
+
+
 def test_persist_task_record_can_disable_learning_write(tmp_path):
     state = _CompareState(
         summary_lines=[],
