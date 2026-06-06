@@ -165,6 +165,27 @@ class TestTraceExtension:
         assert trace["gold_edit_guard_limit"] == 12
         assert trace["gold_edit_guard_active"] is True
 
+    def test_trace_includes_value_salvage_state(self):
+        trace = _build_turn_trace(
+            step_index=1, agent_phase="explore", stage=Stage.LOCALIZATION,
+            bash_command="grep x file.py", input_tokens=100,
+            expected_costs={}, base_pressure=0.01, effective_pressure=0.01,
+            backend_chosen="tier2", escalated_backend="tier3",
+            final_backend="tier3", backend_tier=3, reserve_out=256,
+            adaptive=None, no_progress_streak=12, no_progress_on_tier=12,
+            turns_on_tier=1, has_progress=False, progress_reason="none",
+            prompt_tokens=100, completion_tokens=50,
+            actual_cost=0.5, billable=0.5, response_ok=True, error_type=None,
+            value_salvage_active=True,
+            value_salvage_turns_remaining=2,
+            value_salvage_triggered=True,
+            value_salvage_reason="opened_stagnation_no_progress",
+        )
+        assert trace["value_salvage_active"] is True
+        assert trace["value_salvage_turns_remaining"] == 2
+        assert trace["value_salvage_triggered"] is True
+        assert trace["value_salvage_reason"] == "opened_stagnation_no_progress"
+
     def test_trace_old_fields_still_present(self):
         """Backward-compat: old fields survive the extension."""
         trace = _build_turn_trace(
@@ -245,3 +266,62 @@ class TestGoldEditRepairGuard:
             assert exc.exit_reason == "gold_edit_t2_repair_limit"
         else:
             raise AssertionError("expected BudgetFlowStagnationError")
+
+
+class TestValueAwareSalvage:
+    def _model(self, *, strategy="budgetflow_value_aware", task_value=2.0, median_task_value=1.0):
+        t2 = Backend("tier2", 2, 0.001, 0.002, 60, 1, 1024, 0.6, 100)
+        t3 = Backend("tier3", 3, 0.01, 0.02, 60, 1, 1024, 0.8, 200)
+        model = object.__new__(BudgetFlowLitellmModel)
+        model.routing = build_routing_context(
+            strategy,
+            [t2, t3],
+            budget_pressure=0.01,
+            task_value=task_value,
+            median_task_value=median_task_value,
+        )
+        model.workflow_id = "test"
+        model.step_index = 12
+        model.agent_gold_edited = False
+        model._value_salvage_turns_remaining = 0
+        model._value_salvage_triggered = False
+        model._value_salvage_reason = None
+        model._no_progress_on_current_tier = 12
+        model._turns_on_current_tier = 12
+
+        class Gov:
+            class State:
+                total_budget = 1.0
+            state = State()
+            def remaining_budget(self):
+                return 0.8
+
+        model.governor = Gov()
+        return model, t2, t3
+
+    def test_high_value_bfv_opens_salvage_window(self):
+        model, _, _ = self._model()
+
+        assert model._maybe_open_value_salvage("stagnation_no_progress") is True
+        assert model._value_salvage_triggered is True
+        assert model._value_salvage_turns_remaining == 3
+        assert model._value_salvage_reason == "opened_stagnation_no_progress"
+
+    def test_low_value_bfv_does_not_salvage(self):
+        model, _, _ = self._model(task_value=0.5, median_task_value=1.0)
+
+        assert model._maybe_open_value_salvage("stagnation_no_progress") is False
+        assert model._value_salvage_triggered is False
+
+    def test_bfc_does_not_salvage(self):
+        model, _, _ = self._model(strategy="budgetflow_conservative")
+
+        assert model._maybe_open_value_salvage("stagnation_no_progress") is False
+
+    def test_salvage_forces_t3(self):
+        model, t2, t3 = self._model()
+        model._maybe_open_value_salvage("stagnation_no_progress")
+
+        chosen = model._apply_value_salvage(t2, Stage.LOCALIZATION)
+
+        assert chosen is t3

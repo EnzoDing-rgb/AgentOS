@@ -34,6 +34,9 @@ from ..defaults import (
     TIER3_MODEL,
     TIER_ESCALATION_PATIENCE,
     TIER_MAX_TURNS,
+    VALUE_SALVAGE_MIN_HEADROOM_FRAC,
+    VALUE_SALVAGE_MIN_MULTIPLIER,
+    VALUE_SALVAGE_WINDOW_TURNS,
 )
 from ..console_log import backend_tier_label, bold, dim, routing_stage_label, tag
 from ..governor import BudgetGovernor
@@ -179,6 +182,10 @@ def _build_turn_trace(
     gold_edit_guard_turns: int = 0,
     gold_edit_guard_limit: int | None = None,
     gold_edit_guard_active: bool = False,
+    value_salvage_active: bool = False,
+    value_salvage_turns_remaining: int = 0,
+    value_salvage_triggered: bool = False,
+    value_salvage_reason: str | None = None,
     touched_file_paths: list[str] | None = None,
     # --- value-aware routing fields ---
     task_value: float | None = None,
@@ -241,6 +248,10 @@ def _build_turn_trace(
         "gold_edit_guard_turns": gold_edit_guard_turns,
         "gold_edit_guard_limit": gold_edit_guard_limit,
         "gold_edit_guard_active": gold_edit_guard_active,
+        "value_salvage_active": value_salvage_active,
+        "value_salvage_turns_remaining": value_salvage_turns_remaining,
+        "value_salvage_triggered": value_salvage_triggered,
+        "value_salvage_reason": value_salvage_reason,
         # Value-aware routing fields
         "task_value": task_value,
         "task_value_multiplier": task_value_multiplier,
@@ -437,6 +448,9 @@ class BudgetFlowLitellmModel:
         self._format_error_streak: int = 0
         self._last_text_mode: bool = False
         self._unavailable_backends: set[str] = set()
+        self._value_salvage_turns_remaining = 0
+        self._value_salvage_triggered = False
+        self._value_salvage_reason: str | None = None
         self.config = type("Config", (), {"model_name": TIER3_MODEL})()
 
     def query(self, messages: list[dict[str, str]], **kwargs) -> dict:
@@ -490,6 +504,13 @@ class BudgetFlowLitellmModel:
             no_progress_streak=self._no_progress_streak,
             recent_commands=self._recent_commands,
         )
+        if should_stop:
+            if self._maybe_open_value_salvage(stall_reason):
+                should_stop = False
+            elif self._value_salvage_turns_remaining > 0:
+                should_stop = False
+            elif self._value_salvage_triggered:
+                self._value_salvage_reason = f"expired_{stall_reason}"
         if should_stop:
             print(
                 f"{tag('stall', bold=False)} #{self.step_index} "
@@ -557,6 +578,7 @@ class BudgetFlowLitellmModel:
                     no_progress_streak=self._no_progress_streak,
                 )
         prev_tier = self._last_backend_tier
+        backend = self._apply_value_salvage(backend, stage)
         backend = self._apply_progress_escalation(backend)
         backend = self._apply_gold_edit_repair_guard(backend, stage)
         escalated_backend = backend.name
@@ -573,6 +595,8 @@ class BudgetFlowLitellmModel:
             self._turns_on_current_tier += 1
             if self.agent_gold_edited and stage in (Stage.REPAIR, Stage.VALIDATION) and backend.tier == 2:
                 self._gold_edit_t2_repair_turns += 1
+            if backend.tier >= 3 and self._value_salvage_turns_remaining > 0:
+                self._value_salvage_turns_remaining -= 1
             self.routing.last_backend = backend
             self.backend_picks.append(backend.name)
             self.last_routing_stage = stage.value
@@ -824,7 +848,61 @@ class BudgetFlowLitellmModel:
             "gold_edit_guard_turns": self._gold_edit_t2_repair_turns,
             "gold_edit_guard_limit": GOLD_EDIT_T2_REPAIR_TURN_LIMIT,
             "gold_edit_guard_active": self._gold_edit_t2_repair_turns >= GOLD_EDIT_T2_REPAIR_TURN_LIMIT,
+            "value_salvage_active": self._value_salvage_turns_remaining > 0,
+            "value_salvage_turns_remaining": self._value_salvage_turns_remaining,
+            "value_salvage_triggered": self._value_salvage_triggered,
+            "value_salvage_reason": self._value_salvage_reason,
         }
+
+    def _task_value_multiplier(self) -> float:
+        median = max(0.001, float(getattr(self.routing, "median_task_value", 1.0) or 1.0))
+        value = float(getattr(self.routing, "task_value", median) or median)
+        return max(0.5, min(2.0, value / median))
+
+    def _can_value_salvage(self) -> bool:
+        if self.routing.strategy != "budgetflow_value_aware":
+            return False
+        if self._value_salvage_triggered:
+            return False
+        if self.agent_gold_edited:
+            return False
+        if self._task_value_multiplier() < VALUE_SALVAGE_MIN_MULTIPLIER:
+            return False
+        total = float(self.governor.state.total_budget or 0.0)
+        if total <= 0:
+            return False
+        remaining_frac = self.governor.remaining_budget() / total
+        return remaining_frac >= VALUE_SALVAGE_MIN_HEADROOM_FRAC
+
+    def _maybe_open_value_salvage(self, stall_reason: str) -> bool:
+        if not self._can_value_salvage():
+            return False
+        self._value_salvage_triggered = True
+        self._value_salvage_turns_remaining = VALUE_SALVAGE_WINDOW_TURNS
+        self._value_salvage_reason = f"opened_{stall_reason}"
+        print(
+            f"{tag('salvage', bold=False)} #{self.step_index} "
+            f"value_multiplier={self._task_value_multiplier():.2f} "
+            f"window={VALUE_SALVAGE_WINDOW_TURNS} reason={stall_reason}",
+            flush=True,
+        )
+        return True
+
+    def _apply_value_salvage(self, backend: Backend, stage) -> Backend:  # noqa: ARG002
+        if self._value_salvage_turns_remaining <= 0:
+            return backend
+        candidate = next((b for b in self.routing.backends if b.tier >= 3), None)
+        if candidate is None or backend.tier >= candidate.tier:
+            return backend
+        print(
+            f"{tag('salvage', bold=False)} #{self.step_index} "
+            f"{backend_tier_label(backend.name)} -> {backend_tier_label(candidate.name)} "
+            f"remaining={self._value_salvage_turns_remaining}",
+            flush=True,
+        )
+        self._no_progress_on_current_tier = 0
+        self._turns_on_current_tier = 0
+        return candidate
 
     def _reserve_output_tokens(self, backend: Backend, input_tokens: int) -> int:
         remaining = self.governor.remaining_budget()

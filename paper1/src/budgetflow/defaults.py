@@ -210,6 +210,13 @@ ADAPTIVE_TTL_STEPS = 15
 STAGNATION_REPEAT_CMD_LIMIT = 6
 STAGNATION_NO_PROGRESS_STEPS = 12
 
+# BFV-only salvage: high-value tasks that stall before any patch/gold edit get
+# a short T3 window before stop. This keeps Tier 1 value-aware stop/continue
+# distinct from BFC's value-blind Tier 2 mechanism.
+VALUE_SALVAGE_MIN_MULTIPLIER = 1.15
+VALUE_SALVAGE_WINDOW_TURNS = 3
+VALUE_SALVAGE_MIN_HEADROOM_FRAC = 0.12
+
 # PolicyMemory regret threshold: when full_vs_tight_regret exceeds this,
 # budgetflow_full is auto-tightened (cap T3 window, early stop-loss).
 # Calibrated offline from postfix_017_10x5 data (P50 of positive regret distribution).
