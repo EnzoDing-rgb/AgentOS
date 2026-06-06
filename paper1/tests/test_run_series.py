@@ -8,6 +8,7 @@ from budgetflow.run_series import (
     latest_series_stem,
     list_series_stems,
     resolve_compare_stem,
+    resolve_run_identity,
     series_run_complete,
 )
 
@@ -72,3 +73,38 @@ def test_resume_complete_latest_errors(tmp_path: Path) -> None:
     assert series_run_complete(tmp_path, "policy_15x7-8", total_runs=3)
     with pytest.raises(SystemExit, match="complete"):
         resolve_compare_stem(tmp_path, series="policy_15x7", resume=True, total_runs=3, explicit_stem=None)
+
+
+def test_run_identity_uses_concrete_stem_for_run_series(tmp_path: Path) -> None:
+    out_stem, mode, series_base, run_series = resolve_run_identity(
+        tmp_path,
+        tasks_n=3,
+        strategies_n=3,
+        task_set="easy",
+        resume=False,
+        total_runs=9,
+        explicit_stem="065_value_salvage_3x3",
+        explicit_series=None,
+    )
+    assert out_stem == "065_value_salvage_3x3"
+    assert mode == "new"
+    assert series_base == "compare_3x3"
+    assert run_series == "065_value_salvage_3x3"
+
+
+def test_run_identity_resume_keeps_latest_stem_as_run_series(tmp_path: Path) -> None:
+    (tmp_path / "policy_5x3-0.jsonl").write_text('{"strategy":"x","instance_id":"a"}\n')
+    out_stem, mode, series_base, run_series = resolve_run_identity(
+        tmp_path,
+        tasks_n=5,
+        strategies_n=3,
+        task_set="medium",
+        resume=True,
+        total_runs=15,
+        explicit_stem=None,
+        explicit_series=None,
+    )
+    assert out_stem == "policy_5x3-0"
+    assert mode == "resume"
+    assert series_base == "policy_5x3"
+    assert run_series == "policy_5x3-0"

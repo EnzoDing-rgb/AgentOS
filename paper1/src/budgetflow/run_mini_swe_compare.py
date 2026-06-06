@@ -76,7 +76,7 @@ from budgetflow.protocol_caps import read_protocol_caps  # noqa: E402
 from budgetflow.adaptive_routing import AdaptiveRoutingRegistry  # noqa: E402
 from budgetflow.policy_memory import PolicyMemory  # noqa: E402
 from budgetflow.run_guards import CompareRunGuards, set_active_guard  # noqa: E402
-from budgetflow.run_series import default_series_base, resolve_compare_stem  # noqa: E402
+from budgetflow.run_series import resolve_run_identity  # noqa: E402
 from budgetflow.run_trace import TraceConsoleLevel  # noqa: E402
 from budgetflow.runtime import check_cwd, get_runtime_root, is_nfs_or_banned, print_runtime_info, resolve_runtime_root, set_runtime_root  # noqa: E402
 
@@ -2245,17 +2245,15 @@ def main() -> None:
         budget_memory_enabled = False
 
     total_runs = len(tasks) * len(strategies)
-    series = args.run_series or default_series_base(
+    out_stem, stem_mode, series_base, run_series = resolve_run_identity(
+        RUNS_DIR,
         tasks_n=len(tasks),
         strategies_n=len(strategies),
         task_set=args.task_set,
-    )
-    out_stem, stem_mode = resolve_compare_stem(
-        RUNS_DIR,
-        series=series,
         resume=args.resume,
         total_runs=total_runs,
         explicit_stem=args.out_stem,
+        explicit_series=args.run_series,
     )
     out_path, summary_path = _compare_paths(len(tasks), len(strategies), stem=out_stem)
     checkpoint_path = checkpoint_path_for(out_stem, RUNS_DIR)
@@ -2294,7 +2292,7 @@ def main() -> None:
     print_runtime_info(runtime_root, RUNS_DIR, out_stem, policy_jobs)
     print(
         f"{tag('run_id', bold=False)} {out_stem} "
-        f"series={series} mode={stem_mode}"
+        f"series={series_base} mode={stem_mode}"
         + (" (resume latest)" if stem_mode == "resume" else " (new run)"),
         flush=True,
     )
@@ -2402,8 +2400,8 @@ def main() -> None:
     started = time.time()
     io_lock = threading.Lock()
     print_lock = threading.Lock() if policy_jobs > 1 else None
-    heartbeat_path = RUNS_DIR / f"{series}.heartbeat.json"
-    heartbeat_writer = HeartbeatWriter(heartbeat_path, run_series=series, total_expected=total_runs)
+    heartbeat_path = RUNS_DIR / f"{run_series}.heartbeat.json"
+    heartbeat_writer = HeartbeatWriter(heartbeat_path, run_series=run_series, total_expected=total_runs)
     global_progress = GlobalRunProgress(total_runs)
     scoreboard = StrategyScoreboard(strategy_names)
     if completed:
@@ -2509,7 +2507,7 @@ def main() -> None:
             budget_estimates=auto_budget_estimates,
             budget_memory_estimates=budget_memory_estimates if budget_memory_enabled else None,
             budget_memory_source_paths=budget_memory_source_paths,
-            run_series=series,
+            run_series=run_series,
             heartbeat_writer=heartbeat_writer,
         )
         return cfg, records, batch_spent, batch_cap

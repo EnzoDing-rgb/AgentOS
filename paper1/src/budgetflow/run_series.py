@@ -94,3 +94,37 @@ def resolve_compare_stem(
         return latest, "resume"
 
     return allocate_series_stem(runs_dir, series), "new"
+
+
+def resolve_run_identity(
+    runs_dir: Path,
+    *,
+    tasks_n: int,
+    strategies_n: int,
+    task_set: str,
+    resume: bool,
+    total_runs: int,
+    explicit_stem: str | None = None,
+    explicit_series: str | None = None,
+) -> tuple[str, str, str, str]:
+    """Resolve artifact identity.
+
+    Returns (out_stem, stem_mode, series_base, run_series).  The series base is
+    used only for auto-allocation/resume grouping.  The run_series written into
+    JSONL/heartbeat must equal the concrete output stem so artifacts from
+    repeated same-shape experiments cannot overwrite or cross-reference each
+    other.
+    """
+    series_base = explicit_series or default_series_base(
+        tasks_n=tasks_n,
+        strategies_n=strategies_n,
+        task_set=task_set,
+    )
+    out_stem, stem_mode = resolve_compare_stem(
+        runs_dir,
+        series=series_base,
+        resume=resume,
+        total_runs=total_runs,
+        explicit_stem=explicit_stem,
+    )
+    return out_stem, stem_mode, series_base, out_stem

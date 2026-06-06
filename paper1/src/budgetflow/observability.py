@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -385,6 +386,7 @@ class HeartbeatWriter:
             status="preparing",
             run_series=run_series,
         )
+        self._lock = threading.Lock()
         self._write()
 
     def pulse(
@@ -425,23 +427,25 @@ class HeartbeatWriter:
         self._write()
 
     def _write(self) -> None:
-        s = self._state
-        data = {
-            "started_at": s.started_at,
-            "updated_at": s.updated_at,
-            "total_expected": s.total_expected,
-            "rows_done": s.rows_done,
-            "active_strategy": s.active_strategy,
-            "active_instance": s.active_instance,
-            "active_elapsed_s": round(s.active_elapsed_s, 1),
-            "last_completed": s.last_completed,
-            "current_pid": s.current_pid,
-            "status": s.status,
-            "run_series": s.run_series,
-        }
-        tmp = self._path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(data, indent=2) + "\n")
-        tmp.rename(self._path)
+        with self._lock:
+            s = self._state
+            data = {
+                "started_at": s.started_at,
+                "updated_at": s.updated_at,
+                "total_expected": s.total_expected,
+                "rows_done": s.rows_done,
+                "active_strategy": s.active_strategy,
+                "active_instance": s.active_instance,
+                "active_elapsed_s": round(s.active_elapsed_s, 1),
+                "last_completed": s.last_completed,
+                "current_pid": s.current_pid,
+                "status": s.status,
+                "run_series": s.run_series,
+            }
+            ident = threading.get_ident()
+            tmp = self._path.with_name(f"{self._path.name}.{os.getpid()}.{ident}.tmp")
+            tmp.write_text(json.dumps(data, indent=2) + "\n")
+            os.replace(tmp, self._path)
 
 
 def load_heartbeat(path: Path) -> dict | None:

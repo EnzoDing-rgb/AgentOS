@@ -1038,6 +1038,31 @@ class TestHeartbeatWriter:
         hb = load_heartbeat(hb_path)
         assert hb["status"] == "completed"
 
+    def test_parallel_pulses_do_not_race_on_tmp_file(self, tmp_path):
+        import concurrent.futures
+
+        from budgetflow.observability import HeartbeatWriter, load_heartbeat
+
+        hb_path = tmp_path / "test.heartbeat.json"
+        writer = HeartbeatWriter(hb_path, run_series="test_series", total_expected=200)
+
+        def pulse(i):
+            writer.pulse(
+                rows_done=i,
+                active_strategy=f"strategy_{i % 3}",
+                active_instance=f"task_{i}",
+                active_elapsed_s=float(i),
+            )
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=12) as pool:
+            list(pool.map(pulse, range(1, 201)))
+
+        hb = load_heartbeat(hb_path)
+        assert hb is not None
+        assert hb["status"] == "completed"
+        assert hb["rows_done"] == 200
+        assert not list(tmp_path.glob("*.tmp"))
+
 
 # ── observability: heartbeat utilities ──────────────────────────────────
 
