@@ -43,7 +43,7 @@ def test_live_snapshot_lists_strategy_pass_fail() -> None:
     assert "    2   15     0     2" in text
     assert "budgetflow_full_tight" in text
     assert "    3   15     2     1" in text
-    assert "      3000" in text
+    assert "3000.00" in text
 
 
 def test_budgetflow_equal_weight_is_available_and_uses_equal_weight_profile() -> None:

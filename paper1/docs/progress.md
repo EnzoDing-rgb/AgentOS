@@ -4,6 +4,19 @@
 
 ## 当前快照（2026-06-06）
 
+### 060 后 runtime/evaluator 修复状态
+
+- **060_runtime_fix_3x3 COMPLETE — fresh post-fix validation.** 3 tasks × 3 strategies, `--jobs 3`, per-task cap $0.50, `unsolved_difficulty` value profile, all provider preflight PASS.
+- **Runtime/evaluator fixes confirmed:** new rows have `turns == llm_turns`, explicit `budget_mode=per_task_cap`, `per_task_cap=0.5`, `value_source=value_matrix`, and BFV-only `va_active=True`. Checker reports 9 records, 8 pass / 1 fail, 0 suspicious pass, 0 no_trace, 0 warnings.
+- **Summary bug fixed after 060:** final table correctly reports `planned_cap=1.50`; 060 footer still shows stale `per_task_cap=100.00` because `_ingest_batch_footer()` used shared `batch_cap` for display. Code now displays `batch_caps[cfg.name]` in per-task mode; historical summary not edited.
+- **Timeout fix hardened:** LLM timeout is now configurable via `BUDGETFLOW_LLM_TIMEOUT_S` with default 90s, and timeout exceptions abort tenacity retry so provider fallback can happen instead of 50-minute stalls.
+- **Fresh signal:** BFV 3/3, $0.4859, RVPD 1.123; BFC 3/3, $0.9100, RVPD 0.5995; BO 2/3, $0.6109, RVPD 0.3546. BFV is both the cheapest successful strategy and the only strategy that solves all tasks without hitting the cap.
+- **Tier 1 signal:** highest-value task `sympy__sympy-16988` (value=0.329) is solved by BFV and BFC, failed by BO. BFV solves it at $0.2029 / 26 turns; BFC needs $0.5000 / 44 turns and hits cap. This supports task-wise value awareness as a practical improvement over both BO and value-blind conservation.
+- **Tier 2 signal:** on common successful tasks, BFV also reduces waste versus BO/BFC; on `sympy__sympy-20212`, BFV spends $0.2509 vs BFC $0.3665 and BO $0.4831.
+- **Remaining bugs / risks:** BO's 16988 row is `extract_fail` / protocol failure, so BO comparison is not a pure model-capability loss. BFC still shows repeated exploration and late rescue on 16988. These are runtime/anti-spin targets before scaling to 3×5/3×10 or adding more repos.
+- **Task-pool decision pending:** current evidence is still mostly SymPy plus a small Django history. Next expansion should be staged: first add one new repo/category as an infra audit, not a paper-scale experiment; then scale once harness/protocol/observability stay clean.
+- **Commit**: TBD
+
 ### 058 后 Phase AB 状态
 
 - **Phase AB COMPLETE — Anti-spin hardening and validation**

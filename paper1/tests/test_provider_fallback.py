@@ -114,3 +114,26 @@ def test_provider_all_unavailable_releases_every_reservation(monkeypatch) -> Non
     assert governor.state.spent_budget == pytest.approx(0.0)
     assert governor.state.available_budget == pytest.approx(governor.state.total_budget)
     assert all(trace["response_ok"] is False for trace in model.turn_traces)
+
+
+def test_completion_uses_configurable_short_timeout(monkeypatch) -> None:
+    monkeypatch.setenv("BUDGETFLOW_LLM_TIMEOUT_S", "42")
+    monkeypatch.setattr("budgetflow.adapter.mini_swe_proxy.ensure_aicode007_proxy", lambda: None)
+    captured: dict = {}
+
+    def fake_litellm_completion(**kwargs):
+        captured.update(kwargs)
+        return _Response()
+
+    monkeypatch.setattr("budgetflow.adapter.mini_swe_proxy.litellm.completion", fake_litellm_completion)
+    model, _ = _model("all_t3")
+
+    model._completion(
+        [{"role": "user", "content": "x"}],
+        backend_name=TIER3_BACKEND,
+        model_name="openai/gpt-5.4",
+        model_kwargs={"api_key": "test", "api_base": "https://example.test"},
+        text_mode=True,
+    )
+
+    assert captured["timeout"] == 42.0

@@ -4,6 +4,20 @@
 
 该 commit 就 commit，该 push 就 push。关键节点必须 commit，能同步远端就同步远端。
 
+### 060 / Runtime-Clean Evidence Takeaway
+
+0. **Do not trust a clean JSONL to imply a clean summary.** 060 rows were schema-clean and checker-clean, but the batch footer still displayed `per_task_cap=100.00` because footer display reused the shared tight cap. Treat JSONL as primary evidence, summary as a derived view that needs its own tests.
+
+1. **Per-task cap reporting has two different caps.** Row cap is `per_task_cap`; strategy planned cap is `per_task_cap × completed_rows`. Shared `batch_cap` must not appear in per-task-mode summaries. The code now threads `budget_modes` into live snapshot, final totals, and footer rendering.
+
+2. **Short timeout plus retry abort is an infra requirement, not a convenience.** A 90s default `BUDGETFLOW_LLM_TIMEOUT_S` keeps experiments moving, but the important part is aborting tenacity retries on timeout so one bad provider call does not become a multi-minute hidden loop.
+
+3. **060 gives the first post-fix clean positive signal.** BFV 3/3 at $0.4859 beats BFC 3/3 at $0.9100 and BO 2/3 at $0.6109. The highest-value task is solved by BFV at $0.2029 / 26 turns; BFC solves it only at the cap ($0.5000 / 44 turns); BO fails with protocol/extract failure.
+
+4. **Positive signal is not the same as final paper evidence.** 060 is local-harness, 3-task, mostly SymPy evidence. It supports the mechanism and validates observability after fixes, but paper claims still need larger, cleaner, more diverse runs and later official harness audit.
+
+5. **The next infra target is anti-spin quality, not more metric layering.** BFC on 16988 repeats exploration and hits cap before passing. BO's failure is protocol/extract, not necessarily inability. Before scaling, inspect repeated command patterns, parser failures, and rescue timing so larger experiments produce diagnostic data rather than just more noisy rows.
+
 ### Phase AB / Anti-Spin Hardening Takeaway
 
 0. **Evaluation fields must be recomputed from source evidence, not trusted as stale cache.** `failure_class`, `verdict_axis`, `failure_owner`, and `failure_subtype` are derived fields. Compact audit now recomputes them from the current classifier and reports `STALE_VERDICT_FIELDS` when old JSONL cache disagrees. This prevents schema migration from silently preserving wrong conclusions.

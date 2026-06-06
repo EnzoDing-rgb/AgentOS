@@ -644,10 +644,14 @@ def _format_strategy_totals(
     pro_by_strategy: dict[str, list[float]],
     failure_by_strategy: dict[str, dict[str, int]],
     batch_caps: dict[str, float | None],
+    budget_modes: dict[str, str] | None = None,
 ) -> list[str]:
-    lines = ["=== BATCH RESOLVED + COST BY STRATEGY (governor units, shared pool) ==="]
+    has_per_task = any(mode == "per_task_cap" for mode in (budget_modes or {}).values())
+    cap_label = "planned_cap" if has_per_task else "batch_cap"
+    mode_label = "per-task cap" if has_per_task else "shared pool"
+    lines = [f"=== BATCH RESOLVED + COST BY STRATEGY (governor units, {mode_label}) ==="]
     header = (
-        f"{'strategy':<28} {'resolved':>8} {'batch_spent':>11} {'batch_cap':>10} "
+        f"{'strategy':<28} {'resolved':>8} {'batch_spent':>11} {cap_label:>10} "
         f"{'avg_task':>9} {'avg_turns':>10} {'T1':>5} {'T2':>5} {'T3':>5}"
     )
     lines.append(header)
@@ -663,6 +667,8 @@ def _format_strategy_totals(
         resolved_n = sum(1 for f in flags if f)
         batch_spent = batch_spent_by_strategy.get(key, 0.0)
         cap = batch_caps.get(key)
+        if (budget_modes or {}).get(key) == "per_task_cap" and cap is not None:
+            cap = cap * max(len(flags), 1)
         cap_s = _fmt_usd(cap)
         cap_flag = ""
         if cap is not None and batch_spent > cap + 0.01:
@@ -694,6 +700,7 @@ def _format_live_snapshot(
     pro_by_strategy: dict[str, list[float]],
     batch_spent_by_strategy: dict[str, float],
     batch_caps: dict[str, float | None],
+    budget_modes: dict[str, str] | None = None,
     runs_done: int,
     total_runs: int,
     tasks_per_strategy: int,
@@ -717,7 +724,7 @@ def _format_live_snapshot(
     lines.append(
         f"{'strategy':<28} {'done':>4} {'plan':>4} {'PASS':>5} {'FAIL':>5} {'rate':>6} "
         f"{'avg_cost':>8} {'avg_turn':>7} {'T1':>5} {'T2':>5} {'T3':>5} "
-        f"{'batch_spent':>11} {'batch_cap':>10}"
+        f"{'batch_spent':>11} {'planned_cap' if any(mode == 'per_task_cap' for mode in (budget_modes or {}).values()) else 'batch_cap':>10}"
     )
     lines.append("-" * 110)
     for name in strategy_names:
@@ -739,6 +746,8 @@ def _format_live_snapshot(
         avg_pro = sum(pro) / len(pro) if pro else 0.0
         batch_spent = batch_spent_by_strategy.get(name, 0.0)
         cap = batch_caps.get(name)
+        if (budget_modes or {}).get(name) == "per_task_cap" and cap is not None:
+            cap = cap * max(done_n, 1)
         cap_s = _fmt_usd(cap)
         lines.append(
             f"{name:<28} {done_n:>4} {tasks_per_strategy:>4} {pass_n:>5} {fail_n:>5} {rate:>6} "
@@ -792,6 +801,7 @@ def _write_summary_file(
     pro_by_strategy: dict[str, list[float]],
     failure_by_strategy: dict[str, dict[str, int]],
     batch_caps: dict[str, float | None],
+    budget_modes: dict[str, str] | None,
     started: float,
     out_path: Path,
     runs_done: int,
@@ -812,6 +822,7 @@ def _write_summary_file(
         failure_by_strategy=failure_by_strategy,
         batch_spent_by_strategy=batch_spent_by_strategy,
         batch_caps=batch_caps,
+        budget_modes=budget_modes,
         runs_done=runs_done,
         total_runs=total_runs,
         tasks_per_strategy=tasks_per_strategy,
@@ -1174,6 +1185,7 @@ def _persist_task_record(
     summary_path: Path,
     strategy_names: list[str],
     batch_caps: dict[str, float | None],
+    budget_modes: dict[str, str],
     started: float,
     out_path: Path,
     auto_budget_memory: AutoBudgetMemory | None = None,
@@ -1231,6 +1243,7 @@ def _persist_task_record(
             pro_by_strategy=state.pro_by_strategy,
             failure_by_strategy=state.failure_by_strategy,
             batch_caps=batch_caps,
+            budget_modes=budget_modes,
             started=started,
             out_path=out_path,
             runs_done=state.runs_done,
@@ -1276,6 +1289,7 @@ def _ingest_batch_footer(
     *,
     strategy_names: list[str],
     batch_caps: dict[str, float | None],
+    budget_modes: dict[str, str],
     summary_path: Path,
     started: float,
     out_path: Path,
@@ -1287,7 +1301,12 @@ def _ingest_batch_footer(
     if not batch_records:
         return
     with io_lock:
-        state.summary_lines.append(f"=== BATCH START strategy={cfg.name} shared_cap={_fmt_usd(batch_cap)} ===")
+        mode = budget_modes.get(cfg.name, "shared")
+        cap_label = "per_task_cap" if mode == "per_task_cap" else "shared_cap"
+        display_cap = batch_caps.get(cfg.name) if mode == "per_task_cap" else batch_cap
+        state.summary_lines.append(
+            f"=== BATCH START strategy={cfg.name} {cap_label}={_fmt_usd(display_cap)} ==="
+        )
         state.batch_spent_by_strategy[cfg.name] = batch_spent
         state.summary_lines.append(
             f"=== BATCH END strategy={cfg.name} resolved="
@@ -1308,6 +1327,7 @@ def _ingest_batch_footer(
             pro_by_strategy=state.pro_by_strategy,
             failure_by_strategy=state.failure_by_strategy,
             batch_caps=batch_caps,
+            budget_modes=budget_modes,
             started=started,
             out_path=out_path,
             runs_done=state.runs_done,
@@ -2213,6 +2233,10 @@ def main() -> None:
         )
         for s in strategies
     }
+    budget_modes: dict[str, str] = {
+        s.name: "per_task_cap" if use_per_task_cap and s.budget_tier is not None else "shared"
+        for s in strategies
+    }
 
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
     runtime_root, _ = resolve_runtime_root()
@@ -2351,6 +2375,7 @@ def main() -> None:
         pro_by_strategy=state.pro_by_strategy,
         failure_by_strategy=state.failure_by_strategy,
         batch_caps=batch_caps,
+        budget_modes=budget_modes,
         started=started,
         out_path=out_path,
         runs_done=state.runs_done,
@@ -2392,6 +2417,7 @@ def main() -> None:
                 summary_path=summary_path,
                 strategy_names=strategy_names,
                 batch_caps=batch_caps,
+                budget_modes=budget_modes,
                 started=started,
                 out_path=out_path,
                 auto_budget_memory=auto_budget_memory,
@@ -2453,6 +2479,7 @@ def main() -> None:
                         batch_cap,
                         strategy_names=strategy_names,
                         batch_caps=batch_caps,
+                        budget_modes=budget_modes,
                         summary_path=summary_path,
                         started=started,
                         out_path=out_path,
@@ -2478,6 +2505,7 @@ def main() -> None:
                             batch_cap,
                             strategy_names=strategy_names,
                             batch_caps=batch_caps,
+                            budget_modes=budget_modes,
                             summary_path=summary_path,
                             started=started,
                             out_path=out_path,
@@ -2505,6 +2533,7 @@ def main() -> None:
         pro_by_strategy=state.pro_by_strategy,
         failure_by_strategy=state.failure_by_strategy,
         batch_caps=batch_caps,
+        budget_modes=budget_modes,
         started=started,
         out_path=out_path,
         runs_done=state.runs_done,
@@ -2530,6 +2559,7 @@ def main() -> None:
         pro_by_strategy=state.pro_by_strategy,
         failure_by_strategy=state.failure_by_strategy,
         batch_caps=batch_caps,
+        budget_modes=budget_modes,
     ):
         print(f"  {line}", flush=True)
     print(f"jsonl={out_path}")

@@ -63,6 +63,7 @@ _AICODE007_BACKENDS = frozenset(
     backend for backend, config in TIER_CONFIGS.items() if config.provider == "aicode007"
 )
 FORMAT_ERROR_STOP_AFTER = 5
+DEFAULT_LLM_TIMEOUT_S = 90.0
 _PROVIDER_UNAVAILABLE_MARKERS = (
     "service temporarily unavailable",
     "serviceunavailableerror",
@@ -80,6 +81,17 @@ _PROVIDER_UNAVAILABLE_MARKERS = (
 
 def _format_error_stop_after(backend_tier: int | None) -> int:
     return FORMAT_ERROR_STOP_AFTER
+
+
+def _llm_timeout_s() -> float:
+    raw = os.environ.get("BUDGETFLOW_LLM_TIMEOUT_S", "").strip()
+    if not raw:
+        return DEFAULT_LLM_TIMEOUT_S
+    try:
+        value = float(raw)
+    except ValueError:
+        return DEFAULT_LLM_TIMEOUT_S
+    return max(10.0, value)
 
 
 def _is_provider_unavailable(exc: Exception) -> bool:
@@ -1016,7 +1028,7 @@ class BudgetFlowLitellmModel:
                 return litellm.completion(
                     model=model_name,
                     messages=prepared,
-                    timeout=300,
+                    timeout=_llm_timeout_s(),
                     **({} if text_mode else {"tools": [BASH_TOOL]}),
                     **kwargs_merged,
                 )
