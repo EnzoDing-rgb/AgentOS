@@ -2,6 +2,7 @@ from budgetflow.adapter.bash_stage import (
     bash_has_progress,
     classify_bash_stage,
     classify_routing_stage,
+    command_counts_as_progress,
     extract_touched_file_paths,
 )
 from budgetflow.types import Stage
@@ -23,6 +24,27 @@ def test_bash_has_progress():
     assert bash_has_progress("pytest -x tests/test_foo.py") == (True, "validation_pattern")
     assert bash_has_progress("grep -R pattern src") == (False, "none")
     assert bash_has_progress("") == (False, "none")
+
+
+def test_read_only_command_in_repair_phase_does_not_reset_stagnation():
+    assert command_counts_as_progress(
+        "grep -n 'FilePathField' django/db/models/fields/__init__.py",
+        agent_phase="edit_gold",
+    ) == (False, "none")
+
+
+def test_real_repair_command_counts_as_progress_even_without_phase():
+    assert command_counts_as_progress(
+        "sed -i 's/self.path/path/' django/db/models/fields/__init__.py",
+        agent_phase=None,
+    ) == (True, "repair_pattern")
+
+
+def test_validation_phase_counts_as_progress_for_stop_loss():
+    assert command_counts_as_progress(
+        "",
+        agent_phase="test",
+    ) == (True, "validation_phase")
 
 
 def test_bash_stage_localization():

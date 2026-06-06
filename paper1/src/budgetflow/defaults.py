@@ -208,7 +208,7 @@ ADAPTIVE_TTL_STEPS = 15
 
 # Anti-stall: all strategies share same no-progress streak.
 STAGNATION_REPEAT_CMD_LIMIT = 6
-STAGNATION_NO_PROGRESS_STEPS = 40
+STAGNATION_NO_PROGRESS_STEPS = 12
 
 # PolicyMemory regret threshold: when full_vs_tight_regret exceeds this,
 # budgetflow_full is auto-tightened (cap T3 window, early stop-loss).

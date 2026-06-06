@@ -41,10 +41,8 @@ from ..types import Backend, Stage, TurnInfo, WorkflowStatus
 from .errors import BudgetFlowBudgetError, BudgetFlowStagnationError, BudgetFlowUpstreamError
 from ..run_guards import is_fatal_billing_error, record_billing_halt, record_upstream_error
 from .bash_stage import (
-    _REPAIR_AGENT_PHASES,
-    _VALIDATION_AGENT_PHASES,
-    bash_has_progress,
     classify_routing_stage,
+    command_counts_as_progress,
     extract_touched_file_paths, extract_trace_file_paths,
 )
 from .stall_guard import check_stagnation, normalize_bash_command
@@ -474,12 +472,11 @@ class BudgetFlowLitellmModel:
         else:
             self.routing.budget_pressure = base_pressure
         phase = (self.agent_phase or "").strip()
-        has_progress, progress_reason = bash_has_progress(bash_command)
-        if has_progress or phase in _REPAIR_AGENT_PHASES or phase in _VALIDATION_AGENT_PHASES:
-            if not has_progress and phase in _REPAIR_AGENT_PHASES:
-                progress_reason = "repair_pattern"
-            elif not has_progress and phase in _VALIDATION_AGENT_PHASES:
-                progress_reason = "validation_pattern"
+        has_progress, progress_reason = command_counts_as_progress(
+            bash_command,
+            agent_phase=self.agent_phase,
+        )
+        if has_progress:
             self._no_progress_streak = 0
             self._no_progress_on_current_tier = 0
         else:

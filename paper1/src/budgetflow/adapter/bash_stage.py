@@ -158,6 +158,28 @@ def bash_has_progress(bash_command: str | None) -> tuple[bool, str]:
     return False, "none"
 
 
+def command_counts_as_progress(
+    bash_command: str | None,
+    *,
+    agent_phase: str | None = None,
+) -> tuple[bool, str]:
+    """Return whether a turn should reset anti-stagnation counters.
+
+    Agent phase is useful for routing stage, but it is too coarse for
+    anti-spin. A read-only grep/sed inside an edit/repair phase should not
+    reset no-progress counters; otherwise the agent can spend many turns
+    inspecting or rewriting temp files while the runtime believes repair is
+    advancing.
+    """
+    has_progress, reason = bash_has_progress(bash_command)
+    if has_progress:
+        return True, reason
+    phase = (agent_phase or "").strip()
+    if phase in _VALIDATION_AGENT_PHASES:
+        return True, "validation_phase"
+    return False, "none"
+
+
 def classify_bash_stage(bash_command: str | None, observation: str | None = None) -> Stage:
     command = (bash_command or "").strip()
     obs = (observation or "").lower()
