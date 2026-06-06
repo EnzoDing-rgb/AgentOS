@@ -124,6 +124,22 @@ Evidence discipline:
 - A Tier 2 result can be shown with equal values, but it should be reported as routing/cost evidence rather than value-allocation evidence.
 - Task value is a proxy. The current cold-start direction is model success rarity / solve rarity: tasks solved by fewer capable models or policies receive higher value. The long-term system should learn value, difficulty, model success probability, progress quality, and cost online from verified outcomes.
 
+Strategy discipline:
+
+- Preserve a value-blind mechanism strategy for Tier 2. Current name: `budgetflow_conservative`. It should test whether budget-pressure and progress-aware routing reduce waste without using task value.
+- Add a separate value-aware strategy for Tier 1. Working name: `budgetflow_value_aware`. It should multiply task-wise value into routing, escalation, and stop/continue decisions. Task value belongs to the whole workflow, not to a single stage.
+- Keep baseline names explicit. `budget_only_tight` is a smart budget-pressure baseline, not a dumb cost-only baseline. `budget_only_t2_tight` is the true cheapest-tier baseline and is useful as an ablation, but the main comparison should include the stronger budget baseline.
+
+The canonical near-term comparison should therefore separate the claims:
+
+| Policy | Role | Claim Tested |
+|---|---|---|
+| `budget_only_tight` | Strong budget-pressure baseline | Competitive baseline |
+| `budgetflow_conservative_tight` | Value-blind BudgetFlow routing | Tier 2 mechanism |
+| `budgetflow_value_aware_tight` | Task-value-aware BudgetFlow routing | Tier 1 North Star |
+
+`budget_only_t2_tight` remains useful as a true dummy / cheapest-tier control, but it should not be the only baseline because it is weaker than the routing baselines a reviewer will expect.
+
 The second claim should not be used as the only foundation of the paper. It has real downsides, including tier-switching overhead and possible KV / prefix-cache loss. If experiments show that the stage/progress formula does not beat simpler routing, BudgetFlow should still be framed as a value-aware shared budget governor that can plug in a better allocator or learned policy. If both claims hold, the paper becomes stronger: BudgetFlow improves value allocation at the portfolio level and cost efficiency inside individual workflows.
 
 Paper objective:

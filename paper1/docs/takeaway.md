@@ -18,6 +18,10 @@
 
 5. **BF uses 2.7× more T3 than BO for the same pass rate (per-task).** 32% vs 12% T3 with identical 3/3 outcomes. BF's unconstrained escalation wastes T3 on easy tasks — sympy-13480 gets 27% T3 at $0.07 when BO solves it with 15% T3 at $0.04. The waste doesn't buy extra capability.
 
+6. **Keep Tier 1 and Tier 2 policies separate.** `budgetflow_conservative` should stay value-blind so it can test the Tier 2 routing mechanism cleanly. A new `budgetflow_value_aware` strategy should test Tier 1 by injecting task-wise value into routing and stop/continue decisions. Do not use the value-aware strategy to prove pure routing efficiency.
+
+7. **The next canonical comparison is three policies, not two.** Use `budget_only_tight` as the strong budget baseline, `budgetflow_conservative_tight` for Tier 2, and `budgetflow_value_aware_tight` for Tier 1. `budget_only_t2_tight` is still useful as a true dummy control, but not sufficient as the main baseline.
+
 ### Phase V / Root-Cause Forensic + Conservative Fix Takeaway
 
 1. **BudgetOnlyStepRouter is a FALSE baseline.** It uses T3 when `budget_pressure < 0.15`, making it a pressure-gated strategy, not a "dumb cost-only" baseline. All previous comparisons using `budget_only_tight` as a baseline are comparing BudgetFlow against a strategy that front-loads expensive T3 on early tasks. Fix: `BudgetOnlyT2Router` — always picks cheapest tier, never escalates.
