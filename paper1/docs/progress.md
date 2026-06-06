@@ -4,9 +4,21 @@
 
 ## 当前快照（2026-06-06）
 
+### 058 后 Phase AB 状态
+
+- **Phase AB COMPLETE — Anti-spin hardening and validation**
+- **3 bugs fixed**: (1) BFV missing from escalation/reserve allowlists, (2) HTTP timeout retry-loop → 50-min stalls, (3) BFC conservation lockout misclassification as protocol_fail
+- **25 regression tests added**, all passing. 0 regressions in existing suite.
+- **Validation experiment (058_5x1_v1)**: 15/15 rows, 3 strategies × 5 tasks, per-task cap $0.50, jobs=3
+- **All 3 strategies resolve 4/5 (80%)**. 16988 (hardest, value=0.329) fails across the board: BO=repair_fail, BFC/BFV=infra_fail (billing guard on dashscope T2)
+- **BFV lowest total cost on resolved tasks**: $0.698 vs BO $0.683 vs BFC $0.802 (BFV essentially tied with BO)
+- **Phase AB observability confirmed**: va_active/task_value_multiplier correct in all 15 rows, BFV escalation working, zero timeout retry loops
+- **Total cost Phase AB**: $2.34. Running total ~$17.50.
+- **Commit**: TBD
+
 ### 056 后 Phase Z 状态
 
-- **Phase Z IN PROGRESS — Debugging & validation loop for BFV**
+- **Phase Z COMPLETE — Debugging & validation loop for BFV**
 - **当前定位不是 paper-level 结论。** Phase Z 的目标是修 inference、value observability、checker/evaluator、BudgetFlow runtime 的系统性 bug；小实验只作为 gate，跑稳后再扩大，不把单轮 worker summary 升级成论文结论。
 - **决策纪律：worker recommendation 只作为输入材料。** 下一步方向由主 Agent / reviewer 基于 JSONL、checkpoint、summary log、checker 和 trace 独立判断；报告中的建议不能自动成为路线。
 - **BFV 5/5 resolves all 5 tasks** in medium validation (056_5x1_v1). Only strategy to achieve full resolution.

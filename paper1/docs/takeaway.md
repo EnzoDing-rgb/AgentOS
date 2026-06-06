@@ -4,6 +4,18 @@
 
 该 commit 就 commit，该 push 就 push。关键节点必须 commit，能同步远端就同步远端。
 
+### Phase AB / Anti-Spin Hardening Takeaway
+
+0. **Strategy allowlists are a recurring bug vector.** BFV was missing from `_apply_progress_escalation` and `_reserve_with_downgrade` strategy tuples — meaning it silently skipped both anti-stagnation protections. When adding a new routing strategy, audit EVERY `if strategy in (...)` tuple in the proxy and add it. AST-based source-code tests now enforce this.
+
+1. **HTTP timeouts without abort_exceptions create 50-minute stalls.** `litellm.completion()` had no timeout parameter. When the provider hung, the `Timeout` exception was caught by tenacity's retry wrapper and retried 10× with exponential backoff. Fix: add `timeout=N` to the call, wrap timeout exceptions in a custom type, and add that type to retry's `abort_exceptions`.
+
+2. **Provider billing guards can mask BudgetFlow bugs.** On 16988, dashscope T2 returned `BadRequestError: Access denied`, triggering `HALT_ALL` and killing both BFC and BFV. This prevented us from observing whether conservation lockout or BFV escalation would have occurred naturally. Have a fallback tier (T1) enabled when running experiments where provider instability could invalidate rows.
+
+3. **Per-task cap + policy-parallel is the most reliable experiment mode.** 15/15 rows in 451 seconds, zero hangs, zero dropped tasks. Shared-budget mode had 3/27 rows hung or unreachable (056, 055). For any experiment with 5+ tasks, per-task cap is the default.
+
+4. **va_active/task_value_multiplier now correctly populated.** The Phase AA fix (computing median from _VALUE_LOOKUP) works in all contexts — both per-task cap and shared budget, both equal and non-equal profiles. The 5 BFV rows in 058 show the correct multiplier gradient: 0.50 (3 low-value tasks) → 0.71 (mid) → 1.48 (high).
+
 ### Phase Z / Debugging & Validation Loop Takeaway
 
 0. **BFC conservation lockout on high-value tasks is now a 3× reproduced pattern.** sympy-16988 (value=0.329) fails at 7 turns, ~$0.03 in 055_3x3_v2, 055_3x5_v2, and 056_5x1_v1. Conservation factor progressively blocks T3 as shared budget depletes. Value-blind routing that saves budget on the wrong task is a systematic flaw, not noise.
