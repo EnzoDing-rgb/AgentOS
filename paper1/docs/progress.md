@@ -4,6 +4,15 @@
 
 ## 当前快照（2026-06-06）
 
+### 064 / Anti-spin validation and classifier correction
+
+- **064_antispin_3x3 COMPLETE — fresh post anti-spin run.** Same 3 tasks × 3 policies, `--jobs 3`, `--auto-budget`, cost about **$0.74**, 9/9 rows complete.
+- **Runtime fix:** repair phase no longer counts as progress unless the command is an actual repair/validation action. `STAGNATION_NO_PROGRESS_STEPS` moved 40 → 12. This directly targets 062b's read-only repair-loop false progress.
+- **Evaluator fix:** no-patch `stagnation_no_progress` is no longer automatically `budget_fail/conservation_lockout`. Conservation lockout now requires trace evidence that T3 was blocked by max-tier/conservation and never accessed. 064 recomputes to `loc_fail=3`, `repair_fail=1`.
+- **Result:** BO 3/3, $0.1775; BFC 1/3, $0.3896; BFV 1/3, $0.1742. This is negative for both Tier 1 and Tier 2.
+- **Interpretation:** early anti-spin saves money but is too blunt. BFV stops before patching high-value tasks, so the missing mechanism is value-aware salvage: high-value no-patch stalls should get a bounded T3/salvage window rather than immediate stop.
+- **Next direction:** do not scale. Implement value-aware stop/continue salvage, then rerun the same 3x3 gate.
+
 ### 063 / 062b rerun fragility audit
 
 - **062b_gold_stoploss_3x3 is negative/fragility evidence, not a hidden success.** Same 3 tasks × 3 policies after the stop-loss tweak produced BO 3/3, BFC 3/3, BFV 1/3. Cost was about **$1.41**.

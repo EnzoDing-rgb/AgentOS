@@ -4,6 +4,18 @@
 
 该 commit 就 commit，该 push 就 push。关键节点必须 commit，能同步远端就同步远端。
 
+### 064 / Anti-Spin Takeaway
+
+0. **Repair phase is not progress.** A read-only grep/sed inside an edit phase should not reset anti-spin counters. Stage classification and progress detection are different concepts.
+
+1. **Early stop is not enough for Tier 1.** 064 shows the anti-spin fix can save money, but BFV stopped before patching the two high-value tasks. The product behavior we need is not just "stop when stalled"; it is "stop cheap tasks, salvage valuable tasks."
+
+2. **Do not call no-patch stagnation a budget failure.** If budget remains and the agent never produced a patch, the failure is localization/model behavior unless trace evidence shows conservation blocked T3 entirely. The classifier now recomputes 064 as `loc_fail`, not `budget_fail`.
+
+3. **BO remains a serious baseline.** BO solved 3/3 cheaply in 064. Any paper claim must beat or explain BO, not dismiss it as dummy routing.
+
+4. **Next mechanism should be value-aware salvage.** On high-value tasks with no patch and remaining budget, BFV should open a bounded stronger-model salvage window before stop. BFC can remain value-blind for Tier 2.
+
 ### 061 / Value-Driven Budget Allocation Learning Takeaway
 
 0. **Continual learning existed as modules, but the default loop was broken.** `AutoBudgetMemory` and `PolicyMemory` were present, yet ordinary paid runs did not write budget-learning memory unless `--auto-budget` was enabled. That wastes paid outcomes. Fix: collect learning records by default; applying learned caps remains opt-in.
