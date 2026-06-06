@@ -87,8 +87,14 @@ def _is_provider_unavailable(exc: Exception) -> bool:
     if status_code in {404, 503}:
         return True
     exc_name = type(exc).__name__
-    if exc_name in ("APITimeoutError", "Timeout", "APIConnectionError", "APIStatusError"):
+    if exc_name in ("APITimeoutError", "Timeout", "APIConnectionError", "APIStatusError", "_ProviderTimeoutError"):
         return True
+    # Unwrap _ProviderTimeoutError to check the original exception
+    original = getattr(exc, "original", None)
+    if original is not None:
+        orig_name = type(original).__name__
+        if orig_name in ("APITimeoutError", "Timeout", "ReadTimeout", "ConnectTimeout"):
+            return True
     text = f"{exc_name} {exc}".lower()
     if "timeout" in text or "timed out" in text or "connection" in text:
         return True
@@ -97,6 +103,14 @@ def _is_provider_unavailable(exc: Exception) -> bool:
 
 class FatalProviderBillingError(RuntimeError):
     """Provider billing/account errors should bypass mini-SWE retry backoff."""
+
+    def __init__(self, original: Exception) -> None:
+        self.original = original
+        super().__init__(str(original))
+
+
+class _ProviderTimeoutError(RuntimeError):
+    """Timeout errors should skip tenacity retry to enable provider fallback."""
 
     def __init__(self, original: Exception) -> None:
         self.original = original
@@ -826,7 +840,7 @@ class BudgetFlowLitellmModel:
         Turn cap: "making progress but too slowly → force upgrade."
         - T1:25, T2:40, T3:60 turns
         """
-        if self.routing.strategy not in ("budgetflow_full", "budgetflow_conservative", "budgetflow_equal_weight", "budgetflow_auto_v2", "stage_blind"):
+        if self.routing.strategy not in ("budgetflow_full", "budgetflow_conservative", "budgetflow_value_aware", "budgetflow_equal_weight", "budgetflow_auto_v2", "stage_blind"):
             return backend
         ordered = self.routing.backends
         if len(ordered) < 2:
@@ -926,7 +940,7 @@ class BudgetFlowLitellmModel:
         start_index = ordered.index(backend)
         min_tier = 1
         adaptive = self.routing.adaptive
-        if adaptive is not None and self.routing.strategy in ("budgetflow_full", "budgetflow_conservative", "budgetflow_equal_weight", "budgetflow_auto_v2", "stage_blind"):
+        if adaptive is not None and self.routing.strategy in ("budgetflow_full", "budgetflow_conservative", "budgetflow_value_aware", "budgetflow_equal_weight", "budgetflow_auto_v2", "stage_blind"):
             min_tier = adaptive.min_tier_for_reserve()
         reserve_out = None
         last_reason: str | None = None
@@ -1009,10 +1023,15 @@ class BudgetFlowLitellmModel:
             except Exception as exc:  # noqa: BLE001
                 if is_fatal_billing_error(str(exc)):
                     raise FatalProviderBillingError(exc) from exc
+                exc_name = type(exc).__name__
+                if exc_name in ("APITimeoutError", "Timeout", "ReadTimeout", "ConnectTimeout"):
+                    raise _ProviderTimeoutError(exc) from exc
+                if "timeout" in str(exc).lower() or "timed out" in str(exc).lower():
+                    raise _ProviderTimeoutError(exc) from exc
                 raise
 
         try:
-            for attempt in retry(logger=logger, abort_exceptions=[KeyboardInterrupt, FatalProviderBillingError]):
+            for attempt in retry(logger=logger, abort_exceptions=[KeyboardInterrupt, FatalProviderBillingError, _ProviderTimeoutError]):
                 with attempt:
                     return _query()
         except FatalProviderBillingError as exc:
