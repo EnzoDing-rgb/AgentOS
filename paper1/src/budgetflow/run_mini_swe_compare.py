@@ -415,43 +415,40 @@ def _init_value_observability(*, value_profile: str = "equal", value_matrix_path
     _VALUE_MATRIX_PATH = value_matrix_path
     _VALUE_LOOKUP = None
     if value_matrix_path:
-        try:
-            with open(value_matrix_path) as f:
-                artifact = json.loads(f.read())
+        with open(value_matrix_path) as f:
+            artifact = json.loads(f.read())
 
-            # Current schema: tasks → instance_id → values → profile
-            tasks = artifact.get("tasks")
-            if isinstance(tasks, dict) and tasks:
-                lookup: dict[str, float] = {}
-                for instance_id, task_data in tasks.items():
-                    if not isinstance(task_data, dict):
-                        continue
-                    values = task_data.get("values")
-                    if isinstance(values, dict) and value_profile in values:
-                        lookup[instance_id] = float(values[value_profile])
-                if lookup:
-                    _VALUE_LOOKUP = lookup
+        # Current schema: tasks → instance_id → values → profile
+        tasks = artifact.get("tasks")
+        if isinstance(tasks, dict) and tasks:
+            lookup: dict[str, float] = {}
+            for instance_id, task_data in tasks.items():
+                if not isinstance(task_data, dict):
+                    continue
+                values = task_data.get("values")
+                if isinstance(values, dict) and value_profile in values:
+                    lookup[instance_id] = float(values[value_profile])
+            if lookup:
+                _VALUE_LOOKUP = lookup
 
-            # Legacy schema fallback: matrix → profile → instance_id → {value: ...}
-            if _VALUE_LOOKUP is None:
-                matrix = artifact.get("matrix", {})
-                profile_data = matrix.get(value_profile) if isinstance(matrix, dict) else None
-                if profile_data and isinstance(profile_data, dict):
-                    _VALUE_LOOKUP = {
-                        task_id: entry.get("value", 1.0)
-                        for task_id, entry in profile_data.items()
-                        if isinstance(entry, dict)
-                    }
+        # Legacy schema fallback: matrix → profile → instance_id → {value: ...}
+        if _VALUE_LOOKUP is None:
+            matrix = artifact.get("matrix", {})
+            profile_data = matrix.get(value_profile) if isinstance(matrix, dict) else None
+            if profile_data and isinstance(profile_data, dict):
+                _VALUE_LOOKUP = {
+                    task_id: entry.get("value", 1.0)
+                    for task_id, entry in profile_data.items()
+                    if isinstance(entry, dict)
+                }
 
-            if _VALUE_LOOKUP is None and value_profile != "equal":
-                print(
-                    f"[value_observability] WARNING: profile '{value_profile}' not found "
-                    f"in value matrix {value_matrix_path}; falling back to equal",
-                    flush=True,
-                )
-        except (OSError, json.JSONDecodeError, KeyError) as exc:
-            print(f"[value_observability] WARNING: cannot load value matrix {value_matrix_path}: {exc}", flush=True)
-            _VALUE_LOOKUP = None
+        if _VALUE_LOOKUP is None and value_profile != "equal":
+            print(
+                f"[value_observability] WARNING: profile '{value_profile}' not found "
+                f"in value matrix {value_matrix_path}",
+                flush=True,
+            )
+            # Caller must check _VALUE_LOOKUP after init and decide whether to fail.
 
 
 def _enrich_record_with_value(record: dict) -> dict:
@@ -468,9 +465,15 @@ def _enrich_record_with_value(record: dict) -> dict:
     elif _VALUE_PROFILE == "equal":
         value_source = "default_equal"
     else:
-        # Non-equal profile requested but lookup failed (missing task, missing
-        # profile, or matrix not loadable) — fall back to equal, but log it.
-        value_source = "missing_profile_fallback"
+        # Non-equal profile requested but task not found in matrix.
+        # This should not happen if the CLI validation passed — the matrix
+        # exists and has the profile. Missing task means the value matrix
+        # doesn't cover this task; fail-fast to force data quality.
+        raise SystemExit(
+            f"[value_observability] FATAL: instance_id='{instance_id}' not found "
+            f"in value matrix {_VALUE_MATRIX_PATH} for profile '{_VALUE_PROFILE}'. "
+            f"Either add this task to the matrix or use --value-profile=equal."
+        )
 
     resolved_value = task_value if resolved else 0.0
     resolved_value_per_dollar = resolved_value / task_cost if task_cost > 0 else 0.0
@@ -1777,10 +1780,25 @@ def main() -> None:
         sys.exit(0)
 
     # ── Value observability: init before any tasks run ───────────────────
+    if args.value_profile != "equal" and not args.value_matrix:
+        print(
+            f"[value_observability] FATAL: --value-profile={args.value_profile} requires "
+            f"--value-matrix. Only --value-profile=equal can use default values.",
+            flush=True,
+        )
+        sys.exit(2)
     _init_value_observability(
         value_profile=args.value_profile,
         value_matrix_path=args.value_matrix,
     )
+    if _VALUE_LOOKUP is None and args.value_profile != "equal":
+        print(
+            f"[value_observability] FATAL: profile '{args.value_profile}' not found "
+            f"in value matrix {args.value_matrix}. Task values cannot be assigned. "
+            f"Use --value-profile=equal for default values.",
+            flush=True,
+        )
+        sys.exit(2)
 
     # ── Runtime root: set before any path-dependent operations ────────────
     if args.runtime_root:
