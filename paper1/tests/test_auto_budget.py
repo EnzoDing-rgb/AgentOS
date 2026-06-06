@@ -302,6 +302,55 @@ class TestAutoBudgetMemory:
         assert result.source == "history_exact"
         assert result.estimated_cost == 0.05
 
+    def test_not_enough_evidence_excluded_from_exact_memory(self):
+        mem = AutoBudgetMemory()
+        mem.write_record(AutoBudgetMemory.build_record(
+            instance_id="sympy__sympy-14774", repo="sympy/sympy",
+            strategy="budget_only_t2_tight", routing="budget_only_t2",
+            resolved=False, harness_resolved=False,
+            failure_class="extract_fail", forensic_primary_axis="agent",
+            total_cost=0.001, estimated_task_cap=None, estimated_task_cost=None,
+            patch_extracted=False, agent_gold_edited=False, llm_turns=1,
+            patch_lines=12, f2p_count=1, p2p_count=114,
+            problem_length=500, gold_file_count=0,
+            exit_status="LimitsExceeded",
+        ))
+        est = AutoBudgetEstimator(memory=mem)
+        task = _make_task("sympy__sympy-14774")
+        result = est.estimate(task, scale=1.5, min_cap=0.10, max_cap=10.0)
+        assert result.source == "history_exact"
+        assert result.estimated_cost == 0.05
+
+    def test_not_enough_evidence_does_not_lower_successful_memory(self):
+        mem = AutoBudgetMemory()
+        mem.write_record(AutoBudgetMemory.build_record(
+            instance_id="test__task-1", repo="test/repo",
+            strategy="budget_only_tight", routing="budget_only",
+            resolved=True, harness_resolved=True,
+            failure_class="", forensic_primary_axis="pass",
+            total_cost=0.20, estimated_task_cap=0.30, estimated_task_cost=0.20,
+            patch_extracted=True, agent_gold_edited=True, llm_turns=8,
+            patch_lines=12, f2p_count=1, p2p_count=10,
+            problem_length=500, gold_file_count=1,
+        ))
+        mem.write_record(AutoBudgetMemory.build_record(
+            instance_id="test__task-1", repo="test/repo",
+            strategy="budget_only_t2_tight", routing="budget_only_t2",
+            resolved=False, harness_resolved=False,
+            failure_class="extract_fail", forensic_primary_axis="agent",
+            total_cost=0.001, estimated_task_cap=None, estimated_task_cost=None,
+            patch_extracted=False, agent_gold_edited=False, llm_turns=1,
+            patch_lines=12, f2p_count=1, p2p_count=10,
+            problem_length=500, gold_file_count=0,
+            exit_status="LimitsExceeded",
+        ))
+        est = AutoBudgetEstimator(memory=mem)
+        task = _make_task("test__task-1", repo="test/repo")
+        result = est.estimate(task, scale=1.5, min_cap=0.05, max_cap=10.0)
+        assert result.source == "memory_exact"
+        assert result.estimated_cost == 0.20
+        assert result.memory_neighbors == 1
+
     def test_knn_fallback_same_repo(self):
         mem = AutoBudgetMemory()
         for i in range(3):

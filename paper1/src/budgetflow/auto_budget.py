@@ -46,6 +46,12 @@ _REPO_FLOOR_ESTIMATED_COST: dict[str, float] = {
     "django/django": 1.00,
 }
 
+_LEARNABLE_CAP_SUFFICIENCY = {
+    "sufficient",
+    "likely_underbudget",
+    "underbudget_or_model",
+}
+
 
 @dataclass(frozen=True)
 class BudgetEstimate:
@@ -398,7 +404,7 @@ class AutoBudgetEstimator:
         usable = [
             r for r in same_repo
             if r.get("total_cost", 0) > 0
-            and r.get("cap_was_sufficient") not in ("exclude_harness", "exclude_corrupt")
+            and r.get("cap_was_sufficient") in _LEARNABLE_CAP_SUFFICIENCY
         ]
         if not usable:
             return None
@@ -434,7 +440,7 @@ class AutoBudgetEstimator:
         usable = [
             r for r in records
             if r.get("total_cost", 0) > 0
-            and r.get("cap_was_sufficient") not in ("exclude_harness", "exclude_corrupt")
+            and r.get("cap_was_sufficient") in _LEARNABLE_CAP_SUFFICIENCY
         ]
         if not usable:
             return None

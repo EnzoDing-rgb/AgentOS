@@ -16,6 +16,8 @@
 
 4. **Old paid rows are not retroactively fixed.** 058/059/060 remain valid runtime evidence, but they did not train default memory at run time. Do not edit historical JSONL; use new runs after the fix to build continual-learning evidence.
 
+5. **Skills are tools, not governance.** Use skills only when they lower risk or reduce cognitive load. For BudgetFlow paper decisions, the main agent must still act like a reviewer-author: inspect evidence, identify root causes, and make the research judgment directly. Do not turn skill invocation into ritual.
+
 ### 060 / Runtime-Clean Evidence Takeaway
 
 0. **Do not trust a clean JSONL to imply a clean summary.** 060 rows were schema-clean and checker-clean, but the batch footer still displayed `per_task_cap=100.00` because footer display reused the shared tight cap. Treat JSONL as primary evidence, summary as a derived view that needs its own tests.
