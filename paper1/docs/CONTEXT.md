@@ -67,3 +67,13 @@ Current state: historical ETL exists, soft-cap recommendations exist, runtime wi
 - Tier 1 is the paper compass: maximize verified resolved value per dollar under a shared hard budget.
 - Tier 2 is a mechanism claim: route stages/models more efficiently than simpler baselines.
 - Current P0 for experiments: non-equal value profiles must fail fast when the value matrix/profile/task lookup misses. Silent fallback to equal values corrupts Tier 1 evidence.
+
+## Experiment Execution Constraints
+
+These constraints apply to Codex prompts, Worker runs, and handoffs. They are part of the engineering context, not optional report prose.
+
+- Policy comparisons should run policy-parallel by default. For a three-policy comparison, `run_mini_swe_compare --jobs 3` is the expected setting. Tasks remain serial inside each policy; policies run in parallel through isolated worktrees.
+- If a paid comparison is accidentally launched with the wrong parallelism, stop it early, preserve the partial artifact as aborted evidence, and restart with a fresh `--out-stem`. Do not resume into a contaminated stem.
+- Before sending any experiment prompt, the main Agent must explicitly check the intended strategy count, task count, `--jobs`, value profile, value matrix path, output stem, and paid budget cap.
+- Any exception to policy-parallel execution must be justified in the prompt and final report with the concrete blocker, for example a verified worktree lock bug or provider rate limit. "Being conservative" is not by itself enough.
+- Reports must distinguish Tier 1 and Tier 2 evidence. `budgetflow_conservative` is value-blind Tier 2 evidence; `budgetflow_value_aware` is Tier 1 evidence. Do not mix them to support the wrong claim.

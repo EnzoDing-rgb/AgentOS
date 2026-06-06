@@ -4,6 +4,14 @@
 
 该 commit 就 commit，该 push 就 push。关键节点必须 commit，能同步远端就同步远端。
 
+### Phase 055 / Experiment Execution Discipline Takeaway
+
+1. **Prompt instructions are not enough; experiment preflight must be explicit.** The main Agent can still miss a constraint it knows conceptually, as happened when a three-policy paid comparison was allowed to start with `--jobs 1`. Before launching or delegating any paid experiment, explicitly check: number of policies, number of tasks, `--jobs`, value profile, value matrix path, output stem, and budget cap.
+
+2. **Policy-level parallelism is the default comparison protocol.** For BO/BFC/BFV, use `--jobs 3`: tasks are serial within each policy, policies are parallel across worktrees. Serial mode is allowed only when a concrete blocker is documented, such as a verified worktree lock or provider-rate-limit issue.
+
+3. **Wrong-run artifacts should be preserved but not resumed.** If the run started with the wrong design, stop it early, mark the old stem as aborted evidence in the report, and restart with a fresh stem. This keeps the evidence ledger honest and avoids mixing incompatible rows.
+
 ### Phase W / Conservative BudgetFlow Validation Takeaway
 
 0. **Do not claim value allocation when value observability fell back to equal.** Phase W produced a real routing-positive signal (BFC 3/3 under shared cap), but all 053 runtime rows had `value_source=missing_profile_fallback` and `task_value=1.0`. That means the run cannot support Tier 1 / value-allocation claims. Non-equal profiles must fail fast on missing matrix/profile/task lookup.
