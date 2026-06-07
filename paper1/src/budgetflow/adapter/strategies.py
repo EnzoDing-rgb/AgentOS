@@ -112,14 +112,14 @@ def _budgetflow_max_tier(ctx: RoutingContext) -> int:
     """
     cheapest = ModelCatalog.cheapest(ctx.backends)
     strongest = ModelCatalog.strongest(ctx.backends)
-    default_cap = min(2, strongest.tier)
-    max_tier: int = max(cheapest.tier, default_cap)
+    default_cap = ModelCatalog.second_cheapest(ctx.backends).tier
+    max_tier: int = max(cheapest.tier, min(default_cap, strongest.tier))
     if ctx.last_backend is not None and ctx.last_backend.tier > max_tier:
         max_tier = ctx.last_backend.tier
     # Conservative selector has its own restraint mechanism — let it access
     # the strongest tier earlier to avoid double-penalizing escalation decisions.
-    t3_threshold: float = 0.05 if ctx.strategy in ("budgetflow_conservative", "budgetflow_value_aware") else 0.15
-    if ctx.budget_pressure >= t3_threshold:
+    strongest_threshold: float = 0.05 if ctx.strategy in ("budgetflow_conservative", "budgetflow_value_aware") else 0.15
+    if ctx.budget_pressure >= strongest_threshold:
         max_tier = strongest.tier
     if ctx.adaptive is not None:
         start_tier = ctx.adaptive.starting_tier()

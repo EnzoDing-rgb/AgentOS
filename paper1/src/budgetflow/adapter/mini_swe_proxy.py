@@ -18,7 +18,7 @@ from minisweagent.models.utils.retry import retry
 from ..litellm_quiet import configure_litellm_quiet
 from ..budget_pressure import live_budget_pressure
 from ..defaults import (
-    GOLD_EDIT_T2_REPAIR_TURN_LIMIT,
+    GOLD_EDIT_MID_TIER_REPAIR_TURN_LIMIT,
     PRESSURE_MAX,
     STRONGEST_DOWNGRADE_TIER,
     TIER1_BACKEND,
@@ -172,7 +172,7 @@ class BudgetFlowLitellmModel:
         self._no_progress_streak = 0
         self._no_progress_on_current_tier = 0  # consecutive non-progress steps on current tier
         self._turns_on_current_tier = 0  # total turns on current tier (for turn cap)
-        self._gold_edit_t2_repair_turns = 0
+        self._gold_edit_mid_tier_repair_turns = 0
         self._last_backend_tier: int = 0  # track tier changes to reset patience
         self._total_prompt_tokens = 0
         self._total_completion_tokens = 0
@@ -277,8 +277,7 @@ class BudgetFlowLitellmModel:
         if self.step_index == 1 and self.routing.adaptive is not None:
             min_start = self.routing.adaptive.starting_tier()
             if backend.tier < min_start:
-                ordered = self.routing.backends
-                backend = ordered[min_start - 1]
+                backend = ModelCatalog.at_or_above(self.routing.backends, min_start)
                 print(
                     f"{tag('adapt', bold=False)} #{self.step_index} "
                     f"starting_tier={min_start} ({backend_tier_label(backend.name)})",
@@ -337,9 +336,10 @@ class BudgetFlowLitellmModel:
                 self._turns_on_current_tier = 0
             self._last_backend_tier = backend.tier
             self._turns_on_current_tier += 1
-            if self.agent_gold_edited and stage in (Stage.REPAIR, Stage.VALIDATION) and backend.tier == 2:
-                self._gold_edit_t2_repair_turns += 1
-            if backend.tier >= 3 and self._value_salvage_turns_remaining > 0:
+            guarded_tier = ModelCatalog.second_cheapest(self.routing.backends).tier
+            if self.agent_gold_edited and stage in (Stage.REPAIR, Stage.VALIDATION) and backend.tier == guarded_tier:
+                self._gold_edit_mid_tier_repair_turns += 1
+            if backend.tier >= ModelCatalog.strongest(self.routing.backends).tier and self._value_salvage_turns_remaining > 0:
                 self._value_salvage_turns_remaining -= 1
             self.routing.last_backend = backend
             self.backend_picks.append(backend.name)
@@ -563,7 +563,7 @@ class BudgetFlowLitellmModel:
             primary = []
         else:
             primary = [backend]
-        if self._gold_edit_t2_repair_turns >= GOLD_EDIT_T2_REPAIR_TURN_LIMIT:
+        if self._gold_edit_mid_tier_repair_turns >= GOLD_EDIT_MID_TIER_REPAIR_TURN_LIMIT:
             lower = []
         else:
             lower = [b for b in reversed(ordered) if b.tier < backend.tier]
@@ -589,9 +589,9 @@ class BudgetFlowLitellmModel:
 
     def _gold_edit_guard_trace_fields(self) -> dict[str, object]:
         return {
-            "gold_edit_guard_turns": self._gold_edit_t2_repair_turns,
-            "gold_edit_guard_limit": GOLD_EDIT_T2_REPAIR_TURN_LIMIT,
-            "gold_edit_guard_active": self._gold_edit_t2_repair_turns >= GOLD_EDIT_T2_REPAIR_TURN_LIMIT,
+            "gold_edit_guard_turns": self._gold_edit_mid_tier_repair_turns,
+            "gold_edit_guard_limit": GOLD_EDIT_MID_TIER_REPAIR_TURN_LIMIT,
+            "gold_edit_guard_active": self._gold_edit_mid_tier_repair_turns >= GOLD_EDIT_MID_TIER_REPAIR_TURN_LIMIT,
             "value_salvage_active": self._value_salvage_turns_remaining > 0,
             "value_salvage_turns_remaining": self._value_salvage_turns_remaining,
             "value_salvage_triggered": self._value_salvage_triggered,
@@ -635,7 +635,7 @@ class BudgetFlowLitellmModel:
     def _apply_value_salvage(self, backend: Backend, stage) -> Backend:  # noqa: ARG002
         if self._value_salvage_turns_remaining <= 0:
             return backend
-        candidate = next((b for b in self.routing.backends if b.tier >= 3), None)
+        candidate = ModelCatalog.strongest(self.routing.backends)
         if candidate is None or backend.tier >= candidate.tier:
             return backend
         print(
@@ -716,7 +716,7 @@ class BudgetFlowLitellmModel:
         return next_backend
 
     def _apply_gold_edit_repair_guard(self, backend: Backend, stage) -> Backend:
-        """Avoid long T2 repair loops after the agent has touched a gold file."""
+        """Avoid long second-cheapest-tier repair loops after a gold edit."""
         if self.routing.strategy not in (
             "budgetflow_full",
             "budgetflow_conservative",
@@ -728,30 +728,31 @@ class BudgetFlowLitellmModel:
             return backend
         if not self.agent_gold_edited or stage not in (Stage.REPAIR, Stage.VALIDATION):
             return backend
-        if backend.tier != 2:
+        guarded_tier = ModelCatalog.second_cheapest(self.routing.backends).tier
+        if backend.tier != guarded_tier:
             return backend
-        if self._gold_edit_t2_repair_turns < GOLD_EDIT_T2_REPAIR_TURN_LIMIT:
+        if self._gold_edit_mid_tier_repair_turns < GOLD_EDIT_MID_TIER_REPAIR_TURN_LIMIT:
             return backend
 
         next_backend = next((b for b in self.routing.backends if b.tier > backend.tier), None)
         if next_backend is None:
             print(
                 f"{tag('stop', bold=False)} #{self.step_index} "
-                f"gold_edit_t2_repair_limit turns={self._gold_edit_t2_repair_turns}/"
-                f"{GOLD_EDIT_T2_REPAIR_TURN_LIMIT} no_higher_tier",
+                f"gold_edit_mid_tier_repair_limit turns={self._gold_edit_mid_tier_repair_turns}/"
+                f"{GOLD_EDIT_MID_TIER_REPAIR_TURN_LIMIT} no_higher_tier",
                 flush=True,
             )
             raise BudgetFlowStagnationError(
                 self.workflow_id,
-                exit_reason="gold_edit_t2_repair_limit",
+                exit_reason="gold_edit_mid_tier_repair_limit",
                 step_index=self.step_index,
-                no_progress_streak=self._gold_edit_t2_repair_turns,
+                no_progress_streak=self._gold_edit_mid_tier_repair_turns,
             )
 
         print(
             f"{tag('guard', bold=False)} #{self.step_index} "
-            f"gold_edit_t2_repair_limit turns={self._gold_edit_t2_repair_turns}/"
-            f"{GOLD_EDIT_T2_REPAIR_TURN_LIMIT} "
+            f"gold_edit_mid_tier_repair_limit turns={self._gold_edit_mid_tier_repair_turns}/"
+            f"{GOLD_EDIT_MID_TIER_REPAIR_TURN_LIMIT} "
             f"{backend_tier_label(backend.name)} -> {backend_tier_label(next_backend.name)}",
             flush=True,
         )

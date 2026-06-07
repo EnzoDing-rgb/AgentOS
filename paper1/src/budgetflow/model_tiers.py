@@ -189,6 +189,16 @@ class ModelCatalog:
         return next((backend for backend in ordered if backend.tier == n), ordered[-1])
 
     @staticmethod
+    def second_cheapest(backends: list[Backend]) -> Backend:
+        ordered = sorted(backends, key=lambda backend: backend.tier)
+        return ordered[1] if len(ordered) >= 2 else ordered[0]
+
+    @staticmethod
+    def at_or_above(backends: list[Backend], tier: int) -> Backend:
+        ordered = sorted(backends, key=lambda backend: backend.tier)
+        return next((backend for backend in ordered if backend.tier >= tier), ordered[-1])
+
+    @staticmethod
     def next_higher(backends: list[Backend], backend: Backend) -> Backend | None:
         return next((candidate for candidate in sorted(backends, key=lambda b: b.tier) if candidate.tier > backend.tier), None)
 

@@ -24,10 +24,10 @@ class WorkflowLevelRouter:
         if budget_pressure <= 0.45:
             if average_w_i >= 2.1:
                 return ModelCatalog.strongest(ordered)
-            return ordered[1] if len(ordered) >= 2 else ordered[0]
+            return ModelCatalog.second_cheapest(ordered)
         if average_w_i >= 2.4:
-            return ordered[1] if len(ordered) >= 2 else ordered[0]
-        return ordered[0]
+            return ModelCatalog.second_cheapest(ordered)
+        return ModelCatalog.cheapest(ordered)
 
 
 class BudgetOnlyStepRouter:
@@ -41,7 +41,7 @@ class BudgetOnlyStepRouter:
             )
         if budget_pressure >= 1.2:
             return RouterDecision(
-                backend=ordered[0], reason=f"high_pressure={budget_pressure:.3f}", scores={},
+                backend=ModelCatalog.cheapest(ordered), reason=f"high_pressure={budget_pressure:.3f}", scores={},
                 pressure=budget_pressure, branch="budget_only",
             )
         if n == 2:
@@ -53,12 +53,12 @@ class BudgetOnlyStepRouter:
                     pressure=budget_pressure, branch="budget_only",
                 )
             return RouterDecision(
-                backend=ordered[0], reason="cheapest_baseline_n2", scores={},
+                backend=ModelCatalog.cheapest(ordered), reason="cheapest_baseline_n2", scores={},
                 pressure=budget_pressure, branch="budget_only",
             )
         if budget_pressure >= 0.7:
             return RouterDecision(
-                backend=ordered[0], reason=f"moderate_pressure={budget_pressure:.3f}", scores={},
+                backend=ModelCatalog.cheapest(ordered), reason=f"moderate_pressure={budget_pressure:.3f}", scores={},
                 pressure=budget_pressure, branch="budget_only",
             )
         # When budget is mostly unspent, allow strongest-tier rescue.
@@ -69,11 +69,11 @@ class BudgetOnlyStepRouter:
             )
         if budget_pressure >= 0.35:
             return RouterDecision(
-                backend=ordered[1], reason=f"low_pressure={budget_pressure:.3f}_tier2", scores={},
+                backend=ModelCatalog.second_cheapest(ordered), reason=f"low_pressure={budget_pressure:.3f}_second_cheapest", scores={},
                 pressure=budget_pressure, branch="budget_only",
             )
         return RouterDecision(
-            backend=ordered[1], reason=f"very_low_pressure={budget_pressure:.3f}_tier2", scores={},
+            backend=ModelCatalog.second_cheapest(ordered), reason=f"very_low_pressure={budget_pressure:.3f}_second_cheapest", scores={},
             pressure=budget_pressure, branch="budget_only",
         )
 
@@ -89,7 +89,7 @@ class BudgetOnlyT2Router:
     def choose_backend(self, turn_info: TurnInfo, backends: list[Backend], budget_pressure: float) -> RouterDecision:
         ordered = sorted(backends, key=lambda backend: backend.tier)
         return RouterDecision(
-            backend=ordered[0], reason="t2_only_baseline", scores={},
+            backend=ModelCatalog.cheapest(ordered), reason="cheapest_only_baseline", scores={},
             pressure=budget_pressure, branch="budget_only_t2",
         )
 

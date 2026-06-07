@@ -78,8 +78,9 @@ TIER_MAX_TURNS: dict[int, int] = {
 STRONGEST_DOWNGRADE_TIER = 2
 
 # Once a worker has edited a gold/target file, long mid-tier repair loops are
-# usually expensive noise. Give tier 2 a short runway, then force a stronger tier.
-GOLD_EDIT_T2_REPAIR_TURN_LIMIT = 12
+# usually expensive noise. Give the second-cheapest tier a short runway, then
+# force a stronger tier when one exists.
+GOLD_EDIT_MID_TIER_REPAIR_TURN_LIMIT = 12
 
 # Adaptive routing (budgetflow_full only): rolling task feedback + in-run recovery.
 ADAPTIVE_WINDOW = 5
