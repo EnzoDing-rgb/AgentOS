@@ -7,16 +7,9 @@ from collections.abc import Callable
 from typing import Any
 
 import litellm
-from minisweagent.models.utils.actions_toolcall import (
-    BASH_TOOL,
-    format_toolcall_observation_messages,
-    parse_toolcall_actions,
-)
+from minisweagent.models.utils.actions_toolcall import BASH_TOOL, format_toolcall_observation_messages
 from minisweagent.exceptions import FormatError
-from minisweagent.models.utils.actions_text import (
-    format_observation_messages as format_text_observation_messages,
-    parse_regex_actions,
-)
+from minisweagent.models.utils.actions_text import format_observation_messages as format_text_observation_messages
 from minisweagent.models.utils.anthropic_utils import _reorder_anthropic_thinking_blocks
 from minisweagent.models.utils.cache_control import set_cache_control
 from minisweagent.models.utils.openai_multimodal import expand_multimodal_content
@@ -48,6 +41,7 @@ from .bash_stage import (
     command_counts_as_progress,
     extract_touched_file_paths, extract_trace_file_paths,
 )
+from .action_parsing import format_error_stop_after, parse_text_actions, parse_tool_actions
 from .stall_guard import check_stagnation, normalize_bash_command
 from .message_utils import estimate_input_tokens, extract_bash_context
 from .protocol_adapter import ActionProtocolAdapter
@@ -73,7 +67,6 @@ _DASHSCOPE_BACKENDS = frozenset(
 _AICODE007_BACKENDS = frozenset(
     backend for backend, config in TIER_CONFIGS.items() if config.provider == "aicode007"
 )
-FORMAT_ERROR_STOP_AFTER = 5
 DEFAULT_LLM_TIMEOUT_S = 90.0
 _PROVIDER_UNAVAILABLE_MARKERS = (
     "service temporarily unavailable",
@@ -88,10 +81,6 @@ _PROVIDER_UNAVAILABLE_MARKERS = (
     "\"code\":404",
     "503",
 )
-
-
-def _format_error_stop_after(backend_tier: int | None) -> int:
-    return FORMAT_ERROR_STOP_AFTER
 
 
 def _llm_timeout_s() -> float:
@@ -138,36 +127,6 @@ class _ProviderTimeoutError(RuntimeError):
     def __init__(self, original: Exception) -> None:
         self.original = original
         super().__init__(str(original))
-
-
-def _try_extract_json_command(content: str) -> str | None:
-    """Extract a bash command from {"command": "..."} JSON embedded in prose.
-
-    GPT-5.4 sometimes emits JSON-format commands instead of fenced blocks.
-    Returns the unescaped command string, or None if no JSON command found.
-    """
-    import json
-    import re
-    # Find {"command": ...} patterns.  Match the string value with \-escapes.
-    for m in re.finditer(r'\{"command"\s*:\s*"((?:[^"\\]|\\.)*)"\}', content):
-        try:
-            return json.loads(m.group(0))["command"]
-        except (json.JSONDecodeError, KeyError):
-            continue
-    # Also try [bash] {"command": "..."} variant
-    for m in re.finditer(r'\[bash\]\s*\{[^}]*"command"\s*:\s*"((?:[^"\\]|\\.)*)"[^}]*\}', content):
-        try:
-            inner = re.search(r'\{[^}]*"command"\s*:\s*"((?:[^"\\]|\\.)*)"[^}]*\}', m.group(0))
-            if inner:
-                return json.loads(inner.group(0))["command"]
-        except (json.JSONDecodeError, KeyError):
-            continue
-    return None
-
-
-# Canonical regex for text-mode bash command extraction.
-# Matches: ```mswea_bash_command, ```bash, ```sh
-_TEXT_ACTION_REGEX = r"```(?:mswea_bash_command|bash|sh)\s*\n(.*?)\n```"
 
 
 class BudgetFlowLitellmModel:
@@ -955,27 +914,14 @@ class BudgetFlowLitellmModel:
         return decision.protocol == "text_regex"
 
     def _parse_actions(self, response, *, text_mode: bool = False, backend_tier: int | None = None) -> list[dict]:
-        stop_after = _format_error_stop_after(backend_tier)
+        stop_after = format_error_stop_after(backend_tier)
         if text_mode:
             content = response.choices[0].message.content or ""
             try:
-                actions = parse_regex_actions(
-                    content,
-                    action_regex=_TEXT_ACTION_REGEX,
-                    format_error_template=self.format_error_template,
-                )
+                actions = parse_text_actions(content, format_error_template=self.format_error_template)
                 self._format_error_streak = 0
                 return actions
             except FormatError:
-                # Fallback: try JSON {"command": "..."} extraction for GPT-5.4
-                json_cmd = _try_extract_json_command(content)
-                if json_cmd is not None:
-                    logger.info(
-                        "text_regex fallback: extracted JSON command for %s step=%d",
-                        self.workflow_id, self.step_index,
-                    )
-                    self._format_error_streak = 0
-                    return [{"command": json_cmd}]
                 self._format_error_streak += 1
                 if self._format_error_streak >= stop_after:
                     raise BudgetFlowStagnationError(
@@ -1001,7 +947,7 @@ class BudgetFlowLitellmModel:
                     no_progress_streak=self._format_error_streak,
                 )
         try:
-            return parse_toolcall_actions(tool_calls, format_error_template=self.format_error_template)
+            return parse_tool_actions(tool_calls, format_error_template=self.format_error_template)
         except FormatError:
             if not counted_format_error:
                 self._format_error_streak += 1

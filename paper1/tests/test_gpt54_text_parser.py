@@ -19,9 +19,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from budgetflow.adapter.mini_swe_proxy import (
-    _TEXT_ACTION_REGEX,
-    _try_extract_json_command,
+from budgetflow.adapter.action_parsing import (
+    TEXT_ACTION_REGEX,
+    try_extract_json_command,
 )
 
 
@@ -30,7 +30,7 @@ from budgetflow.adapter.mini_swe_proxy import (
 
 def test_regex_matches_mswea_bash_command() -> None:
     content = "THOUGHT: test\n```mswea_bash_command\ncd /tmp && ls\n```"
-    matches = re.findall(_TEXT_ACTION_REGEX, content, re.DOTALL)
+    matches = re.findall(TEXT_ACTION_REGEX, content, re.DOTALL)
     assert len(matches) == 1
     assert matches[0].strip() == "cd /tmp && ls"
 
@@ -41,14 +41,14 @@ cd /tmp && python - <<'PY'
 print('hello')
 PY
 ```"""
-    matches = re.findall(_TEXT_ACTION_REGEX, content, re.DOTALL)
+    matches = re.findall(TEXT_ACTION_REGEX, content, re.DOTALL)
     assert len(matches) == 1
     assert "cd /tmp" in matches[0]
 
 
 def test_regex_matches_sh_fenced_block() -> None:
     content = "```sh\ncd /tmp\n```"
-    matches = re.findall(_TEXT_ACTION_REGEX, content, re.DOTALL)
+    matches = re.findall(TEXT_ACTION_REGEX, content, re.DOTALL)
     assert len(matches) == 1
     assert matches[0].strip() == "cd /tmp"
 
@@ -56,7 +56,7 @@ def test_regex_matches_sh_fenced_block() -> None:
 def test_regex_real_gpt54_output() -> None:
     """Real GPT-5.4 output from clean_gold2-0 trace."""
     content = 'THOUGHT: I\'ll inspect the relevant latex printer logic and reproduce the issue first so I can make a minimal, consistent source change.```bash\ncd /home/fengde/Projects/AI-learning/agent_learning/AgentOS/paper1/data/repo_cache/worktrees/sympy__sympy/budgetflow_full_tight_sympy__sympy-14774 && python - <<\'PY\'\nfrom sympy import symbols, latex, acsc, asec, asin\nx = symbols(\'x\')\nprint(\'asin full:\', latex(asin(x), inv_trig_style=\'full\'))\nPY\n```'
-    matches = re.findall(_TEXT_ACTION_REGEX, content, re.DOTALL)
+    matches = re.findall(TEXT_ACTION_REGEX, content, re.DOTALL)
     assert len(matches) == 1
     assert "python" in matches[0]
     assert "sympy__sympy-14774" in matches[0]
@@ -64,20 +64,20 @@ def test_regex_real_gpt54_output() -> None:
 
 def test_regex_rejects_prose_only() -> None:
     content = "THOUGHT: I need to inspect the relevant latex printer code and reproduce the issue before editing."
-    matches = re.findall(_TEXT_ACTION_REGEX, content, re.DOTALL)
+    matches = re.findall(TEXT_ACTION_REGEX, content, re.DOTALL)
     assert len(matches) == 0
 
 
 def test_regex_only_one_match_per_block() -> None:
     """Single bash block → exactly 1 match."""
     content = "before\n```bash\ncd /tmp\n```\nafter"
-    matches = re.findall(_TEXT_ACTION_REGEX, content, re.DOTALL)
+    matches = re.findall(TEXT_ACTION_REGEX, content, re.DOTALL)
     assert len(matches) == 1
 
 
 def test_regex_handles_windows_newlines() -> None:
     content = "```bash\r\ncd /tmp\r\n```"
-    matches = re.findall(_TEXT_ACTION_REGEX, content, re.DOTALL)
+    matches = re.findall(TEXT_ACTION_REGEX, content, re.DOTALL)
     assert len(matches) == 1
 
 
@@ -86,27 +86,27 @@ def test_regex_handles_windows_newlines() -> None:
 
 def test_json_extract_simple() -> None:
     content = 'THOUGHT: test\n{"command":"cd /tmp && ls"}'
-    cmd = _try_extract_json_command(content)
+    cmd = try_extract_json_command(content)
     assert cmd == "cd /tmp && ls"
 
 
 def test_json_extract_with_escaped_newlines() -> None:
     content = '{"command":"cd /tmp && python -c \\"print(1)\\""}'
-    cmd = _try_extract_json_command(content)
+    cmd = try_extract_json_command(content)
     assert cmd is not None
     assert "cd /tmp" in cmd
 
 
 def test_json_extract_with_bash_prefix() -> None:
     content = 'THOUGHT: inspect\n[bash] {"command":"cd /tmp && ls"}'
-    cmd = _try_extract_json_command(content)
+    cmd = try_extract_json_command(content)
     assert cmd == "cd /tmp && ls"
 
 
 def test_json_extract_real_gpt54_output() -> None:
     """Real GPT-5.4 JSON output from clean_gold2-0 trace turn #4 (all_pro 14774)."""
     content = """THOUGHT: I need inspect the relevant latex printer code and reproduce the issue before editing.{"command":"cd /home/fengde/Projects/AI-learning/agent_learning/AgentOS/paper1/data/repo_cache/worktrees/sympy__sympy/all_pro_sympy__sympy-14774 && python - <<'PY'\\nfrom sympy import symbols, latex, acsc, asec, asin\\nx = symbols('x')\\nprint(latex(asin(x), inv_trig_style='full'))\\nPY"}"""
-    cmd = _try_extract_json_command(content)
+    cmd = try_extract_json_command(content)
     assert cmd is not None
     assert "sympy__sympy-14774" in cmd
     assert "python" in cmd
@@ -114,19 +114,19 @@ def test_json_extract_real_gpt54_output() -> None:
 
 def test_json_extract_picks_first_valid() -> None:
     content = '{"command":"first"}\n{"command":"second"}'
-    cmd = _try_extract_json_command(content)
+    cmd = try_extract_json_command(content)
     assert cmd == "first"
 
 
 def test_json_extract_returns_none_for_prose_only() -> None:
     content = "THOUGHT: I need to inspect the code."
-    cmd = _try_extract_json_command(content)
+    cmd = try_extract_json_command(content)
     assert cmd is None
 
 
 def test_json_extract_skips_invalid_json() -> None:
     content = '{"command":"unclosed'
-    cmd = _try_extract_json_command(content)
+    cmd = try_extract_json_command(content)
     assert cmd is None
 
 
@@ -140,14 +140,14 @@ def test_parse_regex_actions_still_works_with_new_regex() -> None:
 
     # Valid: one match
     content = "```bash\ncd /tmp\n```"
-    actions = parse_regex_actions(content, action_regex=_TEXT_ACTION_REGEX,
+    actions = parse_regex_actions(content, action_regex=TEXT_ACTION_REGEX,
                                   format_error_template="{{ error }}")
     assert len(actions) == 1
     assert actions[0]["command"] == "cd /tmp"
 
     # Invalid: zero matches
     try:
-        parse_regex_actions("no command here", action_regex=_TEXT_ACTION_REGEX,
+        parse_regex_actions("no command here", action_regex=TEXT_ACTION_REGEX,
                             format_error_template="{{ error }}")
         assert False, "should have raised FormatError"
     except FormatError:
@@ -156,7 +156,7 @@ def test_parse_regex_actions_still_works_with_new_regex() -> None:
     # Invalid: two matches
     try:
         parse_regex_actions("```bash\ncmd1\n```\n```bash\ncmd2\n```",
-                            action_regex=_TEXT_ACTION_REGEX,
+                            action_regex=TEXT_ACTION_REGEX,
                             format_error_template="{{ error }}")
         assert False, "should have raised FormatError"
     except FormatError:

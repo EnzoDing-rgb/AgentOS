@@ -4,6 +4,13 @@
 
 ## 当前快照（2026-06-07）
 
+### 074 / Action parsing seam
+
+- **074 COMPLETE SLICE — no-paid runtime parser refactor.** No historical JSONL was edited and no paid experiment was run.
+- **Parser seam extracted:** `adapter/action_parsing.py` now owns text-mode bash regex, GPT-5.4 JSON-command fallback, and tool-call parser delegation. `mini_swe_proxy.py` keeps only runtime state, format-error streak accounting, and escalation to `BudgetFlowStagnationError`.
+- **Architecture judgment:** model-output parsing is core infra. Keeping parser rules outside the provider/routing loop makes protocol false negatives easier to debug without over-designing a full runtime framework.
+- **Verification:** parser/provider focused tests passed (`23 passed`), full suite passed (`171 passed`), `py_compile` passed for `paper1/src/budgetflow`, `git diff --check` passed, and no-provider `--auto-budget-dry-run` still loaded cap memory plus routing policy memory.
+
 ### 073 / Runtime turn-trace seam
 
 - **073 COMPLETE SLICE — no-paid runtime/observability refactor.** No historical JSONL was edited and no paid experiment was run.
