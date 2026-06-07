@@ -1,4 +1,5 @@
 from budgetflow.run_observability.audit import build_compact_audit
+from budgetflow.observability import build_harness_trust
 from budgetflow.run_observability.report import format_compact_audit
 
 
@@ -63,3 +64,40 @@ def test_compact_audit_reports_strong_tier_usefulness() -> None:
     text = format_compact_audit(audit)
     assert "T2 STRONG-TIER USEFULNESS" in text
     assert "strongest=T5" in text
+
+
+def test_harness_trust_treats_no_patch_fail_as_non_blocking() -> None:
+    trust = build_harness_trust({
+        "harness_resolved": False,
+        "patch_extracted": False,
+        "detail": "",
+    })
+
+    assert trust["harness_trust"] == "incomplete"
+    assert trust["severity"] == "warn"
+
+
+def test_harness_trust_treats_failed_patch_as_trusted_failure() -> None:
+    trust = build_harness_trust({
+        "harness_resolved": False,
+        "patch_extracted": True,
+        "patch_source": "submission",
+        "submitted_patch": "/tmp/submitted.patch",
+        "detail": "test_patch=ok; fail_before=fail; model_patch=ok; fail_after=fail; pass_to_pass=pass",
+    })
+
+    assert trust["harness_trust"] == "trusted"
+    assert trust["severity"] == "none"
+
+
+def test_harness_trust_blocks_resolved_rows_with_missing_pass_evidence() -> None:
+    trust = build_harness_trust({
+        "harness_resolved": True,
+        "patch_extracted": True,
+        "patch_source": "submission",
+        "submitted_patch": "/tmp/submitted.patch",
+        "detail": "test_patch=ok; fail_before=fail; model_patch=ok; fail_after=fail; pass_to_pass=pass",
+    })
+
+    assert trust["harness_trust"] == "invalid"
+    assert trust["severity"] == "blocking"

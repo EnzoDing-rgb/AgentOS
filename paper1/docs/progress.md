@@ -4,6 +4,16 @@
 
 ## 当前快照（2026-06-07）
 
+### 078 / 067 metric-contract paid gate and checker fix
+
+- **067_metrics_3x3_v1 COMPLETE — small paid diagnostic after metric-contract cleanup.** 3 tasks × 3 policies, `--jobs 3`, `--auto-budget`, frozen `048_value_matrix.json`, `unsolved_difficulty`, `--auto-budget-max 0.50`. 9/9 rows complete; provider preflight passed; runtime root was `/tmp/budgetflow-runtime`.
+- **T1 primary is not won:** BO, BFC, and BFV all resolved the same two tasks, so Normalized Verified Resolved Value is identical at **0.5871**. This run is not value-allocation win evidence.
+- **T1 secondary / T2 frontier signal is positive for BFV:** same 2/3 verified resolution at lower cost: BFV **$0.3510**, BFC **$0.4478**, BO **$0.5925**. RVPD: BFV **1.1058**, BFC **0.8667**, BO **0.6550**.
+- **T2 mechanism is mixed/negative for BFV:** strong-tier usefulness is BO 0/9, BFC 4/8, BFV 1/12; BFV wasted strong-tier cost **$0.2739**. BFV is cheapest overall by reducing total turns, but its strong-tier salvage is still too wasteful.
+- **Checker bug fixed during review:** `build_harness_trust()` now distinguishes PASS-complete evidence from evaluated-failure evidence. No-patch FAIL rows are non-blocking incomplete evidence; patch-evaluated `fail_after=fail` rows are trusted failures; resolved rows with missing pass evidence remain blocking. Re-audit of 067: suspicious_pass=0, no_trace=0, no blocking harness severity.
+- **Report:** `docs/reports/067.md`.
+- **Next direction:** do not scale yet. Improve BFV strong-tier salvage quality, then rerun a small policy-parallel gate with at least one Django task.
+
 ### 077 / Canonical continual-learning path cleanup
 
 - **077 CONTINUING — no-paid core infra cleanup.** No historical JSONL was edited and no paid experiment was run.

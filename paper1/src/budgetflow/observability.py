@@ -24,6 +24,7 @@ class HarnessEvidence:
     fail_after_passed: bool = False
     pass_to_pass_ok: bool = False
     evidence_complete: bool = False
+    evaluated_complete: bool = False
 
 
 def parse_harness_evidence(detail: str) -> HarnessEvidence:
@@ -58,6 +59,13 @@ def parse_harness_evidence(detail: str) -> HarnessEvidence:
         ev.model_patch_ok,
         ev.fail_after_passed,
         ev.pass_to_pass_ok,
+    ])
+    ev.evaluated_complete = all([
+        ev.test_patch_ok,
+        ev.fail_before_failed,
+        ev.model_patch_ok,
+        ev.pass_to_pass_ok,
+        "fail_after=" in detail,
     ])
     return ev
 
@@ -143,11 +151,11 @@ def build_harness_trust(record: dict) -> dict:
         issues.append("attempted_but_not_submitted")
 
     # Harness evidence gaps
-    if not evidence.test_patch_ok:
+    if patch_extracted and not evidence.test_patch_ok:
         issues.append("test_patch_not_ok")
-    if not evidence.fail_before_failed:
+    if patch_extracted and not evidence.fail_before_failed:
         issues.append("fail_before_not_failed")
-    if not evidence.model_patch_ok:
+    if patch_extracted and not evidence.model_patch_ok:
         issues.append("model_patch_not_ok")
     if resolved and not evidence.fail_after_passed:
         issues.append("resolved_but_fail_after_not_passed")
@@ -170,6 +178,8 @@ def build_harness_trust(record: dict) -> dict:
                 trust = "invalid"  # PASS but fail_after/pass_to_pass missing
             else:
                 trust = "suspicious"  # PASS but evidence incomplete, non-blocking
+        elif evidence.evaluated_complete:
+            trust = "trusted"  # evaluated patch failed cleanly
         else:
             trust = "incomplete"
     elif resolved and evidence.evidence_complete:
@@ -189,8 +199,9 @@ def build_harness_trust(record: dict) -> dict:
         severity = "none"
     elif issue_set & blocking_gaps:
         severity = "blocking"
-    elif issue_set & {"fail_before_not_failed", "model_patch_not_ok",
-                       "resolved_but_fail_after_not_passed", "resolved_but_pass_to_pass_not_ok"}:
+    elif resolved and issue_set & {"fail_before_not_failed", "model_patch_not_ok"}:
+        severity = "blocking"
+    elif not resolved and patch_extracted and issue_set & {"fail_before_not_failed", "model_patch_not_ok"}:
         severity = "blocking"
     elif "patch_from_worktree_fallback" in issue_set and evidence.evidence_complete:
         severity = "warn"  # evidence says it's fine, just non-standard source
