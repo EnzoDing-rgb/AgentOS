@@ -149,6 +149,7 @@ class StarterPrior:
     bo_frontload_t3_turns: float = 0.0
     bo_total_turns: float = 0.0
     budgetflow_starter_attempts: float = 0.0
+    budgetflow_starter_successes: float = 0.0
     budgetflow_starter_failures: float = 0.0
     budgetflow_starter_t3_turns: float = 0.0
     budgetflow_starter_productive_turns: float = 0.0
@@ -167,6 +168,10 @@ class StarterPrior:
     @property
     def budgetflow_starter_productive_rate(self) -> float:
         return self.budgetflow_starter_productive_turns / max(self.budgetflow_starter_t3_turns, 1)
+
+    @property
+    def budgetflow_starter_success_rate(self) -> float:
+        return self.budgetflow_starter_successes / max(self.budgetflow_starter_attempts, 1)
 
 
 class PolicyMemory:
@@ -440,7 +445,9 @@ class PolicyMemory:
                 if starter_traces:
                     weight = _record_weight(record)
                     prior.budgetflow_starter_attempts += weight
-                    if not record.get("harness_resolved"):
+                    if record.get("harness_resolved"):
+                        prior.budgetflow_starter_successes += weight
+                    else:
                         prior.budgetflow_starter_failures += weight
                     for trace in starter_traces:
                         prior.budgetflow_starter_t3_turns += weight
@@ -579,7 +586,9 @@ class PolicyMemory:
             "starter_success_cost_ratio": round(starter.success_cost_ratio, 3),
             "starter_bo_frontload_rate": round(starter.bo_frontload_rate, 3),
             "starter_budgetflow_applied_weight": starter.budgetflow_starter_attempts,
+            "starter_budgetflow_applied_success_weight": starter.budgetflow_starter_successes,
             "starter_budgetflow_applied_failure_weight": starter.budgetflow_starter_failures,
+            "starter_budgetflow_success_rate": round(starter.budgetflow_starter_success_rate, 3),
             "starter_budgetflow_t3_productive_rate": round(starter.budgetflow_starter_productive_rate, 3),
             "starter_budgetflow_t3_no_progress_cost": round(starter.budgetflow_starter_no_progress_cost, 4),
             "strongest_starter_action": starter_action,
@@ -769,6 +778,7 @@ def _starter_action(prior: StarterPrior, source: str = "") -> tuple[str, int]:
     if (
         prior.budgetflow_starter_attempts >= 2.0
         and prior.budgetflow_starter_failures >= 2.0
+        and prior.budgetflow_starter_success_rate < 0.25
         and prior.budgetflow_starter_productive_rate < 0.15
         and prior.budgetflow_starter_no_progress_cost >= 0.15
     ):
@@ -776,6 +786,7 @@ def _starter_action(prior: StarterPrior, source: str = "") -> tuple[str, int]:
     if (
         prior.budgetflow_starter_attempts >= 1.0
         and prior.budgetflow_starter_failures >= 1.0
+        and prior.budgetflow_starter_success_rate < 0.25
         and prior.budgetflow_starter_productive_rate < 0.15
         and prior.budgetflow_starter_no_progress_cost >= 0.05
     ):

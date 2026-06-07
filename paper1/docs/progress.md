@@ -4,6 +4,14 @@
 
 ## 当前快照（2026-06-07）
 
+### 084 / Starter stop-loss negative diagnostic
+
+- **084_starter_stoploss_4x4_qwen37 COMPLETE — negative small paid diagnostic, not paper evidence.** 4 policies x 4 tasks, `--jobs 4`, pre-registered outcome-free value matrix `docs/reports/084_starter_stoploss_4x4_value_matrix.json`, and Qwen3.7-Max as T2.
+- **T1/T2 result is all-zero:** BO, BFC, BFV, and value-aware task-level each resolved **0/4**. NVRV and RVPD are **0.0** for all strategies, so this run provides no positive value evidence.
+- **Mechanism signal is still useful:** BFV spent less than BFC/task-level but produced **0/4**, including no-patch early stops on high-value `sympy__sympy-16988` and `sympy__sympy-20212`. This shows that stop-loss without enough effective repair runway hurts T1.
+- **Learning bug found after audit:** the first starter stop-loss rule over-weighted turn-level `has_progress=0` and under-weighted verified starter-backed success. 083 had starter-backed BudgetFlow successes as well as failures, so turn-level no-progress alone should not disable BO-style frontload. Routing Memory must learn BO's useful starter/runway behavior, not only cheap early stopping.
+- **Audit caveat:** compact audit reports suspicious_pass=0, no_trace=0, policy_memory_used=True, canonical estimated cost only, and provider invoice actual cost unavailable. Harness trust is warning-level incomplete for failed rows.
+
 ### 083 / Anti-overfit starter-memory diagnostic
 
 - **083_legacy_memory4_antioverfit_qwen37 COMPLETE — small paid diagnostic, not paper evidence.** 4 policies x 4 less-familiar SymPy tasks, `--jobs 4`, Value-Driven Budget Allocation, pre-registered outcome-free value matrix `docs/reports/083_legacy_memory4_value_matrix.json`, and Qwen3.7-Max as T2.
