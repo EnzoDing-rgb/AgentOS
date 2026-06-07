@@ -23,6 +23,7 @@ from budgetflow.ledger import WorkflowLedgerStore
 from budgetflow.observability import build_observability_status, parse_harness_evidence
 from budgetflow.run_guards import CompareRunGuards
 from budgetflow.run_trace import TraceConsoleLevel
+from budgetflow.types import Stage
 from budgetflow.value_efficiency import ValueEfficiencyContext
 
 
@@ -158,6 +159,11 @@ def run_task_record(
         prior = adaptive.prior_summary_for_trace()
         if prior:
             record["routing_prior_summary"] = prior
+            record["routing_prior_stage"] = Stage.LOCALIZATION.value
+            if adaptive_registry is not None and adaptive_registry.policy_memory is not None:
+                record["routing_repair_prior_summary"] = (
+                    adaptive_registry.policy_memory.routing_prior_summary(task.instance_id, Stage.REPAIR)
+                )
             record["policy_memory_enabled"] = True
         else:
             record["policy_memory_enabled"] = False

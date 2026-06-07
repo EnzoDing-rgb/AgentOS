@@ -34,6 +34,22 @@ def test_routing_observability_marks_bfc_as_mechanism_ablation() -> None:
     assert record["routing_imitation_active"] is False
 
 
+def test_routing_observability_exposes_repair_stage_learning() -> None:
+    record = {
+        "routing": "budgetflow_value_aware",
+        "task_value_profile": "cold_start_difficulty",
+        "routing_prior_stage": "localization",
+        "routing_prior_summary": {"learned_action": "default"},
+        "routing_repair_prior_summary": {"learned_action": "early_rescue"},
+    }
+
+    enrich_routing_observability(record)
+
+    assert record["routing_learned_action"] == "default"
+    assert record["routing_learned_action_stage"] == "localization"
+    assert record["routing_repair_learned_action"] == "early_rescue"
+
+
 def test_routing_observability_marks_equal_value_bfv_as_ablation() -> None:
     record = {
         "routing": "budgetflow_value_aware",

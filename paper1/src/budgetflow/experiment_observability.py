@@ -47,6 +47,9 @@ def enrich_routing_observability(record: dict, *, policy_memory_source: str = ""
         str(prior.get("policy_memory_source") or policy_memory_source or "")
     )
     record["routing_learned_action"] = str(prior.get("learned_action") or "none")
+    record["routing_learned_action_stage"] = str(record.get("routing_prior_stage") or "")
+    repair_prior = record.get("routing_repair_prior_summary") or {}
+    record["routing_repair_learned_action"] = str(repair_prior.get("learned_action") or "")
     record["routing_imitation_active"] = bool(record.get("routing_imitation_active", False))
     record["routing_imitation_source"] = str(record.get("routing_imitation_source") or "")
     record["routing_decision_schema"] = "v1"
