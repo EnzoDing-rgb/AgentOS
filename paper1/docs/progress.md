@@ -4,12 +4,15 @@
 
 ## 当前快照（2026-06-07）
 
-### 080 / Paid-readiness cleanup and 4x4 diagnostic prep
+### 080 / Paid-readiness cleanup and 4x4 cold-start diagnostic
 
 - **No-paid infra cleanup:** centralized paid readiness now reports planned policy/total cap, blocks all-global-fallback auto-budget paid runs by default, and labels cold-start value runs separately from historical T1 value evidence.
 - **Learning-loop audit:** Cost Memory affects caps, Routing Memory affects starting tier/rescue, and Escalation Memory affects Value-Triggered Escalation window/action; dry-run surfaces all three.
-- **Pre-registered diagnostic value sources:** added outcome-free cold-start matrices for the medium set and the exact-cap candidate set. Current paid candidate is 4 policies × 4 tasks, using exact cap memory and cold-start values.
+- **Pre-registered diagnostic value sources:** added outcome-free cold-start matrices for the medium set and the exact-cap candidate set. Paid diagnostic used 4 policies x 4 tasks, exact cap memory, and cold-start values.
 - **Post-run audit cleanup:** compact audit now labels the common-task T2 frontier and reports stage-aware vs task-level control deltas.
+- **080_exact_cap_cold_start_4x4 COMPLETE — small paid diagnostic, not paper evidence.** BO resolved **2/4**; BFC, BFV, and value-aware task-level each resolved **1/4**. NVRV: BO **0.48**, others **0.27**. RVPD: BO **52.95**, BFC **26.40**, BFV **27.04**, task-level **17.03**.
+- **Mechanism signal is negative/mixed for BFV:** on the common-task T2 frontier, BFV did not beat BO on pass rate or cost. Stage-aware BFV and task-level control tied on passes, but stage-aware spent **$0.51 less**, so task-level routing is not the immediate fix.
+- **Audit caveat:** observability had no suspicious passes and policy memory was used, but provider invoice cost is unavailable and several failed rows have incomplete harness evidence. Treat the run as a routing/repair diagnostic, not a final value claim.
 
 ### 079 / Escalation Memory gate
 
