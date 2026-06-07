@@ -36,7 +36,7 @@ class BudgetOnlyStepRouter:
         n = len(ordered)
         if n <= 1:
             return RouterDecision(
-                backend=ordered[0], reason="single_backend", scores={},
+                backend=ModelCatalog.cheapest(ordered), reason="single_backend", scores={},
                 pressure=budget_pressure, branch="budget_only",
             )
         if budget_pressure >= 1.2:
