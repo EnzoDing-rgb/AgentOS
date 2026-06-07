@@ -1,0 +1,43 @@
+# Agent Operating Rules
+
+This file is the repo-level operating contract for Codex-style agents working in this repository.
+
+## North Star
+
+- BudgetFlow's Tier 1 claim is the compass: under a shared hard budget, maximize verified resolved task value.
+- Tier 2 is a mechanism claim: routing/cost-efficiency must not be weaker than dummy/static/budget-tight baselines, and must explain whether T3 / Strongest Model is used productively.
+- Tier 2 serves Tier 1. Do not optimize routing savings in a way that reduces value-weighted outcomes.
+
+## Experiment Gold Standard
+
+After every experiment, inspect artifacts before drawing conclusions:
+
+- Evaluation Validity: do the T1/T2 metrics really measure the claim?
+- Harness & Task Trust: did the harness, task, verifier, and task environment behave credibly?
+- Infra Health: check runtime, worktrees, NFS, provider, parser, trace, checker, budget mode, and value source.
+- Learning Loop Reality: Cost Memory, Routing Memory, and Escalation Memory must actually affect the next decision, not only appear in logs.
+- Mechanism Diagnosis: explain whether outcomes came from model capability, task difficulty, routing, caps, Value-Triggered Escalation, evaluation, or observability.
+
+## Run Discipline
+
+- Fix known infra, learning, observability, value-source, or harness bugs before running paid experiments.
+- For policy comparisons, tasks are serial within each policy and policies run in parallel. For three strategies, `--jobs 3` is the default unless a concrete blocker is documented.
+- Before paid runs, check strategy count, task count, `--jobs`, value profile, value matrix path, budget mode, output stem, provider, runtime root, worktree isolation, trace, and checker path.
+- Stop on provider billing/auth/model-access/preflight blockers. Do not reinterpret provider failures as model or routing evidence.
+- Historical JSONL and historical reports are immutable evidence. Mark old artifacts forensic-only when needed; do not patch them in place.
+- Runtime artifacts under `paper1/data/` are not source code. Do not commit trace, heartbeat, checkpoint, or run-output files unless explicitly requested.
+
+## Current Vocabulary
+
+- Use Value-Driven Budget Allocation, not Automatic Budgeting, in research prose.
+- Use Cost Memory, Routing Memory, and Escalation Memory for the three learning views.
+- Use Value-Triggered Escalation, not salvage, for the high-value pre-patch T3 window.
+- Use T3 / Strongest Model, T3 Productive Rate, and T3 No-Progress Cost. Avoid strong-tier phrasing.
+- Say infra. Do not introduce infer, info, or other speech-to-text artifacts as project concepts.
+
+## Agent Workflow
+
+- Main-agent judgment owns architecture, routing, evaluation, learning, and paper-claim decisions.
+- Use subagents for low-value, high-token scans or classification work when it saves cost without outsourcing core judgment.
+- Keep docs load-bearing: update `paper1/docs/north_star.md`, `paper1/docs/CONTEXT.md`, or `paper1/docs/progress.md` only when a real decision changes.
+- Commit and push stable slices after no-paid gates pass. Avoid noisy commits, but do not leave verified core changes uncommitted.

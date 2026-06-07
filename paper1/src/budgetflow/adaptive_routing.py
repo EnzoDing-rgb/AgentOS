@@ -39,7 +39,7 @@ def _is_stagnation(record: dict) -> bool:
     return reason.startswith("stagnation_")
 
 
-def _infer_weak_stage(record: dict) -> Stage:
+def _classify_weak_stage(record: dict) -> Stage:
     if record.get("agent_gold_edited"):
         return Stage.REPAIR
     if _is_stagnation(record) and not record.get("patch_extracted"):
@@ -164,7 +164,7 @@ class AdaptiveRoutingState:
     def record_task(self, record: dict) -> None:
         self._recent.append(record)
         if not record.get("harness_resolved"):
-            stage = _infer_weak_stage(record)
+            stage = _classify_weak_stage(record)
             bucket = self._stage_buckets[stage]
             bucket.total += 1
             bucket.weak_count += 1
@@ -207,7 +207,7 @@ class AdaptiveRoutingState:
         return 1
 
     def set_task_context(self, instance_id: str) -> None:
-        """Set current task context and rebuild prior-informed rescue params."""
+        """Set current task context and rebuild prior-informed escalation params."""
         self._current_instance_id = instance_id
         if self.policy_memory is not None:
             self._prior_summary = self.policy_memory.routing_prior_summary(

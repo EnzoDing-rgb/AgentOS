@@ -555,7 +555,7 @@ def _escalation_action(prior: EscalationPrior) -> tuple[str, int]:
         return "default", 3
     if prior.attempts >= 2 and prior.resolved == 0 and prior.t3_no_progress_cost >= 0.15:
         return "disable_value_triggered_escalation", 0
-    if prior.attempts >= 2 and prior.t3_productive_rate < 0.15:
+    if prior.t3_productive_rate < 0.15 and prior.t3_no_progress_cost >= 0.05:
         return "shorten_value_triggered_escalation", 1
     if prior.success_rate >= 0.6 and prior.t3_productive_rate >= 0.25:
         return "extend_value_triggered_escalation", 4

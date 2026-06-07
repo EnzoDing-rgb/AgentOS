@@ -158,6 +158,33 @@ def test_policy_memory_learns_value_triggered_escalation_policy() -> None:
     assert summary["value_triggered_escalation_window"] == 0
 
 
+def test_policy_memory_shortens_after_one_costly_unproductive_escalation() -> None:
+    memory = PolicyMemory()
+    memory.rebuild_from_records([
+        _record(
+            instance_id="django__django-1",
+            routing="budgetflow_value_aware",
+            turn_traces=[
+                {
+                    "stage": "REPAIR",
+                    "backend_tier": 3,
+                    "final_backend": "tier3",
+                    "value_triggered_escalation_active": True,
+                    "has_progress": False,
+                    "billable_cost": 0.08,
+                }
+            ],
+        )
+    ])
+
+    summary = memory.routing_prior_summary("django__django-2", Stage.REPAIR)
+
+    assert summary["escalation_memory_source"] == "repo"
+    assert summary["escalation_attempts"] == 1
+    assert summary["value_triggered_escalation_action"] == "shorten_value_triggered_escalation"
+    assert summary["value_triggered_escalation_window"] == 1
+
+
 def test_rebuild_from_jsonl_sets_source_and_ignores_bad_lines(tmp_path: Path) -> None:
     source = tmp_path / "run.jsonl"
     source.write_text(json.dumps(_pass_record(instance_id="django__django-1")) + "\nnot-json\n")
@@ -196,3 +223,5 @@ def test_auto_budget_dry_run_loads_default_policy_memory_source() -> None:
     assert "[policy_memory] loaded from" in result.stdout
     policy_line = next(line for line in result.stdout.splitlines() if "policy_memory=on source=" in line)
     assert "auto_budget_memory.jsonl" not in policy_line
+    assert "shorten_value_triggered_escalation" in result.stdout
+    assert "/w=1" in result.stdout

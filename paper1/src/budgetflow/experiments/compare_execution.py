@@ -298,6 +298,8 @@ def run_strategy_batch(
                 prior_summary = pm.routing_prior_summary(task.instance_id)
                 prior_snippet = (
                     f"prior_action={prior_summary.get('learned_action', 'default')} "
+                    f"esc={prior_summary.get('value_triggered_escalation_action', 'default')}"
+                    f"/w={prior_summary.get('value_triggered_escalation_window', '?')} "
                     f"regret={prior_summary.get('full_vs_tight_regret', 0):.3f} "
                     f"task_seen={prior_summary.get('task_seen', '?')}"
                 )

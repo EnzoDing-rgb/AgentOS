@@ -89,7 +89,7 @@ def _is_per_task_budget_series(recs: list[dict]) -> bool:
     if any(r.get("per_task_cap") not in (None, "", 0, 0.0) for r in recs):
         return True
 
-    # Backward-compatible inference for older rows: in per-task mode each task
+    # Backward-compatible detection for older rows: in per-task mode each task
     # row records an independent cap and batch_spent resets instead of
     # accumulating across the policy lane.
     by_strategy: dict[str, list[dict]] = {}

@@ -68,7 +68,7 @@
 - **AutoResearch document preserved:** `docs/autoresearch_workflow.md` remains the canonical memory of the owner/Codex/Worker productivity design.
 - **Paused implementation removed:** deleted the inactive AutoResearch Python modules, worker scripts, and tracked `.autoresearch/` smoke/workflow artifacts from the active tree. They were self-contained and not imported by the compare runner, observability checker, value/RVPD path, learning context, routing policy, or no-paid gates.
 - **Architecture judgment:** future AutoResearch should be rebuilt from the workflow document when it again accelerates BudgetFlow. Keeping old coordinator code and old smoke artifacts in the active tree now slows navigation and invites stale-test maintenance.
-- **Evidence status:** this is not new T1/T2 experiment evidence. It reduces non-paper surface area so future infer/debug work can focus on runtime, evaluation, observability, routing, and learning.
+- **Evidence status:** this is not new T1/T2 experiment evidence. It reduces non-paper surface area so future infra/debug work can focus on runtime, evaluation, observability, routing, and learning.
 
 ### 071 / Local harness adapter boundary
 
@@ -92,7 +92,7 @@
 
 - **069 COMPLETE SLICE — no-paid test/infra cleanup.** No historical JSONL was edited and no paid experiment was run.
 - **Test-suite contraction:** `paper1/tests` moved from 50 files / ~11.1k LOC to 19 files / ~2.6k LOC. Deleted AutoResearch implementation tests, phase-era regression bundles, old compatibility tests, result-table display tests, and duplicated micro-helper tests that did not protect T1/T2 evidence quality.
-- **Contract tests kept:** compare-path row schema, value/RVPD enrichment, learning-context source separation, PolicyMemory routing priors, value-aware routing/salvage, anti-spin/timeout/provider guards, local harness sanity, policy parallelism, and failure classification.
+- **Contract tests kept:** compare-path row schema, value/RVPD enrichment, learning-context source separation, Routing Memory priors, value-aware routing/escalation, anti-spin/timeout/provider guards, local harness sanity, policy parallelism, and failure classification.
 - **Large test files rewritten:** `test_policy_memory.py`, `test_adaptive_routing.py`, `test_compare_record_schema.py`, and `test_trace_fields.py` now test current paper/runtime contracts instead of historical implementation details.
 - **AutoResearch positioning:** `autoresearch_workflow.md` is preserved and updated as a research-productivity thinking artifact. AutoResearch code/tests are not part of the current BudgetFlow T1/T2 proof path unless they affect compare runtime, JSONL observability, value accounting, or learning gates.
 - **Observability architecture judgment:** `check_run_observability.py` is already a thin compatibility entrypoint over `run_observability/{audit,checks,schema,report,cli}`. Legacy fallback remains isolated at checker/analysis edges and does not shape current runtime code.
@@ -108,7 +108,7 @@
 - **Deleted stale compatibility:** current code no longer rewrites old strategy aliases or preserves old `_VALUE_*` globals. New experiments must use canonical strategy names and `ValueEfficiencyContext`. Historical reports remain forensic and are not edited.
 - **Verification:** focused no-paid gate passed: `72 passed` across value efficiency, record schema, setup, value-aware routing, policy parallelism, learning context, and auto-budget tests. `py_compile` passed for the refactored modules. No-paid `--auto-budget-dry-run` still loads cap memory and routing memory without provider calls.
 - **Architecture judgment:** this was a necessary cleanup before more paid scale-up. The next useful cleanup is checker/observability: standard fields should be the interface, while legacy JSONL fallback should stay isolated and not shape new runtime code.
-- **Evidence status:** this refactor improves future infer/debug iteration speed. It is not new T1/T2 evidence.
+- **Evidence status:** this refactor improves future infra/debug iteration speed. It is not new T1/T2 evidence.
 
 ### 067 / T1-first learning and observability refactor
 
@@ -201,7 +201,7 @@
 ### 056 后 Phase Z 状态
 
 - **Phase Z COMPLETE — Debugging & validation loop for BFV**
-- **当前定位不是 paper-level 结论。** Phase Z 的目标是修 inference、value observability、checker/evaluator、BudgetFlow runtime 的系统性 bug；小实验只作为 gate，跑稳后再扩大，不把单轮 worker summary 升级成论文结论。
+- **当前定位不是 paper-level 结论。** Phase Z 的目标是修 infra、value observability、checker/evaluator、BudgetFlow runtime 的系统性 bug；小实验只作为 gate，跑稳后再扩大，不把单轮 worker summary 升级成论文结论。
 - **决策纪律：worker recommendation 只作为输入材料。** 下一步方向由主 Agent / reviewer 基于 JSONL、checkpoint、summary log、checker 和 trace 独立判断；报告中的建议不能自动成为路线。
 - **BFV 5/5 resolves all 5 tasks** in medium validation (056_5x1_v1). Only strategy to achieve full resolution.
 - **BFC conservation lockout on high-value tasks REPRODUCED 3x**: sympy-16988 (value=0.329) fails at 7 turns across 055_3x3_v2, 055_3x5_v2, 056_5x1_v1. Conservation factor progressively locks out T3 as shared budget depletes.
