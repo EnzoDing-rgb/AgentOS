@@ -258,6 +258,27 @@ Rules are the cold-start policy. Memory is the warm-start policy. A learned rout
 | v2 Continuous memory | Learn cost, value, difficulty, cap, success, failure axis from verified runs | Improve automatic budgeting, value estimates, and escalation thresholds. |
 | v3 Learned router | Supervised model or contextual bandit | Predict value, start tier, cap, escalate/stop from task and history. |
 
+## Architecture Doctrine
+
+The codebase should serve the T1-first system, not preserve every historical experiment path.
+
+BudgetFlow changed from a cost-routing experiment into a value-driven budget governance system. Old code that was useful for earlier claims can become misleading after this turn. When old compatibility, stale CLI helpers, smoke scripts, or ad hoc schema logic conflict with T1-first clarity, prefer deletion, migration, or archival over adding another patch.
+
+The target architecture should keep these concepts separate:
+
+| Concept | Responsibility |
+|---|---|
+| Core context | Task, budget, history, value, verified outcome, and cost semantics. |
+| Policy | Routing decisions, learned priors, escalation, stop/continue, and imitation fallback. |
+| Memory | Cap/value-cost learning and routing-prior learning as distinct stores. |
+| Runtime adapter | mini-SWE-agent, provider protocol, harness bridge, and worktree execution. |
+| Experiment runner | Strategy selection, scheduling, resume, artifact writing, and budget gates. |
+| Observability | JSONL schema, legacy artifact filtering, audit, checker, and reports. |
+
+`run_mini_swe_compare.py` and `check_run_observability.py` should be thin entrypoints, not homes for research semantics. Value metrics belong in value modules. Learning-source selection belongs in memory/context modules. Routing explanations belong in policy/runtime trace modules. Checker and summary must consume a shared schema rather than inventing separate meanings.
+
+Backward compatibility is useful only when it protects current evidence quality. Historical JSONL should remain immutable and can be marked forensic-only. Obsolete code paths can be removed or moved under archive when they slow down agents, hide bugs, or make the current T1/T2 contract harder to inspect.
+
 Training signal should come from verified outcomes, not self-reported agent success.
 
 Useful logged fields:
