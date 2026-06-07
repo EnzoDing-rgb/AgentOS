@@ -11,6 +11,7 @@ from budgetflow.console_log import tag
 from budgetflow.experiments.compare_config import fmt_usd
 from budgetflow.learning_context import load_policy_memory_context
 from budgetflow.policy_memory import PolicyMemory
+from budgetflow.value_efficiency import ValueEfficiencyContext
 
 
 @dataclass
@@ -161,6 +162,7 @@ def run_auto_budget_dry_run(
     runs_dir: Path,
     repo_root: Path,
     auto_budget_plan: AutoBudgetPlan,
+    value_context: ValueEfficiencyContext,
 ) -> int:
     policy_ctx = load_policy_memory_context(
         runs_dir=runs_dir,
@@ -198,12 +200,16 @@ def run_auto_budget_dry_run(
     )
     print(
         f"  {'task':<40} {'source':<20} {'est_cost':>10} {'cap':>10} "
-        f"{'confidence':<10} {'neighbors':>9} {'esc':<36} {'starter':<38}",
+        f"{'confidence':<10} {'neighbors':>9} {'value':>8} {'v_mult':>6} "
+        f"{'esc':<36} {'starter':<38}",
         flush=True,
     )
-    print(f"  {'-'*184}", flush=True)
+    print(f"  {'-'*202}", flush=True)
     for task in tasks:
         estimate = auto_budget_plan.estimates[task.instance_id]
+        task_value, _ = value_context.task_value(task.instance_id)
+        raw_multiplier = task_value / max(0.001, value_context.median_task_value)
+        value_multiplier = max(0.5, min(2.0, raw_multiplier))
         if policy_ctx.memory is not None:
             prior = policy_ctx.memory.routing_prior_summary(task.instance_id)
             esc = (
@@ -225,6 +231,7 @@ def run_auto_budget_dry_run(
         print(
             f"  {task.instance_id:<40} {estimate.source:<20} {fmt_usd(estimate.estimated_cost):>10} "
             f"{fmt_usd(estimate.cap):>10} {estimate.confidence:<10} {estimate.memory_neighbors:>9} "
+            f"{task_value:>8.2f} {value_multiplier:>6.2f} "
             f"{esc:<36} {starter:<38}",
             flush=True,
         )

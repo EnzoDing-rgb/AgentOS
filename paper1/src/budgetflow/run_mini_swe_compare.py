@@ -216,6 +216,7 @@ def main() -> None:
             runs_dir=RUNS_DIR,
             repo_root=REPO_ROOT,
             auto_budget_plan=auto_budget_plan,
+            value_context=value_context,
         ))
 
     # ── Provider signature check (AFTER dry-run/gate-only to avoid API calls) ──
