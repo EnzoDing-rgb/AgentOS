@@ -1,0 +1,172 @@
+{
+  "meta": {
+    "task_count": 6,
+    "profiles": [
+      "equal",
+      "cold_start_difficulty"
+    ],
+    "source": "cold_start_ids:sympy__sympy-14774,sympy__sympy-16988,django__django-10924,sympy__sympy-13480,sympy__sympy-20212,sympy__sympy-18057",
+    "source_class": "cold_start_ex_ante_metadata",
+    "outcome_free": true,
+    "note": "Cold-start task values use only ex-ante SWE-bench task metadata: patch lines, fail/pass test counts, problem words, and gold file count. No strategy outcome, cost, solve rarity, or BudgetFlow signal is used.",
+    "formula": "cold_start_difficulty = 1 + patch_lines + 2*f2p_count + log1p(p2p_count) + 0.01*problem_words + 1.5*gold_file_count"
+  },
+  "tasks": {
+    "sympy__sympy-14774": {
+      "instance_id": "sympy__sympy-14774",
+      "repo": "sympy/sympy",
+      "features": {
+        "patch_lines": 12,
+        "f2p_count": 1,
+        "p2p_count": 114,
+        "problem_words": 67,
+        "gold_file_count": 1
+      },
+      "values": {
+        "equal": 1.0,
+        "cold_start_difficulty": 21.9149
+      }
+    },
+    "sympy__sympy-16988": {
+      "instance_id": "sympy__sympy-16988",
+      "repo": "sympy/sympy",
+      "features": {
+        "patch_lines": 12,
+        "f2p_count": 2,
+        "p2p_count": 72,
+        "problem_words": 56,
+        "gold_file_count": 1
+      },
+      "values": {
+        "equal": 1.0,
+        "cold_start_difficulty": 23.3505
+      }
+    },
+    "django__django-10924": {
+      "instance_id": "django__django-10924",
+      "repo": "django/django",
+      "features": {
+        "patch_lines": 12,
+        "f2p_count": 1,
+        "p2p_count": 1,
+        "problem_words": 112,
+        "gold_file_count": 1
+      },
+      "values": {
+        "equal": 1.0,
+        "cold_start_difficulty": 18.3131
+      }
+    },
+    "sympy__sympy-13480": {
+      "instance_id": "sympy__sympy-13480",
+      "repo": "sympy/sympy",
+      "features": {
+        "patch_lines": 12,
+        "f2p_count": 1,
+        "p2p_count": 43,
+        "problem_words": 56,
+        "gold_file_count": 1
+      },
+      "values": {
+        "equal": 1.0,
+        "cold_start_difficulty": 20.8442
+      }
+    },
+    "sympy__sympy-20212": {
+      "instance_id": "sympy__sympy-20212",
+      "repo": "sympy/sympy",
+      "features": {
+        "patch_lines": 12,
+        "f2p_count": 1,
+        "p2p_count": 32,
+        "problem_words": 79,
+        "gold_file_count": 1
+      },
+      "values": {
+        "equal": 1.0,
+        "cold_start_difficulty": 20.7865
+      }
+    },
+    "sympy__sympy-18057": {
+      "instance_id": "sympy__sympy-18057",
+      "repo": "sympy/sympy",
+      "features": {
+        "patch_lines": 12,
+        "f2p_count": 1,
+        "p2p_count": 98,
+        "problem_words": 271,
+        "gold_file_count": 1
+      },
+      "values": {
+        "equal": 1.0,
+        "cold_start_difficulty": 23.8051
+      }
+    }
+  },
+  "rankings": {
+    "equal": [
+      {
+        "rank": 1,
+        "instance_id": "sympy__sympy-14774",
+        "value": 1.0
+      },
+      {
+        "rank": 2,
+        "instance_id": "sympy__sympy-16988",
+        "value": 1.0
+      },
+      {
+        "rank": 3,
+        "instance_id": "django__django-10924",
+        "value": 1.0
+      },
+      {
+        "rank": 4,
+        "instance_id": "sympy__sympy-13480",
+        "value": 1.0
+      },
+      {
+        "rank": 5,
+        "instance_id": "sympy__sympy-20212",
+        "value": 1.0
+      },
+      {
+        "rank": 6,
+        "instance_id": "sympy__sympy-18057",
+        "value": 1.0
+      }
+    ],
+    "cold_start_difficulty": [
+      {
+        "rank": 1,
+        "instance_id": "sympy__sympy-18057",
+        "value": 23.8051
+      },
+      {
+        "rank": 2,
+        "instance_id": "sympy__sympy-16988",
+        "value": 23.3505
+      },
+      {
+        "rank": 3,
+        "instance_id": "sympy__sympy-14774",
+        "value": 21.9149
+      },
+      {
+        "rank": 4,
+        "instance_id": "sympy__sympy-13480",
+        "value": 20.8442
+      },
+      {
+        "rank": 5,
+        "instance_id": "sympy__sympy-20212",
+        "value": 20.7865
+      },
+      {
+        "rank": 6,
+        "instance_id": "django__django-10924",
+        "value": 18.3131
+      }
+    ]
+  }
+}
