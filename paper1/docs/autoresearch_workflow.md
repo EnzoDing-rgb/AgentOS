@@ -1,6 +1,34 @@
 # BudgetFlow AutoResearch Workflow
 
-## Current Status — 2026-06-06
+## Current Status — 2026-06-07
+
+AutoResearch is a research-productivity idea and an operating-system sketch for
+human/Codex/Worker collaboration. The document is valuable because it preserves
+how we reasoned about reducing manual message-passing, checkpointing long agent
+work, and keeping Codex as the evidence gate. It should be preserved as a
+thinking artifact even when the current BudgetFlow paper does not depend on the
+AutoResearch implementation.
+
+Current paper priority: BudgetFlow's core runtime and evidence loop, not
+AutoResearch automation. The active value proposition is:
+
+```text
+T1: maximize verified resolved task value per dollar under a hard budget
+T2: explain value-fixed routing efficiency as a mechanism ablation inside T1
+```
+
+AutoResearch can help execute bounded infrastructure chores later, but it is
+not the mechanism that proves T1/T2. For now, defects in AutoResearch code,
+tests, or worker dispatch are non-blocking unless they interfere with the
+BudgetFlow compare path, JSONL observability, value accounting, policy memory,
+or no-paid verification gates.
+
+Engineering decision: keep this document as durable reasoning. Remove or ignore
+stale AutoResearch tests/code when they slow the BudgetFlow paper loop. The
+source of truth for the paper remains `north_star.md`, `CONTEXT.md`, run JSONL,
+checker output, and verified experiment artifacts.
+
+## Previous Current Status — 2026-06-06
 
 Current decision: AutoResearch / Auto-reset is implemented enough to coordinate
 bounded infrastructure work, but it is **not** the active mechanism for iterating

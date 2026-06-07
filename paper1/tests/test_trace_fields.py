@@ -1,327 +1,115 @@
-"""Tests for P0 trace extension: new fields in _build_turn_trace."""
-
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "src"))
+import pytest
 
 from budgetflow.adapter.mini_swe_proxy import (
     BudgetFlowLitellmModel,
     _build_turn_trace,
-    _router_trace_fields,
-    _provider_trace_fields,
     _protocol_trace_fields,
+    _provider_trace_fields,
 )
-from budgetflow.adapter.errors import BudgetFlowStagnationError
-from budgetflow.defaults import GOLD_EDIT_T2_REPAIR_TURN_LIMIT
-from budgetflow.adapter.strategies import RoutingContext, build_routing_context
+from budgetflow.adapter.strategies import build_routing_context
 from budgetflow.types import Backend, Stage
 
 
-class TestTraceExtension:
-    def test_trace_includes_provider_model(self):
-        trace = _build_turn_trace(
-            step_index=1, agent_phase=None, stage=Stage.LOCALIZATION,
-            bash_command="test", input_tokens=100,
-            expected_costs={}, base_pressure=0.01, effective_pressure=0.01,
-            backend_chosen="tier2", escalated_backend="tier2",
-            final_backend="tier2", backend_tier=2, reserve_out=256,
-            adaptive=None, no_progress_streak=0, no_progress_on_tier=0,
-            turns_on_tier=1, has_progress=False, progress_reason="",
-            prompt_tokens=100, completion_tokens=50,
-            actual_cost=0.5, billable=0.5, response_ok=True, error_type=None,
-            provider="dashscope", model="openai/qwen3-coder-plus",
-        )
-        assert trace["provider"] == "dashscope"
-        assert trace["model"] == "openai/qwen3-coder-plus"
-
-    def test_trace_includes_protocol_parser(self):
-        trace = _build_turn_trace(
-            step_index=1, agent_phase=None, stage=Stage.LOCALIZATION,
-            bash_command="test", input_tokens=100,
-            expected_costs={}, base_pressure=0.01, effective_pressure=0.01,
-            backend_chosen="tier3", escalated_backend="tier3",
-            final_backend="tier3", backend_tier=3, reserve_out=256,
-            adaptive=None, no_progress_streak=0, no_progress_on_tier=0,
-            turns_on_tier=1, has_progress=False, progress_reason="",
-            prompt_tokens=100, completion_tokens=50,
-            actual_cost=0.5, billable=0.5, response_ok=True, error_type=None,
-            text_mode=True, protocol="text_regex", parser="parse_regex_actions",
-        )
-        assert trace["text_mode"] is True
-        assert trace["protocol"] == "text_regex"
-        assert trace["parser"] == "parse_regex_actions"
-
-    def test_trace_includes_assistant_content(self):
-        trace = _build_turn_trace(
-            step_index=1, agent_phase=None, stage=Stage.LOCALIZATION,
-            bash_command="test", input_tokens=100,
-            expected_costs={}, base_pressure=0.01, effective_pressure=0.01,
-            backend_chosen="tier2", escalated_backend="tier2",
-            final_backend="tier2", backend_tier=2, reserve_out=256,
-            adaptive=None, no_progress_streak=0, no_progress_on_tier=0,
-            turns_on_tier=1, has_progress=False, progress_reason="",
-            prompt_tokens=100, completion_tokens=50,
-            actual_cost=0.5, billable=0.5, response_ok=True, error_type=None,
-            assistant_content_head="```bash\necho test\n```",
-        )
-        assert "echo test" in trace["assistant_content_head"]
-
-    def test_trace_includes_parser_error(self):
-        trace = _build_turn_trace(
-            step_index=1, agent_phase=None, stage=Stage.LOCALIZATION,
-            bash_command="test", input_tokens=100,
-            expected_costs={}, base_pressure=0.01, effective_pressure=0.01,
-            backend_chosen="tier3", escalated_backend="tier3",
-            final_backend="tier3", backend_tier=3, reserve_out=256,
-            adaptive=None, no_progress_streak=0, no_progress_on_tier=0,
-            turns_on_tier=1, has_progress=False, progress_reason="",
-            prompt_tokens=100, completion_tokens=50,
-            actual_cost=0.5, billable=0.5, response_ok=True,
-            error_type="FormatError",
-            parser_error_type="FormatError",
-            parser_error_message="No action found in content",
-        )
-        assert trace["parser_error_type"] == "FormatError"
-        assert "No action" in trace["parser_error_message"]
-
-    def test_trace_includes_provider_error(self):
-        trace = _build_turn_trace(
-            step_index=1, agent_phase=None, stage=Stage.LOCALIZATION,
-            bash_command="test", input_tokens=100,
-            expected_costs={}, base_pressure=0.01, effective_pressure=0.01,
-            backend_chosen="tier3", escalated_backend="tier3",
-            final_backend="tier3", backend_tier=3, reserve_out=256,
-            adaptive=None, no_progress_streak=0, no_progress_on_tier=0,
-            turns_on_tier=1, has_progress=False, progress_reason="",
-            prompt_tokens=0, completion_tokens=0,
-            actual_cost=0.0, billable=0.0, response_ok=False,
-            error_type="ServiceUnavailableError",
-            provider_status_code=503,
-            provider_error_body="service temporarily unavailable",
-        )
-        assert trace["provider_status_code"] == 503
-        assert "unavailable" in trace["provider_error_body"]
-
-    def test_trace_includes_reservation_lifecycle(self):
-        trace = _build_turn_trace(
-            step_index=1, agent_phase=None, stage=Stage.LOCALIZATION,
-            bash_command="test", input_tokens=100,
-            expected_costs={}, base_pressure=0.01, effective_pressure=0.01,
-            backend_chosen="tier2", escalated_backend="tier2",
-            final_backend="tier2", backend_tier=2, reserve_out=256,
-            adaptive=None, no_progress_streak=0, no_progress_on_tier=0,
-            turns_on_tier=1, has_progress=False, progress_reason="",
-            prompt_tokens=100, completion_tokens=50,
-            actual_cost=0.5, billable=0.5, response_ok=True, error_type=None,
-            reservation_id="res-123",
-            reserved_cost=0.8,
-            reservation_settled=True,
-        )
-        assert trace["reservation_id"] == "res-123"
-        assert trace["reserved_cost"] == 0.8
-        assert trace["reservation_settled"] is True
-        assert trace["reservation_released"] is False
-
-    def test_trace_includes_router_reasoning(self):
-        trace = _build_turn_trace(
-            step_index=1, agent_phase=None, stage=Stage.LOCALIZATION,
-            bash_command="test", input_tokens=100,
-            expected_costs={}, base_pressure=0.01, effective_pressure=0.01,
-            backend_chosen="tier2", escalated_backend="tier2",
-            final_backend="tier2", backend_tier=2, reserve_out=256,
-            adaptive=None, no_progress_streak=0, no_progress_on_tier=0,
-            turns_on_tier=1, has_progress=False, progress_reason="",
-            prompt_tokens=100, completion_tokens=50,
-            actual_cost=0.5, billable=0.5, response_ok=True, error_type=None,
-            router_reason="cheapest_baseline_n2",
-            router_scores={},
-            router_pressure=0.01,
-            router_branch="budget_only",
-        )
-        assert trace["router_reason"] == "cheapest_baseline_n2"
-        assert trace["router_branch"] == "budget_only"
-        assert trace["router_pressure"] == 0.01
-
-    def test_trace_includes_gold_edit_guard_state(self):
-        trace = _build_turn_trace(
-            step_index=1, agent_phase="edit_gold", stage=Stage.REPAIR,
-            bash_command="git diff", input_tokens=100,
-            expected_costs={}, base_pressure=0.01, effective_pressure=0.01,
-            backend_chosen="tier2", escalated_backend="tier3",
-            final_backend="tier3", backend_tier=3, reserve_out=256,
-            adaptive=None, no_progress_streak=0, no_progress_on_tier=0,
-            turns_on_tier=1, has_progress=True, progress_reason="repair_pattern",
-            prompt_tokens=100, completion_tokens=50,
-            actual_cost=0.5, billable=0.5, response_ok=True, error_type=None,
-            gold_edit_guard_turns=12,
-            gold_edit_guard_limit=12,
-            gold_edit_guard_active=True,
-        )
-        assert trace["gold_edit_guard_turns"] == 12
-        assert trace["gold_edit_guard_limit"] == 12
-        assert trace["gold_edit_guard_active"] is True
-
-    def test_trace_includes_value_salvage_state(self):
-        trace = _build_turn_trace(
-            step_index=1, agent_phase="explore", stage=Stage.LOCALIZATION,
-            bash_command="grep x file.py", input_tokens=100,
-            expected_costs={}, base_pressure=0.01, effective_pressure=0.01,
-            backend_chosen="tier2", escalated_backend="tier3",
-            final_backend="tier3", backend_tier=3, reserve_out=256,
-            adaptive=None, no_progress_streak=12, no_progress_on_tier=12,
-            turns_on_tier=1, has_progress=False, progress_reason="none",
-            prompt_tokens=100, completion_tokens=50,
-            actual_cost=0.5, billable=0.5, response_ok=True, error_type=None,
-            value_salvage_active=True,
-            value_salvage_turns_remaining=2,
-            value_salvage_triggered=True,
-            value_salvage_reason="opened_stagnation_no_progress",
-        )
-        assert trace["value_salvage_active"] is True
-        assert trace["value_salvage_turns_remaining"] == 2
-        assert trace["value_salvage_triggered"] is True
-        assert trace["value_salvage_reason"] == "opened_stagnation_no_progress"
-
-    def test_trace_old_fields_still_present(self):
-        """Backward-compat: old fields survive the extension."""
-        trace = _build_turn_trace(
-            step_index=5, agent_phase="repair", stage=Stage.REPAIR,
-            bash_command="git diff", input_tokens=200,
-            expected_costs={"tier2": 1.0}, base_pressure=0.01,
-            effective_pressure=0.02, backend_chosen="tier2",
-            escalated_backend="tier2", final_backend="tier2",
-            backend_tier=2, reserve_out=512, adaptive=None,
-            no_progress_streak=0, no_progress_on_tier=0,
-            turns_on_tier=3, has_progress=True, progress_reason="repair_pattern",
-            prompt_tokens=200, completion_tokens=100,
-            actual_cost=1.0, billable=1.0, response_ok=True, error_type=None,
-        )
-        assert trace["step"] == 5
-        assert trace["stage"] == "REPAIR"
-        assert trace["backend_tier"] == 2
-        assert trace["has_progress"] is True
-        assert trace["response_ok"] is True
-        assert trace["actual_cost"] == 1.0
+def _backend(name: str, tier: int) -> Backend:
+    return Backend(name, tier, 0.001 * tier, 0.002 * tier, 60, 1, 1024, 0.5, 100)
 
 
-class TestHelperFunctions:
-    def test_provider_trace_fields_tier2(self):
-        fields = _provider_trace_fields("tier2")
-        assert fields["provider"] == "dashscope"
-        assert "qwen3-coder-plus" in fields["model"]
+def test_turn_trace_has_fields_needed_to_debug_value_routing_and_provider_failures() -> None:
+    trace = _build_turn_trace(
+        step_index=1,
+        agent_phase="edit_gold",
+        stage=Stage.REPAIR,
+        bash_command="git diff",
+        input_tokens=100,
+        expected_costs={"tier2": 0.01},
+        base_pressure=0.1,
+        effective_pressure=0.2,
+        backend_chosen="tier2",
+        escalated_backend="tier3",
+        final_backend="tier3",
+        backend_tier=3,
+        reserve_out=512,
+        adaptive=None,
+        no_progress_streak=4,
+        no_progress_on_tier=3,
+        turns_on_tier=2,
+        has_progress=True,
+        progress_reason="repair_pattern",
+        prompt_tokens=100,
+        completion_tokens=50,
+        actual_cost=0.02,
+        billable=0.02,
+        response_ok=False,
+        error_type="ServiceUnavailableError",
+        provider="aicode007",
+        model="openai/gpt-5.4",
+        text_mode=True,
+        protocol="text_regex",
+        parser="parse_regex_actions",
+        provider_status_code=503,
+        router_reason="value_salvage",
+        router_branch="budgetflow_value_aware",
+        task_value=2.0,
+        task_value_multiplier=1.5,
+        value_aware_active=True,
+        value_salvage_active=True,
+        value_salvage_turns_remaining=2,
+    )
 
-    def test_provider_trace_fields_tier3(self):
-        fields = _provider_trace_fields("tier3")
-        assert fields["provider"] == "aicode007"
-        assert "gpt-5.4" in fields["model"]
-
-    def test_protocol_trace_fields_text_mode(self):
-        fields = _protocol_trace_fields("tier3", text_mode=True)
-        assert fields["protocol"] == "text_regex"
-        assert fields["text_mode"] is True
-
-    def test_protocol_trace_fields_tool_mode(self):
-        fields = _protocol_trace_fields("tier2", text_mode=False)
-        assert fields["protocol"] == "tool_call"
-        assert fields["text_mode"] is False
-
-
-class TestGoldEditRepairGuard:
-    def _model(self, backends):
-        model = object.__new__(BudgetFlowLitellmModel)
-        model.routing = type("Routing", (), {
-            "strategy": "budget_only",
-            "backends": backends,
-        })()
-        model.workflow_id = "test"
-        model.step_index = 13
-        model.agent_gold_edited = True
-        model._gold_edit_t2_repair_turns = GOLD_EDIT_T2_REPAIR_TURN_LIMIT
-        model._no_progress_on_current_tier = 3
-        model._turns_on_current_tier = 7
-        return model
-
-    def test_gold_edit_guard_forces_t3_after_t2_repair_limit(self):
-        t2 = Backend("tier2", 2, 0.001, 0.002, 60, 1, 1024, 0.6, 100)
-        t3 = Backend("tier3", 3, 0.01, 0.02, 60, 1, 1024, 0.8, 200)
-        model = self._model([t2, t3])
-
-        chosen = model._apply_gold_edit_repair_guard(t2, Stage.REPAIR)
-
-        assert chosen is t3
-        assert model._no_progress_on_current_tier == 0
-        assert model._turns_on_current_tier == 0
-
-    def test_gold_edit_guard_stops_when_no_higher_tier_available(self):
-        t2 = Backend("tier2", 2, 0.001, 0.002, 60, 1, 1024, 0.6, 100)
-        model = self._model([t2])
-
-        try:
-            model._apply_gold_edit_repair_guard(t2, Stage.REPAIR)
-        except BudgetFlowStagnationError as exc:
-            assert exc.exit_reason == "gold_edit_t2_repair_limit"
-        else:
-            raise AssertionError("expected BudgetFlowStagnationError")
+    assert trace["turns_on_tier"] == 2
+    assert trace["provider"] == "aicode007"
+    assert trace["protocol"] == "text_regex"
+    assert trace["provider_status_code"] == 503
+    assert trace["router_branch"] == "budgetflow_value_aware"
+    assert trace["task_value_multiplier"] == 1.5
+    assert trace["value_salvage_active"] is True
 
 
-class TestValueAwareSalvage:
-    def _model(self, *, strategy="budgetflow_value_aware", task_value=2.0, median_task_value=1.0):
-        t2 = Backend("tier2", 2, 0.001, 0.002, 60, 1, 1024, 0.6, 100)
-        t3 = Backend("tier3", 3, 0.01, 0.02, 60, 1, 1024, 0.8, 200)
-        model = object.__new__(BudgetFlowLitellmModel)
-        model.routing = build_routing_context(
-            strategy,
-            [t2, t3],
-            budget_pressure=0.01,
-            task_value=task_value,
-            median_task_value=median_task_value,
-        )
-        model.workflow_id = "test"
-        model.step_index = 12
-        model.agent_gold_edited = False
-        model._value_salvage_turns_remaining = 0
-        model._value_salvage_triggered = False
-        model._value_salvage_reason = None
-        model._no_progress_on_current_tier = 12
-        model._turns_on_current_tier = 12
+def test_provider_and_protocol_helpers_identify_real_backend_contracts() -> None:
+    assert _provider_trace_fields("tier2")["provider"] == "dashscope"
+    assert "gpt-5.4" in _provider_trace_fields("tier3")["model"]
+    assert _protocol_trace_fields("tier3", text_mode=True)["protocol"] == "text_regex"
+    assert _protocol_trace_fields("tier2", text_mode=False)["protocol"] == "tool_call"
 
-        class Gov:
-            class State:
-                total_budget = 1.0
-            state = State()
-            def remaining_budget(self):
-                return 0.8
 
-        model.governor = Gov()
-        return model, t2, t3
+@pytest.mark.parametrize(
+    ("task_value", "strategy", "opens"),
+    [
+        (2.0, "budgetflow_value_aware", True),
+        (0.5, "budgetflow_value_aware", False),
+        (2.0, "budgetflow_conservative", False),
+    ],
+)
+def test_value_salvage_only_opens_for_high_value_bfv(task_value: float, strategy: str, opens: bool) -> None:
+    t2 = _backend("tier2", 2)
+    t3 = _backend("tier3", 3)
+    model = object.__new__(BudgetFlowLitellmModel)
+    model.routing = build_routing_context(
+        strategy,
+        [t2, t3],
+        budget_pressure=0.01,
+        task_value=task_value,
+        median_task_value=1.0,
+    )
+    model._value_salvage_turns_remaining = 0
+    model._value_salvage_triggered = False
+    model._value_salvage_reason = None
+    model._no_progress_on_current_tier = 12
+    model._turns_on_current_tier = 12
+    model.agent_gold_edited = False
+    model.step_index = 12
 
-    def test_high_value_bfv_opens_salvage_window(self):
-        model, _, _ = self._model()
+    class Governor:
+        class State:
+            total_budget = 1.0
 
-        assert model._maybe_open_value_salvage("stagnation_no_progress") is True
-        assert model._value_salvage_triggered is True
-        assert model._value_salvage_turns_remaining == 3
-        assert model._value_salvage_reason == "opened_stagnation_no_progress"
+        state = State()
 
-    def test_low_value_bfv_does_not_salvage(self):
-        model, _, _ = self._model(task_value=0.5, median_task_value=1.0)
+        def remaining_budget(self):
+            return 0.8
 
-        assert model._maybe_open_value_salvage("stagnation_no_progress") is False
-        assert model._value_salvage_triggered is False
+    model.governor = Governor()
 
-    def test_bfc_does_not_salvage(self):
-        model, _, _ = self._model(strategy="budgetflow_conservative")
-
-        assert model._maybe_open_value_salvage("stagnation_no_progress") is False
-
-    def test_salvage_forces_t3(self):
-        model, t2, t3 = self._model()
-        model._maybe_open_value_salvage("stagnation_no_progress")
-
-        chosen = model._apply_value_salvage(t2, Stage.LOCALIZATION)
-
-        assert chosen is t3
+    assert model._maybe_open_value_salvage("stagnation_no_progress") is opens

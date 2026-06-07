@@ -4,6 +4,17 @@
 
 ## 当前快照（2026-06-07）
 
+### 069 / Test-suite contraction and evidence-contract cleanup
+
+- **069 COMPLETE SLICE — no-paid test/infra cleanup.** No historical JSONL was edited and no paid experiment was run.
+- **Test-suite contraction:** `paper1/tests` moved from 50 files / ~11.1k LOC to 19 files / ~2.6k LOC. Deleted AutoResearch implementation tests, phase-era regression bundles, old compatibility tests, result-table display tests, and duplicated micro-helper tests that did not protect T1/T2 evidence quality.
+- **Contract tests kept:** compare-path row schema, value/RVPD enrichment, learning-context source separation, PolicyMemory routing priors, value-aware routing/salvage, anti-spin/timeout/provider guards, local harness sanity, policy parallelism, and failure classification.
+- **Large test files rewritten:** `test_policy_memory.py`, `test_adaptive_routing.py`, `test_compare_record_schema.py`, and `test_trace_fields.py` now test current paper/runtime contracts instead of historical implementation details.
+- **AutoResearch positioning:** `autoresearch_workflow.md` is preserved and updated as a research-productivity thinking artifact. AutoResearch code/tests are not part of the current BudgetFlow T1/T2 proof path unless they affect compare runtime, JSONL observability, value accounting, or learning gates.
+- **Observability architecture judgment:** `check_run_observability.py` is already a thin compatibility entrypoint over `run_observability/{audit,checks,schema,report,cli}`. Legacy fallback remains isolated at checker/analysis edges and does not shape current runtime code.
+- **Verification:** `171 passed` in 10.71s, `py_compile` passed for `paper1/src/budgetflow`, `git diff --check` passed, and no-provider `--auto-budget-dry-run` loaded cap memory plus routing policy memory successfully.
+- **Evidence status:** this is not new T1/T2 experiment evidence. It improves future iteration speed by making tests guard experiment credibility instead of historical compatibility.
+
 ### 068 / Compare runner architecture refactor
 
 - **068 COMPLETE SLICE — no-paid architecture cleanup.** No historical JSONL was edited and no paid experiment was run.

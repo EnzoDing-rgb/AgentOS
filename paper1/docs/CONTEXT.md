@@ -16,10 +16,14 @@ Task value is an observable proxy, not ground truth. Current preferred cold-star
 ### AutoResearch / Auto-reset coordinator
 AutoResearch is implemented as a semi-automatic coordinator, but it is currently an infrastructure tool, not the driver of the BudgetFlow paper. It may run bounded Worker issues, collect reports, retry small failures, and preserve on-disk evidence. It must not autonomously change Tier 1/Tier 2 claims, launch large paid experiments, or iterate paper direction without Codex/owner approval.
 
+The AutoResearch workflow document is a durable thinking artifact about research productivity and agent coordination. Preserve and update that document when the operating model changes. AutoResearch implementation tests/code are optional support machinery; defects there are non-blocking unless they interfere with the BudgetFlow compare path, JSONL observability, value accounting, policy memory, or no-paid verification gates.
+
 ### current research discipline
 Treat JSONL, checker output, summary logs, and turn traces as facts. Treat Worker reports as ledgers that must be checked against artifacts. A small paid run can support Tier 2 routing behavior, but Tier 1 requires non-equal task values loaded from an explicit value source. If a non-equal value profile falls back to equal values, the run is invalid for Tier 1.
 
 Skills and sub-agents are tools, not governance. Use them when they reduce risk or remove mechanical work; do not mechanically invoke a framework when direct inspection is clearer. The invariant is evidence first: identify the root cause before changing runtime/evaluation behavior, and do not keep iterating paper claims on known-bad observability.
+
+Tests are evidence-contract gates, not a historical archive. Keep tests that protect current experiment credibility: compare row schema, value/RVPD accounting, learning-memory source separation, routing decisions, anti-spin/provider safety, harness verdict sanity, and policy parallelism. Delete tests that only preserve old phase behavior, old aliases, source-string implementation details, or toy helpers that cannot catch wrong paper conclusions.
 
 ### tier contract
 A tier is a stable system identity (T1/T2/T3), not a specific model. T1 = cheapest, T3 = strongest. Each tier has a fixed cost per token, provider, and action protocol. Models behind tiers can change, but the contract stays the same. This means `all_pro` should always mean strongest tier, regardless of what model sits at T3.
