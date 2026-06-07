@@ -408,10 +408,10 @@ class PolicyMemory:
                 if _trace_tier(trace) < 3:
                     continue
                 prior.t3_turns += weight
-                productive = _trace_productive(trace)
-                if productive:
+                productive = _trace_productivity(trace)
+                if productive is True:
                     prior.t3_productive_turns += weight
-                else:
+                elif productive is False:
                     prior.t3_no_progress_cost += weight * float(
                         trace.get("billable_cost") or trace.get("actual_cost") or 0.0
                     )
@@ -449,10 +449,10 @@ class PolicyMemory:
                         prior.budgetflow_starter_failures += weight
                     for trace in starter_traces:
                         prior.budgetflow_starter_t3_turns += weight
-                        productive = _trace_productive(trace)
-                        if productive:
+                        productive = _trace_productivity(trace)
+                        if productive is True:
                             prior.budgetflow_starter_productive_turns += weight
-                        else:
+                        elif productive is False:
                             prior.budgetflow_starter_no_progress_cost += weight * float(
                                 trace.get("billable_cost") or trace.get("actual_cost") or 0.0
                             )
@@ -751,13 +751,22 @@ def _trace_has_value_triggered_escalation(trace: dict) -> bool:
     )
 
 
-def _trace_productive(trace: dict) -> bool:
-    """Whether this backend turn produced a useful action without infra noise."""
+def _trace_productivity(trace: dict) -> bool | None:
+    """Whether this backend turn produced a useful action without infra noise.
+
+    New traces attribute productivity to the action emitted by the selected
+    backend. Historical traces only had ``has_progress``, which describes the
+    previous observation context and can misattribute T3 turns. Use old
+    positive evidence as a weak usable signal, but do not let old missing/false
+    action evidence create no-progress cost that changes routing.
+    """
     if trace.get("error_type") or trace.get("parser_error_type"):
         return False
     if "action_has_progress" in trace:
         return bool(trace.get("action_has_progress"))
-    return bool(trace.get("has_progress"))
+    if trace.get("has_progress"):
+        return True
+    return None
 
 
 def _escalation_action(prior: EscalationPrior) -> tuple[str, int]:

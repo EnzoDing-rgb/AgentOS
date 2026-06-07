@@ -55,3 +55,4 @@ After every experiment, inspect artifacts before drawing conclusions:
 - Do not assume every failure signal is learnable. Pick a few general, reusable signals and make sure the runtime actually consumes them.
 - Current core learning signals are cap sufficiency/cost, routing outcome by task/repo/stage, T3 productivity versus no-progress cost, provider/parser failures, and harness-trusted verified outcome.
 - A new signal earns its place only if it can influence a future cap, route, stop/continue, or escalation decision and can be audited from JSONL.
+- Schema-aware learning matters: old trace fields may be forensic or weak positive evidence, but schema-mismatched missing/false progress must not create negative T3 no-progress evidence that changes routing.

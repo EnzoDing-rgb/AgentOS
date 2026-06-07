@@ -442,6 +442,7 @@ def test_unproductive_budgetflow_starter_shortens_frontload_window() -> None:
                     "final_backend": "tier3",
                     "strongest_starter_applied": True,
                     "has_progress": False,
+                    "action_has_progress": False,
                     "billable_cost": 0.06,
                 }
             ],
@@ -487,6 +488,7 @@ def test_repeated_unproductive_budgetflow_starter_disables_frontload() -> None:
                     "final_backend": "tier3",
                     "strongest_starter_applied": True,
                     "has_progress": False,
+                    "action_has_progress": False,
                     "billable_cost": 0.08,
                 }
             ],
@@ -501,6 +503,48 @@ def test_repeated_unproductive_budgetflow_starter_disables_frontload() -> None:
     assert summary["starter_budgetflow_t3_no_progress_cost"] == 0.16
     assert summary["strongest_starter_action"] == "default"
     assert summary["strongest_starter_window"] == 0
+
+
+def test_legacy_starter_traces_do_not_disable_frontload_from_no_progress_cost() -> None:
+    memory = PolicyMemory()
+    memory.rebuild_from_records([
+        _record(
+            instance_id=f"sympy__legacy-{i}",
+            routing="budget_only",
+            strategy="budget_only_tight",
+            harness_resolved=True,
+            failure_class="pass",
+            turn_traces=[
+                {"stage": "LOCALIZATION", "backend_tier": 3, "final_backend": "tier3"},
+                {"stage": "REPAIR", "backend_tier": 3, "final_backend": "tier3"},
+            ],
+        )
+        for i in range(2)
+    ] + [
+        _record(
+            instance_id=f"sympy__legacy-{i}",
+            routing="budgetflow_value_aware",
+            strategy="budgetflow_value_aware_tight",
+            harness_resolved=False,
+            turn_traces=[
+                {
+                    "stage": "LOCALIZATION",
+                    "backend_tier": 3,
+                    "final_backend": "tier3",
+                    "strongest_starter_applied": True,
+                    "has_progress": False,
+                    "billable_cost": 0.08,
+                }
+            ],
+        )
+        for i in range(2)
+    ])
+
+    summary = memory.routing_prior_summary("sympy__new-task", Stage.LOCALIZATION)
+
+    assert summary["starter_budgetflow_applied_weight"] == 2.0
+    assert summary["starter_budgetflow_t3_no_progress_cost"] == 0.0
+    assert summary["strongest_starter_action"] == "frontload_strongest"
 
 
 def test_verified_starter_success_prevents_turn_level_no_progress_from_disabling_frontload() -> None:
@@ -531,6 +575,7 @@ def test_verified_starter_success_prevents_turn_level_no_progress_from_disabling
                     "final_backend": "tier3",
                     "strongest_starter_applied": True,
                     "has_progress": False,
+                    "action_has_progress": False,
                     "billable_cost": 0.08,
                 }
             ],
@@ -584,6 +629,7 @@ def test_policy_memory_learns_value_triggered_escalation_policy() -> None:
         "final_backend": "tier3",
         "value_triggered_escalation_active": True,
         "has_progress": False,
+        "action_has_progress": False,
         "billable_cost": 0.08,
     }
     memory.rebuild_from_records([
@@ -609,6 +655,36 @@ def test_policy_memory_learns_value_triggered_escalation_policy() -> None:
     assert summary["value_triggered_escalation_window"] == 0
 
 
+def test_legacy_value_triggered_escalation_does_not_create_no_progress_cost() -> None:
+    memory = PolicyMemory()
+    legacy_t3_trace = {
+        "stage": "REPAIR",
+        "backend_tier": 3,
+        "final_backend": "tier3",
+        "value_triggered_escalation_active": True,
+        "has_progress": False,
+        "billable_cost": 0.08,
+    }
+    memory.rebuild_from_records([
+        _record(
+            instance_id="django__django-1",
+            routing="budgetflow_value_aware",
+            turn_traces=[legacy_t3_trace],
+        ),
+        _record(
+            instance_id="django__django-2",
+            routing="budgetflow_value_aware",
+            turn_traces=[legacy_t3_trace],
+        ),
+    ])
+
+    summary = memory.routing_prior_summary("django__django-3", Stage.REPAIR)
+
+    assert summary["escalation_attempts"] == 2
+    assert summary["t3_no_progress_cost"] == 0.0
+    assert summary["value_triggered_escalation_action"] == "default"
+
+
 def test_low_weight_value_triggered_escalation_does_not_disable_policy() -> None:
     memory = PolicyMemory()
     bad_t3_trace = {
@@ -617,6 +693,7 @@ def test_low_weight_value_triggered_escalation_does_not_disable_policy() -> None
         "final_backend": "tier3",
         "value_triggered_escalation_active": True,
         "has_progress": False,
+        "action_has_progress": False,
         "billable_cost": 0.08,
     }
     memory.rebuild_from_records([
@@ -654,6 +731,7 @@ def test_policy_memory_shortens_after_one_costly_unproductive_escalation() -> No
                     "final_backend": "tier3",
                     "value_triggered_escalation_active": True,
                     "has_progress": False,
+                    "action_has_progress": False,
                     "billable_cost": 0.08,
                 }
             ],
@@ -722,6 +800,7 @@ def test_auto_budget_dry_run_exposes_escalation_memory_decision(tmp_path: Path) 
                 "final_backend": "tier3",
                 "value_triggered_escalation_active": True,
                 "has_progress": False,
+                "action_has_progress": False,
                 "billable_cost": 0.08,
             }
         ],
