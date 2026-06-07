@@ -4,6 +4,14 @@
 
 ## 当前快照（2026-06-07）
 
+### 083 / Anti-overfit starter-memory diagnostic
+
+- **083_legacy_memory4_antioverfit_qwen37 COMPLETE — small paid diagnostic, not paper evidence.** 4 policies x 4 less-familiar SymPy tasks, `--jobs 4`, Value-Driven Budget Allocation, pre-registered outcome-free value matrix `docs/reports/083_legacy_memory4_value_matrix.json`, and Qwen3.7-Max as T2.
+- **T1 primary is neutral for stage-aware BF:** BO, BFC, and BFV each resolved **2/4** with identical NVRV **0.4910**; task-level resolved **1/4** with NVRV **0.2361**. RVPD: BFC **70.98**, BFV **69.28**, BO **61.73**, task-level **23.76**.
+- **T2 stage-aware control remains positive:** BFV vs value-aware task-level on the same 4 tasks: `delta_pass=+1`, `delta_cost=$-0.2565`, `delta_nvrv=+0.2550`, `delta_rv_per_$=+45.5256`.
+- **Mechanism diagnosis:** 083 did not prove BFV value superiority, but it exposed a real starter-memory weakness. BFV/BFC learned BO-style early T3 frontload, yet T3 Productive Rate for BFV was **0/13** and starter-memory T3 was **12 turns / 0 productive**. The fix direction is not weakening BO or removing stage-aware routing; it is teaching Routing Memory to shorten or disable unproductive BudgetFlow starter windows after verifier-trusted evidence shows no progress.
+- **Audit caveat:** `sympy__sympy-17630` used a low-confidence global fallback cap. Compact audit reported suspicious_pass=0, no_trace=0, policy_memory_used=True, canonical estimated cost only, and provider invoice actual cost unavailable.
+
 ### 082 / Qwen3.7-Max T2 and BO-style starter-memory diagnostic
 
 - **082_qwen37_starter_memory_4x6 COMPLETE — small paid diagnostic, not paper evidence.** 4 policies x 6 tasks, `--jobs 4`, Value-Driven Budget Allocation, frozen `053_exact_cap_cold_start_value_matrix`, and T2 catalog swapped to Alibaba `qwen3.7-max`.

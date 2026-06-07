@@ -321,6 +321,92 @@ def test_budget_only_cheaper_success_extends_strongest_starter_window() -> None:
     assert repo_summary["strongest_starter_window"] == 2
 
 
+def test_unproductive_budgetflow_starter_shortens_frontload_window() -> None:
+    memory = PolicyMemory()
+    memory.rebuild_from_records([
+        _record(
+            instance_id="sympy__task-a",
+            routing="budget_only",
+            strategy="budget_only_tight",
+            harness_resolved=True,
+            failure_class="pass",
+            turn_traces=[
+                {"stage": "LOCALIZATION", "backend_tier": 3, "final_backend": "tier3"},
+                {"stage": "REPAIR", "backend_tier": 3, "final_backend": "tier3"},
+            ],
+        ),
+        _record(
+            instance_id="sympy__task-a",
+            routing="budgetflow_value_aware",
+            strategy="budgetflow_value_aware_tight",
+            harness_resolved=False,
+            turn_traces=[
+                {
+                    "stage": "LOCALIZATION",
+                    "backend_tier": 3,
+                    "final_backend": "tier3",
+                    "strongest_starter_applied": True,
+                    "has_progress": False,
+                    "billable_cost": 0.06,
+                }
+            ],
+        ),
+    ])
+
+    summary = memory.routing_prior_summary("sympy__new-task", Stage.LOCALIZATION)
+
+    assert summary["starter_budgetflow_applied_weight"] == 1.0
+    assert summary["starter_budgetflow_applied_failure_weight"] == 1.0
+    assert summary["starter_budgetflow_t3_productive_rate"] == 0.0
+    assert summary["starter_budgetflow_t3_no_progress_cost"] == 0.06
+    assert summary["strongest_starter_action"] == "frontload_strongest"
+    assert summary["strongest_starter_window"] == 1
+
+
+def test_repeated_unproductive_budgetflow_starter_disables_frontload() -> None:
+    memory = PolicyMemory()
+    memory.rebuild_from_records([
+        _record(
+            instance_id=f"sympy__task-{i}",
+            routing="budget_only",
+            strategy="budget_only_tight",
+            harness_resolved=True,
+            failure_class="pass",
+            turn_traces=[
+                {"stage": "LOCALIZATION", "backend_tier": 3, "final_backend": "tier3"},
+                {"stage": "REPAIR", "backend_tier": 3, "final_backend": "tier3"},
+            ],
+        )
+        for i in range(2)
+    ] + [
+        _record(
+            instance_id=f"sympy__task-{i}",
+            routing="budgetflow_value_aware",
+            strategy="budgetflow_value_aware_tight",
+            harness_resolved=False,
+            turn_traces=[
+                {
+                    "stage": "LOCALIZATION",
+                    "backend_tier": 3,
+                    "final_backend": "tier3",
+                    "strongest_starter_applied": True,
+                    "has_progress": False,
+                    "billable_cost": 0.08,
+                }
+            ],
+        )
+        for i in range(2)
+    ])
+
+    summary = memory.routing_prior_summary("sympy__new-task", Stage.LOCALIZATION)
+
+    assert summary["starter_attempts"] == 2.0
+    assert summary["starter_budgetflow_applied_weight"] == 2.0
+    assert summary["starter_budgetflow_t3_no_progress_cost"] == 0.16
+    assert summary["strongest_starter_action"] == "default"
+    assert summary["strongest_starter_window"] == 0
+
+
 def test_budget_only_equal_cost_success_does_not_create_starter_evidence() -> None:
     memory = PolicyMemory()
     memory.rebuild_from_records([

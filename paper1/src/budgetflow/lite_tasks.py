@@ -5,9 +5,6 @@ import json
 from pathlib import Path
 from typing import Iterable
 
-from datasets import load_dataset
-import pandas as pd
-
 from .loop import WorkflowSpec, WorkflowStep
 from .types import Stage
 
@@ -44,6 +41,8 @@ def load_swebench_lite_tasks(
     if items is None:
         items = load_local_swebench_lite_parquet()
     if items is None:
+        from datasets import load_dataset
+
         dataset = load_dataset("princeton-nlp/SWE-bench_Lite", split="test")
         items = list(dataset)
     if instance_ids:
@@ -103,6 +102,8 @@ def derive_compare_medium_instance_ids(limit: int = 15) -> tuple[str, ...]:
     if items is None:
         items = load_local_swebench_lite_parquet()
     if items is None:
+        from datasets import load_dataset
+
         dataset = load_dataset("princeton-nlp/SWE-bench_Lite", split="test")
         items = list(dataset)
     easy = set(COMPARE_EASY_INSTANCE_IDS)
@@ -157,6 +158,8 @@ def load_local_swebench_lite_parquet() -> list[dict] | None:
     test_parquet = export_dir / "test.parquet"
     if not test_parquet.exists():
         return None
+    import pandas as pd
+
     frame = pd.read_parquet(test_parquet)
     return frame.to_dict(orient="records")
 

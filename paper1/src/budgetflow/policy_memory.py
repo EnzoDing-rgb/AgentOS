@@ -148,6 +148,11 @@ class StarterPrior:
     budgetflow_success_cost: float = 0.0
     bo_frontload_t3_turns: float = 0.0
     bo_total_turns: float = 0.0
+    budgetflow_starter_attempts: float = 0.0
+    budgetflow_starter_failures: float = 0.0
+    budgetflow_starter_t3_turns: float = 0.0
+    budgetflow_starter_productive_turns: float = 0.0
+    budgetflow_starter_no_progress_cost: float = 0.0
 
     @property
     def bo_frontload_rate(self) -> float:
@@ -158,6 +163,10 @@ class StarterPrior:
         if self.bo_success_cost <= 0:
             return 0.0
         return self.budgetflow_success_cost / self.bo_success_cost
+
+    @property
+    def budgetflow_starter_productive_rate(self) -> float:
+        return self.budgetflow_starter_productive_turns / max(self.budgetflow_starter_t3_turns, 1)
 
 
 class PolicyMemory:
@@ -422,6 +431,28 @@ class PolicyMemory:
                 record for record in task_records
                 if str(record.get("routing") or "") in {"budgetflow_conservative", "budgetflow_value_aware"}
             ]
+            for record in budgetflow:
+                traces = [trace for trace in (record.get("turn_traces") or []) if isinstance(trace, dict)]
+                starter_traces = [
+                    trace for trace in traces
+                    if trace.get("strongest_starter_applied") and _trace_tier(trace) >= 3
+                ]
+                if starter_traces:
+                    weight = _record_weight(record)
+                    prior.budgetflow_starter_attempts += weight
+                    if not record.get("harness_resolved"):
+                        prior.budgetflow_starter_failures += weight
+                    for trace in starter_traces:
+                        prior.budgetflow_starter_t3_turns += weight
+                        productive = bool(trace.get("has_progress")) and not (
+                            trace.get("error_type") or trace.get("parser_error_type")
+                        )
+                        if productive:
+                            prior.budgetflow_starter_productive_turns += weight
+                        else:
+                            prior.budgetflow_starter_no_progress_cost += weight * float(
+                                trace.get("billable_cost") or trace.get("actual_cost") or 0.0
+                            )
             if not budget_only or not budgetflow:
                 continue
 
@@ -547,6 +578,10 @@ class PolicyMemory:
             "starter_budgetflow_expensive_success_weight": starter.budgetflow_expensive_successes,
             "starter_success_cost_ratio": round(starter.success_cost_ratio, 3),
             "starter_bo_frontload_rate": round(starter.bo_frontload_rate, 3),
+            "starter_budgetflow_applied_weight": starter.budgetflow_starter_attempts,
+            "starter_budgetflow_applied_failure_weight": starter.budgetflow_starter_failures,
+            "starter_budgetflow_t3_productive_rate": round(starter.budgetflow_starter_productive_rate, 3),
+            "starter_budgetflow_t3_no_progress_cost": round(starter.budgetflow_starter_no_progress_cost, 4),
             "strongest_starter_action": starter_action,
             "strongest_starter_window": starter_window,
         }
@@ -730,12 +765,27 @@ def _starter_action(prior: StarterPrior, source: str = "") -> tuple[str, int]:
         return "default", 0
     if prior.bo_frontload_rate < 0.5:
         return "default", 0
+    starter_window_cap: int | None = None
+    if (
+        prior.budgetflow_starter_attempts >= 2.0
+        and prior.budgetflow_starter_failures >= 2.0
+        and prior.budgetflow_starter_productive_rate < 0.15
+        and prior.budgetflow_starter_no_progress_cost >= 0.15
+    ):
+        return "default", 0
+    if (
+        prior.budgetflow_starter_attempts >= 1.0
+        and prior.budgetflow_starter_failures >= 1.0
+        and prior.budgetflow_starter_productive_rate < 0.15
+        and prior.budgetflow_starter_no_progress_cost >= 0.05
+    ):
+        starter_window_cap = 1
     expensive_success_threshold = 1.0 if source == "task" else 2.0
     if (
         prior.budgetflow_expensive_successes >= expensive_success_threshold
         and prior.bo_frontload_rate >= 0.75
     ):
-        return "frontload_strongest", 4
+        return "frontload_strongest", min(4, starter_window_cap or 4)
     if prior.attempts >= 2.0 and prior.bo_frontload_rate >= 0.75:
-        return "frontload_strongest", 3
-    return "frontload_strongest", 2
+        return "frontload_strongest", min(3, starter_window_cap or 3)
+    return "frontload_strongest", min(2, starter_window_cap or 2)
