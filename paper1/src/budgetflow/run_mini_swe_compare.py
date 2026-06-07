@@ -52,6 +52,22 @@ from budgetflow.auto_budget import AutoBudgetEstimator, AutoBudgetMemory, Budget
 from budgetflow.budget_memory import BudgetMemory, BudgetEstimate as BudgetMemoryEstimate  # noqa: E402
 from budgetflow.console_log import backend_tier_label, dim, format_run_verdict, status_fail, status_pass, tag  # noqa: E402
 from budgetflow.deepseek_backend import load_env_file  # noqa: E402
+from budgetflow.experiments.compare_config import (  # noqa: E402
+    DEFAULT_STRATEGIES,
+    DIAGNOSTIC_STRATEGIES,
+    UNCAPPED_BUDGET,
+    CompareStrategy,
+    batch_budget_cap as _batch_budget_cap,
+    effective_policy_jobs as _effective_policy_jobs,
+    fmt_usd as _fmt_usd,
+    normalize_strategy as _normalize_strategy,
+    order_tasks_easy_first as _order_tasks_easy_first,
+    required_backends_for_strategies as _required_backends_for_strategies,
+    strategy_catalog as _strategy_catalog,
+    task_descriptor as _task_descriptor,
+    w_i_profile_for_record as _w_i_profile_for_record,
+    workspace_key as _workspace_key,
+)
 from budgetflow.failure_classification import build_forensic_summary, build_verdict, classify_failure  # noqa: E402
 from budgetflow.experiment_observability import enrich_routing_observability  # noqa: E402
 from budgetflow.value_matrix import PROFILES  # noqa: E402
@@ -64,10 +80,7 @@ from budgetflow.observability import (  # noqa: E402
 from budgetflow.defaults import (  # noqa: E402
     BUDGET_PRESSURE_INIT,
     PRESSURE_MAX,
-    TIER1_BACKEND,
     TIER2_BACKEND,
-    TIER3_BACKEND,
-    active_w_i_profile_name,
 )
 from budgetflow.heartbeat import run_with_heartbeat  # noqa: E402
 from budgetflow.learning_context import load_policy_memory_context  # noqa: E402
@@ -84,153 +97,6 @@ from budgetflow.runtime import check_cwd, get_runtime_root, is_nfs_or_banned, pr
 from budgetflow.value_efficiency import ValueEfficiencyContext  # noqa: E402
 
 RUNS_DIR = REPO_ROOT / "data" / "runs"
-UNCAPPED_BUDGET = 1_000_000.0
-
-
-def _fmt_usd(value: float | None) -> str:
-    """Adaptive USD formatting for real-dollar costs (post price calibration).
-
-    Values are now in the $0.01–$10 range, so fixed ``.1f`` destroys
-    observability on sub-dollar task costs and caps.
-    """
-    if value is None:
-        return "uncapped"
-    if value == 0:
-        return "0"
-    if value < 0.01:
-        return f"{value:.6f}"
-    if value < 1.0:
-        return f"{value:.4f}"
-    return f"{value:.2f}"
-
-
-@dataclass(frozen=True)
-class CompareStrategy:
-    name: str
-    routing: str
-    budget_tier: str | None  # None = uncapped (all_pro)
-
-
-DEFAULT_STRATEGIES: tuple[CompareStrategy, ...] = (
-    CompareStrategy("all_t1_tight", "all_flash", "tight"),
-    CompareStrategy("all_t1_loose", "all_flash", "loose"),
-    CompareStrategy("budget_only_tight", "budget_only", "tight"),
-    CompareStrategy("stage_blind_tight", "stage_blind", "tight"),
-    CompareStrategy("budgetflow_full_tight", "budgetflow_full", "tight"),
-    CompareStrategy("budgetflow_equal_weight_tight", "budgetflow_equal_weight", "tight"),
-    CompareStrategy("budget_only_loose", "budget_only", "loose"),
-    CompareStrategy("stage_blind_loose", "stage_blind", "loose"),
-    CompareStrategy("budgetflow_full_loose", "budgetflow_full", "loose"),
-    CompareStrategy("budgetflow_equal_weight_loose", "budgetflow_equal_weight", "loose"),
-    CompareStrategy("all_pro", "all_pro", None),
-    CompareStrategy("budget_only_t2_tight", "budget_only_t2", "tight"),
-    CompareStrategy("budget_only_t2_loose", "budget_only_t2", "loose"),
-    CompareStrategy("budgetflow_conservative_tight", "budgetflow_conservative", "tight"),
-    CompareStrategy("budgetflow_conservative_loose", "budgetflow_conservative", "loose"),
-    CompareStrategy("budgetflow_value_aware_tight", "budgetflow_value_aware", "tight"),
-    CompareStrategy("budgetflow_value_aware_loose", "budgetflow_value_aware", "loose"),
-)
-
-DIAGNOSTIC_STRATEGIES: tuple[CompareStrategy, ...] = (
-    CompareStrategy("all_t3", "all_t3", None),
-    # 019: weak baseline — always cheapest tier, tight budget, no routing intelligence
-    CompareStrategy("budget_tight_dummy", "all_flash", "tight"),
-)
-
-_STRATEGY_ALIASES = {
-    # Backward-compatible — old spark names map to new T1 names.
-    "all_spark_tight": "all_t1_tight",
-    "all_spark_loose": "all_t1_loose",
-    "all_flash_tight": "all_t1_tight",
-    "all_flash_loose": "all_t1_loose",
-    "all_gpt53": "all_t3",
-    "all_gpt54": "all_t3",
-    "budgetflow_auto_v2_tight": "budgetflow_equal_weight_tight",
-    "budgetflow_auto_v2_loose": "budgetflow_equal_weight_loose",
-    # 019 strategy aliases
-    "budget_tight_smart": "budget_only_tight",
-    "budgetflow_tight": "budgetflow_full_tight",
-}
-
-
-def _normalize_strategy(name: str) -> str:
-    """Resolve legacy strategy names to current canonical names."""
-    return _STRATEGY_ALIASES.get(name, name)
-
-
-def _strategy_catalog() -> tuple[CompareStrategy, ...]:
-    return DEFAULT_STRATEGIES + DIAGNOSTIC_STRATEGIES
-
-
-def _effective_policy_jobs(requested_jobs: int | None, strategy_count: int) -> int:
-    """Policy comparisons run policy-parallel; tasks remain serial per policy."""
-    if strategy_count < 1:
-        raise ValueError("strategy_count must be positive")
-    if requested_jobs is None:
-        return strategy_count
-    return max(1, requested_jobs, strategy_count)
-
-
-def _required_backends_for_strategies(strategies: tuple[CompareStrategy, ...]) -> list[str]:
-    from budgetflow.adapter.backends import _selected_t2_backend  # noqa: E402
-
-    required: set[str] = set()
-    t2_backend = _selected_t2_backend()
-    for cfg in strategies:
-        if cfg.routing == "all_flash":
-            required.add(TIER1_BACKEND)
-        elif cfg.routing in {"all_tier2"}:
-            required.add(t2_backend)
-        elif cfg.routing in {"all_pro", "all_t3"}:
-            required.add(TIER3_BACKEND)
-        else:
-            required.update({TIER1_BACKEND, t2_backend, TIER3_BACKEND})
-    return [b for b in (TIER1_BACKEND, t2_backend, TIER3_BACKEND) if b in required]
-
-
-def _w_i_profile_for_record(routing: str) -> str:
-    """JSONL field: stage_blind forces w_i=1 at query time regardless of BF_W_PROFILE."""
-    if routing == "stage_blind":
-        return "flat_forced"
-    if routing in {"budgetflow_equal_weight", "budgetflow_auto_v2"}:
-        return "equal_weight"
-    return active_w_i_profile_name()
-
-
-def _batch_budget_cap(cfg: CompareStrategy, budget_caps: dict[str, float]) -> float:
-    if cfg.budget_tier is None:
-        return UNCAPPED_BUDGET
-    return budget_caps[cfg.budget_tier]
-
-
-def _task_difficulty_key(task) -> tuple[int, int, int, str]:
-    """Lower = easier (heuristic)."""
-    return (
-        len(task.patch.splitlines()),
-        len(task.fail_to_pass),
-        len(task.pass_to_pass),
-        str(task.instance_id),
-    )
-
-
-def _order_tasks_easy_first(tasks: list, *, task_set: str) -> list:
-    if task_set != "medium":
-        return list(tasks)
-    return sorted(tasks, key=_task_difficulty_key)
-
-
-def _task_descriptor(task) -> str:
-    return (
-        f"{task.instance_id}"
-        f"(patch={len(task.patch.splitlines())},"
-        f"f2p={len(task.fail_to_pass)},"
-        f"p2p={len(task.pass_to_pass)})"
-    )
-
-
-def _workspace_key(cfg: CompareStrategy, instance_id: str) -> str:
-    safe = cfg.name.replace("/", "_")
-    return f"{safe}_{instance_id}"
 
 
 def _truncate_turn_traces(
@@ -1885,9 +1751,10 @@ def main() -> None:
     else:
         wanted_raw = set()
     if wanted_raw:
-        wanted = {_STRATEGY_ALIASES.get(name, name) for name in wanted_raw}
+        wanted = {_normalize_strategy(name) for name in wanted_raw}
         strategies = tuple(s for s in all_strategies if s.name in wanted)
-        missing = wanted_raw - {s.name for s in strategies} - set(_STRATEGY_ALIASES)
+        catalog_names = {s.name for s in all_strategies}
+        missing = {name for name in wanted_raw if _normalize_strategy(name) not in catalog_names}
         if missing:
             raise SystemExit(f"unknown strategies: {sorted(missing)}")
         if not strategies:
