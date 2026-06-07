@@ -2,7 +2,16 @@
 
 > 单一入口：进度、跑法、历史结果。
 
-## 当前快照（2026-06-06）
+## 当前快照（2026-06-07）
+
+### 068 / Compare runner architecture refactor
+
+- **068 IN PROGRESS — no-paid architecture cleanup.** No historical JSONL was edited and no paid experiment was run.
+- **Runner decomposition:** `run_mini_swe_compare.py` is no longer the home for all compare semantics. Focused seams now exist for config (`experiments/compare_config.py`), console/summary rendering (`experiments/compare_summary.py`), JSONL/artifact state (`experiments/compare_artifacts.py`), and CLI parsing (`experiments/compare_cli.py`).
+- **Entrypoint shrink:** `run_mini_swe_compare.py` moved from the previous 2400+ line shape to about 1500 lines while preserving the current CLI path. The remaining responsibilities are task execution, strategy batch orchestration, gate-only diagnostics, runtime setup, and memory/provider wiring.
+- **Verification:** focused compare/value/observability tests passed after each slice; latest focused gate: `36 passed`. No-paid `--auto-budget-dry-run` still loads cap memory and routing memory cleanly without provider calls.
+- **Architecture judgment:** continue refactoring before more paid scale-up. The next useful seam is experiment setup/orchestration: task loading, strategy selection, provider preflight, memory loading, and `_run_strategy_batch` should not all live in the entrypoint long term.
+- **Evidence status:** this refactor improves future infer/debug iteration speed. It is not new T1/T2 evidence.
 
 ### 067 / T1-first learning and observability refactor
 
