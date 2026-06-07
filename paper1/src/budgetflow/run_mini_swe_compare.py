@@ -100,17 +100,6 @@ from budgetflow.value_efficiency import ValueEfficiencyContext  # noqa: E402
 RUNS_DIR = REPO_ROOT / "data" / "runs"
 
 
-_VALUE_CONTEXT = ValueEfficiencyContext()
-
-
-def _init_value_context(*, value_profile: str = "equal", value_matrix_path: str | None = None) -> None:
-    _VALUE_CONTEXT.init(value_profile=value_profile, value_matrix_path=value_matrix_path)
-
-
-def _enrich_record_with_value(record: dict) -> dict:
-    return _VALUE_CONTEXT.enrich_record(record)
-
-
 def _compare_paths(tasks_n: int, strategies_n: int, *, stem: str | None = None) -> tuple[Path, Path]:
     base = stem or f"compare_{tasks_n}x{strategies_n}"
     return RUNS_DIR / f"{base}.jsonl", RUNS_DIR / f"{base}.summary.log"
@@ -142,11 +131,13 @@ def main() -> None:
             flush=True,
         )
         sys.exit(2)
-    _init_value_context(
-        value_profile=args.value_profile,
-        value_matrix_path=args.value_matrix,
-    )
-    if _VALUE_CONTEXT.lookup is None and args.value_profile != "equal":
+    value_context = ValueEfficiencyContext()
+    value_context.init(value_profile=args.value_profile, value_matrix_path=args.value_matrix)
+
+    def enrich_record_with_value(record: dict) -> dict:
+        return value_context.enrich_record(record)
+
+    if value_context.lookup is None and args.value_profile != "equal":
         print(
             f"[value_observability] FATAL: profile '{args.value_profile}' not found "
             f"in value matrix {args.value_matrix}. Task values cannot be assigned. "
@@ -392,7 +383,7 @@ def main() -> None:
             out_path,
             header_lines,
             normalize_strategy=_normalize_strategy,
-            enrich_value=_enrich_record_with_value,
+            enrich_value=enrich_record_with_value,
         )
         print(f"{tag('resume', bold=False)} rebuilt state from jsonl runs={state.runs_done}", flush=True)
     else:
@@ -422,7 +413,7 @@ def main() -> None:
         total_runs=total_runs,
         tasks_per_strategy=len(tasks),
         global_line=global_progress.format_global(scoreboard),
-        value_profile=_VALUE_CONTEXT.profile,
+        value_profile=value_context.profile,
     )
 
     run_guards: CompareRunGuards | None = None if args.no_run_guards else CompareRunGuards()
@@ -463,8 +454,8 @@ def main() -> None:
                 out_path=out_path,
                 auto_budget_memory=auto_budget_memory,
                 no_auto_budget_learn=args.no_auto_budget_learn,
-                value_profile=_VALUE_CONTEXT.profile,
-                enrich_value=_enrich_record_with_value,
+                value_profile=value_context.profile,
+                enrich_value=enrich_record_with_value,
             )
             heartbeat_writer.pulse(
                 rows_done=state.runs_done,
@@ -478,7 +469,7 @@ def main() -> None:
             cfg,
             batch_tasks,
             batch_budget_cap=batch_cap,
-            value_context=_VALUE_CONTEXT,
+            value_context=value_context,
             per_task_cap=args.per_task_cap if args.per_task_cap and args.per_task_cap > 0 else None,
             soft_budget=args.soft_budget,
             max_overrun=max_overrun,
@@ -531,7 +522,7 @@ def main() -> None:
                         tasks_per_strategy=len(tasks),
                         io_lock=io_lock,
                         global_progress=global_progress,
-                        value_profile=_VALUE_CONTEXT.profile,
+                        value_profile=value_context.profile,
                     )
             else:
                 with ThreadPoolExecutor(max_workers=min(policy_jobs, len(strategies))) as pool:
@@ -558,7 +549,7 @@ def main() -> None:
                             tasks_per_strategy=len(tasks),
                             io_lock=io_lock,
                             global_progress=global_progress,
-                            value_profile=_VALUE_CONTEXT.profile,
+                            value_profile=value_context.profile,
                         )
     finally:
         set_active_guard(None)
@@ -577,7 +568,7 @@ def main() -> None:
         total_runs=total_runs,
         tasks_per_strategy=len(tasks),
         global_line=global_progress.format_global(scoreboard),
-        value_profile=_VALUE_CONTEXT.profile,
+        value_profile=value_context.profile,
     )
 
     heartbeat_writer.mark_done()

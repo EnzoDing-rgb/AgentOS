@@ -4,6 +4,15 @@
 
 ## 当前快照（2026-06-07）
 
+### 070 / AutoResearch doc contraction and value-context locality
+
+- **070 COMPLETE SLICE — no-paid architecture/document cleanup.** No historical JSONL was edited and no paid experiment was run.
+- **AutoResearch document rewritten:** `docs/autoresearch_workflow.md` moved from 373 lines of mixed current/old implementation narrative to a 129-line current design note. It preserves the useful productivity thinking (owner/Codex/Worker loop, artifact-first review, pause gates, recoverability) while deleting stale phase history, implementation inventories, directory scaffolding, and old 3x10 readiness details.
+- **Runtime locality improvement:** `run_mini_swe_compare.py` no longer keeps module-level `_VALUE_CONTEXT` state. `ValueEfficiencyContext` is now constructed inside `main()` and passed/closed over explicitly for record enrichment and strategy execution. This reduces cross-run/test leakage risk and keeps value/RVPD state local to one compare invocation.
+- **Architecture judgment:** checker/observability is already split into `run_observability/{audit,checks,schema,report,cli}` with `check_run_observability.py` as a thin compatibility entrypoint. Legacy fallback remains only at analysis/checker edges.
+- **Verification:** `171 passed`, `py_compile` passed for `paper1/src/budgetflow`, `git diff --check` passed, and no-provider `--auto-budget-dry-run` still loaded both cap memory and routing policy memory.
+- **Evidence status:** this is not new T1/T2 experiment evidence. It makes the core loop easier to reason about before the next paid experiment.
+
 ### 069 / Test-suite contraction and evidence-contract cleanup
 
 - **069 COMPLETE SLICE — no-paid test/infra cleanup.** No historical JSONL was edited and no paid experiment was run.
