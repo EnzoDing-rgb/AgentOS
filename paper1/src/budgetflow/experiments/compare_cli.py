@@ -91,6 +91,7 @@ def parse_compare_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--auto-budget", action="store_true", default=False, help="enable learned per-task caps")
     parser.add_argument("--auto-budget-dry-run", action="store_true", default=False, help="print cap estimates and exit")
+    parser.add_argument("--paid-readiness-only", action="store_true", default=False, help="validate paid-run setup and exit before provider calls")
     parser.add_argument("--auto-budget-scale", type=float, default=1.5, help="multiply estimated cost")
     parser.add_argument("--auto-budget-min", type=float, default=0.10, help="minimum per-task cap")
     parser.add_argument("--auto-budget-max", type=float, default=10.0, help="maximum per-task cap")

@@ -57,6 +57,10 @@ from budgetflow.experiments.compare_memory import (  # noqa: E402
     run_auto_budget_dry_run,
     run_policy_memory_gate_only,
 )
+from budgetflow.experiments.compare_readiness import (  # noqa: E402
+    build_compare_readiness_report,
+    format_readiness_report,
+)
 from budgetflow.experiments.compare_setup import (  # noqa: E402
     build_batch_budget_modes,
     load_tasks_for_compare,
@@ -180,13 +184,28 @@ def main() -> None:
     tasks = load_tasks_for_compare(args, tasks_n=tasks_n)
 
     catalog_issues = print_tier_catalog_preflight()
-    if catalog_issues and not args.auto_budget_dry_run:
-        raise SystemExit("tier catalog preflight failed: " + "; ".join(catalog_issues))
 
     auto_budget_plan = build_auto_budget_plan(args, tasks=tasks, runs_dir=RUNS_DIR)
     auto_budget_estimates = auto_budget_plan.estimates
     auto_budget_task_caps: dict[str, float] | None = auto_budget_plan.task_caps
     auto_budget_memory = auto_budget_plan.memory
+    runtime_root, _ = resolve_runtime_root()
+    readiness = build_compare_readiness_report(
+        args=args,
+        tasks=tasks,
+        strategies=strategies,
+        policy_jobs=policy_jobs,
+        value_context=value_context,
+        catalog_issues=catalog_issues,
+        runtime_root=runtime_root,
+        auto_budget_enabled=bool(args.auto_budget or args.auto_budget_dry_run),
+        auto_budget_caps=auto_budget_task_caps,
+    )
+    print(format_readiness_report(readiness), flush=True)
+    if args.paid_readiness_only:
+        sys.exit(0 if readiness.ok else 2)
+    if not readiness.ok:
+        raise SystemExit("paid readiness preflight failed")
 
     # ── AutoBudget dry-run: learned cap + routing-memory gate, no API calls or run files ──
     if args.auto_budget_dry_run:
@@ -250,7 +269,6 @@ def main() -> None:
     budget_modes = budget_modes_plan.budget_modes
 
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
-    runtime_root, _ = resolve_runtime_root()
     print_runtime_info(runtime_root, RUNS_DIR, out_stem, policy_jobs)
     print(
         f"{tag('run_id', bold=False)} {out_stem} "

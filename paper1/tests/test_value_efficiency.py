@@ -76,3 +76,16 @@ def test_missing_non_equal_task_fails_fast(tmp_path) -> None:
             "harness_resolved": True,
             "task_cost": 0.1,
         })
+
+
+def test_value_matrix_coverage_lists_missing_tasks_before_provider_preflight(tmp_path) -> None:
+    matrix = tmp_path / "value_matrix.json"
+    matrix.write_text(json.dumps({"tasks": {"covered": {"values": {"difficulty": 0.1}}}}))
+    ctx = ValueEfficiencyContext()
+    ctx.init(value_profile="difficulty", value_matrix_path=str(matrix))
+
+    assert ctx.missing_task_values(["covered", "missing"]) == ["missing"]
+
+    equal_ctx = ValueEfficiencyContext()
+    equal_ctx.init(value_profile="equal")
+    assert equal_ctx.missing_task_values(["anything"]) == []

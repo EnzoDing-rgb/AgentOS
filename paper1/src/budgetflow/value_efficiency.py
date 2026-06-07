@@ -51,6 +51,13 @@ class ValueEfficiencyContext:
             f"Either add this task to the matrix or use --value-profile=equal."
         )
 
+    def missing_task_values(self, instance_ids: list[str] | tuple[str, ...]) -> list[str]:
+        """Return task IDs that would fail value lookup for the active profile."""
+        if self.profile == "equal":
+            return []
+        lookup = self.lookup or {}
+        return [instance_id for instance_id in instance_ids if instance_id not in lookup]
+
     def enrich_record(self, record: dict) -> dict:
         """Add value-efficiency observability fields. Mutates and returns."""
         instance_id = str(record.get("instance_id", ""))
