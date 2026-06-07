@@ -17,6 +17,7 @@ After every experiment, inspect artifacts before drawing conclusions:
 - Infra Health: check runtime, worktrees, NFS, provider, parser, trace, checker, budget mode, and value source.
 - Learning Loop Reality: Cost Memory, Routing Memory, and Escalation Memory must actually affect the next decision, not only appear in logs.
 - Mechanism Diagnosis: explain whether outcomes came from model capability, task difficulty, routing, caps, Value-Triggered Escalation, evaluation, or observability.
+- Stage-Splitting Risk: localization/repair/validation routing is a mechanism hypothesis, not an axiom. It may improve T2 by using tiers at the right workflow stage, but it may also add switching noise, cache loss, prompt drift, or brittle heuristics that hurt T1.
 - Long-Term Iteration Value: before fixing a symptom, ask whether the fix improves future diagnosis, scale-up, or paper evidence. Do not overfit the current five familiar tasks.
 
 ## Run Discipline
@@ -25,6 +26,7 @@ After every experiment, inspect artifacts before drawing conclusions:
 - For policy comparisons, tasks are serial within each policy and policies run in parallel. For three strategies, `--jobs 3` is the default unless a concrete blocker is documented.
 - Before paid runs, check strategy count, task count, `--jobs`, value profile, value matrix path, budget mode, output stem, provider, runtime root, worktree isolation, trace, and checker path.
 - Small paid runs, such as 3 policies x 3-5 tasks, are infra and learning diagnostics. Do not treat them as paper-level evidence.
+- When stage-aware routing is a suspect root cause, include a no-stage or task-level routing control instead of assuming the three-stage split is beneficial. A four-policy diagnostic is acceptable when it cleanly separates baseline, stage-aware routing, value-aware stage routing, and value-aware no-stage/task-level routing.
 - Paper-level evidence should scale beyond the recurring gold-pass task set. The target shape is at least three policies across roughly 30-50 tasks per policy, after the infra and learning gates are trustworthy.
 - Stop on provider billing/auth/model-access/preflight blockers. Do not reinterpret provider failures as model or routing evidence.
 - Historical JSONL and historical reports are immutable evidence. Mark old artifacts forensic-only when needed; do not patch them in place.

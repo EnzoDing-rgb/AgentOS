@@ -21,6 +21,8 @@ def enrich_routing_observability(record: dict, *, policy_memory_source: str = ""
             if objective == "t1_value_efficiency"
             else "bfv_equal_value_ablation"
         )
+    elif routing == "value_aware_task_level":
+        policy_family = "bfv_t1_value_aware_task_level_control"
     elif routing in {"budgetflow_conservative", "budgetflow_full", "budgetflow_equal_weight", "stage_blind"}:
         policy_family = "bfc_t2_mechanism"
     elif routing == "budget_only":

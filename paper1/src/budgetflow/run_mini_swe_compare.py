@@ -41,6 +41,7 @@ from budgetflow.compare_checkpoint import (  # noqa: E402
     checkpoint_path_for,
 )
 from budgetflow.console_log import dim, tag  # noqa: E402
+from budgetflow.catalog_preflight import print_tier_catalog_preflight  # noqa: E402
 from budgetflow.defaults import active_w_i_profile_name  # noqa: E402
 from budgetflow.model_tiers import load_env_file  # noqa: E402
 from budgetflow.experiments.compare_config import (  # noqa: E402
@@ -177,6 +178,10 @@ def main() -> None:
 
     budget_caps = budget_plan.budget_caps
     tasks = load_tasks_for_compare(args, tasks_n=tasks_n)
+
+    catalog_issues = print_tier_catalog_preflight()
+    if catalog_issues and not args.auto_budget_dry_run:
+        raise SystemExit("tier catalog preflight failed: " + "; ".join(catalog_issues))
 
     auto_budget_plan = build_auto_budget_plan(args, tasks=tasks, runs_dir=RUNS_DIR)
     auto_budget_estimates = auto_budget_plan.estimates

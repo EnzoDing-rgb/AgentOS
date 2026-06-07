@@ -61,7 +61,7 @@ class ValueEfficiencyContext:
         rvpd = resolved_value / task_cost if task_cost > 0 else 0.0
 
         routing = str(record.get("routing", ""))
-        va_active = routing == "budgetflow_value_aware"
+        va_active = routing in {"budgetflow_value_aware", "value_aware_task_level"}
         record["value_objective"] = self.objective
         record["task_value_profile"] = self.profile
         record["task_value"] = task_value

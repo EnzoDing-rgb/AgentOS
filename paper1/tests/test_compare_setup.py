@@ -61,10 +61,24 @@ def test_3x3_selects_canonical_diagnostic_strategies_and_parallel_jobs() -> None
 
     assert names == {
         "budget_only_tight",
-        "budgetflow_full_tight",
-        "budgetflow_equal_weight_tight",
+        "budgetflow_conservative_tight",
+        "budgetflow_value_aware_tight",
     }
     assert selection.policy_jobs == 3
+    assert selection.jobs_upgraded is True
+
+
+def test_stage_split_preset_adds_task_level_value_control_and_parallel_jobs() -> None:
+    selection = select_strategies(_args(preset="stage-split", jobs=1))
+    names = {s.name for s in selection.strategies}
+
+    assert names == {
+        "budget_only_tight",
+        "budgetflow_conservative_tight",
+        "budgetflow_value_aware_tight",
+        "value_aware_task_level_tight",
+    }
+    assert selection.policy_jobs == 4
     assert selection.jobs_upgraded is True
 
 

@@ -5,6 +5,7 @@ import uuid
 from dataclasses import dataclass
 
 from .ledger import WorkflowLedgerStore
+from .model_tiers import estimate_token_cost
 from .types import Backend, BackendPressure, BudgetState, CostEstimate, GovernorConfig, WorkflowStatus
 
 
@@ -49,13 +50,15 @@ class BudgetGovernor:
         bounded_reserve_output = (
             reserve_output_tokens if reserve_output_tokens is not None else bounded_max_output
         )
-        expected_cost = (
-            input_tokens * backend.cost_per_input_token
-            + bounded_expected_output * backend.cost_per_output_token
+        expected_cost = self._token_cost(
+            backend,
+            input_tokens=input_tokens,
+            output_tokens=bounded_expected_output,
         )
-        reserved_cost = (
-            input_tokens * backend.cost_per_input_token
-            + bounded_reserve_output * backend.cost_per_output_token
+        reserved_cost = self._token_cost(
+            backend,
+            input_tokens=input_tokens,
+            output_tokens=bounded_reserve_output,
         )
         return CostEstimate(
             expected_cost=expected_cost,
@@ -63,6 +66,19 @@ class BudgetGovernor:
             expected_output_tokens=bounded_expected_output,
             max_output_tokens=bounded_max_output,
         )
+
+    def _token_cost(self, backend: Backend, *, input_tokens: int, output_tokens: int) -> float:
+        try:
+            return estimate_token_cost(
+                backend.name,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+            )
+        except ValueError:
+            return (
+                input_tokens * backend.cost_per_input_token
+                + output_tokens * backend.cost_per_output_token
+            )
 
     def budget_snapshot(self) -> dict[str, float]:
         return {

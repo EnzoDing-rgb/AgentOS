@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from ..model_tiers import MODEL_CATALOG
+from ..model_tiers import MODEL_CATALOG, tier_provenance, token_cost_rates
 from .protocol_adapter import ActionProtocolAdapter
 
 
@@ -36,6 +36,16 @@ def build_turn_trace(
     error_type: str | None,
     provider: str | None = None,
     model: str | None = None,
+    cost_source: str | None = None,
+    cost_updated: str | None = None,
+    cost_notes: str | None = None,
+    progress_source: str | None = None,
+    progress_updated: str | None = None,
+    progress_notes: str | None = None,
+    cost_input_per_1m: float | None = None,
+    cost_output_per_1m: float | None = None,
+    cost_band_input_tokens: int | None = None,
+    progress_prior: dict[str, float] | None = None,
     text_mode: bool = False,
     protocol: str | None = None,
     parser: str | None = None,
@@ -98,6 +108,16 @@ def build_turn_trace(
         "error_type": error_type,
         "provider": provider,
         "model": model,
+        "cost_source": cost_source,
+        "cost_updated": cost_updated,
+        "cost_notes": cost_notes,
+        "progress_source": progress_source,
+        "progress_updated": progress_updated,
+        "progress_notes": progress_notes,
+        "cost_input_per_1m": cost_input_per_1m,
+        "cost_output_per_1m": cost_output_per_1m,
+        "cost_band_input_tokens": cost_band_input_tokens,
+        "progress_prior": progress_prior,
         "text_mode": text_mode,
         "protocol": protocol,
         "parser": parser,
@@ -155,7 +175,7 @@ def router_trace_fields(routing) -> dict[str, Any]:
 
 
 def value_aware_trace_fields(routing) -> dict[str, Any]:
-    if routing.strategy != "budgetflow_value_aware":
+    if routing.strategy not in {"budgetflow_value_aware", "value_aware_task_level"}:
         return {}
     multiplier = getattr(routing.selector, "last_multiplier", 1.0)
     return {
@@ -169,9 +189,25 @@ def provider_trace_fields(backend_name: str) -> dict[str, Any]:
     cfg = MODEL_CATALOG.config_for(backend_name)
     if cfg is None:
         return {}
+    provenance = tier_provenance(backend_name)
     return {
         "provider": cfg.provider,
         "model": cfg.model,
+        **provenance,
+    }
+
+
+def cost_basis_trace_fields(backend_name: str, input_tokens: int) -> dict[str, Any]:
+    cfg = MODEL_CATALOG.config_for(backend_name)
+    if cfg is None:
+        return {}
+    input_rate, output_rate = token_cost_rates(backend_name, input_tokens)
+    stage_priors = {stage: round(value, 4) for stage, value in cfg.progress_prior.items()}
+    return {
+        "cost_input_per_1m": round(input_rate * 1_000_000, 6),
+        "cost_output_per_1m": round(output_rate * 1_000_000, 6),
+        "cost_band_input_tokens": input_tokens,
+        "progress_prior": stage_priors,
     }
 
 

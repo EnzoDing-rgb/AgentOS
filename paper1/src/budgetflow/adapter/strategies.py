@@ -27,6 +27,7 @@ class RoutingContext:
     pressure_max: float | None = None
     adaptive: AdaptiveRoutingState | None = None
     workflow_level_backend: Backend | None = None
+    task_level_backend: Backend | None = None
     budget_only_router: BudgetOnlyStepRouter | None = None
     workflow_router: WorkflowLevelRouter | None = None
     last_decision: RouterDecision | None = None
@@ -88,6 +89,29 @@ def build_routing_context(
         ctx.selector = ConservativeSelector(build_progress_table_from_defaults(backends))
     if strategy == "budgetflow_value_aware":
         ctx.selector = ValueAwareSelector(build_progress_table_from_defaults(backends), median_task_value=median_task_value)
+    if strategy == "value_aware_task_level":
+        selector = ValueAwareSelector(build_progress_table_from_defaults(backends), median_task_value=median_task_value)
+        avg_w = sum(active_w_i().values()) / len(active_w_i())
+        task_turn = TurnInfo(
+            workflow_id="task_level_init",
+            step_index=0,
+            stage=Stage.REPAIR,
+            w_i=avg_w,
+            context_len=0,
+        )
+        expected_costs = {
+            backend.name: backend.mean_output_tokens * backend.cost_per_output_token
+            for backend in ordered
+        }
+        selected = selector.select_backend(
+            turn_info=task_turn,
+            backends=ordered,
+            budget_pressure=pressure,
+            expected_costs=expected_costs,
+            task_value=task_value,
+        )
+        ctx.selector = selector
+        ctx.task_level_backend = selected.backend
     return ctx
 
 
@@ -174,6 +198,16 @@ def choose_backend(ctx: RoutingContext, turn: TurnInfo, expected_costs: dict[str
             scores={}, pressure=ctx.budget_pressure, branch="workflow_level",
         )
         return ctx.workflow_level_backend
+    if ctx.strategy == "value_aware_task_level":
+        assert ctx.task_level_backend is not None
+        ctx.last_decision = RouterDecision(
+            backend=ctx.task_level_backend,
+            reason="value_aware_task_level_precomputed",
+            scores={ctx.task_level_backend.name: 0.0},
+            pressure=ctx.budget_pressure,
+            branch="value_aware_task_level",
+        )
+        return ctx.task_level_backend
     if ctx.strategy in {"budget_only", "budget_only_t2"}:
         assert ctx.budget_only_router is not None
         decision = ctx.budget_only_router.choose_backend(turn, ctx.backends, ctx.budget_pressure)

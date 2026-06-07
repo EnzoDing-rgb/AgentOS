@@ -26,8 +26,15 @@ DIAGNOSTIC_3X3_IDS = (
 )
 DIAGNOSTIC_3X3_STRATEGIES = (
     "budget_only_tight",
-    "budgetflow_full_tight",
-    "budgetflow_equal_weight_tight",
+    "budgetflow_conservative_tight",
+    "budgetflow_value_aware_tight",
+)
+
+STAGE_SPLIT_DIAGNOSTIC_STRATEGIES = (
+    "budget_only_tight",
+    "budgetflow_conservative_tight",
+    "budgetflow_value_aware_tight",
+    "value_aware_task_level_tight",
 )
 
 
@@ -101,6 +108,8 @@ def select_strategies(args: Namespace) -> StrategySelection:
         wanted_raw = {s.strip() for s in args.strategies.split(",") if s.strip()}
     elif args.preset == "3x3":
         wanted_raw = set(DIAGNOSTIC_3X3_STRATEGIES)
+    elif args.preset == "stage-split":
+        wanted_raw = set(STAGE_SPLIT_DIAGNOSTIC_STRATEGIES)
     else:
         wanted_raw = set()
     if wanted_raw:
@@ -126,7 +135,7 @@ def load_tasks_for_compare(args: Namespace, *, tasks_n: int) -> list:
     if args.ids:
         ids = tuple(s.strip() for s in args.ids.split(",") if s.strip())
         tasks = load_swebench_lite_tasks(instance_ids=ids)
-    elif args.preset == "3x3":
+    elif args.preset in {"3x3", "stage-split"}:
         tasks = load_swebench_lite_tasks(instance_ids=DIAGNOSTIC_3X3_IDS)
     elif args.task_set == "medium":
         tasks = load_compare_medium_tasks(tasks_n)

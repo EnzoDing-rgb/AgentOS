@@ -28,7 +28,7 @@ from ..defaults import (
     VALUE_TRIGGERED_ESCALATION_MIN_HEADROOM_FRAC,
     VALUE_TRIGGERED_ESCALATION_MIN_MULTIPLIER,
 )
-from ..model_tiers import MODEL_CATALOG, TIER_CONFIGS, ModelCatalog, apply_provider_proxy, load_env_file
+from ..model_tiers import MODEL_CATALOG, TIER_CONFIGS, ModelCatalog, apply_provider_proxy, estimate_token_cost, load_env_file
 from ..console_log import backend_tier_label, bold, dim, routing_stage_label, tag
 from ..governor import BudgetGovernor
 from ..types import Backend, Stage, TurnInfo, WorkflowStatus
@@ -46,6 +46,7 @@ from .protocol_adapter import ActionProtocolAdapter
 from .strategies import RoutingContext, choose_backend, stage_weight
 from .turn_trace import (
     build_turn_trace,
+    cost_basis_trace_fields,
     parser_input_snippet,
     protocol_trace_fields,
     provider_trace_fields,
@@ -402,6 +403,7 @@ class BudgetFlowLitellmModel:
                         response_ok=False,
                         error_type=error_type,
                         **provider_trace_fields(backend.name),
+                        **cost_basis_trace_fields(backend.name, input_tokens),
                         **protocol_trace_fields(backend.name, text_mode=ActionProtocolAdapter.resolve(backend.name).protocol == "text_regex"),
                         **router_trace_fields(self.routing),
                         **value_aware_trace_fields(self.routing),
@@ -436,9 +438,10 @@ class BudgetFlowLitellmModel:
         completion_tokens = getattr(response.usage, "completion_tokens", None) or backend.mean_output_tokens
         self._total_prompt_tokens += prompt_tokens
         self._total_completion_tokens += completion_tokens
-        actual_cost = (
-            prompt_tokens * backend.cost_per_input_token
-            + completion_tokens * backend.cost_per_output_token
+        actual_cost = estimate_token_cost(
+            backend.name,
+            input_tokens=prompt_tokens,
+            output_tokens=completion_tokens,
         )
         reservation_id = self._last_reservation_id
         snap = self.governor.budget_snapshot()
@@ -485,6 +488,7 @@ class BudgetFlowLitellmModel:
                     response_ok=True,
                     error_type=type(exc).__name__,
                     **provider_trace_fields(backend.name),
+                    **cost_basis_trace_fields(backend.name, prompt_tokens),
                     **protocol_trace_fields(backend.name, text_mode),
                     **router_trace_fields(self.routing),
                         **value_aware_trace_fields(self.routing),
@@ -542,6 +546,7 @@ class BudgetFlowLitellmModel:
                 response_ok=True,
                 error_type=None,
                 **provider_trace_fields(backend.name),
+                **cost_basis_trace_fields(backend.name, prompt_tokens),
                 **protocol_trace_fields(backend.name, text_mode),
                 **router_trace_fields(self.routing),
                         **value_aware_trace_fields(self.routing),
@@ -676,11 +681,16 @@ class BudgetFlowLitellmModel:
         remaining = self.governor.remaining_budget()
         if remaining <= 0:
             return 64
-        input_cost = input_tokens * backend.cost_per_input_token
+        input_cost = estimate_token_cost(backend.name, input_tokens=input_tokens, output_tokens=0)
         output_budget = remaining - input_cost
         if output_budget <= 0:
             return 64
-        affordable_tokens = output_budget / backend.cost_per_output_token
+        output_token_cost = max(
+            estimate_token_cost(backend.name, input_tokens=input_tokens, output_tokens=1) - input_cost,
+            backend.cost_per_output_token,
+            1e-12,
+        )
+        affordable_tokens = output_budget / output_token_cost
         headroom = min(1024, max(backend.mean_output_tokens * 2, 256))
         return max(64, min(headroom, int(affordable_tokens * 0.95)))
 

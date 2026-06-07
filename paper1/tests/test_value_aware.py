@@ -37,6 +37,12 @@ class TestStrategyCatalog:
         assert bfv.routing == "budgetflow_value_aware"
         assert bfv.budget_tier == "tight"
 
+    def test_task_level_value_control_registered(self):
+        from budgetflow.experiments.compare_config import DEFAULT_STRATEGIES
+        control = next(s for s in DEFAULT_STRATEGIES if s.name == "value_aware_task_level_tight")
+        assert control.routing == "value_aware_task_level"
+        assert control.budget_tier == "tight"
+
 
 class TestValueMultiplier:
     def test_equal_value_multiplier_is_one(self):
@@ -148,6 +154,27 @@ class TestBuildRoutingContext:
         )
         assert ctx.task_value == 0.5
         assert ctx.median_task_value == 2.0
+
+    def test_task_level_value_control_precomputes_one_backend(self):
+        from budgetflow.adapter.strategies import build_routing_context, choose_backend
+        from budgetflow.types import Stage
+        backends = _backends()
+        ctx = build_routing_context(
+            "value_aware_task_level",
+            backends,
+            budget_pressure=0.5,
+            task_value=2.0,
+            median_task_value=1.0,
+        )
+
+        loc_backend = choose_backend(ctx, _turn(Stage.LOCALIZATION, w_i=1.0), {b.name: 0.01 for b in backends})
+        repair_backend = choose_backend(ctx, _turn(Stage.REPAIR, w_i=3.0), {b.name: 0.01 for b in backends})
+
+        assert ctx.task_level_backend is not None
+        assert loc_backend == ctx.task_level_backend
+        assert repair_backend == ctx.task_level_backend
+        assert ctx.last_decision is not None
+        assert ctx.last_decision.branch == "value_aware_task_level"
 
 
 class TestValueAwareTraceFields:

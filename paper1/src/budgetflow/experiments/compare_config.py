@@ -52,6 +52,8 @@ DEFAULT_STRATEGIES: tuple[CompareStrategy, ...] = (
     CompareStrategy("budgetflow_conservative_loose", "budgetflow_conservative", "loose"),
     CompareStrategy("budgetflow_value_aware_tight", "budgetflow_value_aware", "tight"),
     CompareStrategy("budgetflow_value_aware_loose", "budgetflow_value_aware", "loose"),
+    CompareStrategy("value_aware_task_level_tight", "value_aware_task_level", "tight"),
+    CompareStrategy("value_aware_task_level_loose", "value_aware_task_level", "loose"),
 )
 
 DIAGNOSTIC_STRATEGIES: tuple[CompareStrategy, ...] = (
@@ -99,6 +101,8 @@ def w_i_profile_for_record(routing: str) -> str:
         return "flat_forced"
     if routing == "budgetflow_equal_weight":
         return "equal_weight"
+    if routing == "value_aware_task_level":
+        return "task_level_value_aware"
     return active_w_i_profile_name()
 
 

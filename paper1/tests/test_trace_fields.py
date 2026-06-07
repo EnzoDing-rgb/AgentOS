@@ -78,7 +78,10 @@ def test_turn_trace_has_fields_needed_to_debug_value_routing_and_provider_failur
 
 
 def test_provider_and_protocol_helpers_identify_real_backend_contracts() -> None:
-    assert provider_trace_fields("tier2")["provider"] == "openai_compatible"
+    provider_fields = provider_trace_fields("tier2")
+    assert provider_fields["provider"] == "openai_compatible"
+    assert provider_fields["cost_updated"] == "2026-06-07"
+    assert provider_fields["progress_updated"] == "2026-06-07"
     assert "gpt-5.4" in provider_trace_fields("tier3")["model"]
     assert protocol_trace_fields("tier3", text_mode=True)["protocol"] == "text_regex"
     assert protocol_trace_fields("tier2", text_mode=False)["protocol"] == "tool_call"

@@ -23,6 +23,7 @@ ROUTING_MEMORY_ROUTINGS = frozenset(
         "budgetflow_full",
         "budgetflow_conservative",
         "budgetflow_value_aware",
+        "value_aware_task_level",
         "budgetflow_equal_weight",
         "stage_blind",
         "budget_only",

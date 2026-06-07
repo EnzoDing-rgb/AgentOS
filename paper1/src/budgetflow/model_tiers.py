@@ -8,6 +8,13 @@ from .types import Backend
 
 
 @dataclass(frozen=True)
+class TokenCostBand:
+    max_input_tokens: int | None
+    input_per_1m: float
+    output_per_1m: float
+
+
+@dataclass(frozen=True)
 class TierConfig:
     tier: int
     backend: str
@@ -24,14 +31,19 @@ class TierConfig:
     progress_prior: dict[str, float]
     escalation_patience: int | None
     max_turns: int | None
+    token_cost_bands: tuple[TokenCostBand, ...] = ()
     rpm_limit: int = 0
     concurrency_limit: int = 0
     protocol: str = "tool_call"
     api_base_env: str | None = None
     proxy_env: str | None = None
+    cost_source: str = "manual"
+    cost_updated: str = "unknown"
+    cost_notes: str = ""
+    progress_source: str = "manual"
+    progress_updated: str = "unknown"
+    progress_notes: str = ""
 
-
-_CNY_TO_USD = 1.0 / 7.25
 
 TIER1_BACKEND = "tier1"
 TIER2_BACKEND = "tier2"
@@ -46,14 +58,26 @@ DEFAULT_TIER_CONFIGS: tuple[TierConfig, ...] = (
         api_base="https://dashscope.aliyuncs.com/compatible-mode/v1",
         api_key_env="DASHSCOPE_API_KEY",
         display="qwen3-coder-flash",
-        cost_per_input_token=0.0004 / 1000 * _CNY_TO_USD,
-        cost_per_output_token=0.002 / 1000 * _CNY_TO_USD,
+        cost_per_input_token=0.30 / 1_000_000,
+        cost_per_output_token=1.50 / 1_000_000,
+        token_cost_bands=(
+            TokenCostBand(32_000, 0.30, 1.50),
+            TokenCostBand(128_000, 0.50, 2.50),
+            TokenCostBand(256_000, 0.80, 4.00),
+            TokenCostBand(1_000_000, 1.60, 9.60),
+        ),
         mean_output_tokens=768,
         progress_score=0.15,
         latency_ms=500,
         progress_prior={"localization": 0.50, "repair": 0.38, "validation": 0.45},
         escalation_patience=4,
         max_turns=20,
+        cost_source="Alibaba Cloud Model Studio pricing, qwen3-coder-flash series",
+        cost_updated="2026-06-07",
+        cost_notes="USD per 1M tokens, input-length tiered; cache discounts intentionally not assumed.",
+        progress_source="BudgetFlow heuristic prior, not yet empirically calibrated",
+        progress_updated="2026-06-07",
+        progress_notes="Must be sensitivity-checked before paper-scale paid runs.",
     ),
     TierConfig(
         tier=2,
@@ -63,14 +87,26 @@ DEFAULT_TIER_CONFIGS: tuple[TierConfig, ...] = (
         api_base="https://dashscope.aliyuncs.com/compatible-mode/v1",
         api_key_env="DASHSCOPE_API_KEY",
         display="qwen3-coder-plus",
-        cost_per_input_token=0.004 / 1000 * _CNY_TO_USD,
-        cost_per_output_token=0.016 / 1000 * _CNY_TO_USD,
+        cost_per_input_token=1.00 / 1_000_000,
+        cost_per_output_token=5.00 / 1_000_000,
+        token_cost_bands=(
+            TokenCostBand(32_000, 1.00, 5.00),
+            TokenCostBand(128_000, 1.80, 9.00),
+            TokenCostBand(256_000, 3.00, 15.00),
+            TokenCostBand(1_000_000, 6.00, 60.00),
+        ),
         mean_output_tokens=1024,
         progress_score=0.22,
         latency_ms=900,
         progress_prior={"localization": 0.65, "repair": 0.62, "validation": 0.60},
         escalation_patience=5,
         max_turns=35,
+        cost_source="Alibaba Cloud Model Studio pricing, qwen3-coder-plus series",
+        cost_updated="2026-06-07",
+        cost_notes="USD per 1M tokens, input-length tiered; cache discounts intentionally not assumed.",
+        progress_source="BudgetFlow heuristic prior, not yet empirically calibrated",
+        progress_updated="2026-06-07",
+        progress_notes="Must be sensitivity-checked before paper-scale paid runs.",
     ),
     TierConfig(
         tier=3,
@@ -91,8 +127,42 @@ DEFAULT_TIER_CONFIGS: tuple[TierConfig, ...] = (
         protocol="text_regex",
         api_base_env="AICODE007_BASE_URL",
         proxy_env="AICODE007_HTTP_PROXY",
+        cost_source="AICode007 configured GPT-5.4 proxy price",
+        cost_updated="2026-06-07",
+        cost_notes="USD per 1M tokens from configured proxy rate; verify against account billing before paper-scale paid runs.",
+        progress_source="BudgetFlow heuristic prior, not yet empirically calibrated",
+        progress_updated="2026-06-07",
+        progress_notes="Must be sensitivity-checked before paper-scale paid runs.",
     ),
 )
+
+
+def _looks_like_iso_date(value: str) -> bool:
+    return bool(re.fullmatch(r"\d{4}-\d{2}-\d{2}", value))
+
+
+def validate_tier_catalog(configs: tuple[TierConfig, ...] = DEFAULT_TIER_CONFIGS) -> list[str]:
+    """Return catalog provenance problems that should block paid experiments.
+
+    The price table is part of the evaluation harness. If it is stale or
+    unexplained, T1 value-per-dollar and routing thresholds become suspect.
+    """
+    issues: list[str] = []
+    for cfg in configs:
+        if cfg.cost_per_input_token <= 0 or cfg.cost_per_output_token <= 0:
+            issues.append(f"{cfg.backend}: non-positive token cost")
+        if not cfg.cost_source or cfg.cost_source == "manual":
+            issues.append(f"{cfg.backend}: missing cost_source provenance")
+        if not _looks_like_iso_date(cfg.cost_updated):
+            issues.append(f"{cfg.backend}: missing cost_updated YYYY-MM-DD")
+        if not cfg.progress_source or cfg.progress_source == "manual":
+            issues.append(f"{cfg.backend}: missing progress_source provenance")
+        if not _looks_like_iso_date(cfg.progress_updated):
+            issues.append(f"{cfg.backend}: missing progress_updated YYYY-MM-DD")
+        for stage, value in cfg.progress_prior.items():
+            if not 0.0 <= value <= 1.0:
+                issues.append(f"{cfg.backend}: invalid progress_prior {stage}={value}")
+    return issues
 
 
 def load_env_file() -> None:
@@ -221,6 +291,23 @@ class ModelCatalog:
         }
 
 
+def token_cost_rates(backend_name: str, input_tokens: int) -> tuple[float, float]:
+    """Return per-token input/output cost for this request size."""
+    config = MODEL_CATALOG.require_config(backend_name)
+    for band in config.token_cost_bands:
+        if band.max_input_tokens is None or input_tokens <= band.max_input_tokens:
+            return band.input_per_1m / 1_000_000, band.output_per_1m / 1_000_000
+    if config.token_cost_bands:
+        band = config.token_cost_bands[-1]
+        return band.input_per_1m / 1_000_000, band.output_per_1m / 1_000_000
+    return config.cost_per_input_token, config.cost_per_output_token
+
+
+def estimate_token_cost(backend_name: str, *, input_tokens: int, output_tokens: int) -> float:
+    input_rate, output_rate = token_cost_rates(backend_name, input_tokens)
+    return input_tokens * input_rate + output_tokens * output_rate
+
+
 MODEL_CATALOG = ModelCatalog()
 TIER_CONFIGS: dict[str, TierConfig] = {cfg.backend: cfg for cfg in MODEL_CATALOG.configs}
 
@@ -238,6 +325,20 @@ def tier_model_id(backend_name: str) -> str:
 def protocol_for(backend_name: str) -> str:
     config = MODEL_CATALOG.config_for(backend_name)
     return config.protocol if config is not None else "tool_call"
+
+
+def tier_provenance(backend_name: str) -> dict[str, str]:
+    config = MODEL_CATALOG.config_for(backend_name)
+    if config is None:
+        return {}
+    return {
+        "cost_source": config.cost_source,
+        "cost_updated": config.cost_updated,
+        "cost_notes": config.cost_notes,
+        "progress_source": config.progress_source,
+        "progress_updated": config.progress_updated,
+        "progress_notes": config.progress_notes,
+    }
 
 
 def parse_tier_label(value: object) -> int:
