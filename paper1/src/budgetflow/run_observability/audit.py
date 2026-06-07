@@ -150,6 +150,27 @@ def _t3_source_breakdown(records: list[dict], t3_tier: int) -> dict[str, dict[st
     return by_strategy
 
 
+def _stage_split_control_delta(by_strategy: dict[str, dict]) -> dict:
+    stage = by_strategy.get("budgetflow_value_aware_tight")
+    task = by_strategy.get("value_aware_task_level_tight")
+    if not stage or not task:
+        return {}
+    return {
+        "stage_aware_strategy": "budgetflow_value_aware_tight",
+        "task_level_control": "value_aware_task_level_tight",
+        "delta_pass": int(stage.get("pass", 0)) - int(task.get("pass", 0)),
+        "delta_cost": float(stage.get("cost", 0.0)) - float(task.get("cost", 0.0)),
+        "delta_normalized_verified_resolved_value": (
+            float(stage.get("normalized_verified_resolved_value", 0.0))
+            - float(task.get("normalized_verified_resolved_value", 0.0))
+        ),
+        "delta_resolved_value_per_dollar": (
+            float(stage.get("resolved_value_per_dollar", 0.0))
+            - float(task.get("resolved_value_per_dollar", 0.0))
+        ),
+    }
+
+
 def build_compact_audit(records: list[dict]) -> dict:
     """Build a high-density audit summary from JSONL records.
 
@@ -309,6 +330,28 @@ def build_compact_audit(records: list[dict]) -> dict:
         if sev and sev != "none":
             ht_severity_counts[sev] = ht_severity_counts.get(sev, 0) + 1
 
+    strategy_metrics = {
+        strat: {
+            "total": s["total"], "pass": s["pass"], "fail": s["fail"],
+            "cost": s["cost"], "avg_turns": s["turns"] / max(s["total"], 1),
+            "resolved_value": s["resolved_value"],
+            "total_task_value": s["task_value"],
+            "normalized_verified_resolved_value": (
+                s["resolved_value"] / s["task_value"] if s["task_value"] > 0 else 0.0
+            ),
+            "resolved_value_per_dollar": (
+                s["resolved_value"] / s["cost"] if s["cost"] > 0 else 0.0
+            ),
+            "tier_turns": dict(sorted(s["tier_turns"].items())),
+            "t1_turns": s["tier_turns"].get(1, 0),
+            "t2_turns": s["tier_turns"].get(2, 0),
+            "t3_turns": s["tier_turns"].get(3, 0),
+            "t3_share": s["tier_turns"].get(3, 0) / max(sum(s["tier_turns"].values()), 1),
+            "suspicious": s["suspicious"], "no_trace": s["no_trace"],
+        }
+        for strat, s in by_strategy.items()
+    }
+
     return {
         "total": total,
         "pass": resolved,
@@ -322,29 +365,10 @@ def build_compact_audit(records: list[dict]) -> dict:
         "t3_tier": t3_tier,
         "t3_productivity": t3_stats,
         "t3_source_breakdown": t3_sources,
-        "by_strategy": {
-            strat: {
-                "total": s["total"], "pass": s["pass"], "fail": s["fail"],
-                "cost": s["cost"], "avg_turns": s["turns"] / max(s["total"], 1),
-                "resolved_value": s["resolved_value"],
-                "total_task_value": s["task_value"],
-                "normalized_verified_resolved_value": (
-                    s["resolved_value"] / s["task_value"] if s["task_value"] > 0 else 0.0
-                ),
-                "resolved_value_per_dollar": (
-                    s["resolved_value"] / s["cost"] if s["cost"] > 0 else 0.0
-                ),
-                "tier_turns": dict(sorted(s["tier_turns"].items())),
-                "t1_turns": s["tier_turns"].get(1, 0),
-                "t2_turns": s["tier_turns"].get(2, 0),
-                "t3_turns": s["tier_turns"].get(3, 0),
-                "t3_share": s["tier_turns"].get(3, 0) / max(sum(s["tier_turns"].values()), 1),
-                "suspicious": s["suspicious"], "no_trace": s["no_trace"],
-            }
-            for strat, s in by_strategy.items()
-        },
+        "by_strategy": strategy_metrics,
         "common_task_count": len(common_tasks),
         "common_stats": common_stats,
+        "stage_split_control_delta": _stage_split_control_delta(strategy_metrics),
         "fail_classes": dict(fail_classes.most_common()),
         "fail_exits": dict(fail_exits.most_common()),
         "fail_subtypes": dict(fail_subtypes.most_common()),

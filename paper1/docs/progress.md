@@ -4,6 +4,13 @@
 
 ## 当前快照（2026-06-07）
 
+### 080 / Paid-readiness cleanup and 4x4 diagnostic prep
+
+- **No-paid infra cleanup:** centralized paid readiness now reports planned policy/total cap, blocks all-global-fallback auto-budget paid runs by default, and labels cold-start value runs separately from historical T1 value evidence.
+- **Learning-loop audit:** Cost Memory affects caps, Routing Memory affects starting tier/rescue, and Escalation Memory affects Value-Triggered Escalation window/action; dry-run surfaces all three.
+- **Pre-registered diagnostic value sources:** added outcome-free cold-start matrices for the medium set and the exact-cap candidate set. Current paid candidate is 4 policies × 4 tasks, using exact cap memory and cold-start values.
+- **Post-run audit cleanup:** compact audit now labels the common-task T2 frontier and reports stage-aware vs task-level control deltas.
+
 ### 079 / Escalation Memory gate
 
 - **079_escalation_memory_3x3_v1 COMPLETE — small paid diagnostic, not paper evidence.** Same 3 tasks and 3 policies as 067, `--jobs 3`, `unsolved_difficulty`, `048_value_matrix`, Value-Driven Budget Allocation, and explicit Routing/Escalation Memory from `067_metrics_3x3_v1`.

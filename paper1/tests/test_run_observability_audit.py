@@ -116,6 +116,69 @@ def test_compact_audit_reports_t3_productivity() -> None:
     assert "value_triggered" in text
 
 
+def test_compact_audit_reports_t2_frontier_and_stage_split_control() -> None:
+    records = [
+        {
+            "instance_id": "repo__task-a",
+            "strategy": "budgetflow_value_aware_tight",
+            "harness_resolved": True,
+            "harness_evidence": {"evidence_complete": True},
+            "total_cost": 0.30,
+            "llm_turns": 3,
+            "turn_trace_count": 3,
+            "backend_picks": ["tier2"],
+            "task_value": 2.0,
+            "resolved_value": 2.0,
+        },
+        {
+            "instance_id": "repo__task-b",
+            "strategy": "budgetflow_value_aware_tight",
+            "harness_resolved": False,
+            "harness_evidence": {"evidence_complete": True},
+            "total_cost": 0.20,
+            "llm_turns": 2,
+            "turn_trace_count": 2,
+            "backend_picks": ["tier3"],
+            "task_value": 1.0,
+            "resolved_value": 0.0,
+        },
+        {
+            "instance_id": "repo__task-a",
+            "strategy": "value_aware_task_level_tight",
+            "harness_resolved": False,
+            "harness_evidence": {"evidence_complete": True},
+            "total_cost": 0.10,
+            "llm_turns": 1,
+            "turn_trace_count": 1,
+            "backend_picks": ["tier2"],
+            "task_value": 2.0,
+            "resolved_value": 0.0,
+        },
+        {
+            "instance_id": "repo__task-b",
+            "strategy": "value_aware_task_level_tight",
+            "harness_resolved": False,
+            "harness_evidence": {"evidence_complete": True},
+            "total_cost": 0.10,
+            "llm_turns": 1,
+            "turn_trace_count": 1,
+            "backend_picks": ["tier2"],
+            "task_value": 1.0,
+            "resolved_value": 0.0,
+        },
+    ]
+
+    audit = build_compact_audit(records)
+    delta = audit["stage_split_control_delta"]
+    text = format_compact_audit(audit)
+
+    assert audit["common_task_count"] == 2
+    assert delta["delta_pass"] == 1
+    assert delta["delta_normalized_verified_resolved_value"] == pytest.approx(2 / 3)
+    assert "T2 FRONTIER COMMON-TASK" in text
+    assert "STAGE-AWARE VS TASK-LEVEL CONTROL" in text
+
+
 def test_value_fallback_check_allows_explicit_equal_value_t2_runs() -> None:
     issues = _check_value_profile_fallback([
         {

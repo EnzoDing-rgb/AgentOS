@@ -64,7 +64,7 @@ def format_compact_audit(audit: dict) -> str:
     # Common-task comparison
     if audit["common_task_count"] > 0:
         lines.append(banner)
-        lines.append(f"COMMON-TASK ({audit['common_task_count']} tasks shared across all strategies)")
+        lines.append(f"T2 FRONTIER COMMON-TASK ({audit['common_task_count']} tasks shared across all strategies)")
         lines.append(f"{'strategy':<26} {'tasks':>5} {'P':>3} {'cost':>8} {'tiers':>18}")
         lines.append("-" * 64)
         for strat in sorted(audit["common_stats"]):
@@ -73,6 +73,18 @@ def format_compact_audit(audit: dict) -> str:
                 f"{strat:<26} {cs['tasks']:>5} {cs['pass']:>3} "
                 f"${cs['cost']:>7.2f} {_format_tier_turns(cs.get('tier_turns') or {}):>18}"
             )
+
+    control_delta = audit.get("stage_split_control_delta") or {}
+    if control_delta:
+        lines.append(banner)
+        lines.append("STAGE-AWARE VS TASK-LEVEL CONTROL")
+        lines.append(
+            f"{control_delta['stage_aware_strategy']} - {control_delta['task_level_control']}: "
+            f"delta_pass={control_delta['delta_pass']} "
+            f"delta_cost=${control_delta['delta_cost']:.4f} "
+            f"delta_nvrv={control_delta['delta_normalized_verified_resolved_value']:.4f} "
+            f"delta_rv_per_$={control_delta['delta_resolved_value_per_dollar']:.4f}"
+        )
 
     # Failure axis
     if audit["fail_classes"]:
