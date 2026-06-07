@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from budgetflow.adaptive_routing import AdaptiveRoutingState, rescue_state_for_strategy
+from budgetflow.learning_context import looks_like_policy_memory_source
 from budgetflow.policy_memory import PolicyMemory
 from budgetflow.types import Stage
 
@@ -38,6 +39,20 @@ def _pass_record(**overrides) -> dict:
         turn_traces=[{"stage": "LOCALIZATION", "backend_tier": 2, "has_progress": True}],
         **overrides,
     )
+
+
+def test_policy_memory_source_rejects_host_dependency_contamination(tmp_path: Path) -> None:
+    contaminated = tmp_path / "contaminated.jsonl"
+    contaminated.write_text(json.dumps(_record(
+        detail="fail_after=fail; ValueError: numpy.dtype size changed",
+    )) + "\n")
+    clean = tmp_path / "clean.jsonl"
+    clean.write_text(json.dumps(_record(
+        detail="test_patch=ok; fail_before=fail; model_patch=ok; fail_after=fail",
+    )) + "\n")
+
+    assert looks_like_policy_memory_source(contaminated) is False
+    assert looks_like_policy_memory_source(clean) is True
 
 
 def test_policy_memory_rebuilds_task_repo_and_routing_priors() -> None:

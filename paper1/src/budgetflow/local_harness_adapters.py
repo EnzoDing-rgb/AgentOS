@@ -74,6 +74,17 @@ class SymPyHAdapter(RepoHarnessAdapter):
                     pytest_py.write_text(patched)
                     changed.append("sympy/utilities/pytest.py")
 
+        importtools_py = repo_dir / "sympy" / "external" / "importtools.py"
+        if importtools_py.is_file():
+            original = importtools_py.read_text(encoding="utf-8", errors="ignore")
+            patched = original.replace(
+                "__import__kwargs={}, catch=()):",
+                "__import__kwargs={}, catch=(Exception,)):",
+            )
+            if patched != original:
+                importtools_py.write_text(patched)
+                changed.append("sympy/external/importtools.py")
+
         return changed
 
 
@@ -284,11 +295,11 @@ def run_pytest(
     if not node_ids:
         detail = ", ".join(missing[:6]) if missing else "none"
         return False, f"no pytest node ids: {detail}"
-    env = None
+    env = {**os.environ, "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"}
     if adapter:
         extra_env = adapter.pytest_env()
         if extra_env:
-            env = {**os.environ, **extra_env}
+            env.update(extra_env)
     result = subprocess.run(
         [harness_python(), "-m", "pytest", "-x", *node_ids],
         cwd=repo_dir,

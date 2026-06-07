@@ -153,6 +153,21 @@ def test_sympy_adapter_noop_when_latex_py_missing(tmp_path: Path) -> None:
     assert changed == []
 
 
+def test_sympy_adapter_treats_broken_optional_dependencies_as_unavailable(tmp_path: Path) -> None:
+    importtools_py = tmp_path / "sympy" / "external" / "importtools.py"
+    importtools_py.parent.mkdir(parents=True)
+    importtools_py.write_text(
+        "def import_module(module, __import__kwargs={}, catch=()):\n"
+        "    return __import__(module, **__import__kwargs)\n"
+    )
+
+    adapter = SymPyHAdapter()
+    changed = adapter.apply_compat(tmp_path)
+
+    assert changed == ["sympy/external/importtools.py"]
+    assert "catch=(Exception,)" in importtools_py.read_text()
+
+
 def test_django_adapter_maps_real_swebench_format_12113() -> None:
     adapter = DjangoHAdapter()
     result = adapter.map_test_name(
@@ -239,6 +254,34 @@ def test_adapter_dispatch_unknown() -> None:
     task = SimpleNamespace(repo="unknown/repo")
     adapter = RepoHarnessAdapter.for_task(task)
     assert isinstance(adapter, DefaultHAdapter)
+
+
+def test_run_pytest_disables_host_plugin_autoload(tmp_path: Path, monkeypatch) -> None:
+    test_file = tmp_path / "tests" / "test_x.py"
+    test_file.parent.mkdir()
+    test_file.write_text("def test_regression():\n    pass\n")
+
+    captured = {}
+
+    class Result:
+        returncode = 0
+        stdout = "ok"
+        stderr = ""
+
+    def fake_run(cmd, *, cwd, capture_output, text, env):
+        captured["env"] = env
+        return Result()
+
+    monkeypatch.setattr("budgetflow.local_harness_adapters.subprocess.run", fake_run)
+
+    ok, _ = local_harness.run_pytest(
+        tmp_path,
+        ("tests/test_x.py::test_regression",),
+        ["tests/test_x.py"],
+    )
+
+    assert ok is True
+    assert captured["env"]["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] == "1"
 
 
 def test_evaluate_local_harness_calls_adapter_compat(tmp_path: Path, monkeypatch) -> None:
