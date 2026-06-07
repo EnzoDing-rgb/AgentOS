@@ -99,6 +99,8 @@ def _t3_productivity(records: list[dict], t3_tier: int) -> dict[str, dict]:
 def _t3_source(trace: dict) -> str:
     if trace.get("value_triggered_escalation_active") or trace.get("value_triggered_escalation_opened"):
         return "value_triggered"
+    if trace.get("strongest_starter_applied"):
+        return "starter_memory"
     if trace.get("rescue_window_opened") or int(trace.get("rescue_window_remaining") or 0) > 0:
         return "evidence_triggered"
     return "routing_or_progress"

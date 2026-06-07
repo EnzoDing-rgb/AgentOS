@@ -156,6 +156,7 @@ class AdaptiveRoutingState:
     strongest_starter_action: str = "default"
     strongest_starter_window_remaining: int = 0
     strongest_starter_window_opened: bool = False
+    strongest_starter_applied_this_turn: bool = False
 
     def __post_init__(self) -> None:
         self.rescue = rescue_state_for_strategy(
@@ -175,6 +176,7 @@ class AdaptiveRoutingState:
         self._recompute()
 
     def on_step(self) -> None:
+        self.strongest_starter_applied_this_turn = False
         if self.ttl_steps_remaining > 0:
             self.ttl_steps_remaining -= 1
         if self.ttl_steps_remaining <= 0 and self.pressure_boost <= 0.0:
@@ -235,6 +237,7 @@ class AdaptiveRoutingState:
         self.strongest_starter_action = "default"
         self.strongest_starter_window_remaining = 0
         self.strongest_starter_window_opened = False
+        self.strongest_starter_applied_this_turn = False
 
     def prior_summary_for_trace(self) -> dict | None:
         return self._prior_summary
@@ -246,6 +249,7 @@ class AdaptiveRoutingState:
             self.strongest_starter_action = "default"
             self.strongest_starter_window_remaining = 0
             self.strongest_starter_window_opened = False
+            self.strongest_starter_applied_this_turn = False
             return
         try:
             window = int(prior.get("strongest_starter_window") or 0)
@@ -254,12 +258,15 @@ class AdaptiveRoutingState:
         self.strongest_starter_action = action
         self.strongest_starter_window_remaining = max(0, window)
         self.strongest_starter_window_opened = False
+        self.strongest_starter_applied_this_turn = False
 
     def consume_strongest_starter_tier(self, strongest_tier: int) -> int | None:
         if self.strongest_starter_window_remaining <= 0:
+            self.strongest_starter_applied_this_turn = False
             return None
         self.strongest_starter_window_remaining -= 1
         self.strongest_starter_window_opened = True
+        self.strongest_starter_applied_this_turn = True
         return strongest_tier
 
     def status_snippet(self) -> str:

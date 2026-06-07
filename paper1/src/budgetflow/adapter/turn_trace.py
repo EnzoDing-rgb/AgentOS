@@ -166,6 +166,9 @@ def build_turn_trace(
         trace["strongest_starter_window_opened"] = getattr(
             adaptive, "strongest_starter_window_opened", None
         )
+        trace["strongest_starter_applied"] = getattr(
+            adaptive, "strongest_starter_applied_this_turn", None
+        )
     return trace
 
 

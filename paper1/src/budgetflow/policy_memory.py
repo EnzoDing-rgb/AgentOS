@@ -143,12 +143,21 @@ class StarterPrior:
     attempts: float = 0.0
     budgetflow_failures: float = 0.0
     budget_only_successes: float = 0.0
+    budgetflow_expensive_successes: float = 0.0
+    bo_success_cost: float = 0.0
+    budgetflow_success_cost: float = 0.0
     bo_frontload_t3_turns: float = 0.0
     bo_total_turns: float = 0.0
 
     @property
     def bo_frontload_rate(self) -> float:
         return self.bo_frontload_t3_turns / max(self.bo_total_turns, 1e-9)
+
+    @property
+    def success_cost_ratio(self) -> float:
+        if self.bo_success_cost <= 0:
+            return 0.0
+        return self.budgetflow_success_cost / self.bo_success_cost
 
 
 class PolicyMemory:
@@ -418,13 +427,33 @@ class PolicyMemory:
 
             bo_success_weight = sum(_record_weight(record) for record in budget_only if record.get("harness_resolved"))
             bf_fail_weight = sum(_record_weight(record) for record in budgetflow if not record.get("harness_resolved"))
-            matched_weight = min(bo_success_weight, bf_fail_weight)
+            bf_success = [record for record in budgetflow if record.get("harness_resolved")]
+            bf_success_weight = sum(_record_weight(record) for record in bf_success)
+            bo_success_cost = sum(
+                _record_weight(record) * float(record.get("total_cost") or 0.0)
+                for record in budget_only if record.get("harness_resolved")
+            )
+            bf_success_cost = sum(
+                _record_weight(record) * float(record.get("total_cost") or 0.0)
+                for record in bf_success
+            )
+            expensive_success_weight = 0.0
+            if bo_success_weight > 0 and bf_success_weight > 0 and bo_success_cost > 0:
+                bo_avg = bo_success_cost / bo_success_weight
+                bf_avg = bf_success_cost / bf_success_weight
+                if bf_avg >= bo_avg * 2.5 and (bf_avg - bo_avg) >= 0.10:
+                    expensive_success_weight = min(bo_success_weight, bf_success_weight)
+
+            matched_weight = min(bo_success_weight, bf_fail_weight) + expensive_success_weight
             if matched_weight <= 0:
                 continue
 
             prior.attempts += matched_weight
             prior.budget_only_successes += bo_success_weight
             prior.budgetflow_failures += bf_fail_weight
+            prior.budgetflow_expensive_successes += expensive_success_weight
+            prior.bo_success_cost += bo_success_cost
+            prior.budgetflow_success_cost += bf_success_cost
             for record in budget_only:
                 if not record.get("harness_resolved"):
                     continue
@@ -472,7 +501,7 @@ class PolicyMemory:
         escalation, escalation_source = self.escalation_prior(instance_id)
         escalation_action, escalation_window = _escalation_action(escalation)
         starter, starter_source = self.starter_prior(instance_id)
-        starter_action, starter_window = _starter_action(starter)
+        starter_action, starter_window = _starter_action(starter, starter_source)
 
         # Top failure class for task
         task_top_failure = ""
@@ -515,6 +544,8 @@ class PolicyMemory:
             "starter_memory_source": starter_source if starter.attempts else "",
             "starter_bo_success_weight": starter.budget_only_successes,
             "starter_budgetflow_failure_weight": starter.budgetflow_failures,
+            "starter_budgetflow_expensive_success_weight": starter.budgetflow_expensive_successes,
+            "starter_success_cost_ratio": round(starter.success_cost_ratio, 3),
             "starter_bo_frontload_rate": round(starter.bo_frontload_rate, 3),
             "strongest_starter_action": starter_action,
             "strongest_starter_window": starter_window,
@@ -693,12 +724,18 @@ def _escalation_action(prior: EscalationPrior) -> tuple[str, int]:
     return "default", 3
 
 
-def _starter_action(prior: StarterPrior) -> tuple[str, int]:
+def _starter_action(prior: StarterPrior, source: str = "") -> tuple[str, int]:
     """Convert Routing Memory into a bounded BO-style strongest starter window."""
     if prior.attempts < 1.0:
         return "default", 0
     if prior.bo_frontload_rate < 0.5:
         return "default", 0
+    expensive_success_threshold = 1.0 if source == "task" else 2.0
+    if (
+        prior.budgetflow_expensive_successes >= expensive_success_threshold
+        and prior.bo_frontload_rate >= 0.75
+    ):
+        return "frontload_strongest", 4
     if prior.attempts >= 2.0 and prior.bo_frontload_rate >= 0.75:
         return "frontload_strongest", 3
     return "frontload_strongest", 2
