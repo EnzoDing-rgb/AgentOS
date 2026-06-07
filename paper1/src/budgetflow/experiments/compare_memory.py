@@ -76,7 +76,7 @@ def run_policy_memory_gate(policy_memory: PolicyMemory | None, source_path: str)
     suffix = "" if sympy_17630 in policy_memory._task_priors else " (not in priors, computed from repo)"
     print(f"  {sympy_17630} learned_action = {action}{suffix}")
     if action == "early_rescue":
-        print("  WARNING: early_rescue on a task with known all_pro failures may waste T3 budget")
+        print("  WARNING: early_rescue on a task with known all_pro failures may waste strongest-tier budget")
 
     print(banner)
     print("FULL vs TIGHT REGRET")
@@ -89,7 +89,7 @@ def run_policy_memory_gate(policy_memory: PolicyMemory | None, source_path: str)
             f"regret={regret.regret:.3f} threshold={policy_memory.regret_threshold}"
         )
         if regret.regret > policy_memory.regret_threshold:
-            print("    EXCEEDS threshold: cap_t3 would be triggered")
+            print("    EXCEEDS threshold: cap_strongest would be triggered")
         else:
             print("    below threshold: no auto-tightening")
 

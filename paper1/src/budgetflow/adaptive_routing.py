@@ -126,7 +126,7 @@ def rescue_state_for_strategy(
         elif action == "reduce_rescue":
             base.trigger_turns = min(12, base.trigger_turns + 4)
             base.window_turns = max(1, base.window_turns - 1)
-        elif action == "cap_t3":
+        elif action in {"cap_strongest", "cap_t3"}:
             base.window_turns = max(1, base.window_turns - 1)
             base.stop_loss_turns = max(3, base.stop_loss_turns - 3)
     return base
@@ -188,13 +188,14 @@ class AdaptiveRoutingState:
     def starting_tier(self) -> int:
         """Recommended tier to start the next task, based on recent outcomes.
 
-        0 consecutive fails → T1 (default)
-        2+ consecutive fails → T2 (skip cheapest)
-        Policy "start_t2" action → T2 regardless of streak
-        Never returns T3 — T3 must be triggered by in-task evidence
+        0 consecutive fails → cheapest tier (default)
+        2+ consecutive fails → second-cheapest tier (skip cheapest)
+        Policy "start_second_cheapest" action → second-cheapest regardless of streak
+        Never starts strongest tier — strongest must be triggered by in-task evidence
         (gold edit + repair/validation + bounded rescue window).
         """
-        if self._prior_summary and self._prior_summary.get("learned_action") == "start_t2":
+        action = self._prior_summary.get("learned_action") if self._prior_summary else ""
+        if action in {"start_second_cheapest", "start_t2"}:
             return 2
         streak = 0
         for r in reversed(list(self._recent)):

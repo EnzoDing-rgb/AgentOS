@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 
 from .types import Backend
@@ -237,3 +238,9 @@ def tier_model_id(backend_name: str) -> str:
 def protocol_for(backend_name: str) -> str:
     config = MODEL_CATALOG.config_for(backend_name)
     return config.protocol if config is not None else "tool_call"
+
+
+def parse_tier_label(value: object) -> int:
+    """Best-effort tier id parser for labels like ``tier2`` or ``T4``."""
+    match = re.search(r"(?:tier|t)(\d+)(?!\d)", str(value).lower())
+    return int(match.group(1)) if match else 0

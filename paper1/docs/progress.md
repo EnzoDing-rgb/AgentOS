@@ -12,6 +12,7 @@
 - **Architecture judgment:** keeping `BudgetMemory` as a third learning entry point made cap semantics non-orthogonal. Historical reports that mention it remain forensic evidence, but new runs should not use it as an active budget source.
 - **Provider-tier seam cleanup:** active routing now uses `ModelCatalog.second_cheapest()`, `strongest()`, and `at_or_above()` for second-tier / strongest-tier decisions instead of indexing `ordered[1]` or treating `tier>=3` as the only strong tier. This keeps future 3→5 tier expansion out of runtime logic.
 - **Audit schema cleanup:** compact observability audit now preserves generic `tier_turns` for arbitrary tier ids while keeping current T2/T3 display fields as derived views.
+- **PolicyMemory cleanup:** routing memory now preserves generic `tier_turns`, `tier_success_rate`, and per-stage tier success for arbitrary tier ids. Current `repo_t2_success` / `repo_t3_success` and `cap_t3` / `start_t2` semantics remain derived/legacy views, while new learned actions use provider-agnostic names such as `cap_strongest` and `start_second_cheapest`.
 
 ### 076 / Provider-agnostic tier seam and obsolete probe cleanup
 

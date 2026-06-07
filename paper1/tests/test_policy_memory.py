@@ -63,6 +63,32 @@ def test_policy_memory_rebuilds_task_repo_and_routing_priors() -> None:
     assert "regret_threshold" in summary
 
 
+def test_policy_memory_preserves_generic_tier_evidence() -> None:
+    memory = PolicyMemory()
+    memory.rebuild_from_records([
+        _record(
+            instance_id="sympy__sympy-1",
+            harness_resolved=True,
+            failure_class="pass",
+            backend_picks=["tier2_balanced", "tier4", "tier5", "tier5"],
+            turn_traces=[
+                {"stage": "REPAIR", "backend_tier": 4},
+                {"stage": "REPAIR", "backend_tier": 5},
+            ],
+        )
+    ])
+
+    repo = memory.repo_prior("sympy__sympy-1")
+    task = memory.task_prior("sympy__sympy-1")
+    summary = memory.routing_prior_summary("sympy__sympy-1", Stage.REPAIR)
+
+    assert dict(repo.tier_turns) == {2: 1, 4: 1, 5: 2}
+    assert dict(task.tier_turns) == {2: 1, 4: 1, 5: 2}
+    assert summary["repo_tier_turns"] == {"2": 1, "4": 1, "5": 2}
+    assert summary["stage_tier_success"] == {"4": 1.0, "5": 1.0}
+    assert summary["repo_t3_success"] == 0
+
+
 def test_policy_memory_learns_t1_t2_actions_from_prior_runs() -> None:
     records = [
         _record(instance_id="repair__task-a", backend_picks=["tier2"]),
@@ -77,7 +103,7 @@ def test_policy_memory_learns_t1_t2_actions_from_prior_runs() -> None:
     memory.rebuild_from_records(records)
 
     assert memory.routing_prior_summary("repair__task-a", Stage.REPAIR)["learned_action"] == "early_rescue"
-    assert memory.routing_prior_summary("cost__task-a", Stage.REPAIR)["learned_action"] == "cap_t3"
+    assert memory.routing_prior_summary("cost__task-a", Stage.REPAIR)["learned_action"] == "cap_strongest"
 
 
 def test_policy_memory_changes_runtime_rescue_and_starting_tier() -> None:

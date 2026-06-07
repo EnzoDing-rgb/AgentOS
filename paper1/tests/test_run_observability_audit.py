@@ -11,7 +11,7 @@ def test_compact_audit_preserves_generic_tier_counts() -> None:
             "total_cost": 0.25,
             "llm_turns": 4,
             "turn_trace_count": 4,
-            "backend_picks": ["tier2", "tier4", "tier5", "tier5"],
+            "backend_picks": ["tier2_balanced", "tier4", "tier5", "tier5"],
         }
     ])
 

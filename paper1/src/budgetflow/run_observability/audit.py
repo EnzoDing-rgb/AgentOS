@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from collections import Counter
-import re
 
 from budgetflow.failure_classification import build_verdict, classify_failure
+from budgetflow.model_tiers import parse_tier_label
 from budgetflow.observability import build_harness_trust
 
 from .schema import _routing_memory_source, _routing_memory_used, _routing_prior_task_seen
@@ -13,8 +13,7 @@ from .schema import _routing_memory_source, _routing_memory_used, _routing_prior
 def _count_tier(backend_picks, tier: int) -> int:
     if not backend_picks:
         return 0
-    suffix = str(tier)
-    return sum(1 for p in backend_picks if str(p).endswith(suffix) or f"tier{suffix}" in str(p))
+    return sum(1 for p in backend_picks if parse_tier_label(p) == tier)
 
 
 def _tier_counts(backend_picks) -> dict[int, int]:
@@ -30,9 +29,7 @@ def _tier_counts(backend_picks) -> dict[int, int]:
 
 def _pick_tier(pick) -> int:
     """Best-effort tier from a backend_pick string like 'tier2' or 'T2'."""
-    s = str(pick).lower()
-    match = re.search(r"(?:tier|t)(\d+)\b", s)
-    return int(match.group(1)) if match else 0
+    return parse_tier_label(pick)
 
 
 def _has_invoice_accurate_cost(record: dict) -> bool:

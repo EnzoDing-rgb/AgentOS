@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .defaults import POLICY_REGRET_THRESHOLD
+from .model_tiers import parse_tier_label
 from .types import Stage
 
 
@@ -46,14 +47,35 @@ class RepoPrior:
     repo: str
     total_tasks: int = 0
     pass_count: int = 0
-    t2_turns: int = 0
-    t3_turns: int = 0
-    t2_success_rate: float = 0.0
-    t3_success_rate: float = 0.0
+    tier_turns: dict[int, int] = field(default_factory=lambda: defaultdict(int))
+    tier_success_rate: dict[int, float] = field(default_factory=dict)
     median_cost: float = 0.0
     failure_classes: Counter = field(default_factory=Counter)
-    t2_stage_success: dict[str, float] = field(default_factory=dict)
-    t3_stage_success: dict[str, float] = field(default_factory=dict)
+    stage_tier_success: dict[str, dict[int, float]] = field(default_factory=lambda: defaultdict(dict))
+
+    @property
+    def t2_turns(self) -> int:
+        return self.tier_turns.get(2, 0)
+
+    @property
+    def t3_turns(self) -> int:
+        return self.tier_turns.get(3, 0)
+
+    @property
+    def t2_success_rate(self) -> float:
+        return self.tier_success_rate.get(2, 0.0)
+
+    @property
+    def t3_success_rate(self) -> float:
+        return self.tier_success_rate.get(3, 0.0)
+
+    @property
+    def t2_stage_success(self) -> dict[str, float]:
+        return {stage: by_tier.get(2, 0.0) for stage, by_tier in self.stage_tier_success.items()}
+
+    @property
+    def t3_stage_success(self) -> dict[str, float]:
+        return {stage: by_tier.get(3, 0.0) for stage, by_tier in self.stage_tier_success.items()}
 
 
 @dataclass
@@ -167,31 +189,28 @@ class PolicyMemory:
             mid = len(costs) // 2
             prior.median_cost = costs[mid] if len(costs) % 2 else (costs[mid - 1] + costs[mid]) / 2
 
-        t2_pass = t3_pass = 0
-        t2_total = t3_total = 0
-        t2_stage_pass: dict[str, list[bool]] = defaultdict(list)
-        t3_stage_pass: dict[str, list[bool]] = defaultdict(list)
+        tier_pass: dict[int, int] = defaultdict(int)
+        tier_total: dict[int, int] = defaultdict(int)
+        stage_tier_pass: dict[str, dict[int, list[bool]]] = defaultdict(lambda: defaultdict(list))
 
         for r in records:
             picks = r.get("backend_picks") or []
-            t2_count = sum(1 for p in picks if str(p).endswith("2") or "tier2" in str(p))
-            t3_count = sum(1 for p in picks if str(p).endswith("3") or "tier3" in str(p))
-            prior.t2_turns += t2_count
-            prior.t3_turns += t3_count
-            t2_total += 1 if t2_count > 0 else 0
-            t3_total += 1 if t3_count > 0 else 0
+            tiers_seen: set[int] = set()
+            for pick in picks:
+                tier = _pick_tier(pick)
+                if tier > 0:
+                    prior.tier_turns[tier] += 1
+                    tiers_seen.add(tier)
             passed = bool(r.get("harness_resolved"))
-            if t2_count > 0:
-                t2_pass += 1 if passed else 0
-            if t3_count > 0:
-                t3_pass += 1 if passed else 0
+            for tier in tiers_seen:
+                tier_total[tier] += 1
+                tier_pass[tier] += 1 if passed else 0
 
             prior.failure_classes[str(r.get("failure_class") or "unknown")] += 1
 
             # Stage-level priors from turn_traces
             traces = r.get("turn_traces") or []
-            stages_t2: set[Stage] = set()
-            stages_t3: set[Stage] = set()
+            stages_by_tier: dict[int, set[Stage]] = defaultdict(set)
             for t in traces:
                 stage_str = str(t.get("stage") or "").lower()
                 tier = t.get("backend_tier")
@@ -199,23 +218,26 @@ class PolicyMemory:
                     stage = Stage(stage_str)
                 except ValueError:
                     continue
-                if tier == 2:
-                    stages_t2.add(stage)
-                elif tier == 3:
-                    stages_t3.add(stage)
-            for s in stages_t2:
-                t2_stage_pass[s.value].append(passed)
-            for s in stages_t3:
-                t3_stage_pass[s.value].append(passed)
+                try:
+                    tier_int = int(tier)
+                except (TypeError, ValueError):
+                    continue
+                if tier_int > 0:
+                    stages_by_tier[tier_int].add(stage)
+            for tier, stages in stages_by_tier.items():
+                for stage in stages:
+                    stage_tier_pass[stage.value][tier].append(passed)
 
-        prior.t2_success_rate = t2_pass / max(t2_total, 1)
-        prior.t3_success_rate = t3_pass / max(t3_total, 1)
-        prior.t2_stage_success = {
-            k: sum(v) / max(len(v), 1) for k, v in t2_stage_pass.items()
+        prior.tier_success_rate = {
+            tier: tier_pass[tier] / max(tier_total[tier], 1)
+            for tier in sorted(tier_total)
         }
-        prior.t3_stage_success = {
-            k: sum(v) / max(len(v), 1) for k, v in t3_stage_pass.items()
-        }
+        prior.stage_tier_success = defaultdict(dict)
+        for stage, by_tier in stage_tier_pass.items():
+            prior.stage_tier_success[stage] = {
+                tier: sum(values) / max(len(values), 1)
+                for tier, values in sorted(by_tier.items())
+            }
         return prior
 
     def _build_task_prior(self, instance_id: str, records: list[dict]) -> TaskPrior:
@@ -235,12 +257,9 @@ class PolicyMemory:
                     prior.all_pro_failures += 1
             picks = r.get("backend_picks") or []
             for p in picks:
-                if "tier3" in str(p) or str(p).endswith("3"):
-                    prior.tier_turns[3] += 1
-                elif "tier2" in str(p) or str(p).endswith("2"):
-                    prior.tier_turns[2] += 1
-                elif "tier1" in str(p) or str(p).endswith("1"):
-                    prior.tier_turns[1] += 1
+                tier = _pick_tier(p)
+                if tier > 0:
+                    prior.tier_turns[tier] += 1
         return prior
 
     def _build_policy_regret(self, repo: str, records: list[dict]) -> PolicyRegret:
@@ -310,6 +329,8 @@ class PolicyMemory:
             "repo": repo.repo,
             "repo_t2_success": round(repo.t2_success_rate, 3),
             "repo_t3_success": round(repo.t3_success_rate, 3),
+            "repo_tier_success": {str(k): round(v, 3) for k, v in sorted(repo.tier_success_rate.items())},
+            "repo_tier_turns": {str(k): v for k, v in sorted(repo.tier_turns.items())},
             "repo_tasks": repo.total_tasks,
             "repo_median_cost": round(repo.median_cost, 4),
             "task_seen": task.seen,
@@ -325,6 +346,10 @@ class PolicyMemory:
         if stage:
             summary["stage_t2_success"] = round(repo.t2_stage_success.get(stage.value, 0), 3)
             summary["stage_t3_success"] = round(repo.t3_stage_success.get(stage.value, 0), 3)
+            summary["stage_tier_success"] = {
+                str(k): round(v, 3)
+                for k, v in sorted(repo.stage_tier_success.get(stage.value, {}).items())
+            }
         return summary
 
     def _learned_action(self, instance_id: str, stage: Stage | None) -> str:
@@ -342,24 +367,24 @@ class PolicyMemory:
         if task.all_pro_failures >= 2:
             return "reduce_rescue"
 
-        # Rule 3: full vs tight regret → cap_t3
+        # Rule 3: full vs tight regret → cap strongest-tier rescue
         if regret and regret.regret > self.regret_threshold and regret.full_count >= 2:
-            return "cap_t3"
+            return "cap_strongest"
 
         repair_key = Stage.REPAIR.value
         loc_key = Stage.LOCALIZATION.value
 
-        # Rule 1: T2 repair success low → early rescue T3
+        # Rule 1: second-tier repair success low → early strongest-tier rescue
         if stage == Stage.REPAIR or stage is None:
             t2_repair = repo.t2_stage_success.get(repair_key, 0)
             if t2_repair < 0.35 and repo.total_tasks >= 3:
                 return "early_rescue"
 
-        # Rule 2: T2 localization good → start T2
+        # Rule 2: second-tier localization good → skip cheapest on start
         if stage == Stage.LOCALIZATION:
             t2_loc = repo.t2_stage_success.get(loc_key, 0)
             if t2_loc > 0.55:
-                return "start_t2"
+                return "start_second_cheapest"
 
         return "default"
 
@@ -399,12 +424,9 @@ class PolicyMemory:
         )
         prior.tier_turns = defaultdict(int, old.tier_turns)
         for p in record.get("backend_picks") or []:
-            if "tier3" in str(p) or str(p).endswith("3"):
-                prior.tier_turns[3] += 1
-            elif "tier2" in str(p) or str(p).endswith("2"):
-                prior.tier_turns[2] += 1
-            elif "tier1" in str(p) or str(p).endswith("1"):
-                prior.tier_turns[1] += 1
+            tier = _pick_tier(p)
+            if tier > 0:
+                prior.tier_turns[tier] += 1
         prior.failure_classes = Counter(old.failure_classes)
         prior.failure_classes[str(record.get("failure_class") or "unknown")] += 1
         return prior
@@ -418,6 +440,7 @@ class PolicyMemory:
             lines.append(
                 f"  {repo}: tasks={prior.total_tasks} pass={prior.pass_count} "
                 f"t2_succ={prior.t2_success_rate:.2f} t3_succ={prior.t3_success_rate:.2f} "
+                f"tiers={dict(sorted(prior.tier_turns.items()))} "
                 f"median_cost=${prior.median_cost:.4f}"
             )
         for repo, regret in sorted(self._policy_regrets.items()):
@@ -427,3 +450,7 @@ class PolicyMemory:
                     f"tight_avg=${regret.tight_avg_cost:.4f} regret={regret.regret:.3f}"
                 )
         return lines
+
+
+def _pick_tier(pick) -> int:
+    return parse_tier_label(pick)
