@@ -46,7 +46,7 @@ class BudgetAccount:
 class RepoPrior:
     repo: str
     total_tasks: int = 0
-    pass_count: int = 0
+    pass_count: float = 0.0
     evidence_weight: float = 0.0
     tier_turns: dict[int, int] = field(default_factory=lambda: defaultdict(int))
     tier_success_rate: dict[int, float] = field(default_factory=dict)
@@ -85,9 +85,10 @@ class TaskPrior:
     instance_id: str
     repo: str = ""
     seen: int = 0
-    pass_count: int = 0
+    pass_count: float = 0.0
+    evidence_weight: float = 0.0
     median_cost: float = 0.0
-    all_pro_failures: int = 0
+    all_pro_failures: float = 0.0
     tier_turns: dict[int, int] = field(default_factory=lambda: defaultdict(int))
     failure_classes: Counter = field(default_factory=Counter)
 
@@ -101,10 +102,10 @@ class PolicyRegret:
     repo: str
     full_cost: float = 0.0
     tight_cost: float = 0.0
-    full_pass: int = 0
-    tight_pass: int = 0
-    full_count: int = 0
-    tight_count: int = 0
+    full_pass: float = 0.0
+    tight_pass: float = 0.0
+    full_count: float = 0.0
+    tight_count: float = 0.0
     regret: float = 0.0  # positive = full more expensive without more passes
 
     @property
@@ -120,10 +121,10 @@ class PolicyRegret:
 class EscalationPrior:
     """Learn whether value-triggered T3 escalation paid off in prior traces."""
 
-    attempts: int = 0
-    resolved: int = 0
-    t3_turns: int = 0
-    t3_productive_turns: int = 0
+    attempts: float = 0.0
+    resolved: float = 0.0
+    t3_turns: float = 0.0
+    t3_productive_turns: float = 0.0
     t3_no_progress_cost: float = 0.0
 
     @property
@@ -219,7 +220,7 @@ class PolicyMemory:
         prior = RepoPrior(repo=repo)
         prior.total_tasks = len({r.get("instance_id") for r in records})
         prior.evidence_weight = round(sum(_record_weight(r) for r in records), 4)
-        prior.pass_count = round(sum(_record_weight(r) for r in records if r.get("harness_resolved")))
+        prior.pass_count = round(sum(_record_weight(r) for r in records if r.get("harness_resolved")), 4)
 
         costs = sorted(float(r.get("total_cost") or 0) for r in records)
         if costs:
@@ -285,7 +286,8 @@ class PolicyMemory:
     def _build_task_prior(self, instance_id: str, records: list[dict]) -> TaskPrior:
         prior = TaskPrior(instance_id=instance_id)
         prior.seen = len(records)
-        prior.pass_count = round(sum(_record_weight(r) for r in records if r.get("harness_resolved")))
+        prior.evidence_weight = round(sum(_record_weight(r) for r in records), 4)
+        prior.pass_count = round(sum(_record_weight(r) for r in records if r.get("harness_resolved")), 4)
 
         costs = sorted(float(r.get("total_cost") or 0) for r in records)
         if costs:
@@ -420,9 +422,12 @@ class PolicyMemory:
             "repo_evidence_weight": repo.evidence_weight,
             "repo_median_cost": round(repo.median_cost, 4),
             "task_seen": task.seen,
+            "task_evidence_weight": task.evidence_weight,
             "task_pass_count": task.pass_count,
+            "task_pass_weight": task.pass_count,
             "task_median_cost": round(task.median_cost, 4),
             "task_all_pro_failures": task.all_pro_failures,
+            "task_all_pro_failure_weight": task.all_pro_failures,
             "recent_failure_axis": task_top_failure,
             "full_vs_tight_regret": round(regret.regret if regret else 0, 3),
             "learned_action": action,
@@ -459,7 +464,8 @@ class PolicyMemory:
         # Rule 5: extract_fail/format_error → protocol issue
         top_failures = [k for k, _ in task.failure_classes.most_common(3) if k != "pass"]
         protocol_fails = {"extract_fail", "format_error", "parser_fail"}
-        if any(f in protocol_fails for f in top_failures):
+        protocol_failure_weight = sum(task.failure_classes.get(failure, 0.0) for failure in protocol_fails)
+        if protocol_failure_weight >= 1.0 and any(f in protocol_fails for f in top_failures):
             return "protocol_issue"
 
         # Rule 4: all_pro repeated failures → reduce rescue
@@ -516,12 +522,14 @@ class PolicyMemory:
         a = self._ewma_alpha
         prior = TaskPrior(instance_id=old.instance_id)
         prior.seen = old.seen + 1
+        record_weight = _record_weight(record)
+        prior.evidence_weight = round(old.evidence_weight + record_weight, 4)
         passed = bool(record.get("harness_resolved"))
-        prior.pass_count = old.pass_count + (1 if passed else 0)
+        prior.pass_count = old.pass_count + (record_weight if passed else 0)
         new_cost = float(record.get("total_cost") or 0)
         prior.median_cost = a * new_cost + (1 - a) * old.median_cost
         prior.all_pro_failures = old.all_pro_failures + (
-            1 if record.get("strategy") == "all_pro" and not passed else 0
+            record_weight if record.get("strategy") == "all_pro" and not passed else 0
         )
         prior.tier_turns = defaultdict(int, old.tier_turns)
         for p in record.get("backend_picks") or []:
@@ -529,7 +537,7 @@ class PolicyMemory:
             if tier > 0:
                 prior.tier_turns[tier] += 1
         prior.failure_classes = Counter(old.failure_classes)
-        prior.failure_classes[str(record.get("failure_class") or "unknown")] += 1
+        prior.failure_classes[str(record.get("failure_class") or "unknown")] += record_weight
         return prior
 
     # ── summary ────────────────────────────────────────────────────────────
@@ -600,10 +608,10 @@ def _escalation_action(prior: EscalationPrior) -> tuple[str, int]:
     """Convert Escalation Memory into a next-run Value-Triggered Escalation policy."""
     if prior.attempts <= 0:
         return "default", 3
-    if prior.attempts >= 2 and prior.resolved == 0 and prior.t3_no_progress_cost >= 0.15:
+    if prior.attempts >= 2.0 and prior.resolved == 0 and prior.t3_no_progress_cost >= 0.15:
         return "disable_value_triggered_escalation", 0
-    if prior.t3_productive_rate < 0.15 and prior.t3_no_progress_cost >= 0.05:
+    if prior.attempts >= 1.0 and prior.t3_productive_rate < 0.15 and prior.t3_no_progress_cost >= 0.05:
         return "shorten_value_triggered_escalation", 1
-    if prior.success_rate >= 0.6 and prior.t3_productive_rate >= 0.25:
+    if prior.attempts >= 1.0 and prior.success_rate >= 0.6 and prior.t3_productive_rate >= 0.25:
         return "extend_value_triggered_escalation", 4
     return "default", 3

@@ -127,6 +127,64 @@ def test_low_weight_stage_evidence_does_not_drive_learned_actions() -> None:
     assert localization["learned_action"] == "default"
 
 
+def test_low_weight_protocol_evidence_does_not_drive_learned_action() -> None:
+    memory = PolicyMemory()
+    memory.rebuild_from_records([
+        _record(
+            instance_id="repo__same-task",
+            failure_class="format_error",
+            _policy_memory_weight=0.05,
+        ),
+        _pass_record(
+            instance_id="repo__same-task",
+            _policy_memory_weight=1.0,
+        ),
+    ])
+
+    summary = memory.routing_prior_summary("repo__same-task", Stage.REPAIR)
+
+    assert summary["task_evidence_weight"] == 1.05
+    assert summary["recent_failure_axis"] == "format_error"
+    assert summary["learned_action"] == "default"
+
+
+def test_sufficient_weight_protocol_evidence_drives_learned_action() -> None:
+    memory = PolicyMemory()
+    memory.rebuild_from_records([
+        _record(
+            instance_id="repo__same-task",
+            failure_class="format_error",
+            _policy_memory_weight=1.0,
+        ),
+    ])
+
+    summary = memory.routing_prior_summary("repo__same-task", Stage.REPAIR)
+
+    assert summary["task_evidence_weight"] == 1.0
+    assert summary["learned_action"] == "protocol_issue"
+
+
+def test_low_weight_all_pro_failures_do_not_reduce_rescue() -> None:
+    memory = PolicyMemory()
+    memory.rebuild_from_records([
+        _record(
+            instance_id="repo__same-task",
+            strategy="all_pro",
+            _policy_memory_weight=0.4,
+        ),
+        _record(
+            instance_id="repo__same-task",
+            strategy="all_pro",
+            _policy_memory_weight=0.4,
+        ),
+    ])
+
+    summary = memory.routing_prior_summary("repo__same-task", Stage.REPAIR)
+
+    assert summary["task_all_pro_failure_weight"] == 0.8
+    assert summary["learned_action"] == "default"
+
+
 def test_weighted_tier_success_uses_effective_evidence_denominator() -> None:
     memory = PolicyMemory()
     memory.rebuild_from_records([
@@ -190,6 +248,38 @@ def test_policy_memory_learns_value_triggered_escalation_policy() -> None:
     assert summary["t3_no_progress_cost"] == 0.16
     assert summary["value_triggered_escalation_action"] == "disable_value_triggered_escalation"
     assert summary["value_triggered_escalation_window"] == 0
+
+
+def test_low_weight_value_triggered_escalation_does_not_disable_policy() -> None:
+    memory = PolicyMemory()
+    bad_t3_trace = {
+        "stage": "REPAIR",
+        "backend_tier": 3,
+        "final_backend": "tier3",
+        "value_triggered_escalation_active": True,
+        "has_progress": False,
+        "billable_cost": 0.08,
+    }
+    memory.rebuild_from_records([
+        _record(
+            instance_id="django__django-1",
+            routing="budgetflow_value_aware",
+            turn_traces=[bad_t3_trace],
+            _policy_memory_weight=0.4,
+        ),
+        _record(
+            instance_id="django__django-2",
+            routing="budgetflow_value_aware",
+            turn_traces=[bad_t3_trace],
+            _policy_memory_weight=0.4,
+        ),
+    ])
+
+    summary = memory.routing_prior_summary("django__django-3", Stage.REPAIR)
+
+    assert summary["escalation_attempts"] == 0.8
+    assert summary["t3_no_progress_cost"] == 0.064
+    assert summary["value_triggered_escalation_action"] == "default"
 
 
 def test_policy_memory_shortens_after_one_costly_unproductive_escalation() -> None:
