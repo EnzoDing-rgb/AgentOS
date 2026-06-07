@@ -524,7 +524,7 @@ class PolicyMemory:
 
     def starter_prior(self, instance_id: str) -> tuple[StarterPrior, str]:
         task_prior = self._task_starters.get(instance_id)
-        if task_prior is not None and task_prior.attempts > 0:
+        if task_prior is not None and _starter_action_evidence_weight(task_prior) >= 1.0:
             return task_prior, "task"
         repo = _extract_repo(instance_id)
         return self._repo_starters.get(repo, StarterPrior()), "repo"
@@ -770,9 +770,9 @@ def _escalation_action(prior: EscalationPrior) -> tuple[str, int]:
 
 def _starter_action(prior: StarterPrior, source: str = "") -> tuple[str, int]:
     """Convert Routing Memory into a bounded BO-style strongest starter window."""
-    if prior.attempts < 1.0:
+    if _starter_action_evidence_weight(prior) < 1.0:
         return "default", 0
-    if prior.bo_frontload_rate < 0.5:
+    if prior.bo_frontload_rate < 0.4:
         return "default", 0
     starter_window_cap: int | None = None
     if (
@@ -800,3 +800,8 @@ def _starter_action(prior: StarterPrior, source: str = "") -> tuple[str, int]:
     if prior.attempts >= 2.0 and prior.bo_frontload_rate >= 0.75:
         return "frontload_strongest", min(3, starter_window_cap or 3)
     return "frontload_strongest", min(2, starter_window_cap or 2)
+
+
+def _starter_action_evidence_weight(prior: StarterPrior) -> float:
+    """Effective starter evidence that can legitimately affect routing."""
+    return max(prior.attempts, prior.budgetflow_starter_attempts)

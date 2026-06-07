@@ -281,6 +281,101 @@ def test_low_weight_budget_only_starter_evidence_does_not_frontload_strongest() 
     assert summary["strongest_starter_action"] == "default"
 
 
+def test_weak_task_starter_prior_does_not_override_repo_frontload() -> None:
+    memory = PolicyMemory()
+    memory.rebuild_from_records([
+        _record(
+            instance_id="sympy__repo-a",
+            routing="budget_only",
+            strategy="budget_only_tight",
+            harness_resolved=True,
+            failure_class="pass",
+            turn_traces=[
+                {"stage": "LOCALIZATION", "backend_tier": 3, "final_backend": "tier3"},
+                {"stage": "REPAIR", "backend_tier": 3, "final_backend": "tier3"},
+            ],
+        ),
+        _record(
+            instance_id="sympy__repo-a",
+            routing="budgetflow_value_aware",
+            strategy="budgetflow_value_aware_tight",
+            harness_resolved=False,
+            turn_traces=[{"stage": "REPAIR", "backend_tier": 2, "final_backend": "tier2"}],
+        ),
+        _record(
+            instance_id="sympy__repo-b",
+            routing="budget_only",
+            strategy="budget_only_tight",
+            harness_resolved=True,
+            failure_class="pass",
+            turn_traces=[
+                {"stage": "LOCALIZATION", "backend_tier": 3, "final_backend": "tier3"},
+                {"stage": "REPAIR", "backend_tier": 3, "final_backend": "tier3"},
+            ],
+        ),
+        _record(
+            instance_id="sympy__repo-b",
+            routing="budgetflow_value_aware",
+            strategy="budgetflow_value_aware_tight",
+            harness_resolved=False,
+            turn_traces=[{"stage": "REPAIR", "backend_tier": 2, "final_backend": "tier2"}],
+        ),
+        _record(
+            instance_id="sympy__weak-task",
+            routing="budget_only",
+            strategy="budget_only_tight",
+            harness_resolved=True,
+            failure_class="pass",
+            _policy_memory_weight=0.35,
+            turn_traces=[{"stage": "LOCALIZATION", "backend_tier": 2, "final_backend": "tier2"}],
+        ),
+        _record(
+            instance_id="sympy__weak-task",
+            routing="budgetflow_value_aware",
+            strategy="budgetflow_value_aware_tight",
+            harness_resolved=False,
+            _policy_memory_weight=0.35,
+            turn_traces=[{"stage": "REPAIR", "backend_tier": 2, "final_backend": "tier2"}],
+        ),
+    ])
+
+    summary = memory.routing_prior_summary("sympy__weak-task", Stage.LOCALIZATION)
+
+    assert summary["starter_memory_source"] == "repo"
+    assert summary["starter_attempts"] >= 2.0
+    assert summary["strongest_starter_action"] == "frontload_strongest"
+
+
+def test_low_budget_only_frontload_rate_does_not_create_starter_action() -> None:
+    memory = PolicyMemory()
+    memory.rebuild_from_records([
+        _record(
+            instance_id="sympy__task-a",
+            routing="budget_only",
+            strategy="budget_only_tight",
+            harness_resolved=True,
+            failure_class="pass",
+            turn_traces=[
+                {"stage": "LOCALIZATION", "backend_tier": 2, "final_backend": "tier2"},
+                {"stage": "REPAIR", "backend_tier": 2, "final_backend": "tier2"},
+                {"stage": "REPAIR", "backend_tier": 3, "final_backend": "tier3"},
+            ],
+        ),
+        _record(
+            instance_id="sympy__task-a",
+            routing="budgetflow_value_aware",
+            strategy="budgetflow_value_aware_tight",
+            harness_resolved=False,
+            turn_traces=[{"stage": "REPAIR", "backend_tier": 2, "final_backend": "tier2"}],
+        ),
+    ])
+
+    summary = memory.routing_prior_summary("sympy__new-task", Stage.LOCALIZATION)
+
+    assert summary["starter_bo_frontload_rate"] < 0.4
+    assert summary["strongest_starter_action"] == "default"
+
+
 def test_budget_only_cheaper_success_extends_strongest_starter_window() -> None:
     memory = PolicyMemory()
     memory.rebuild_from_records([
