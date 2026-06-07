@@ -368,23 +368,22 @@ class TestBudgetMemory:
 # ── Strategy aliases ─────────────────────────────────────────────────────────
 
 class TestStrategyAliases:
-    def test_aliases_resolve(self):
-        from budgetflow.run_mini_swe_compare import _normalize_strategy
-        assert _normalize_strategy("budget_tight_smart") == "budget_only_tight"
-        assert _normalize_strategy("budgetflow_tight") == "budgetflow_full_tight"
+    def test_strategy_names_are_canonical_only(self):
+        from budgetflow.experiments.compare_config import normalize_strategy
+        assert normalize_strategy("old_budget_alias") == "old_budget_alias"
+        assert normalize_strategy("old_budgetflow_alias") == "old_budgetflow_alias"
 
     def test_dummy_is_real_strategy(self):
         """budget_tight_dummy is a real CompareStrategy, not just alias."""
-        from budgetflow.run_mini_swe_compare import _strategy_catalog, _normalize_strategy
-        names = {s.name for s in _strategy_catalog()}
+        from budgetflow.experiments.compare_config import normalize_strategy, strategy_catalog
+        names = {s.name for s in strategy_catalog()}
         assert "budget_tight_dummy" in names
-        # It's not an alias — normalizer returns it unchanged
-        assert _normalize_strategy("budget_tight_dummy") == "budget_tight_dummy"
+        assert normalize_strategy("budget_tight_dummy") == "budget_tight_dummy"
 
-    def test_old_names_preserved(self):
-        from budgetflow.run_mini_swe_compare import _normalize_strategy
-        assert _normalize_strategy("budget_only_tight") == "budget_only_tight"
-        assert _normalize_strategy("all_flash_tight") == "all_t1_tight"
+    def test_old_names_are_not_rewritten(self):
+        from budgetflow.experiments.compare_config import normalize_strategy
+        assert normalize_strategy("budget_only_tight") == "budget_only_tight"
+        assert normalize_strategy("old_tier1_alias") == "old_tier1_alias"
 
 
 # ── Offline replay ───────────────────────────────────────────────────────────

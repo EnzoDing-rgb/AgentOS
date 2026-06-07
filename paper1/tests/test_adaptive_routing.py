@@ -207,15 +207,15 @@ def test_default_rescue_stop_loss_is_tight_after_gold_edit() -> None:
     assert rescue.stop_loss_turns <= 6
 
 
-def test_legacy_auto_v2_alias_uses_equal_weight_rescue_parameters() -> None:
+def test_equal_weight_uses_default_rescue_parameters() -> None:
     current = rescue_state_for_strategy("budgetflow_full")
-    legacy = rescue_state_for_strategy("budgetflow_auto_v2")
+    equal_weight = rescue_state_for_strategy("budgetflow_equal_weight")
 
-    assert legacy.trigger_turns == current.trigger_turns
-    assert legacy.window_turns == current.window_turns
-    assert legacy.stop_loss_turns == current.stop_loss_turns
-    assert legacy.min_headroom_frac == current.min_headroom_frac
-    assert legacy.rescue_tier == current.rescue_tier
+    assert equal_weight.trigger_turns == current.trigger_turns
+    assert equal_weight.window_turns == current.window_turns
+    assert equal_weight.stop_loss_turns == current.stop_loss_turns
+    assert equal_weight.min_headroom_frac == current.min_headroom_frac
+    assert equal_weight.rescue_tier == current.rescue_tier
 
 
 # ── T3 must be evidence-triggered (not from history) ─────────────────────────

@@ -53,7 +53,7 @@ A JSONL record that passes ETL filtering: no infra errors, no parser failures, k
 Exit caused by parser/format mismatch, not model capability. `exit_reason` starts with `format_error_`. Distinguished from `infra_fail` (provider 404/503) and `repair_fail` (patch exists but tests fail). P0 trace must capture raw output, parser input, and parser error for every protocol fail.
 
 ### equal-weight ablation
-A BudgetFlow variant where all workflow stages (LOC/REP/VAL) get `w_i=1.0` instead of the default repair-heavy profile (1.0/3.0/2.5). Strategy name: `budgetflow_equal_weight`. Legacy name `budgetflow_auto_v2` aliases to this. Used to test whether repair-weighting matters.
+A BudgetFlow variant where all workflow stages (LOC/REP/VAL) get `w_i=1.0` instead of the default repair-heavy profile (1.0/3.0/2.5). Strategy name: `budgetflow_equal_weight`. Used to test whether repair-weighting matters.
 
 ### Value-Driven Budget Allocation
 Canonical term for the old "Automatic Budgeting" system. It estimates task budgets from task value, historical priors, task features, verified outcomes, and budget pressure. The legacy CLI name `--auto-budget` remains as a backward-compatible entry point, but paper prose should use Value-Driven Budget Allocation.

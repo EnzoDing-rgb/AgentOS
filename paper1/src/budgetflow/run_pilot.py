@@ -6,7 +6,7 @@ Usage:
 Writes:
   data/runs/pilot_b0.jsonl
   data/runs/pilot_b0_summary.json
-  data/frozen_caps.json  (FROZEN — compare --read-protocol loads this)
+  data/frozen_caps.json  (FROZEN — compare --read-frozen-caps loads this)
 """
 
 from __future__ import annotations

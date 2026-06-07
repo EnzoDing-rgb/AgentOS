@@ -462,7 +462,7 @@ class BudgetFlowLitellmModel:
             workflow_id=self.workflow_id,
             step_index=self.step_index,
             stage=stage,
-            w_i=1.0 if self.routing.strategy in ("stage_blind", "budgetflow_equal_weight", "budgetflow_auto_v2") else stage_weight(stage),
+            w_i=1.0 if self.routing.strategy in ("stage_blind", "budgetflow_equal_weight") else stage_weight(stage),
             context_len=input_tokens,
             tool_name="bash",
         )
@@ -544,7 +544,6 @@ class BudgetFlowLitellmModel:
             "budgetflow_conservative",
             "budgetflow_value_aware",
             "budgetflow_equal_weight",
-            "budgetflow_auto_v2",
             "stage_blind",
         ):
             forced_tier = self.routing.adaptive.rescue.forced_min_tier(
@@ -927,7 +926,7 @@ class BudgetFlowLitellmModel:
         Turn cap: "making progress but too slowly → force upgrade."
         - T1:25, T2:40, T3:60 turns
         """
-        if self.routing.strategy not in ("budgetflow_full", "budgetflow_conservative", "budgetflow_value_aware", "budgetflow_equal_weight", "budgetflow_auto_v2", "stage_blind"):
+        if self.routing.strategy not in ("budgetflow_full", "budgetflow_conservative", "budgetflow_value_aware", "budgetflow_equal_weight", "stage_blind"):
             return backend
         ordered = self.routing.backends
         if len(ordered) < 2:
@@ -984,7 +983,6 @@ class BudgetFlowLitellmModel:
             "budgetflow_conservative",
             "budgetflow_value_aware",
             "budgetflow_equal_weight",
-            "budgetflow_auto_v2",
             "stage_blind",
             "budget_only",
         ):
@@ -1027,7 +1025,7 @@ class BudgetFlowLitellmModel:
         start_index = ordered.index(backend)
         min_tier = 1
         adaptive = self.routing.adaptive
-        if adaptive is not None and self.routing.strategy in ("budgetflow_full", "budgetflow_conservative", "budgetflow_value_aware", "budgetflow_equal_weight", "budgetflow_auto_v2", "stage_blind"):
+        if adaptive is not None and self.routing.strategy in ("budgetflow_full", "budgetflow_conservative", "budgetflow_value_aware", "budgetflow_equal_weight", "stage_blind"):
             min_tier = adaptive.min_tier_for_reserve()
         reserve_out = None
         last_reason: str | None = None

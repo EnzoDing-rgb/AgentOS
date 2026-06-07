@@ -87,7 +87,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--strategies",
         type=str,
-        default="all_spark_tight,budget_only_tight,budgetflow_full_tight",
+        default="all_t1_tight,budget_only_tight,budgetflow_full_tight",
     )
     parser.add_argument(
         "--pressure-values",

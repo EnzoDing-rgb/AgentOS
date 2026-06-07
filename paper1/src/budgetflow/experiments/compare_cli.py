@@ -28,7 +28,6 @@ def parse_compare_args(argv: list[str] | None = None) -> argparse.Namespace:
         dest="read_frozen_caps",
         help="read loose/tight batch caps from data/frozen_caps.json for current task count",
     )
-    parser.add_argument("--read-protocol", action="store_true", dest="read_frozen_caps", help=argparse.SUPPRESS)
     parser.add_argument(
         "--step-limit",
         type=int,

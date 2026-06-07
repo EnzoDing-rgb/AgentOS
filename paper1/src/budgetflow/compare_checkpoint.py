@@ -95,19 +95,14 @@ class CompareCheckpointStore:
 
 
 _STRATEGY_ABBREV: dict[str, str] = {
-    "all_spark_tight": "as-T",
-    "all_spark_loose": "as-L",
-    # Backward compatibility for old run logs.
-    "all_flash_tight": "as-T",
-    "all_flash_loose": "as-L",
+    "all_t1_tight": "t1-T",
+    "all_t1_loose": "t1-L",
     "budget_only_tight": "bo-T",
     "budget_only_loose": "bo-L",
     "budgetflow_full_tight": "bf-T",
     "budgetflow_full_loose": "bf-L",
     "all_pro": "apro",
     "all_t3": "t3",
-    "all_gpt53": "t3",
-    "all_gpt54": "t3",
     "budget_only_t2_tight": "bo2-T",
     "budget_only_t2_loose": "bo2-L",
     "budgetflow_conservative_tight": "bfc-T",

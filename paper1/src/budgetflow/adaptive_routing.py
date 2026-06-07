@@ -320,7 +320,7 @@ class AdaptiveRoutingRegistry:
                 state.policy_memory = policy_memory
 
     def for_strategy(self, strategy_name: str, routing: str) -> AdaptiveRoutingState | None:
-        if routing not in ("budgetflow_full", "budgetflow_conservative", "budgetflow_value_aware", "budgetflow_equal_weight", "budgetflow_auto_v2", "stage_blind"):
+        if routing not in ("budgetflow_full", "budgetflow_conservative", "budgetflow_value_aware", "budgetflow_equal_weight", "stage_blind"):
             return None
         with self._lock:
             state = self._states.get(strategy_name)

@@ -126,7 +126,7 @@ def _budgetflow_max_tier(ctx: RoutingContext) -> int:
 
 def choose_backend(ctx: RoutingContext, turn: TurnInfo, expected_costs: dict[str, float]) -> Backend:
     ctx.expected_costs = expected_costs
-    if ctx.strategy in {"budgetflow_equal_weight", "budgetflow_auto_v2"}:
+    if ctx.strategy in {"budgetflow_equal_weight"}:
         turn = TurnInfo(
             workflow_id=turn.workflow_id,
             step_index=turn.step_index,
@@ -149,7 +149,7 @@ def choose_backend(ctx: RoutingContext, turn: TurnInfo, expected_costs: dict[str
             pressure=ctx.budget_pressure, branch="all_tier2",
         )
         return backend
-    if ctx.strategy in {"all_t3", "all_gpt53", "all_gpt54"}:
+    if ctx.strategy == "all_t3":
         backend = _backend_by_tier(ctx.backends, 3)
         ctx.last_decision = RouterDecision(
             backend=backend, reason="strategy_all_t3", scores={},

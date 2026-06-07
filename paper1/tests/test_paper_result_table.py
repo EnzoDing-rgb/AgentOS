@@ -16,10 +16,10 @@ def _write_jsonl(path: Path, rows: list[dict]) -> None:
 
 def test_build_markdown_table_summarizes_runs(tmp_path: Path) -> None:
     _write_jsonl(
-        tmp_path / "raw_gpt53.jsonl",
+        tmp_path / "raw_t3.jsonl",
         [
             {
-                "strategy": "all_gpt53",
+                "strategy": "all_t3",
                 "instance_id": "task-1",
                 "harness_resolved": True,
                 "task_cost": 10.0,
@@ -27,7 +27,7 @@ def test_build_markdown_table_summarizes_runs(tmp_path: Path) -> None:
                 "failure_class": "pass",
             },
             {
-                "strategy": "all_gpt53",
+                "strategy": "all_t3",
                 "instance_id": "task-2",
                 "harness_resolved": False,
                 "task_cost": 20.0,
@@ -40,7 +40,7 @@ def test_build_markdown_table_summarizes_runs(tmp_path: Path) -> None:
         tmp_path / "budgetflow.jsonl",
         [
             {
-                "strategy": "budgetflow_auto_v2_tight",
+                "strategy": "budgetflow_equal_weight_tight",
                 "instance_id": "task-1",
                 "harness_resolved": True,
                 "task_cost": 7.0,
@@ -52,10 +52,10 @@ def test_build_markdown_table_summarizes_runs(tmp_path: Path) -> None:
 
     text = build_markdown_table(
         run_dir=tmp_path,
-        stems=["raw_gpt53", "budgetflow"],
-        labels={"raw_gpt53": "raw ceiling", "budgetflow": "BudgetFlow"},
+        stems=["raw_t3", "budgetflow"],
+        labels={"raw_t3": "raw ceiling", "budgetflow": "BudgetFlow"},
     )
 
     assert "| forensic_axes |" in text
-    assert "| raw ceiling | `all_gpt53` | 2 | 1/2 | 30.0 | 15.0 | 5 | pass=1, repair_fail=1 | repair_quality=1, pass=1 | inspect repair failures |" in text
-    assert "| BudgetFlow | `budgetflow_auto_v2_tight` | 1 | 1/1 | 7.0 | 7.0 | 4 | pass=1 | pass=1 | keep / scale cautiously |" in text
+    assert "| raw ceiling | `all_t3` | 2 | 1/2 | 30.0 | 15.0 | 5 | pass=1, repair_fail=1 | pass=1, unknown=1 | inspect repair failures with forensic trace |" in text
+    assert "| BudgetFlow | `budgetflow_equal_weight_tight` | 1 | 1/1 | 7.0 | 7.0 | 4 | pass=1 | pass=1 | keep / scale cautiously |" in text

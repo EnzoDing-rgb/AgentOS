@@ -58,23 +58,10 @@ DIAGNOSTIC_STRATEGIES: tuple[CompareStrategy, ...] = (
     CompareStrategy("budget_tight_dummy", "all_flash", "tight"),
 )
 
-STRATEGY_ALIASES = {
-    "all_spark_tight": "all_t1_tight",
-    "all_spark_loose": "all_t1_loose",
-    "all_flash_tight": "all_t1_tight",
-    "all_flash_loose": "all_t1_loose",
-    "all_gpt53": "all_t3",
-    "all_gpt54": "all_t3",
-    "budgetflow_auto_v2_tight": "budgetflow_equal_weight_tight",
-    "budgetflow_auto_v2_loose": "budgetflow_equal_weight_loose",
-    "budget_tight_smart": "budget_only_tight",
-    "budgetflow_tight": "budgetflow_full_tight",
-}
-
 
 def normalize_strategy(name: str) -> str:
-    """Resolve legacy strategy names to current canonical names."""
-    return STRATEGY_ALIASES.get(name, name)
+    """Validate strategy names without historical alias rewriting."""
+    return name
 
 
 def strategy_catalog() -> tuple[CompareStrategy, ...]:
@@ -111,7 +98,7 @@ def w_i_profile_for_record(routing: str) -> str:
     """JSONL field: stage_blind forces w_i=1 at query time."""
     if routing == "stage_blind":
         return "flat_forced"
-    if routing in {"budgetflow_equal_weight", "budgetflow_auto_v2"}:
+    if routing == "budgetflow_equal_weight":
         return "equal_weight"
     return active_w_i_profile_name()
 
@@ -150,4 +137,3 @@ def task_descriptor(task) -> str:
 def workspace_key(cfg: CompareStrategy, instance_id: str) -> str:
     safe = cfg.name.replace("/", "_")
     return f"{safe}_{instance_id}"
-

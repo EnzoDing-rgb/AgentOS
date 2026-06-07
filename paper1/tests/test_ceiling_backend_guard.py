@@ -8,8 +8,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from budgetflow.adapter.backends import build_backends_for_strategy, build_ceiling_backends, build_compare_backends
 from budgetflow.adapter.strategies import build_routing_context, choose_backend
-from budgetflow.run_mini_swe_compare import _required_backends_for_strategies
-from budgetflow.run_mini_swe_compare import CompareStrategy
+from budgetflow.experiments.compare_config import CompareStrategy, required_backends_for_strategies
 from budgetflow.defaults import (
     TIER1_BACKEND,
     TIER2_BACKEND,
@@ -54,7 +53,7 @@ def test_required_backends_follow_selected_t2(monkeypatch) -> None:
     monkeypatch.setenv("BUDGETFLOW_T2_BACKEND", "xfyun")
     strategies = (CompareStrategy("probe", "all_tier2", None),)
 
-    assert _required_backends_for_strategies(strategies) == [TIER2_XFYUN_BACKEND]
+    assert required_backends_for_strategies(strategies) == [TIER2_XFYUN_BACKEND]
 
 
 def test_all_flash_strategy_gets_t1_ablation_pool() -> None:
