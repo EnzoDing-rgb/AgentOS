@@ -26,7 +26,6 @@ import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
 from pathlib import Path
 
 SRC = Path(__file__).resolve().parents[1]
@@ -68,17 +67,19 @@ from budgetflow.experiments.compare_config import (  # noqa: E402
     w_i_profile_for_record as _w_i_profile_for_record,
     workspace_key as _workspace_key,
 )
+from budgetflow.experiments.compare_artifacts import (  # noqa: E402
+    CompareRunState,
+    completed_keys as _completed_keys,
+    ingest_batch_footer as _ingest_batch_footer,
+    persist_task_record as _persist_task_record,
+    rebuild_state_from_jsonl as _rebuild_state_from_jsonl,
+    write_summary_snapshot as _write_summary_snapshot,
+)
 from budgetflow.experiments.compare_summary import (  # noqa: E402
-    _append_summary,
-    _format_live_snapshot,
     _format_strategy_totals,
     _print_run_done,
-    _spark_ratio,
-    _tier_ratio,
-    _write_summary_file,
 )
 from budgetflow.failure_classification import build_forensic_summary, build_verdict, classify_failure  # noqa: E402
-from budgetflow.experiment_observability import enrich_routing_observability  # noqa: E402
 from budgetflow.value_matrix import PROFILES  # noqa: E402
 from budgetflow.governor import BudgetGovernor, GovernorConfig  # noqa: E402
 from budgetflow.observability import (  # noqa: E402
@@ -355,12 +356,6 @@ def _value_summary_for_strategy(records: list[dict]) -> dict:
 
 
 
-def _governor_avail(batch_records: list[dict]) -> float:
-    if not batch_records:
-        return 0.0
-    return float(batch_records[-1].get("batch_available") or 0.0)
-
-
 def _run_strategy_batch(
     cfg: CompareStrategy,
     tasks: list,
@@ -590,285 +585,6 @@ def _run_strategy_batch(
         assert governor is not None
         batch_spent_total = governor.state.spent_budget
     return records, batch_spent_total
-
-
-@dataclass
-class _CompareState:
-    summary_lines: list[str]
-    resolved_by_strategy: dict[str, list[bool]]
-    task_cost_by_strategy: dict[str, list[float]]
-    batch_spent_by_strategy: dict[str, float]
-    turns_by_strategy: dict[str, list[int]]
-    spark_by_strategy: dict[str, list[float]]
-    flash_by_strategy: dict[str, list[float]]
-    pro_by_strategy: dict[str, list[float]]
-    failure_by_strategy: dict[str, dict[str, int]]
-    resolved_value_by_strategy: dict[str, list[float]] | None = None
-    task_value_by_strategy: dict[str, list[float]] | None = None
-    runs_done: int = 0
-
-
-def _rebuild_state_from_jsonl(path: Path, header_lines: list[str]) -> _CompareState:
-    state = _CompareState(
-        summary_lines=list(header_lines),
-        resolved_by_strategy={},
-        task_cost_by_strategy={},
-        batch_spent_by_strategy={},
-        turns_by_strategy={},
-        spark_by_strategy={},
-        flash_by_strategy={},
-        pro_by_strategy={},
-        failure_by_strategy={},
-        resolved_value_by_strategy={},
-        task_value_by_strategy={},
-    )
-    for line in path.read_text().splitlines():
-        if not line.strip():
-            continue
-        try:
-            record = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        name = _normalize_strategy(record.get("strategy") or "")
-        if not name:
-            continue
-        # Skip known garbage:欠费 BadRequestError records with no real work done
-        if record.get("exit_status") == "BadRequestError" and record.get("total_cost", 1) == 0:
-            continue
-        state.runs_done += 1
-        state.resolved_by_strategy.setdefault(name, []).append(bool(record.get("harness_resolved")))
-        state.task_cost_by_strategy.setdefault(name, []).append(float(record.get("task_cost") or 0.0))
-        state.turns_by_strategy.setdefault(name, []).append(int(record.get("llm_turns") or 0))
-        picks = record.get("backend_picks") or []
-        state.spark_by_strategy.setdefault(name, []).append(_spark_ratio(picks))
-        state.flash_by_strategy.setdefault(name, []).append(_tier_ratio(picks, 2))
-        state.pro_by_strategy.setdefault(name, []).append(_tier_ratio(picks, 3))
-        failure_class = str(record.get("failure_class") or classify_failure(record))
-        failures = state.failure_by_strategy.setdefault(name, {})
-        failures[failure_class] = failures.get(failure_class, 0) + 1
-        state.batch_spent_by_strategy[name] = sum(state.task_cost_by_strategy.get(name, []))
-        # Value observability: enrich legacy records on resume
-        if record.get("task_value_profile") is None:
-            _enrich_record_with_value(record)
-        state.resolved_value_by_strategy.setdefault(name, []).append(
-            float(record.get("resolved_value") or 0.0)
-        )
-        state.task_value_by_strategy.setdefault(name, []).append(
-            float(record.get("task_value") or 1.0)
-        )
-    return state
-
-
-def _write_budget_memory(memory: AutoBudgetMemory, record: dict) -> None:
-    """Build a memory record from a run record and write it to the learning memory."""
-    forensic = record.get("forensic_summary") or {}
-    features = record.get("auto_budget_features") or record.get("task_features") or {}
-    mem = AutoBudgetMemory.build_record(
-        instance_id=str(record.get("instance_id", "")),
-        repo=str(record.get("instance_id", "")).rsplit("__", 1)[0].replace("__", "/"),
-        strategy=str(record.get("strategy", "")),
-        routing=str(record.get("routing", "")),
-        resolved=bool(record.get("harness_resolved")),
-        harness_resolved=bool(record.get("harness_resolved")),
-        failure_class=str(record.get("failure_class") or ""),
-        forensic_primary_axis=str(forensic.get("primary_axis") or record.get("failure_class") or ""),
-        total_cost=float(record.get("task_cost") or 0.0),
-        estimated_task_cap=record.get("estimated_task_cap"),
-        estimated_task_cost=record.get("estimated_task_cost"),
-        patch_extracted=bool(record.get("patch_extracted")),
-        agent_gold_edited=bool(record.get("agent_gold_edited")),
-        llm_turns=int(record.get("llm_turns") or 0),
-        patch_lines=int(features.get("patch_lines", 0)),
-        f2p_count=int(features.get("f2p_count", 0)),
-        p2p_count=int(features.get("p2p_count", 0)),
-        problem_length=int(features.get("problem_length", 0)),
-        gold_file_count=len(record.get("agent_gold_files") or []),
-        run_series=str(record.get("run_series", "")),
-        run_id=str(record.get("run_id") or record.get("attempt_id") or record.get("run_series") or ""),
-        dominant_tier=str(record.get("dominant_tier") or ""),
-        exit_status=str(record.get("exit_status") or ""),
-        detail=str(record.get("detail") or ""),
-    )
-    memory.write_record(mem)
-
-
-def _persist_task_record(
-    state: _CompareState,
-    record: dict,
-    *,
-    handle,
-    io_lock: threading.Lock,
-    total_runs: int,
-    tasks_per_strategy: int,
-    global_progress: GlobalRunProgress,
-    scoreboard: StrategyScoreboard | None,
-    summary_path: Path,
-    strategy_names: list[str],
-    batch_caps: dict[str, float | None],
-    budget_modes: dict[str, str],
-    started: float,
-    out_path: Path,
-    auto_budget_memory: AutoBudgetMemory | None = None,
-    no_auto_budget_learn: bool = False,
-) -> None:
-    with io_lock:
-        record["budget_learning_update_written"] = False
-        record["budget_learning_memory_path"] = (
-            str(auto_budget_memory._path or "") if auto_budget_memory is not None else ""
-        )
-        record["budget_learning_applied_to_cap"] = bool(record.get("auto_budget_enabled"))
-        # Write learning memory for every normal outcome. Using learned caps is
-        # opt-in, but collecting verified outcomes should be the default loop.
-        if auto_budget_memory is not None and not no_auto_budget_learn:
-            _write_budget_memory(auto_budget_memory, record)
-            record["budget_learning_update_written"] = True
-
-        # Value observability enrichment (Phase R)
-        _enrich_record_with_value(record)
-        enrich_routing_observability(record)
-
-        handle.write(json.dumps(record, ensure_ascii=False) + "\n")
-        handle.flush()
-        state.runs_done += 1
-        _, done, _ = global_progress.snapshot()
-        _append_summary(state.summary_lines, record, index=done, total=total_runs)
-        name = record["strategy"]
-        state.resolved_by_strategy.setdefault(name, []).append(record["harness_resolved"])
-        state.task_cost_by_strategy.setdefault(name, []).append(float(record.get("task_cost") or 0.0))
-        state.turns_by_strategy.setdefault(name, []).append(int(record.get("llm_turns") or 0))
-        picks = record.get("backend_picks") or []
-        state.spark_by_strategy.setdefault(name, []).append(_spark_ratio(picks))
-        state.flash_by_strategy.setdefault(name, []).append(_tier_ratio(picks, 2))
-        state.pro_by_strategy.setdefault(name, []).append(_tier_ratio(picks, 3))
-        failure_class = str(record.get("failure_class") or classify_failure(record))
-        failures = state.failure_by_strategy.setdefault(name, {})
-        failures[failure_class] = failures.get(failure_class, 0) + 1
-        state.batch_spent_by_strategy[name] = sum(state.task_cost_by_strategy.get(name, []))
-        # Value observability tracking
-        if state.resolved_value_by_strategy is not None:
-            state.resolved_value_by_strategy.setdefault(name, []).append(
-                float(record.get("resolved_value") or 0.0)
-            )
-        if state.task_value_by_strategy is not None:
-            state.task_value_by_strategy.setdefault(name, []).append(
-                float(record.get("task_value") or 1.0)
-            )
-        if scoreboard is not None:
-            scoreboard.record(name, resolved=bool(record.get("harness_resolved")))
-        _write_summary_file(
-            summary_path,
-            summary_lines=state.summary_lines,
-            strategy_names=strategy_names,
-            resolved_by_strategy=state.resolved_by_strategy,
-            task_cost_by_strategy=state.task_cost_by_strategy,
-            batch_spent_by_strategy=state.batch_spent_by_strategy,
-            turns_by_strategy=state.turns_by_strategy,
-            spark_by_strategy=state.spark_by_strategy,
-            flash_by_strategy=state.flash_by_strategy,
-            pro_by_strategy=state.pro_by_strategy,
-            failure_by_strategy=state.failure_by_strategy,
-            batch_caps=batch_caps,
-            budget_modes=budget_modes,
-            started=started,
-            out_path=out_path,
-            runs_done=state.runs_done,
-            total_runs=total_runs,
-            tasks_per_strategy=tasks_per_strategy,
-            global_line=global_progress.format_global(scoreboard),
-            resolved_value_by_strategy=state.resolved_value_by_strategy,
-            task_value_by_strategy=state.task_value_by_strategy,
-            value_profile=_VALUE_PROFILE,
-        )
-
-
-def _completed_keys(jsonl_path: Path, *, skip_bad: bool = False) -> set[tuple[str, str]]:
-    if not jsonl_path.is_file():
-        return set()
-    done: set[tuple[str, str]] = set()
-    bad_exits = frozenset({"BadRequestError"})
-    for line in jsonl_path.read_text().splitlines():
-        if not line.strip():
-            continue
-        try:
-            record = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        # When resuming, don't count billing-error tasks as done — re-run them.
-        if skip_bad and record.get("exit_status") in bad_exits:
-            continue
-        # Also skip records with 0 cost and 1 turn (API reject before any work).
-        if skip_bad and record.get("total_cost", 1) == 0 and record.get("llm_turns", 0) <= 1:
-            continue
-        strategy = _normalize_strategy(record.get("strategy") or "")
-        task = record.get("instance_id")
-        if strategy and task:
-            done.add((strategy, task))
-    return done
-
-
-def _ingest_batch_footer(
-    state: _CompareState,
-    cfg: CompareStrategy,
-    batch_records: list[dict],
-    batch_spent: float,
-    batch_cap: float,
-    *,
-    strategy_names: list[str],
-    batch_caps: dict[str, float | None],
-    budget_modes: dict[str, str],
-    summary_path: Path,
-    started: float,
-    out_path: Path,
-    total_runs: int,
-    tasks_per_strategy: int,
-    io_lock: threading.Lock,
-    global_progress: GlobalRunProgress,
-) -> None:
-    if not batch_records:
-        return
-    with io_lock:
-        mode = budget_modes.get(cfg.name, "shared")
-        cap_label = "planned_cap" if mode == "dynamic_task_caps" else "per_task_cap" if mode == "per_task_cap" else "shared_cap"
-        display_cap = batch_caps.get(cfg.name) if mode in {"per_task_cap", "dynamic_task_caps"} else batch_cap
-        state.summary_lines.append(
-            f"=== BATCH START strategy={cfg.name} {cap_label}={_fmt_usd(display_cap)} ==="
-        )
-        state.batch_spent_by_strategy[cfg.name] = batch_spent
-        batch_avail = (
-            max(0.0, float(display_cap or 0.0) - batch_spent)
-            if mode in {"per_task_cap", "dynamic_task_caps"} and display_cap is not None
-            else _governor_avail(batch_records)
-        )
-        state.summary_lines.append(
-            f"=== BATCH END strategy={cfg.name} resolved="
-            f"{sum(1 for r in batch_records if r['harness_resolved'])}/{len(batch_records)} "
-            f"batch_spent={_fmt_usd(batch_spent)} batch_avail={_fmt_usd(batch_avail)} ==="
-        )
-        state.summary_lines.append("")
-        _write_summary_file(
-            summary_path,
-            summary_lines=state.summary_lines,
-            strategy_names=strategy_names,
-            resolved_by_strategy=state.resolved_by_strategy,
-            task_cost_by_strategy=state.task_cost_by_strategy,
-            batch_spent_by_strategy=state.batch_spent_by_strategy,
-            turns_by_strategy=state.turns_by_strategy,
-            spark_by_strategy=state.spark_by_strategy,
-            flash_by_strategy=state.flash_by_strategy,
-            pro_by_strategy=state.pro_by_strategy,
-            failure_by_strategy=state.failure_by_strategy,
-            batch_caps=batch_caps,
-            budget_modes=budget_modes,
-            started=started,
-            out_path=out_path,
-            runs_done=state.runs_done,
-            total_runs=total_runs,
-            tasks_per_strategy=tasks_per_strategy,
-            global_line=global_progress.format_global(),
-            resolved_value_by_strategy=state.resolved_value_by_strategy,
-            task_value_by_strategy=state.task_value_by_strategy,
-            value_profile=_VALUE_PROFILE,
-        )
 
 
 PRESET_TASKS = {"3x3": 3, "3x5": 3, "5x5": 5}
@@ -1804,7 +1520,10 @@ def main() -> None:
     checkpoint_path = checkpoint_path_for(out_stem, RUNS_DIR)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     strategy_names = [s.name for s in strategies]
-    completed = _completed_keys(out_path, skip_bad=args.skip_completed) if args.skip_completed else set()
+    completed = (
+        _completed_keys(out_path, normalize_strategy=_normalize_strategy, skip_bad=args.skip_completed)
+        if args.skip_completed else set()
+    )
     if args.skip_completed and completed:
         print(f"{tag('resume', bold=False)} skip {len(completed)} completed (strategy,task) pairs", flush=True)
     checkpoint = CompareCheckpointStore(checkpoint_path, stem=out_stem, total_runs=total_runs)
@@ -1918,22 +1637,15 @@ def main() -> None:
     if adapt_summary:
         header_lines.append("")
     if args.append and out_path.is_file():
-        state = _rebuild_state_from_jsonl(out_path, header_lines)
+        state = _rebuild_state_from_jsonl(
+            out_path,
+            header_lines,
+            normalize_strategy=_normalize_strategy,
+            enrich_value=_enrich_record_with_value,
+        )
         print(f"{tag('resume', bold=False)} rebuilt state from jsonl runs={state.runs_done}", flush=True)
     else:
-        state = _CompareState(
-            summary_lines=header_lines,
-            resolved_by_strategy={},
-            task_cost_by_strategy={},
-            batch_spent_by_strategy={},
-            turns_by_strategy={},
-            spark_by_strategy={},
-            flash_by_strategy={},
-            pro_by_strategy={},
-            failure_by_strategy={},
-            resolved_value_by_strategy={},
-            task_value_by_strategy={},
-        )
+        state = CompareRunState.empty(header_lines)
     started = time.time()
     io_lock = threading.Lock()
     print_lock = threading.Lock() if policy_jobs > 1 else None
@@ -1948,28 +1660,17 @@ def main() -> None:
     if args.append and state.resolved_by_strategy:
         scoreboard.seed_from_resolved(state.resolved_by_strategy)
 
-    _write_summary_file(
+    _write_summary_snapshot(
         summary_path,
-        summary_lines=state.summary_lines,
+        state=state,
         strategy_names=strategy_names,
-        resolved_by_strategy=state.resolved_by_strategy,
-        task_cost_by_strategy=state.task_cost_by_strategy,
-        batch_spent_by_strategy=state.batch_spent_by_strategy,
-        turns_by_strategy=state.turns_by_strategy,
-        spark_by_strategy=state.spark_by_strategy,
-        flash_by_strategy=state.flash_by_strategy,
-        pro_by_strategy=state.pro_by_strategy,
-        failure_by_strategy=state.failure_by_strategy,
         batch_caps=batch_caps,
         budget_modes=budget_modes,
         started=started,
         out_path=out_path,
-        runs_done=state.runs_done,
         total_runs=total_runs,
         tasks_per_strategy=len(tasks),
         global_line=global_progress.format_global(scoreboard),
-        resolved_value_by_strategy=state.resolved_value_by_strategy,
-        task_value_by_strategy=state.task_value_by_strategy,
         value_profile=_VALUE_PROFILE,
     )
 
@@ -2011,6 +1712,8 @@ def main() -> None:
                 out_path=out_path,
                 auto_budget_memory=auto_budget_memory,
                 no_auto_budget_learn=args.no_auto_budget_learn,
+                value_profile=_VALUE_PROFILE,
+                enrich_value=_enrich_record_with_value,
             )
             heartbeat_writer.pulse(
                 rows_done=state.runs_done,
@@ -2076,6 +1779,7 @@ def main() -> None:
                         tasks_per_strategy=len(tasks),
                         io_lock=io_lock,
                         global_progress=global_progress,
+                        value_profile=_VALUE_PROFILE,
                     )
             else:
                 with ThreadPoolExecutor(max_workers=min(policy_jobs, len(strategies))) as pool:
@@ -2102,6 +1806,7 @@ def main() -> None:
                             tasks_per_strategy=len(tasks),
                             io_lock=io_lock,
                             global_progress=global_progress,
+                            value_profile=_VALUE_PROFILE,
                         )
     finally:
         set_active_guard(None)
@@ -2109,28 +1814,17 @@ def main() -> None:
     if run_guards is not None and run_guards.is_aborted():
         print(f"\n{tag('guard', bold=False)} run stopped early: {run_guards.abort_reason()}", flush=True)
 
-    _write_summary_file(
+    _write_summary_snapshot(
         summary_path,
-        summary_lines=state.summary_lines,
+        state=state,
         strategy_names=strategy_names,
-        resolved_by_strategy=state.resolved_by_strategy,
-        task_cost_by_strategy=state.task_cost_by_strategy,
-        batch_spent_by_strategy=state.batch_spent_by_strategy,
-        turns_by_strategy=state.turns_by_strategy,
-        spark_by_strategy=state.spark_by_strategy,
-        flash_by_strategy=state.flash_by_strategy,
-        pro_by_strategy=state.pro_by_strategy,
-        failure_by_strategy=state.failure_by_strategy,
         batch_caps=batch_caps,
         budget_modes=budget_modes,
         started=started,
         out_path=out_path,
-        runs_done=state.runs_done,
         total_runs=total_runs,
         tasks_per_strategy=len(tasks),
         global_line=global_progress.format_global(scoreboard),
-        resolved_value_by_strategy=state.resolved_value_by_strategy,
-        task_value_by_strategy=state.task_value_by_strategy,
         value_profile=_VALUE_PROFILE,
     )
 

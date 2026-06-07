@@ -6,7 +6,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from budgetflow.run_mini_swe_compare import _format_live_snapshot, _strategy_catalog, _w_i_profile_for_record  # noqa: E402
+from budgetflow.experiments.compare_summary import _format_live_snapshot  # noqa: E402
+from budgetflow.run_mini_swe_compare import _strategy_catalog, _w_i_profile_for_record  # noqa: E402
 
 
 def test_live_snapshot_lists_strategy_pass_fail() -> None:

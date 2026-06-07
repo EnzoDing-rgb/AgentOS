@@ -7,13 +7,20 @@ from budgetflow.ledger import WorkflowLedgerStore
 from budgetflow.run_mini_swe_compare import (
     CompareStrategy,
     GlobalRunProgress,
-    _CompareState,
-    _format_strategy_totals,
-    _ingest_batch_footer,
-    _persist_task_record,
+    _enrich_record_with_value,
     _run_one,
 )
+from budgetflow.experiments.compare_artifacts import (
+    CompareRunState,
+    ingest_batch_footer,
+    persist_task_record,
+)
+from budgetflow.experiments.compare_summary import _format_strategy_totals
 from budgetflow.auto_budget import AutoBudgetMemory
+
+
+def _persist_kwargs() -> dict:
+    return {"value_profile": "equal", "enrich_value": _enrich_record_with_value}
 
 
 def test_run_one_records_turns_alias(monkeypatch):
@@ -75,7 +82,7 @@ def test_run_one_records_turns_alias(monkeypatch):
 
 
 def test_persist_task_record_writes_learning_memory_for_normal_run(tmp_path):
-    state = _CompareState(
+    state = CompareRunState(
         summary_lines=[],
         resolved_by_strategy={},
         task_cost_by_strategy={},
@@ -113,7 +120,7 @@ def test_persist_task_record_writes_learning_memory_for_normal_run(tmp_path):
     memory = AutoBudgetMemory(memory_path)
 
     with (tmp_path / "out.jsonl").open("w") as handle:
-        _persist_task_record(
+        persist_task_record(
             state,
             record,
             handle=handle,
@@ -128,6 +135,7 @@ def test_persist_task_record_writes_learning_memory_for_normal_run(tmp_path):
             budget_modes={"budget_only_tight": "per_task_cap"},
             started=0.0,
             out_path=tmp_path / "out.jsonl",
+            **_persist_kwargs(),
             auto_budget_memory=memory,
             no_auto_budget_learn=False,
         )
@@ -143,7 +151,7 @@ def test_persist_task_record_writes_learning_memory_for_normal_run(tmp_path):
 
 
 def test_persist_task_record_writes_value_and_routing_schema(tmp_path):
-    state = _CompareState(
+    state = CompareRunState(
         summary_lines=[],
         resolved_by_strategy={},
         task_cost_by_strategy={},
@@ -183,7 +191,7 @@ def test_persist_task_record_writes_value_and_routing_schema(tmp_path):
     }
     out_path = tmp_path / "out.jsonl"
     with out_path.open("w") as handle:
-        _persist_task_record(
+        persist_task_record(
             state,
             record,
             handle=handle,
@@ -198,6 +206,7 @@ def test_persist_task_record_writes_value_and_routing_schema(tmp_path):
             budget_modes={"budgetflow_value_aware_tight": "per_task_cap"},
             started=0.0,
             out_path=out_path,
+            **_persist_kwargs(),
         )
 
     persisted = json.loads(out_path.read_text().splitlines()[0])
@@ -212,7 +221,7 @@ def test_persist_task_record_writes_value_and_routing_schema(tmp_path):
 
 
 def test_persist_task_record_accumulates_strategy_spend_for_live_summary(tmp_path):
-    state = _CompareState(
+    state = CompareRunState(
         summary_lines=[],
         resolved_by_strategy={},
         task_cost_by_strategy={},
@@ -267,7 +276,7 @@ def test_persist_task_record_accumulates_strategy_spend_for_live_summary(tmp_pat
     progress.finish_task()
     with (tmp_path / "out.jsonl").open("w") as handle:
         for record in records:
-            _persist_task_record(
+            persist_task_record(
                 state,
                 record,
                 handle=handle,
@@ -282,6 +291,7 @@ def test_persist_task_record_accumulates_strategy_spend_for_live_summary(tmp_pat
                 budget_modes={"budgetflow_value_aware_tight": "per_task_cap"},
                 started=0.0,
                 out_path=tmp_path / "out.jsonl",
+                **_persist_kwargs(),
             )
 
     assert state.task_cost_by_strategy["budgetflow_value_aware_tight"] == [0.10, 0.25]
@@ -292,7 +302,7 @@ def test_persist_task_record_accumulates_strategy_spend_for_live_summary(tmp_pat
 
 
 def test_persist_task_record_can_disable_learning_write(tmp_path):
-    state = _CompareState(
+    state = CompareRunState(
         summary_lines=[],
         resolved_by_strategy={},
         task_cost_by_strategy={},
@@ -328,7 +338,7 @@ def test_persist_task_record_can_disable_learning_write(tmp_path):
     memory = AutoBudgetMemory(memory_path)
 
     with (tmp_path / "out.jsonl").open("w") as handle:
-        _persist_task_record(
+        persist_task_record(
             state,
             record,
             handle=handle,
@@ -343,6 +353,7 @@ def test_persist_task_record_can_disable_learning_write(tmp_path):
             budget_modes={"budget_only_tight": "per_task_cap"},
             started=0.0,
             out_path=tmp_path / "out.jsonl",
+            **_persist_kwargs(),
             auto_budget_memory=memory,
             no_auto_budget_learn=True,
         )
@@ -354,7 +365,7 @@ def test_persist_task_record_can_disable_learning_write(tmp_path):
 
 
 def test_persist_task_record_marks_learning_unavailable_without_memory(tmp_path):
-    state = _CompareState(
+    state = CompareRunState(
         summary_lines=[],
         resolved_by_strategy={},
         task_cost_by_strategy={},
@@ -388,7 +399,7 @@ def test_persist_task_record_marks_learning_unavailable_without_memory(tmp_path)
     }
 
     with (tmp_path / "out.jsonl").open("w") as handle:
-        _persist_task_record(
+        persist_task_record(
             state,
             record,
             handle=handle,
@@ -403,6 +414,7 @@ def test_persist_task_record_marks_learning_unavailable_without_memory(tmp_path)
             budget_modes={"budget_only_tight": "per_task_cap"},
             started=0.0,
             out_path=tmp_path / "out.jsonl",
+            **_persist_kwargs(),
             auto_budget_memory=None,
             no_auto_budget_learn=True,
         )
@@ -455,7 +467,7 @@ def test_auto_budget_summary_uses_dynamic_task_caps():
 
 
 def test_per_task_cap_batch_footer_uses_per_task_cap_not_shared_cap(tmp_path):
-    state = _CompareState(
+    state = CompareRunState(
         summary_lines=[],
         resolved_by_strategy={"budgetflow_value_aware_tight": [True]},
         task_cost_by_strategy={"budgetflow_value_aware_tight": [0.2]},
@@ -470,7 +482,7 @@ def test_per_task_cap_batch_footer_uses_per_task_cap_not_shared_cap(tmp_path):
     )
     summary_path = tmp_path / "summary.log"
 
-    _ingest_batch_footer(
+    ingest_batch_footer(
         state,
         CompareStrategy("budgetflow_value_aware_tight", "budgetflow_value_aware", "tight"),
         [{"harness_resolved": True}],
@@ -486,6 +498,7 @@ def test_per_task_cap_batch_footer_uses_per_task_cap_not_shared_cap(tmp_path):
         tasks_per_strategy=1,
         io_lock=threading.Lock(),
         global_progress=GlobalRunProgress(1),
+        value_profile="equal",
     )
 
     text = summary_path.read_text()
@@ -494,7 +507,7 @@ def test_per_task_cap_batch_footer_uses_per_task_cap_not_shared_cap(tmp_path):
 
 
 def test_dynamic_task_caps_batch_footer_uses_planned_remaining(tmp_path):
-    state = _CompareState(
+    state = CompareRunState(
         summary_lines=[],
         resolved_by_strategy={"budgetflow_value_aware_tight": [True, False]},
         task_cost_by_strategy={"budgetflow_value_aware_tight": [0.2, 0.3]},
@@ -509,7 +522,7 @@ def test_dynamic_task_caps_batch_footer_uses_planned_remaining(tmp_path):
     )
     summary_path = tmp_path / "summary.log"
 
-    _ingest_batch_footer(
+    ingest_batch_footer(
         state,
         CompareStrategy("budgetflow_value_aware_tight", "budgetflow_value_aware", "tight"),
         [
@@ -528,6 +541,7 @@ def test_dynamic_task_caps_batch_footer_uses_planned_remaining(tmp_path):
         tasks_per_strategy=2,
         io_lock=threading.Lock(),
         global_progress=GlobalRunProgress(2),
+        value_profile="equal",
     )
 
     text = summary_path.read_text()
