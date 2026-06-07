@@ -28,7 +28,7 @@ def _write_jsonl(path: Path, records: list[dict]) -> None:
 
 def test_default_policy_memory_source_skips_auto_budget_memory(tmp_path) -> None:
     _write_jsonl(tmp_path / "auto_budget_memory.jsonl", [_run_record()])
-    source_path = tmp_path / "065_value_salvage_3x3.jsonl"
+    source_path = tmp_path / "065_value_triggered_escalation_3x3.jsonl"
     _write_jsonl(source_path, [_run_record()])
 
     source = default_policy_memory_source(tmp_path)

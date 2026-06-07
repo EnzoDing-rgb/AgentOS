@@ -125,6 +125,39 @@ def test_policy_memory_changes_runtime_rescue_and_starting_tier() -> None:
     assert state.prior_summary_for_trace() is not None
 
 
+def test_policy_memory_learns_value_triggered_escalation_policy() -> None:
+    memory = PolicyMemory()
+    bad_t3_trace = {
+        "stage": "REPAIR",
+        "backend_tier": 3,
+        "final_backend": "tier3",
+        "value_triggered_escalation_active": True,
+        "has_progress": False,
+        "billable_cost": 0.08,
+    }
+    memory.rebuild_from_records([
+        _record(
+            instance_id="django__django-1",
+            routing="budgetflow_value_aware",
+            turn_traces=[bad_t3_trace],
+        ),
+        _record(
+            instance_id="django__django-2",
+            routing="budgetflow_value_aware",
+            turn_traces=[bad_t3_trace],
+        ),
+    ])
+
+    summary = memory.routing_prior_summary("django__django-3", Stage.REPAIR)
+
+    assert summary["escalation_memory_source"] == "repo"
+    assert summary["escalation_attempts"] == 2
+    assert summary["t3_productive_rate"] == 0.0
+    assert summary["t3_no_progress_cost"] == 0.16
+    assert summary["value_triggered_escalation_action"] == "disable_value_triggered_escalation"
+    assert summary["value_triggered_escalation_window"] == 0
+
+
 def test_rebuild_from_jsonl_sets_source_and_ignores_bad_lines(tmp_path: Path) -> None:
     source = tmp_path / "run.jsonl"
     source.write_text(json.dumps(_pass_record(instance_id="django__django-1")) + "\nnot-json\n")

@@ -95,11 +95,11 @@ ADAPTIVE_TTL_STEPS = 15
 STAGNATION_REPEAT_CMD_LIMIT = 6
 STAGNATION_NO_PROGRESS_STEPS = 12
 
-# BFV-only salvage: high-value tasks that stall before any patch/gold edit get
-# a short strongest-tier window before stop.
-VALUE_SALVAGE_MIN_MULTIPLIER = 1.15
-VALUE_SALVAGE_WINDOW_TURNS = 3
-VALUE_SALVAGE_MIN_HEADROOM_FRAC = 0.12
+# BFV-only Value-Triggered Escalation: high-value tasks that stall before any
+# patch/gold edit get a short T3 / Strongest Model window before stop.
+VALUE_TRIGGERED_ESCALATION_MIN_MULTIPLIER = 1.15
+VALUE_TRIGGERED_ESCALATION_DEFAULT_WINDOW_TURNS = 3
+VALUE_TRIGGERED_ESCALATION_MIN_HEADROOM_FRAC = 0.12
 
 # PolicyMemory regret threshold: when full_vs_tight_regret exceeds this,
 # budgetflow_full is auto-tightened.

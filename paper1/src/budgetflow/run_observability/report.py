@@ -85,20 +85,21 @@ def format_compact_audit(audit: dict) -> str:
             "(compact audit uses recomputed classifier output)"
         )
 
-    if audit.get("strong_tier_usefulness"):
+    t3_productivity = audit.get("t3_productivity")
+    if t3_productivity:
         lines.append(banner)
-        lines.append(f"T2 STRONG-TIER USEFULNESS  |  strongest=T{audit.get('strong_tier', '?')}")
+        lines.append(f"T2 T3 PRODUCTIVITY  |  strongest_model=T{audit.get('t3_tier', '?')}")
         lines.append(
-            f"{'strategy':<26} {'strong':>6} {'useful':>6} {'rate':>7} "
-            f"{'waste':>6} {'waste_cost':>10}"
+            f"{'strategy':<26} {'t3':>6} {'productive':>10} {'rate':>7} "
+            f"{'no_prog':>7} {'no_prog_cost':>12}"
         )
-        lines.append("-" * 64)
-        for strat in sorted(audit["strong_tier_usefulness"]):
-            s = audit["strong_tier_usefulness"][strat]
+        lines.append("-" * 72)
+        for strat in sorted(t3_productivity):
+            s = t3_productivity[strat]
             lines.append(
-                f"{strat:<26} {s['strong_tier_turns']:>6} {s['useful_strong_tier_turns']:>6} "
-                f"{s['useful_strong_tier_rate']:>6.0%} {s['wasted_strong_tier_turns']:>6} "
-                f"${s['wasted_strong_tier_cost']:>9.4f}"
+                f"{strat:<26} {s['t3_turns']:>6} {s['t3_productive_turns']:>10} "
+                f"{s['t3_productive_rate']:>6.0%} {s['t3_no_progress_turns']:>7} "
+                f"${s['t3_no_progress_cost']:>11.4f}"
             )
 
     # Cost口径

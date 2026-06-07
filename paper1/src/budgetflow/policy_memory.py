@@ -114,6 +114,25 @@ class PolicyRegret:
         return self.tight_cost / max(self.tight_count, 1)
 
 
+@dataclass
+class EscalationPrior:
+    """Learn whether value-triggered T3 escalation paid off in prior traces."""
+
+    attempts: int = 0
+    resolved: int = 0
+    t3_turns: int = 0
+    t3_productive_turns: int = 0
+    t3_no_progress_cost: float = 0.0
+
+    @property
+    def success_rate(self) -> float:
+        return self.resolved / max(self.attempts, 1)
+
+    @property
+    def t3_productive_rate(self) -> float:
+        return self.t3_productive_turns / max(self.t3_turns, 1)
+
+
 class PolicyMemory:
     """Heuristic prior store rebuilt from JSONL outcomes.
 
@@ -129,6 +148,8 @@ class PolicyMemory:
         self._repo_priors: dict[str, RepoPrior] = {}
         self._task_priors: dict[str, TaskPrior] = {}
         self._policy_regrets: dict[str, PolicyRegret] = {}
+        self._repo_escalation: dict[str, EscalationPrior] = {}
+        self._task_escalation: dict[str, EscalationPrior] = {}
         self._record_count: int = 0
         self._source_path: str = ""
 
@@ -154,6 +175,8 @@ class PolicyMemory:
         self._repo_priors.clear()
         self._task_priors.clear()
         self._policy_regrets.clear()
+        self._repo_escalation.clear()
+        self._task_escalation.clear()
         self._record_count = len(records)
 
         # Group by repo
@@ -178,6 +201,9 @@ class PolicyMemory:
         # Build policy regrets
         for repo, recs in repo_records.items():
             self._policy_regrets[repo] = self._build_policy_regret(repo, recs)
+            self._repo_escalation[repo] = self._build_escalation_prior(recs)
+        for iid, recs in task_records.items():
+            self._task_escalation[iid] = self._build_escalation_prior(recs)
 
     def _build_repo_prior(self, repo: str, records: list[dict]) -> RepoPrior:
         prior = RepoPrior(repo=repo)
@@ -297,6 +323,38 @@ class PolicyMemory:
                 regret.regret = (full_avg - tight_avg) / tight_avg
         return regret
 
+    def _build_escalation_prior(self, records: list[dict]) -> EscalationPrior:
+        prior = EscalationPrior()
+        for record in records:
+            if str(record.get("routing") or "") != "budgetflow_value_aware":
+                continue
+            traces = record.get("turn_traces") or []
+            if not isinstance(traces, list):
+                continue
+            escalation_traces = [
+                trace for trace in traces
+                if isinstance(trace, dict) and _trace_has_value_triggered_escalation(trace)
+            ]
+            if not escalation_traces:
+                continue
+            prior.attempts += 1
+            if record.get("harness_resolved"):
+                prior.resolved += 1
+            for trace in escalation_traces:
+                if _trace_tier(trace) < 3:
+                    continue
+                prior.t3_turns += 1
+                productive = bool(trace.get("has_progress")) and not (
+                    trace.get("error_type") or trace.get("parser_error_type")
+                )
+                if productive:
+                    prior.t3_productive_turns += 1
+                else:
+                    prior.t3_no_progress_cost += float(
+                        trace.get("billable_cost") or trace.get("actual_cost") or 0.0
+                    )
+        return prior
+
     # ── query ──────────────────────────────────────────────────────────────
 
     def repo_prior(self, instance_id: str) -> RepoPrior:
@@ -310,6 +368,13 @@ class PolicyMemory:
         repo = _extract_repo(instance_id)
         return self._policy_regrets.get(repo)
 
+    def escalation_prior(self, instance_id: str) -> tuple[EscalationPrior, str]:
+        task_prior = self._task_escalation.get(instance_id)
+        if task_prior is not None and task_prior.attempts > 0:
+            return task_prior, "task"
+        repo = _extract_repo(instance_id)
+        return self._repo_escalation.get(repo, EscalationPrior()), "repo"
+
     def routing_prior_summary(self, instance_id: str, stage: Stage | None = None) -> dict:
         repo = self.repo_prior(instance_id)
         task = self.task_prior(instance_id)
@@ -317,6 +382,8 @@ class PolicyMemory:
 
         # Determine learned action
         action = self._learned_action(instance_id, stage)
+        escalation, escalation_source = self.escalation_prior(instance_id)
+        escalation_action, escalation_window = _escalation_action(escalation)
 
         # Top failure class for task
         task_top_failure = ""
@@ -342,6 +409,13 @@ class PolicyMemory:
             "learned_action": action,
             "regret_threshold": self.regret_threshold,
             "policy_memory_source": self._source_path or "",
+            "escalation_memory_source": escalation_source if escalation.attempts else "",
+            "escalation_attempts": escalation.attempts,
+            "escalation_success_rate": round(escalation.success_rate, 3),
+            "t3_productive_rate": round(escalation.t3_productive_rate, 3),
+            "t3_no_progress_cost": round(escalation.t3_no_progress_cost, 4),
+            "value_triggered_escalation_action": escalation_action,
+            "value_triggered_escalation_window": escalation_window,
         }
         if stage:
             summary["stage_t2_success"] = round(repo.t2_stage_success.get(stage.value, 0), 3)
@@ -454,3 +528,35 @@ class PolicyMemory:
 
 def _pick_tier(pick) -> int:
     return parse_tier_label(pick)
+
+
+def _trace_tier(trace: dict) -> int:
+    tier = trace.get("backend_tier")
+    try:
+        parsed = int(tier)
+    except (TypeError, ValueError):
+        parsed = 0
+    return max(parsed, parse_tier_label(trace.get("final_backend") or ""))
+
+
+def _trace_has_value_triggered_escalation(trace: dict) -> bool:
+    """Read both new and historical trace field names."""
+    return bool(
+        trace.get("value_triggered_escalation_active")
+        or trace.get("value_triggered_escalation_opened")
+        or trace.get("value_salvage_active")
+        or trace.get("value_salvage_triggered")
+    )
+
+
+def _escalation_action(prior: EscalationPrior) -> tuple[str, int]:
+    """Convert Escalation Memory into a next-run Value-Triggered Escalation policy."""
+    if prior.attempts <= 0:
+        return "default", 3
+    if prior.attempts >= 2 and prior.resolved == 0 and prior.t3_no_progress_cost >= 0.15:
+        return "disable_value_triggered_escalation", 0
+    if prior.attempts >= 2 and prior.t3_productive_rate < 0.15:
+        return "shorten_value_triggered_escalation", 1
+    if prior.success_rate >= 0.6 and prior.t3_productive_rate >= 0.25:
+        return "extend_value_triggered_escalation", 4
+    return "default", 3

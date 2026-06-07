@@ -8,7 +8,7 @@ Shared vocabulary for agents and researchers working on this project.
 The paper's North Star claim: under a hard shared budget pool, the system should maximize verified resolved value per dollar. This is a governance/allocation claim, not merely a per-task cost claim. A run only supports this claim when task values are non-equal and the JSONL rows show a real `value_source=value_matrix` (or another explicit non-equal source), not fallback equal values.
 
 ### Tier 2 claim
-The mechanism claim: the routing heuristic should reduce waste from strong models and improve cost efficiency or pass/cost tradeoffs against static, dummy, or simpler routing baselines. Tier 2 can be supported by equal-value routing evidence, but it does not by itself prove Tier 1.
+The mechanism claim: the routing heuristic should reduce T3 / Strongest Model waste and improve cost efficiency or pass/cost tradeoffs against static, dummy, or simpler routing baselines. Tier 2 can be supported by equal-value routing evidence, but it does not by itself prove Tier 1.
 
 ### task value proxy
 Task value is an observable proxy, not ground truth. Current preferred cold-start proxy is model success rarity / solve rarity: tasks solved by fewer capable policies or models receive higher value. Do not describe the current primary proxy as human-effort value. Long term, the system should learn value, difficulty, model success probability, progress signal quality, and cost online from verified outcomes.
@@ -46,8 +46,11 @@ Verified outcome memory used by Value-Driven Budget Allocation. Current cap lear
 ### soft cap
 Per-task spending recommendation derived from Value-Driven Budget Allocation memory, task features, and task value. Not a hard cut. Hard cap is the Governor's total_budget; soft cap is the allocator's signal.
 
-### rescue
-Evidence-based forced upgrade to a stronger tier when the agent finds and edits a gold file but repair stalls. Controlled by `EvidenceRescueState`: opens a bounded window after gold edit, forces tier upgrade within the window, and triggers stop-loss if rescue doesn't produce a passing patch.
+### evidence-triggered escalation
+Evidence-based forced upgrade to a stronger tier when the agent finds and edits a gold file but repair stalls. Controlled by `EvidenceRescueState`: opens a bounded window after gold edit, forces tier upgrade within the window, and triggers stop-loss if escalation does not produce a passing patch.
+
+### Value-Triggered Escalation
+Value-aware forced upgrade to T3 / Strongest Model for high-value tasks that stall before a patch or gold edit. This mechanism is controlled by Escalation Memory: prior runs can disable, shorten, keep, or extend the T3 window based on verified outcome, T3 Productive Rate, and T3 No-Progress Cost.
 
 ### headroom
 Remaining budget minus reserved cost. `spend_headroom = max(0, total_budget - spent_budget)`. Billable cost is clamped to headroom (`billable = min(actual_cost, spend_headroom)`). Governs whether rescue should engage and whether to downgrade.
@@ -71,12 +74,13 @@ Two modes:
 Current state: the memory writer is on by default for normal runs unless `--no-auto-budget-learn` is passed. Applying learned caps remains opt-in via `--auto-budget`, so evidence collection and budget policy changes are decoupled. The old `BudgetMemory` CLI path is retired from active runtime; historical reports that mention it are forensic-only.
 
 ### continual-learning stores
-BudgetFlow has two distinct memory stores.
+BudgetFlow has three distinct memory views.
 
-- `auto_budget_memory.jsonl` is cap/value-cost memory. It can estimate task caps and cap sufficiency. It must not be used as routing memory.
-- Run JSONL files are routing memory. They contain policy, backend picks, turn traces, failure axis, and verified outcome, so `PolicyMemory` can learn routing priors.
+- Cost Memory: `auto_budget_memory.jsonl` is cap/value-cost memory. It can estimate task caps and cap sufficiency. It must not be used as routing memory.
+- Routing Memory: run JSONL files contain policy, backend picks, turn traces, failure axis, and verified outcome, so `PolicyMemory` can learn routing priors.
+- Escalation Memory: the value-triggered escalation subset of run JSONL traces. It learns whether high-value T3 escalation was productive or wasted and feeds the next run's Value-Triggered Escalation window.
 
-New runs should load routing memory through `learning_context.py`, not by ad hoc file scans in the runner. A dry-run gate should show both sources separately: cap memory path and routing policy-memory source.
+New runs should load Routing Memory through `learning_context.py`, not by ad hoc file scans in the runner. A dry-run gate should show Cost Memory, Routing Memory, and Escalation Memory provenance separately when applicable.
 
 ## Current Decisions
 
@@ -86,6 +90,8 @@ New runs should load routing memory through `learning_context.py`, not by ad hoc
 - Tier 2 is an equal-value mechanism ablation inside Tier 1, not a separate North Star. It is useful for related work and debugging routing waste, but it must not be optimized in a way that sacrifices Tier 1 value-weighted outcomes.
 - Current P0 for experiments: non-equal value profiles must fail fast when the value matrix/profile/task lookup misses. Silent fallback to equal values corrupts Tier 1 evidence.
 - Use "Value-Driven Budget Allocation" in new docs and paper text. Treat "Automatic Budgeting" / `auto_budget` as legacy implementation names, not the research concept.
+- Use "Cost Memory", "Routing Memory", and "Escalation Memory" in current prose. `AutoBudgetMemory` and `PolicyMemory` remain implementation class names.
+- Use "Value-Triggered Escalation" for the high-value pre-patch T3 window. Do not introduce new "salvage" wording in current runtime/docs.
 
 ## Experiment Execution Constraints
 

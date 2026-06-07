@@ -41,7 +41,7 @@ def _has_invoice_accurate_cost(record: dict) -> bool:
     return "cache_hit" in sample or "provider_actual_cost" in sample
 
 
-def _strong_tier_id(records: list[dict]) -> int:
+def _t3_id(records: list[dict]) -> int:
     observed = [
         parse_tier_label(pick)
         for record in records
@@ -51,20 +51,20 @@ def _strong_tier_id(records: list[dict]) -> int:
     return max([tier for tier in observed + configured if tier > 0], default=0)
 
 
-def _strong_tier_usefulness(records: list[dict], strong_tier: int) -> dict[str, dict]:
+def _t3_productivity(records: list[dict], t3_tier: int) -> dict[str, dict]:
     by_strategy: dict[str, dict] = {}
-    if strong_tier <= 0:
+    if t3_tier <= 0:
         return by_strategy
     for record in records:
         strat = str(record.get("strategy", "unknown"))
         stats = by_strategy.setdefault(
             strat,
             {
-                "strong_tier_turns": 0,
-                "useful_strong_tier_turns": 0,
-                "wasted_strong_tier_turns": 0,
-                "strong_tier_cost": 0.0,
-                "wasted_strong_tier_cost": 0.0,
+                "t3_turns": 0,
+                "t3_productive_turns": 0,
+                "t3_no_progress_turns": 0,
+                "t3_cost": 0.0,
+                "t3_no_progress_cost": 0.0,
             },
         )
         traces = record.get("turn_traces") or []
@@ -77,22 +77,22 @@ def _strong_tier_usefulness(records: list[dict], strong_tier: int) -> dict[str, 
                 int(trace.get("backend_tier") or 0),
                 parse_tier_label(trace.get("final_backend") or ""),
             )
-            if tier < strong_tier:
+            if tier < t3_tier:
                 continue
             cost = float(trace.get("billable_cost") or trace.get("actual_cost") or 0.0)
             useful = bool(trace.get("has_progress")) and not (
                 trace.get("error_type") or trace.get("parser_error_type")
             )
-            stats["strong_tier_turns"] += 1
-            stats["strong_tier_cost"] += cost
+            stats["t3_turns"] += 1
+            stats["t3_cost"] += cost
             if useful:
-                stats["useful_strong_tier_turns"] += 1
+                stats["t3_productive_turns"] += 1
             else:
-                stats["wasted_strong_tier_turns"] += 1
-                stats["wasted_strong_tier_cost"] += cost
+                stats["t3_no_progress_turns"] += 1
+                stats["t3_no_progress_cost"] += cost
     for stats in by_strategy.values():
-        total = max(int(stats["strong_tier_turns"]), 1)
-        stats["useful_strong_tier_rate"] = stats["useful_strong_tier_turns"] / total
+        total = max(int(stats["t3_turns"]), 1)
+        stats["t3_productive_rate"] = stats["t3_productive_turns"] / total
     return by_strategy
 
 
@@ -106,8 +106,8 @@ def build_compact_audit(records: list[dict]) -> dict:
     failed = total - resolved
     total_cost = sum(float(r.get("total_cost") or 0) for r in records)
     verdicts = {id(r): build_verdict(r) for r in records}
-    strong_tier = _strong_tier_id(records)
-    strong_tier_stats = _strong_tier_usefulness(records, strong_tier)
+    t3_tier = _t3_id(records)
+    t3_stats = _t3_productivity(records, t3_tier)
 
     suspicious = sum(
         1 for r in records
@@ -248,8 +248,8 @@ def build_compact_audit(records: list[dict]) -> dict:
         "suspicious": suspicious,
         "no_trace": no_trace,
         "stagnation_pass": stag_pass,
-        "strong_tier": strong_tier,
-        "strong_tier_usefulness": strong_tier_stats,
+        "t3_tier": t3_tier,
+        "t3_productivity": t3_stats,
         "by_strategy": {
             strat: {
                 "total": s["total"], "pass": s["pass"], "fail": s["fail"],

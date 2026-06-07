@@ -6,13 +6,15 @@
 
 ### 078 / 067 metric-contract paid gate and checker fix
 
+- **Continual-learning bug fixed after 067:** BFV's high-value pre-patch T3 window is now **Value-Triggered Escalation** and is connected to **Escalation Memory**. Prior paid outcomes can disable, shorten, keep, or extend the next run's T3 window based on verified outcome, T3 Productive Rate, and T3 No-Progress Cost.
+- **Terminology cleanup in active runtime:** current JSONL traces and compact audit now use `value_triggered_escalation_*` and `t3_productivity`; old `value_salvage_*` and strong-tier metric aliases are not written by new runtime paths.
 - **067_metrics_3x3_v1 COMPLETE — small paid diagnostic after metric-contract cleanup.** 3 tasks × 3 policies, `--jobs 3`, `--auto-budget`, frozen `048_value_matrix.json`, `unsolved_difficulty`, `--auto-budget-max 0.50`. 9/9 rows complete; provider preflight passed; runtime root was `/tmp/budgetflow-runtime`.
 - **T1 primary is not won:** BO, BFC, and BFV all resolved the same two tasks, so Normalized Verified Resolved Value is identical at **0.5871**. This run is not value-allocation win evidence.
 - **T1 secondary / T2 frontier signal is positive for BFV:** same 2/3 verified resolution at lower cost: BFV **$0.3510**, BFC **$0.4478**, BO **$0.5925**. RVPD: BFV **1.1058**, BFC **0.8667**, BO **0.6550**.
-- **T2 mechanism is mixed/negative for BFV:** strong-tier usefulness is BO 0/9, BFC 4/8, BFV 1/12; BFV wasted strong-tier cost **$0.2739**. BFV is cheapest overall by reducing total turns, but its strong-tier salvage is still too wasteful.
+- **T2 mechanism is mixed/negative for BFV:** T3 Productive Rate is BO 0/9, BFC 4/8, BFV 1/12; BFV T3 No-Progress Cost is **$0.2739**. BFV is cheapest overall by reducing total turns, but its Value-Triggered Escalation is still too wasteful.
 - **Checker bug fixed during review:** `build_harness_trust()` now distinguishes PASS-complete evidence from evaluated-failure evidence. No-patch FAIL rows are non-blocking incomplete evidence; patch-evaluated `fail_after=fail` rows are trusted failures; resolved rows with missing pass evidence remain blocking. Re-audit of 067: suspicious_pass=0, no_trace=0, no blocking harness severity.
 - **Report:** `docs/reports/067.md`.
-- **Next direction:** do not scale yet. Improve BFV strong-tier salvage quality, then rerun a small policy-parallel gate with at least one Django task.
+- **Next direction:** do not scale yet. Verify Escalation Memory in a no-paid dry-run/checker pass, then rerun a small policy-parallel gate with at least one Django task.
 
 ### 077 / Canonical continual-learning path cleanup
 
@@ -26,7 +28,7 @@
 - **Run persistence rename:** `compare_artifacts.py` was renamed to `compare_persistence.py`; the module now reflects its active responsibility: run state, JSONL persistence, learning-memory writes, and summary snapshots.
 - **Tier evidence interface cleanup:** compare summaries and compact audits now use generic tier mixes / `tier_turns` instead of storing `spark/flash/pro` or fixed T1/T2/T3 summary state. Conservation-lockout classification now checks strongest-tier access from the model-tier catalog, so future 5-tier catalogs do not misclassify T3 access as strongest-tier access.
 - **Obsolete analysis CLI cleanup:** deleted the old `check_consistency.py` checkpoint checker and `value_rescore.py` Phase-N rescore CLI from active code. Current evidence checks live under `run_observability`; current value semantics live in `value_efficiency.py` / value-matrix tooling. `proxy_noise.py` was renamed to `value_proxy_noise.py`.
-- **T1/T2 metric contract fixed:** `north_star.md` now freezes T1 primary metric as Normalized Verified Resolved Value at fixed budget, with RVPD and Online Learning Lift as supporting evidence. T2 now has two standalone routing metrics: Verified Resolution-Cost Frontier and Useful Strong-Tier Utilization / wasted strong-tier cost. Runtime summaries expose `nvrv`; compact audit exposes strong-tier usefulness from turn traces.
+- **T1/T2 metric contract fixed:** `north_star.md` now freezes T1 primary metric as Normalized Verified Resolved Value at fixed budget, with RVPD and Online Learning Lift as supporting evidence. T2 now has two standalone routing metrics: Verified Resolution-Cost Frontier plus T3 Productive Rate / T3 No-Progress Cost. Runtime summaries expose `nvrv`; compact audit exposes T3 productivity from turn traces.
 - **Verification:** `176 passed`, `py_compile` passed for `paper1/src/budgetflow`, `git diff --check` passed, and no-provider `--auto-budget-dry-run` loaded cap memory plus routing policy memory.
 
 ### 076 / Provider-agnostic tier seam and obsolete probe cleanup

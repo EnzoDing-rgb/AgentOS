@@ -24,9 +24,9 @@ from ..defaults import (
     TIER1_BACKEND,
     TIER_ESCALATION_PATIENCE,
     TIER_MAX_TURNS,
-    VALUE_SALVAGE_MIN_HEADROOM_FRAC,
-    VALUE_SALVAGE_MIN_MULTIPLIER,
-    VALUE_SALVAGE_WINDOW_TURNS,
+    VALUE_TRIGGERED_ESCALATION_DEFAULT_WINDOW_TURNS,
+    VALUE_TRIGGERED_ESCALATION_MIN_HEADROOM_FRAC,
+    VALUE_TRIGGERED_ESCALATION_MIN_MULTIPLIER,
 )
 from ..model_tiers import MODEL_CATALOG, TIER_CONFIGS, ModelCatalog, apply_provider_proxy, load_env_file
 from ..console_log import backend_tier_label, bold, dim, routing_stage_label, tag
@@ -192,9 +192,11 @@ class BudgetFlowLitellmModel:
         self._format_error_streak: int = 0
         self._last_text_mode: bool = False
         self._unavailable_backends: set[str] = set()
-        self._value_salvage_turns_remaining = 0
-        self._value_salvage_triggered = False
-        self._value_salvage_reason: str | None = None
+        self._value_triggered_escalation_turns_remaining = 0
+        self._value_triggered_escalation_opened = False
+        self._value_triggered_escalation_reason: str | None = None
+        self._value_triggered_escalation_action = "default"
+        self._value_triggered_escalation_window = VALUE_TRIGGERED_ESCALATION_DEFAULT_WINDOW_TURNS
         strongest = ModelCatalog.strongest(routing.backends)
         self.config = type("Config", (), {"model_name": MODEL_CATALOG.require_config(strongest.name).model})()
 
@@ -250,12 +252,12 @@ class BudgetFlowLitellmModel:
             recent_commands=self._recent_commands,
         )
         if should_stop:
-            if self._maybe_open_value_salvage(stall_reason):
+            if self._maybe_open_value_triggered_escalation(stall_reason):
                 should_stop = False
-            elif self._value_salvage_turns_remaining > 0:
+            elif self._value_triggered_escalation_turns_remaining > 0:
                 should_stop = False
-            elif self._value_salvage_triggered:
-                self._value_salvage_reason = f"expired_{stall_reason}"
+            elif self._value_triggered_escalation_opened:
+                self._value_triggered_escalation_reason = f"expired_{stall_reason}"
         if should_stop:
             print(
                 f"{tag('stall', bold=False)} #{self.step_index} "
@@ -321,7 +323,7 @@ class BudgetFlowLitellmModel:
                     no_progress_streak=self._no_progress_streak,
                 )
         prev_tier = self._last_backend_tier
-        backend = self._apply_value_salvage(backend, stage)
+        backend = self._apply_value_triggered_escalation(backend, stage)
         backend = self._apply_progress_escalation(backend)
         backend = self._apply_gold_edit_repair_guard(backend, stage)
         escalated_backend = backend.name
@@ -339,8 +341,8 @@ class BudgetFlowLitellmModel:
             guarded_tier = ModelCatalog.second_cheapest(self.routing.backends).tier
             if self.agent_gold_edited and stage in (Stage.REPAIR, Stage.VALIDATION) and backend.tier == guarded_tier:
                 self._gold_edit_mid_tier_repair_turns += 1
-            if backend.tier >= ModelCatalog.strongest(self.routing.backends).tier and self._value_salvage_turns_remaining > 0:
-                self._value_salvage_turns_remaining -= 1
+            if backend.tier >= ModelCatalog.strongest(self.routing.backends).tier and self._value_triggered_escalation_turns_remaining > 0:
+                self._value_triggered_escalation_turns_remaining -= 1
             self.routing.last_backend = backend
             self.backend_picks.append(backend.name)
             self.last_routing_stage = stage.value
@@ -588,14 +590,20 @@ class BudgetFlowLitellmModel:
             self.last_budget_snapshot = self.governor.budget_snapshot()
 
     def _gold_edit_guard_trace_fields(self) -> dict[str, object]:
+        active = self._value_triggered_escalation_turns_remaining > 0
+        opened = self._value_triggered_escalation_opened
+        remaining = self._value_triggered_escalation_turns_remaining
+        reason = self._value_triggered_escalation_reason
         return {
             "gold_edit_guard_turns": self._gold_edit_mid_tier_repair_turns,
             "gold_edit_guard_limit": GOLD_EDIT_MID_TIER_REPAIR_TURN_LIMIT,
             "gold_edit_guard_active": self._gold_edit_mid_tier_repair_turns >= GOLD_EDIT_MID_TIER_REPAIR_TURN_LIMIT,
-            "value_salvage_active": self._value_salvage_turns_remaining > 0,
-            "value_salvage_turns_remaining": self._value_salvage_turns_remaining,
-            "value_salvage_triggered": self._value_salvage_triggered,
-            "value_salvage_reason": self._value_salvage_reason,
+            "value_triggered_escalation_active": active,
+            "value_triggered_escalation_turns_remaining": remaining,
+            "value_triggered_escalation_opened": opened,
+            "value_triggered_escalation_reason": reason,
+            "value_triggered_escalation_action": self._value_triggered_escalation_action,
+            "value_triggered_escalation_window": self._value_triggered_escalation_window,
         }
 
     def _task_value_multiplier(self) -> float:
@@ -603,45 +611,61 @@ class BudgetFlowLitellmModel:
         value = float(getattr(self.routing, "task_value", median) or median)
         return max(0.5, min(2.0, value / median))
 
-    def _can_value_salvage(self) -> bool:
+    def _refresh_value_triggered_escalation_policy(self) -> None:
+        prior = getattr(getattr(self.routing, "adaptive", None), "_prior_summary", None) or {}
+        action = str(prior.get("value_triggered_escalation_action") or "default")
+        raw_window = prior.get("value_triggered_escalation_window")
+        if raw_window is None:
+            raw_window = VALUE_TRIGGERED_ESCALATION_DEFAULT_WINDOW_TURNS
+        window = int(raw_window)
+        self._value_triggered_escalation_action = action
+        self._value_triggered_escalation_window = max(0, window)
+
+    def _can_value_triggered_escalation(self) -> bool:
+        self._refresh_value_triggered_escalation_policy()
         if self.routing.strategy != "budgetflow_value_aware":
             return False
-        if self._value_salvage_triggered:
+        if self._value_triggered_escalation_opened:
+            return False
+        if self._value_triggered_escalation_action == "disable_value_triggered_escalation":
+            return False
+        if self._value_triggered_escalation_window <= 0:
             return False
         if self.agent_gold_edited:
             return False
-        if self._task_value_multiplier() < VALUE_SALVAGE_MIN_MULTIPLIER:
+        if self._task_value_multiplier() < VALUE_TRIGGERED_ESCALATION_MIN_MULTIPLIER:
             return False
         total = float(self.governor.state.total_budget or 0.0)
         if total <= 0:
             return False
         remaining_frac = self.governor.remaining_budget() / total
-        return remaining_frac >= VALUE_SALVAGE_MIN_HEADROOM_FRAC
+        return remaining_frac >= VALUE_TRIGGERED_ESCALATION_MIN_HEADROOM_FRAC
 
-    def _maybe_open_value_salvage(self, stall_reason: str) -> bool:
-        if not self._can_value_salvage():
+    def _maybe_open_value_triggered_escalation(self, stall_reason: str) -> bool:
+        if not self._can_value_triggered_escalation():
             return False
-        self._value_salvage_triggered = True
-        self._value_salvage_turns_remaining = VALUE_SALVAGE_WINDOW_TURNS
-        self._value_salvage_reason = f"opened_{stall_reason}"
+        self._value_triggered_escalation_opened = True
+        self._value_triggered_escalation_turns_remaining = self._value_triggered_escalation_window
+        self._value_triggered_escalation_reason = f"opened_{stall_reason}"
         print(
-            f"{tag('salvage', bold=False)} #{self.step_index} "
+            f"{tag('value-escalation', bold=False)} #{self.step_index} "
             f"value_multiplier={self._task_value_multiplier():.2f} "
-            f"window={VALUE_SALVAGE_WINDOW_TURNS} reason={stall_reason}",
+            f"window={self._value_triggered_escalation_window} "
+            f"action={self._value_triggered_escalation_action} reason={stall_reason}",
             flush=True,
         )
         return True
 
-    def _apply_value_salvage(self, backend: Backend, stage) -> Backend:  # noqa: ARG002
-        if self._value_salvage_turns_remaining <= 0:
+    def _apply_value_triggered_escalation(self, backend: Backend, stage) -> Backend:  # noqa: ARG002
+        if self._value_triggered_escalation_turns_remaining <= 0:
             return backend
         candidate = ModelCatalog.strongest(self.routing.backends)
         if candidate is None or backend.tier >= candidate.tier:
             return backend
         print(
-            f"{tag('salvage', bold=False)} #{self.step_index} "
+            f"{tag('value-escalation', bold=False)} #{self.step_index} "
             f"{backend_tier_label(backend.name)} -> {backend_tier_label(candidate.name)} "
-            f"remaining={self._value_salvage_turns_remaining}",
+            f"remaining={self._value_triggered_escalation_turns_remaining}",
             flush=True,
         )
         self._no_progress_on_current_tier = 0

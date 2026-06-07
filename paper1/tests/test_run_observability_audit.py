@@ -23,7 +23,7 @@ def test_compact_audit_preserves_generic_tier_counts() -> None:
     assert stats["t3_turns"] == 0
 
 
-def test_compact_audit_reports_strong_tier_usefulness() -> None:
+def test_compact_audit_reports_t3_productivity() -> None:
     audit = build_compact_audit([
         {
             "instance_id": "repo__task",
@@ -52,18 +52,18 @@ def test_compact_audit_reports_strong_tier_usefulness() -> None:
         }
     ])
 
-    stats = audit["strong_tier_usefulness"]["budgetflow_conservative_tight"]
+    stats = audit["t3_productivity"]["budgetflow_conservative_tight"]
 
-    assert audit["strong_tier"] == 5
-    assert stats["strong_tier_turns"] == 2
-    assert stats["useful_strong_tier_turns"] == 1
-    assert stats["wasted_strong_tier_turns"] == 1
-    assert stats["useful_strong_tier_rate"] == 0.5
-    assert stats["wasted_strong_tier_cost"] == 0.04
+    assert audit["t3_tier"] == 5
+    assert stats["t3_turns"] == 2
+    assert stats["t3_productive_turns"] == 1
+    assert stats["t3_no_progress_turns"] == 1
+    assert stats["t3_productive_rate"] == 0.5
+    assert stats["t3_no_progress_cost"] == 0.04
 
     text = format_compact_audit(audit)
-    assert "T2 STRONG-TIER USEFULNESS" in text
-    assert "strongest=T5" in text
+    assert "T2 T3 PRODUCTIVITY" in text
+    assert "strongest_model=T5" in text
 
 
 def test_harness_trust_treats_no_patch_fail_as_non_blocking() -> None:

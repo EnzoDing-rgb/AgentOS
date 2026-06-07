@@ -138,7 +138,7 @@ Tier 2 evaluation should stand alone as a routing claim even when task value is 
 | Role | Metric | Formula / Report | Use |
 |---|---|---|---|
 | Primary | Verified resolution-cost frontier | Pass rate or verified resolved count across budget levels; report AUC or fixed-budget / fixed-pass-rate comparisons. | Shows whether routing solves more verified tasks for the same spend, or spends less for the same verified resolution. |
-| Mechanism | Useful strong-tier utilization | `useful_strong_tier_turns / strong_tier_turns`, plus wasted strong-tier cost from no-progress / parser / provider failure turns. | Shows whether strong models are used at the right moments rather than merely used less. |
+| Mechanism | T3 Productive Rate and T3 No-Progress Cost | `t3_productive_turns / t3_turns`, plus T3 cost from no-progress / parser / provider failure turns. | Shows whether T3 / Strongest Model is used at the right moments rather than merely used less. |
 
 T2 is not allowed to win by making T1 worse. If value-aware allocation and routing disagree, the T1 metric decides the paper direction and T2 becomes an ablation result.
 
@@ -226,7 +226,7 @@ The policy should optimize expected marginal value:
 route_score = expected_value_gain(task, action) / expected_marginal_cost(action)
 ```
 
-This makes Value-Driven Budget Allocation a value-learning component, not only a cost memory. Its cap/value-cost store estimates cost, success, cap sufficiency, and value signals from verified outcomes so BudgetFlow can maximize value per dollar. Routing priors stay separate in PolicyMemory.
+This makes Value-Driven Budget Allocation a value-learning component, not only a cost memory. Cost Memory estimates cost, success, cap sufficiency, and value signals from verified outcomes so BudgetFlow can maximize value per dollar. Routing Memory stays separate; Escalation Memory learns whether Value-Triggered Escalation spends T3 / Strongest Model turns productively.
 
 ## Budget Account Model
 
@@ -264,7 +264,7 @@ Core actions:
 | Action | Meaning |
 |---|---|
 | Start cheap | Try a lower-cost model when historical evidence says it is likely enough. |
-| Start strong | Use a strong model immediately for high-value or historically hard tasks. |
+| Start at T3 / Strongest Model | Use T3 / Strongest Model immediately for high-value or historically hard tasks. |
 | Escalate | Move to a stronger model when progress stalls or task value justifies it. |
 | De-escalate | Return to cheaper models for mechanical steps after strong-model insight. |
 | Stop | Avoid wasting budget when evidence suggests low success probability. |
@@ -347,7 +347,7 @@ Current local harness is the inner loop. Official SWE-bench Docker harness shoul
 |---|---|
 | Budget Governor | Enforce hard cap, soft cap, reservation, settlement, and shared budget accounting. |
 | Value Estimator | Estimate task value from injected hints, heuristics, and learned historical evidence. |
-| Automatic Budgeting | Estimate task cap from value, history, task features, model costs, and prior outcomes. |
+| Value-Driven Budget Allocation | Estimate task cap from value, history, task features, model costs, and prior outcomes. |
 | Adaptive Routing | Select model tier per stage and escalate/de-escalate from progress and pressure. |
 | Observability | Persist JSONL, turn traces, cost, backend mix, patch source, and failure axis. |
 | Harness Adapter | Verify patches with fail-before, fail-after, and pass-to-pass evidence. |
