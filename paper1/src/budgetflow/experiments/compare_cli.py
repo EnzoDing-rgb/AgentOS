@@ -78,7 +78,7 @@ def parse_compare_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--trace-truncate-chars", type=int, default=120, help="max bash digest chars")
     parser.add_argument(
         "--value-profile",
-        choices=("equal", "difficulty", "discriminative_rarity", "unsolved_difficulty", "combined"),
+        choices=("equal", "difficulty", "discriminative_rarity", "unsolved_difficulty", "combined", "cold_start_difficulty"),
         default="equal",
         help="Value profile for task value assignment",
     )
@@ -97,6 +97,12 @@ def parse_compare_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--auto-budget-max", type=float, default=10.0, help="maximum per-task cap")
     parser.add_argument("--auto-budget-mode", choices=("per_task",), default="per_task", help="budget mode")
     parser.add_argument("--auto-budget-memory", type=str, default=None, help="Value-Driven Budget Allocation memory")
+    parser.add_argument(
+        "--allow-global-fallback-auto-budget",
+        action="store_true",
+        default=False,
+        help="allow paid runs when auto-budget caps are entirely global fallback diagnostics",
+    )
     parser.add_argument("--no-auto-budget-learn", action="store_true", default=False, help="disable memory writes")
     parser.add_argument("--auto-budget-k", type=int, default=3, help="k for kNN fallback")
     parser.add_argument("--runtime-root", type=str, default=None, help="runtime scratch root")

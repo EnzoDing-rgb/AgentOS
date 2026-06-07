@@ -15,6 +15,8 @@ def _args(**overrides):
         ids=None,
         task_set="easy",
         trace_turns=True,
+        auto_budget_dry_run=False,
+        allow_global_fallback_auto_budget=False,
     )
     base.update(overrides)
     return Namespace(**base)
@@ -83,3 +85,51 @@ def test_readiness_blocks_underparallel_policy_jobs() -> None:
 
     assert not report.ok
     assert any("policy_jobs=1" in issue for issue in report.blocking)
+
+
+def test_readiness_blocks_paid_run_when_auto_budget_has_no_memory_lift() -> None:
+    value_context = ValueEfficiencyContext()
+    value_context.init(value_profile="equal")
+
+    report = build_compare_readiness_report(
+        args=_args(),
+        tasks=[SimpleNamespace(instance_id="task-a"), SimpleNamespace(instance_id="task-b")],
+        strategies=(CompareStrategy("budget_only_tight", "budget_only", "tight"),),
+        policy_jobs=1,
+        value_context=value_context,
+        catalog_issues=[],
+        runtime_root=Path("/tmp/budgetflow-runtime"),
+        auto_budget_enabled=True,
+        auto_budget_caps={"task-a": 0.1, "task-b": 0.2},
+        auto_budget_estimates={
+            "task-a": SimpleNamespace(source="global_fallback", confidence="low"),
+            "task-b": SimpleNamespace(source="global_fallback", confidence="low"),
+        },
+    )
+
+    assert not report.ok
+    assert any("do not claim Cost Memory lift" in issue for issue in report.blocking)
+
+
+def test_readiness_allows_explicit_global_fallback_cap_diagnostic() -> None:
+    value_context = ValueEfficiencyContext()
+    value_context.init(value_profile="equal")
+
+    report = build_compare_readiness_report(
+        args=_args(allow_global_fallback_auto_budget=True),
+        tasks=[SimpleNamespace(instance_id="task-a"), SimpleNamespace(instance_id="task-b")],
+        strategies=(CompareStrategy("budget_only_tight", "budget_only", "tight"),),
+        policy_jobs=1,
+        value_context=value_context,
+        catalog_issues=[],
+        runtime_root=Path("/tmp/budgetflow-runtime"),
+        auto_budget_enabled=True,
+        auto_budget_caps={"task-a": 0.1, "task-b": 0.2},
+        auto_budget_estimates={
+            "task-a": SimpleNamespace(source="global_fallback", confidence="low"),
+            "task-b": SimpleNamespace(source="global_fallback", confidence="low"),
+        },
+    )
+
+    assert report.ok
+    assert any("do not claim Cost Memory lift" in warning for warning in report.warnings)

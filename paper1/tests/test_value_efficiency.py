@@ -17,6 +17,7 @@ def test_equal_profile_is_t2_equal_value_ablation() -> None:
     })
 
     assert record["value_objective"] == "t2_equal_value_ablation"
+    assert record["task_value_source_class"] == "default_equal"
     assert record["task_value"] == 1.0
     assert record["resolved_value"] == 1.0
     assert record["resolved_value_per_dollar"] == 4.0
@@ -42,10 +43,34 @@ def test_non_equal_profile_is_t1_value_efficiency(tmp_path) -> None:
     })
 
     assert record["value_objective"] == "t1_value_efficiency"
+    assert record["task_value_source_class"] == "historical_cross_strategy"
     assert record["task_value"] == 0.5
     assert record["resolved_value"] == 0.5
     assert record["resolved_value_per_dollar"] == 2.0
     assert record["task_value_multiplier"] == pytest.approx(1.6667, abs=0.0001)
+
+
+def test_cold_start_profile_is_separate_t1_diagnostic(tmp_path) -> None:
+    matrix = tmp_path / "value_matrix.json"
+    matrix.write_text(json.dumps({
+        "tasks": {
+            "task-a": {"values": {"cold_start_difficulty": 4.0}},
+            "task-b": {"values": {"cold_start_difficulty": 2.0}},
+        }
+    }))
+    ctx = ValueEfficiencyContext()
+    ctx.init(value_profile="cold_start_difficulty", value_matrix_path=str(matrix))
+
+    record = ctx.enrich_record({
+        "instance_id": "task-a",
+        "routing": "budgetflow_value_aware",
+        "harness_resolved": True,
+        "task_cost": 0.5,
+    })
+
+    assert record["value_objective"] == "t1_cold_start_value_diagnostic"
+    assert record["task_value_source_class"] == "cold_start_ex_ante_metadata"
+    assert record["resolved_value"] == 4.0
 
 
 def test_summary_reports_primary_fixed_budget_value_metric() -> None:

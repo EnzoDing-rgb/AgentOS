@@ -36,6 +36,7 @@ def build_compare_readiness_report(
     runtime_root: Path,
     auto_budget_enabled: bool,
     auto_budget_caps: dict[str, float] | None,
+    auto_budget_estimates: dict[str, object] | None = None,
 ) -> ReadinessReport:
     blocking: list[str] = []
     warnings: list[str] = []
@@ -84,6 +85,26 @@ def build_compare_readiness_report(
         warnings.append("small familiar task set; diagnostic only, weak anti-overfitting evidence")
     if auto_budget_enabled and not auto_budget_caps:
         blocking.append("auto-budget enabled but no dynamic task caps were produced")
+    if auto_budget_enabled and auto_budget_estimates:
+        estimates = list(auto_budget_estimates.values())
+        fallback_n = sum(1 for estimate in estimates if str(getattr(estimate, "source", "")) == "global_fallback")
+        low_conf_n = sum(1 for estimate in estimates if str(getattr(estimate, "confidence", "")) == "low")
+        if estimates and fallback_n == len(estimates):
+            msg = "auto-budget caps are all global_fallback; do not claim Cost Memory lift"
+            if (
+                getattr(args, "allow_global_fallback_auto_budget", False)
+                or getattr(args, "auto_budget_dry_run", False)
+            ):
+                warnings.append(msg)
+            else:
+                blocking.append(
+                    msg
+                    + "; pass --allow-global-fallback-auto-budget only for a fallback-cap diagnostic"
+                )
+        elif estimates and fallback_n / len(estimates) >= 0.5:
+            warnings.append(f"auto-budget caps mostly global_fallback ({fallback_n}/{len(estimates)}); cap learning is weak")
+        if estimates and low_conf_n / len(estimates) >= 0.5:
+            warnings.append(f"auto-budget estimates mostly low confidence ({low_conf_n}/{len(estimates)})")
     if not args.trace_turns:
         warnings.append("turn traces disabled; T3 Productive Rate/source breakdown will be weak")
 

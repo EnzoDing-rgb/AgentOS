@@ -46,6 +46,18 @@ def test_routing_observability_marks_equal_value_bfv_as_ablation() -> None:
     assert record["routing_policy_family"] == "bfv_equal_value_ablation"
 
 
+def test_routing_observability_marks_cold_start_bfv_as_diagnostic() -> None:
+    record = {
+        "routing": "budgetflow_value_aware",
+        "task_value_profile": "cold_start_difficulty",
+    }
+
+    enrich_routing_observability(record)
+
+    assert record["routing_objective"] == "t1_cold_start_value_diagnostic"
+    assert record["routing_policy_family"] == "bfv_cold_start_value_diagnostic"
+
+
 def test_routing_observability_marks_bo_as_baseline() -> None:
     record = {"routing": "budget_only", "task_value_profile": "difficulty"}
 

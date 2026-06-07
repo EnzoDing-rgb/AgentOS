@@ -190,6 +190,80 @@ PROFILES: dict[str, ValueFn] = {
 }
 
 
+def cold_start_task_features(task) -> dict[str, int]:
+    """Extract ex-ante task features used by the cold-start value profile."""
+    return {
+        "patch_lines": len(str(getattr(task, "patch", "") or "").splitlines()),
+        "f2p_count": len(getattr(task, "fail_to_pass", ()) or ()),
+        "p2p_count": len(getattr(task, "pass_to_pass", ()) or ()),
+        "problem_words": len(str(getattr(task, "problem_statement", "") or "").split()),
+        "gold_file_count": len(getattr(task, "gold_files", ()) or ()),
+    }
+
+
+def cold_start_task_values(task) -> dict[str, float]:
+    """No-outcome cold-start values from task text/patch/test metadata only."""
+    features = cold_start_task_features(task)
+    import math
+
+    raw = (
+        1.0
+        + features["patch_lines"]
+        + 2.0 * features["f2p_count"]
+        + math.log1p(features["p2p_count"])
+        + 0.01 * features["problem_words"]
+        + 1.5 * features["gold_file_count"]
+    )
+    return {
+        "equal": 1.0,
+        "cold_start_difficulty": round(raw, 4),
+    }
+
+
+def build_cold_start_value_matrix(tasks: list, *, task_source: str) -> dict[str, Any]:
+    """Build value matrix for a selected task set without historical outcomes."""
+    matrix: dict[str, Any] = {
+        "meta": {
+            "task_count": len(tasks),
+            "profiles": ["equal", "cold_start_difficulty"],
+            "source": task_source,
+            "source_class": "cold_start_ex_ante_metadata",
+            "outcome_free": True,
+            "note": (
+                "Cold-start task values use only ex-ante SWE-bench task metadata: "
+                "patch lines, fail/pass test counts, problem words, and gold file count. "
+                "No strategy outcome, cost, solve rarity, or BudgetFlow signal is used."
+            ),
+            "formula": (
+                "cold_start_difficulty = 1 + patch_lines + 2*f2p_count + "
+                "log1p(p2p_count) + 0.01*problem_words + 1.5*gold_file_count"
+            ),
+        },
+        "tasks": {},
+    }
+    for task in tasks:
+        features = cold_start_task_features(task)
+        values = cold_start_task_values(task)
+        matrix["tasks"][task.instance_id] = {
+            "instance_id": task.instance_id,
+            "repo": task.repo,
+            "features": features,
+            "values": values,
+        }
+    matrix["rankings"] = {}
+    for profile in ("equal", "cold_start_difficulty"):
+        ranked = sorted(
+            matrix["tasks"].items(),
+            key=lambda item: item[1]["values"][profile],
+            reverse=True,
+        )
+        matrix["rankings"][profile] = [
+            {"rank": index + 1, "instance_id": iid, "value": entry["values"][profile]}
+            for index, (iid, entry) in enumerate(ranked)
+        ]
+    return matrix
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Robustness sensitivity
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -762,11 +836,48 @@ def _make_parser() -> argparse.ArgumentParser:
                    help="Also output within-task progress de-bias summary")
     p.add_argument("--profile", choices=list(PROFILES.keys()) + ["all"],
                    default="all", help="Which profile to compute (default: all)")
+    p.add_argument("--task-set", choices=("easy", "medium"), default=None,
+                   help="Build a no-outcome cold-start matrix for a compare task set")
+    p.add_argument("--ids", default=None,
+                   help="Comma-separated task IDs for a no-outcome cold-start matrix")
+    p.add_argument("--limit", type=int, default=None,
+                   help="Task count for --task-set cold-start matrix")
     return p
 
 
 def main(argv: list[str] | None = None) -> dict:
     args = _make_parser().parse_args(argv)
+
+    if args.task_set or args.ids:
+        from .lite_tasks import (
+            load_compare_easy_tasks,
+            load_compare_medium_tasks,
+            load_swebench_lite_tasks,
+        )
+
+        if args.ids:
+            ids = tuple(item.strip() for item in args.ids.split(",") if item.strip())
+            if not ids:
+                print("ERROR: --ids did not contain any task IDs", file=sys.stderr)
+                sys.exit(1)
+            tasks = load_swebench_lite_tasks(instance_ids=ids)
+            task_source = f"cold_start_ids:{','.join(ids)}"
+        elif args.task_set == "medium":
+            tasks = load_compare_medium_tasks(args.limit or 15)
+            task_source = f"cold_start_task_set:medium:{len(tasks)}"
+        else:
+            tasks = load_compare_easy_tasks(args.limit or 5)
+            task_source = f"cold_start_task_set:easy:{len(tasks)}"
+        matrix = build_cold_start_value_matrix(tasks, task_source=task_source)
+        output_text = json.dumps(matrix, indent=2, ensure_ascii=False)
+        if args.output == "-":
+            sys.stdout.write(output_text + "\n")
+        else:
+            out_path = Path(args.output)
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(output_text + "\n")
+            print(f"Written to {out_path}", file=sys.stderr)
+        return matrix
 
     data_dir = Path(args.data_dir)
     if not data_dir.is_dir():

@@ -13,16 +13,27 @@ def enrich_routing_observability(record: dict, *, policy_memory_source: str = ""
     prior = record.get("routing_prior_summary") or {}
     objective = str(record.get("value_objective") or "")
     if not objective:
-        objective = "t2_equal_value_ablation" if str(record.get("task_value_profile") or "equal") == "equal" else "t1_value_efficiency"
+        profile = str(record.get("task_value_profile") or "equal")
+        if profile == "equal":
+            objective = "t2_equal_value_ablation"
+        elif profile == "cold_start_difficulty":
+            objective = "t1_cold_start_value_diagnostic"
+        else:
+            objective = "t1_value_efficiency"
 
     if routing == "budgetflow_value_aware":
-        policy_family = (
-            "bfv_t1_value_aware"
-            if objective == "t1_value_efficiency"
-            else "bfv_equal_value_ablation"
-        )
+        if objective == "t1_value_efficiency":
+            policy_family = "bfv_t1_value_aware"
+        elif objective == "t1_cold_start_value_diagnostic":
+            policy_family = "bfv_cold_start_value_diagnostic"
+        else:
+            policy_family = "bfv_equal_value_ablation"
     elif routing == "value_aware_task_level":
-        policy_family = "bfv_t1_value_aware_task_level_control"
+        policy_family = (
+            "bfv_cold_start_task_level_control"
+            if objective == "t1_cold_start_value_diagnostic"
+            else "bfv_t1_value_aware_task_level_control"
+        )
     elif routing in {"budgetflow_conservative", "budgetflow_full", "budgetflow_equal_weight", "stage_blind"}:
         policy_family = "bfc_t2_mechanism"
     elif routing == "budget_only":

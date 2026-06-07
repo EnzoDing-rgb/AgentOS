@@ -200,6 +200,7 @@ def main() -> None:
         runtime_root=runtime_root,
         auto_budget_enabled=bool(args.auto_budget or args.auto_budget_dry_run),
         auto_budget_caps=auto_budget_task_caps,
+        auto_budget_estimates=auto_budget_estimates,
     )
     print(format_readiness_report(readiness), flush=True)
     if args.paid_readiness_only:

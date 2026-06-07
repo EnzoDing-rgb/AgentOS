@@ -21,7 +21,17 @@ class ValueEfficiencyContext:
 
     @property
     def objective(self) -> str:
+        if self.profile == "cold_start_difficulty":
+            return "t1_cold_start_value_diagnostic"
         return "t2_equal_value_ablation" if self.profile == "equal" else "t1_value_efficiency"
+
+    @property
+    def source_class(self) -> str:
+        if self.profile == "equal":
+            return "default_equal"
+        if self.profile == "cold_start_difficulty":
+            return "cold_start_ex_ante_metadata"
+        return "historical_cross_strategy"
 
     def init(self, *, value_profile: str = "equal", value_matrix_path: str | None = None) -> None:
         self.profile = value_profile
@@ -71,6 +81,7 @@ class ValueEfficiencyContext:
         va_active = routing in {"budgetflow_value_aware", "value_aware_task_level"}
         record["value_objective"] = self.objective
         record["task_value_profile"] = self.profile
+        record["task_value_source_class"] = self.source_class
         record["task_value"] = task_value
         record["resolved_value"] = resolved_value
         record["value_source"] = value_source
@@ -105,6 +116,7 @@ class ValueEfficiencyContext:
             "normalized_verified_resolved_value": round(nvrv, 6),
             "resolved_value_per_dollar": round(rvpd, 6),
             "value_profile": self.profile,
+            "task_value_source_class": self.source_class,
             "value_source": self.matrix_path or "default_equal",
             "value_objective": self.objective,
         }
