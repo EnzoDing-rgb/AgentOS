@@ -222,6 +222,6 @@ def noise_report(jsonl_path: str | Path, trials_per_config: int = 100) -> str:
 if __name__ == "__main__":
     import sys
     if len(sys.argv) < 2:
-        print("Usage: python -m budgetflow.proxy_noise <jsonl_path>")
+        print("Usage: python -m budgetflow.value_proxy_noise <jsonl_path>")
         sys.exit(1)
     print(noise_report(sys.argv[1]))
