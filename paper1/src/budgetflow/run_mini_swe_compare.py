@@ -51,25 +51,26 @@ from budgetflow.budget_memory import BudgetMemory, BudgetEstimate as BudgetMemor
 from budgetflow.console_log import dim, tag  # noqa: E402
 from budgetflow.deepseek_backend import load_env_file  # noqa: E402
 from budgetflow.experiments.compare_config import (  # noqa: E402
-    DEFAULT_STRATEGIES,
-    DIAGNOSTIC_STRATEGIES,
-    UNCAPPED_BUDGET,
     CompareStrategy,
     batch_budget_cap as _batch_budget_cap,
-    effective_policy_jobs as _effective_policy_jobs,
     fmt_usd as _fmt_usd,
     normalize_strategy as _normalize_strategy,
-    order_tasks_easy_first as _order_tasks_easy_first,
     required_backends_for_strategies as _required_backends_for_strategies,
-    strategy_catalog as _strategy_catalog,
     task_descriptor as _task_descriptor,
     w_i_profile_for_record as _w_i_profile_for_record,
     workspace_key as _workspace_key,
 )
 from budgetflow.experiments.compare_cli import (  # noqa: E402
-    PRESET_TASKS,
     parse_budget_memory_exclude as _parse_budget_memory_exclude,
     parse_compare_args,
+)
+from budgetflow.experiments.compare_setup import (  # noqa: E402
+    build_batch_budget_modes,
+    load_tasks_for_compare,
+    resolve_budget_plan,
+    resolve_task_count,
+    select_strategies,
+    trace_console_from_args,
 )
 from budgetflow.experiments.compare_artifacts import (  # noqa: E402
     CompareRunState,
@@ -91,17 +92,11 @@ from budgetflow.observability import (  # noqa: E402
     build_observability_status,
     parse_harness_evidence,
 )
-from budgetflow.defaults import (  # noqa: E402
-    BUDGET_PRESSURE_INIT,
-    PRESSURE_MAX,
-    TIER2_BACKEND,
-)
+from budgetflow.defaults import TIER2_BACKEND  # noqa: E402
 from budgetflow.heartbeat import run_with_heartbeat  # noqa: E402
 from budgetflow.learning_context import load_policy_memory_context  # noqa: E402
 from budgetflow.ledger import WorkflowLedgerStore  # noqa: E402
-from budgetflow.lite_tasks import load_compare_easy_tasks, load_compare_medium_tasks, load_swebench_lite_tasks  # noqa: E402
 from budgetflow.local_harness import set_worktree_root  # noqa: E402
-from budgetflow.protocol_caps import read_protocol_caps  # noqa: E402
 from budgetflow.adaptive_routing import AdaptiveRoutingRegistry  # noqa: E402
 from budgetflow.policy_memory import PolicyMemory  # noqa: E402
 from budgetflow.run_guards import CompareRunGuards, set_active_guard  # noqa: E402
@@ -591,18 +586,6 @@ def _run_strategy_batch(
     return records, batch_spent_total
 
 
-DIAGNOSTIC_3X3_IDS = (
-    "sympy__sympy-13480",
-    "sympy__sympy-20212",
-    "sympy__sympy-16988",
-)
-DIAGNOSTIC_3X3_STRATEGIES = (
-    "budget_only_tight",
-    "budgetflow_full_tight",
-    "budgetflow_equal_weight_tight",
-)
-
-
 def _compare_paths(tasks_n: int, strategies_n: int, *, stem: str | None = None) -> tuple[Path, Path]:
     base = stem or f"compare_{tasks_n}x{strategies_n}"
     return RUNS_DIR / f"{base}.jsonl", RUNS_DIR / f"{base}.summary.log"
@@ -829,89 +812,34 @@ def main() -> None:
 
     if args.w_profile:
         os.environ["BF_W_PROFILE"] = args.w_profile
-    max_overrun = max(0.0, args.max_overrun)
     if args.resume:
         args.append = True
         args.skip_completed = True
-    tasks_n = args.limit if args.limit is not None else PRESET_TASKS[args.preset]
-    if args.task_set == "medium":
-        tasks_n = args.limit if args.limit is not None else 15
 
-    loose = args.loose
-    tight = args.tight
-    pressure_init = args.pressure_init
-    pressure_max = args.pressure_max
-    if args.read_frozen_caps:
-        caps = read_protocol_caps(tasks_n)
-        loose = caps.loose_batch
-        tight = caps.tight_batch
-        if pressure_init is None:
-            pressure_init = caps.pressure_init
-        if pressure_max is None:
-            pressure_max = caps.pressure_max
+    tasks_n = resolve_task_count(args)
+    budget_plan = resolve_budget_plan(args, tasks_n=tasks_n)
+    max_overrun = budget_plan.max_overrun
+    if budget_plan.frozen_caps_loaded:
         print(
             f"{tag('frozen-caps', bold=False)} read n={tasks_n} "
-            f"loose_batch={loose:.4f} tight_batch={tight:.4f} "
-            f"pressure_init={pressure_init:.4f} pressure_max={pressure_max:.4f}",
+            f"loose_batch={budget_plan.loose:.4f} tight_batch={budget_plan.tight:.4f} "
+            f"pressure_init={budget_plan.pressure_init:.4f} pressure_max={budget_plan.pressure_max:.4f}",
             flush=True,
         )
-    if pressure_init is None:
-        pressure_init = BUDGET_PRESSURE_INIT
-    if pressure_max is None:
-        pressure_max = PRESSURE_MAX
-    if args.tight_scale != 1.0:
-        tight = (tight or 100.0) * args.tight_scale
-    if args.loose_scale != 1.0:
-        loose = (loose or 400.0) * args.loose_scale
-    if loose is None:
-        loose = 400.0
-    if tight is None:
-        tight = 100.0
 
-    if args.trace_verbose:
-        trace_console: TraceConsoleLevel = "verbose"
-    elif args.trace_quiet:
-        trace_console = "quiet"
-    else:
-        trace_console = "milestones"
-
-    all_strategies = _strategy_catalog()
-    if args.strategies:
-        wanted_raw = {s.strip() for s in args.strategies.split(",") if s.strip()}
-    elif args.preset == "3x3":
-        wanted_raw = set(DIAGNOSTIC_3X3_STRATEGIES)
-    else:
-        wanted_raw = set()
-    if wanted_raw:
-        wanted = {_normalize_strategy(name) for name in wanted_raw}
-        strategies = tuple(s for s in all_strategies if s.name in wanted)
-        catalog_names = {s.name for s in all_strategies}
-        missing = {name for name in wanted_raw if _normalize_strategy(name) not in catalog_names}
-        if missing:
-            raise SystemExit(f"unknown strategies: {sorted(missing)}")
-        if not strategies:
-            raise SystemExit("no strategies selected")
-    else:
-        strategies = all_strategies
-    policy_jobs = _effective_policy_jobs(args.jobs, len(strategies))
-    if args.jobs is not None and len(strategies) > 1 and args.jobs < len(strategies):
+    trace_console: TraceConsoleLevel = trace_console_from_args(args)
+    strategy_selection = select_strategies(args)
+    strategies = strategy_selection.strategies
+    policy_jobs = strategy_selection.policy_jobs
+    if strategy_selection.jobs_upgraded:
         print(
             f"{tag('policy-jobs', bold=False)} upgraded --jobs {args.jobs} -> {policy_jobs} "
             f"for {len(strategies)} policy-parallel strategies",
             flush=True,
         )
 
-    budget_caps = {"loose": loose, "tight": tight}
-    if args.ids:
-        ids = tuple(s.strip() for s in args.ids.split(",") if s.strip())
-        tasks = load_swebench_lite_tasks(instance_ids=ids)
-    elif args.preset == "3x3":
-        tasks = load_swebench_lite_tasks(instance_ids=DIAGNOSTIC_3X3_IDS)
-    elif args.task_set == "medium":
-        tasks = load_compare_medium_tasks(tasks_n)
-    else:
-        tasks = load_compare_easy_tasks(tasks_n)
-    tasks = _order_tasks_easy_first(tasks, task_set=args.task_set)
+    budget_caps = budget_plan.budget_caps
+    tasks = load_tasks_for_compare(args, tasks_n=tasks_n)
 
     # Value-Driven Budget Allocation: always keep a learning memory writer so
     # normal paid runs produce reusable priors. Applying those priors to caps
@@ -1200,29 +1128,14 @@ def main() -> None:
     if args.skip_completed and completed:
         print(f"{tag('resume', bold=False)} skip {len(completed)} completed (strategy,task) pairs", flush=True)
     checkpoint = CompareCheckpointStore(checkpoint_path, stem=out_stem, total_runs=total_runs)
-    use_fixed_per_task_cap = args.per_task_cap is not None and args.per_task_cap > 0
-    use_dynamic_task_caps = auto_budget_task_caps is not None
-    planned_dynamic_cap = sum(auto_budget_task_caps.values()) if auto_budget_task_caps else None
-    batch_caps: dict[str, float | None] = {
-        s.name: (
-            args.per_task_cap
-            if use_fixed_per_task_cap
-            else planned_dynamic_cap
-            if use_dynamic_task_caps and s.budget_tier is not None
-            else None if s.budget_tier is None else budget_caps[s.budget_tier]
-        )
-        for s in strategies
-    }
-    budget_modes: dict[str, str] = {
-        s.name: (
-            "per_task_cap"
-            if use_fixed_per_task_cap and s.budget_tier is not None
-            else "dynamic_task_caps"
-            if use_dynamic_task_caps and s.budget_tier is not None
-            else "shared"
-        )
-        for s in strategies
-    }
+    budget_modes_plan = build_batch_budget_modes(
+        strategies=strategies,
+        per_task_cap=args.per_task_cap,
+        auto_budget_task_caps=auto_budget_task_caps,
+        budget_caps=budget_caps,
+    )
+    batch_caps = budget_modes_plan.batch_caps
+    budget_modes = budget_modes_plan.budget_modes
 
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
     runtime_root, _ = resolve_runtime_root()
@@ -1237,8 +1150,9 @@ def main() -> None:
 
     print(
         f"{tag('compare', bold=False)} task_set={args.task_set} preset={args.preset} tasks={len(tasks)} "
-        f"strategies={len(strategies)} batches={len(strategies)} runs={total_runs} loose={loose} tight={tight} "
-        f"pressure_init={pressure_init} pressure_max={pressure_max} "
+        f"strategies={len(strategies)} batches={len(strategies)} runs={total_runs} "
+        f"loose={budget_plan.loose} tight={budget_plan.tight} "
+        f"pressure_init={budget_plan.pressure_init} pressure_max={budget_plan.pressure_max} "
         f"policy_jobs={policy_jobs} heartbeat={args.heartbeat}s hard_cap=settle_clamp",
         flush=True,
     )
@@ -1297,8 +1211,9 @@ def main() -> None:
         f"tasks={len(tasks)} strategies={strategy_names}",
         f"budget_mode={'per_task_cap=' + str(args.per_task_cap) if args.per_task_cap else 'shared'} "
         f"soft_budget={args.soft_budget} max_overrun={max_overrun} "
-        f"loose={loose} tight={tight} w_i_profile={args.w_profile or active_w_i_profile_name()} "
-        f"pressure_init={pressure_init} pressure_max={pressure_max} "
+        f"loose={budget_plan.loose} tight={budget_plan.tight} "
+        f"w_i_profile={args.w_profile or active_w_i_profile_name()} "
+        f"pressure_init={budget_plan.pressure_init} pressure_max={budget_plan.pressure_max} "
         f"policy_jobs={policy_jobs} hard_cap=settle_clamp",
         f"tasks={[t.instance_id for t in tasks]}",
         f"task_order={[_task_descriptor(t) for t in tasks]}",
@@ -1409,8 +1324,8 @@ def main() -> None:
             global_progress=global_progress,
             scoreboard=scoreboard,
             print_lock=print_lock,
-            budget_pressure=pressure_init,
-            pressure_max=pressure_max,
+            budget_pressure=budget_plan.pressure_init,
+            pressure_max=budget_plan.pressure_max,
             initial_spent=initial_spent,
             checkpoint=checkpoint,
             on_task_complete=_on_task,

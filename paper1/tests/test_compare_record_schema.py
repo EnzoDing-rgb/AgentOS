@@ -4,8 +4,8 @@ from types import SimpleNamespace
 
 from budgetflow.governor import BudgetGovernor, GovernorConfig
 from budgetflow.ledger import WorkflowLedgerStore
+from budgetflow.experiments.compare_config import CompareStrategy
 from budgetflow.run_mini_swe_compare import (
-    CompareStrategy,
     GlobalRunProgress,
     _enrich_record_with_value,
     _run_one,

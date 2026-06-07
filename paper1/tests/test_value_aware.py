@@ -26,13 +26,13 @@ def _turn(stage=None, w_i=0.4):
 
 class TestStrategyCatalog:
     def test_bfv_registered_in_default_strategies(self):
-        from budgetflow.run_mini_swe_compare import DEFAULT_STRATEGIES
+        from budgetflow.experiments.compare_config import DEFAULT_STRATEGIES
         names = {s.name for s in DEFAULT_STRATEGIES}
         assert "budgetflow_value_aware_tight" in names
         assert "budgetflow_value_aware_loose" in names
 
     def test_bfv_tight_routing_is_value_aware(self):
-        from budgetflow.run_mini_swe_compare import DEFAULT_STRATEGIES
+        from budgetflow.experiments.compare_config import DEFAULT_STRATEGIES
         bfv = next(s for s in DEFAULT_STRATEGIES if s.name == "budgetflow_value_aware_tight")
         assert bfv.routing == "budgetflow_value_aware"
         assert bfv.budget_tier == "tight"

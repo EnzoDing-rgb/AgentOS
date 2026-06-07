@@ -135,15 +135,15 @@ class TestProtocolAdapter:
 
 class TestRequiredBackends:
     def test_all_pro_requires_t3(self):
-        from budgetflow.run_mini_swe_compare import CompareStrategy, _required_backends_for_strategies
+        from budgetflow.experiments.compare_config import CompareStrategy, required_backends_for_strategies
         strategies = (CompareStrategy("all_pro", "all_pro", None),)
-        required = _required_backends_for_strategies(strategies)
+        required = required_backends_for_strategies(strategies)
         assert "tier3" in required
         assert "tier2" not in required  # all_pro no longer requires T2
 
     def test_all_tier2_requires_t2(self):
-        from budgetflow.run_mini_swe_compare import CompareStrategy, _required_backends_for_strategies
+        from budgetflow.experiments.compare_config import CompareStrategy, required_backends_for_strategies
         strategies = (CompareStrategy("all_tier2", "all_tier2", None),)
-        required = _required_backends_for_strategies(strategies)
+        required = required_backends_for_strategies(strategies)
         assert "tier2" in required
         assert "tier3" not in required
