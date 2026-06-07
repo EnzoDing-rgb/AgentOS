@@ -45,6 +45,7 @@ After every experiment, inspect artifacts before drawing conclusions:
 
 - Main-agent judgment owns architecture, routing, evaluation, learning, and paper-claim decisions.
 - Use subagents for low-value, high-token scans or classification work when it saves cost without outsourcing core judgment.
+- Use skills only when they materially improve the current work. Do not mechanically read or invoke generic system skills in a way that distracts from BudgetFlow's north star, experiment discipline, or the user's immediate instruction. In particular, do not force a Test-Driven Development workflow for documentation-only work, experiment judgment, review, or other changes where it is not actually needed.
 - Keep docs load-bearing: update `paper1/docs/north_star.md`, `paper1/docs/CONTEXT.md`, or `paper1/docs/progress.md` only when a real decision changes.
 - Commit and push stable slices after no-paid gates pass. Avoid noisy commits, but do not leave verified core changes uncommitted.
 

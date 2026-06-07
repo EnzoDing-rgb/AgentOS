@@ -106,6 +106,40 @@ def test_policy_memory_learns_t1_t2_actions_from_prior_runs() -> None:
     assert memory.routing_prior_summary("cost__task-a", Stage.REPAIR)["learned_action"] == "cap_strongest"
 
 
+def test_low_weight_stage_evidence_does_not_drive_learned_actions() -> None:
+    stale_failures = [
+        _record(instance_id=f"repo__repair-{i}", _policy_memory_weight=0.05)
+        for i in range(10)
+    ]
+    stale_localization_passes = [
+        _pass_record(instance_id=f"repo__loc-{i}", _policy_memory_weight=0.05)
+        for i in range(10)
+    ]
+    memory = PolicyMemory()
+    memory.rebuild_from_records(stale_failures + stale_localization_passes)
+
+    repair = memory.routing_prior_summary("repo__new-repair", Stage.REPAIR)
+    localization = memory.routing_prior_summary("repo__new-loc", Stage.LOCALIZATION)
+
+    assert repair["stage_tier_weight"]["2"] == 0.5
+    assert repair["learned_action"] == "default"
+    assert localization["stage_tier_weight"]["2"] == 0.5
+    assert localization["learned_action"] == "default"
+
+
+def test_weighted_tier_success_uses_effective_evidence_denominator() -> None:
+    memory = PolicyMemory()
+    memory.rebuild_from_records([
+        _pass_record(instance_id="repo__loc-a", _policy_memory_weight=0.35),
+    ])
+
+    summary = memory.routing_prior_summary("repo__loc-b", Stage.LOCALIZATION)
+
+    assert summary["repo_evidence_weight"] == 0.35
+    assert summary["repo_tier_success"]["2"] == 1.0
+    assert summary["stage_tier_success"]["2"] == 1.0
+
+
 def test_policy_memory_changes_runtime_rescue_and_starting_tier() -> None:
     memory = PolicyMemory()
     memory.rebuild_from_records([

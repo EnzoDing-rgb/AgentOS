@@ -47,11 +47,13 @@ class RepoPrior:
     repo: str
     total_tasks: int = 0
     pass_count: int = 0
+    evidence_weight: float = 0.0
     tier_turns: dict[int, int] = field(default_factory=lambda: defaultdict(int))
     tier_success_rate: dict[int, float] = field(default_factory=dict)
     median_cost: float = 0.0
     failure_classes: Counter = field(default_factory=Counter)
     stage_tier_success: dict[str, dict[int, float]] = field(default_factory=lambda: defaultdict(dict))
+    stage_tier_weight: dict[str, dict[int, float]] = field(default_factory=lambda: defaultdict(dict))
 
     @property
     def t2_turns(self) -> int:
@@ -216,6 +218,7 @@ class PolicyMemory:
     def _build_repo_prior(self, repo: str, records: list[dict]) -> RepoPrior:
         prior = RepoPrior(repo=repo)
         prior.total_tasks = len({r.get("instance_id") for r in records})
+        prior.evidence_weight = round(sum(_record_weight(r) for r in records), 4)
         prior.pass_count = round(sum(_record_weight(r) for r in records if r.get("harness_resolved")))
 
         costs = sorted(float(r.get("total_cost") or 0) for r in records)
@@ -223,8 +226,8 @@ class PolicyMemory:
             mid = len(costs) // 2
             prior.median_cost = costs[mid] if len(costs) % 2 else (costs[mid - 1] + costs[mid]) / 2
 
-        tier_pass: dict[int, int] = defaultdict(int)
-        tier_total: dict[int, int] = defaultdict(int)
+        tier_pass: dict[int, float] = defaultdict(float)
+        tier_total: dict[int, float] = defaultdict(float)
         stage_tier_pass: dict[str, dict[int, list[tuple[float, float]]]] = defaultdict(lambda: defaultdict(list))
 
         for r in records:
@@ -264,13 +267,17 @@ class PolicyMemory:
                     stage_tier_pass[stage.value][tier].append((weight if passed else 0.0, weight))
 
         prior.tier_success_rate = {
-            tier: tier_pass[tier] / max(tier_total[tier], 1)
+            tier: tier_pass[tier] / max(tier_total[tier], 1e-9)
             for tier in sorted(tier_total)
         }
         prior.stage_tier_success = defaultdict(dict)
         for stage, by_tier in stage_tier_pass.items():
             prior.stage_tier_success[stage] = {
                 tier: sum(pass_weight for pass_weight, _ in values) / max(sum(total_weight for _, total_weight in values), 1e-9)
+                for tier, values in sorted(by_tier.items())
+            }
+            prior.stage_tier_weight[stage] = {
+                tier: round(sum(total_weight for _, total_weight in values), 4)
                 for tier, values in sorted(by_tier.items())
             }
         return prior
@@ -410,6 +417,7 @@ class PolicyMemory:
             "repo_tier_success": {str(k): round(v, 3) for k, v in sorted(repo.tier_success_rate.items())},
             "repo_tier_turns": {str(k): v for k, v in sorted(repo.tier_turns.items())},
             "repo_tasks": repo.total_tasks,
+            "repo_evidence_weight": repo.evidence_weight,
             "repo_median_cost": round(repo.median_cost, 4),
             "task_seen": task.seen,
             "task_pass_count": task.pass_count,
@@ -436,6 +444,10 @@ class PolicyMemory:
             summary["stage_tier_success"] = {
                 str(k): round(v, 3)
                 for k, v in sorted(repo.stage_tier_success.get(stage.value, {}).items())
+            }
+            summary["stage_tier_weight"] = {
+                str(k): round(v, 4)
+                for k, v in sorted(repo.stage_tier_weight.get(stage.value, {}).items())
             }
         return summary
 
@@ -464,13 +476,15 @@ class PolicyMemory:
         # Rule 1: second-tier repair success low → early strongest-tier rescue
         if stage == Stage.REPAIR or stage is None:
             t2_repair = repo.t2_stage_success.get(repair_key, 0)
-            if t2_repair < 0.35 and repo.total_tasks >= 3:
+            t2_repair_weight = repo.stage_tier_weight.get(repair_key, {}).get(2, 0.0)
+            if t2_repair < 0.35 and t2_repair_weight >= 3.0:
                 return "early_rescue"
 
         # Rule 2: second-tier localization good → skip cheapest on start
         if stage == Stage.LOCALIZATION:
             t2_loc = repo.t2_stage_success.get(loc_key, 0)
-            if t2_loc > 0.55:
+            t2_loc_weight = repo.stage_tier_weight.get(loc_key, {}).get(2, 0.0)
+            if t2_loc > 0.55 and t2_loc_weight >= 2.0:
                 return "start_second_cheapest"
 
         return "default"
@@ -528,7 +542,8 @@ class PolicyMemory:
         )
         for repo, prior in sorted(self._repo_priors.items()):
             lines.append(
-                f"  {repo}: tasks={prior.total_tasks} pass={prior.pass_count} "
+                f"  {repo}: tasks={prior.total_tasks} evidence_weight={prior.evidence_weight:.2f} "
+                f"pass={prior.pass_count} "
                 f"t2_succ={prior.t2_success_rate:.2f} t3_succ={prior.t3_success_rate:.2f} "
                 f"tiers={dict(sorted(prior.tier_turns.items()))} "
                 f"median_cost=${prior.median_cost:.4f}"
