@@ -28,23 +28,23 @@ Skills and sub-agents are tools, not governance. Use them when they reduce risk 
 Tests are evidence-contract gates, not a historical archive. Keep tests that protect current experiment credibility: compare row schema, value/RVPD accounting, learning-memory source separation, routing decisions, anti-spin/provider safety, harness verdict sanity, and policy parallelism. Delete tests that only preserve old phase behavior, old aliases, source-string implementation details, or toy helpers that cannot catch wrong paper conclusions.
 
 ### tier contract
-A tier is a stable system identity (T1/T2/T3), not a specific model. T1 = cheapest, T3 = strongest. Each tier has a fixed cost per token, provider, and action protocol. Models behind tiers can change, but the contract stays the same. This means `all_pro` should always mean strongest tier, regardless of what model sits at T3.
+A tier is a stable system identity, not a specific model or provider. T1 is the cheapest configured tier; the highest configured tier is the strongest. Provider/model details live behind the provider-agnostic model-tier seam in `model_tiers.py`: `tier`, `backend`, `model`, `api_base`, `api_key_env`, token costs, action `protocol`, progress prior, and escalation policy. Replacing Qwen/AICode007 with another OpenAI-compatible provider, or expanding from three tiers to five, should be a tier-config change plus small experiment-parameter changes, not a routing/runtime rewrite.
 
 ### action protocol
 How a model emits SWE agent actions. Two modes:
 - **tool_call**: model returns native function-call blocks. Parser: `parse_toolcall_actions`.
 - **text_regex**: model returns fenced bash blocks (```` ```mswea_bash_command ``` ````). Parser: `parse_regex_actions`.
 
-Protocol is declared per-tier in `TierConfig.text_mode`. `ActionProtocolAdapter` resolves the protocol and records the decision in trace. Never guess between parsers silently.
+Protocol is declared per tier in the model-tier catalog. `ActionProtocolAdapter` resolves the protocol and records the decision in trace. Never guess between parsers silently.
 
 ### router decision
 A structured record of why a tier was selected for a turn. Fields: `{backend, reason, scores, pressure, branch}`. Replaces bare `Backend` return. Recorded in `RoutingContext.last_decision` and persisted in turn trace as `router_reason`, `router_scores`, `router_branch`.
 
-### budget prior
-Historical cost/resolve data for a task instance, extracted from old JSONL runs via `historical_etl.py`. Stored in `data/task_cost_history.jsonl`. Used to estimate soft cap before running a task. Two confidence levels: `clean` (resolved, no errors) and `usable_task_prior` (patch existed, harness failed).
+### cap/value-cost memory
+Verified outcome memory used by Value-Driven Budget Allocation. Current cap learning is based on `auto_budget_memory.jsonl`, run JSONL, and `learning_context.py`; the old `historical_etl.py` / `task_cost_history.jsonl` path is retired from active runtime. Historical artifacts can inform forensic analysis, but new cap decisions should be dry-run observable through current memory sources.
 
 ### soft cap
-Per-task spending recommendation derived from historical median successful cost. Not a hard cut. The BudgetAllocator uses soft cap to decide when to escalate or stop. Hard cap is the Governor's total_budget; soft cap is the allocator's signal.
+Per-task spending recommendation derived from Value-Driven Budget Allocation memory, task features, and task value. Not a hard cut. Hard cap is the Governor's total_budget; soft cap is the allocator's signal.
 
 ### rescue
 Evidence-based forced upgrade to a stronger tier when the agent finds and edits a gold file but repair stalls. Controlled by `EvidenceRescueState`: opens a bounded window after gold edit, forces tier upgrade within the window, and triggers stop-loss if rescue doesn't produce a passing patch.

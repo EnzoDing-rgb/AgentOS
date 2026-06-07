@@ -23,12 +23,6 @@ def parse_compare_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--loose", type=float, default=None, help="shared batch budget for *_loose strategies")
     parser.add_argument("--tight", type=float, default=None, help="shared batch budget for *_tight strategies")
     parser.add_argument(
-        "--read-frozen-caps",
-        action="store_true",
-        dest="read_frozen_caps",
-        help="read loose/tight batch caps from data/frozen_caps.json for current task count",
-    )
-    parser.add_argument(
         "--step-limit",
         type=int,
         default=150,

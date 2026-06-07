@@ -17,20 +17,18 @@ from minisweagent.models.utils.retry import retry
 
 from ..litellm_quiet import configure_litellm_quiet
 from ..budget_pressure import live_budget_pressure
-from ..deepseek_backend import ensure_aicode007_proxy, ensure_direct_api, load_env_file
 from ..defaults import (
     GOLD_EDIT_T2_REPAIR_TURN_LIMIT,
     PRESSURE_MAX,
     STRONGEST_DOWNGRADE_TIER,
-    TIER_CONFIGS,
     TIER1_BACKEND,
-    TIER3_MODEL,
     TIER_ESCALATION_PATIENCE,
     TIER_MAX_TURNS,
     VALUE_SALVAGE_MIN_HEADROOM_FRAC,
     VALUE_SALVAGE_MIN_MULTIPLIER,
     VALUE_SALVAGE_WINDOW_TURNS,
 )
+from ..model_tiers import MODEL_CATALOG, TIER_CONFIGS, ModelCatalog, apply_provider_proxy, load_env_file
 from ..console_log import backend_tier_label, bold, dim, routing_stage_label, tag
 from ..governor import BudgetGovernor
 from ..types import Backend, Stage, TurnInfo, WorkflowStatus
@@ -61,12 +59,6 @@ logger = logging.getLogger("budgetflow_litellm_model")
 
 configure_litellm_quiet()
 
-_DASHSCOPE_BACKENDS = frozenset(
-    backend for backend, config in TIER_CONFIGS.items() if config.provider == "dashscope"
-)
-_AICODE007_BACKENDS = frozenset(
-    backend for backend, config in TIER_CONFIGS.items() if config.provider == "aicode007"
-)
 DEFAULT_LLM_TIMEOUT_S = 90.0
 _PROVIDER_UNAVAILABLE_MARKERS = (
     "service temporarily unavailable",
@@ -111,6 +103,10 @@ def _is_provider_unavailable(exc: Exception) -> bool:
     if "timeout" in text or "timed out" in text or "connection" in text:
         return True
     return any(marker in text for marker in _PROVIDER_UNAVAILABLE_MARKERS)
+
+
+def _backend_by_configured_tier(backends: list[Backend], tier: int) -> Backend | None:
+    return next((backend for backend in backends if backend.tier == tier), None)
 
 
 class FatalProviderBillingError(RuntimeError):
@@ -199,7 +195,8 @@ class BudgetFlowLitellmModel:
         self._value_salvage_turns_remaining = 0
         self._value_salvage_triggered = False
         self._value_salvage_reason: str | None = None
-        self.config = type("Config", (), {"model_name": TIER3_MODEL})()
+        strongest = ModelCatalog.strongest(routing.backends)
+        self.config = type("Config", (), {"model_name": MODEL_CATALOG.require_config(strongest.name).model})()
 
     def query(self, messages: list[dict[str, str]], **kwargs) -> dict:
         self.step_index += 1
@@ -664,19 +661,17 @@ class BudgetFlowLitellmModel:
         return max(64, min(headroom, int(affordable_tokens * 0.95)))
 
     def _apply_progress_escalation(self, backend: Backend) -> Backend:
-        """Per-tier escalation + turn cap + T4 stop-loss.
+        """Per-tier escalation + turn cap + strongest-tier stop-loss.
 
         Escalation (no-progress streak): "stuck → try better model."
-        - T1→T2, T2→T3, T3→T4
-        - T4→T2 (stop-loss: best model couldn't save it, fall back)
+        - move to the next-higher configured tier
+        - strongest tier downgrades as stop-loss when it cannot make progress
         - Resets when progress is made.
-
-        Turn cap: "making progress but too slowly → force upgrade."
-        - T1:25, T2:40, T3:60 turns
         """
         if self.routing.strategy not in ("budgetflow_full", "budgetflow_conservative", "budgetflow_value_aware", "budgetflow_equal_weight", "stage_blind"):
             return backend
         ordered = self.routing.backends
+        strongest = ModelCatalog.strongest(ordered)
         if len(ordered) < 2:
             return backend
 
@@ -686,14 +681,11 @@ class BudgetFlowLitellmModel:
         # Check escalation (no-progress streak)
         patience = TIER_ESCALATION_PATIENCE.get(backend.tier)
         if patience is not None and self._no_progress_on_current_tier >= patience:
-            if backend.tier == 4:
-                # T4 stop-loss: downgrade instead of upgrading
-                next_backend = ordered[STRONGEST_DOWNGRADE_TIER - 1]  # tier is 1-indexed
-                reason = f"T4-stop-loss streak={self._no_progress_on_current_tier}/{patience}"
+            if backend.tier >= strongest.tier:
+                next_backend = _backend_by_configured_tier(ordered, STRONGEST_DOWNGRADE_TIER) or ModelCatalog.next_lower(ordered, backend)
+                reason = f"strongest-stop-loss streak={self._no_progress_on_current_tier}/{patience}"
             else:
-                # Find the next-higher-tier backend (not index-based; works for
-                # non-contiguous tier pools like [T2, T3]).
-                next_backend = next((b for b in ordered if b.tier > backend.tier), None)
+                next_backend = ModelCatalog.next_higher(ordered, backend)
                 if next_backend is not None:
                     reason = f"streak={self._no_progress_on_current_tier}/{patience}"
 
@@ -701,12 +693,11 @@ class BudgetFlowLitellmModel:
         if reason is None:
             max_turns = TIER_MAX_TURNS.get(backend.tier)
             if max_turns is not None and self._turns_on_current_tier >= max_turns:
-                if backend.tier == 4:
-                    next_backend = ordered[STRONGEST_DOWNGRADE_TIER - 1]
-                    reason = f"T4-turn-cap turns={self._turns_on_current_tier}/{max_turns}"
+                if backend.tier >= strongest.tier:
+                    next_backend = _backend_by_configured_tier(ordered, STRONGEST_DOWNGRADE_TIER) or ModelCatalog.next_lower(ordered, backend)
+                    reason = f"strongest-turn-cap turns={self._turns_on_current_tier}/{max_turns}"
                 else:
-                    # Find the next-higher-tier backend (not index-based).
-                    next_backend = next((b for b in ordered if b.tier > backend.tier), None)
+                    next_backend = ModelCatalog.next_higher(ordered, backend)
                     if next_backend is not None:
                         reason = f"turns={self._turns_on_current_tier}/{max_turns}"
 
@@ -807,17 +798,9 @@ class BudgetFlowLitellmModel:
         )
 
     def _model_config_for(self, backend: Backend) -> tuple[str, dict[str, Any]]:
-        config = TIER_CONFIGS.get(backend.name)
-        if config is None:
-            raise ValueError(f"unknown backend: {backend.name}")
-        if config.provider == "aicode007":
-            ensure_aicode007_proxy()
-        if config.provider == "aicode007":
-            api_base = os.environ.get("AICODE007_BASE_URL") or config.api_base
-        elif config.provider == "xfyun_maas":
-            api_base = os.environ.get("XFYUN_MAAS_BASE_URL") or os.environ.get("XFYUN_MAAS_API_BASE") or config.api_base
-        else:
-            api_base = config.api_base
+        config = MODEL_CATALOG.require_config(backend.name)
+        apply_provider_proxy(config)
+        api_base = os.environ.get(config.api_base_env or "") or config.api_base
         return config.model, {
             "temperature": 0.0,
             "parallel_tool_calls": True,
@@ -842,8 +825,8 @@ class BudgetFlowLitellmModel:
 
         def _query():
             config = TIER_CONFIGS.get(backend_name)
-            if config is not None and config.provider == "aicode007":
-                ensure_aicode007_proxy()
+            if config is not None:
+                apply_provider_proxy(config)
             kwargs_merged = {**model_kwargs, **kwargs}
             try:
                 return litellm.completion(

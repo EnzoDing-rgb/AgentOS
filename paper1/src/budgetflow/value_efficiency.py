@@ -80,7 +80,7 @@ class ValueEfficiencyContext:
         elif record.get("budget_memory_enabled"):
             record["budget_source"] = "budget_memory"
         else:
-            record["budget_source"] = "frozen_caps"
+            record["budget_source"] = "static_cap"
         return record
 
     def summary_for_strategy(self, records: list[dict]) -> dict:

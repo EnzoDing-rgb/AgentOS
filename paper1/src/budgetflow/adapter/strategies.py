@@ -7,9 +7,6 @@ from ..defaults import (
     BUDGET_PRESSURE_INIT,
     ModelCatalog,
     PROGRESS_TABLE,
-    TIER1_BACKEND,
-    TIER2_BACKEND,
-    TIER3_BACKEND,
     TIER_ESCALATION_PATIENCE,
     W_I,
     active_w_i,
@@ -39,12 +36,16 @@ class RoutingContext:
 
 
 def build_progress_table_from_defaults(backends: list[Backend]) -> ProgressTable:
-    ordered = sorted(backends, key=lambda backend: backend.tier)
     table: ProgressTable = {stage: {} for stage in PROGRESS_TABLE}
-    canonical_by_tier = {1: TIER1_BACKEND, 2: TIER2_BACKEND, 3: TIER3_BACKEND}
-    for backend in ordered:
+    defaults_by_tier: dict[int, str] = {}
+    for stage, values in PROGRESS_TABLE.items():
+        for default_backend in values:
+            # The default backend names are stable tier ids ("tier1", ...).
+            if default_backend.startswith("tier") and default_backend[4:].isdigit():
+                defaults_by_tier[int(default_backend[4:])] = default_backend
+    for backend in sorted(backends, key=lambda backend: backend.tier):
         for stage, values in PROGRESS_TABLE.items():
-            canonical_name = backend.name if backend.name in values else canonical_by_tier.get(backend.tier)
+            canonical_name = backend.name if backend.name in values else defaults_by_tier.get(backend.tier)
             if canonical_name is None:
                 raise KeyError(f"no progress prior for backend={backend.name} tier={backend.tier}")
             table[stage][backend.name] = values[canonical_name]
@@ -97,26 +98,29 @@ def _backend_by_tier(backends: list[Backend], tier: int) -> Backend:
 def _budgetflow_max_tier(ctx: RoutingContext) -> int:
     """Maximum tier for budgetflow_full / budgetflow_conservative on this step.
 
-    Default cap is T2.  T2→T3 escalation is gated by _apply_progress_escalation
-    (per-tier patience), not by the selector.  If the previous step already
-    used T3 (meaning escalation already fired), keep T3 to avoid ping-pong.
+    Default cap is the second available tier when present. Further escalation is
+    gated by _apply_progress_escalation (per-tier patience), not by the selector.
+    If the previous step already used a higher tier, keep it to avoid ping-pong.
     When budget pressure is elevated, lift the cap — the fixed selector formula
     (pressure >= upgrade_threshold) already prefers T2 at low pressure and only
-    picks T3 when the cost/progress tradeoff justifies it.
+    picks the strongest tier when the cost/progress tradeoff justifies it.
     If adaptive routing recommends a higher starting tier, honour it.
 
     Conservative variant uses a lower pressure threshold (0.05 vs 0.15) because
     the ConservativeSelector's conservation factor already makes T3 escalation
     progressively harder.  The hard cap would double-penalize T3 access.
     """
-    max_tier: int = 2  # default cap: don't auto-upgrade to T3
-    if ctx.last_backend is not None and ctx.last_backend.tier >= 3:
-        max_tier = 3  # already escalated, keep T3
+    cheapest = ModelCatalog.cheapest(ctx.backends)
+    strongest = ModelCatalog.strongest(ctx.backends)
+    default_cap = min(2, strongest.tier)
+    max_tier: int = max(cheapest.tier, default_cap)
+    if ctx.last_backend is not None and ctx.last_backend.tier > max_tier:
+        max_tier = ctx.last_backend.tier
     # Conservative selector has its own restraint mechanism — let it access
-    # T3 earlier to avoid double-penalizing escalation decisions.
+    # the strongest tier earlier to avoid double-penalizing escalation decisions.
     t3_threshold: float = 0.05 if ctx.strategy in ("budgetflow_conservative", "budgetflow_value_aware") else 0.15
     if ctx.budget_pressure >= t3_threshold:
-        max_tier = 3
+        max_tier = strongest.tier
     if ctx.adaptive is not None:
         start_tier = ctx.adaptive.starting_tier()
         if start_tier > max_tier:
@@ -150,9 +154,9 @@ def choose_backend(ctx: RoutingContext, turn: TurnInfo, expected_costs: dict[str
         )
         return backend
     if ctx.strategy == "all_t3":
-        backend = _backend_by_tier(ctx.backends, 3)
+        backend = ModelCatalog.strongest(ctx.backends)
         ctx.last_decision = RouterDecision(
-            backend=backend, reason="strategy_all_t3", scores={},
+            backend=backend, reason="strategy_all_t3_strongest", scores={},
             pressure=ctx.budget_pressure, branch="all_t3",
         )
         return backend
@@ -206,7 +210,7 @@ def choose_backend(ctx: RoutingContext, turn: TurnInfo, expected_costs: dict[str
         reason_prefix = reason_map.get(ctx.strategy, "bf_full")
         ctx.last_decision = RouterDecision(
             backend=sel.backend,
-            reason=f"{reason_prefix}_max_tier={max_tier}" if max_tier < 3 else f"{reason_prefix}_escalated_t3",
+            reason=f"{reason_prefix}_max_tier={max_tier}" if max_tier < ModelCatalog.strongest(ctx.backends).tier else f"{reason_prefix}_strongest_allowed",
             scores={sel.backend.name: sel.score},
             pressure=ctx.budget_pressure,
             branch=branch,

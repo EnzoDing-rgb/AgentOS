@@ -171,22 +171,15 @@ def dim(text: str) -> str:
 
 def format_tier_pool_line(*, include_t1: bool = False) -> str:
     """One-line tier pool for run banners (full names + litellm ids)."""
-    from .defaults import (
-        TIER1_DISPLAY, TIER1_MODEL,
-        TIER2_DISPLAY, TIER2_MODEL,
-        TIER3_DISPLAY, TIER3_MODEL,
-    )
+    from .model_tiers import MODEL_CATALOG
 
-    t1 = (
-        f"T1={bold(TIER1_DISPLAY)} {dim(f'({TIER1_MODEL})')}"
-        if include_t1
-        else f"T1={dim('skipped in main pool')}"
-    )
-    return (
-        f"{t1}  "
-        f"T2={bold(TIER2_DISPLAY)} {dim(f'({TIER2_MODEL})')}  "
-        f"T3={bold(TIER3_DISPLAY)} {dim(f'({TIER3_MODEL})')}"
-    )
+    parts: list[str] = []
+    for config in MODEL_CATALOG.configs:
+        if config.tier == 1 and not include_t1:
+            parts.append(f"T1={dim('skipped in main pool')}")
+            continue
+        parts.append(f"T{config.tier}={bold(config.display)} {dim(f'({config.model})')}")
+    return "  ".join(parts)
 
 
 def parse_harness_detail(detail: str) -> dict[str, str]:

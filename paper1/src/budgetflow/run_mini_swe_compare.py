@@ -3,9 +3,6 @@
 Each policy runs its task list serially on one BudgetGovernor (shared pool).
 Different policies may run in parallel (--jobs) using git worktrees for repo isolation.
 
-Frozen caps: pass --read-frozen-caps to load data/frozen_caps.json (from run_pilot).
-  Do not recompute loose/tight batch budgets during compare. See protocol_caps.py.
-
 Usage (from paper1/):
   # fast smoke (default 3 tasks)
   PYTHONPATH=src:../external/mini-swe-agent/src python -u -m budgetflow.run_mini_swe_compare --preset 3x5 --jobs 5
@@ -44,8 +41,8 @@ from budgetflow.compare_checkpoint import (  # noqa: E402
     checkpoint_path_for,
 )
 from budgetflow.console_log import dim, tag  # noqa: E402
-from budgetflow.deepseek_backend import load_env_file  # noqa: E402
 from budgetflow.defaults import active_w_i_profile_name  # noqa: E402
+from budgetflow.model_tiers import load_env_file  # noqa: E402
 from budgetflow.experiments.compare_config import (  # noqa: E402
     CompareStrategy,
     batch_budget_cap as _batch_budget_cap,
@@ -179,14 +176,6 @@ def main() -> None:
     tasks_n = resolve_task_count(args)
     budget_plan = resolve_budget_plan(args, tasks_n=tasks_n)
     max_overrun = budget_plan.max_overrun
-    if budget_plan.frozen_caps_loaded:
-        print(
-            f"{tag('frozen-caps', bold=False)} read n={tasks_n} "
-            f"loose_batch={budget_plan.loose:.4f} tight_batch={budget_plan.tight:.4f} "
-            f"pressure_init={budget_plan.pressure_init:.4f} pressure_max={budget_plan.pressure_max:.4f}",
-            flush=True,
-        )
-
     trace_console: TraceConsoleLevel = trace_console_from_args(args)
     strategy_selection = select_strategies(args)
     strategies = strategy_selection.strategies

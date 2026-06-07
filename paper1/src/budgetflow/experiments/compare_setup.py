@@ -16,7 +16,6 @@ from budgetflow.experiments.compare_config import (
     strategy_catalog,
 )
 from budgetflow.lite_tasks import load_compare_easy_tasks, load_compare_medium_tasks, load_swebench_lite_tasks
-from budgetflow.protocol_caps import read_protocol_caps
 
 TraceConsole = Literal["quiet", "milestones", "verbose"]
 
@@ -39,7 +38,6 @@ class CompareBudgetPlan:
     pressure_init: float
     pressure_max: float
     max_overrun: float
-    frozen_caps_loaded: bool = False
 
     @property
     def budget_caps(self) -> dict[str, float]:
@@ -74,14 +72,6 @@ def resolve_budget_plan(args: Namespace, *, tasks_n: int) -> CompareBudgetPlan:
     tight = args.tight
     pressure_init = args.pressure_init
     pressure_max = args.pressure_max
-    frozen_loaded = False
-    if args.read_frozen_caps:
-        caps = read_protocol_caps(tasks_n)
-        loose = caps.loose_batch
-        tight = caps.tight_batch
-        pressure_init = caps.pressure_init if pressure_init is None else pressure_init
-        pressure_max = caps.pressure_max if pressure_max is None else pressure_max
-        frozen_loaded = True
     pressure_init = BUDGET_PRESSURE_INIT if pressure_init is None else pressure_init
     pressure_max = PRESSURE_MAX if pressure_max is None else pressure_max
     if args.tight_scale != 1.0:
@@ -94,7 +84,6 @@ def resolve_budget_plan(args: Namespace, *, tasks_n: int) -> CompareBudgetPlan:
         pressure_init=pressure_init,
         pressure_max=pressure_max,
         max_overrun=max(0.0, args.max_overrun),
-        frozen_caps_loaded=frozen_loaded,
     )
 
 

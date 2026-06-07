@@ -4,6 +4,15 @@
 
 ## 当前快照（2026-06-07）
 
+### 076 / Provider-agnostic tier seam and obsolete probe cleanup
+
+- **076 COMPLETE SLICE — no-paid core infra cleanup.** No historical JSONL was edited and no paid experiment was run.
+- **Provider-specific code removed:** deleted DeepSeek probe/smoke/backend code plus obsolete probe, baseline, stability-audit, tier-probe, pilot, frozen-cap, and historical-ETL CLIs from the active runtime tree.
+- **Model-tier seam added:** `model_tiers.py` is now the provider-agnostic catalog for tier id, backend name, model id, API base/env key, token cost, action protocol, progress prior, and escalation policy. Runtime/provider preflight/backends now read the catalog instead of provider-specific branches.
+- **Frozen-cap path retired:** `--read-frozen-caps`, `run_pilot.py`, and `protocol_caps.py` are no longer active. Current runs use explicit/default caps or Value-Driven Budget Allocation via `--auto-budget` / learning memory.
+- **Architecture judgment:** deleting DeepSeek-specific code does not mean binding BudgetFlow to Qwen/AICode007. Future provider swaps should happen in the tier catalog; routing/runtime/evaluation should stay provider-agnostic.
+- **Verification:** `171 passed`, `py_compile` passed for `paper1/src/budgetflow`, `git diff --check` passed, and no-provider `--auto-budget-dry-run` loaded cap memory plus routing policy memory.
+
 ### 075 / Delete obsolete offline replay CLI
 
 - **075 COMPLETE SLICE — no-paid deletion cleanup.** No historical JSONL was edited and no paid experiment was run.
@@ -445,8 +454,7 @@ total_resolved_value_under_budget = sum(value_i * harness_resolved_i)
 | Governor hard cap | ✅ |
 | tier 池 T1/T2/T3（全名日志） | ✅ |
 | `run_mini_swe_compare` + `--resume` + `--run-series` | ✅ |
-| B.0 pilot → **FROZEN caps** | ✅ `data/frozen_caps.json` |
-| `--read-protocol` → `--read-frozen-caps` rename | ✅ |
+| Obsolete pilot / frozen-cap path | retired from active runtime |
 | **policy_5x7-0**（旧代码 7×5） | ⚠️ 中断于 30/35 |
 | **policy_5x3-2**（新代码 5×3） | ✅ 跑完，1/15 PASS，暴露 3 个 bug |
 | **result1-0**（GPT-5.4 parser 修复后单题） | ⚠️ 触发 harness 假 P2P |
@@ -551,22 +559,9 @@ triage(task) = kNN(features(task), history) → estimated_cost
 
 ---
 
-## 冻结 cap（`data/frozen_caps.json`）
+## 当前 model-tier catalog
 
-compare 加 **`--read-frozen-caps`** 时从 JSON 读（`protocol_caps.py`），**不是** `docs/protocol.md`：
-
-| n | tight | loose |
-|---:|---:|---:|
-| 3 | 3162.357 | 12649.428 |
-| 5 | 5270.595 | 21082.38 |
-| 15 | 15811.785 | 63247.14 |
-
-公式：`loose = 2 × median(pilot_costs) × n; tight = 0.5 × median(pilot_costs) × n`。  
-另含 `BUDGET_PRESSURE_INIT=0.01`、`PRESSURE_MAX=1.5`。  
-`run_pilot.py` 重跑会覆盖 JSON；**compare 期间勿手改**。  
-pilot 用 `all_pro`（实际 T2，非 T3）跑 3 题，median cost=2108.2。
-
-当前 tier（`defaults.py`）：
+模型/供应商不是 routing 代码的一部分。当前 tier 池由 `model_tiers.py` 定义：
 
 | Tier | 终端 `model=` | litellm id | provider |
 |---|---|---|---|
@@ -576,45 +571,33 @@ pilot 用 `all_pro`（实际 T2，非 T3）跑 3 题，median cost=2108.2。
 
 ---
 
-## 跑法（绝对路径）
+## 当前跑法（绝对路径）
 
 环境：`cd` 到 `/root/.dev/AgentOS/paper1`，用可用的 `python3` 或项目 `.venv/bin/python`，`PYTHONPATH=src:../external/mini-swe-agent/src`，日志建议 `FORCE_COLOR=1`。
 
-**① 5×3（3 tasks × 5 strategies，frozen caps）**
+**① policy-parallel diagnostic compare**
 
 ```bash
 cd /root/.dev/AgentOS/paper1 && \
 FORCE_COLOR=1 PYTHONPATH=src:../external/mini-swe-agent/src \
 python3 -u -m budgetflow.run_mini_swe_compare \
-  --read-frozen-caps --limit 3 --step-limit 150 \
-  --strategies budget_only_tight,budget_only_loose,budgetflow_full_tight,budgetflow_full_loose,all_pro \
-  --jobs 5 --run-series policy_5x3 \
+  --auto-budget --limit 3 --step-limit 150 \
+  --strategies budget_only_tight,budgetflow_conservative_tight,budgetflow_value_aware_tight \
+  --jobs 3 --run-series diagnostic_3x3 \
   --ids sympy__sympy-13480,sympy__sympy-14774,sympy__sympy-16988 \
-  2>&1 | tee data/runs/policy_5x3-N.log
+  2>&1 | tee data/runs/diagnostic_3x3-N.log
 ```
 
-**② 中断恢复（固定 stem，不新开 ID）**
+**② no-paid auto-budget dry run**
 
 ```bash
 cd /root/.dev/AgentOS/paper1 && \
-FORCE_COLOR=1 PYTHONPATH=src:../external/mini-swe-agent/src \
-python3 -u -m budgetflow.run_mini_swe_compare \
-  --read-frozen-caps --limit 3 --step-limit 150 \
-  --strategies budget_only_tight,budget_only_loose,budgetflow_full_tight,budgetflow_full_loose,all_pro \
-  --jobs 5 --out-stem policy_5x3-2 --resume \
-  2>&1 | tee -a data/runs/policy_5x3-2.log
-```
-
-**③ Auto-budget run（012 验证用）**
-
-```bash
-cd paper1 && PYTHONPATH=src:../external/mini-swe-agent/src \
-.venv/bin/python -u -m budgetflow.run_mini_swe_compare \
-  --auto-budget --auto-budget-scale 1.5 --auto-budget-min 0.10 --auto-budget-max 10.0 \
-  --strategies budget_only_tight,budget_only_loose,budgetflow_full_tight,budgetflow_full_loose,all_pro \
-  --jobs 5 --run-series postfix_011_sanity \
-  --ids sympy__sympy-14774,django__django-10924,sympy__sympy-18189,sympy__sympy-18057,sympy__sympy-18621 \
-  2>&1 | tee data/runs/postfix_011_sanity-N.log
+PYTHONPATH=src:../external/mini-swe-agent/src \
+python -m budgetflow.run_mini_swe_compare \
+  --ids sympy__sympy-14774 \
+  --strategies budgetflow_value_aware_tight \
+  --auto-budget --auto-budget-dry-run \
+  --auto-budget-memory data/runs/auto_budget_memory.jsonl
 ```
 
 产物：`data/runs/<run_id>.jsonl`、`.summary.log`、`.checkpoint.json`、`.log`。
@@ -751,7 +734,7 @@ Rubric 弱，**不能**当 resolved 结论。
 
 ## 不要做什么
 
-- compare 期间改 `data/frozen_caps.json`
+- resurrect pilot/frozen-cap compare path instead of using current Value-Driven Budget Allocation
 - 把 Stage-A INVALID 3×3 写进主表
 - `workflow_steps_ok` 当 resolved
 - eval 上 tune progress_table
@@ -765,10 +748,9 @@ Rubric 弱，**不能**当 resolved 结论。
 
 ## 代码入口
 
-- `run_mini_swe_compare.py` — `--run-series` / `--resume` / `--task-set medium` / `--read-frozen-caps` / `--auto-budget`
+- `run_mini_swe_compare.py` — `--run-series` / `--resume` / `--task-set medium` / `--auto-budget`
 - `run_series.py` — `policy_5x3-N` / `policy_5x7-N` 自增
-- `run_pilot.py` — 写 `data/frozen_caps.json`（跑一次，续用）
-- `protocol_caps.py` — `--read-frozen-caps` 读 JSON（`derive_batch_caps` + `write_frozen_caps`）
+- `model_tiers.py` — provider-agnostic tier/model/API/cost/protocol/progress/escalation catalog
 - `lite_tasks.py` — easy 5 + medium 15 + pilot 3 固定列表
 - `adaptive_routing.py` — `AdaptiveRoutingState` + `EvidenceRescueState`（`budgetflow_full` 和 `budgetflow_equal_weight` 共用）
 - `stall_guard.py` + `run_trace.publish_live_progress` — anti-stall + 心跳与 route 同步

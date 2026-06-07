@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from budgetflow.defaults import (
+    MODEL_CATALOG,
     TIER1_BACKEND,
     TIER3_BACKEND,
     active_w_i_profile_name,
@@ -78,20 +79,18 @@ def effective_policy_jobs(requested_jobs: int | None, strategy_count: int) -> in
 
 
 def required_backends_for_strategies(strategies: tuple[CompareStrategy, ...]) -> list[str]:
-    from budgetflow.adapter.backends import _selected_t2_backend
-
     required: set[str] = set()
-    t2_backend = _selected_t2_backend()
+    tier2_backend = MODEL_CATALOG.tier(MODEL_CATALOG.backends(), 2).name
     for cfg in strategies:
         if cfg.routing == "all_flash":
             required.add(TIER1_BACKEND)
         elif cfg.routing in {"all_tier2"}:
-            required.add(t2_backend)
+            required.add(tier2_backend)
         elif cfg.routing in {"all_pro", "all_t3"}:
             required.add(TIER3_BACKEND)
         else:
-            required.update({TIER1_BACKEND, t2_backend, TIER3_BACKEND})
-    return [b for b in (TIER1_BACKEND, t2_backend, TIER3_BACKEND) if b in required]
+            required.update({backend.name for backend in MODEL_CATALOG.backends()})
+    return [backend.name for backend in MODEL_CATALOG.backends() if backend.name in required]
 
 
 def w_i_profile_for_record(routing: str) -> str:

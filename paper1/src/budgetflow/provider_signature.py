@@ -6,8 +6,7 @@ from dataclasses import dataclass
 
 import litellm
 
-from .deepseek_backend import ensure_aicode007_proxy, load_env_file
-from .defaults import TIER_CONFIGS
+from .model_tiers import MODEL_CATALOG, apply_provider_proxy, load_env_file
 
 
 @dataclass(frozen=True)
@@ -23,14 +22,9 @@ class ProviderSignatureResult:
 
 
 def _kwargs_for(backend: str) -> dict:
-    config = TIER_CONFIGS[backend]
-    if config.provider == "aicode007":
-        ensure_aicode007_proxy()
-        api_base = os.environ.get("AICODE007_BASE_URL") or config.api_base
-    elif config.provider == "xfyun_maas":
-        api_base = os.environ.get("XFYUN_MAAS_BASE_URL") or os.environ.get("XFYUN_MAAS_API_BASE") or config.api_base
-    else:
-        api_base = config.api_base
+    config = MODEL_CATALOG.require_config(backend)
+    apply_provider_proxy(config)
+    api_base = os.environ.get(config.api_base_env or "") or config.api_base
     return {
         "api_base": api_base,
         "api_key": os.environ.get(config.api_key_env),
@@ -42,7 +36,7 @@ def _kwargs_for(backend: str) -> dict:
 
 def check_backend_signature(backend: str) -> ProviderSignatureResult:
     load_env_file()
-    config = TIER_CONFIGS[backend]
+    config = MODEL_CATALOG.require_config(backend)
     model = config.model
     provider = config.provider
     started = time.time()

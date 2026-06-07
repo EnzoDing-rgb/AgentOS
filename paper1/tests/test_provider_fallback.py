@@ -118,7 +118,6 @@ def test_provider_all_unavailable_releases_every_reservation(monkeypatch) -> Non
 
 def test_completion_uses_configurable_short_timeout(monkeypatch) -> None:
     monkeypatch.setenv("BUDGETFLOW_LLM_TIMEOUT_S", "42")
-    monkeypatch.setattr("budgetflow.adapter.mini_swe_proxy.ensure_aicode007_proxy", lambda: None)
     captured: dict = {}
 
     def fake_litellm_completion(**kwargs):

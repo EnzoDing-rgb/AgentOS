@@ -23,7 +23,6 @@ def _args(**overrides):
         tight=None,
         pressure_init=None,
         pressure_max=None,
-        read_frozen_caps=False,
         tight_scale=1.0,
         loose_scale=1.0,
         max_overrun=0.0,

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..defaults import ModelCatalog
+from ..model_tiers import protocol_for
 
 
 @dataclass(frozen=True)
@@ -38,7 +38,7 @@ class ActionProtocolAdapter:
         """
         import os
 
-        declared = ModelCatalog.protocol_for(backend_name)
+        declared = protocol_for(backend_name)
         env_override = os.environ.get("BF_GPT_TEXT_MODE") == "1"
 
         if env_override:

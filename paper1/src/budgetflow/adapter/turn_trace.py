@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from ..defaults import ModelCatalog
+from ..model_tiers import MODEL_CATALOG
 from .protocol_adapter import ActionProtocolAdapter
 
 
@@ -162,7 +162,7 @@ def value_aware_trace_fields(routing) -> dict[str, Any]:
 
 
 def provider_trace_fields(backend_name: str) -> dict[str, Any]:
-    cfg = ModelCatalog.config_for(backend_name)
+    cfg = MODEL_CATALOG.config_for(backend_name)
     if cfg is None:
         return {}
     return {

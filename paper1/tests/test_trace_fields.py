@@ -45,7 +45,7 @@ def test_turn_trace_has_fields_needed_to_debug_value_routing_and_provider_failur
         billable=0.02,
         response_ok=False,
         error_type="ServiceUnavailableError",
-        provider="aicode007",
+        provider="openai_compatible",
         model="openai/gpt-5.4",
         text_mode=True,
         protocol="text_regex",
@@ -61,7 +61,7 @@ def test_turn_trace_has_fields_needed_to_debug_value_routing_and_provider_failur
     )
 
     assert trace["turns_on_tier"] == 2
-    assert trace["provider"] == "aicode007"
+    assert trace["provider"] == "openai_compatible"
     assert trace["protocol"] == "text_regex"
     assert trace["provider_status_code"] == 503
     assert trace["router_branch"] == "budgetflow_value_aware"
@@ -70,7 +70,7 @@ def test_turn_trace_has_fields_needed_to_debug_value_routing_and_provider_failur
 
 
 def test_provider_and_protocol_helpers_identify_real_backend_contracts() -> None:
-    assert provider_trace_fields("tier2")["provider"] == "dashscope"
+    assert provider_trace_fields("tier2")["provider"] == "openai_compatible"
     assert "gpt-5.4" in provider_trace_fields("tier3")["model"]
     assert protocol_trace_fields("tier3", text_mode=True)["protocol"] == "text_regex"
     assert protocol_trace_fields("tier2", text_mode=False)["protocol"] == "tool_call"

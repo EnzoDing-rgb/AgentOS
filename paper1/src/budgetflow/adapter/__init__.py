@@ -1,6 +1,6 @@
-from .backends import build_deepseek_backends
+from .backends import build_compare_backends
 
-__all__ = ["MiniSweRunResult", "build_deepseek_backends", "run_mini_swe_task"]
+__all__ = ["MiniSweRunResult", "build_compare_backends", "run_mini_swe_task"]
 
 
 def __getattr__(name: str):
