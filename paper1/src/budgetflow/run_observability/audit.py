@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
+import re
 
 from budgetflow.failure_classification import build_verdict, classify_failure
 from budgetflow.observability import build_harness_trust
@@ -16,18 +17,22 @@ def _count_tier(backend_picks, tier: int) -> int:
     return sum(1 for p in backend_picks if str(p).endswith(suffix) or f"tier{suffix}" in str(p))
 
 
+def _tier_counts(backend_picks) -> dict[int, int]:
+    counts: dict[int, int] = {}
+    for pick in backend_picks or []:
+        tier = _pick_tier(pick)
+        if tier > 0:
+            counts[tier] = counts.get(tier, 0) + 1
+    return counts
+
+
 # ── Compact audit ────────────────────────────────────────────────────────────
 
 def _pick_tier(pick) -> int:
     """Best-effort tier from a backend_pick string like 'tier2' or 'T2'."""
     s = str(pick).lower()
-    if "tier3" in s or "t3" in s:
-        return 3
-    if "tier2" in s or "t2" in s:
-        return 2
-    if "tier1" in s or "t1" in s:
-        return 1
-    return 0
+    match = re.search(r"(?:tier|t)(\d+)\b", s)
+    return int(match.group(1)) if match else 0
 
 
 def _has_invoice_accurate_cost(record: dict) -> bool:
@@ -63,7 +68,7 @@ def build_compact_audit(records: list[dict]) -> dict:
         if strat not in by_strategy:
             by_strategy[strat] = {
                 "total": 0, "pass": 0, "fail": 0,
-                "cost": 0.0, "turns": 0, "t1_turns": 0, "t2_turns": 0, "t3_turns": 0,
+                "cost": 0.0, "turns": 0, "tier_turns": {},
                 "suspicious": 0, "no_trace": 0,
                 "tasks": set(),
             }
@@ -73,9 +78,8 @@ def build_compact_audit(records: list[dict]) -> dict:
         turns = int(r.get("llm_turns") or 0)
         s["turns"] += turns
         picks = r.get("backend_picks") or []
-        s["t1_turns"] += _count_tier(picks, 1)
-        s["t2_turns"] += _count_tier(picks, 2)
-        s["t3_turns"] += _count_tier(picks, 3)
+        for tier, count in _tier_counts(picks).items():
+            s["tier_turns"][tier] = s["tier_turns"].get(tier, 0) + count
         s["tasks"].add(r.get("instance_id", "?"))
         if r.get("harness_resolved"):
             s["pass"] += 1
@@ -96,11 +100,14 @@ def build_compact_audit(records: list[dict]) -> dict:
         ct_recs = [r for r in records if r.get("strategy") == strat and r.get("instance_id") in common_tasks]
         ct_cost = sum(float(r.get("total_cost") or 0) for r in ct_recs)
         ct_pass = sum(1 for r in ct_recs if r.get("harness_resolved"))
-        ct_t2 = sum(_count_tier(r.get("backend_picks") or [], 2) for r in ct_recs)
-        ct_t3 = sum(_count_tier(r.get("backend_picks") or [], 3) for r in ct_recs)
+        ct_tiers: dict[int, int] = {}
+        for r in ct_recs:
+            for tier, count in _tier_counts(r.get("backend_picks") or []).items():
+                ct_tiers[tier] = ct_tiers.get(tier, 0) + count
         common_stats[strat] = {
             "tasks": len(ct_recs), "pass": ct_pass,
-            "cost": ct_cost, "t2": ct_t2, "t3": ct_t3,
+            "cost": ct_cost, "tier_turns": dict(sorted(ct_tiers.items())),
+            "t2": ct_tiers.get(2, 0), "t3": ct_tiers.get(3, 0),
         }
 
     # Failure axis / class counts
@@ -191,8 +198,11 @@ def build_compact_audit(records: list[dict]) -> dict:
             strat: {
                 "total": s["total"], "pass": s["pass"], "fail": s["fail"],
                 "cost": s["cost"], "avg_turns": s["turns"] / max(s["total"], 1),
-                "t1_turns": s["t1_turns"], "t2_turns": s["t2_turns"], "t3_turns": s["t3_turns"],
-                "t3_share": s["t3_turns"] / max(s["t1_turns"] + s["t2_turns"] + s["t3_turns"], 1),
+                "tier_turns": dict(sorted(s["tier_turns"].items())),
+                "t1_turns": s["tier_turns"].get(1, 0),
+                "t2_turns": s["tier_turns"].get(2, 0),
+                "t3_turns": s["tier_turns"].get(3, 0),
+                "t3_share": s["tier_turns"].get(3, 0) / max(sum(s["tier_turns"].values()), 1),
                 "suspicious": s["suspicious"], "no_trace": s["no_trace"],
             }
             for strat, s in by_strategy.items()
@@ -214,4 +224,3 @@ def build_compact_audit(records: list[dict]) -> dict:
         "harness_owner": ht_owner_counts,
         "harness_severity": ht_severity_counts,
     }
-

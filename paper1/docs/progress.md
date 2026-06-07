@@ -11,6 +11,7 @@
 - **Observability cleanup:** active rows now use `auto_budget_memory_used` / `auto_budget_memory_neighbors` for learned-cap provenance instead of reusing the ambiguous old `budget_memory_*` names.
 - **Architecture judgment:** keeping `BudgetMemory` as a third learning entry point made cap semantics non-orthogonal. Historical reports that mention it remain forensic evidence, but new runs should not use it as an active budget source.
 - **Provider-tier seam cleanup:** active routing now uses `ModelCatalog.second_cheapest()`, `strongest()`, and `at_or_above()` for second-tier / strongest-tier decisions instead of indexing `ordered[1]` or treating `tier>=3` as the only strong tier. This keeps future 3→5 tier expansion out of runtime logic.
+- **Audit schema cleanup:** compact observability audit now preserves generic `tier_turns` for arbitrary tier ids while keeping current T2/T3 display fields as derived views.
 
 ### 076 / Provider-agnostic tier seam and obsolete probe cleanup
 
