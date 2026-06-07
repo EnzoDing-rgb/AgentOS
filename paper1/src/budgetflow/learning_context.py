@@ -15,19 +15,11 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from .harness_contamination import has_host_dependency_contamination
 from .policy_memory import PolicyMemory
 
 POLICY_MEMORY_SOURCE_DECAY = 0.35
 POLICY_MEMORY_MIN_WEIGHT = 0.05
-
-HOST_DEPENDENCY_CONTAMINATION_MARKERS = (
-    "numpy.dtype size changed",
-    "_ARRAY_API not found",
-    "opik/evaluation/metrics",
-    "site-packages/tensorflow",
-    "site-packages/keras",
-    "site-packages/pandas",
-)
 
 
 ROUTING_MEMORY_ROUTINGS = frozenset(
@@ -69,7 +61,7 @@ def looks_like_policy_memory_source(path: Path) -> bool:
         except json.JSONDecodeError:
             continue
         detail = str(record.get("detail") or "")
-        if any(marker in detail for marker in HOST_DEPENDENCY_CONTAMINATION_MARKERS):
+        if has_host_dependency_contamination(detail):
             return False
         routing = str(record.get("routing") or "")
         if routing not in ROUTING_MEMORY_ROUTINGS:

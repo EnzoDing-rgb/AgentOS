@@ -37,7 +37,10 @@ def main() -> None:
         print()
         print(f"=== ISSUES ({len(result['issues'])}) ===")
         for issue in result["issues"]:
-            prefix = "ERROR" if issue.startswith(("DUPLICATE", "SUSPICIOUS", "MISSING_FIELDS")) else "WARN"
+            prefix = "ERROR" if issue.startswith((
+                "DUPLICATE", "SUSPICIOUS", "MISSING_FIELDS",
+                "HARNESS_INVALID", "STALE_VERDICT_FIELDS",
+            )) else "WARN"
             print(f"  [{prefix}] {issue}")
 
     # Verbose mode also shows the old by-strategy table

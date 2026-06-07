@@ -1,4 +1,5 @@
 from budgetflow.run_observability.audit import build_compact_audit
+from budgetflow.run_observability.checker import check_jsonl
 from budgetflow.observability import build_harness_trust
 from budgetflow.run_observability.checks import _check_value_profile_fallback
 from budgetflow.run_observability.report import format_compact_audit
@@ -299,6 +300,45 @@ def test_harness_trust_treats_failed_patch_as_trusted_failure() -> None:
 
     assert trust["harness_trust"] == "trusted"
     assert trust["severity"] == "none"
+
+
+def test_harness_trust_blocks_host_dependency_contamination() -> None:
+    trust = build_harness_trust({
+        "harness_resolved": False,
+        "patch_extracted": True,
+        "patch_source": "submission",
+        "submitted_patch": "/tmp/submitted.patch",
+        "detail": (
+            "test_patch=ok; fail_before=fail; model_patch=ok; "
+            "fail_after=fail; ValueError: numpy.dtype size changed"
+        ),
+    })
+
+    assert trust["harness_trust"] == "invalid"
+    assert trust["severity"] == "blocking"
+    assert trust["harness_owner"] == "infra"
+
+
+def test_checker_counts_invalid_harness_as_error(tmp_path) -> None:
+    path = tmp_path / "run.jsonl"
+    path.write_text(
+        '{"instance_id":"sympy__sympy-1","strategy":"budgetflow_value_aware_tight",'
+        '"routing":"budgetflow_value_aware","harness_resolved":false,'
+        '"patch_extracted":true,"patch_source":"submission","submitted_patch":"/tmp/p.patch",'
+        '"exit_status":"Submitted","exit_reason":"submitted","total_cost":0.1,'
+        '"llm_turns":1,"turns":1,"elapsed_s":1,"turn_trace_count":1,'
+        '"run_series":"unit","policy_lane":"budgetflow_value_aware_tight",'
+        '"task_order_index":1,"row_started_at":1,"row_finished_at":2,'
+        '"harness_evidence":{"evidence_complete":false},'
+        '"observability_status":{"trace_available":true},'
+        '"detail":"test_patch=ok; fail_before=fail; model_patch=ok; '
+        'fail_after=fail; ValueError: numpy.dtype size changed"}\n'
+    )
+
+    result = check_jsonl(path)
+
+    assert result["errors"] >= 1
+    assert any(issue.startswith("HARNESS_INVALID") for issue in result["issues"])
 
 
 def test_harness_trust_blocks_resolved_rows_with_missing_pass_evidence() -> None:

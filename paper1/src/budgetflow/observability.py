@@ -13,6 +13,8 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .harness_contamination import has_host_dependency_contamination
+
 
 # ── Harness evidence parsing ────────────────────────────────────────────────
 
@@ -151,6 +153,9 @@ def build_harness_trust(record: dict) -> dict:
         issues.append("attempted_but_not_submitted")
 
     # Harness evidence gaps
+    detail = str(record.get("detail") or "")
+    if has_host_dependency_contamination(detail):
+        issues.append("host_dependency_contamination")
     if patch_extracted and not evidence.test_patch_ok:
         issues.append("test_patch_not_ok")
     if patch_extracted and not evidence.fail_before_failed:
@@ -170,7 +175,9 @@ def build_harness_trust(record: dict) -> dict:
     blocking_gaps = {"resolved_but_fail_after_not_passed", "resolved_but_pass_to_pass_not_ok"}
     issue_set = set(issues)
 
-    if not patch_extracted and not resolved:
+    if "host_dependency_contamination" in issue_set:
+        trust = "invalid"
+    elif not patch_extracted and not resolved:
         trust = "incomplete"
     elif not evidence.evidence_complete:
         if resolved:
@@ -202,6 +209,8 @@ def build_harness_trust(record: dict) -> dict:
     elif resolved and issue_set & {"fail_before_not_failed", "model_patch_not_ok"}:
         severity = "blocking"
     elif not resolved and patch_extracted and issue_set & {"fail_before_not_failed", "model_patch_not_ok"}:
+        severity = "blocking"
+    elif "host_dependency_contamination" in issue_set:
         severity = "blocking"
     elif "patch_from_worktree_fallback" in issue_set and evidence.evidence_complete:
         severity = "warn"  # evidence says it's fine, just non-standard source
@@ -238,6 +247,8 @@ def _harness_owner(
                      "submitted_patch_path_missing", "unknown_patch_source"}
 
     issue_set = set(issues)
+    if "host_dependency_contamination" in issue_set:
+        return "infra"
     if issue_set & harness_gaps:
         return "harness"
     if issue_set & protocol_gaps:

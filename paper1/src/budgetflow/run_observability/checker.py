@@ -181,6 +181,7 @@ def check_jsonl(jsonl_path: Path, heartbeat_stale_s: float = 600.0) -> dict:
 
     error_count = sum(1 for i in all_issues if i.startswith((
         "DUPLICATE", "SUSPICIOUS", "MISSING_FIELDS",
+        "HARNESS_INVALID", "STALE_VERDICT_FIELDS",
         "HEARTBEAT_DEAD_PID", "HEARTBEAT_STUCK",
         "CROSS_SERIES_DUPLICATE", "PARTIAL_RUN", "SHARED_CAP_STARVATION",
         "VALUE_FALLBACK", "SEQUENTIAL_POLICY",

@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
+from .harness_contamination import has_host_dependency_contamination
 from .model_tiers import MODEL_CATALOG, parse_tier_label
 from .observability import parse_harness_evidence
 
@@ -228,6 +229,9 @@ def classify_failure(record: dict[str, Any]) -> str:
 
     status = str(record.get("exit_status") or "")
     reason = str(record.get("exit_reason") or "")
+    if has_host_dependency_contamination(str(record.get("detail") or "")):
+        return "infra_fail"
+
     if _is_budget_exit(status, reason):
         return "budget_fail"
 
@@ -305,7 +309,8 @@ def build_verdict(record: dict[str, Any]) -> dict[str, Any]:
     evidence_complete, missing_evidence.
     """
     resolved = record.get("harness_resolved") in (True, "True", "true")
-    evidence = parse_harness_evidence(str(record.get("detail") or ""))
+    detail = str(record.get("detail") or "")
+    evidence = parse_harness_evidence(detail)
     status = str(record.get("exit_status") or "")
     reason = str(record.get("exit_reason") or "")
     errors = _turn_error_types(record)
@@ -315,6 +320,8 @@ def build_verdict(record: dict[str, Any]) -> dict[str, Any]:
     # Determine verdict axis
     if resolved:
         axis = "pass"
+    elif has_host_dependency_contamination(detail):
+        axis = "infra_fail"
     elif _is_budget_exit(status, reason):
         axis = "budget_fail"
     elif _is_conservation_lockout(record):
@@ -357,7 +364,7 @@ def build_verdict(record: dict[str, Any]) -> dict[str, Any]:
         owner = "model"
 
     # Determine failure stage
-    harness = _parse_harness_detail(str(record.get("detail") or ""))
+    harness = _parse_harness_detail(detail)
     if axis == "pass":
         stage = "none"
     elif axis == "budget_fail":

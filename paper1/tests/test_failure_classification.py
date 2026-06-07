@@ -58,6 +58,26 @@ def test_classify_infra_fail_from_provider_error() -> None:
     )
 
 
+def test_host_dependency_contamination_is_infra_not_model() -> None:
+    record = {
+        "harness_resolved": False,
+        "patch_extracted": True,
+        "agent_gold_edited": True,
+        "exit_status": "Submitted",
+        "detail": (
+            "test_patch=ok; fail_before=fail; model_patch=ok; "
+            "fail_after=fail; ValueError: numpy.dtype size changed"
+        ),
+        "turn_trace_count": 1,
+    }
+
+    assert classify_failure(record) == "infra_fail"
+    verdict = build_verdict(record)
+    assert verdict["verdict_axis"] == "infra_fail"
+    assert verdict["failure_owner"] == "infra"
+    assert verdict["failure_subtype"] == "provider_or_parser_error"
+
+
 def test_forensic_summary_provider_unavailable_axis() -> None:
     summary = build_forensic_summary(
         {
