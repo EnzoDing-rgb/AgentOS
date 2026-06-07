@@ -309,6 +309,7 @@ def main() -> None:
         print(f"{tag('policy_memory', bold=True)} loaded from {source_display} "
               f"source={policy_ctx.source_kind} "
               f"records={policy_memory._record_count} "
+              f"effective_weight={policy_memory._effective_record_weight:.2f} "
               f"repos={len(policy_memory._repo_priors)} "
               f"tasks={len(policy_memory._task_priors)} "
               f"threshold={policy_memory.regret_threshold}")

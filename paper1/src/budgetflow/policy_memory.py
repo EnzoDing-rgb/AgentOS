@@ -151,6 +151,8 @@ class PolicyMemory:
         self._repo_escalation: dict[str, EscalationPrior] = {}
         self._task_escalation: dict[str, EscalationPrior] = {}
         self._record_count: int = 0
+        self._effective_record_weight: float = 0.0
+        self._source_weight_summary: dict[str, float] = {}
         self._source_path: str = ""
 
     # ── rebuild ────────────────────────────────────────────────────────────
@@ -178,6 +180,12 @@ class PolicyMemory:
         self._repo_escalation.clear()
         self._task_escalation.clear()
         self._record_count = len(records)
+        self._effective_record_weight = round(sum(_record_weight(record) for record in records), 4)
+        source_weights: dict[str, float] = defaultdict(float)
+        for record in records:
+            source = str(record.get("_policy_memory_source") or "unknown")
+            source_weights[source] += _record_weight(record)
+        self._source_weight_summary = {source: round(weight, 4) for source, weight in sorted(source_weights.items())}
 
         # Group by repo
         repo_records: dict[str, list[dict]] = defaultdict(list)
@@ -208,7 +216,7 @@ class PolicyMemory:
     def _build_repo_prior(self, repo: str, records: list[dict]) -> RepoPrior:
         prior = RepoPrior(repo=repo)
         prior.total_tasks = len({r.get("instance_id") for r in records})
-        prior.pass_count = sum(1 for r in records if r.get("harness_resolved"))
+        prior.pass_count = round(sum(_record_weight(r) for r in records if r.get("harness_resolved")))
 
         costs = sorted(float(r.get("total_cost") or 0) for r in records)
         if costs:
@@ -217,7 +225,7 @@ class PolicyMemory:
 
         tier_pass: dict[int, int] = defaultdict(int)
         tier_total: dict[int, int] = defaultdict(int)
-        stage_tier_pass: dict[str, dict[int, list[bool]]] = defaultdict(lambda: defaultdict(list))
+        stage_tier_pass: dict[str, dict[int, list[tuple[float, float]]]] = defaultdict(lambda: defaultdict(list))
 
         for r in records:
             picks = r.get("backend_picks") or []
@@ -228,11 +236,12 @@ class PolicyMemory:
                     prior.tier_turns[tier] += 1
                     tiers_seen.add(tier)
             passed = bool(r.get("harness_resolved"))
+            weight = _record_weight(r)
             for tier in tiers_seen:
-                tier_total[tier] += 1
-                tier_pass[tier] += 1 if passed else 0
+                tier_total[tier] += weight
+                tier_pass[tier] += weight if passed else 0
 
-            prior.failure_classes[str(r.get("failure_class") or "unknown")] += 1
+            prior.failure_classes[str(r.get("failure_class") or "unknown")] += weight
 
             # Stage-level priors from turn_traces
             traces = r.get("turn_traces") or []
@@ -252,7 +261,7 @@ class PolicyMemory:
                     stages_by_tier[tier_int].add(stage)
             for tier, stages in stages_by_tier.items():
                 for stage in stages:
-                    stage_tier_pass[stage.value][tier].append(passed)
+                    stage_tier_pass[stage.value][tier].append((weight if passed else 0.0, weight))
 
         prior.tier_success_rate = {
             tier: tier_pass[tier] / max(tier_total[tier], 1)
@@ -261,7 +270,7 @@ class PolicyMemory:
         prior.stage_tier_success = defaultdict(dict)
         for stage, by_tier in stage_tier_pass.items():
             prior.stage_tier_success[stage] = {
-                tier: sum(values) / max(len(values), 1)
+                tier: sum(pass_weight for pass_weight, _ in values) / max(sum(total_weight for _, total_weight in values), 1e-9)
                 for tier, values in sorted(by_tier.items())
             }
         return prior
@@ -269,7 +278,7 @@ class PolicyMemory:
     def _build_task_prior(self, instance_id: str, records: list[dict]) -> TaskPrior:
         prior = TaskPrior(instance_id=instance_id)
         prior.seen = len(records)
-        prior.pass_count = sum(1 for r in records if r.get("harness_resolved"))
+        prior.pass_count = round(sum(_record_weight(r) for r in records if r.get("harness_resolved")))
 
         costs = sorted(float(r.get("total_cost") or 0) for r in records)
         if costs:
@@ -277,10 +286,11 @@ class PolicyMemory:
             prior.median_cost = costs[mid] if len(costs) % 2 else (costs[mid - 1] + costs[mid]) / 2
 
         for r in records:
-            prior.failure_classes[str(r.get("failure_class") or "unknown")] += 1
+            weight = _record_weight(r)
+            prior.failure_classes[str(r.get("failure_class") or "unknown")] += weight
             if r.get("strategy") == "all_pro":
                 if not r.get("harness_resolved"):
-                    prior.all_pro_failures += 1
+                    prior.all_pro_failures += weight
             picks = r.get("backend_picks") or []
             for p in picks:
                 tier = _pick_tier(p)
@@ -305,12 +315,12 @@ class PolicyMemory:
             tight_recs = groups.get("tight", [])
             if not full_recs or not tight_recs:
                 continue
-            regret.full_count += len(full_recs)
-            regret.tight_count += len(tight_recs)
-            regret.full_cost += sum(float(r.get("total_cost") or 0) for r in full_recs)
-            regret.tight_cost += sum(float(r.get("total_cost") or 0) for r in tight_recs)
-            regret.full_pass += sum(1 for r in full_recs if r.get("harness_resolved"))
-            regret.tight_pass += sum(1 for r in tight_recs if r.get("harness_resolved"))
+            regret.full_count += _weighted_count(full_recs)
+            regret.tight_count += _weighted_count(tight_recs)
+            regret.full_cost += _weighted_cost(full_recs)
+            regret.tight_cost += _weighted_cost(tight_recs)
+            regret.full_pass += sum(_record_weight(r) for r in full_recs if r.get("harness_resolved"))
+            regret.tight_pass += sum(_record_weight(r) for r in tight_recs if r.get("harness_resolved"))
 
         if regret.tight_count > 0 and regret.full_count > 0:
             full_avg = regret.full_avg_cost
@@ -337,20 +347,21 @@ class PolicyMemory:
             ]
             if not escalation_traces:
                 continue
-            prior.attempts += 1
+            weight = _record_weight(record)
+            prior.attempts += weight
             if record.get("harness_resolved"):
-                prior.resolved += 1
+                prior.resolved += weight
             for trace in escalation_traces:
                 if _trace_tier(trace) < 3:
                     continue
-                prior.t3_turns += 1
+                prior.t3_turns += weight
                 productive = bool(trace.get("has_progress")) and not (
                     trace.get("error_type") or trace.get("parser_error_type")
                 )
                 if productive:
-                    prior.t3_productive_turns += 1
+                    prior.t3_productive_turns += weight
                 else:
-                    prior.t3_no_progress_cost += float(
+                    prior.t3_no_progress_cost += weight * float(
                         trace.get("billable_cost") or trace.get("actual_cost") or 0.0
                     )
         return prior
@@ -409,6 +420,8 @@ class PolicyMemory:
             "learned_action": action,
             "regret_threshold": self.regret_threshold,
             "policy_memory_source": self._source_path or "",
+            "policy_memory_effective_weight": self._effective_record_weight,
+            "policy_memory_source_weights": self._source_weight_summary,
             "escalation_memory_source": escalation_source if escalation.attempts else "",
             "escalation_attempts": escalation.attempts,
             "escalation_success_rate": round(escalation.success_rate, 3),
@@ -509,7 +522,10 @@ class PolicyMemory:
 
     def summary_lines(self) -> list[str]:
         lines = ["policy_memory:"]
-        lines.append(f"  records={self._record_count} repos={len(self._repo_priors)} tasks={len(self._task_priors)}")
+        lines.append(
+            f"  records={self._record_count} effective_weight={self._effective_record_weight:.2f} "
+            f"repos={len(self._repo_priors)} tasks={len(self._task_priors)}"
+        )
         for repo, prior in sorted(self._repo_priors.items()):
             lines.append(
                 f"  {repo}: tasks={prior.total_tasks} pass={prior.pass_count} "
@@ -528,6 +544,22 @@ class PolicyMemory:
 
 def _pick_tier(pick) -> int:
     return parse_tier_label(pick)
+
+
+def _record_weight(record: dict) -> float:
+    try:
+        weight = float(record.get("_policy_memory_weight", 1.0))
+    except (TypeError, ValueError):
+        weight = 1.0
+    return max(0.0, min(weight, 1.0))
+
+
+def _weighted_count(records: list[dict]) -> float:
+    return sum(_record_weight(record) for record in records)
+
+
+def _weighted_cost(records: list[dict]) -> float:
+    return sum(_record_weight(record) * float(record.get("total_cost") or 0.0) for record in records)
 
 
 def _trace_tier(trace: dict) -> int:

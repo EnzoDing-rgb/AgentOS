@@ -17,6 +17,9 @@ from pathlib import Path
 
 from .policy_memory import PolicyMemory
 
+POLICY_MEMORY_SOURCE_DECAY = 0.35
+POLICY_MEMORY_MIN_WEIGHT = 0.05
+
 
 ROUTING_MEMORY_ROUTINGS = frozenset(
     {
@@ -93,6 +96,11 @@ def default_policy_memory_sources(runs_dir: Path, *, exclude: Path | None = None
     return tuple(candidates[:limit])
 
 
+def policy_memory_source_weight(source_index: int) -> float:
+    """Recency weighting: newest run dominates, older runs are weak priors."""
+    return max(POLICY_MEMORY_MIN_WEIGHT, POLICY_MEMORY_SOURCE_DECAY ** max(0, source_index))
+
+
 def load_policy_memory_context(
     *,
     runs_dir: Path,
@@ -140,14 +148,19 @@ def load_policy_memory_context(
 
     memory = PolicyMemory(regret_threshold=regret_threshold)
     records: list[dict] = []
-    for source in sources:
+    for source_index, source in enumerate(sources):
+        weight = policy_memory_source_weight(source_index)
         for line in source.read_text(errors="replace").splitlines():
             if not line.strip():
                 continue
             try:
-                records.append(json.loads(line))
+                record = json.loads(line)
             except json.JSONDecodeError:
                 continue
+            record["_policy_memory_source"] = str(source)
+            record["_policy_memory_source_rank"] = source_index
+            record["_policy_memory_weight"] = weight
+            records.append(record)
     memory.rebuild_from_records(records)
     memory._source_path = ",".join(str(path) for path in sources)
     return PolicyMemoryContext(memory, sources[0], sources, source_kind, True)

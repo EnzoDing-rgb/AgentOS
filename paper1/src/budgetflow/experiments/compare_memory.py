@@ -176,6 +176,7 @@ def run_auto_budget_dry_run(
         print(
             f"{tag('policy_memory', bold=True)} loaded from {source_display} "
             f"source={policy_ctx.source_kind} records={policy_ctx.memory._record_count} "
+            f"effective_weight={policy_ctx.memory._effective_record_weight:.2f} "
             f"repos={len(policy_ctx.memory._repo_priors)} tasks={len(policy_ctx.memory._task_priors)} "
             f"threshold={policy_ctx.memory.regret_threshold}",
             flush=True,
