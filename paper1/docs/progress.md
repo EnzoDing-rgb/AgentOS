@@ -4,6 +4,17 @@
 
 ## 当前快照（2026-06-07）
 
+### 082 / Qwen3.7-Max T2 and BO-style starter-memory diagnostic
+
+- **082_qwen37_starter_memory_4x6 COMPLETE — small paid diagnostic, not paper evidence.** 4 policies x 6 tasks, `--jobs 4`, Value-Driven Budget Allocation, frozen `053_exact_cap_cold_start_value_matrix`, and T2 catalog swapped to Alibaba `qwen3.7-max`.
+- **No-paid and provider gates passed before paid run:** full tests `211 passed`, py_compile passed, `git diff --check` passed, auto-budget dry-run passed, paid readiness passed, and provider signature passed for T1 `qwen3-coder-flash`, T2 `qwen3.7-max`, and T3 `GPT-5.4`.
+- **T1 primary signal is positive but diagnostic-scale:** BO resolved **3/6**, BFC **4/6**, BFV **4/6**, task-level **2/6**. NVRV: BO **0.4925**, BFC **0.6345**, BFV **0.6345**, task-level **0.3118**.
+- **T1 secondary / T2 cost signal is mixed:** RVPD: BFC **61.07**, BO **59.42**, BFV **43.81**, task-level **17.08**. BFC slightly beats BO on resolved value per dollar; BFV beats BO on NVRV but spends more, mostly from long Qwen3.7-Max repair/validation loops.
+- **Stage-aware vs task-level control is strongly positive:** BFV vs value-aware task-level on the same 6 tasks: `delta_pass=+2`, `delta_cost=$-0.4861`, `delta_nvrv=+0.3227`, `delta_rv_per_$=+26.7242`. This supports keeping StageAware as a T2 mechanism while continuing to audit T1 risk.
+- **BO-style starter memory was actually consumed:** BFC/BFV rows show learned `frontload_strongest` starter windows from Routing Memory, and runtime logs show `starting_tier=3` / `strongest_starter_window`. This confirms the BO imitation mechanism entered routing rather than only logs.
+- **Mechanism diagnosis:** BO is not globally dominant. It failed on `sympy__sympy-16988`, `django__django-10924`, and `sympy__sympy-18057`; BFV/BFC passed Django 10924 where BO all-T3 failed. However, both BFV and BFC spent heavily on `sympy__sympy-20212` before passing, so the next root-cause work is stop/cap/repair cost control, not more blind T3.
+- **Audit caveat:** compact audit reports suspicious_pass=0, no_trace=0, policy_memory_used=True, canonical estimated cost only, and provider invoice actual cost unavailable. Harness trust has warnings on failed rows; treat 082 as a useful T1/T2 diagnostic, not final evidence.
+
 ### 080 / Paid-readiness cleanup and 4x4 cold-start diagnostic
 
 - **No-paid infra cleanup:** centralized paid readiness now reports planned policy/total cap, blocks all-global-fallback auto-budget paid runs by default, and labels cold-start value runs separately from historical T1 value evidence.
