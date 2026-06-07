@@ -7,6 +7,7 @@ import pytest
 from budgetflow.experiments.compare_config import CompareStrategy
 from budgetflow.experiments.compare_setup import (
     build_batch_budget_modes,
+    load_tasks_for_compare,
     resolve_budget_plan,
     resolve_task_count,
     select_strategies,
@@ -30,6 +31,7 @@ def _args(**overrides):
         trace_quiet=False,
         strategies=None,
         jobs=None,
+        ids=None,
     )
     base.update(overrides)
     return Namespace(**base)
@@ -38,6 +40,18 @@ def _args(**overrides):
 def test_resolve_task_count_medium_defaults_to_15() -> None:
     assert resolve_task_count(_args(task_set="medium")) == 15
     assert resolve_task_count(_args(task_set="medium", limit=4)) == 4
+
+
+def test_medium_task_set_uses_medium_pool_not_3x3_preset() -> None:
+    args = _args(task_set="medium")
+    tasks = load_tasks_for_compare(args, tasks_n=resolve_task_count(args))
+
+    assert len(tasks) == 15
+    assert {task.instance_id for task in tasks} != {
+        "sympy__sympy-13480",
+        "sympy__sympy-20212",
+        "sympy__sympy-16988",
+    }
 
 
 def test_budget_plan_uses_defaults_and_scales() -> None:

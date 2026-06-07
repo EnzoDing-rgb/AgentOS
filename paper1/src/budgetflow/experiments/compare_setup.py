@@ -135,10 +135,10 @@ def load_tasks_for_compare(args: Namespace, *, tasks_n: int) -> list:
     if args.ids:
         ids = tuple(s.strip() for s in args.ids.split(",") if s.strip())
         tasks = load_swebench_lite_tasks(instance_ids=ids)
-    elif args.preset in {"3x3", "stage-split"}:
-        tasks = load_swebench_lite_tasks(instance_ids=DIAGNOSTIC_3X3_IDS)
     elif args.task_set == "medium":
         tasks = load_compare_medium_tasks(tasks_n)
+    elif args.preset in {"3x3", "stage-split"}:
+        tasks = load_swebench_lite_tasks(instance_ids=DIAGNOSTIC_3X3_IDS)
     else:
         tasks = load_compare_easy_tasks(tasks_n)
     return order_tasks_easy_first(tasks, task_set=args.task_set)
