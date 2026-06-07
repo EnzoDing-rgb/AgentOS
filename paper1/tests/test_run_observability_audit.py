@@ -114,6 +114,7 @@ def test_compact_audit_reports_t3_productivity() -> None:
                     "backend_tier": 5,
                     "final_backend": "tier5",
                     "has_progress": False,
+                    "action_has_progress": False,
                     "billable_cost": 0.04,
                     "parser_error_type": "FormatError",
                     "value_triggered_escalation_opened": True,
@@ -140,6 +141,39 @@ def test_compact_audit_reports_t3_productivity() -> None:
     assert "strongest_model=T5" in text
     assert "T3 SOURCE BREAKDOWN" in text
     assert "value_triggered" in text
+
+
+def test_compact_audit_uses_current_action_progress_for_t3_productivity() -> None:
+    audit = build_compact_audit([
+        {
+            "instance_id": "repo__task",
+            "strategy": "budgetflow_value_aware_tight",
+            "harness_resolved": False,
+            "harness_evidence": {"evidence_complete": True},
+            "total_cost": 0.07,
+            "llm_turns": 1,
+            "turn_trace_count": 1,
+            "backend_picks": ["tier5"],
+            "turn_traces": [
+                {
+                    "backend_tier": 5,
+                    "final_backend": "tier5",
+                    "has_progress": False,
+                    "progress_reason": "none",
+                    "action_has_progress": True,
+                    "action_progress_reason": "action_repair_pattern",
+                    "billable_cost": 0.03,
+                    "strongest_starter_applied": True,
+                },
+            ],
+        }
+    ])
+
+    stats = audit["t3_productivity"]["budgetflow_value_aware_tight"]
+
+    assert stats["t3_productive_turns"] == 1
+    assert stats["t3_no_progress_turns"] == 0
+    assert stats["t3_no_progress_cost"] == 0.0
 
 
 def test_compact_audit_reports_t2_frontier_and_stage_split_control() -> None:

@@ -35,6 +35,7 @@ from ..types import Backend, Stage, TurnInfo, WorkflowStatus
 from .errors import BudgetFlowBudgetError, BudgetFlowStagnationError, BudgetFlowUpstreamError
 from ..run_guards import is_fatal_billing_error, record_billing_halt, record_upstream_error
 from .bash_stage import (
+    actions_count_as_progress,
     classify_routing_stage,
     command_counts_as_progress,
     extract_touched_file_paths, extract_trace_file_paths,
@@ -415,6 +416,8 @@ class BudgetFlowLitellmModel:
                         turns_on_tier=self._turns_on_current_tier,
                         has_progress=has_progress,
                         progress_reason=progress_reason,
+                        action_has_progress=None,
+                        action_progress_reason=None,
                         prompt_tokens=0,
                         completion_tokens=0,
                         actual_cost=0.0,
@@ -500,6 +503,8 @@ class BudgetFlowLitellmModel:
                     turns_on_tier=self._turns_on_current_tier,
                     has_progress=has_progress,
                     progress_reason=progress_reason,
+                    action_has_progress=None,
+                    action_progress_reason=None,
                     prompt_tokens=prompt_tokens,
                     completion_tokens=completion_tokens,
                     actual_cost=actual_cost,
@@ -522,6 +527,7 @@ class BudgetFlowLitellmModel:
                     reservation_settled=True,
                 ))
             raise
+        action_has_progress, action_progress_reason = actions_count_as_progress(actions)
         message["extra"] = {
             "actions": actions,
             "response": response.model_dump(),
@@ -558,6 +564,8 @@ class BudgetFlowLitellmModel:
                 turns_on_tier=self._turns_on_current_tier,
                 has_progress=has_progress,
                 progress_reason=progress_reason,
+                action_has_progress=action_has_progress,
+                action_progress_reason=action_progress_reason,
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
                 actual_cost=actual_cost,

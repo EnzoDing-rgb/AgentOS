@@ -1,4 +1,5 @@
 from budgetflow.adapter.bash_stage import (
+    actions_count_as_progress,
     bash_has_progress,
     classify_bash_stage,
     classify_routing_stage,
@@ -45,6 +46,13 @@ def test_validation_phase_counts_as_progress_for_stop_loss():
         "",
         agent_phase="test",
     ) == (True, "validation_phase")
+
+
+def test_current_action_progress_is_distinct_from_previous_observation_progress():
+    assert actions_count_as_progress([
+        {"command": "apply_patch <<'PATCH'\n*** Begin Patch\n*** End Patch\nPATCH"}
+    ]) == (True, "action_repair_pattern")
+    assert actions_count_as_progress([{"command": "grep -R pattern src"}]) == (False, "none")
 
 
 def test_bash_stage_localization():

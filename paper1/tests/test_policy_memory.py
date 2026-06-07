@@ -668,6 +668,36 @@ def test_policy_memory_shortens_after_one_costly_unproductive_escalation() -> No
     assert summary["value_triggered_escalation_window"] == 1
 
 
+def test_policy_memory_uses_current_action_progress_for_t3_productivity() -> None:
+    memory = PolicyMemory()
+    memory.rebuild_from_records([
+        _record(
+            instance_id="django__django-1",
+            routing="budgetflow_value_aware",
+            harness_resolved=True,
+            failure_class="pass",
+            turn_traces=[
+                {
+                    "stage": "REPAIR",
+                    "backend_tier": 3,
+                    "final_backend": "tier3",
+                    "value_triggered_escalation_active": True,
+                    "has_progress": False,
+                    "action_has_progress": True,
+                    "action_progress_reason": "action_repair_pattern",
+                    "billable_cost": 0.08,
+                }
+            ],
+        )
+    ])
+
+    summary = memory.routing_prior_summary("django__django-2", Stage.REPAIR)
+
+    assert summary["t3_productive_rate"] == 1.0
+    assert summary["t3_no_progress_cost"] == 0.0
+    assert summary["value_triggered_escalation_action"] == "extend_value_triggered_escalation"
+
+
 def test_rebuild_from_jsonl_sets_source_and_ignores_bad_lines(tmp_path: Path) -> None:
     source = tmp_path / "run.jsonl"
     source.write_text(json.dumps(_pass_record(instance_id="django__django-1")) + "\nnot-json\n")

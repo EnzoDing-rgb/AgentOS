@@ -51,6 +51,14 @@ def _t3_id(records: list[dict]) -> int:
     return max([tier for tier in observed + configured if tier > 0], default=0)
 
 
+def _trace_productive(trace: dict) -> bool:
+    if trace.get("error_type") or trace.get("parser_error_type"):
+        return False
+    if "action_has_progress" in trace:
+        return bool(trace.get("action_has_progress"))
+    return bool(trace.get("has_progress"))
+
+
 def _t3_productivity(records: list[dict], t3_tier: int) -> dict[str, dict]:
     by_strategy: dict[str, dict] = {}
     if t3_tier <= 0:
@@ -80,9 +88,7 @@ def _t3_productivity(records: list[dict], t3_tier: int) -> dict[str, dict]:
             if tier < t3_tier:
                 continue
             cost = float(trace.get("billable_cost") or trace.get("actual_cost") or 0.0)
-            useful = bool(trace.get("has_progress")) and not (
-                trace.get("error_type") or trace.get("parser_error_type")
-            )
+            useful = _trace_productive(trace)
             stats["t3_turns"] += 1
             stats["t3_cost"] += cost
             if useful:
@@ -135,9 +141,7 @@ def _t3_source_breakdown(records: list[dict], t3_tier: int) -> dict[str, dict[st
                     "t3_no_progress_cost": 0.0,
                 },
             )
-            productive = bool(trace.get("has_progress")) and not (
-                trace.get("error_type") or trace.get("parser_error_type")
-            )
+            productive = _trace_productive(trace)
             stats["t3_turns"] += 1
             if productive:
                 stats["t3_productive_turns"] += 1

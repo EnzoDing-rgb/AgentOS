@@ -408,9 +408,7 @@ class PolicyMemory:
                 if _trace_tier(trace) < 3:
                     continue
                 prior.t3_turns += weight
-                productive = bool(trace.get("has_progress")) and not (
-                    trace.get("error_type") or trace.get("parser_error_type")
-                )
+                productive = _trace_productive(trace)
                 if productive:
                     prior.t3_productive_turns += weight
                 else:
@@ -451,9 +449,7 @@ class PolicyMemory:
                         prior.budgetflow_starter_failures += weight
                     for trace in starter_traces:
                         prior.budgetflow_starter_t3_turns += weight
-                        productive = bool(trace.get("has_progress")) and not (
-                            trace.get("error_type") or trace.get("parser_error_type")
-                        )
+                        productive = _trace_productive(trace)
                         if productive:
                             prior.budgetflow_starter_productive_turns += weight
                         else:
@@ -753,6 +749,15 @@ def _trace_has_value_triggered_escalation(trace: dict) -> bool:
         or trace.get("value_salvage_active")
         or trace.get("value_salvage_triggered")
     )
+
+
+def _trace_productive(trace: dict) -> bool:
+    """Whether this backend turn produced a useful action without infra noise."""
+    if trace.get("error_type") or trace.get("parser_error_type"):
+        return False
+    if "action_has_progress" in trace:
+        return bool(trace.get("action_has_progress"))
+    return bool(trace.get("has_progress"))
 
 
 def _escalation_action(prior: EscalationPrior) -> tuple[str, int]:

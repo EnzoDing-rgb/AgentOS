@@ -39,6 +39,8 @@ def test_turn_trace_has_fields_needed_to_debug_value_routing_and_provider_failur
         turns_on_tier=2,
         has_progress=True,
         progress_reason="repair_pattern",
+        action_has_progress=True,
+        action_progress_reason="action_repair_pattern",
         prompt_tokens=100,
         completion_tokens=50,
         actual_cost=0.02,

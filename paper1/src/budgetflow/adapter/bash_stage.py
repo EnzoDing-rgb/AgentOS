@@ -180,6 +180,23 @@ def command_counts_as_progress(
     return False, "none"
 
 
+def actions_count_as_progress(actions: list[dict] | tuple[dict, ...] | None) -> tuple[bool, str]:
+    """Return whether the model's current action should count as productive.
+
+    ``command_counts_as_progress`` reads the previous observation context and
+    drives runtime stagnation. This helper reads the action just emitted by the
+    selected backend, so audit and learning can attribute productive T3 turns to
+    the model that produced the edit/test command.
+    """
+    for action in actions or []:
+        if not isinstance(action, dict):
+            continue
+        has_progress, reason = bash_has_progress(action.get("command"))
+        if has_progress:
+            return True, f"action_{reason}"
+    return False, "none"
+
+
 def classify_bash_stage(bash_command: str | None, observation: str | None = None) -> Stage:
     command = (bash_command or "").strip()
     obs = (observation or "").lower()
