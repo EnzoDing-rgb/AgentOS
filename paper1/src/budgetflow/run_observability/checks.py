@@ -164,12 +164,17 @@ def _check_value_profile_fallback(records: list[dict]) -> list[str]:
     for rs, recs in sorted(by_series.items()):
         values = [r.get("task_value") for r in recs if r.get("task_value") is not None]
         value_sources = {str(r.get("value_source", "")) for r in recs if r.get("value_source")}
+        profiles = {str(r.get("task_value_profile", "") or "equal") for r in recs}
+        non_equal_profiles = {profile for profile in profiles if profile != "equal"}
         if not values:
             issues.append(f"VALUE_FALLBACK {rs}: no task_value found in any row")
+            continue
+        if not non_equal_profiles:
             continue
         unique_values = set(values)
         if len(unique_values) == 1 and len(values) > 1:
             msg = f"VALUE_FALLBACK {rs}: all {len(values)} rows have task_value={list(unique_values)[0]}"
+            msg += f" profiles={sorted(non_equal_profiles)}"
             if value_sources:
                 msg += f" value_sources={sorted(value_sources)}"
             msg += " — if non-equal profile requested, values may have fallen back"

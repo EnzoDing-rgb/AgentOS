@@ -1,5 +1,6 @@
 from budgetflow.run_observability.audit import build_compact_audit
 from budgetflow.observability import build_harness_trust
+from budgetflow.run_observability.checks import _check_value_profile_fallback
 from budgetflow.run_observability.report import format_compact_audit
 
 
@@ -72,6 +73,44 @@ def test_compact_audit_reports_t3_productivity() -> None:
     assert "strongest_model=T5" in text
     assert "T3 SOURCE BREAKDOWN" in text
     assert "value_triggered" in text
+
+
+def test_value_fallback_check_allows_explicit_equal_value_t2_runs() -> None:
+    issues = _check_value_profile_fallback([
+        {
+            "run_series": "equal_t2",
+            "task_value_profile": "equal",
+            "task_value": 1.0,
+            "value_source": "default_equal",
+        },
+        {
+            "run_series": "equal_t2",
+            "task_value_profile": "equal",
+            "task_value": 1.0,
+            "value_source": "default_equal",
+        },
+    ])
+
+    assert issues == []
+
+
+def test_value_fallback_check_flags_equal_values_for_non_equal_profiles() -> None:
+    issues = _check_value_profile_fallback([
+        {
+            "run_series": "bad_t1",
+            "task_value_profile": "difficulty",
+            "task_value": 1.0,
+            "value_source": "value_matrix",
+        },
+        {
+            "run_series": "bad_t1",
+            "task_value_profile": "difficulty",
+            "task_value": 1.0,
+            "value_source": "value_matrix",
+        },
+    ])
+
+    assert any(issue.startswith("VALUE_FALLBACK bad_t1") for issue in issues)
 
 
 def test_harness_trust_treats_no_patch_fail_as_non_blocking() -> None:
