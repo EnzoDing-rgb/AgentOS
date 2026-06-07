@@ -81,7 +81,7 @@ New runs should load routing memory through `learning_context.py`, not by ad hoc
 ## Current Decisions
 
 - Main development branch is `main`; `feature/issue-1` has been merged.
-- AutoResearch / Auto-reset coordinator exists and is useful for infra loops, but it is paused as a paper-iteration engine. Codex remains the reviewer/front-end for owner decisions.
+- AutoResearch / Auto-reset coordinator is preserved as `docs/autoresearch_workflow.md`, not as active runtime code. It may be rebuilt later, but it is paused as a paper-iteration engine. Codex remains the reviewer/front-end for owner decisions.
 - Tier 1 is the paper compass: maximize verified resolved value per dollar under a shared hard budget.
 - Tier 2 is an equal-value mechanism ablation inside Tier 1, not a separate North Star. It is useful for related work and debugging routing waste, but it must not be optimized in a way that sacrifices Tier 1 value-weighted outcomes.
 - Current P0 for experiments: non-equal value profiles must fail fast when the value matrix/profile/task lookup misses. Silent fallback to equal values corrupts Tier 1 evidence.

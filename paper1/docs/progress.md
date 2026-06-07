@@ -4,6 +4,13 @@
 
 ## 当前快照（2026-06-07）
 
+### 075 / Delete obsolete offline replay CLI
+
+- **075 COMPLETE SLICE — no-paid deletion cleanup.** No historical JSONL was edited and no paid experiment was run.
+- **Deleted old replay tool:** removed `src/budgetflow/offline_replay.py`. It was only referenced by historical reports and targeted old 017/018 plus legacy `BudgetMemory` LOO audits.
+- **North Star judgment:** current continual learning uses `auto_budget_memory.jsonl` for cap/value-cost learning and run JSONL through `PolicyMemory`/`learning_context.py` for routing memory. The old replay CLI did not feed the current T1 Value-Driven Budget Allocation loop or current no-paid gates.
+- **Architecture judgment:** if replay becomes important again, rebuild it around current `AutoBudgetMemory`, `PolicyMemory`, value/RVPD fields, and standardized run schema rather than preserving an old report-era CLI.
+
 ### 074 / Action parsing seam
 
 - **074 COMPLETE SLICE — no-paid runtime parser refactor.** No historical JSONL was edited and no paid experiment was run.
