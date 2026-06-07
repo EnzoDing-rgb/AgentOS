@@ -257,6 +257,33 @@ def test_conservation_lockout_not_triggered_after_t3_access() -> None:
     assert verdict["failure_subtype"] == "loc_model_fail"
 
 
+def test_conservation_lockout_uses_catalog_strongest_tier(monkeypatch) -> None:
+    import budgetflow.failure_classification as fc
+
+    class _Cfg:
+        def __init__(self, tier: int) -> None:
+            self.tier = tier
+
+    class _Catalog:
+        configs = (_Cfg(1), _Cfg(3), _Cfg(5))
+
+    monkeypatch.setattr(fc, "MODEL_CATALOG", _Catalog())
+
+    rec = _bfc_lockout_record(
+        turn_traces=[
+            {"backend_tier": 3, "final_backend": "tier3", "router_reason": "bf_cons_max_tier=3"},
+        ]
+    )
+
+    assert _is_conservation_lockout(rec) is True
+
+    rec["turn_traces"].append(
+        {"backend_tier": 5, "final_backend": "tier5", "router_reason": "bf_cons_escalated_strongest"}
+    )
+
+    assert _is_conservation_lockout(rec) is False
+
+
 def test_stagnation_without_patch_is_localization_fail_not_extract_fail() -> None:
     rec = {
         "harness_resolved": False,

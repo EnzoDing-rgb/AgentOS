@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 from budgetflow.auto_budget import AutoBudgetMemory
 from budgetflow.compare_checkpoint import GlobalRunProgress
-from budgetflow.experiments.compare_artifacts import CompareRunState, persist_task_record
+from budgetflow.experiments.compare_persistence import CompareRunState, persist_task_record
 from budgetflow.experiments.compare_config import CompareStrategy
 from budgetflow.experiments.compare_execution import run_task_record
 from budgetflow.experiments.compare_summary import _format_strategy_totals
@@ -20,9 +20,7 @@ def _state() -> CompareRunState:
         task_cost_by_strategy={},
         batch_spent_by_strategy={},
         turns_by_strategy={},
-        spark_by_strategy={},
-        flash_by_strategy={},
-        pro_by_strategy={},
+        tier_mix_by_strategy={},
         failure_by_strategy={},
         resolved_value_by_strategy={},
         task_value_by_strategy={},
@@ -167,9 +165,7 @@ def test_budget_summary_reports_planned_cap_not_provider_runtime_balance() -> No
         task_cost_by_strategy={"budgetflow_value_aware_tight": [0.2, 0.3]},
         batch_spent_by_strategy={"budgetflow_value_aware_tight": 0.5},
         turns_by_strategy={"budgetflow_value_aware_tight": [3, 7]},
-        spark_by_strategy={"budgetflow_value_aware_tight": [0.0, 0.0]},
-        flash_by_strategy={"budgetflow_value_aware_tight": [1.0, 1.0]},
-        pro_by_strategy={"budgetflow_value_aware_tight": [0.0, 0.0]},
+        tier_mix_by_strategy={"budgetflow_value_aware_tight": [{2: 0.5, 5: 0.5}, {5: 1.0}]},
         failure_by_strategy={"budgetflow_value_aware_tight": {"pass": 1, "repair_fail": 1}},
         batch_caps={"budgetflow_value_aware_tight": 1.5},
         budget_modes={"budgetflow_value_aware_tight": "dynamic_task_caps"},
@@ -178,4 +174,5 @@ def test_budget_summary_reports_planned_cap_not_provider_runtime_balance() -> No
     text = "\n".join(lines)
     assert "per-task cap" in text
     assert "1.50" in text
+    assert "T5=75%" in text
     assert "100.00" not in text

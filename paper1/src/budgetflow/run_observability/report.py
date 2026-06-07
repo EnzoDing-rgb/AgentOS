@@ -2,6 +2,21 @@
 
 from __future__ import annotations
 
+def _format_tier_turns(turns: dict[int, int] | dict[str, int]) -> str:
+    if not turns:
+        return "-"
+    normalized: dict[int, int] = {}
+    for tier, count in turns.items():
+        try:
+            tier_i = int(tier)
+        except (TypeError, ValueError):
+            continue
+        normalized[tier_i] = int(count)
+    if not normalized:
+        return "-"
+    return " ".join(f"T{tier}={count}" for tier, count in sorted(normalized.items()))
+
+
 def format_compact_audit(audit: dict) -> str:
     """Format compact audit dict as a dense text table."""
     lines = []
@@ -19,27 +34,27 @@ def format_compact_audit(audit: dict) -> str:
 
     # Per strategy
     lines.append(banner)
-    lines.append(f"{'strategy':<26} {'rows':>4} {'P':>2} {'F':>2} {'cost':>8} {'t/task':>6} {'T2':>4} {'T3':>4} {'T3%':>5} {'susp':>4}")
+    lines.append(f"{'strategy':<26} {'rows':>4} {'P':>2} {'F':>2} {'cost':>8} {'t/task':>6} {'tiers':>18} {'susp':>4}")
     lines.append("-" * 64)
     for strat in sorted(audit["by_strategy"]):
         s = audit["by_strategy"][strat]
         lines.append(
             f"{strat:<26} {s['total']:>4} {s['pass']:>2} {s['fail']:>2} "
             f"${s['cost']:>7.2f} {s['avg_turns']:>5.0f} "
-            f"{s['t2_turns']:>4} {s['t3_turns']:>4} {s['t3_share']:>4.0%} {s['suspicious']:>4}"
+            f"{_format_tier_turns(s.get('tier_turns') or {}):>18} {s['suspicious']:>4}"
         )
 
     # Common-task comparison
     if audit["common_task_count"] > 0:
         lines.append(banner)
         lines.append(f"COMMON-TASK ({audit['common_task_count']} tasks shared across all strategies)")
-        lines.append(f"{'strategy':<26} {'tasks':>5} {'P':>3} {'cost':>8} {'T2':>4} {'T3':>4}")
+        lines.append(f"{'strategy':<26} {'tasks':>5} {'P':>3} {'cost':>8} {'tiers':>18}")
         lines.append("-" * 64)
         for strat in sorted(audit["common_stats"]):
             cs = audit["common_stats"][strat]
             lines.append(
                 f"{strat:<26} {cs['tasks']:>5} {cs['pass']:>3} "
-                f"${cs['cost']:>7.2f} {cs['t2']:>4} {cs['t3']:>4}"
+                f"${cs['cost']:>7.2f} {_format_tier_turns(cs.get('tier_turns') or {}):>18}"
             )
 
     # Failure axis
@@ -98,4 +113,3 @@ def format_compact_audit(audit: dict) -> str:
 
 
 # ── Phase Z Checker Warnings ──────────────────────────────────────────────────
-

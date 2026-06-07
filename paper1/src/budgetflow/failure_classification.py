@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
+from .model_tiers import MODEL_CATALOG, parse_tier_label
 from .observability import parse_harness_evidence
 
 
@@ -252,12 +253,12 @@ def classify_failure(record: dict[str, Any]) -> str:
 
 
 def _is_conservation_lockout(record: dict[str, Any]) -> bool:
-    """Detect when stagnation exit is caused by conservation factor blocking T3.
+    """Detect when stagnation exit is caused by conservation factor blocking the strongest tier.
 
     Signals: stagnation exit + budget not exhausted + conservation strategy +
     no patch extracted. When the conservation factor (1.0 + max(0, pressure-0.3)*1.5)
-    blocks T3 access, the agent stagnates at lower tiers — but the root cause
-    is budget policy, not model behavior.
+    blocks strongest-tier access, the agent stagnates at lower tiers — but the
+    root cause is budget policy, not model behavior.
     """
     reason = str(record.get("exit_reason") or "")
     if not reason.startswith("stagnation_"):
@@ -274,20 +275,23 @@ def _is_conservation_lockout(record: dict[str, Any]) -> bool:
     traces = record.get("turn_traces") or []
     if not isinstance(traces, list) or not traces:
         return False
+    strongest_tier = max((cfg.tier for cfg in MODEL_CATALOG.configs), default=0)
     saw_lockout_reason = False
-    saw_t3_access = False
+    saw_strongest_access = False
     for trace in traces:
         if not isinstance(trace, dict):
             continue
-        if int(trace.get("backend_tier") or 0) >= 3 or str(trace.get("final_backend") or "") == "tier3":
-            saw_t3_access = True
+        backend_tier = int(trace.get("backend_tier") or 0)
+        final_tier = parse_tier_label(trace.get("final_backend") or "")
+        if max(backend_tier, final_tier) >= strongest_tier > 0:
+            saw_strongest_access = True
         reason_text = " ".join(
             str(trace.get(key) or "")
             for key in ("router_reason", "router_branch")
         ).lower()
-        if "max_tier=2" in reason_text or "conservation" in reason_text or "lockout" in reason_text:
+        if "max_tier=" in reason_text or "conservation" in reason_text or "lockout" in reason_text:
             saw_lockout_reason = True
-    if saw_t3_access:
+    if saw_strongest_access:
         return False
     if not saw_lockout_reason:
         return False

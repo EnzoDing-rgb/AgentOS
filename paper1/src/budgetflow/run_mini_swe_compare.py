@@ -64,7 +64,7 @@ from budgetflow.experiments.compare_setup import (  # noqa: E402
     select_strategies,
     trace_console_from_args,
 )
-from budgetflow.experiments.compare_artifacts import (  # noqa: E402
+from budgetflow.experiments.compare_persistence import (  # noqa: E402
     CompareRunState,
     completed_keys as _completed_keys,
     ingest_batch_footer as _ingest_batch_footer,
@@ -534,9 +534,7 @@ def main() -> None:
         task_cost_by_strategy=state.task_cost_by_strategy,
         batch_spent_by_strategy=state.batch_spent_by_strategy,
         turns_by_strategy=state.turns_by_strategy,
-        spark_by_strategy=state.spark_by_strategy,
-        flash_by_strategy=state.flash_by_strategy,
-        pro_by_strategy=state.pro_by_strategy,
+        tier_mix_by_strategy=state.tier_mix_by_strategy,
         failure_by_strategy=state.failure_by_strategy,
         batch_caps=batch_caps,
         budget_modes=budget_modes,

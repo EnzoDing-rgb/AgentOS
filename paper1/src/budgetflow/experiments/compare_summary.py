@@ -9,6 +9,7 @@ from pathlib import Path
 from budgetflow.console_log import backend_tier_label, format_run_verdict, status_fail, status_pass
 from budgetflow.experiments.compare_config import fmt_usd as _fmt_usd
 from budgetflow.failure_classification import classify_failure
+from budgetflow.model_tiers import parse_tier_label
 
 def _print_run_done(record: dict, *, done: int, total: int, strategy: str) -> None:
     gold_file = (record.get("agent_gold_files") or ["-"])[0]
@@ -17,11 +18,8 @@ def _print_run_done(record: dict, *, done: int, total: int, strategy: str) -> No
     picks = record.get("backend_picks") or []
     tier_line = ""
     if picks:
-        t1 = _tier_ratio(picks, 1) * 100
-        t2 = _tier_ratio(picks, 2) * 100
-        t3 = _tier_ratio(picks, 3) * 100
         last = backend_tier_label(picks[-1])
-        tier_line = f" models: last={last} mix T1={t1:.0f}% T2={t2:.0f}% T3={t3:.0f}%"
+        tier_line = f" models: last={last} mix {_format_tier_mix(_tier_ratios(picks))}"
     print(
         f"{banner} {record['instance_id']} {strategy} "
         f"turns={record.get('llm_turns')} cost={_fmt_usd(record.get('task_cost', record.get('total_cost', 0)))} "
@@ -39,15 +37,36 @@ def _print_run_done(record: dict, *, done: int, total: int, strategy: str) -> No
     print(f"  {verdict}", flush=True)
 
 
-def _spark_ratio(picks: list[str]) -> float:
-    return _tier_ratio(picks, 1)
+def _tier_ratios(picks: list[str]) -> dict[int, float]:
+    counts: dict[int, int] = {}
+    for pick in picks:
+        tier = parse_tier_label(pick)
+        if tier > 0:
+            counts[tier] = counts.get(tier, 0) + 1
+    total = sum(counts.values())
+    if total <= 0:
+        return {}
+    return {tier: count / total for tier, count in sorted(counts.items())}
 
 
-def _tier_ratio(picks: list[str], tier: int) -> float:
-    if not picks:
-        return 0.0
-    needle = f"tier{tier}"
-    return sum(1 for p in picks if p.lower() == needle.lower()) / len(picks)
+def _average_tier_mix(mixes: list[dict[int, float]]) -> dict[int, float]:
+    totals: dict[int, float] = {}
+    count = 0
+    for mix in mixes:
+        if not mix:
+            continue
+        count += 1
+        for tier, ratio in mix.items():
+            totals[tier] = totals.get(tier, 0.0) + ratio
+    if count <= 0:
+        return {}
+    return {tier: ratio / count for tier, ratio in sorted(totals.items())}
+
+
+def _format_tier_mix(mix: dict[int, float]) -> str:
+    if not mix:
+        return "-"
+    return " ".join(f"T{tier}={ratio * 100:.0f}%" for tier, ratio in sorted(mix.items()))
 
 
 def _append_summary(lines: list[str], record: dict, *, index: int, total: int) -> None:
@@ -56,17 +75,14 @@ def _append_summary(lines: list[str], record: dict, *, index: int, total: int) -
     cap_s = _fmt_usd(cap)
     task_cost = float(record.get("task_cost") or record.get("total_cost") or 0.0)
     picks = record.get("backend_picks") or []
-    spark_pct = _spark_ratio(picks) * 100.0
-    flash_pct = _tier_ratio(picks, 2) * 100.0
-    pro_pct = _tier_ratio(picks, 3) * 100.0
+    tier_mix = _format_tier_mix(_tier_ratios(picks))
     lines.append(
         f"[{index}/{total}] DONE strategy={record['strategy']} task={record['instance_id']} {status} "
         f"exit={record.get('exit_status')} reason={record.get('exit_reason')} turns={record.get('llm_turns')} "
         f"class={record.get('failure_class', classify_failure(record))} "
         f"axis={(record.get('forensic_summary') or {}).get('primary_axis', '-')} "
         f"task_cost={_fmt_usd(task_cost)} batch_cap={cap_s} batch_avail={_fmt_usd(record.get('batch_available'))} "
-        f"batch_spent={_fmt_usd(record.get('batch_spent'))} T1={spark_pct:.0f}% T2={flash_pct:.0f}% "
-        f"T3={pro_pct:.0f}% elapsed={record.get('elapsed_s')}s"
+        f"batch_spent={_fmt_usd(record.get('batch_spent'))} tiers={tier_mix} elapsed={record.get('elapsed_s')}s"
     )
     if record.get("backend_picks"):
         lines.append(f"  picks={record['backend_picks']}")
@@ -84,9 +100,7 @@ def _format_strategy_totals(
     task_cost_by_strategy: dict[str, list[float]],
     batch_spent_by_strategy: dict[str, float],
     turns_by_strategy: dict[str, list[int]],
-    spark_by_strategy: dict[str, list[float]],
-    flash_by_strategy: dict[str, list[float]],
-    pro_by_strategy: dict[str, list[float]],
+    tier_mix_by_strategy: dict[str, list[dict[int, float]]],
     failure_by_strategy: dict[str, dict[str, int]],
     batch_caps: dict[str, float | None],
     budget_modes: dict[str, str] | None = None,
@@ -97,7 +111,7 @@ def _format_strategy_totals(
     lines = [f"=== BATCH RESOLVED + COST BY STRATEGY (governor units, {mode_label}) ==="]
     header = (
         f"{'strategy':<28} {'resolved':>8} {'batch_spent':>11} {cap_label:>10} "
-        f"{'avg_task':>9} {'avg_turns':>10} {'T1':>5} {'T2':>5} {'T3':>5}"
+        f"{'avg_task':>9} {'avg_turns':>10} {'tiers':>24}"
     )
     lines.append(header)
     lines.append("-" * len(header))
@@ -105,9 +119,6 @@ def _format_strategy_totals(
         flags = resolved_by_strategy.get(key, [])
         costs = task_cost_by_strategy.get(key, [])
         turns = turns_by_strategy.get(key, [])
-        spark = spark_by_strategy.get(key, [])
-        flash = flash_by_strategy.get(key, [])
-        pro = pro_by_strategy.get(key, [])
         failures = failure_by_strategy.get(key, {})
         resolved_n = sum(1 for f in flags if f)
         batch_spent = batch_spent_by_strategy.get(key, 0.0)
@@ -120,13 +131,11 @@ def _format_strategy_totals(
             cap_flag = " OVER_CAP"
         avg_cost = sum(costs) / len(costs) if costs else 0.0
         avg_turns = sum(turns) / len(turns) if turns else 0.0
-        avg_spark = sum(spark) / len(spark) if spark else 0.0
-        avg_flash = sum(flash) / len(flash) if flash else 0.0
-        avg_pro = sum(pro) / len(pro) if pro else 0.0
+        tier_mix = _average_tier_mix(tier_mix_by_strategy.get(key, []))
+        tier_s = _format_tier_mix({tier: ratio for tier, ratio in tier_mix.items() if ratio > 0})
         lines.append(
             f"{key:<28} {resolved_n}/{len(flags):<7} {_fmt_usd(batch_spent):>11} {cap_s:>10}{cap_flag} "
-            f"{_fmt_usd(avg_cost):>9} {avg_turns:10.1f} {avg_spark * 100:4.0f}% "
-            f"{avg_flash * 100:4.0f}% {avg_pro * 100:4.0f}%"
+            f"{_fmt_usd(avg_cost):>9} {avg_turns:10.1f} {tier_s:>24}"
         )
         if failures:
             fail_s = ", ".join(f"{name}={count}" for name, count in sorted(failures.items()))
@@ -140,9 +149,7 @@ def _format_live_snapshot(
     resolved_by_strategy: dict[str, list[bool]],
     task_cost_by_strategy: dict[str, list[float]],
     turns_by_strategy: dict[str, list[int]],
-    spark_by_strategy: dict[str, list[float]],
-    flash_by_strategy: dict[str, list[float]],
-    pro_by_strategy: dict[str, list[float]],
+    tier_mix_by_strategy: dict[str, list[dict[int, float]]],
     batch_spent_by_strategy: dict[str, float],
     batch_caps: dict[str, float | None],
     budget_modes: dict[str, str] | None = None,
@@ -169,7 +176,7 @@ def _format_live_snapshot(
         lines.append(global_line)
     lines.append(
         f"{'strategy':<28} {'done':>4} {'plan':>4} {'PASS':>5} {'FAIL':>5} {'rate':>6} "
-        f"{'avg_cost':>8} {'avg_turn':>7} {'T1':>5} {'T2':>5} {'T3':>5} "
+        f"{'avg_cost':>8} {'avg_turn':>7} {'tiers':>24} "
         f"{'batch_spent':>11} "
         f"{'planned_cap' if any(mode in {'per_task_cap', 'dynamic_task_caps'} for mode in (budget_modes or {}).values()) else 'batch_cap':>10}"
     )
@@ -178,9 +185,6 @@ def _format_live_snapshot(
         flags = resolved_by_strategy.get(name, [])
         costs = task_cost_by_strategy.get(name, [])
         turns = turns_by_strategy.get(name, [])
-        spark = spark_by_strategy.get(name, [])
-        flash = flash_by_strategy.get(name, [])
-        pro = pro_by_strategy.get(name, [])
         failures = (failure_by_strategy or {}).get(name, {})
         done_n = len(flags)
         pass_n = sum(1 for flag in flags if flag)
@@ -188,9 +192,8 @@ def _format_live_snapshot(
         rate = f"{100*pass_n/done_n:.0f}%" if done_n else "-"
         avg_cost = sum(costs) / len(costs) if costs else 0.0
         avg_turns = sum(turns) / len(turns) if turns else 0.0
-        avg_spark = sum(spark) / len(spark) if spark else 0.0
-        avg_flash = sum(flash) / len(flash) if flash else 0.0
-        avg_pro = sum(pro) / len(pro) if pro else 0.0
+        tier_mix = _average_tier_mix(tier_mix_by_strategy.get(name, []))
+        tier_s = _format_tier_mix({tier: ratio for tier, ratio in tier_mix.items() if ratio > 0})
         batch_spent = batch_spent_by_strategy.get(name, 0.0)
         cap = batch_caps.get(name)
         if (budget_modes or {}).get(name) == "per_task_cap" and cap is not None:
@@ -198,8 +201,7 @@ def _format_live_snapshot(
         cap_s = _fmt_usd(cap)
         lines.append(
             f"{name:<28} {done_n:>4} {tasks_per_strategy:>4} {pass_n:>5} {fail_n:>5} {rate:>6} "
-            f"{_fmt_usd(avg_cost):>8} {avg_turns:>7.1f} {avg_spark*100:>4.0f}% "
-            f"{avg_flash*100:>4.0f}% {avg_pro*100:>4.0f}% "
+            f"{_fmt_usd(avg_cost):>8} {avg_turns:>7.1f} {tier_s:>24} "
             f"{_fmt_usd(batch_spent):>11} {cap_s:>10}"
         )
         if failures:
@@ -243,9 +245,7 @@ def _write_summary_file(
     task_cost_by_strategy: dict[str, list[float]],
     batch_spent_by_strategy: dict[str, float],
     turns_by_strategy: dict[str, list[int]],
-    spark_by_strategy: dict[str, list[float]],
-    flash_by_strategy: dict[str, list[float]],
-    pro_by_strategy: dict[str, list[float]],
+    tier_mix_by_strategy: dict[str, list[dict[int, float]]],
     failure_by_strategy: dict[str, dict[str, int]],
     batch_caps: dict[str, float | None],
     budget_modes: dict[str, str] | None,
@@ -264,9 +264,7 @@ def _write_summary_file(
         resolved_by_strategy=resolved_by_strategy,
         task_cost_by_strategy=task_cost_by_strategy,
         turns_by_strategy=turns_by_strategy,
-        spark_by_strategy=spark_by_strategy,
-        flash_by_strategy=flash_by_strategy,
-        pro_by_strategy=pro_by_strategy,
+        tier_mix_by_strategy=tier_mix_by_strategy,
         failure_by_strategy=failure_by_strategy,
         batch_spent_by_strategy=batch_spent_by_strategy,
         batch_caps=batch_caps,

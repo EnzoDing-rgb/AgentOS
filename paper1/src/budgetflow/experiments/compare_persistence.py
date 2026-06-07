@@ -13,7 +13,11 @@ from budgetflow.auto_budget import AutoBudgetMemory
 from budgetflow.compare_checkpoint import GlobalRunProgress, StrategyScoreboard
 from budgetflow.experiment_observability import enrich_routing_observability
 from budgetflow.experiments.compare_config import CompareStrategy, fmt_usd as _fmt_usd
-from budgetflow.experiments.compare_summary import _append_summary, _spark_ratio, _tier_ratio, _write_summary_file
+from budgetflow.experiments.compare_summary import (
+    _append_summary,
+    _tier_ratios,
+    _write_summary_file,
+)
 from budgetflow.failure_classification import classify_failure
 
 
@@ -24,9 +28,7 @@ class CompareRunState:
     task_cost_by_strategy: dict[str, list[float]]
     batch_spent_by_strategy: dict[str, float]
     turns_by_strategy: dict[str, list[int]]
-    spark_by_strategy: dict[str, list[float]]
-    flash_by_strategy: dict[str, list[float]]
-    pro_by_strategy: dict[str, list[float]]
+    tier_mix_by_strategy: dict[str, list[dict[int, float]]]
     failure_by_strategy: dict[str, dict[str, int]]
     resolved_value_by_strategy: dict[str, list[float]] | None = None
     task_value_by_strategy: dict[str, list[float]] | None = None
@@ -40,9 +42,7 @@ class CompareRunState:
             task_cost_by_strategy={},
             batch_spent_by_strategy={},
             turns_by_strategy={},
-            spark_by_strategy={},
-            flash_by_strategy={},
-            pro_by_strategy={},
+            tier_mix_by_strategy={},
             failure_by_strategy={},
             resolved_value_by_strategy={},
             task_value_by_strategy={},
@@ -57,9 +57,7 @@ class CompareRunState:
         self.task_cost_by_strategy.setdefault(name, []).append(float(record.get("task_cost") or 0.0))
         self.turns_by_strategy.setdefault(name, []).append(int(record.get("llm_turns") or 0))
         picks = record.get("backend_picks") or []
-        self.spark_by_strategy.setdefault(name, []).append(_spark_ratio(picks))
-        self.flash_by_strategy.setdefault(name, []).append(_tier_ratio(picks, 2))
-        self.pro_by_strategy.setdefault(name, []).append(_tier_ratio(picks, 3))
+        self.tier_mix_by_strategy.setdefault(name, []).append(_tier_ratios(picks))
         failure_class = str(record.get("failure_class") or classify_failure(record))
         failures = self.failure_by_strategy.setdefault(name, {})
         failures[failure_class] = failures.get(failure_class, 0) + 1
@@ -290,9 +288,7 @@ def write_summary_snapshot(
         task_cost_by_strategy=state.task_cost_by_strategy,
         batch_spent_by_strategy=state.batch_spent_by_strategy,
         turns_by_strategy=state.turns_by_strategy,
-        spark_by_strategy=state.spark_by_strategy,
-        flash_by_strategy=state.flash_by_strategy,
-        pro_by_strategy=state.pro_by_strategy,
+        tier_mix_by_strategy=state.tier_mix_by_strategy,
         failure_by_strategy=state.failure_by_strategy,
         batch_caps=batch_caps,
         budget_modes=budget_modes,

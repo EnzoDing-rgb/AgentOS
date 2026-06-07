@@ -13,6 +13,9 @@
 - **Provider-tier seam cleanup:** active routing now uses `ModelCatalog.second_cheapest()`, `strongest()`, and `at_or_above()` for second-tier / strongest-tier decisions instead of indexing `ordered[1]` or treating `tier>=3` as the only strong tier. This keeps future 3→5 tier expansion out of runtime logic.
 - **Audit schema cleanup:** compact observability audit now preserves generic `tier_turns` for arbitrary tier ids while keeping current T2/T3 display fields as derived views.
 - **PolicyMemory cleanup:** routing memory now preserves generic `tier_turns`, `tier_success_rate`, and per-stage tier success for arbitrary tier ids. Current `repo_t2_success` / `repo_t3_success` and `cap_t3` / `start_t2` semantics remain derived/legacy views, while new learned actions use provider-agnostic names such as `cap_strongest` and `start_second_cheapest`.
+- **Run persistence rename:** `compare_artifacts.py` was renamed to `compare_persistence.py`; the module now reflects its active responsibility: run state, JSONL persistence, learning-memory writes, and summary snapshots.
+- **Tier evidence interface cleanup:** compare summaries and compact audits now use generic tier mixes / `tier_turns` instead of storing `spark/flash/pro` or fixed T1/T2/T3 summary state. Conservation-lockout classification now checks strongest-tier access from the model-tier catalog, so future 5-tier catalogs do not misclassify T3 access as strongest-tier access.
+- **Verification:** `173 passed`, `py_compile` passed for `paper1/src/budgetflow`, `git diff --check` passed, and no-provider `--auto-budget-dry-run` loaded cap memory plus routing policy memory.
 
 ### 076 / Provider-agnostic tier seam and obsolete probe cleanup
 
