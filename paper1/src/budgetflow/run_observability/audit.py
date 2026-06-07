@@ -298,7 +298,7 @@ def build_compact_audit(records: list[dict]) -> dict:
             if source:
                 policy_memory_source = source
                 break
-        prior_records = int(max((_routing_prior_task_seen(r) for r in records), default=0) or 0)
+        prior_records = round(max((_routing_prior_task_seen(r) for r in records), default=0.0) or 0.0, 2)
 
     # StagnationExit PASS rate
     stag_pass = sum(

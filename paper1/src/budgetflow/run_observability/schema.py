@@ -133,11 +133,23 @@ def _routing_memory_source(record: dict) -> str:
     return ""
 
 
-def _routing_prior_task_seen(record: dict) -> int:
+def _routing_prior_task_seen(record: dict) -> float:
     prior = record.get("routing_prior_summary") or {}
     if not isinstance(prior, dict):
-        return 0
-    return int(prior.get("task_seen", 0) or 0)
+        return 0.0
+    for key in (
+        "policy_memory_effective_weight",
+        "repo_evidence_weight",
+        "task_evidence_weight",
+        "task_seen",
+    ):
+        try:
+            value = float(prior.get(key, 0) or 0)
+        except (TypeError, ValueError):
+            value = 0.0
+        if value > 0:
+            return value
+    return 0.0
 
 
 def _routing_memory_used(record: dict) -> bool:

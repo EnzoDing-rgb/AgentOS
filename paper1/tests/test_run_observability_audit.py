@@ -65,6 +65,32 @@ def test_compact_audit_reports_value_metrics() -> None:
     assert "T1 VALUE METRICS" in format_compact_audit(audit)
 
 
+def test_compact_audit_reports_repo_memory_evidence_for_new_tasks() -> None:
+    audit = build_compact_audit([
+        {
+            "instance_id": "repo__new-task",
+            "strategy": "budgetflow_value_aware_tight",
+            "harness_resolved": False,
+            "harness_evidence": {"evidence_complete": True},
+            "total_cost": 0.10,
+            "llm_turns": 2,
+            "turn_trace_count": 2,
+            "backend_picks": ["tier2"],
+            "policy_memory_enabled": True,
+            "routing_prior_summary": {
+                "task_seen": 0,
+                "repo_evidence_weight": 25.25,
+                "policy_memory_effective_weight": 26.14,
+                "policy_memory_source": "runs/recent.jsonl",
+            },
+        },
+    ])
+
+    assert audit["policy_memory_used"] is True
+    assert audit["prior_records"] == pytest.approx(26.14)
+    assert "prior_records=26.14" in format_compact_audit(audit)
+
+
 def test_compact_audit_reports_t3_productivity() -> None:
     audit = build_compact_audit([
         {
