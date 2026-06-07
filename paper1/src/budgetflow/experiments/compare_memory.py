@@ -198,10 +198,10 @@ def run_auto_budget_dry_run(
     )
     print(
         f"  {'task':<40} {'source':<20} {'est_cost':>10} {'cap':>10} "
-        f"{'confidence':<10} {'neighbors':>9} {'esc':<36}",
+        f"{'confidence':<10} {'neighbors':>9} {'esc':<36} {'starter':<38}",
         flush=True,
     )
-    print(f"  {'-'*144}", flush=True)
+    print(f"  {'-'*184}", flush=True)
     for task in tasks:
         estimate = auto_budget_plan.estimates[task.instance_id]
         if policy_ctx.memory is not None:
@@ -212,11 +212,20 @@ def run_auto_budget_dry_run(
                 f"/w={prior.get('value_triggered_escalation_window', '?')}"
                 f"/t3_rate={prior.get('t3_productive_rate', 0):.2f}"
             )
+            starter = (
+                f"{prior.get('starter_memory_source') or 'none'}:"
+                f"{prior.get('strongest_starter_action', 'default')}"
+                f"/w={prior.get('strongest_starter_window', '?')}"
+                f"/bo={prior.get('starter_bo_frontload_rate', 0):.2f}"
+                f"/bf={prior.get('starter_budgetflow_success_rate', 0):.2f}"
+            )
         else:
             esc = "off"
+            starter = "off"
         print(
             f"  {task.instance_id:<40} {estimate.source:<20} {fmt_usd(estimate.estimated_cost):>10} "
-            f"{fmt_usd(estimate.cap):>10} {estimate.confidence:<10} {estimate.memory_neighbors:>9} {esc:<36}",
+            f"{fmt_usd(estimate.cap):>10} {estimate.confidence:<10} {estimate.memory_neighbors:>9} "
+            f"{esc:<36} {starter:<38}",
             flush=True,
         )
     return 0
