@@ -96,6 +96,60 @@ def _t3_productivity(records: list[dict], t3_tier: int) -> dict[str, dict]:
     return by_strategy
 
 
+def _t3_source(trace: dict) -> str:
+    if trace.get("value_triggered_escalation_active") or trace.get("value_triggered_escalation_opened"):
+        return "value_triggered"
+    if trace.get("rescue_window_opened") or int(trace.get("rescue_window_remaining") or 0) > 0:
+        return "evidence_triggered"
+    return "routing_or_progress"
+
+
+def _t3_source_breakdown(records: list[dict], t3_tier: int) -> dict[str, dict[str, dict]]:
+    by_strategy: dict[str, dict[str, dict]] = {}
+    if t3_tier <= 0:
+        return by_strategy
+    for record in records:
+        strat = str(record.get("strategy", "unknown"))
+        by_source = by_strategy.setdefault(strat, {})
+        traces = record.get("turn_traces") or []
+        if not isinstance(traces, list):
+            continue
+        for trace in traces:
+            if not isinstance(trace, dict):
+                continue
+            tier = max(
+                int(trace.get("backend_tier") or 0),
+                parse_tier_label(trace.get("final_backend") or ""),
+            )
+            if tier < t3_tier:
+                continue
+            source = _t3_source(trace)
+            stats = by_source.setdefault(
+                source,
+                {
+                    "t3_turns": 0,
+                    "t3_productive_turns": 0,
+                    "t3_no_progress_turns": 0,
+                    "t3_no_progress_cost": 0.0,
+                },
+            )
+            productive = bool(trace.get("has_progress")) and not (
+                trace.get("error_type") or trace.get("parser_error_type")
+            )
+            stats["t3_turns"] += 1
+            if productive:
+                stats["t3_productive_turns"] += 1
+            else:
+                stats["t3_no_progress_turns"] += 1
+                stats["t3_no_progress_cost"] += float(
+                    trace.get("billable_cost") or trace.get("actual_cost") or 0.0
+                )
+    for by_source in by_strategy.values():
+        for stats in by_source.values():
+            stats["t3_productive_rate"] = stats["t3_productive_turns"] / max(int(stats["t3_turns"]), 1)
+    return by_strategy
+
+
 def build_compact_audit(records: list[dict]) -> dict:
     """Build a high-density audit summary from JSONL records.
 
@@ -108,6 +162,7 @@ def build_compact_audit(records: list[dict]) -> dict:
     verdicts = {id(r): build_verdict(r) for r in records}
     t3_tier = _t3_id(records)
     t3_stats = _t3_productivity(records, t3_tier)
+    t3_sources = _t3_source_breakdown(records, t3_tier)
 
     suspicious = sum(
         1 for r in records
@@ -250,6 +305,7 @@ def build_compact_audit(records: list[dict]) -> dict:
         "stagnation_pass": stag_pass,
         "t3_tier": t3_tier,
         "t3_productivity": t3_stats,
+        "t3_source_breakdown": t3_sources,
         "by_strategy": {
             strat: {
                 "total": s["total"], "pass": s["pass"], "fail": s["fail"],

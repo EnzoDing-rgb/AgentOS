@@ -40,6 +40,7 @@ def test_compact_audit_reports_t3_productivity() -> None:
                     "final_backend": "tier5",
                     "has_progress": True,
                     "billable_cost": 0.03,
+                    "rescue_window_opened": True,
                 },
                 {
                     "backend_tier": 5,
@@ -47,6 +48,7 @@ def test_compact_audit_reports_t3_productivity() -> None:
                     "has_progress": False,
                     "billable_cost": 0.04,
                     "parser_error_type": "FormatError",
+                    "value_triggered_escalation_opened": True,
                 },
             ],
         }
@@ -60,10 +62,16 @@ def test_compact_audit_reports_t3_productivity() -> None:
     assert stats["t3_no_progress_turns"] == 1
     assert stats["t3_productive_rate"] == 0.5
     assert stats["t3_no_progress_cost"] == 0.04
+    assert audit["t3_source_breakdown"]["budgetflow_conservative_tight"]["evidence_triggered"]["t3_turns"] == 1
+    value_triggered = audit["t3_source_breakdown"]["budgetflow_conservative_tight"]["value_triggered"]
+    assert value_triggered["t3_turns"] == 1
+    assert value_triggered["t3_no_progress_cost"] == 0.04
 
     text = format_compact_audit(audit)
     assert "T2 T3 PRODUCTIVITY" in text
     assert "strongest_model=T5" in text
+    assert "T3 SOURCE BREAKDOWN" in text
+    assert "value_triggered" in text
 
 
 def test_harness_trust_treats_no_patch_fail_as_non_blocking() -> None:

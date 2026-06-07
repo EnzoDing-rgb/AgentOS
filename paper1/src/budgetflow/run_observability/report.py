@@ -102,6 +102,24 @@ def format_compact_audit(audit: dict) -> str:
                 f"${s['t3_no_progress_cost']:>11.4f}"
             )
 
+    t3_sources = audit.get("t3_source_breakdown")
+    if t3_sources:
+        lines.append(banner)
+        lines.append("T3 SOURCE BREAKDOWN")
+        lines.append(
+            f"{'strategy':<26} {'source':<20} {'t3':>5} {'productive':>10} "
+            f"{'rate':>7} {'no_prog_cost':>12}"
+        )
+        lines.append("-" * 84)
+        for strat in sorted(t3_sources):
+            for source in sorted(t3_sources[strat]):
+                s = t3_sources[strat][source]
+                lines.append(
+                    f"{strat:<26} {source:<20} {s['t3_turns']:>5} "
+                    f"{s['t3_productive_turns']:>10} {s['t3_productive_rate']:>6.0%} "
+                    f"${s['t3_no_progress_cost']:>11.4f}"
+                )
+
     # Cost口径
     lines.append(banner)
     canonical_available = audit["total"] > 0

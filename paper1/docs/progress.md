@@ -4,6 +4,14 @@
 
 ## 当前快照（2026-06-07）
 
+### 079 / Escalation Memory gate
+
+- **079_escalation_memory_3x3_v1 COMPLETE — small paid diagnostic, not paper evidence.** Same 3 tasks and 3 policies as 067, `--jobs 3`, `unsolved_difficulty`, `048_value_matrix`, Value-Driven Budget Allocation, and explicit Routing/Escalation Memory from `067_metrics_3x3_v1`.
+- **Learning loop verified:** dry-run and runtime logs showed Escalation Memory affecting BFV: `shorten_value_triggered_escalation/w=1`.
+- **T1 result is negative for BFV:** BO 2/3, BFC 2/3, BFV 1/3. NVRV: BO **0.5023**, BFC **0.5871**, BFV **0.0894**. BFV solved only the lowest-value task.
+- **T3 source breakdown added:** compact audit now separates T3 from `value_triggered`, `evidence_triggered`, and `routing_or_progress`. In 079, BFV had only **1** value-triggered T3 turn; its improved raw T3 Productive Rate mostly came from evidence-triggered escalation, so raw T3 productivity alone would have been misleading.
+- **Next direction:** do not tune only the Value-Triggered Escalation window. The stronger issue is broader routing/stop/repair learning and overfitting to the recurring small task set. Before paper-scale runs, pick a small but less familiar task gate, then scale toward 3 policies × 30-50 tasks once infra remains clean.
+
 ### 078 / 067 metric-contract paid gate and checker fix
 
 - **Continual-learning bug fixed after 067:** BFV's high-value pre-patch T3 window is now **Value-Triggered Escalation** and is connected to **Escalation Memory**. Prior paid outcomes can disable, shorten, keep, or extend the next run's T3 window based on verified outcome, T3 Productive Rate, and T3 No-Progress Cost.

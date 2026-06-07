@@ -197,7 +197,22 @@ def test_rebuild_from_jsonl_sets_source_and_ignores_bad_lines(tmp_path: Path) ->
     assert memory.routing_prior_summary("django__django-1")["policy_memory_source"] == str(source)
 
 
-def test_auto_budget_dry_run_loads_default_policy_memory_source() -> None:
+def test_auto_budget_dry_run_exposes_escalation_memory_decision(tmp_path: Path) -> None:
+    policy_memory = tmp_path / "routing_memory.jsonl"
+    policy_memory.write_text(json.dumps(_record(
+        instance_id="sympy__sympy-14774",
+        routing="budgetflow_value_aware",
+        turn_traces=[
+            {
+                "stage": "REPAIR",
+                "backend_tier": 3,
+                "final_backend": "tier3",
+                "value_triggered_escalation_active": True,
+                "has_progress": False,
+                "billable_cost": 0.08,
+            }
+        ],
+    )) + "\n")
     env = {**os.environ, "PYTHONPATH": f"{ROOT / 'src'}:{ROOT.parent / 'external' / 'mini-swe-agent' / 'src'}"}
     result = subprocess.run(
         [
@@ -212,6 +227,8 @@ def test_auto_budget_dry_run_loads_default_policy_memory_source() -> None:
             "--auto-budget-dry-run",
             "--auto-budget-memory",
             "data/runs/auto_budget_memory.jsonl",
+            "--policy-memory",
+            str(policy_memory),
         ],
         capture_output=True,
         text=True,
@@ -222,6 +239,6 @@ def test_auto_budget_dry_run_loads_default_policy_memory_source() -> None:
     assert result.returncode == 0, f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
     assert "[policy_memory] loaded from" in result.stdout
     policy_line = next(line for line in result.stdout.splitlines() if "policy_memory=on source=" in line)
-    assert "auto_budget_memory.jsonl" not in policy_line
+    assert str(policy_memory) in policy_line
     assert "shorten_value_triggered_escalation" in result.stdout
     assert "/w=1" in result.stdout

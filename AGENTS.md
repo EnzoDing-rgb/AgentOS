@@ -17,12 +17,15 @@ After every experiment, inspect artifacts before drawing conclusions:
 - Infra Health: check runtime, worktrees, NFS, provider, parser, trace, checker, budget mode, and value source.
 - Learning Loop Reality: Cost Memory, Routing Memory, and Escalation Memory must actually affect the next decision, not only appear in logs.
 - Mechanism Diagnosis: explain whether outcomes came from model capability, task difficulty, routing, caps, Value-Triggered Escalation, evaluation, or observability.
+- Long-Term Iteration Value: before fixing a symptom, ask whether the fix improves future diagnosis, scale-up, or paper evidence. Do not overfit the current five familiar tasks.
 
 ## Run Discipline
 
 - Fix known infra, learning, observability, value-source, or harness bugs before running paid experiments.
 - For policy comparisons, tasks are serial within each policy and policies run in parallel. For three strategies, `--jobs 3` is the default unless a concrete blocker is documented.
 - Before paid runs, check strategy count, task count, `--jobs`, value profile, value matrix path, budget mode, output stem, provider, runtime root, worktree isolation, trace, and checker path.
+- Small paid runs, such as 3 policies x 3-5 tasks, are infra and learning diagnostics. Do not treat them as paper-level evidence.
+- Paper-level evidence should scale beyond the recurring gold-pass task set. The target shape is at least three policies across roughly 30-50 tasks per policy, after the infra and learning gates are trustworthy.
 - Stop on provider billing/auth/model-access/preflight blockers. Do not reinterpret provider failures as model or routing evidence.
 - Historical JSONL and historical reports are immutable evidence. Mark old artifacts forensic-only when needed; do not patch them in place.
 - Runtime artifacts under `paper1/data/` are not source code. Do not commit trace, heartbeat, checkpoint, or run-output files unless explicitly requested.
@@ -41,3 +44,9 @@ After every experiment, inspect artifacts before drawing conclusions:
 - Use subagents for low-value, high-token scans or classification work when it saves cost without outsourcing core judgment.
 - Keep docs load-bearing: update `paper1/docs/north_star.md`, `paper1/docs/CONTEXT.md`, or `paper1/docs/progress.md` only when a real decision changes.
 - Commit and push stable slices after no-paid gates pass. Avoid noisy commits, but do not leave verified core changes uncommitted.
+
+## Learning Scope
+
+- Do not assume every failure signal is learnable. Pick a few general, reusable signals and make sure the runtime actually consumes them.
+- Current core learning signals are cap sufficiency/cost, routing outcome by task/repo/stage, T3 productivity versus no-progress cost, provider/parser failures, and harness-trusted verified outcome.
+- A new signal earns its place only if it can influence a future cap, route, stop/continue, or escalation decision and can be audited from JSONL.
