@@ -97,7 +97,7 @@ def rebuild_state_from_jsonl(
     return state
 
 
-def write_budget_memory(memory: AutoBudgetMemory, record: dict[str, Any]) -> None:
+def write_auto_budget_memory(memory: AutoBudgetMemory, record: dict[str, Any]) -> None:
     forensic = record.get("forensic_summary") or {}
     features = record.get("auto_budget_features") or record.get("task_features") or {}
     mem = AutoBudgetMemory.build_record(
@@ -157,7 +157,7 @@ def persist_task_record(
         )
         record["budget_learning_applied_to_cap"] = bool(record.get("auto_budget_enabled"))
         if auto_budget_memory is not None and not no_auto_budget_learn:
-            write_budget_memory(auto_budget_memory, record)
+            write_auto_budget_memory(auto_budget_memory, record)
             record["budget_learning_update_written"] = True
 
         enrich_value(record)

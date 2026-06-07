@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import json
 from argparse import Namespace
 from dataclasses import dataclass
 from pathlib import Path
 
 from budgetflow.auto_budget import AutoBudgetEstimator, AutoBudgetMemory, BudgetEstimate
-from budgetflow.budget_memory import BudgetMemory, BudgetEstimate as BudgetMemoryEstimate
 from budgetflow.console_log import tag
 from budgetflow.experiments.compare_config import fmt_usd
 from budgetflow.learning_context import load_policy_memory_context
@@ -20,14 +18,6 @@ class AutoBudgetPlan:
     memory_path: Path
     memory: AutoBudgetMemory | None
     estimates: dict[str, BudgetEstimate]
-    task_caps: dict[str, float] | None
-
-
-@dataclass
-class BudgetMemoryPlan:
-    enabled: bool
-    estimates: dict[str, BudgetMemoryEstimate]
-    source_paths: str
     task_caps: dict[str, float] | None
 
 
@@ -131,17 +121,6 @@ def run_policy_memory_gate_only(args: Namespace, *, repo_root: Path) -> int:
     return 0 if run_policy_memory_gate(pm, args.policy_memory) else 1
 
 
-def run_budget_memory_gate_only(args: Namespace, *, repo_root: Path, exclude_ids: set[str] | None) -> int:
-    paths = _resolve_budget_memory_paths(args.budget_memory, repo_root, "--budget-memory-gate-only")
-    memory = BudgetMemory.from_jsonl(paths, exclude_ids=exclude_ids)
-    print("budget_memory gate-only: OK", flush=True)
-    print(f"  records={memory.record_count} tasks={memory.task_count} repos={memory.repo_count}")
-    print(f"  sources: {memory._source_paths}")
-    for line in memory.summary_lines():
-        print(f"  {line}")
-    return 0
-
-
 def build_auto_budget_plan(args: Namespace, *, tasks: list, runs_dir: Path) -> AutoBudgetPlan:
     memory_path = Path(args.auto_budget_memory) if args.auto_budget_memory else runs_dir / "auto_budget_memory.jsonl"
     memory: AutoBudgetMemory | None = None
@@ -227,108 +206,6 @@ def run_auto_budget_dry_run(
     return 0
 
 
-def run_budget_memory_dry_run(
-    args: Namespace,
-    *,
-    tasks: list,
-    repo_root: Path,
-    exclude_ids: set[str] | None,
-    auto_budget_task_caps: dict[str, float] | None,
-) -> int:
-    paths = _resolve_budget_memory_paths(args.budget_memory, repo_root, "--budget-memory-dry-run")
-    memory = BudgetMemory.from_jsonl(paths, exclude_ids=exclude_ids)
-    print("=== BudgetMemory dry-run ===")
-    print(f"records={memory.record_count} tasks={memory.task_count} repos={memory.repo_count}")
-    print(f"sources: {memory._source_paths}")
-    print()
-
-    historical_caps = _historical_caps(memory._source_paths)
-    per_task_hard = args.per_task_cap if args.per_task_cap and args.per_task_cap > 0 else None
-    print(
-        f"  {'task':<40} {'strategy':<28} {'old_cap_src':<16} {'old_cap':>10} "
-        f"{'bm_cap':>10} {'actual_median':>13} {'verdict':>16}"
-    )
-    print(f"  {'-'*125}")
-
-    under_count = over_count = ok_count = not_comp = 0
-    for task in tasks:
-        iid = task.instance_id
-        estimate = memory.estimate_task_budget(iid, hard_budget=per_task_hard)
-        old_cap, old_src, comparable = _old_cap_for_task(
-            iid,
-            auto_budget_task_caps=auto_budget_task_caps,
-            historical_caps=historical_caps,
-            per_task_hard=per_task_hard,
-        )
-        task_stats = memory.task_stats(iid)
-        actual_median = task_stats.median_cost if task_stats and task_stats.median_cost > 0 else 0
-        verdict = _cap_verdict(comparable=comparable, old_cap=old_cap, actual_median=actual_median)
-        if verdict == "underbudget":
-            under_count += 1
-        elif verdict == "overbudget":
-            over_count += 1
-        elif verdict == "ok":
-            ok_count += 1
-        else:
-            not_comp += 1
-        old_str = f"${old_cap:.4f}" if old_cap > 0 else "N/A"
-        actual_str = f"${actual_median:.4f}" if actual_median > 0 else "N/A"
-        print(
-            f"  {iid:<40} {'':<28} {old_src:<16} {old_str:>10} "
-            f"${estimate.estimated_task_budget:>9.4f} {actual_str:>13} {verdict:>16}"
-        )
-
-    print()
-    print(
-        f"Summary: underbudget={under_count} overbudget={over_count} ok={ok_count} "
-        f"not_comparable={not_comp} tasks={len(tasks)} auto_budget={auto_budget_task_caps is not None}"
-    )
-    return 0
-
-
-def build_budget_memory_plan(
-    args: Namespace,
-    *,
-    tasks: list,
-    repo_root: Path,
-    exclude_ids: set[str] | None,
-    auto_budget_enabled: bool,
-) -> BudgetMemoryPlan:
-    if args.disable_budget_memory or not args.budget_memory:
-        return BudgetMemoryPlan(enabled=False, estimates={}, source_paths="", task_caps=None)
-
-    valid_paths: list[Path] = []
-    for raw in args.budget_memory.split(","):
-        path = _resolve_path(raw.strip(), repo_root)
-        if path.is_file():
-            valid_paths.append(path)
-        else:
-            print(f"WARNING: --budget-memory file not found: {path}", flush=True)
-    if not valid_paths:
-        print(f"{tag('budget_memory', bold=False)} disabled - no valid files found", flush=True)
-        return BudgetMemoryPlan(enabled=False, estimates={}, source_paths="", task_caps=None)
-
-    memory = BudgetMemory.from_jsonl(valid_paths, exclude_ids=exclude_ids)
-    source_paths = ",".join(str(path) for path in valid_paths)
-    print(
-        f"{tag('budget_memory', bold=True)} loaded from {source_paths} "
-        f"records={memory.record_count} tasks={memory.task_count} repos={memory.repo_count}",
-        flush=True,
-    )
-    estimates: dict[str, BudgetMemoryEstimate] = {}
-    for task in tasks:
-        hard_cap = args.per_task_cap if args.per_task_cap and args.per_task_cap > 0 else None
-        estimates[task.instance_id] = memory.estimate_task_budget(task.instance_id, hard_budget=hard_cap)
-
-    task_caps = None
-    if not auto_budget_enabled:
-        task_caps = {iid: estimate.estimated_task_budget for iid, estimate in estimates.items()}
-        print("  Per-task caps from BudgetMemory (cascade: exact_task > repo > strategy > global)", flush=True)
-    else:
-        print("  BudgetMemory estimates stored (Value-Driven Budget Allocation takes priority for caps)", flush=True)
-    return BudgetMemoryPlan(enabled=True, estimates=estimates, source_paths=source_paths, task_caps=task_caps)
-
-
 def _resolve_existing_file(raw_path: str, repo_root: Path, flag: str) -> Path:
     path = _resolve_path(raw_path, repo_root)
     if not path.is_file():
@@ -336,63 +213,6 @@ def _resolve_existing_file(raw_path: str, repo_root: Path, flag: str) -> Path:
     return path
 
 
-def _resolve_budget_memory_paths(raw: str | None, repo_root: Path, flag: str) -> list[Path]:
-    if not raw:
-        raise SystemExit(f"ERROR: {flag} requires --budget-memory PATH[,PATH...]")
-    return [_resolve_existing_file(piece.strip(), repo_root, "--budget-memory") for piece in raw.split(",") if piece.strip()]
-
-
 def _resolve_path(raw_path: str, repo_root: Path) -> Path:
     path = Path(raw_path)
     return path if path.is_absolute() else repo_root / path
-
-
-def _historical_caps(source_paths: list[str]) -> dict[str, tuple[float, str]]:
-    caps: dict[str, tuple[float, str]] = {}
-    for source_path in source_paths:
-        try:
-            lines = Path(source_path).read_text(errors="replace").splitlines()
-        except OSError:
-            continue
-        for line in lines:
-            if not line.strip():
-                continue
-            try:
-                record = json.loads(line.strip())
-            except json.JSONDecodeError:
-                continue
-            iid = str(record.get("instance_id") or "")
-            if not iid or iid in caps:
-                continue
-            if record.get("estimated_task_cap") is not None:
-                caps[iid] = (float(record["estimated_task_cap"]), "historical")
-            elif record.get("batch_budget_cap") is not None:
-                caps[iid] = (float(record["batch_budget_cap"]), "historical")
-    return caps
-
-
-def _old_cap_for_task(
-    instance_id: str,
-    *,
-    auto_budget_task_caps: dict[str, float] | None,
-    historical_caps: dict[str, tuple[float, str]],
-    per_task_hard: float | None,
-) -> tuple[float, str, bool]:
-    if auto_budget_task_caps is not None:
-        return float(auto_budget_task_caps.get(instance_id) or 0), "auto_budget", True
-    if instance_id in historical_caps:
-        value, source = historical_caps[instance_id]
-        return value, source, True
-    if per_task_hard is not None:
-        return per_task_hard, "per_task", True
-    return 0.0, "standard_tight", False
-
-
-def _cap_verdict(*, comparable: bool, old_cap: float, actual_median: float) -> str:
-    if not comparable or old_cap <= 0 or actual_median <= 0:
-        return "not_comparable"
-    if actual_median > old_cap * 1.2:
-        return "underbudget"
-    if old_cap > actual_median * 3:
-        return "overbudget"
-    return "ok"

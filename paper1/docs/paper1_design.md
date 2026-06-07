@@ -89,7 +89,7 @@ BudgetFlow Runtime
 LLM backend pool
 ```
 
-**Tier-1 minimal backend pool (two tiers).** A cheap paper prototype can pair **local Qwen 2.5-32B** (GPU-hour amortized cost) with **DeepSeek API** (e.g., V3-class tier) as `a_1 < a_2`. That still exercises tier jumps, ledger settlement, and the same routing math as in `paper1_concept.md` §8.5 without a large N-ary pool.
+**Tier-1 minimal backend pool (two tiers).** A cheap paper prototype only needs a lower-cost tier and a stronger tier with known price/protocol metadata. The concrete providers live behind the model-tier catalog, so swapping Qwen/AICode007 for another OpenAI-compatible provider should be a tier-config change rather than a routing rewrite. That still exercises tier jumps, ledger settlement, and the same routing math as in `paper1_concept.md` §8.5 without a large N-ary pool.
 
 Tier 1 当前最自然的上游不是 LangChain 本身，而是一个可控的 mini scaffold 或 SWE-agent-like loop。这样更容易控制：
 

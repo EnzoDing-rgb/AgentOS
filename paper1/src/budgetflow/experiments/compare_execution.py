@@ -8,7 +8,6 @@ from collections.abc import Callable
 
 from budgetflow.adaptive_routing import AdaptiveRoutingRegistry
 from budgetflow.auto_budget import BudgetEstimate
-from budgetflow.budget_memory import BudgetEstimate as BudgetMemoryEstimate
 from budgetflow.compare_checkpoint import CompareCheckpointStore, GlobalRunProgress, StrategyScoreboard
 from budgetflow.experiments.compare_config import (
     CompareStrategy,
@@ -59,8 +58,6 @@ def run_task_record(
     trace_max_turns: int = 200,
     trace_truncate_chars: int = 120,
     budget_estimate: BudgetEstimate | None = None,
-    budget_memory_estimate: BudgetMemoryEstimate | None = None,
-    budget_memory_source_paths: str = "",
     run_series: str = "",
     policy_lane: str = "",
     budget_mode: str = "shared",
@@ -190,28 +187,10 @@ def run_task_record(
         record["budget_prior_source"] = budget_estimate.source
         record["budget_prior_confidence"] = budget_estimate.confidence
         record["budget_estimator_version"] = "v1"
-        record["budget_memory_used"] = budget_estimate.source.startswith("memory_")
-        record["budget_memory_neighbors"] = budget_estimate.memory_neighbors
+        record["auto_budget_memory_used"] = budget_estimate.source.startswith("memory_")
+        record["auto_budget_memory_neighbors"] = budget_estimate.memory_neighbors
         record["auto_budget_features"] = budget_estimate.features
 
-    if budget_memory_estimate is not None:
-        record["budget_memory_enabled"] = True
-        if budget_memory_source_paths:
-            record["budget_memory_source_paths"] = budget_memory_source_paths
-        record["budget_memory_budget_source"] = budget_memory_estimate.budget_source
-        record["budget_memory_estimated_budget"] = budget_memory_estimate.estimated_task_budget
-        record["budget_memory_predicted_cost"] = budget_memory_estimate.predicted_cost
-        record["budget_memory_confidence"] = budget_memory_estimate.budget_confidence
-        record["budget_memory_reason"] = budget_memory_estimate.budget_reason
-        record["budget_memory_hard_budget_used"] = budget_memory_estimate.hard_budget_used
-        record["budget_memory_risk_multiplier"] = budget_memory_estimate.risk_multiplier
-        effective_cap = float(record.get("batch_budget_cap") or 0)
-        record["budget_memory_applied"] = (
-            effective_cap > 0
-            and abs(effective_cap - budget_memory_estimate.estimated_task_budget) < 0.001
-        )
-    else:
-        record["budget_memory_enabled"] = False
     return record
 
 
@@ -242,8 +221,6 @@ def run_strategy_batch(
     trace_truncate_chars: int = 120,
     task_caps: dict[str, float] | None = None,
     budget_estimates: dict[str, BudgetEstimate] | None = None,
-    budget_memory_estimates: dict[str, BudgetMemoryEstimate] | None = None,
-    budget_memory_source_paths: str = "",
     run_series: str = "",
     heartbeat_writer: object | None = None,
 ) -> tuple[list[dict], float]:
@@ -370,8 +347,6 @@ def run_strategy_batch(
                 trace_max_turns=trace_max_turns,
                 trace_truncate_chars=trace_truncate_chars,
                 budget_estimate=budget_estimates.get(task.instance_id) if budget_estimates else None,
-                budget_memory_estimate=budget_memory_estimates.get(task.instance_id) if budget_memory_estimates else None,
-                budget_memory_source_paths=budget_memory_source_paths,
                 run_series=run_series,
                 policy_lane=cfg.name,
                 budget_mode="per_task_cap" if task_cap is not None else "shared",

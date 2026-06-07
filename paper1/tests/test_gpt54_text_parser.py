@@ -1,7 +1,6 @@
-"""Tests for GPT-5.4 text-mode command parsing.
+"""Tests for text-mode command parsing.
 
 Covers:
-  - ```mswea_bash_command (legacy)
   - ```bash (GPT-5.4 actual output)
   - ```sh variant
   - JSON {"command": "..."} fallback
@@ -28,13 +27,6 @@ from budgetflow.adapter.action_parsing import (
 # ── Regex tests ────────────────────────────────────────────────────────
 
 
-def test_regex_matches_mswea_bash_command() -> None:
-    content = "THOUGHT: test\n```mswea_bash_command\ncd /tmp && ls\n```"
-    matches = re.findall(TEXT_ACTION_REGEX, content, re.DOTALL)
-    assert len(matches) == 1
-    assert matches[0].strip() == "cd /tmp && ls"
-
-
 def test_regex_matches_bash_fenced_block() -> None:
     content = """THOUGHT: inspect\n```bash
 cd /tmp && python - <<'PY'
@@ -53,13 +45,11 @@ def test_regex_matches_sh_fenced_block() -> None:
     assert matches[0].strip() == "cd /tmp"
 
 
-def test_regex_real_gpt54_output() -> None:
-    """Real GPT-5.4 output from clean_gold2-0 trace."""
-    content = 'THOUGHT: I\'ll inspect the relevant latex printer logic and reproduce the issue first so I can make a minimal, consistent source change.```bash\ncd /home/fengde/Projects/AI-learning/agent_learning/AgentOS/paper1/data/repo_cache/worktrees/sympy__sympy/budgetflow_full_tight_sympy__sympy-14774 && python - <<\'PY\'\nfrom sympy import symbols, latex, acsc, asec, asin\nx = symbols(\'x\')\nprint(\'asin full:\', latex(asin(x), inv_trig_style=\'full\'))\nPY\n```'
+def test_regex_extracts_bash_block_after_thought_text() -> None:
+    content = "THOUGHT: inspect before editing.```bash\ncd /work/repo && python -m pytest tests/test_x.py\n```"
     matches = re.findall(TEXT_ACTION_REGEX, content, re.DOTALL)
     assert len(matches) == 1
     assert "python" in matches[0]
-    assert "sympy__sympy-14774" in matches[0]
 
 
 def test_regex_rejects_prose_only() -> None:
@@ -103,12 +93,10 @@ def test_json_extract_with_bash_prefix() -> None:
     assert cmd == "cd /tmp && ls"
 
 
-def test_json_extract_real_gpt54_output() -> None:
-    """Real GPT-5.4 JSON output from clean_gold2-0 trace turn #4 (all_pro 14774)."""
-    content = """THOUGHT: I need inspect the relevant latex printer code and reproduce the issue before editing.{"command":"cd /home/fengde/Projects/AI-learning/agent_learning/AgentOS/paper1/data/repo_cache/worktrees/sympy__sympy/all_pro_sympy__sympy-14774 && python - <<'PY'\\nfrom sympy import symbols, latex, acsc, asec, asin\\nx = symbols('x')\\nprint(latex(asin(x), inv_trig_style='full'))\\nPY"}"""
+def test_json_extract_after_thought_text() -> None:
+    content = """THOUGHT: inspect before editing.{"command":"cd /work/repo && python -m pytest tests/test_x.py"}"""
     cmd = try_extract_json_command(content)
     assert cmd is not None
-    assert "sympy__sympy-14774" in cmd
     assert "python" in cmd
 
 

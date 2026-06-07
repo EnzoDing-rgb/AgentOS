@@ -202,7 +202,7 @@ The policy should optimize expected marginal value:
 route_score = expected_value_gain(task, action) / expected_marginal_cost(action)
 ```
 
-This makes BudgetMemory a value-learning component, not only a cost memory. Its job is to estimate cost, success, cap sufficiency, and value signals from verified outcomes so BudgetFlow can maximize value per dollar.
+This makes Value-Driven Budget Allocation a value-learning component, not only a cost memory. Its cap/value-cost store estimates cost, success, cap sufficiency, and value signals from verified outcomes so BudgetFlow can maximize value per dollar. Routing priors stay separate in PolicyMemory.
 
 ## Budget Account Model
 
@@ -255,7 +255,7 @@ Rules are the cold-start policy. Memory is the warm-start policy. A learned rout
 | Version | Mechanism | Role |
 |---|---|---|
 | v1 Rule-based | Stage weights, pressure, cap, rescue, stop-loss | Explainable baseline and paper-friendly control. |
-| v2 Continuous memory | Learn cost, value, difficulty, cap, success, failure axis from verified runs | Improve automatic budgeting, value estimates, and escalation thresholds. |
+| v2 Continuous memory | Learn cost, value, difficulty, cap, success, failure axis from verified runs | Improve Value-Driven Budget Allocation, value estimates, and escalation thresholds. |
 | v3 Learned router | Supervised model or contextual bandit | Predict value, start tier, cap, escalate/stop from task and history. |
 
 ## Architecture Doctrine

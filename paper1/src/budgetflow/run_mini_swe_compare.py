@@ -50,16 +50,10 @@ from budgetflow.experiments.compare_config import (  # noqa: E402
     required_backends_for_strategies as _required_backends_for_strategies,
     task_descriptor as _task_descriptor,
 )
-from budgetflow.experiments.compare_cli import (  # noqa: E402
-    parse_budget_memory_exclude as _parse_budget_memory_exclude,
-    parse_compare_args,
-)
+from budgetflow.experiments.compare_cli import parse_compare_args  # noqa: E402
 from budgetflow.experiments.compare_memory import (  # noqa: E402
     build_auto_budget_plan,
-    build_budget_memory_plan,
     run_auto_budget_dry_run,
-    run_budget_memory_dry_run,
-    run_budget_memory_gate_only,
     run_policy_memory_gate_only,
 )
 from budgetflow.experiments.compare_setup import (  # noqa: E402
@@ -108,17 +102,11 @@ def main() -> None:
         os.environ.setdefault("FORCE_COLOR", "1")
     args = parse_compare_args()
 
-    bm_exclude = _parse_budget_memory_exclude(args.budget_memory_exclude_ids)
-
     # ── Gate-only: load PolicyMemory, validate, print summary, exit ────────
     # Must run BEFORE any provider check, output file creation, heartbeat, or
     # strategy loading. Gate-only makes zero API calls.
     if args.policy_memory_gate_only:
         sys.exit(run_policy_memory_gate_only(args, repo_root=REPO_ROOT))
-
-    # ── Gate-only: load BudgetMemory from JSONL, validate, print diagnostics, exit ──
-    if args.budget_memory_gate_only:
-        sys.exit(run_budget_memory_gate_only(args, repo_root=REPO_ROOT, exclude_ids=bm_exclude))
 
     # ── Value observability: init before any tasks run ───────────────────
     if args.value_profile != "equal" and not args.value_matrix:
@@ -195,17 +183,6 @@ def main() -> None:
     auto_budget_task_caps: dict[str, float] | None = auto_budget_plan.task_caps
     auto_budget_memory = auto_budget_plan.memory
 
-    # ── BudgetMemory dry-run: load, compute estimates, print comparison, exit ──
-    # Must run BEFORE provider signature check — no API calls, no run files.
-    if args.budget_memory_dry_run:
-        sys.exit(run_budget_memory_dry_run(
-            args,
-            tasks=tasks,
-            repo_root=REPO_ROOT,
-            exclude_ids=bm_exclude,
-            auto_budget_task_caps=auto_budget_task_caps,
-        ))
-
     # ── AutoBudget dry-run: learned cap + routing-memory gate, no API calls or run files ──
     if args.auto_budget_dry_run:
         sys.exit(run_auto_budget_dry_run(
@@ -235,19 +212,6 @@ def main() -> None:
                 "provider signature check failed: "
                 + ", ".join(f"{r.backend}:{r.error_type or r.status_code}" for r in failed)
             )
-
-    budget_memory_plan = build_budget_memory_plan(
-        args,
-        tasks=tasks,
-        repo_root=REPO_ROOT,
-        exclude_ids=bm_exclude,
-        auto_budget_enabled=args.auto_budget,
-    )
-    if auto_budget_task_caps is None and budget_memory_plan.task_caps is not None:
-        auto_budget_task_caps = budget_memory_plan.task_caps
-    budget_memory_enabled = budget_memory_plan.enabled
-    budget_memory_estimates = budget_memory_plan.estimates
-    budget_memory_source_paths = budget_memory_plan.source_paths
 
     total_runs = len(tasks) * len(strategies)
     out_stem, stem_mode, series_base, run_series = resolve_run_identity(
@@ -480,8 +444,6 @@ def main() -> None:
             trace_truncate_chars=args.trace_truncate_chars,
             task_caps=auto_budget_task_caps,
             budget_estimates=auto_budget_estimates,
-            budget_memory_estimates=budget_memory_estimates if budget_memory_enabled else None,
-            budget_memory_source_paths=budget_memory_source_paths,
             run_series=run_series,
             heartbeat_writer=heartbeat_writer,
         )

@@ -4,6 +4,13 @@
 
 ## 当前快照（2026-06-07）
 
+### 077 / Canonical continual-learning path cleanup
+
+- **077 IN PROGRESS — no-paid core infra cleanup.** No historical JSONL was edited and no paid experiment was run.
+- **Retired active BudgetMemory path:** removed the old `BudgetMemory` module and `--budget-memory*` runner CLI from the active compare runtime. Current cap/value-cost learning is `AutoBudgetMemory` via `--auto-budget`; current routing learning is run JSONL through `PolicyMemory` / `learning_context.py`.
+- **Observability cleanup:** active rows now use `auto_budget_memory_used` / `auto_budget_memory_neighbors` for learned-cap provenance instead of reusing the ambiguous old `budget_memory_*` names.
+- **Architecture judgment:** keeping `BudgetMemory` as a third learning entry point made cap semantics non-orthogonal. Historical reports that mention it remain forensic evidence, but new runs should not use it as an active budget source.
+
 ### 076 / Provider-agnostic tier seam and obsolete probe cleanup
 
 - **076 COMPLETE SLICE — no-paid core infra cleanup.** No historical JSONL was edited and no paid experiment was run.
@@ -76,7 +83,7 @@
 
 - **068 COMPLETE SLICE — no-paid architecture cleanup.** No historical JSONL was edited and no paid experiment was run.
 - **Runner decomposition:** `run_mini_swe_compare.py` is now a thin compare CLI/orchestrator, not the home for all compare semantics. Focused modules now own config, setup, CLI parsing, artifact persistence, summary rendering, task execution, and learning-memory setup.
-- **New modules:** `experiments/compare_execution.py` owns task execution, record construction, per-policy batch execution, heartbeat progress, and per-row observability assembly. `experiments/compare_memory.py` owns Value-Driven Budget Allocation memory, BudgetMemory estimates, policy-memory gate-only, and no-provider dry-run output.
+- **New modules:** `experiments/compare_execution.py` owns task execution, record construction, per-policy batch execution, heartbeat progress, and per-row observability assembly. `experiments/compare_memory.py` owns Value-Driven Budget Allocation memory, policy-memory gate-only, and no-provider dry-run output.
 - **Entrypoint shrink:** `run_mini_swe_compare.py` moved from the old 2400+ line shape to **609 lines**. The runner no longer exposes `_run_one` / `_run_strategy_batch` as pseudo-library APIs; tests use `compare_execution.run_task_record`.
 - **Deleted stale compatibility:** current code no longer rewrites old strategy aliases or preserves old `_VALUE_*` globals. New experiments must use canonical strategy names and `ValueEfficiencyContext`. Historical reports remain forensic and are not edited.
 - **Verification:** focused no-paid gate passed: `72 passed` across value efficiency, record schema, setup, value-aware routing, policy parallelism, learning context, and auto-budget tests. `py_compile` passed for the refactored modules. No-paid `--auto-budget-dry-run` still loads cap memory and routing memory without provider calls.
@@ -139,7 +146,7 @@
 - **术语统一：** 新 canonical term 是 **Value-Driven Budget Allocation**。旧称 Automatic Budgeting 和 CLI `--auto-budget` 只保留为 backward-compatible implementation name。
 - **重要修复：** continual learning 代码没有消失，但此前默认 run 不会写 learning memory；只有 `--auto-budget` 开启时才写。这意味着 058/059/060 这类 paid run 产生了 outcome，却默认没有进入 `auto_budget_memory.jsonl`。
 - **现在行为：** normal run 默认创建 Value-Driven Budget Allocation memory writer，并把每个完成 row 写入 `auto_budget_memory.jsonl`，除非显式传 `--no-auto-budget-learn`。
-- **策略边界不变：** 默认只收集学习数据，不默认用学习结果改变 cap；应用 learned cap 仍需显式 `--auto-budget` 或 `--budget-memory`。这样避免悄悄改变实验协议。
+- **策略边界不变：** 默认只收集学习数据，不默认用学习结果改变 cap；应用 learned cap 仍需显式 `--auto-budget`。这样避免悄悄改变实验协议。
 - **新增 observability：** JSONL row 写 `budget_learning_update_written`、`budget_learning_memory_path`、`budget_learning_applied_to_cap`，并带 `task_features`，使后续 exact-task / repo-kNN learning 可审计。
 - **fresh runtime smoke：** `061_learning_smoke_v2`（1 task × 1 strategy, step_limit=1, cost ~$0.0013）验证新 row 真实写入 learning memory；memory record 带 `run_series` 和 `run_id=attempt_id`，可追溯。
 - **下一步重点：** 用 `--auto-budget` 做小规模 Value-Driven Budget Allocation gate，检查 learned caps 是否合理；不要把 058/059/060 旧 row 回写成 learning evidence。
@@ -348,7 +355,7 @@
 - PASS/FAIL 主口径永远是 `harness_resolved`，不是 `exit_reason`。
 - 报告不是事实源；JSONL、checker、heartbeat、summary log 是事实源。报告只能是这些证据的 ledger。
 - `data/runs` 体积大且高 churn，不默认提交 Git；需要审计某次实验时，先明确要同步哪些小型 JSONL/summary/report。
-- 所有新实验必须先过 gate：无 orphan/stuck heartbeat、无 suspicious pass、无 no_trace、BudgetMemory source 分布符合实验语义。
+- 所有新实验必须先过 gate：无 orphan/stuck heartbeat、无 suspicious pass、无 no_trace，value source / budget mode / AutoBudgetMemory cap source / PolicyMemory routing source 符合实验语义。
 
 ### 结论
 
@@ -411,7 +418,7 @@
 
 1. **BudgetFlow paper 线：重设 Key Indicator。** 为 SWE-bench task 构造 value / difficulty proxy，先明确 `value_i` 如何从 historical trajectories、gold patch complexity、known solve difficulty、repo/task family、model success/cost 等信号得到。然后重跑小规模 value-aware 评估，主表改为 `resolved_value_per_dollar` 和 fixed-budget resolved value。
 2. **AutoResearch 线：已闭环，后续做 real API goal-loop smoke 和实战 commit/push 测试。** Phase K 完成 goal-loop、owner_decision、safe commit/push、报告生成。下一步用真实 API (≤$0.02) 验证 goal-loop + review gate 全链路，以及 `--commit-after-pass --push-after-commit` 在真实 git remote 上的行为。
-3. **实验 hygiene 保持不变：** 所有新 BudgetFlow paid run 仍必须先过 gate：无 orphan/stuck heartbeat、无 suspicious pass、无 no_trace、BudgetMemory source 分布符合实验语义。
+3. **实验 hygiene 保持不变：** 所有新 BudgetFlow paid run 仍必须先过 gate：无 orphan/stuck heartbeat、无 suspicious pass、无 no_trace，value source / budget mode / AutoBudgetMemory cap source / PolicyMemory routing source 符合实验语义。
 4. **不要直接扩规模。** 在新 indicator 未定义前，继续 5×10/10×N 只会烧钱并强化旧问题。先做 value model + 2-3 个 baseline 的小型验证。
 5. **Runner/环境稳定性继续保持：** runtime-root 已修复高 churn 路径；新 paid run 使用 `/tmp/budgetflow-runtime`，不要回到 `/Lishun` worktree/repo cache。
 

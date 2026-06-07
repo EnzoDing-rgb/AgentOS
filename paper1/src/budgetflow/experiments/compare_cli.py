@@ -113,27 +113,4 @@ def parse_compare_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--disable-policy-memory", action="store_true", default=False, help="disable PolicyMemory")
     parser.add_argument("--policy-memory-gate-only", action="store_true", default=False, help="print policy-memory gate")
     parser.add_argument("--regret-threshold", type=float, default=None, help="override policy regret threshold")
-    parser.add_argument("--budget-memory", type=str, default=None, help="comma-separated BudgetMemory JSONL paths")
-    parser.add_argument(
-        "--budget-memory-exclude-ids",
-        type=str,
-        nargs="*",
-        default=None,
-        help="instance_ids to exclude from BudgetMemory training",
-    )
-    parser.add_argument("--disable-budget-memory", action="store_true", default=False, help="disable BudgetMemory")
-    parser.add_argument("--budget-memory-dry-run", action="store_true", default=False, help="print BudgetMemory estimates")
-    parser.add_argument("--budget-memory-gate-only", action="store_true", default=False, help="print BudgetMemory gate")
     return parser.parse_args(argv)
-
-
-def parse_budget_memory_exclude(raw_values: list[str] | None) -> set[str] | None:
-    if not raw_values:
-        return None
-    exclude: set[str] = set()
-    for raw in raw_values:
-        for part in raw.split(","):
-            part = part.strip()
-            if part:
-                exclude.add(part)
-    return exclude or None

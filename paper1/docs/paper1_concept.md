@@ -433,21 +433,21 @@ In short: `expected_cost` is for routing order, `reserved_cost` is for budget sa
 
 Sections 4.1–4.3 explain how BudgetFlow enforces a given budget. But who sets the budget in the first place?
 
-In the current prototype, batch budget caps (`loose` / `tight`) are frozen constants computed once from a small pilot run (`protocol_caps.py`). This is adequate for a controlled A/B comparison but tells us nothing about whether the budget itself is reasonable.
+Earlier prototypes used frozen `loose` / `tight` caps computed from a small pilot run. That path is now retired from the active runtime because it answers the old routing-only question, not the current value-driven allocation question.
 
 A more complete system should answer:
 
 > Given a batch of N unseen tasks, what total budget gives the best expected outcome, and how should the runtime update the budget online as tasks complete?
 
-**Static pilot-based calibration (current).** Run K pilot tasks with a strong model, measure median spend, then set `loose = 2 × median × N` and `tight = 0.5 × median × N`. Simple, reproducible, but blind to task heterogeneity — an easy task and a hard task get the same per-task share.
+**Static pilot-based calibration (retired baseline).** Run K pilot tasks with a strong model, measure median spend, then set `loose = 2 × median × N` and `tight = 0.5 × median × N`. Simple, reproducible, but blind to task heterogeneity — an easy task and a hard task get the same per-task share.
 
 **Task-aware estimation (proposed).** Before execution, estimate each task's difficulty from lightweight features (issue length, repo size, number of changed files in similar historical fixes) and assign a per-task budget. The batch budget is the sum. This prevents easy tasks from hoarding budget that hard tasks need.
 
 **Online budget reallocation (proposed).** As tasks complete, the runtime observes which tasks were cheap to solve and which burned budget without resolving. Remaining unused budget from completed tasks is redistributed to unfinished tasks, weighted by their estimated difficulty and current progress. This closes the loop: the same ledger and governor that enforce the budget also feed back into how the budget should be reallocated.
 
-The paper can treat this as:
-- **Tier 1:** frozen caps (current) — enough to show the routing mechanism works.
-- **Tier 2+:** task-aware estimation + online reallocation — strengthens the claim that BudgetFlow is a *complete* budget governance system, not just a router.
+The paper should treat this as:
+- **Tier 1:** Value-Driven Budget Allocation under a shared hard budget.
+- **Tier 2:** routing/cost-efficiency as a mechanism ablation inside that value-driven system.
 
 This direction connects naturally to the RLB vision in §11: the per-task difficulty estimates and reallocation rules become part of the maintained heuristic system, improving over time from logs and replay data.
 

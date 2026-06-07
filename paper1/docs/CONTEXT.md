@@ -68,7 +68,7 @@ Two modes:
 - **Cold start:** embedded historical priors + task feature buckets.
 - **Continual learning:** append every normal verified outcome to cap/value-cost memory, then use exact-task / same-task / repo-kNN estimates when `--auto-budget` is enabled.
 
-Current state: the memory writer is on by default for normal runs unless `--no-auto-budget-learn` is passed. Applying learned caps remains opt-in via `--auto-budget` or `--budget-memory`, so evidence collection and budget policy changes are decoupled.
+Current state: the memory writer is on by default for normal runs unless `--no-auto-budget-learn` is passed. Applying learned caps remains opt-in via `--auto-budget`, so evidence collection and budget policy changes are decoupled. The old `BudgetMemory` CLI path is retired from active runtime; historical reports that mention it are forensic-only.
 
 ### continual-learning stores
 BudgetFlow has two distinct memory stores.

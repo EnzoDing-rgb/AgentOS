@@ -68,9 +68,9 @@ def test_3x3_selects_canonical_diagnostic_strategies_and_parallel_jobs() -> None
     assert selection.jobs_upgraded is True
 
 
-def test_unknown_legacy_strategy_name_fails_fast() -> None:
+def test_unknown_strategy_name_fails_fast() -> None:
     try:
-        select_strategies(_args(strategies="old_budgetflow_alias"))
+        select_strategies(_args(strategies="not_a_policy"))
     except SystemExit as exc:
         assert "unknown strategies" in str(exc)
     else:
