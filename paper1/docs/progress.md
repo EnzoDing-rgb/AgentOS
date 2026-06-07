@@ -4,6 +4,14 @@
 
 ## 当前快照（2026-06-07）
 
+### 072 / AutoResearch implementation pruning
+
+- **072 COMPLETE SLICE — no-paid architecture cleanup.** No historical experiment JSONL was edited and no paid experiment was run.
+- **AutoResearch document preserved:** `docs/autoresearch_workflow.md` remains the canonical memory of the owner/Codex/Worker productivity design.
+- **Paused implementation removed:** deleted the inactive AutoResearch Python modules, worker scripts, and tracked `.autoresearch/` smoke/workflow artifacts from the active tree. They were self-contained and not imported by the compare runner, observability checker, value/RVPD path, learning context, routing policy, or no-paid gates.
+- **Architecture judgment:** future AutoResearch should be rebuilt from the workflow document when it again accelerates BudgetFlow. Keeping old coordinator code and old smoke artifacts in the active tree now slows navigation and invites stale-test maintenance.
+- **Evidence status:** this is not new T1/T2 experiment evidence. It reduces non-paper surface area so future infer/debug work can focus on runtime, evaluation, observability, routing, and learning.
+
 ### 071 / Local harness adapter boundary
 
 - **071 COMPLETE SLICE — no-paid evaluation-harness refactor.** No historical JSONL was edited and no paid experiment was run.
