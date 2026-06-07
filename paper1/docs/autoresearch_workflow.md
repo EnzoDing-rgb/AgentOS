@@ -5,6 +5,12 @@
 AutoResearch is a research-productivity idea, not the current BudgetFlow paper
 mechanism.
 
+This document is durable. It preserves the owner's process thinking about how
+to make Codex/worker research loops faster, safer, and easier to resume. The
+implementation around it is disposable: coordinator code, worker adapters,
+tests, and old workflow directories may be deleted or rewritten whenever they
+stop serving the current research loop.
+
 Its value is the operating model it captures:
 
 - remove the owner from manual message-passing between Codex and worker agents;
@@ -50,6 +56,11 @@ It should not:
 - make worker self-report equivalent to evidence;
 - preserve obsolete code/tests just because they once belonged to AutoResearch.
 
+If there is a conflict between preserving AutoResearch implementation code and
+simplifying the current BudgetFlow paper path, simplify the paper path. Keep
+the workflow document as the memory artifact; do not keep stale runtime code as
+an archive by default.
+
 ## Operating Model
 
 ```text
@@ -76,6 +87,7 @@ governance. Codex remains responsible for interpreting evidence against
 | Recoverability | Every accepted stage should have enough disk state to resume after interruption. |
 | Human approval for risk | Large paid runs, official harness runs, and architecture rewrites pause for owner/Codex judgment. |
 | Non-invasive runtime | AutoResearch must be removable without changing BudgetFlow experiment semantics. |
+| Document over code | Preserve this workflow document; treat AutoResearch implementation code as replaceable support machinery. |
 | Current paper priority | Runtime/evaluation/observability/routing bugs in BudgetFlow outrank AutoResearch implementation bugs. |
 
 ## Pause Conditions

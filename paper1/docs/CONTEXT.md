@@ -18,6 +18,8 @@ AutoResearch is implemented as a semi-automatic coordinator, but it is currently
 
 The AutoResearch workflow document is a durable thinking artifact about research productivity and agent coordination. Preserve and update that document when the operating model changes. AutoResearch implementation tests/code are optional support machinery; defects there are non-blocking unless they interfere with the BudgetFlow compare path, JSONL observability, value accounting, policy memory, or no-paid verification gates.
 
+The document has higher value than the current AutoResearch code. If a refactor needs to simplify or delete AutoResearch implementation files, do it when they are outside the BudgetFlow proof path. Preserve `docs/autoresearch_workflow.md` as the canonical memory of the process design unless the owner explicitly renames it.
+
 ### current research discipline
 Treat JSONL, checker output, summary logs, and turn traces as facts. Treat Worker reports as ledgers that must be checked against artifacts. A small paid run can support Tier 2 routing behavior, but Tier 1 requires non-equal task values loaded from an explicit value source. If a non-equal value profile falls back to equal values, the run is invalid for Tier 1.
 

@@ -4,6 +4,15 @@
 
 ## 当前快照（2026-06-07）
 
+### 071 / Local harness adapter boundary
+
+- **071 COMPLETE SLICE — no-paid evaluation-harness refactor.** No historical JSONL was edited and no paid experiment was run.
+- **Harness boundary split:** repo-specific local-harness behavior moved from `local_harness.py` into `local_harness_adapters.py`. The new adapter module owns SymPy/Django/Requests adapters, Python-version compatibility patching, pytest node-id mapping, and pytest invocation.
+- **Core harness locality:** `local_harness.py` now focuses on runtime repo/worktree preparation, patch application, and `evaluate_local_harness()`. This makes local-harness false-positive/false-negative debugging easier without deleting necessary repo compatibility behavior.
+- **Compatibility judgment:** repo compatibility patches remain part of the local evaluation adapter, not obsolete paper-runtime compatibility. They prevent local-harness infra failures from being mistaken for model or routing failures.
+- **Verification:** `171 passed`, `py_compile` passed for `paper1/src/budgetflow`, `git diff --check` passed, and no-provider `--auto-budget-dry-run` still loaded both cap memory and routing policy memory.
+- **Evidence status:** this is not new T1/T2 experiment evidence. It improves trust in the inner-loop evaluation harness used before paid experiments.
+
 ### 070 / AutoResearch doc contraction and value-context locality
 
 - **070 COMPLETE SLICE — no-paid architecture/document cleanup.** No historical JSONL was edited and no paid experiment was run.
