@@ -125,6 +125,30 @@ Evidence discipline:
 - Do not optimize Tier 2 in a way that sacrifices Tier 1. Pure routing/cost savings are useful only when they preserve or improve value-weighted outcomes.
 - Task value is a proxy. The current cold-start direction is model success rarity / solve rarity: tasks solved by fewer capable models or policies receive higher value. The long-term system should learn value, difficulty, model success probability, progress quality, and cost online from verified outcomes.
 
+Tier 1 evaluation is fixed before paid runs:
+
+| Role | Metric | Formula | Use |
+|---|---|---|---|
+| Primary | Normalized verified resolved value at fixed budget | `sum(value_i * verified_resolved_i) / sum(value_i)` under the same budget pool `B` | Main T1 claim: did the budget solve the most valuable verified work? |
+| Secondary | Verified resolved value per dollar | `sum(value_i * verified_resolved_i) / sum(cost_i)` | Efficiency diagnostic; cannot replace the primary metric because it can reward doing too little. |
+| Learning evidence | Online learning lift | `primary_metric_after_learning - primary_metric_no_learning_or_frozen_memory` | Shows whether historical paid outcomes improve allocation rather than merely post-hoc scoring. |
+
+Tier 2 evaluation should stand alone as a routing claim even when task value is hidden. It uses two metrics:
+
+| Role | Metric | Formula / Report | Use |
+|---|---|---|---|
+| Primary | Verified resolution-cost frontier | Pass rate or verified resolved count across budget levels; report AUC or fixed-budget / fixed-pass-rate comparisons. | Shows whether routing solves more verified tasks for the same spend, or spends less for the same verified resolution. |
+| Mechanism | Useful strong-tier utilization | `useful_strong_tier_turns / strong_tier_turns`, plus wasted strong-tier cost from no-progress / parser / provider failure turns. | Shows whether strong models are used at the right moments rather than merely used less. |
+
+T2 is not allowed to win by making T1 worse. If value-aware allocation and routing disagree, the T1 metric decides the paper direction and T2 becomes an ablation result.
+
+Anti-overfitting rules:
+
+- Freeze the value proxy before a paid run; do not adjust value weights after seeing outcomes.
+- Use the same task set, budget, value source, and verifier for all compared strategies.
+- Report proxy-noise sensitivity and negative results instead of cherry-picking a budget or subset.
+- Treat equal-value runs as T2 or harness/debug evidence, not T1 evidence.
+
 Strategy discipline:
 
 - Preserve a value-blind mechanism strategy for Tier 2. Current name: `budgetflow_conservative`. It should test whether budget-pressure and progress-aware routing reduce waste without using task value.

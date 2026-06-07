@@ -48,6 +48,21 @@ def test_non_equal_profile_is_t1_value_efficiency(tmp_path) -> None:
     assert record["task_value_multiplier"] == pytest.approx(1.6667, abs=0.0001)
 
 
+def test_summary_reports_primary_fixed_budget_value_metric() -> None:
+    ctx = ValueEfficiencyContext()
+    ctx.init(value_profile="difficulty")
+
+    summary = ctx.summary_for_strategy([
+        {"harness_resolved": True, "task_cost": 0.20, "resolved_value": 0.6, "task_value": 0.6},
+        {"harness_resolved": False, "task_cost": 0.10, "resolved_value": 0.0, "task_value": 0.4},
+    ])
+
+    assert summary["resolved_value"] == 0.6
+    assert summary["total_task_value"] == 1.0
+    assert summary["normalized_verified_resolved_value"] == 0.6
+    assert summary["resolved_value_per_dollar"] == 2.0
+
+
 def test_missing_non_equal_task_fails_fast(tmp_path) -> None:
     matrix = tmp_path / "value_matrix.json"
     matrix.write_text(json.dumps({"tasks": {"x": {"values": {"difficulty": 0.1}}}}))

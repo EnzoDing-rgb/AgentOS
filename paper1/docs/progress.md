@@ -16,7 +16,8 @@
 - **Run persistence rename:** `compare_artifacts.py` was renamed to `compare_persistence.py`; the module now reflects its active responsibility: run state, JSONL persistence, learning-memory writes, and summary snapshots.
 - **Tier evidence interface cleanup:** compare summaries and compact audits now use generic tier mixes / `tier_turns` instead of storing `spark/flash/pro` or fixed T1/T2/T3 summary state. Conservation-lockout classification now checks strongest-tier access from the model-tier catalog, so future 5-tier catalogs do not misclassify T3 access as strongest-tier access.
 - **Obsolete analysis CLI cleanup:** deleted the old `check_consistency.py` checkpoint checker and `value_rescore.py` Phase-N rescore CLI from active code. Current evidence checks live under `run_observability`; current value semantics live in `value_efficiency.py` / value-matrix tooling. `proxy_noise.py` was renamed to `value_proxy_noise.py`.
-- **Verification:** `173 passed`, `py_compile` passed for `paper1/src/budgetflow`, `git diff --check` passed, and no-provider `--auto-budget-dry-run` loaded cap memory plus routing policy memory.
+- **T1/T2 metric contract fixed:** `north_star.md` now freezes T1 primary metric as Normalized Verified Resolved Value at fixed budget, with RVPD and Online Learning Lift as supporting evidence. T2 now has two standalone routing metrics: Verified Resolution-Cost Frontier and Useful Strong-Tier Utilization / wasted strong-tier cost. Runtime summaries expose `nvrv`; compact audit exposes strong-tier usefulness from turn traces.
+- **Verification:** `176 passed`, `py_compile` passed for `paper1/src/budgetflow`, `git diff --check` passed, and no-provider `--auto-budget-dry-run` loaded cap memory plus routing policy memory.
 
 ### 076 / Provider-agnostic tier seam and obsolete probe cleanup
 

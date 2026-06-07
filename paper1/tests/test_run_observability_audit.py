@@ -1,4 +1,5 @@
 from budgetflow.run_observability.audit import build_compact_audit
+from budgetflow.run_observability.report import format_compact_audit
 
 
 def test_compact_audit_preserves_generic_tier_counts() -> None:
@@ -19,3 +20,46 @@ def test_compact_audit_preserves_generic_tier_counts() -> None:
 
     assert stats["tier_turns"] == {2: 1, 4: 1, 5: 2}
     assert stats["t3_turns"] == 0
+
+
+def test_compact_audit_reports_strong_tier_usefulness() -> None:
+    audit = build_compact_audit([
+        {
+            "instance_id": "repo__task",
+            "strategy": "budgetflow_conservative_tight",
+            "harness_resolved": False,
+            "harness_evidence": {"evidence_complete": True},
+            "total_cost": 0.07,
+            "llm_turns": 2,
+            "turn_trace_count": 2,
+            "backend_picks": ["tier5", "tier5"],
+            "turn_traces": [
+                {
+                    "backend_tier": 5,
+                    "final_backend": "tier5",
+                    "has_progress": True,
+                    "billable_cost": 0.03,
+                },
+                {
+                    "backend_tier": 5,
+                    "final_backend": "tier5",
+                    "has_progress": False,
+                    "billable_cost": 0.04,
+                    "parser_error_type": "FormatError",
+                },
+            ],
+        }
+    ])
+
+    stats = audit["strong_tier_usefulness"]["budgetflow_conservative_tight"]
+
+    assert audit["strong_tier"] == 5
+    assert stats["strong_tier_turns"] == 2
+    assert stats["useful_strong_tier_turns"] == 1
+    assert stats["wasted_strong_tier_turns"] == 1
+    assert stats["useful_strong_tier_rate"] == 0.5
+    assert stats["wasted_strong_tier_cost"] == 0.04
+
+    text = format_compact_audit(audit)
+    assert "T2 STRONG-TIER USEFULNESS" in text
+    assert "strongest=T5" in text

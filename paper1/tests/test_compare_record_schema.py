@@ -7,7 +7,7 @@ from budgetflow.compare_checkpoint import GlobalRunProgress
 from budgetflow.experiments.compare_persistence import CompareRunState, persist_task_record
 from budgetflow.experiments.compare_config import CompareStrategy
 from budgetflow.experiments.compare_execution import run_task_record
-from budgetflow.experiments.compare_summary import _format_strategy_totals
+from budgetflow.experiments.compare_summary import _format_live_snapshot, _format_strategy_totals
 from budgetflow.governor import BudgetGovernor, GovernorConfig
 from budgetflow.ledger import WorkflowLedgerStore
 from budgetflow.value_efficiency import ValueEfficiencyContext
@@ -176,3 +176,30 @@ def test_budget_summary_reports_planned_cap_not_provider_runtime_balance() -> No
     assert "1.50" in text
     assert "T5=75%" in text
     assert "100.00" not in text
+
+
+def test_value_summary_reports_primary_normalized_value_metric(tmp_path) -> None:
+    lines = _format_live_snapshot(
+        strategy_names=["budgetflow_value_aware_tight"],
+        resolved_by_strategy={"budgetflow_value_aware_tight": [True, False]},
+        task_cost_by_strategy={"budgetflow_value_aware_tight": [0.2, 0.1]},
+        turns_by_strategy={"budgetflow_value_aware_tight": [4, 3]},
+        tier_mix_by_strategy={"budgetflow_value_aware_tight": [{2: 1.0}, {5: 1.0}]},
+        batch_spent_by_strategy={"budgetflow_value_aware_tight": 0.3},
+        batch_caps={"budgetflow_value_aware_tight": 0.5},
+        budget_modes={"budgetflow_value_aware_tight": "dynamic_task_caps"},
+        runs_done=2,
+        total_runs=2,
+        tasks_per_strategy=2,
+        started=0.0,
+        out_path=tmp_path / "run.jsonl",
+        resolved_value_by_strategy={"budgetflow_value_aware_tight": [0.6, 0.0]},
+        task_value_by_strategy={"budgetflow_value_aware_tight": [0.6, 0.4]},
+        value_profile="difficulty",
+    )
+
+    text = "\n".join(lines)
+    assert "nvrv" in text
+    assert "rv_per_$" in text
+    assert "0.60" in text
+    assert "2.00" in text

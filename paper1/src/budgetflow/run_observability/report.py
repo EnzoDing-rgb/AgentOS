@@ -85,6 +85,22 @@ def format_compact_audit(audit: dict) -> str:
             "(compact audit uses recomputed classifier output)"
         )
 
+    if audit.get("strong_tier_usefulness"):
+        lines.append(banner)
+        lines.append(f"T2 STRONG-TIER USEFULNESS  |  strongest=T{audit.get('strong_tier', '?')}")
+        lines.append(
+            f"{'strategy':<26} {'strong':>6} {'useful':>6} {'rate':>7} "
+            f"{'waste':>6} {'waste_cost':>10}"
+        )
+        lines.append("-" * 64)
+        for strat in sorted(audit["strong_tier_usefulness"]):
+            s = audit["strong_tier_usefulness"][strat]
+            lines.append(
+                f"{strat:<26} {s['strong_tier_turns']:>6} {s['useful_strong_tier_turns']:>6} "
+                f"{s['useful_strong_tier_rate']:>6.0%} {s['wasted_strong_tier_turns']:>6} "
+                f"${s['wasted_strong_tier_cost']:>9.4f}"
+            )
+
     # Cost口径
     lines.append(banner)
     canonical_available = audit["total"] > 0

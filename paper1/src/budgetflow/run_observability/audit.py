@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import Counter
 
 from budgetflow.failure_classification import build_verdict, classify_failure
-from budgetflow.model_tiers import parse_tier_label
+from budgetflow.model_tiers import MODEL_CATALOG, parse_tier_label
 from budgetflow.observability import build_harness_trust
 
 from .schema import _routing_memory_source, _routing_memory_used, _routing_prior_task_seen
@@ -41,6 +41,61 @@ def _has_invoice_accurate_cost(record: dict) -> bool:
     return "cache_hit" in sample or "provider_actual_cost" in sample
 
 
+def _strong_tier_id(records: list[dict]) -> int:
+    observed = [
+        parse_tier_label(pick)
+        for record in records
+        for pick in (record.get("backend_picks") or [])
+    ]
+    configured = [cfg.tier for cfg in MODEL_CATALOG.configs]
+    return max([tier for tier in observed + configured if tier > 0], default=0)
+
+
+def _strong_tier_usefulness(records: list[dict], strong_tier: int) -> dict[str, dict]:
+    by_strategy: dict[str, dict] = {}
+    if strong_tier <= 0:
+        return by_strategy
+    for record in records:
+        strat = str(record.get("strategy", "unknown"))
+        stats = by_strategy.setdefault(
+            strat,
+            {
+                "strong_tier_turns": 0,
+                "useful_strong_tier_turns": 0,
+                "wasted_strong_tier_turns": 0,
+                "strong_tier_cost": 0.0,
+                "wasted_strong_tier_cost": 0.0,
+            },
+        )
+        traces = record.get("turn_traces") or []
+        if not isinstance(traces, list):
+            continue
+        for trace in traces:
+            if not isinstance(trace, dict):
+                continue
+            tier = max(
+                int(trace.get("backend_tier") or 0),
+                parse_tier_label(trace.get("final_backend") or ""),
+            )
+            if tier < strong_tier:
+                continue
+            cost = float(trace.get("billable_cost") or trace.get("actual_cost") or 0.0)
+            useful = bool(trace.get("has_progress")) and not (
+                trace.get("error_type") or trace.get("parser_error_type")
+            )
+            stats["strong_tier_turns"] += 1
+            stats["strong_tier_cost"] += cost
+            if useful:
+                stats["useful_strong_tier_turns"] += 1
+            else:
+                stats["wasted_strong_tier_turns"] += 1
+                stats["wasted_strong_tier_cost"] += cost
+    for stats in by_strategy.values():
+        total = max(int(stats["strong_tier_turns"]), 1)
+        stats["useful_strong_tier_rate"] = stats["useful_strong_tier_turns"] / total
+    return by_strategy
+
+
 def build_compact_audit(records: list[dict]) -> dict:
     """Build a high-density audit summary from JSONL records.
 
@@ -51,6 +106,8 @@ def build_compact_audit(records: list[dict]) -> dict:
     failed = total - resolved
     total_cost = sum(float(r.get("total_cost") or 0) for r in records)
     verdicts = {id(r): build_verdict(r) for r in records}
+    strong_tier = _strong_tier_id(records)
+    strong_tier_stats = _strong_tier_usefulness(records, strong_tier)
 
     suspicious = sum(
         1 for r in records
@@ -191,6 +248,8 @@ def build_compact_audit(records: list[dict]) -> dict:
         "suspicious": suspicious,
         "no_trace": no_trace,
         "stagnation_pass": stag_pass,
+        "strong_tier": strong_tier,
+        "strong_tier_usefulness": strong_tier_stats,
         "by_strategy": {
             strat: {
                 "total": s["total"], "pass": s["pass"], "fail": s["fail"],

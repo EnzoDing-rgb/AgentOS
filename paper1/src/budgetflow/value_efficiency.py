@@ -1,7 +1,8 @@
 """Value-driven token-efficiency metrics for BudgetFlow.
 
-Tier 1 is the paper objective: verified resolved value per dollar. Tier 2 is
-the equal-value special case used as a mechanism ablation.
+Tier 1 primary metric is normalized verified resolved value at a fixed budget.
+Resolved value per dollar is a secondary efficiency metric. Tier 2 is the
+equal-value special case used as a mechanism ablation.
 """
 
 from __future__ import annotations
@@ -88,11 +89,13 @@ class ValueEfficiencyContext:
         resolved_value = sum(float(r.get("resolved_value") or 0) for r in records)
         total_task_value = sum(float(r.get("task_value") or 1.0) for r in records)
         rvpd = resolved_value / total_cost if total_cost > 0 else 0.0
+        nvrv = resolved_value / total_task_value if total_task_value > 0 else 0.0
         return {
             "resolved_count": resolved_count,
             "total_cost": round(total_cost, 6),
             "resolved_value": round(resolved_value, 6),
             "total_task_value": round(total_task_value, 6),
+            "normalized_verified_resolved_value": round(nvrv, 6),
             "resolved_value_per_dollar": round(rvpd, 6),
             "value_profile": self.profile,
             "value_source": self.matrix_path or "default_equal",

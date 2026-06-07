@@ -213,21 +213,22 @@ def _format_live_snapshot(
         lines.append("")
         lines.append("=== VALUE SUMMARY ===")
         lines.append(
-            f"{'strategy':<28} {'resolved':>8} {'cost':>8} {'value':>8} "
-            f"{'rv_per_$':>9} {'v_profile':>12}"
+            f"{'strategy':<28} {'resolved':>8} {'cost':>8} {'res_value':>9} "
+            f"{'nvrv':>7} {'rv_per_$':>9} {'v_profile':>12}"
         )
-        lines.append("-" * 80)
+        lines.append("-" * 92)
         for name in strategy_names:
             rv_list = resolved_value_by_strategy.get(name, [])
             tv_list = task_value_by_strategy.get(name, [])
             resolved_val = sum(rv_list)
             total_val = sum(tv_list)
             total_cost = sum(task_cost_by_strategy.get(name, []))
+            nvrv = resolved_val / total_val if total_val > 0 else 0.0
             rvpd = resolved_val / total_cost if total_cost > 0 else 0.0
             lines.append(
                 f"{name:<28} {sum(1 for r in resolved_by_strategy.get(name, []) if r):>8} "
-                f"{_fmt_usd(total_cost):>8} {resolved_val:>8.2f} "
-                f"{rvpd:>9.2f} {value_profile:>12}"
+                f"{_fmt_usd(total_cost):>8} {resolved_val:>9.2f} "
+                f"{nvrv:>7.2f} {rvpd:>9.2f} {value_profile:>12}"
             )
         lines.append("")
     lines.append("")
