@@ -217,6 +217,67 @@ def test_policy_memory_changes_runtime_rescue_and_starting_tier() -> None:
     assert state.prior_summary_for_trace() is not None
 
 
+def test_policy_memory_can_imitate_budget_only_strongest_starter_window() -> None:
+    bo_t3_frontload = [
+        {"stage": "LOCALIZATION", "backend_tier": 3, "final_backend": "tier3"},
+        {"stage": "REPAIR", "backend_tier": 3, "final_backend": "tier3"},
+    ]
+    memory = PolicyMemory()
+    memory.rebuild_from_records([
+        _record(
+            instance_id="django__task-a",
+            routing="budget_only",
+            strategy="budget_only_tight",
+            harness_resolved=True,
+            failure_class="pass",
+            turn_traces=bo_t3_frontload,
+        ),
+        _record(
+            instance_id="django__task-a",
+            routing="budgetflow_value_aware",
+            strategy="budgetflow_value_aware_tight",
+            turn_traces=[{"stage": "REPAIR", "backend_tier": 2}],
+        ),
+    ])
+
+    summary = memory.routing_prior_summary("django__new-task", Stage.LOCALIZATION)
+    state = AdaptiveRoutingState(strategy_name="budgetflow_value_aware_tight", policy_memory=memory)
+    state.set_task_context("django__new-task")
+
+    assert summary["starter_memory_source"] == "repo"
+    assert summary["strongest_starter_action"] == "frontload_strongest"
+    assert state.starting_tier() == 3
+    assert state.consume_strongest_starter_tier(3) == 3
+    assert state.strongest_starter_window_opened is True
+
+
+def test_low_weight_budget_only_starter_evidence_does_not_frontload_strongest() -> None:
+    memory = PolicyMemory()
+    memory.rebuild_from_records([
+        _record(
+            instance_id="django__task-a",
+            routing="budget_only",
+            strategy="budget_only_tight",
+            harness_resolved=True,
+            failure_class="pass",
+            _policy_memory_weight=0.4,
+            turn_traces=[{"stage": "LOCALIZATION", "backend_tier": 3, "final_backend": "tier3"}],
+        ),
+        _record(
+            instance_id="django__task-a",
+            routing="budgetflow_value_aware",
+            strategy="budgetflow_value_aware_tight",
+            _policy_memory_weight=0.4,
+            turn_traces=[{"stage": "REPAIR", "backend_tier": 2}],
+        ),
+    ])
+
+    summary = memory.routing_prior_summary("django__new-task", Stage.LOCALIZATION)
+
+    assert summary["starter_attempts"] == 0.4
+    assert summary["strongest_starter_action"] == "default"
+
+
 def test_policy_memory_learns_value_triggered_escalation_policy() -> None:
     memory = PolicyMemory()
     bad_t3_trace = {

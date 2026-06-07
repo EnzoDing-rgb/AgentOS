@@ -165,7 +165,7 @@ def test_tool_call_protocol_unchanged_for_t1() -> None:
 
 
 def test_tool_call_protocol_unchanged_for_t2() -> None:
-    """T2 (qwen3-coder-plus) is tool_call, not text_regex."""
+    """T2 is tool_call, not text_regex."""
     from budgetflow.adapter.protocol_adapter import ActionProtocolAdapter
     from budgetflow.defaults import TIER2_BACKEND
 

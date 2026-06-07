@@ -153,6 +153,9 @@ class AdaptiveRoutingState:
     policy_memory: object | None = None
     _current_instance_id: str | None = None
     _prior_summary: dict | None = None
+    strongest_starter_action: str = "default"
+    strongest_starter_window_remaining: int = 0
+    strongest_starter_window_opened: bool = False
 
     def __post_init__(self) -> None:
         self.rescue = rescue_state_for_strategy(
@@ -191,9 +194,11 @@ class AdaptiveRoutingState:
         0 consecutive fails → cheapest tier (default)
         2+ consecutive fails → second-cheapest tier (skip cheapest)
         Policy "start_second_cheapest" action → second-cheapest regardless of streak
-        Never starts strongest tier — strongest must be triggered by in-task evidence
-        (gold edit + repair/validation + bounded rescue window).
+        Starts strongest only when Routing Memory learned that BO's bounded
+        early T3 frontload beat delayed BudgetFlow rescue on matched tasks.
         """
+        if self.strongest_starter_window_remaining > 0:
+            return 3
         action = self._prior_summary.get("learned_action") if self._prior_summary else ""
         if action in {"start_second_cheapest", "start_t2"}:
             return 2
@@ -213,6 +218,7 @@ class AdaptiveRoutingState:
             self._prior_summary = self.policy_memory.routing_prior_summary(
                 instance_id, Stage.LOCALIZATION
             )
+        self._refresh_strongest_starter_window()
         self.rescue = rescue_state_for_strategy(
             self.strategy_name,
             policy_memory=self.policy_memory,
@@ -226,9 +232,35 @@ class AdaptiveRoutingState:
             instance_id=self._current_instance_id,
         )
         self._prior_summary = None
+        self.strongest_starter_action = "default"
+        self.strongest_starter_window_remaining = 0
+        self.strongest_starter_window_opened = False
 
     def prior_summary_for_trace(self) -> dict | None:
         return self._prior_summary
+
+    def _refresh_strongest_starter_window(self) -> None:
+        prior = self._prior_summary or {}
+        action = str(prior.get("strongest_starter_action") or "default")
+        if action != "frontload_strongest":
+            self.strongest_starter_action = "default"
+            self.strongest_starter_window_remaining = 0
+            self.strongest_starter_window_opened = False
+            return
+        try:
+            window = int(prior.get("strongest_starter_window") or 0)
+        except (TypeError, ValueError):
+            window = 0
+        self.strongest_starter_action = action
+        self.strongest_starter_window_remaining = max(0, window)
+        self.strongest_starter_window_opened = False
+
+    def consume_strongest_starter_tier(self, strongest_tier: int) -> int | None:
+        if self.strongest_starter_window_remaining <= 0:
+            return None
+        self.strongest_starter_window_remaining -= 1
+        self.strongest_starter_window_opened = True
+        return strongest_tier
 
     def status_snippet(self) -> str:
         rescue = (
@@ -237,15 +269,20 @@ class AdaptiveRoutingState:
             if self.rescue.window_opened or self.rescue.evidence_turns
             else ""
         )
+        starter = (
+            f" starter={self.strongest_starter_action}:{self.strongest_starter_window_remaining}"
+            if self.strongest_starter_window_remaining > 0 or self.strongest_starter_window_opened
+            else ""
+        )
         if self.pressure_boost <= 0 and self.ttl_steps_remaining <= 0:
-            if rescue:
-                return f"adapt=off{rescue}"
+            if rescue or starter:
+                return f"adapt=off{rescue}{starter}"
             return "adapt=off"
         stage = self.last_weak_stage.value if self.last_weak_stage else "-"
         return (
             f"adapt=on boost=+{self.pressure_boost:.2f} "
             f"ttl={self.ttl_steps_remaining} floor_tier={self.min_tier_for_reserve()} "
-            f"weak_stage={stage}{rescue}"
+            f"weak_stage={stage}{rescue}{starter}"
         )
 
     def _recompute(self) -> None:

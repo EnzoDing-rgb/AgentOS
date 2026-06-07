@@ -18,6 +18,7 @@ After every experiment, inspect artifacts before drawing conclusions:
 - Learning Loop Reality: Cost Memory, Routing Memory, and Escalation Memory must actually affect the next decision, not only appear in logs.
 - Mechanism Diagnosis: explain whether outcomes came from model capability, task difficulty, routing, caps, Value-Triggered Escalation, evaluation, or observability.
 - Stage-Splitting Risk: localization/repair/validation routing is a mechanism hypothesis, not an axiom. It may improve T2 by using tiers at the right workflow stage, but it may also add switching noise, cache loss, prompt drift, or brittle heuristics that hurt T1.
+- Strong Baseline Imitation: `budget_only_tight` is a strong budget-pressure baseline. When BFV/BFC lose to it, first diagnose which reusable mechanism BO exploited, such as early T3 frontload, pressure gating, repair runway, or stop-loss behavior, and decide whether BudgetFlow should learn or imitate that behavior. Do not weaken BO, cherry-pick tasks, or dismiss the result as "baseline too strong" without a mechanism explanation.
 - Long-Term Iteration Value: before fixing a symptom, ask whether the fix improves future diagnosis, scale-up, or paper evidence. Do not overfit the current five familiar tasks.
 
 ## Run Discipline

@@ -159,6 +159,13 @@ def build_turn_trace(
             trace["rescue_evidence_turns"] = getattr(rescue, "evidence_turns", None)
             trace["rescue_window_remaining"] = getattr(rescue, "window_remaining", None)
             trace["rescue_window_opened"] = getattr(rescue, "window_opened", None)
+        trace["strongest_starter_action"] = getattr(adaptive, "strongest_starter_action", None)
+        trace["strongest_starter_window_remaining"] = getattr(
+            adaptive, "strongest_starter_window_remaining", None
+        )
+        trace["strongest_starter_window_opened"] = getattr(
+            adaptive, "strongest_starter_window_opened", None
+        )
     return trace
 
 

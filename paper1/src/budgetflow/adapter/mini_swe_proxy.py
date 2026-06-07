@@ -293,6 +293,25 @@ class BudgetFlowLitellmModel:
             "budgetflow_equal_weight",
             "stage_blind",
         ):
+            forced_start = self.routing.adaptive.consume_strongest_starter_tier(
+                ModelCatalog.strongest(self.routing.backends).tier
+            )
+            if forced_start is not None and backend.tier < forced_start:
+                candidate = ModelCatalog.at_or_above(self.routing.backends, forced_start)
+                print(
+                    f"{tag('adapt', bold=False)} #{self.step_index} "
+                    f"strongest_starter_window tier>={forced_start} "
+                    f"{backend_tier_label(backend.name)} -> {backend_tier_label(candidate.name)}",
+                    flush=True,
+                )
+                backend = candidate
+        if self.routing.adaptive is not None and self.routing.strategy in (
+            "budgetflow_full",
+            "budgetflow_conservative",
+            "budgetflow_value_aware",
+            "budgetflow_equal_weight",
+            "stage_blind",
+        ):
             forced_tier = self.routing.adaptive.rescue.forced_min_tier(
                 stage=stage,
                 gold_edited=self.agent_gold_edited,

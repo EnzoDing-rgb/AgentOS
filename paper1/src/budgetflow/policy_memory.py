@@ -136,6 +136,21 @@ class EscalationPrior:
         return self.t3_productive_turns / max(self.t3_turns, 1)
 
 
+@dataclass
+class StarterPrior:
+    """Learn whether a short strongest-tier starter window beat delayed rescue."""
+
+    attempts: float = 0.0
+    budgetflow_failures: float = 0.0
+    budget_only_successes: float = 0.0
+    bo_frontload_t3_turns: float = 0.0
+    bo_total_turns: float = 0.0
+
+    @property
+    def bo_frontload_rate(self) -> float:
+        return self.bo_frontload_t3_turns / max(self.bo_total_turns, 1e-9)
+
+
 class PolicyMemory:
     """Heuristic prior store rebuilt from JSONL outcomes.
 
@@ -153,6 +168,8 @@ class PolicyMemory:
         self._policy_regrets: dict[str, PolicyRegret] = {}
         self._repo_escalation: dict[str, EscalationPrior] = {}
         self._task_escalation: dict[str, EscalationPrior] = {}
+        self._repo_starters: dict[str, StarterPrior] = {}
+        self._task_starters: dict[str, StarterPrior] = {}
         self._record_count: int = 0
         self._effective_record_weight: float = 0.0
         self._source_weight_summary: dict[str, float] = {}
@@ -182,6 +199,8 @@ class PolicyMemory:
         self._policy_regrets.clear()
         self._repo_escalation.clear()
         self._task_escalation.clear()
+        self._repo_starters.clear()
+        self._task_starters.clear()
         self._record_count = len(records)
         self._effective_record_weight = round(sum(_record_weight(record) for record in records), 4)
         source_weights: dict[str, float] = defaultdict(float)
@@ -213,8 +232,10 @@ class PolicyMemory:
         for repo, recs in repo_records.items():
             self._policy_regrets[repo] = self._build_policy_regret(repo, recs)
             self._repo_escalation[repo] = self._build_escalation_prior(recs)
+            self._repo_starters[repo] = self._build_starter_prior(recs)
         for iid, recs in task_records.items():
             self._task_escalation[iid] = self._build_escalation_prior(recs)
+            self._task_starters[iid] = self._build_starter_prior(recs)
 
     def _build_repo_prior(self, repo: str, records: list[dict]) -> RepoPrior:
         prior = RepoPrior(repo=repo)
@@ -375,6 +396,45 @@ class PolicyMemory:
                     )
         return prior
 
+    def _build_starter_prior(self, records: list[dict]) -> StarterPrior:
+        prior = StarterPrior()
+        by_task: dict[str, list[dict]] = defaultdict(list)
+        for record in records:
+            iid = str(record.get("instance_id") or "")
+            if iid:
+                by_task[iid].append(record)
+
+        for task_records in by_task.values():
+            budget_only = [
+                record for record in task_records
+                if str(record.get("routing") or "") == "budget_only"
+            ]
+            budgetflow = [
+                record for record in task_records
+                if str(record.get("routing") or "") in {"budgetflow_conservative", "budgetflow_value_aware"}
+            ]
+            if not budget_only or not budgetflow:
+                continue
+
+            bo_success_weight = sum(_record_weight(record) for record in budget_only if record.get("harness_resolved"))
+            bf_fail_weight = sum(_record_weight(record) for record in budgetflow if not record.get("harness_resolved"))
+            matched_weight = min(bo_success_weight, bf_fail_weight)
+            if matched_weight <= 0:
+                continue
+
+            prior.attempts += matched_weight
+            prior.budget_only_successes += bo_success_weight
+            prior.budgetflow_failures += bf_fail_weight
+            for record in budget_only:
+                if not record.get("harness_resolved"):
+                    continue
+                weight = _record_weight(record)
+                traces = [trace for trace in (record.get("turn_traces") or []) if isinstance(trace, dict)]
+                early = traces[: min(8, len(traces))]
+                prior.bo_total_turns += weight * len(early)
+                prior.bo_frontload_t3_turns += weight * sum(1 for trace in early if _trace_tier(trace) >= 3)
+        return prior
+
     # ── query ──────────────────────────────────────────────────────────────
 
     def repo_prior(self, instance_id: str) -> RepoPrior:
@@ -395,6 +455,13 @@ class PolicyMemory:
         repo = _extract_repo(instance_id)
         return self._repo_escalation.get(repo, EscalationPrior()), "repo"
 
+    def starter_prior(self, instance_id: str) -> tuple[StarterPrior, str]:
+        task_prior = self._task_starters.get(instance_id)
+        if task_prior is not None and task_prior.attempts > 0:
+            return task_prior, "task"
+        repo = _extract_repo(instance_id)
+        return self._repo_starters.get(repo, StarterPrior()), "repo"
+
     def routing_prior_summary(self, instance_id: str, stage: Stage | None = None) -> dict:
         repo = self.repo_prior(instance_id)
         task = self.task_prior(instance_id)
@@ -404,6 +471,8 @@ class PolicyMemory:
         action = self._learned_action(instance_id, stage)
         escalation, escalation_source = self.escalation_prior(instance_id)
         escalation_action, escalation_window = _escalation_action(escalation)
+        starter, starter_source = self.starter_prior(instance_id)
+        starter_action, starter_window = _starter_action(starter)
 
         # Top failure class for task
         task_top_failure = ""
@@ -442,6 +511,13 @@ class PolicyMemory:
             "t3_no_progress_cost": round(escalation.t3_no_progress_cost, 4),
             "value_triggered_escalation_action": escalation_action,
             "value_triggered_escalation_window": escalation_window,
+            "starter_attempts": starter.attempts,
+            "starter_memory_source": starter_source if starter.attempts else "",
+            "starter_bo_success_weight": starter.budget_only_successes,
+            "starter_budgetflow_failure_weight": starter.budgetflow_failures,
+            "starter_bo_frontload_rate": round(starter.bo_frontload_rate, 3),
+            "strongest_starter_action": starter_action,
+            "strongest_starter_window": starter_window,
         }
         if stage:
             summary["stage_t2_success"] = round(repo.t2_stage_success.get(stage.value, 0), 3)
@@ -615,3 +691,14 @@ def _escalation_action(prior: EscalationPrior) -> tuple[str, int]:
     if prior.attempts >= 1.0 and prior.success_rate >= 0.6 and prior.t3_productive_rate >= 0.25:
         return "extend_value_triggered_escalation", 4
     return "default", 3
+
+
+def _starter_action(prior: StarterPrior) -> tuple[str, int]:
+    """Convert Routing Memory into a bounded BO-style strongest starter window."""
+    if prior.attempts < 1.0:
+        return "default", 0
+    if prior.bo_frontload_rate < 0.5:
+        return "default", 0
+    if prior.attempts >= 2.0 and prior.bo_frontload_rate >= 0.75:
+        return "frontload_strongest", 3
+    return "frontload_strongest", 2
