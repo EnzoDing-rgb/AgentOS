@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
 
+from .model_tiers import catalog_revision
+
 
 # Embedded historical prior from paper1/docs/reports/historical_budgeting_prior.md.
 # Costs recalibrated to real USD (2026-06).
@@ -51,6 +53,8 @@ _LEARNABLE_CAP_SUFFICIENCY = {
     "likely_underbudget",
     "underbudget_or_model",
 }
+
+LEGACY_COST_MEMORY_UPLIFT = 1.8
 
 
 @dataclass(frozen=True)
@@ -170,6 +174,7 @@ class AutoBudgetMemory:
             "detail": detail[:200] if detail else "",
             "run_series": run_series,
             "run_id": run_id,
+            "cost_catalog_revision": catalog_revision(),
         }
 
 
@@ -341,8 +346,13 @@ class AutoBudgetEstimator:
         *,
         features: dict,
     ) -> BudgetEstimate:
-        median = est["median_cost"]
+        median = float(est["median_cost"])
         source = est.get("source", "memory_exact")
+        legacy_cost_memory = bool(est.get("legacy_cost_memory", False))
+        if legacy_cost_memory:
+            median *= LEGACY_COST_MEMORY_UPLIFT
+            if source.startswith("memory_") and not source.startswith("memory_legacy_"):
+                source = "memory_legacy_" + source.removeprefix("memory_")
         neighbors = est.get("neighbors", 0)
         confidence = est.get("confidence", "low")
         if confidence == "low" and neighbors >= 2:
@@ -433,6 +443,7 @@ class AutoBudgetEstimator:
             "source": "memory_repo_knn",
             "neighbors": len(neighbors),
             "confidence": "medium" if len(neighbors) >= 2 else "low",
+            "legacy_cost_memory": any(_is_legacy_cost_record(r) for _, r in neighbors),
         }
 
     def _median_from_records(self, records: list[dict], *, source: str, features: dict) -> dict | None:
@@ -463,6 +474,7 @@ class AutoBudgetEstimator:
             "source": source,
             "neighbors": len(usable),
             "confidence": confidence,
+            "legacy_cost_memory": any(_is_legacy_cost_record(r) for r in usable),
         }
         result.update({f"features_{k}": v for k, v in features.items()})
         return result
@@ -511,3 +523,7 @@ class AutoBudgetEstimator:
 
 def _clamp(value: float, lo: float, hi: float) -> float:
     return max(lo, min(value, hi))
+
+
+def _is_legacy_cost_record(record: dict) -> bool:
+    return record.get("cost_catalog_revision") != catalog_revision()

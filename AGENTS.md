@@ -31,6 +31,7 @@ After every experiment, inspect artifacts before drawing conclusions:
 - Stop on provider billing/auth/model-access/preflight blockers. Do not reinterpret provider failures as model or routing evidence.
 - Historical JSONL and historical reports are immutable evidence. Mark old artifacts forensic-only when needed; do not patch them in place.
 - Runtime artifacts under `paper1/data/` are not source code. Do not commit trace, heartbeat, checkpoint, or run-output files unless explicitly requested.
+- Model pricing and capability priors belong in a versioned tier catalog. Web search is allowed for offline catalog calibration, but paid-run execution must use the pre-registered catalog and stop if cost/progress provenance is missing or stale.
 
 ## Current Vocabulary
 

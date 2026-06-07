@@ -165,6 +165,15 @@ def validate_tier_catalog(configs: tuple[TierConfig, ...] = DEFAULT_TIER_CONFIGS
     return issues
 
 
+def catalog_revision(configs: tuple[TierConfig, ...] = DEFAULT_TIER_CONFIGS) -> str:
+    """Small stable revision id for cost/progress catalog provenance."""
+    parts = [
+        f"{cfg.backend}:{cfg.cost_updated}:{cfg.progress_updated}"
+        for cfg in sorted(configs, key=lambda item: item.backend)
+    ]
+    return "|".join(parts)
+
+
 def load_env_file() -> None:
     from pathlib import Path
 
