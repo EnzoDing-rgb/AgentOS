@@ -188,9 +188,7 @@ class TestValueAwareTraceFields:
 class TestFailFast:
     def test_value_matrix_missing_still_fails(self):
         """Phase X fail-fast: nonexistent matrix file raises FileNotFoundError."""
-        import budgetflow.run_mini_swe_compare as mod
-        mod._VALUE_LOOKUP = None
-        mod._VALUE_PROFILE = "equal"
-        mod._VALUE_MATRIX_PATH = None
+        from budgetflow.value_efficiency import ValueEfficiencyContext
+        ctx = ValueEfficiencyContext()
         with pytest.raises(FileNotFoundError):
-            mod._init_value_observability(value_profile="difficulty", value_matrix_path="/nonexistent/path.json")
+            ctx.init(value_profile="difficulty", value_matrix_path="/nonexistent/path.json")

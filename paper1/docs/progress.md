@@ -6,13 +6,13 @@
 
 ### 068 / Compare runner architecture refactor
 
-- **068 IN PROGRESS — no-paid architecture cleanup.** No historical JSONL was edited and no paid experiment was run.
-- **Runner decomposition:** `run_mini_swe_compare.py` is no longer the home for all compare semantics. Focused seams now exist for config (`experiments/compare_config.py`), setup (`experiments/compare_setup.py`), console/summary rendering (`experiments/compare_summary.py`), JSONL/artifact state (`experiments/compare_artifacts.py`), and CLI parsing (`experiments/compare_cli.py`).
-- **Entrypoint shrink:** `run_mini_swe_compare.py` moved from the previous 2400+ line shape to about 1440 lines while preserving the current CLI path. The remaining responsibilities are task execution, strategy batch orchestration, gate-only diagnostics, runtime setup, and memory/provider wiring.
-- **Deleted stale compatibility:** current code no longer rewrites old strategy aliases such as legacy tier-1 names or old equal-weight aliases. New experiments must use canonical strategy names. Historical reports remain forensic and are not edited.
-- **Verification:** focused compare/value/observability tests passed after each slice; latest focused gate: `75 passed`. No-paid `--auto-budget-dry-run` still loads cap memory and routing memory cleanly without provider calls.
-- **Known unrelated test issue:** `test_p0_refactor.py` still has two old failures expecting `budget_only` to always choose cheapest T2. Current BO intentionally front-loads T3 at very low pressure. That is a policy semantics decision to revisit separately, not a regression from this architecture work.
-- **Architecture judgment:** continue refactoring before more paid scale-up. The next useful seam is memory/provider wiring and run orchestration: provider preflight, policy-memory loading, budget-memory loading, and `_run_strategy_batch` should not all live in the entrypoint long term.
+- **068 COMPLETE SLICE — no-paid architecture cleanup.** No historical JSONL was edited and no paid experiment was run.
+- **Runner decomposition:** `run_mini_swe_compare.py` is now a thin compare CLI/orchestrator, not the home for all compare semantics. Focused modules now own config, setup, CLI parsing, artifact persistence, summary rendering, task execution, and learning-memory setup.
+- **New modules:** `experiments/compare_execution.py` owns task execution, record construction, per-policy batch execution, heartbeat progress, and per-row observability assembly. `experiments/compare_memory.py` owns Value-Driven Budget Allocation memory, BudgetMemory estimates, policy-memory gate-only, and no-provider dry-run output.
+- **Entrypoint shrink:** `run_mini_swe_compare.py` moved from the old 2400+ line shape to **609 lines**. The runner no longer exposes `_run_one` / `_run_strategy_batch` as pseudo-library APIs; tests use `compare_execution.run_task_record`.
+- **Deleted stale compatibility:** current code no longer rewrites old strategy aliases or preserves old `_VALUE_*` globals. New experiments must use canonical strategy names and `ValueEfficiencyContext`. Historical reports remain forensic and are not edited.
+- **Verification:** focused no-paid gate passed: `72 passed` across value efficiency, record schema, setup, value-aware routing, policy parallelism, learning context, and auto-budget tests. `py_compile` passed for the refactored modules. No-paid `--auto-budget-dry-run` still loads cap memory and routing memory without provider calls.
+- **Architecture judgment:** this was a necessary cleanup before more paid scale-up. The next useful cleanup is checker/observability: standard fields should be the interface, while legacy JSONL fallback should stay isolated and not shape new runtime code.
 - **Evidence status:** this refactor improves future infer/debug iteration speed. It is not new T1/T2 evidence.
 
 ### 067 / T1-first learning and observability refactor

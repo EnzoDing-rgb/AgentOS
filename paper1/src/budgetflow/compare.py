@@ -50,7 +50,7 @@ class ComparisonRunner:
         router = BudgetOnlyStepRouter()
 
         def backend_picker(turn: TurnInfo, backends: list[Backend], *_args) -> Backend:
-            return router.choose_backend(turn, backends, budget_pressure=budget_pressure)
+            return router.choose_backend(turn, backends, budget_pressure=budget_pressure).backend
 
         ledger = WorkflowLedgerStore()
         governor = BudgetGovernor(

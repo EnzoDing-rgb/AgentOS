@@ -5,22 +5,22 @@ from types import SimpleNamespace
 from budgetflow.governor import BudgetGovernor, GovernorConfig
 from budgetflow.ledger import WorkflowLedgerStore
 from budgetflow.experiments.compare_config import CompareStrategy
-from budgetflow.run_mini_swe_compare import (
-    GlobalRunProgress,
-    _enrich_record_with_value,
-    _run_one,
-)
+from budgetflow.compare_checkpoint import GlobalRunProgress
 from budgetflow.experiments.compare_artifacts import (
     CompareRunState,
     ingest_batch_footer,
     persist_task_record,
 )
+from budgetflow.experiments.compare_execution import run_task_record
 from budgetflow.experiments.compare_summary import _format_strategy_totals
 from budgetflow.auto_budget import AutoBudgetMemory
+from budgetflow.value_efficiency import ValueEfficiencyContext
 
 
 def _persist_kwargs() -> dict:
-    return {"value_profile": "equal", "enrich_value": _enrich_record_with_value}
+    ctx = ValueEfficiencyContext()
+    ctx.init(value_profile="equal")
+    return {"value_profile": "equal", "enrich_value": ctx.enrich_record}
 
 
 def test_run_one_records_turns_alias(monkeypatch):
@@ -62,7 +62,9 @@ def test_run_one_records_turns_alias(monkeypatch):
         WorkflowLedgerStore(),
     )
 
-    record = _run_one(
+    ctx = ValueEfficiencyContext()
+    ctx.init(value_profile="equal")
+    record = run_task_record(
         task,
         cfg=CompareStrategy("budget_only_tight", "budget_only", "tight"),
         batch_budget_cap=1.0,
@@ -70,6 +72,7 @@ def test_run_one_records_turns_alias(monkeypatch):
         ledger=WorkflowLedgerStore(),
         task_index=1,
         step_limit=1,
+        value_context=ctx,
     )
 
     assert record["llm_turns"] == 2

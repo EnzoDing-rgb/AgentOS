@@ -9,7 +9,6 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -30,49 +29,30 @@ from budgetflow.observability import HeartbeatWriter
 
 def _reset_worktree_root():
     """Reset module-level globals for test isolation."""
-    local_harness._worktree_root = None
+    local_harness._worktree_root_override = None
     local_harness._worktree_root_source = "default"
 
 
 class TestWorktreeRootDefault:
-    def test_default_prefers_tmp_writable(self, monkeypatch):
+    def test_default_uses_runtime_worktree_root(self, monkeypatch):
         _reset_worktree_root()
         monkeypatch.delenv("BUDGETFLOW_WORKTREE_ROOT", raising=False)
-        root, source = local_harness._resolve_worktree_root()
-        assert source in ("tmp", "nfs-fallback")
-        if source == "tmp":
-            assert root == Path("/tmp/budgetflow_worktrees")
-
-    def test_env_var_override(self, monkeypatch, tmp_path):
-        _reset_worktree_root()
-        custom = tmp_path / "custom_worktrees"
-        monkeypatch.setenv("BUDGETFLOW_WORKTREE_ROOT", str(custom))
-        root, source = local_harness._resolve_worktree_root()
-        assert source == "env"
-        assert root == custom
+        root = local_harness.get_worktree_root()
+        assert root.name == "worktrees"
         assert root.exists()
 
     def test_set_worktree_root_cli(self, tmp_path):
         _reset_worktree_root()
         custom = tmp_path / "cli_worktrees"
         local_harness.set_worktree_root(str(custom))
-        root, source = local_harness._resolve_worktree_root()
-        assert source == "cli"
-        assert root == custom
-        assert root.exists()
+        assert local_harness.get_worktree_root_source() == "cli"
+        assert local_harness.get_worktree_root() == custom
 
     def test_set_worktree_root_none_resets(self):
         _reset_worktree_root()
         local_harness.set_worktree_root(None)
-        assert local_harness._worktree_root is None
+        assert local_harness._worktree_root_override is None
         assert local_harness._worktree_root_source == "default"
-
-    def test_get_worktree_root_source(self, monkeypatch, tmp_path):
-        _reset_worktree_root()
-        custom = tmp_path / "env_test"
-        monkeypatch.setenv("BUDGETFLOW_WORKTREE_ROOT", str(custom))
-        source = local_harness.get_worktree_root_source()
-        assert source == "env"
 
     def test_cli_priority_over_env(self, monkeypatch, tmp_path):
         _reset_worktree_root()
@@ -80,23 +60,8 @@ class TestWorktreeRootDefault:
         cli_dir = tmp_path / "cli_dir"
         monkeypatch.setenv("BUDGETFLOW_WORKTREE_ROOT", str(env_dir))
         local_harness.set_worktree_root(str(cli_dir))
-        root, source = local_harness._resolve_worktree_root()
-        assert source == "cli"
-        assert root == cli_dir
-
-    def test_fallback_to_nfs_when_tmp_unwritable(self, monkeypatch, tmp_path):
-        _reset_worktree_root()
-        monkeypatch.delenv("BUDGETFLOW_WORKTREE_ROOT", raising=False)
-
-        unwritable = tmp_path / "unwritable_tmp"
-        unwritable.mkdir(parents=True, exist_ok=True)
-
-        with patch.object(local_harness, "Path") as mock_path:
-            mock_path.side_effect = lambda p: Path(p) if p != "/tmp/budgetflow_worktrees" else unwritable
-            with patch.object(os, "statvfs", side_effect=OSError("no statvfs")):
-                root, source = local_harness._resolve_worktree_root()
-                assert source == "nfs-fallback"
-                assert root == local_harness.NFS_WORKTREE_ROOT
+        assert local_harness.get_worktree_root_source() == "cli"
+        assert local_harness.get_worktree_root() == cli_dir
 
 
 # ── file lock tests ────────────────────────────────────────────────────────

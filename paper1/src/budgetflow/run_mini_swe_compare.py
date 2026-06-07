@@ -19,7 +19,6 @@ Outputs:
 
 from __future__ import annotations
 
-import json
 import os
 import sys
 import threading
@@ -38,31 +37,33 @@ for path in (str(SRC), str(MINI_SWE_SRC)):
     if path not in sys.path:
         sys.path.insert(0, path)
 
-from collections.abc import Callable  # noqa: E402
-
 from budgetflow.compare_checkpoint import (  # noqa: E402
     CompareCheckpointStore,
     GlobalRunProgress,
     StrategyScoreboard,
     checkpoint_path_for,
 )
-from budgetflow.auto_budget import AutoBudgetEstimator, AutoBudgetMemory, BudgetEstimate  # noqa: E402
-from budgetflow.budget_memory import BudgetMemory, BudgetEstimate as BudgetMemoryEstimate  # noqa: E402
 from budgetflow.console_log import dim, tag  # noqa: E402
 from budgetflow.deepseek_backend import load_env_file  # noqa: E402
+from budgetflow.defaults import active_w_i_profile_name  # noqa: E402
 from budgetflow.experiments.compare_config import (  # noqa: E402
     CompareStrategy,
     batch_budget_cap as _batch_budget_cap,
-    fmt_usd as _fmt_usd,
     normalize_strategy as _normalize_strategy,
     required_backends_for_strategies as _required_backends_for_strategies,
     task_descriptor as _task_descriptor,
-    w_i_profile_for_record as _w_i_profile_for_record,
-    workspace_key as _workspace_key,
 )
 from budgetflow.experiments.compare_cli import (  # noqa: E402
     parse_budget_memory_exclude as _parse_budget_memory_exclude,
     parse_compare_args,
+)
+from budgetflow.experiments.compare_memory import (  # noqa: E402
+    build_auto_budget_plan,
+    build_budget_memory_plan,
+    run_auto_budget_dry_run,
+    run_budget_memory_dry_run,
+    run_budget_memory_gate_only,
+    run_policy_memory_gate_only,
 )
 from budgetflow.experiments.compare_setup import (  # noqa: E402
     build_batch_budget_modes,
@@ -80,643 +81,39 @@ from budgetflow.experiments.compare_artifacts import (  # noqa: E402
     rebuild_state_from_jsonl as _rebuild_state_from_jsonl,
     write_summary_snapshot as _write_summary_snapshot,
 )
+from budgetflow.experiments.compare_execution import run_strategy_batch  # noqa: E402
 from budgetflow.experiments.compare_summary import (  # noqa: E402
     _format_strategy_totals,
-    _print_run_done,
 )
-from budgetflow.failure_classification import build_forensic_summary, build_verdict, classify_failure  # noqa: E402
-from budgetflow.value_matrix import PROFILES  # noqa: E402
-from budgetflow.governor import BudgetGovernor, GovernorConfig  # noqa: E402
 from budgetflow.observability import (  # noqa: E402
     HeartbeatWriter,
-    build_observability_status,
-    parse_harness_evidence,
 )
-from budgetflow.defaults import TIER2_BACKEND  # noqa: E402
-from budgetflow.heartbeat import run_with_heartbeat  # noqa: E402
 from budgetflow.learning_context import load_policy_memory_context  # noqa: E402
-from budgetflow.ledger import WorkflowLedgerStore  # noqa: E402
 from budgetflow.local_harness import set_worktree_root  # noqa: E402
 from budgetflow.adaptive_routing import AdaptiveRoutingRegistry  # noqa: E402
-from budgetflow.policy_memory import PolicyMemory  # noqa: E402
 from budgetflow.run_guards import CompareRunGuards, set_active_guard  # noqa: E402
 from budgetflow.run_series import resolve_run_identity  # noqa: E402
 from budgetflow.run_trace import TraceConsoleLevel  # noqa: E402
-from budgetflow.runtime import check_cwd, get_runtime_root, is_nfs_or_banned, print_runtime_info, resolve_runtime_root, set_runtime_root  # noqa: E402
+from budgetflow.runtime import check_cwd, is_nfs_or_banned, print_runtime_info, resolve_runtime_root, set_runtime_root  # noqa: E402
 from budgetflow.value_efficiency import ValueEfficiencyContext  # noqa: E402
 
 RUNS_DIR = REPO_ROOT / "data" / "runs"
 
 
-def _truncate_turn_traces(
-    traces: list[dict] | None, max_turns: int, max_chars: int
-) -> list[dict] | None:
-    """Truncate turn traces to max_turns entries and bash_digest to max_chars."""
-    if traces is None:
-        return None
-    trimmed = traces[-max_turns:] if len(traces) > max_turns else traces
-    for t in trimmed:
-        digest = t.get("bash_digest")
-        if isinstance(digest, str) and len(digest) > max_chars:
-            t["bash_digest"] = digest[:max_chars]
-    return trimmed
-
-
-def _run_one(
-    task,
-    *,
-    cfg: CompareStrategy,
-    batch_budget_cap: float,
-    governor: BudgetGovernor,
-    ledger: WorkflowLedgerStore,
-    task_index: int,
-    step_limit: int,
-    trace_console: TraceConsoleLevel = "quiet",
-    progress_box: dict[str, str] | None = None,
-    budget_pressure: float | None = None,
-    pressure_max: float | None = None,
-    adaptive_registry: AdaptiveRoutingRegistry | None = None,
-    enable_turn_trace: bool = False,
-    trace_max_turns: int = 200,
-    trace_truncate_chars: int = 120,
-    budget_estimate: BudgetEstimate | None = None,
-    budget_memory_estimate: BudgetMemoryEstimate | None = None,
-    budget_memory_source_paths: str = "",
-    run_series: str = "",
-    policy_lane: str = "",
-    budget_mode: str = "shared",
-    per_task_cap: float | None = None,
-) -> dict:
-    started = time.time()
-    workspace_key = _workspace_key(cfg, task.instance_id)
-    adaptive = None
-    if adaptive_registry is not None:
-        adaptive = adaptive_registry.for_strategy(cfg.name, cfg.routing)
-    if adaptive is not None:
-        adaptive.reset_task_runtime()
-        adaptive.set_task_context(task.instance_id)
-    from budgetflow.adapter.runner import run_mini_swe_task  # noqa: E402
-
-    # Compute task_value and batch median for value-aware routing.
-    _sync_value_context_from_compat_globals()
-    _task_value, _ = _VALUE_CONTEXT.task_value(task.instance_id)
-    _median_task_value = _VALUE_CONTEXT.median_task_value
-
-    result = run_mini_swe_task(
-        task,
-        strategy=cfg.routing,
-        strategy_label=cfg.name,
-        step_limit=step_limit,
-        trace_console=trace_console,
-        progress_box=progress_box,
-        agent_heartbeat=False,
-        governor=governor,
-        ledger=ledger,
-        workspace_key=workspace_key,
-        budget_pressure=budget_pressure,
-        pressure_max=pressure_max,
-        adaptive=adaptive,
-        enable_turn_trace=enable_turn_trace,
-        task_value=_task_value,
-        median_task_value=_median_task_value,
-    )
-    batch_snapshot = governor.budget_snapshot()
-    record = {
-        "instance_id": result.instance_id,
-        "strategy": cfg.name,
-        "routing": cfg.routing,
-        "w_i_profile": _w_i_profile_for_record(cfg.routing),
-        "budget_tier": cfg.budget_tier or "uncapped",
-        "batch_budget_cap": None if cfg.budget_tier is None else batch_budget_cap,
-        "batch_spent": batch_snapshot.get("spent_budget"),
-        "batch_available": batch_snapshot.get("available_budget"),
-        "batch_snapshot": batch_snapshot,
-        "task_cost": result.total_cost,
-        "budget_spent": result.total_cost,
-        "budget_available": batch_snapshot.get("available_budget"),
-        "budget_snapshot": batch_snapshot,
-        "task_index_in_batch": task_index,
-        "workspace_key": workspace_key,
-        "harness_resolved": result.harness_resolved,
-        "resolved": result.harness_resolved,
-        "patch_extracted": bool(result.patch_text),
-        "patch_source": result.patch_source,
-        "submitted_patch": result.submitted_patch_path,
-        "exit_status": result.exit_status,
-        "exit_reason": result.exit_reason,
-        "total_cost": result.total_cost,
-        "backend_picks": list(result.backend_picks),
-        "llm_turns": result.llm_turns,
-        "turns": result.llm_turns,
-        "violations": list(result.violations),
-        "detail": result.harness_detail,
-        "agent_gold_edited": result.agent_gold_edited,
-        "agent_gold_files": list(result.agent_gold_files),
-        "agent_attempted_submit": result.agent_attempted_submit,
-        "agent_submitted": result.agent_submitted,
-        "prompt_tokens_total": result.prompt_tokens_total,
-        "completion_tokens_total": result.completion_tokens_total,
-        "elapsed_s": round(time.time() - started, 1),
-        "agent_summary": {
-            "gold_edited": result.agent_gold_edited,
-            "gold_files": list(result.agent_gold_files),
-            "attempted_submit": result.agent_attempted_submit,
-            "submitted": result.agent_submitted,
-        },
-        "turn_trace_count": result.turn_trace_count,
-        "turn_traces": _truncate_turn_traces(result.turn_traces, trace_max_turns, trace_truncate_chars)
-        if enable_turn_trace and result.turn_traces else None,
-        "run_series": run_series,
-        "policy_lane": policy_lane,
-        "budget_mode": budget_mode,
-        "per_task_cap": per_task_cap,
-        "task_order_index": task_index,
-        "task_features": {
-            "patch_lines": len(str(getattr(task, "patch", "") or "").splitlines()),
-            "f2p_count": len(getattr(task, "fail_to_pass", ()) or ()),
-            "p2p_count": len(getattr(task, "pass_to_pass", ()) or ()),
-            "problem_length": len(str(getattr(task, "problem_statement", "") or "")),
-        },
-        "row_started_at": started,
-        "row_finished_at": time.time(),
-        "attempt_id": f"{run_series}_{cfg.name}_{task.instance_id}" if run_series else "",
-    }
-    # PolicyMemory prior summary for trace audit
-    if adaptive is not None:
-        prior = adaptive.prior_summary_for_trace()
-        if prior:
-            record["routing_prior_summary"] = prior
-            record["policy_memory_enabled"] = True
-        else:
-            record["policy_memory_enabled"] = False
-    elif adaptive_registry is not None and adaptive_registry.policy_memory is not None:
-        pm = adaptive_registry.policy_memory
-        prior = pm.routing_prior_summary(task.instance_id)
-        record["routing_prior_summary"] = prior
-        record["policy_memory_enabled"] = True
-    else:
-        record["policy_memory_enabled"] = False
-    record["failure_class"] = classify_failure(record)
-    record["forensic_summary"] = build_forensic_summary(record)
-    record["harness_evidence"] = parse_harness_evidence(str(record.get("detail") or "")).__dict__
-    record["observability_status"] = build_observability_status(record)
-    # Verdict observability (019)
-    verdict = build_verdict(record)
-    record["verdict_axis"] = verdict["verdict_axis"]
-    record["failure_owner"] = verdict["failure_owner"]
-    record["failure_stage"] = verdict["failure_stage"]
-    record["failure_subtype"] = verdict.get("failure_subtype", "")
-    record["evidence_complete"] = verdict["evidence_complete"]
-    record["missing_evidence"] = verdict["missing_evidence"]
-    # Value-Driven Budget Allocation metadata (legacy field prefix: auto_budget).
-    if budget_estimate is not None:
-        record["auto_budget_enabled"] = True
-        record["estimated_task_cap"] = budget_estimate.cap
-        record["estimated_task_cost"] = budget_estimate.estimated_cost
-        record["budget_prior_source"] = budget_estimate.source
-        record["budget_prior_confidence"] = budget_estimate.confidence
-        record["budget_estimator_version"] = "v1"
-        record["budget_memory_used"] = budget_estimate.source.startswith("memory_")
-        record["budget_memory_neighbors"] = budget_estimate.memory_neighbors
-        record["auto_budget_features"] = budget_estimate.features
-    # BudgetMemory metadata (020)
-    if budget_memory_estimate is not None:
-        record["budget_memory_enabled"] = True
-        if budget_memory_source_paths:
-            record["budget_memory_source_paths"] = budget_memory_source_paths
-        record["budget_memory_budget_source"] = budget_memory_estimate.budget_source
-        record["budget_memory_estimated_budget"] = budget_memory_estimate.estimated_task_budget
-        record["budget_memory_predicted_cost"] = budget_memory_estimate.predicted_cost
-        record["budget_memory_confidence"] = budget_memory_estimate.budget_confidence
-        record["budget_memory_reason"] = budget_memory_estimate.budget_reason
-        record["budget_memory_hard_budget_used"] = budget_memory_estimate.hard_budget_used
-        record["budget_memory_risk_multiplier"] = budget_memory_estimate.risk_multiplier
-        effective_cap = float(record.get("batch_budget_cap") or 0)
-        record["budget_memory_applied"] = (
-            effective_cap > 0
-            and abs(effective_cap - budget_memory_estimate.estimated_task_budget) < 0.001
-        )
-    else:
-        record["budget_memory_enabled"] = False
-    return record
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# Value Observability (Phase R)
-# ═══════════════════════════════════════════════════════════════════════════════
-
-_VALUE_LOOKUP: dict | None = None
-_VALUE_PROFILE: str = "equal"
-_VALUE_MATRIX_PATH: str | None = None
-_MEDIAN_TASK_VALUE: float = 1.0
 _VALUE_CONTEXT = ValueEfficiencyContext()
 
 
-def _sync_value_context_from_compat_globals() -> None:
-    """Keep legacy ``_VALUE_*`` globals as compatibility inputs.
-
-    Older tests and a few debug paths still mutate these globals directly. The
-    new implementation lives in ``ValueEfficiencyContext``, so wrappers sync
-    before reading to avoid cross-test or resume contamination.
-    """
-    if (
-        _VALUE_CONTEXT.profile != _VALUE_PROFILE
-        or _VALUE_CONTEXT.matrix_path != _VALUE_MATRIX_PATH
-        or _VALUE_CONTEXT.lookup is not _VALUE_LOOKUP
-        or _VALUE_CONTEXT.median_task_value != _MEDIAN_TASK_VALUE
-    ):
-        _VALUE_CONTEXT.profile = _VALUE_PROFILE
-        _VALUE_CONTEXT.matrix_path = _VALUE_MATRIX_PATH
-        _VALUE_CONTEXT.lookup = _VALUE_LOOKUP
-        _VALUE_CONTEXT.median_task_value = _MEDIAN_TASK_VALUE
-
-
-def _init_value_observability(*, value_profile: str = "equal", value_matrix_path: str | None = None) -> None:
-    """Set global value observability config. Called once at startup."""
-    global _VALUE_LOOKUP, _VALUE_PROFILE, _VALUE_MATRIX_PATH, _MEDIAN_TASK_VALUE
+def _init_value_context(*, value_profile: str = "equal", value_matrix_path: str | None = None) -> None:
     _VALUE_CONTEXT.init(value_profile=value_profile, value_matrix_path=value_matrix_path)
-    _VALUE_LOOKUP = _VALUE_CONTEXT.lookup
-    _VALUE_PROFILE = _VALUE_CONTEXT.profile
-    _VALUE_MATRIX_PATH = _VALUE_CONTEXT.matrix_path
-    _MEDIAN_TASK_VALUE = _VALUE_CONTEXT.median_task_value
 
 
 def _enrich_record_with_value(record: dict) -> dict:
-    """Add value-aware observability fields to a run record. Mutates and returns."""
-    _sync_value_context_from_compat_globals()
     return _VALUE_CONTEXT.enrich_record(record)
-
-
-def _value_summary_for_strategy(records: list[dict]) -> dict:
-    """Compute value-aware summary metrics for a list of run records."""
-    _sync_value_context_from_compat_globals()
-    return _VALUE_CONTEXT.summary_for_strategy(records)
-
-
-
-
-def _run_strategy_batch(
-    cfg: CompareStrategy,
-    tasks: list,
-    *,
-    batch_budget_cap: float,
-    per_task_cap: float | None = None,
-    soft_budget: float | None = None,
-    max_overrun: float = 0.0,
-    step_limit: int,
-    trace_console: TraceConsoleLevel,
-    heartbeat: float,
-    global_progress: GlobalRunProgress,
-    scoreboard: StrategyScoreboard | None,
-    print_lock: threading.Lock | None,
-    budget_pressure: float | None = None,
-    pressure_max: float | None = None,
-    initial_spent: float = 0.0,
-    checkpoint: CompareCheckpointStore | None = None,
-    on_task_complete: Callable[[dict], None] | None = None,
-    run_guards: CompareRunGuards | None = None,
-    adaptive_registry: AdaptiveRoutingRegistry | None = None,
-    enable_turn_trace: bool = False,
-    trace_max_turns: int = 200,
-    trace_truncate_chars: int = 120,
-    task_caps: dict[str, float] | None = None,
-    budget_estimates: dict[str, BudgetEstimate] | None = None,
-    budget_memory_estimates: dict[str, BudgetMemoryEstimate] | None = None,
-    budget_memory_source_paths: str = "",
-    run_series: str = "",
-    heartbeat_writer: object | None = None,
-) -> tuple[list[dict], float]:
-    def _log(msg: str) -> None:
-        if print_lock:
-            with print_lock:
-                print(msg, flush=True)
-        else:
-            print(msg, flush=True)
-
-    use_per_task = cfg.budget_tier is not None and (
-        (per_task_cap is not None and per_task_cap > 0) or (task_caps is not None)
-    )
-    ledger = WorkflowLedgerStore()
-    governor: BudgetGovernor | None = None
-    if not use_per_task:
-        governor = BudgetGovernor(
-            GovernorConfig(
-                total_budget=batch_budget_cap,
-                default_max_output_tokens=4096,
-                soft_budget=soft_budget,
-                max_overrun=max_overrun if soft_budget is not None else 0.0,
-            ),
-            ledger,
-        )
-        if initial_spent > 0:
-            governor.state.spent_budget = initial_spent
-            governor.state.available_budget = max(0.0, governor.state.total_budget - initial_spent)
-
-    if use_per_task:
-        if task_caps is not None:
-            cap_label = "auto_budget_per_task"
-        else:
-            cap_label = f"per_task_cap={_fmt_usd(per_task_cap)}" if per_task_cap else "per_task"
-        if max_overrun > 0:
-            cap_label += f"+overrun={_fmt_usd(max_overrun)}"
-    else:
-        cap_label = f"shared_cap={_fmt_usd(batch_budget_cap)}"
-        if soft_budget is not None:
-            cap_label += f" soft={_fmt_usd(soft_budget)}+overrun={_fmt_usd(max_overrun)}"
-    _log(
-        f"{tag('batch', bold=False)} strategy={cfg.name} tasks={len(tasks)} "
-        f"{cap_label} spent_resume={_fmt_usd(initial_spent)} mode=serial_tasks"
-    )
-
-    records: list[dict] = []
-    for task_index, task in enumerate(tasks, start=1):
-        if run_guards is not None and run_guards.is_strategy_halted(cfg.name):
-            _log(f"{tag('guard', bold=False)} skip strategy={cfg.name} task={task.instance_id} (policy halted)")
-            continue
-        if run_guards is not None and run_guards.is_aborted():
-            _log(f"{tag('guard', bold=False)} skip strategy={cfg.name} (global halt: {run_guards.abort_reason()})")
-            break
-
-        global_progress.start_task()
-        if checkpoint is not None:
-            cap_for_ckpt = per_task_cap if use_per_task and per_task_cap else batch_budget_cap
-            checkpoint.mark_in_flight(cfg.name, task.instance_id, cap_for_ckpt)
-        banner = global_progress.format_banner(scoreboard)
-        _log(
-            f"\n======== {banner} ========\n"
-            f"{tag('start', bold=False)} task={task.instance_id} strategy={cfg.name}"
-        )
-
-        status_box: dict[str, str] = {
-            "phase": "prep",
-            "status": f"strategy={cfg.name} task={task.instance_id} prep",
-        }
-        label = f"{cfg.name} {task.instance_id}"
-
-        def _status() -> str:
-            base = status_box.get("status", f"strategy={cfg.name} phase={status_box['phase']}")
-            return f"{global_progress.format_global(scoreboard)} | {base}"
-
-        def _execute() -> dict:
-            status_box["phase"] = "agent"
-            # Compute live prior visibility for heartbeat output.
-            pm = adaptive_registry.policy_memory if adaptive_registry is not None else None
-            if pm is not None and cfg.routing != "all_pro":
-                prior_summary = pm.routing_prior_summary(task.instance_id)
-                action = prior_summary.get("learned_action", "default")
-                regret = prior_summary.get("full_vs_tight_regret", 0)
-                prior_snippet = (
-                    f"prior_action={action} "
-                    f"regret={regret:.3f} "
-                    f"task_seen={prior_summary.get('task_seen', '?')}"
-                )
-            elif cfg.routing == "all_pro":
-                prior_snippet = "prior=off(all_pro)"
-            else:
-                prior_snippet = "prior=off"
-            status_box["status"] = (
-                f"strategy={cfg.name} task={task.instance_id} {prior_snippet}"
-            )
-            task_governor = governor
-            task_ledger = ledger
-            effective_batch_cap = batch_budget_cap
-            # Resolve per-task cap: learned/allocation task_caps dict takes precedence.
-            # Only budget strategies get per-task caps; all_pro stays uncapped.
-            task_cap: float | None = None
-            if cfg.budget_tier is not None:
-                if task_caps is not None:
-                    task_cap = task_caps.get(task.instance_id)
-                elif per_task_cap is not None and per_task_cap > 0:
-                    task_cap = per_task_cap
-            if task_cap is not None:
-                task_ledger = WorkflowLedgerStore()
-                task_governor = BudgetGovernor(
-                    GovernorConfig(
-                        total_budget=task_cap,
-                        default_max_output_tokens=4096,
-                        soft_budget=task_cap if max_overrun > 0 else None,
-                        max_overrun=max_overrun,
-                    ),
-                    task_ledger,
-                )
-                effective_batch_cap = task_governor.state.total_budget
-            return _run_one(
-                task,
-                cfg=cfg,
-                batch_budget_cap=effective_batch_cap,
-                governor=task_governor,
-                ledger=task_ledger,
-                task_index=task_index,
-                step_limit=step_limit,
-                trace_console=trace_console,
-                progress_box=status_box,
-                budget_pressure=budget_pressure,
-                pressure_max=pressure_max,
-                adaptive_registry=adaptive_registry,
-                enable_turn_trace=enable_turn_trace,
-                trace_max_turns=trace_max_turns,
-                trace_truncate_chars=trace_truncate_chars,
-                budget_estimate=budget_estimates.get(task.instance_id) if budget_estimates else None,
-                budget_memory_estimate=budget_memory_estimates.get(task.instance_id) if budget_memory_estimates else None,
-                budget_memory_source_paths=budget_memory_source_paths,
-                run_series=run_series,
-                policy_lane=cfg.name,
-                budget_mode="per_task_cap" if task_cap is not None else "shared",
-                per_task_cap=task_cap,
-            )
-
-        try:
-            if heartbeat > 0:
-                # on_beat pulses the heartbeat file so external checkers see liveness.
-                _on_beat = None
-                if heartbeat_writer is not None:
-                    hw = heartbeat_writer
-                    _gp = global_progress
-                    _cfg_name = cfg.name
-                    _task_id = task.instance_id
-                    _task_started = time.time()
-                    def _beat() -> None:
-                        _total, _rows, _running = _gp.snapshot()
-                        hw.pulse(
-                            rows_done=_rows,
-                            active_strategy=str(_cfg_name),
-                            active_instance=str(_task_id),
-                            active_elapsed_s=time.time() - _task_started,
-                        )
-                    _on_beat = _beat
-                record = run_with_heartbeat(
-                    label, _execute, interval_s=heartbeat, status_fn=_status,
-                    on_beat=_on_beat,
-                )
-            else:
-                record = _execute()
-        finally:
-            done_n = global_progress.finish_task()
-
-        if print_lock:
-            with print_lock:
-                _print_run_done(record, done=done_n, total=global_progress.total, strategy=cfg.name)
-        else:
-            _print_run_done(record, done=done_n, total=global_progress.total, strategy=cfg.name)
-        records.append(record)
-        if checkpoint is not None:
-            task_spent = float(record.get("task_cost") or record.get("total_cost") or 0)
-            checkpoint.mark_task_done(
-                cfg.name,
-                task.instance_id,
-                batch_spent=task_spent if use_per_task else float(governor.state.spent_budget),
-                batch_cap=per_task_cap if use_per_task else batch_budget_cap,
-            )
-        if on_task_complete is not None:
-            on_task_complete(record)
-        if adaptive_registry is not None:
-            adaptive_registry.record_task(cfg.name, cfg.routing, record)
-
-        if run_guards is not None:
-            action = run_guards.record_task(record)
-            run_guards.log_action(action)
-            if action.halt_all or action.halt_strategy:
-                break
-
-    if use_per_task:
-        batch_spent_total = sum(float(r.get("task_cost") or r.get("total_cost") or 0) for r in records)
-    else:
-        assert governor is not None
-        batch_spent_total = governor.state.spent_budget
-    return records, batch_spent_total
 
 
 def _compare_paths(tasks_n: int, strategies_n: int, *, stem: str | None = None) -> tuple[Path, Path]:
     base = stem or f"compare_{tasks_n}x{strategies_n}"
     return RUNS_DIR / f"{base}.jsonl", RUNS_DIR / f"{base}.summary.log"
-
-
-def _run_warmup_gate(policy_memory: PolicyMemory | None, source_path: str) -> bool:
-    """Run warm-up gate checks without API calls. Returns True if all checks pass."""
-    from .types import Stage
-
-    banner = "=" * 72
-    print(banner)
-    print("WARM-UP GATE")
-    print(banner)
-
-    all_ok = True
-
-    # Check 1: policy_memory loaded
-    loaded = policy_memory is not None
-    print(f"  policy_memory_loaded = {loaded}")
-    if not loaded:
-        print("  FAIL: PolicyMemory not loaded. Provide --policy-memory PATH.")
-        all_ok = False
-
-    if policy_memory is None:
-        print(banner)
-        print("GATE RESULT: FAIL (no policy_memory)")
-        return False
-
-    # Check 2: records loaded
-    records = policy_memory._record_count
-    print(f"  records_loaded = {records}")
-    if records < 10:
-        print(f"  FAIL: Expected >= 10 records, got {records}")
-        all_ok = False
-
-    # Check 3: repos loaded
-    repos = len(policy_memory._repo_priors)
-    print(f"  repos_loaded = {repos}")
-    if repos < 1:
-        print(f"  FAIL: Expected >= 1 repos, got {repos}")
-        all_ok = False
-
-    # Check 4: tasks loaded
-    tasks_n = len(policy_memory._task_priors)
-    print(f"  tasks_loaded = {tasks_n}")
-    if tasks_n < 10:
-        print(f"  FAIL: Expected >= 10 tasks, got {tasks_n}")
-        all_ok = False
-
-    # Check 5: regret threshold
-    print(f"  regret_threshold = {policy_memory.regret_threshold}")
-
-    # Check 6: sample prior summaries (5 tasks)
-    print(banner)
-    print("PRIOR SUMMARIES (5 sample tasks)")
-    print(banner)
-    task_keys = sorted(policy_memory._task_priors.keys())
-    sample_count = 0
-    for iid in task_keys:
-        if sample_count >= 5:
-            break
-        summary = policy_memory.routing_prior_summary(iid)
-        print(f"  {iid}:")
-        for k, v in summary.items():
-            print(f"    {k} = {v}")
-        print()
-        sample_count += 1
-
-    # Check 7: sympy-17630 must have non-early_rescue action
-    print(banner)
-    sympy_17630 = "sympy__sympy-17630"
-    if sympy_17630 in policy_memory._task_priors:
-        summary_17630 = policy_memory.routing_prior_summary(sympy_17630)
-        action = summary_17630.get("learned_action", "?")
-        print(f"  {sympy_17630} learned_action = {action}")
-        if action == "early_rescue":
-            print(f"  WARNING: early_rescue on a task with known all_pro failures — may waste T3 budget")
-            # Not a hard failure — early_rescue could be valid if T2 repair success is truly low
-    else:
-        task_prior = policy_memory.task_prior(sympy_17630)
-        summary_17630 = policy_memory.routing_prior_summary(sympy_17630)
-        action = summary_17630.get("learned_action", "?")
-        print(f"  {sympy_17630} learned_action = {action} (not in priors, computed from repo)")
-
-    # Check 8: full_vs_tight_regret for sympy
-    print(banner)
-    print("FULL vs TIGHT REGRET")
-    print(banner)
-    for repo_key in sorted(policy_memory._policy_regrets.keys()):
-        reg = policy_memory._policy_regrets[repo_key]
-        print(f"  {repo_key}: full_avg=${reg.full_avg_cost:.4f} tight_avg=${reg.tight_avg_cost:.4f} "
-              f"regret={reg.regret:.3f} threshold={policy_memory.regret_threshold}")
-        if reg.regret > policy_memory.regret_threshold:
-            print(f"    → EXCEEDS threshold: cap_t3 would be triggered")
-        else:
-            print(f"    → below threshold: no auto-tightening")
-
-    # Check 9: next-run routing impact
-    print(banner)
-    print("NEXT-RUN ROUTING IMPACT")
-    print(banner)
-    actions_seen: dict[str, int] = {}
-    for iid in task_keys:
-        summary = policy_memory.routing_prior_summary(iid)
-        action = summary.get("learned_action", "default")
-        actions_seen[action] = actions_seen.get(action, 0) + 1
-    print("  Action distribution across all tasks:")
-    for action, count in sorted(actions_seen.items()):
-        print(f"    {action}: {count}/{tasks_n} tasks")
-    print()
-    print("  Impact summary:")
-    if "start_t2" in actions_seen:
-        print("    start_t2: N tasks will skip T1 in LOCALIZATION")
-    if "early_rescue" in actions_seen:
-        print("    early_rescue: N tasks will trigger T3 rescue earlier in REPAIR")
-    if "cap_t3" in actions_seen:
-        print("    cap_t3: N tasks will have reduced T3 rescue window")
-    if "reduce_rescue" in actions_seen:
-        print("    reduce_rescue: N tasks will have lengthened rescue trigger")
-    if "protocol_issue" in actions_seen:
-        print("    protocol_issue: N tasks flagged as protocol/parser problems")
-    if actions_seen.get("default", 0) == tasks_n:
-        print("    All tasks use default routing — prior has no strong signal yet")
-
-    print(banner)
-    if all_ok:
-        print("GATE RESULT: PASS")
-    else:
-        print("GATE RESULT: FAIL")
-    print(banner)
-    return all_ok
 
 
 def main() -> None:
@@ -731,39 +128,11 @@ def main() -> None:
     # Must run BEFORE any provider check, output file creation, heartbeat, or
     # strategy loading. Gate-only makes zero API calls.
     if args.policy_memory_gate_only:
-        if not args.policy_memory:
-            print("ERROR: --policy-memory-gate-only requires --policy-memory PATH", flush=True)
-            sys.exit(1)
-        pm_path = Path(args.policy_memory)
-        if not pm_path.is_absolute():
-            pm_path = REPO_ROOT / pm_path
-        if not pm_path.is_file():
-            print(f"ERROR: --policy-memory file not found: {pm_path}", flush=True)
-            sys.exit(1)
-        regret_threshold = args.regret_threshold
-        pm = PolicyMemory(regret_threshold=regret_threshold)
-        pm.rebuild_from_jsonl(pm_path)
-        ok = _run_warmup_gate(pm, args.policy_memory)
-        sys.exit(0 if ok else 1)
+        sys.exit(run_policy_memory_gate_only(args, repo_root=REPO_ROOT))
 
     # ── Gate-only: load BudgetMemory from JSONL, validate, print diagnostics, exit ──
     if args.budget_memory_gate_only:
-        if not args.budget_memory:
-            print("ERROR: --budget-memory-gate-only requires --budget-memory PATH[,PATH...]", flush=True)
-            sys.exit(1)
-        bm_paths = [Path(p.strip()) for p in args.budget_memory.split(",")]
-        for p in bm_paths:
-            p_abs = p if p.is_absolute() else REPO_ROOT / p
-            if not p_abs.is_file():
-                print(f"ERROR: --budget-memory file not found: {p_abs}", flush=True)
-                sys.exit(1)
-        bm = BudgetMemory.from_jsonl(bm_paths, exclude_ids=bm_exclude)
-        print(f"budget_memory gate-only: OK", flush=True)
-        print(f"  records={bm.record_count} tasks={bm.task_count} repos={bm.repo_count}")
-        print(f"  sources: {bm._source_paths}")
-        for line in bm.summary_lines():
-            print(f"  {line}")
-        sys.exit(0)
+        sys.exit(run_budget_memory_gate_only(args, repo_root=REPO_ROOT, exclude_ids=bm_exclude))
 
     # ── Value observability: init before any tasks run ───────────────────
     if args.value_profile != "equal" and not args.value_matrix:
@@ -773,11 +142,11 @@ def main() -> None:
             flush=True,
         )
         sys.exit(2)
-    _init_value_observability(
+    _init_value_context(
         value_profile=args.value_profile,
         value_matrix_path=args.value_matrix,
     )
-    if _VALUE_LOOKUP is None and args.value_profile != "equal":
+    if _VALUE_CONTEXT.lookup is None and args.value_profile != "equal":
         print(
             f"[value_observability] FATAL: profile '{args.value_profile}' not found "
             f"in value matrix {args.value_matrix}. Task values cannot be assigned. "
@@ -841,200 +210,31 @@ def main() -> None:
     budget_caps = budget_plan.budget_caps
     tasks = load_tasks_for_compare(args, tasks_n=tasks_n)
 
-    # Value-Driven Budget Allocation: always keep a learning memory writer so
-    # normal paid runs produce reusable priors. Applying those priors to caps
-    # remains opt-in via --auto-budget or --budget-memory.
-    auto_budget_estimates: dict[str, BudgetEstimate] = {}
-    auto_budget_task_caps: dict[str, float] | None = None
-    memory_path = Path(args.auto_budget_memory) if args.auto_budget_memory else RUNS_DIR / "auto_budget_memory.jsonl"
-    auto_budget_memory: AutoBudgetMemory | None = None
-    if not args.no_auto_budget_learn:
-        auto_budget_memory = AutoBudgetMemory(memory_path if memory_path.is_file() else None)
-        if auto_budget_memory._path is None:
-            auto_budget_memory._path = memory_path
-    if args.auto_budget or args.auto_budget_dry_run:
-        estimator = AutoBudgetEstimator(memory=auto_budget_memory, k=args.auto_budget_k)
-        for task in tasks:
-            est = estimator.estimate(
-                task,
-                scale=args.auto_budget_scale,
-                min_cap=args.auto_budget_min,
-                max_cap=args.auto_budget_max,
-            )
-            auto_budget_estimates[task.instance_id] = est
-            auto_budget_task_caps = {iid: est.cap for iid, est in auto_budget_estimates.items()}
-            print(
-                f"{tag('auto-budget', bold=False)} {est.instance_id} "
-                f"est={_fmt_usd(est.estimated_cost)} cap={_fmt_usd(est.cap)} "
-                f"source={est.source} confidence={est.confidence}"
-                + (f" neighbors={est.memory_neighbors}" if est.memory_neighbors else ""),
-                flush=True,
-            )
-        # Value-Driven Budget Allocation implies per_task mode.
-        if args.per_task_cap is None:
-            args.per_task_cap = -1.0  # Sentinel: per-task with varying caps.
+    auto_budget_plan = build_auto_budget_plan(args, tasks=tasks, runs_dir=RUNS_DIR)
+    auto_budget_estimates = auto_budget_plan.estimates
+    auto_budget_task_caps: dict[str, float] | None = auto_budget_plan.task_caps
+    auto_budget_memory = auto_budget_plan.memory
 
     # ── BudgetMemory dry-run: load, compute estimates, print comparison, exit ──
     # Must run BEFORE provider signature check — no API calls, no run files.
     if args.budget_memory_dry_run:
-        if not args.budget_memory:
-            print("ERROR: --budget-memory-dry-run requires --budget-memory PATH[,PATH...]", flush=True)
-            sys.exit(1)
-        bm_paths = [Path(p.strip()) for p in args.budget_memory.split(",")]
-        for p in bm_paths:
-            p_abs = p if p.is_absolute() else REPO_ROOT / p
-            if not p_abs.is_file():
-                print(f"ERROR: --budget-memory file not found: {p_abs}", flush=True)
-                sys.exit(1)
-        bm = BudgetMemory.from_jsonl(bm_paths, exclude_ids=bm_exclude)
-        print("=== BudgetMemory dry-run ===")
-        print(f"records={bm.record_count} tasks={bm.task_count} repos={bm.repo_count}")
-        print(f"sources: {bm._source_paths}")
-        print()
-
-        # Build historical cap lookup from source JSONL files
-        # Index: instance_id → first found estimated_task_cap or batch_budget_cap
-        historical_caps: dict[str, tuple[float, str]] = {}
-        for sp in bm._source_paths:
-            try:
-                for line in Path(sp).read_text(errors="replace").splitlines():
-                    if not line.strip():
-                        continue
-                    try:
-                        r = json.loads(line.strip())
-                    except json.JSONDecodeError:
-                        continue
-                    iid = str(r.get("instance_id") or "")
-                    if not iid or iid in historical_caps:
-                        continue
-                    est_cap = r.get("estimated_task_cap")
-                    batch_cap = r.get("batch_budget_cap")
-                    if est_cap is not None:
-                        historical_caps[iid] = (float(est_cap), "historical")
-                    elif batch_cap is not None:
-                        historical_caps[iid] = (float(batch_cap), "historical")
-            except Exception:
-                pass
-
-        auto_cap_available = auto_budget_task_caps is not None
-        per_task_hard = args.per_task_cap if args.per_task_cap and args.per_task_cap > 0 else None
-
-        # Header
-        hdr = (
-            f"  {'task':<40} {'strategy':<28} {'old_cap_src':<16} {'old_cap':>10} "
-            f"{'bm_cap':>10} {'actual_median':>13} {'verdict':>16}"
-        )
-        print(hdr)
-        print(f"  {'-'*125}")
-
-        under_count = over_count = ok_count = not_comp = 0
-        strat = ""  # no strategy bias in estimate
-        for task in tasks:
-            iid = task.instance_id
-            est = bm.estimate_task_budget(iid, hard_budget=per_task_hard)
-            bm_cap = est.estimated_task_budget
-
-            # Resolve old_cap and old_cap_source (priority order)
-            old_cap: float | None = None
-            old_src = "standard_tight"
-            comparable = False
-            if auto_budget_task_caps is not None:
-                old_cap = auto_budget_task_caps.get(iid)
-                old_src = "auto_budget"
-                comparable = True
-            elif iid in historical_caps:
-                old_cap, old_src = historical_caps[iid]
-                comparable = True
-            elif per_task_hard is not None:
-                old_cap = per_task_hard
-                old_src = "per_task"
-                comparable = True
-
-            old_cap_val = old_cap if old_cap is not None else 0
-            old_str = f"${old_cap_val:.4f}" if old_cap_val > 0 else "N/A"
-
-            # Actual cost from BudgetMemory's task stats (median)
-            ts = bm.task_stats(iid)
-            actual_median = ts.median_cost if ts and ts.median_cost > 0 else 0
-            actual_str = f"${actual_median:.4f}" if actual_median > 0 else "N/A"
-
-            # Verdict
-            if not comparable:
-                verdict = "not_comparable"
-                not_comp += 1
-            elif actual_median > 0 and old_cap_val > 0:
-                if actual_median > old_cap_val * 1.2:
-                    verdict = "underbudget"
-                    under_count += 1
-                elif old_cap_val > actual_median * 3:
-                    verdict = "overbudget"
-                    over_count += 1
-                else:
-                    verdict = "ok"
-                    ok_count += 1
-            else:
-                verdict = "not_comparable"
-                not_comp += 1
-
-            print(
-                f"  {iid:<40} {strat:<28} {old_src:<16} {old_str:>10} "
-                f"${bm_cap:>9.4f} {actual_str:>13} {verdict:>16}"
-            )
-
-        print()
-        print(
-            f"Summary: underbudget={under_count} overbudget={over_count} ok={ok_count} "
-            f"not_comparable={not_comp} tasks={len(tasks)} auto_budget={auto_cap_available}"
-        )
-        sys.exit(0)
+        sys.exit(run_budget_memory_dry_run(
+            args,
+            tasks=tasks,
+            repo_root=REPO_ROOT,
+            exclude_ids=bm_exclude,
+            auto_budget_task_caps=auto_budget_task_caps,
+        ))
 
     # ── AutoBudget dry-run: learned cap + routing-memory gate, no API calls or run files ──
     if args.auto_budget_dry_run:
-        policy_ctx = load_policy_memory_context(
+        sys.exit(run_auto_budget_dry_run(
+            args,
+            tasks=tasks,
             runs_dir=RUNS_DIR,
             repo_root=REPO_ROOT,
-            explicit_path=args.policy_memory,
-            resume=False,
-            resume_path=None,
-            disable=args.disable_policy_memory,
-            regret_threshold=args.regret_threshold,
-        )
-        if policy_ctx.enabled and policy_ctx.memory is not None and policy_ctx.source is not None:
-            print(
-                f"{tag('policy_memory', bold=True)} loaded from {policy_ctx.source} "
-                f"source={policy_ctx.source_kind} records={policy_ctx.memory._record_count} "
-                f"repos={len(policy_ctx.memory._repo_priors)} tasks={len(policy_ctx.memory._task_priors)} "
-                f"threshold={policy_ctx.memory.regret_threshold}",
-                flush=True,
-            )
-        else:
-            print(
-                f"{tag('policy_memory', bold=False)} disabled — {policy_ctx.reason or 'no usable run JSONL source found'}",
-                flush=True,
-            )
-
-        print("=== AutoBudget dry-run (Value-Driven Budget Allocation) ===", flush=True)
-        print(f"memory={memory_path}", flush=True)
-        print(f"records={len(auto_budget_memory.records) if auto_budget_memory is not None else 0}", flush=True)
-        print(
-            f"policy_memory={'on' if policy_ctx.memory is not None else 'off'}"
-            + (f" source={policy_ctx.source}" if policy_ctx.source else ""),
-            flush=True,
-        )
-        print(
-            f"  {'task':<40} {'source':<20} {'est_cost':>10} {'cap':>10} "
-            f"{'confidence':<10} {'neighbors':>9}",
-            flush=True,
-        )
-        print(f"  {'-'*105}", flush=True)
-        for task in tasks:
-            est = auto_budget_estimates[task.instance_id]
-            print(
-                f"  {task.instance_id:<40} {est.source:<20} {_fmt_usd(est.estimated_cost):>10} "
-                f"{_fmt_usd(est.cap):>10} {est.confidence:<10} {est.memory_neighbors:>9}",
-                flush=True,
-            )
-        sys.exit(0)
+            auto_budget_plan=auto_budget_plan,
+        ))
 
     # ── Provider signature check (AFTER dry-run/gate-only to avoid API calls) ──
     if not args.no_provider_signature_check:
@@ -1056,55 +256,18 @@ def main() -> None:
                 + ", ".join(f"{r.backend}:{r.error_type or r.status_code}" for r in failed)
             )
 
-    # ── BudgetMemory normal mode ──
-    budget_memory: BudgetMemory | None = None
-    budget_memory_enabled = not args.disable_budget_memory
-    budget_memory_source_paths = ""
-    budget_memory_estimates: dict[str, BudgetMemoryEstimate] = {}
-    if budget_memory_enabled and args.budget_memory:
-        bm_paths = [Path(p.strip()) for p in args.budget_memory.split(",")]
-        valid_paths: list[Path] = []
-        for p in bm_paths:
-            p_abs = p if p.is_absolute() else REPO_ROOT / p
-            if p_abs.is_file():
-                valid_paths.append(p_abs)
-            else:
-                print(f"WARNING: --budget-memory file not found: {p_abs}", flush=True)
-        if valid_paths:
-            budget_memory = BudgetMemory.from_jsonl(valid_paths, exclude_ids=bm_exclude)
-            budget_memory_enabled = True
-            src_str = ",".join(str(p) for p in valid_paths)
-            budget_memory_source_paths = src_str
-            print(
-                f"{tag('budget_memory', bold=True)} loaded from {src_str} "
-                f"records={budget_memory.record_count} tasks={budget_memory.task_count} "
-                f"repos={budget_memory.repo_count}",
-                flush=True,
-            )
-            # Compute per-task BudgetMemory estimates
-            for task in tasks:
-                hard_cap = args.per_task_cap if args.per_task_cap and args.per_task_cap > 0 else None
-                est = budget_memory.estimate_task_budget(
-                    task.instance_id, hard_budget=hard_cap,
-                )
-                budget_memory_estimates[task.instance_id] = est
-            # Only use BudgetMemory as caps when Value-Driven Budget Allocation is NOT enabled.
-            if not args.auto_budget:
-                auto_budget_task_caps = {iid: e.estimated_task_budget for iid, e in budget_memory_estimates.items()}
-                print(
-                    f"  Per-task caps from BudgetMemory (cascade: exact_task > repo > strategy > global)",
-                    flush=True,
-                )
-            else:
-                print(
-                    f"  BudgetMemory estimates stored (Value-Driven Budget Allocation takes priority for caps)",
-                    flush=True,
-                )
-        else:
-            print(f"{tag('budget_memory', bold=False)} disabled — no valid files found", flush=True)
-            budget_memory_enabled = False
-    elif budget_memory_enabled and not args.budget_memory:
-        budget_memory_enabled = False
+    budget_memory_plan = build_budget_memory_plan(
+        args,
+        tasks=tasks,
+        repo_root=REPO_ROOT,
+        exclude_ids=bm_exclude,
+        auto_budget_enabled=args.auto_budget,
+    )
+    if auto_budget_task_caps is None and budget_memory_plan.task_caps is not None:
+        auto_budget_task_caps = budget_memory_plan.task_caps
+    budget_memory_enabled = budget_memory_plan.enabled
+    budget_memory_estimates = budget_memory_plan.estimates
+    budget_memory_source_paths = budget_memory_plan.source_paths
 
     total_runs = len(tasks) * len(strategies)
     out_stem, stem_mode, series_base, run_series = resolve_run_identity(
@@ -1259,7 +422,7 @@ def main() -> None:
         total_runs=total_runs,
         tasks_per_strategy=len(tasks),
         global_line=global_progress.format_global(scoreboard),
-        value_profile=_VALUE_PROFILE,
+        value_profile=_VALUE_CONTEXT.profile,
     )
 
     run_guards: CompareRunGuards | None = None if args.no_run_guards else CompareRunGuards()
@@ -1300,7 +463,7 @@ def main() -> None:
                 out_path=out_path,
                 auto_budget_memory=auto_budget_memory,
                 no_auto_budget_learn=args.no_auto_budget_learn,
-                value_profile=_VALUE_PROFILE,
+                value_profile=_VALUE_CONTEXT.profile,
                 enrich_value=_enrich_record_with_value,
             )
             heartbeat_writer.pulse(
@@ -1311,10 +474,11 @@ def main() -> None:
                 last_completed=str(record.get("instance_id", "")),
             )
 
-        records, batch_spent = _run_strategy_batch(
+        records, batch_spent = run_strategy_batch(
             cfg,
             batch_tasks,
             batch_budget_cap=batch_cap,
+            value_context=_VALUE_CONTEXT,
             per_task_cap=args.per_task_cap if args.per_task_cap and args.per_task_cap > 0 else None,
             soft_budget=args.soft_budget,
             max_overrun=max_overrun,
@@ -1367,7 +531,7 @@ def main() -> None:
                         tasks_per_strategy=len(tasks),
                         io_lock=io_lock,
                         global_progress=global_progress,
-                        value_profile=_VALUE_PROFILE,
+                        value_profile=_VALUE_CONTEXT.profile,
                     )
             else:
                 with ThreadPoolExecutor(max_workers=min(policy_jobs, len(strategies))) as pool:
@@ -1394,7 +558,7 @@ def main() -> None:
                             tasks_per_strategy=len(tasks),
                             io_lock=io_lock,
                             global_progress=global_progress,
-                            value_profile=_VALUE_PROFILE,
+                            value_profile=_VALUE_CONTEXT.profile,
                         )
     finally:
         set_active_guard(None)
@@ -1413,7 +577,7 @@ def main() -> None:
         total_runs=total_runs,
         tasks_per_strategy=len(tasks),
         global_line=global_progress.format_global(scoreboard),
-        value_profile=_VALUE_PROFILE,
+        value_profile=_VALUE_CONTEXT.profile,
     )
 
     heartbeat_writer.mark_done()
