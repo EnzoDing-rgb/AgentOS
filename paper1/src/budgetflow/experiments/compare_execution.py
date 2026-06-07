@@ -276,7 +276,10 @@ def run_strategy_batch(
 
         global_progress.start_task()
         if checkpoint is not None:
-            cap_for_ckpt = per_task_cap if use_per_task and per_task_cap else batch_budget_cap
+            if use_per_task and task_caps is not None:
+                cap_for_ckpt = task_caps.get(task.instance_id, batch_budget_cap)
+            else:
+                cap_for_ckpt = per_task_cap if use_per_task and per_task_cap else batch_budget_cap
             checkpoint.mark_in_flight(cfg.name, task.instance_id, cap_for_ckpt)
         banner = global_progress.format_banner(scoreboard)
         log(f"\n======== {banner} ========\n[start] task={task.instance_id} strategy={cfg.name}")
@@ -351,7 +354,9 @@ def run_strategy_batch(
                 budget_estimate=budget_estimates.get(task.instance_id) if budget_estimates else None,
                 run_series=run_series,
                 policy_lane=cfg.name,
-                budget_mode="per_task_cap" if task_cap is not None else "shared",
+                budget_mode="dynamic_task_caps" if task_caps is not None and task_cap is not None
+                else "per_task_cap" if task_cap is not None
+                else "shared",
                 per_task_cap=task_cap,
             )
 
@@ -391,7 +396,7 @@ def run_strategy_batch(
                 cfg.name,
                 task.instance_id,
                 batch_spent=task_spent if use_per_task else float(governor.state.spent_budget),
-                batch_cap=per_task_cap if use_per_task else batch_budget_cap,
+                batch_cap=float(record.get("per_task_cap") or batch_budget_cap) if use_per_task else batch_budget_cap,
             )
         if on_task_complete is not None:
             on_task_complete(record)

@@ -6,7 +6,7 @@ from budgetflow.auto_budget import AutoBudgetMemory
 from budgetflow.compare_checkpoint import GlobalRunProgress
 from budgetflow.experiments.compare_persistence import CompareRunState, persist_task_record
 from budgetflow.experiments.compare_config import CompareStrategy
-from budgetflow.experiments.compare_execution import run_task_record
+from budgetflow.experiments.compare_execution import run_strategy_batch, run_task_record
 from budgetflow.experiments.compare_summary import _format_live_snapshot, _format_strategy_totals
 from budgetflow.governor import BudgetGovernor, GovernorConfig
 from budgetflow.ledger import WorkflowLedgerStore
@@ -114,6 +114,73 @@ def test_compare_runner_records_turns_value_and_task_features(monkeypatch) -> No
     assert record["resolved"] is True
     assert "resolved_value_per_dollar" not in record
     assert record["task_features"] == {"patch_lines": 1, "f2p_count": 1, "p2p_count": 0, "problem_length": 0}
+
+
+def test_auto_budget_records_dynamic_task_cap_mode(monkeypatch) -> None:
+    import budgetflow.adapter.runner as runner
+
+    def fake_run_mini_swe_task(*args, **kwargs):
+        return SimpleNamespace(
+            instance_id="sympy__sympy-13480",
+            total_cost=0.01,
+            harness_resolved=False,
+            patch_text="",
+            patch_source="none",
+            submitted_patch_path="",
+            exit_status="Stopped",
+            exit_reason="budget_exhausted",
+            backend_picks=["tier2"],
+            llm_turns=1,
+            violations=[],
+            harness_detail="",
+            agent_gold_edited=False,
+            agent_gold_files=[],
+            agent_attempted_submit=False,
+            agent_submitted=False,
+            prompt_tokens_total=10,
+            completion_tokens_total=2,
+            turn_trace_count=1,
+            turn_traces=[],
+        )
+
+    monkeypatch.setattr(runner, "run_mini_swe_task", fake_run_mini_swe_task)
+    task = SimpleNamespace(
+        instance_id="sympy__sympy-13480",
+        patch="diff --git a/x b/x\n",
+        fail_to_pass=(),
+        pass_to_pass=(),
+    )
+    estimate = SimpleNamespace(
+        cap=0.12,
+        estimated_cost=0.08,
+        source="memory_exact",
+        confidence="high",
+        memory_neighbors=3,
+        features={"repo": "sympy"},
+    )
+
+    records, _ = run_strategy_batch(
+        CompareStrategy("budgetflow_value_aware_tight", "budgetflow_value_aware", "tight"),
+        [task],
+        batch_budget_cap=0.12,
+        value_context=_value_context(),
+        step_limit=1,
+        trace_console="quiet",
+        heartbeat=0,
+        global_progress=GlobalRunProgress(1),
+        scoreboard=None,
+        print_lock=None,
+        task_caps={"sympy__sympy-13480": 0.12},
+        budget_estimates={"sympy__sympy-13480": estimate},
+        run_series="schema_contract",
+    )
+
+    record = records[0]
+    assert record["budget_mode"] == "dynamic_task_caps"
+    assert record["per_task_cap"] == 0.12
+    assert record["auto_budget_enabled"] is True
+    assert record["estimated_task_cap"] == 0.12
+    assert record["budget_prior_source"] == "memory_exact"
 
 
 def test_persisted_jsonl_contains_t1_t2_observability_and_learning_memory(tmp_path) -> None:
