@@ -163,6 +163,17 @@ def build_compact_audit(records: list[dict]) -> dict:
     t3_tier = _t3_id(records)
     t3_stats = _t3_productivity(records, t3_tier)
     t3_sources = _t3_source_breakdown(records, t3_tier)
+    value_profiles = {
+        str(record.get("task_value_profile") or "equal")
+        for record in records
+    }
+    value_objectives = {
+        str(record.get("value_objective") or "")
+        for record in records
+        if record.get("value_objective")
+    }
+    value_profile = next(iter(value_profiles)) if len(value_profiles) == 1 else "mixed"
+    value_objective = next(iter(value_objectives)) if len(value_objectives) == 1 else "mixed" if value_objectives else ""
 
     suspicious = sum(
         1 for r in records
@@ -178,12 +189,15 @@ def build_compact_audit(records: list[dict]) -> dict:
             by_strategy[strat] = {
                 "total": 0, "pass": 0, "fail": 0,
                 "cost": 0.0, "turns": 0, "tier_turns": {},
+                "resolved_value": 0.0, "task_value": 0.0,
                 "suspicious": 0, "no_trace": 0,
                 "tasks": set(),
             }
         s = by_strategy[strat]
         s["total"] += 1
         s["cost"] += float(r.get("total_cost") or 0)
+        s["resolved_value"] += float(r.get("resolved_value") or 0.0)
+        s["task_value"] += float(r.get("task_value") or 1.0)
         turns = int(r.get("llm_turns") or 0)
         s["turns"] += turns
         picks = r.get("backend_picks") or []
@@ -303,6 +317,8 @@ def build_compact_audit(records: list[dict]) -> dict:
         "suspicious": suspicious,
         "no_trace": no_trace,
         "stagnation_pass": stag_pass,
+        "value_profile": value_profile,
+        "value_objective": value_objective,
         "t3_tier": t3_tier,
         "t3_productivity": t3_stats,
         "t3_source_breakdown": t3_sources,
@@ -310,6 +326,14 @@ def build_compact_audit(records: list[dict]) -> dict:
             strat: {
                 "total": s["total"], "pass": s["pass"], "fail": s["fail"],
                 "cost": s["cost"], "avg_turns": s["turns"] / max(s["total"], 1),
+                "resolved_value": s["resolved_value"],
+                "total_task_value": s["task_value"],
+                "normalized_verified_resolved_value": (
+                    s["resolved_value"] / s["task_value"] if s["task_value"] > 0 else 0.0
+                ),
+                "resolved_value_per_dollar": (
+                    s["resolved_value"] / s["cost"] if s["cost"] > 0 else 0.0
+                ),
                 "tier_turns": dict(sorted(s["tier_turns"].items())),
                 "t1_turns": s["tier_turns"].get(1, 0),
                 "t2_turns": s["tier_turns"].get(2, 0),

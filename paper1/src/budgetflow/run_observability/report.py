@@ -31,6 +31,9 @@ def format_compact_audit(audit: dict) -> str:
     if audit.get("policy_memory_used"):
         lines.append(f"  policy_memory_source={audit.get('policy_memory_source', '?')}  "
                      f"prior_records={audit.get('prior_records', 0)}")
+    if audit.get("value_profile"):
+        lines.append(f"  value_profile={audit.get('value_profile')}  "
+                     f"value_objective={audit.get('value_objective') or '-'}")
 
     # Per strategy
     lines.append(banner)
@@ -43,6 +46,20 @@ def format_compact_audit(audit: dict) -> str:
             f"${s['cost']:>7.2f} {s['avg_turns']:>5.0f} "
             f"{_format_tier_turns(s.get('tier_turns') or {}):>18} {s['suspicious']:>4}"
         )
+
+    if any("normalized_verified_resolved_value" in s for s in audit["by_strategy"].values()):
+        lines.append(banner)
+        lines.append("T1 VALUE METRICS")
+        lines.append(f"{'strategy':<26} {'res_value':>9} {'task_value':>10} {'nvrv':>7} {'rv_per_$':>9}")
+        lines.append("-" * 64)
+        for strat in sorted(audit["by_strategy"]):
+            s = audit["by_strategy"][strat]
+            lines.append(
+                f"{strat:<26} {s.get('resolved_value', 0.0):>9.2f} "
+                f"{s.get('total_task_value', 0.0):>10.2f} "
+                f"{s.get('normalized_verified_resolved_value', 0.0):>7.2f} "
+                f"{s.get('resolved_value_per_dollar', 0.0):>9.2f}"
+            )
 
     # Common-task comparison
     if audit["common_task_count"] > 0:

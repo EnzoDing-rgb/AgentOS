@@ -2,6 +2,7 @@ from budgetflow.run_observability.audit import build_compact_audit
 from budgetflow.observability import build_harness_trust
 from budgetflow.run_observability.checks import _check_value_profile_fallback
 from budgetflow.run_observability.report import format_compact_audit
+import pytest
 
 
 def test_compact_audit_preserves_generic_tier_counts() -> None:
@@ -22,6 +23,46 @@ def test_compact_audit_preserves_generic_tier_counts() -> None:
 
     assert stats["tier_turns"] == {2: 1, 4: 1, 5: 2}
     assert stats["t3_turns"] == 0
+
+
+def test_compact_audit_reports_value_metrics() -> None:
+    audit = build_compact_audit([
+        {
+            "instance_id": "repo__task-a",
+            "strategy": "budgetflow_value_aware_tight",
+            "harness_resolved": True,
+            "harness_evidence": {"evidence_complete": True},
+            "total_cost": 0.20,
+            "llm_turns": 4,
+            "turn_trace_count": 4,
+            "backend_picks": ["tier2"],
+            "task_value": 0.6,
+            "resolved_value": 0.6,
+            "task_value_profile": "difficulty",
+            "value_objective": "t1_value_efficiency",
+        },
+        {
+            "instance_id": "repo__task-b",
+            "strategy": "budgetflow_value_aware_tight",
+            "harness_resolved": False,
+            "harness_evidence": {"evidence_complete": True},
+            "total_cost": 0.10,
+            "llm_turns": 2,
+            "turn_trace_count": 2,
+            "backend_picks": ["tier3"],
+            "task_value": 0.4,
+            "resolved_value": 0.0,
+            "task_value_profile": "difficulty",
+            "value_objective": "t1_value_efficiency",
+        },
+    ])
+
+    stats = audit["by_strategy"]["budgetflow_value_aware_tight"]
+
+    assert audit["value_profile"] == "difficulty"
+    assert stats["normalized_verified_resolved_value"] == 0.6
+    assert stats["resolved_value_per_dollar"] == pytest.approx(2.0)
+    assert "T1 VALUE METRICS" in format_compact_audit(audit)
 
 
 def test_compact_audit_reports_t3_productivity() -> None:
