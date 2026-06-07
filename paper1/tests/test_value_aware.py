@@ -153,7 +153,7 @@ class TestBuildRoutingContext:
 class TestValueAwareTraceFields:
     def test_trace_fields_present_for_bfv(self):
         from budgetflow.adapter.strategies import build_routing_context
-        from budgetflow.adapter.mini_swe_proxy import _value_aware_trace_fields
+        from budgetflow.adapter.turn_trace import value_aware_trace_fields
         backends = _backends()
         ctx = build_routing_context(
             "budgetflow_value_aware", backends,
@@ -163,25 +163,25 @@ class TestValueAwareTraceFields:
         from budgetflow.types import Stage, TurnInfo
         turn = TurnInfo(workflow_id="t", step_index=1, stage=Stage.LOCALIZATION, w_i=0.4, context_len=1000)
         ctx.selector.select_backend(turn, backends, 0.5, {b.name: 0.01 for b in backends}, task_value=2.0)
-        fields = _value_aware_trace_fields(ctx)
+        fields = value_aware_trace_fields(ctx)
         assert fields["value_aware_active"] is True
         assert fields["task_value"] == 2.0
         assert fields["task_value_multiplier"] == 2.0
 
     def test_trace_fields_empty_for_bfc(self):
         from budgetflow.adapter.strategies import build_routing_context
-        from budgetflow.adapter.mini_swe_proxy import _value_aware_trace_fields
+        from budgetflow.adapter.turn_trace import value_aware_trace_fields
         backends = _backends()
         ctx = build_routing_context("budgetflow_conservative", backends)
-        fields = _value_aware_trace_fields(ctx)
+        fields = value_aware_trace_fields(ctx)
         assert fields == {}
 
     def test_trace_fields_empty_for_bo(self):
         from budgetflow.adapter.strategies import build_routing_context
-        from budgetflow.adapter.mini_swe_proxy import _value_aware_trace_fields
+        from budgetflow.adapter.turn_trace import value_aware_trace_fields
         backends = _backends()
         ctx = build_routing_context("budget_only", backends)
-        fields = _value_aware_trace_fields(ctx)
+        fields = value_aware_trace_fields(ctx)
         assert fields == {}
 
 

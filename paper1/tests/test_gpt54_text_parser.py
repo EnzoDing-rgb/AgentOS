@@ -201,9 +201,9 @@ def test_t3_stays_text_regex() -> None:
 
 def test_parser_failure_trace_has_required_fields() -> None:
     """Simulate a trace row after parser failure — verify field presence."""
-    from budgetflow.adapter.mini_swe_proxy import _build_turn_trace
+    from budgetflow.adapter.turn_trace import build_turn_trace
 
-    trace = _build_turn_trace(
+    trace = build_turn_trace(
         step_index=1,
         agent_phase=None,
         stage=None,

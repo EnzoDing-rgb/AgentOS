@@ -4,6 +4,14 @@
 
 ## 当前快照（2026-06-07）
 
+### 073 / Runtime turn-trace seam
+
+- **073 COMPLETE SLICE — no-paid runtime/observability refactor.** No historical JSONL was edited and no paid experiment was run.
+- **Turn-trace schema extracted:** `adapter/turn_trace.py` now owns per-turn trace construction plus provider/protocol/router/value-aware trace helpers. Tests import this module directly as the observability seam.
+- **Runtime locality improved:** `adapter/mini_swe_proxy.py` no longer owns the turn-trace schema details and dropped from 1262 to 1051 lines. It still owns the LiteLLM query loop, routing guards, provider fallback, reservation handling, and action parsing.
+- **Architecture judgment:** trace fields are part of evidence quality for T1/T2, so they should be inspectable without reading the full provider/runtime loop.
+- **Verification:** focused trace/parser/value-aware tests passed (`40 passed`), full suite passed (`171 passed`), `py_compile` passed for `paper1/src/budgetflow`, `git diff --check` passed, and no-provider `--auto-budget-dry-run` still loaded cap memory plus routing policy memory.
+
 ### 072 / AutoResearch implementation pruning
 
 - **072 COMPLETE SLICE — no-paid architecture cleanup.** No historical experiment JSONL was edited and no paid experiment was run.

@@ -4,9 +4,11 @@ import pytest
 
 from budgetflow.adapter.mini_swe_proxy import (
     BudgetFlowLitellmModel,
-    _build_turn_trace,
-    _protocol_trace_fields,
-    _provider_trace_fields,
+)
+from budgetflow.adapter.turn_trace import (
+    build_turn_trace,
+    protocol_trace_fields,
+    provider_trace_fields,
 )
 from budgetflow.adapter.strategies import build_routing_context
 from budgetflow.types import Backend, Stage
@@ -17,7 +19,7 @@ def _backend(name: str, tier: int) -> Backend:
 
 
 def test_turn_trace_has_fields_needed_to_debug_value_routing_and_provider_failures() -> None:
-    trace = _build_turn_trace(
+    trace = build_turn_trace(
         step_index=1,
         agent_phase="edit_gold",
         stage=Stage.REPAIR,
@@ -68,10 +70,10 @@ def test_turn_trace_has_fields_needed_to_debug_value_routing_and_provider_failur
 
 
 def test_provider_and_protocol_helpers_identify_real_backend_contracts() -> None:
-    assert _provider_trace_fields("tier2")["provider"] == "dashscope"
-    assert "gpt-5.4" in _provider_trace_fields("tier3")["model"]
-    assert _protocol_trace_fields("tier3", text_mode=True)["protocol"] == "text_regex"
-    assert _protocol_trace_fields("tier2", text_mode=False)["protocol"] == "tool_call"
+    assert provider_trace_fields("tier2")["provider"] == "dashscope"
+    assert "gpt-5.4" in provider_trace_fields("tier3")["model"]
+    assert protocol_trace_fields("tier3", text_mode=True)["protocol"] == "text_regex"
+    assert protocol_trace_fields("tier2", text_mode=False)["protocol"] == "tool_call"
 
 
 @pytest.mark.parametrize(

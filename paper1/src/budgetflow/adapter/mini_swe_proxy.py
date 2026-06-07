@@ -52,6 +52,16 @@ from .stall_guard import check_stagnation, normalize_bash_command
 from .message_utils import estimate_input_tokens, extract_bash_context
 from .protocol_adapter import ActionProtocolAdapter
 from .strategies import RoutingContext, choose_backend, stage_weight
+from .turn_trace import (
+    build_turn_trace,
+    parser_input_snippet,
+    protocol_trace_fields,
+    provider_trace_fields,
+    router_trace_fields,
+    safe_content_head,
+    tool_call_summary,
+    value_aware_trace_fields,
+)
 
 logger = logging.getLogger("budgetflow_litellm_model")
 
@@ -128,227 +138,6 @@ class _ProviderTimeoutError(RuntimeError):
     def __init__(self, original: Exception) -> None:
         self.original = original
         super().__init__(str(original))
-
-
-def _build_turn_trace(
-    *,
-    step_index: int,
-    agent_phase: str | None,
-    stage,
-    bash_command: str | None,
-    input_tokens: int,
-    expected_costs: dict[str, float],
-    base_pressure: float,
-    effective_pressure: float,
-    backend_chosen: str,
-    escalated_backend: str,
-    final_backend: str,
-    backend_tier: int,
-    reserve_out: int,
-    adaptive,
-    no_progress_streak: int,
-    no_progress_on_tier: int,
-    turns_on_tier: int,
-    has_progress: bool,
-    progress_reason: str,
-    prompt_tokens: int,
-    completion_tokens: int,
-    actual_cost: float,
-    billable: float,
-    response_ok: bool,
-    error_type: str | None,
-    # --- P0 trace extension fields ---
-    provider: str | None = None,
-    model: str | None = None,
-    text_mode: bool = False,
-    protocol: str | None = None,
-    parser: str | None = None,
-    assistant_content_head: str | None = None,
-    tool_call_summary: dict | None = None,
-    parser_input_snippet: str | None = None,
-    parser_error_type: str | None = None,
-    parser_error_message: str | None = None,
-    provider_status_code: int | None = None,
-    provider_error_body: str | None = None,
-    provider_request_id: str | None = None,
-    reservation_id: str | None = None,
-    reserved_cost: float | None = None,
-    reservation_released: bool = False,
-    reservation_settled: bool = False,
-    router_reason: str | None = None,
-    router_scores: dict[str, float] | None = None,
-    router_pressure: float | None = None,
-    router_branch: str | None = None,
-    gold_edit_guard_turns: int = 0,
-    gold_edit_guard_limit: int | None = None,
-    gold_edit_guard_active: bool = False,
-    value_salvage_active: bool = False,
-    value_salvage_turns_remaining: int = 0,
-    value_salvage_triggered: bool = False,
-    value_salvage_reason: str | None = None,
-    touched_file_paths: list[str] | None = None,
-    # --- value-aware routing fields ---
-    task_value: float | None = None,
-    task_value_multiplier: float | None = None,
-    value_aware_active: bool = False,
-) -> dict:
-    """Build a single turn-trace dict for observability (no side effects)."""
-    trace: dict[str, Any] = {
-        "step": step_index,
-        "agent_phase": agent_phase,
-        "stage": stage.name if stage else None,
-        "bash_digest": (bash_command or "")[:120],
-        "touched_file_paths": touched_file_paths or [],
-        "input_tokens": input_tokens,
-        "expected_costs": expected_costs,
-        "base_pressure": round(base_pressure, 4),
-        "effective_pressure": round(effective_pressure, 4),
-        "backend_chosen": backend_chosen,
-        "escalated_backend": escalated_backend if escalated_backend != backend_chosen else None,
-        "final_backend": final_backend,
-        "backend_tier": backend_tier,
-        "reserve_output_tokens": reserve_out,
-        "no_progress_streak": no_progress_streak,
-        "no_progress_on_tier": no_progress_on_tier,
-        "turns_on_tier": turns_on_tier,
-        "has_progress": has_progress,
-        "progress_reason": progress_reason,
-        "prompt_tokens": prompt_tokens,
-        "completion_tokens": completion_tokens,
-        "actual_cost": round(actual_cost, 6),
-        "billable_cost": round(billable, 6),
-        "response_ok": response_ok,
-        "error_type": error_type,
-        # P0: provider/model identity
-        "provider": provider,
-        "model": model,
-        # P0: protocol/parser evidence
-        "text_mode": text_mode,
-        "protocol": protocol,
-        "parser": parser,
-        "assistant_content_head": assistant_content_head,
-        "tool_call_summary": tool_call_summary,
-        "parser_input_snippet": parser_input_snippet,
-        "parser_error_type": parser_error_type,
-        "parser_error_message": parser_error_message,
-        # P0: provider error evidence
-        "provider_status_code": provider_status_code,
-        "provider_error_body": provider_error_body,
-        "provider_request_id": provider_request_id,
-        # P0: reservation lifecycle
-        "reservation_id": reservation_id,
-        "reserved_cost": reserved_cost,
-        "reservation_released": reservation_released,
-        "reservation_settled": reservation_settled,
-        # P0: router reasoning
-        "router_reason": router_reason,
-        "router_scores": router_scores,
-        "router_pressure": router_pressure,
-        "router_branch": router_branch,
-        "gold_edit_guard_turns": gold_edit_guard_turns,
-        "gold_edit_guard_limit": gold_edit_guard_limit,
-        "gold_edit_guard_active": gold_edit_guard_active,
-        "value_salvage_active": value_salvage_active,
-        "value_salvage_turns_remaining": value_salvage_turns_remaining,
-        "value_salvage_triggered": value_salvage_triggered,
-        "value_salvage_reason": value_salvage_reason,
-        # Value-aware routing fields
-        "task_value": task_value,
-        "task_value_multiplier": task_value_multiplier,
-        "value_aware_active": value_aware_active,
-    }
-    if adaptive is not None:
-        trace["adaptive_ttl"] = getattr(adaptive, "ttl_steps_remaining", None)
-        trace["adaptive_floor"] = adaptive.min_tier_for_reserve()
-        trace["adaptive_boost"] = getattr(adaptive, "pressure_boost", None)
-        rescue = getattr(adaptive, "rescue", None)
-        if rescue is not None:
-            trace["rescue_evidence_turns"] = getattr(rescue, "evidence_turns", None)
-            trace["rescue_window_remaining"] = getattr(rescue, "window_remaining", None)
-            trace["rescue_window_opened"] = getattr(rescue, "window_opened", None)
-    return trace
-
-
-def _router_trace_fields(routing) -> dict[str, Any]:
-    """Extract router reasoning fields from RoutingContext.last_decision."""
-    d = routing.last_decision
-    if d is None:
-        return {}
-    return {
-        "router_reason": d.reason,
-        "router_scores": d.scores,
-        "router_pressure": d.pressure,
-        "router_branch": d.branch,
-    }
-
-
-def _value_aware_trace_fields(routing) -> dict[str, Any]:
-    """Extract value-aware routing fields when active."""
-    if routing.strategy != "budgetflow_value_aware":
-        return {}
-    multiplier = getattr(routing.selector, "last_multiplier", 1.0)
-    return {
-        "task_value": routing.task_value,
-        "task_value_multiplier": multiplier,
-        "value_aware_active": True,
-    }
-
-
-def _provider_trace_fields(backend_name: str) -> dict[str, Any]:
-    """Extract provider/model identity from TierConfig."""
-    from ..defaults import ModelCatalog
-    cfg = ModelCatalog.config_for(backend_name)
-    if cfg is None:
-        return {}
-    return {
-        "provider": cfg.provider,
-        "model": cfg.model,
-    }
-
-
-def _protocol_trace_fields(backend_name: str, text_mode: bool) -> dict[str, Any]:
-    """Extract protocol/parser evidence for trace."""
-    decision = ActionProtocolAdapter.resolve(backend_name)
-    return {
-        "text_mode": text_mode,
-        "protocol": decision.protocol,
-        "parser": decision.parser,
-    }
-
-
-def _safe_content_head(response, max_chars: int = 300) -> str | None:
-    """First *max_chars* of assistant text content, redacted of API keys."""
-    try:
-        content = response.choices[0].message.content or ""
-        return content[:max_chars]
-    except Exception:
-        return None
-
-
-def _tool_call_summary(response) -> dict | None:
-    """Count + function names of tool calls in response."""
-    try:
-        tool_calls = response.choices[0].message.tool_calls or []
-        if not tool_calls:
-            return None
-        names = [tc.function.name for tc in tool_calls if hasattr(tc, "function")]
-        return {"count": len(tool_calls), "names": names}
-    except Exception:
-        return None
-
-
-def _parser_input_snippet(response, text_mode: bool) -> str | None:
-    """What the parser received: text_regex→content head, tool_call→summary JSON."""
-    import json
-    if text_mode:
-        return _safe_content_head(response, max_chars=500)
-    tc = _tool_call_summary(response)
-    if tc is None:
-        return None
-    try:
-        return json.dumps(tc)
-    except Exception:
-        return str(tc)
 
 
 def _try_extract_json_command(content: str) -> str | None:
@@ -627,7 +416,7 @@ class BudgetFlowLitellmModel:
                 error_type = type(exc).__name__
                 self._release_last_reservation()
                 if self._enable_turn_trace:
-                    self.turn_traces.append(_build_turn_trace(
+                    self.turn_traces.append(build_turn_trace(
                         step_index=self.step_index,
                         agent_phase=self.agent_phase,
                         stage=stage,
@@ -654,10 +443,10 @@ class BudgetFlowLitellmModel:
                         billable=0.0,
                         response_ok=False,
                         error_type=error_type,
-                        **_provider_trace_fields(backend.name),
-                        **_protocol_trace_fields(backend.name, text_mode=ActionProtocolAdapter.resolve(backend.name).protocol == "text_regex"),
-                        **_router_trace_fields(self.routing),
-                        **_value_aware_trace_fields(self.routing),
+                        **provider_trace_fields(backend.name),
+                        **protocol_trace_fields(backend.name, text_mode=ActionProtocolAdapter.resolve(backend.name).protocol == "text_regex"),
+                        **router_trace_fields(self.routing),
+                        **value_aware_trace_fields(self.routing),
                         **self._gold_edit_guard_trace_fields(),
                         provider_status_code=getattr(exc, "status_code", None),
                         provider_error_body=str(exc)[:500],
@@ -704,9 +493,9 @@ class BudgetFlowLitellmModel:
             actions = self._parse_actions(response, text_mode=text_mode, backend_tier=backend.tier)
         except Exception as exc:
             if self._enable_turn_trace:
-                content_head = _safe_content_head(response)
-                parser_snippet = _parser_input_snippet(response, text_mode)
-                self.turn_traces.append(_build_turn_trace(
+                content_head = safe_content_head(response)
+                parser_snippet = parser_input_snippet(response, text_mode)
+                self.turn_traces.append(build_turn_trace(
                     step_index=self.step_index,
                     agent_phase=self.agent_phase,
                     stage=stage,
@@ -737,13 +526,13 @@ class BudgetFlowLitellmModel:
                     billable=billable,
                     response_ok=True,
                     error_type=type(exc).__name__,
-                    **_provider_trace_fields(backend.name),
-                    **_protocol_trace_fields(backend.name, text_mode),
-                    **_router_trace_fields(self.routing),
-                        **_value_aware_trace_fields(self.routing),
+                    **provider_trace_fields(backend.name),
+                    **protocol_trace_fields(backend.name, text_mode),
+                    **router_trace_fields(self.routing),
+                        **value_aware_trace_fields(self.routing),
                     **self._gold_edit_guard_trace_fields(),
                     assistant_content_head=content_head,
-                    tool_call_summary=_tool_call_summary(response),
+                    tool_call_summary=tool_call_summary(response),
                     parser_input_snippet=parser_snippet,
                     parser_error_type=type(exc).__name__,
                     parser_error_message=str(exc)[:500],
@@ -761,9 +550,9 @@ class BudgetFlowLitellmModel:
             "text_mode": text_mode,
         }
         if self._enable_turn_trace:
-            content_head = _safe_content_head(response)
-            parser_snippet = _parser_input_snippet(response, text_mode)
-            self.turn_traces.append(_build_turn_trace(
+            content_head = safe_content_head(response)
+            parser_snippet = parser_input_snippet(response, text_mode)
+            self.turn_traces.append(build_turn_trace(
                 step_index=self.step_index,
                 agent_phase=self.agent_phase,
                 stage=stage,
@@ -794,13 +583,13 @@ class BudgetFlowLitellmModel:
                 billable=billable,
                 response_ok=True,
                 error_type=None,
-                **_provider_trace_fields(backend.name),
-                **_protocol_trace_fields(backend.name, text_mode),
-                **_router_trace_fields(self.routing),
-                        **_value_aware_trace_fields(self.routing),
+                **provider_trace_fields(backend.name),
+                **protocol_trace_fields(backend.name, text_mode),
+                **router_trace_fields(self.routing),
+                        **value_aware_trace_fields(self.routing),
                 **self._gold_edit_guard_trace_fields(),
                 assistant_content_head=content_head,
-                tool_call_summary=_tool_call_summary(response),
+                tool_call_summary=tool_call_summary(response),
                 parser_input_snippet=parser_snippet,
                 reservation_id=reservation_id,
                 reserved_cost=round(actual_cost, 6),
