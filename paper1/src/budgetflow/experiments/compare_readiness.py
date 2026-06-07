@@ -53,6 +53,10 @@ def build_compare_readiness_report(
     facts.append(f"runtime_root={runtime_root}")
     facts.append("budget_mode=dynamic_task_caps" if auto_budget_caps else "budget_mode=static_or_shared")
     facts.append(f"auto_budget={'on' if auto_budget_enabled else 'off'}")
+    if auto_budget_caps:
+        planned_policy_cap = sum(float(cap) for cap in auto_budget_caps.values())
+        facts.append(f"planned_policy_cap={planned_policy_cap:.4f}")
+        facts.append(f"planned_total_cap={planned_policy_cap * max(len(strategy_names), 1):.4f}")
 
     if not task_ids:
         blocking.append("no tasks selected")

@@ -42,6 +42,8 @@ def test_readiness_blocks_uncovered_non_equal_value_matrix(tmp_path) -> None:
 
     assert not report.ok
     assert any("missing 1 selected task values" in issue for issue in report.blocking)
+    assert "planned_policy_cap=0.2000" in report.facts
+    assert "planned_total_cap=0.2000" in report.facts
 
 
 def test_readiness_warns_equal_value_bfv_is_not_t1_evidence() -> None:
