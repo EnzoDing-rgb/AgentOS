@@ -172,8 +172,9 @@ def run_auto_budget_dry_run(
         regret_threshold=args.regret_threshold,
     )
     if policy_ctx.enabled and policy_ctx.memory is not None and policy_ctx.source is not None:
+        source_display = ",".join(str(path) for path in policy_ctx.sources) or str(policy_ctx.source)
         print(
-            f"{tag('policy_memory', bold=True)} loaded from {policy_ctx.source} "
+            f"{tag('policy_memory', bold=True)} loaded from {source_display} "
             f"source={policy_ctx.source_kind} records={policy_ctx.memory._record_count} "
             f"repos={len(policy_ctx.memory._repo_priors)} tasks={len(policy_ctx.memory._task_priors)} "
             f"threshold={policy_ctx.memory.regret_threshold}",
@@ -191,7 +192,7 @@ def run_auto_budget_dry_run(
     print(f"records={len(memory.records) if memory is not None else 0}", flush=True)
     print(
         f"policy_memory={'on' if policy_ctx.memory is not None else 'off'}"
-        + (f" source={policy_ctx.source}" if policy_ctx.source else ""),
+        + (f" source={','.join(str(path) for path in policy_ctx.sources)}" if policy_ctx.sources else ""),
         flush=True,
     )
     print(

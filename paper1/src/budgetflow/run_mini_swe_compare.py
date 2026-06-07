@@ -305,7 +305,8 @@ def main() -> None:
     )
     policy_memory = policy_ctx.memory
     if policy_ctx.enabled and policy_memory is not None and policy_ctx.source is not None:
-        print(f"{tag('policy_memory', bold=True)} loaded from {policy_ctx.source} "
+        source_display = ",".join(str(path) for path in policy_ctx.sources) or str(policy_ctx.source)
+        print(f"{tag('policy_memory', bold=True)} loaded from {source_display} "
               f"source={policy_ctx.source_kind} "
               f"records={policy_memory._record_count} "
               f"repos={len(policy_memory._repo_priors)} "

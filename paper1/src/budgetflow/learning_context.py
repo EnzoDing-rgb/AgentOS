@@ -35,6 +35,7 @@ ROUTING_MEMORY_ROUTINGS = frozenset(
 class PolicyMemoryContext:
     memory: PolicyMemory | None
     source: Path | None
+    sources: tuple[Path, ...]
     source_kind: str
     enabled: bool
     reason: str = ""
@@ -79,6 +80,19 @@ def default_policy_memory_source(runs_dir: Path, *, exclude: Path | None = None)
     return max(candidates, key=lambda p: (p.stat().st_mtime_ns, p.name))
 
 
+def default_policy_memory_sources(runs_dir: Path, *, exclude: Path | None = None, limit: int = 5) -> tuple[Path, ...]:
+    """Pick recent usable run JSONLs for routing-memory continual learning."""
+    candidates: list[Path] = []
+    exclude_resolved = exclude.resolve() if exclude is not None else None
+    for path in runs_dir.glob("*.jsonl"):
+        if exclude_resolved is not None and path.resolve() == exclude_resolved:
+            continue
+        if looks_like_policy_memory_source(path):
+            candidates.append(path)
+    candidates.sort(key=lambda p: (p.stat().st_mtime_ns, p.name), reverse=True)
+    return tuple(candidates[:limit])
+
+
 def load_policy_memory_context(
     *,
     runs_dir: Path,
@@ -92,29 +106,48 @@ def load_policy_memory_context(
 ) -> PolicyMemoryContext:
     """Resolve and load routing PolicyMemory for a compare run."""
     if disable:
-        return PolicyMemoryContext(None, None, "disabled", False, "disabled_by_flag")
+        return PolicyMemoryContext(None, None, (), "disabled", False, "disabled_by_flag")
 
-    source: Path | None = None
+    sources: tuple[Path, ...] = ()
     source_kind = ""
     if explicit_path:
-        source = Path(explicit_path)
-        if not source.is_absolute():
-            source = repo_root / source
+        resolved: list[Path] = []
+        for raw in explicit_path.split(","):
+            raw = raw.strip()
+            if not raw:
+                continue
+            path = Path(raw)
+            if not path.is_absolute():
+                path = repo_root / path
+            resolved.append(path)
+        sources = tuple(resolved)
         source_kind = "explicit"
     elif resume and resume_path is not None and resume_path.is_file():
-        source = resume_path
+        sources = (resume_path,)
         source_kind = "resume"
     else:
-        source = default_policy_memory_source(runs_dir, exclude=exclude)
-        source_kind = "default_recent" if source is not None else ""
+        sources = default_policy_memory_sources(runs_dir, exclude=exclude)
+        source_kind = "default_recent" if sources else ""
 
-    if source is None:
-        return PolicyMemoryContext(None, None, "", False, "no_usable_run_jsonl")
-    if not source.is_file():
-        return PolicyMemoryContext(None, source, source_kind, False, "file_not_found")
-    if not looks_like_policy_memory_source(source):
-        return PolicyMemoryContext(None, source, source_kind, False, "not_routing_run_jsonl")
+    if not sources:
+        return PolicyMemoryContext(None, None, (), "", False, "no_usable_run_jsonl")
+    missing = [path for path in sources if not path.is_file()]
+    if missing:
+        return PolicyMemoryContext(None, missing[0], sources, source_kind, False, "file_not_found")
+    unusable = [path for path in sources if not looks_like_policy_memory_source(path)]
+    if unusable:
+        return PolicyMemoryContext(None, unusable[0], sources, source_kind, False, "not_routing_run_jsonl")
 
     memory = PolicyMemory(regret_threshold=regret_threshold)
-    memory.rebuild_from_jsonl(source)
-    return PolicyMemoryContext(memory, source, source_kind, True)
+    records: list[dict] = []
+    for source in sources:
+        for line in source.read_text(errors="replace").splitlines():
+            if not line.strip():
+                continue
+            try:
+                records.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    memory.rebuild_from_records(records)
+    memory._source_path = ",".join(str(path) for path in sources)
+    return PolicyMemoryContext(memory, sources[0], sources, source_kind, True)

@@ -3,6 +3,7 @@ from pathlib import Path
 
 from budgetflow.learning_context import (
     default_policy_memory_source,
+    default_policy_memory_sources,
     load_policy_memory_context,
     looks_like_policy_memory_source,
 )
@@ -36,6 +37,18 @@ def test_default_policy_memory_source_skips_auto_budget_memory(tmp_path) -> None
     assert source == source_path
 
 
+def test_default_policy_memory_sources_returns_recent_usable_runs(tmp_path) -> None:
+    _write_jsonl(tmp_path / "auto_budget_memory.jsonl", [_run_record()])
+    old = tmp_path / "old.jsonl"
+    new = tmp_path / "new.jsonl"
+    _write_jsonl(old, [_run_record(instance_id="r__old")])
+    _write_jsonl(new, [_run_record(instance_id="r__new")])
+
+    sources = default_policy_memory_sources(tmp_path, limit=2)
+
+    assert set(sources) == {old, new}
+
+
 def test_looks_like_policy_memory_source_requires_routing_evidence(tmp_path) -> None:
     cap_memory = tmp_path / "auto_budget_memory.jsonl"
     _write_jsonl(cap_memory, [_run_record()])
@@ -65,6 +78,30 @@ def test_load_policy_memory_context_from_default_recent(tmp_path) -> None:
 
     assert ctx.enabled is True
     assert ctx.source == source_path
+    assert ctx.sources == (source_path,)
     assert ctx.source_kind == "default_recent"
     assert ctx.memory is not None
     assert ctx.memory.routing_prior_summary("r__t-a")["task_seen"] == 1
+
+
+def test_load_policy_memory_context_merges_explicit_sources(tmp_path) -> None:
+    source_a = tmp_path / "a.jsonl"
+    source_b = tmp_path / "b.jsonl"
+    _write_jsonl(source_a, [_run_record(instance_id="r__a")])
+    _write_jsonl(source_b, [_run_record(instance_id="r__b")])
+
+    ctx = load_policy_memory_context(
+        runs_dir=tmp_path,
+        repo_root=tmp_path,
+        explicit_path=f"{source_a},{source_b}",
+        resume=False,
+        resume_path=None,
+        disable=False,
+        regret_threshold=None,
+    )
+
+    assert ctx.enabled is True
+    assert ctx.sources == (source_a, source_b)
+    assert ctx.memory is not None
+    assert ctx.memory.routing_prior_summary("r__a")["task_seen"] == 1
+    assert ctx.memory.routing_prior_summary("r__b")["task_seen"] == 1
