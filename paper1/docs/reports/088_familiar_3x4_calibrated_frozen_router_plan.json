@@ -1,0 +1,39 @@
+{
+  "meta": {
+    "name": "088_familiar_3x4_calibrated_frozen_router_plan",
+    "created": "2026-06-09",
+    "description": "Pre-registered static enterprise-router plan for the next familiar 3x4 mechanism-isolation diagnostic after scoreable-outcome and evidence-accounting fixes.",
+    "source_class": "human_pre_registered_from_prior_familiar_diagnostics",
+    "budget_window": "policy_batch",
+    "hard_cap_usd": 1.0,
+    "task_order": [
+      "sympy__sympy-13480",
+      "sympy__sympy-14774",
+      "sympy__sympy-16988",
+      "sympy__sympy-20212"
+    ],
+    "note": "This replaces the earlier 087 diagnostic plan for future paid runs. Caps are intentionally less tight than observed pass costs so budget failures are interpretable as real exhaustion rather than no-margin calibration. The plan remains static: it does not read runtime progress, shared ledger state, or learning signals."
+  },
+  "plan": {
+    "sympy__sympy-13480": {
+      "preferred_model": "tier2",
+      "base_cap": 0.18,
+      "priority": 2
+    },
+    "sympy__sympy-14774": {
+      "preferred_model": "tier2",
+      "base_cap": 0.16,
+      "priority": 1
+    },
+    "sympy__sympy-16988": {
+      "preferred_model": "tier3",
+      "base_cap": 0.30,
+      "priority": 4
+    },
+    "sympy__sympy-20212": {
+      "preferred_model": "tier2",
+      "base_cap": 0.36,
+      "priority": 3
+    }
+  }
+}

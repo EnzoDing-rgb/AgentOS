@@ -31,6 +31,27 @@ class TestFrozenRouterPlan:
             assert isinstance(plan, FrozenRouterPlan)
             assert plan.name == "test_plan"
             assert len(plan.plan) == 2
+            assert plan.planned_cap == pytest.approx(0.8)
+        finally:
+            tmp.unlink()
+
+    def test_load_reads_hard_cap_metadata(self):
+        from budgetflow.frozen_router import load_frozen_plan
+
+        data = {
+            "meta": {"name": "with_cap", "hard_cap_usd": 0.8},
+            "plan": {
+                "task_a": {"preferred_model": "tier2", "base_cap": 0.30, "priority": 1},
+                "task_b": {"preferred_model": "tier3", "base_cap": 0.50, "priority": 2},
+            },
+        }
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(data, f)
+            tmp = Path(f.name)
+        try:
+            plan = load_frozen_plan(tmp)
+            assert plan.hard_cap_usd == pytest.approx(0.8)
+            assert plan.planned_cap == pytest.approx(0.8)
         finally:
             tmp.unlink()
 

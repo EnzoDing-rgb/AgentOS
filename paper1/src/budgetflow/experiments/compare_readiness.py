@@ -99,6 +99,11 @@ def build_compare_readiness_report(
         )
     if catalog_issues:
         blocking.extend(f"tier catalog: {issue}" for issue in catalog_issues)
+    if getattr(args, "no_provider_signature_check", False):
+        blocking.append(
+            "--no-provider-signature-check is not allowed for paid-run readiness; "
+            "provider/model access must be verified before spending budget"
+        )
 
     if value_context.profile != "equal":
         if not value_context.matrix_path:
@@ -130,6 +135,21 @@ def build_compare_readiness_report(
         else:
             facts.append(f"frozen_plan={frozen_plan.name}")
             facts.append(f"frozen_plan_entries={len(frozen_plan.plan)}")
+            facts.append(f"frozen_plan_planned_cap={frozen_plan.planned_cap:.4f}")
+            if frozen_plan.hard_cap_usd is not None:
+                facts.append(f"frozen_plan_hard_cap={frozen_plan.hard_cap_usd:.4f}")
+                requested_budget = float(getattr(args, "budget", 0.0) or 0.0)
+                if requested_budget > 0 and abs(requested_budget - frozen_plan.hard_cap_usd) > 0.0001:
+                    blocking.append(
+                        f"--budget={requested_budget:.4f} does not match frozen plan "
+                        f"hard_cap_usd={frozen_plan.hard_cap_usd:.4f}; "
+                        "mechanism-isolation caps must be pre-registered and symmetric"
+                    )
+                if abs(frozen_plan.planned_cap - frozen_plan.hard_cap_usd) > 0.0001:
+                    blocking.append(
+                        f"frozen plan base caps sum to {frozen_plan.planned_cap:.4f}, "
+                        f"but meta hard_cap_usd={frozen_plan.hard_cap_usd:.4f}"
+                    )
             missing_plan = [task_id for task_id in task_ids if frozen_plan.lookup(task_id) is None]
             if missing_plan:
                 preview = ", ".join(missing_plan[:8])

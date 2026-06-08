@@ -69,6 +69,17 @@ def resolve_compare_stem(
     """Pick output stem. Returns (stem, mode) where mode is 'new' | 'resume'."""
     if explicit_stem:
         if resume:
+            jsonl = runs_dir / f"{explicit_stem}.jsonl"
+            if not jsonl.is_file():
+                raise SystemExit(
+                    f"--resume --out-stem={explicit_stem}: {jsonl} does not exist. "
+                    "Start without --resume to create a new run."
+                )
+            if series_run_complete(runs_dir, explicit_stem, total_runs=total_runs):
+                raise SystemExit(
+                    f"--resume --out-stem={explicit_stem}: run is already complete "
+                    f"({total_runs}/{total_runs}). Use a new --out-stem for the next experiment."
+                )
             return explicit_stem, "resume"
         jsonl = runs_dir / f"{explicit_stem}.jsonl"
         if jsonl.is_file():

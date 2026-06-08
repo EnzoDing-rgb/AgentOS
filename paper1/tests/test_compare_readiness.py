@@ -150,6 +150,26 @@ def test_readiness_blocks_underparallel_policy_jobs() -> None:
     assert any("policy_jobs=1" in issue for issue in report.blocking)
 
 
+def test_readiness_blocks_skipping_provider_signature_check() -> None:
+    value_context = ValueEfficiencyContext()
+    value_context.init(value_profile="equal")
+
+    report = build_compare_readiness_report(
+        args=_args(no_provider_signature_check=True),
+        tasks=[SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",))],
+        strategies=(CompareStrategy("bare_strong_model", "bare_strong"),),
+        policy_jobs=1,
+        value_context=value_context,
+        catalog_issues=[],
+        runtime_root=Path("/tmp/budgetflow-runtime"),
+        auto_budget_enabled=False,
+        auto_budget_caps=None,
+    )
+
+    assert not report.ok
+    assert any("--no-provider-signature-check is not allowed" in issue for issue in report.blocking)
+
+
 def test_readiness_blocks_missing_frozen_plan_for_mechanism_router() -> None:
     value_context = ValueEfficiencyContext()
     value_context.init(value_profile="equal")
@@ -222,6 +242,33 @@ def test_readiness_accepts_frozen_plan_covering_selected_tasks(tmp_path) -> None
     assert report.ok
     assert "frozen_plan=unit_plan" in report.facts
     assert "frozen_plan_entries=1" in report.facts
+    assert "frozen_plan_planned_cap=0.2000" in report.facts
+
+
+def test_readiness_blocks_budget_mismatch_with_frozen_plan_hard_cap(tmp_path) -> None:
+    plan = tmp_path / "frozen_plan.json"
+    plan.write_text(
+        '{"meta":{"name":"unit_plan","hard_cap_usd":0.2},'
+        '"plan":{"task-a":{"preferred_model":"tier2","base_cap":0.2,"priority":1}}}'
+    )
+    value_context = ValueEfficiencyContext()
+    value_context.init(value_profile="equal")
+
+    report = build_compare_readiness_report(
+        args=_args(frozen_plan=str(plan), budget=1.0),
+        tasks=[SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",))],
+        strategies=(CompareStrategy("budgetflow_same_router", "budgetflow_same_router"),),
+        policy_jobs=1,
+        value_context=value_context,
+        catalog_issues=[],
+        runtime_root=Path("/tmp/budgetflow-runtime"),
+        auto_budget_enabled=False,
+        auto_budget_caps=None,
+    )
+
+    assert not report.ok
+    assert "frozen_plan_hard_cap=0.2000" in report.facts
+    assert any("does not match frozen plan hard_cap_usd" in issue for issue in report.blocking)
 
 
 def test_readiness_blocks_tasks_without_verifiable_harness_metadata() -> None:

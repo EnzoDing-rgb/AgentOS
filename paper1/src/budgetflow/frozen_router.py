@@ -23,9 +23,14 @@ class FrozenPlanEntry:
 class FrozenRouterPlan:
     name: str
     plan: dict[str, FrozenPlanEntry]
+    hard_cap_usd: float | None = None
 
     def lookup(self, instance_id: str) -> FrozenPlanEntry | None:
         return self.plan.get(instance_id)
+
+    @property
+    def planned_cap(self) -> float:
+        return sum(entry.base_cap for entry in self.plan.values())
 
     def as_jsonl_record(self, instance_id: str) -> dict:
         entry = self.lookup(instance_id)
@@ -43,6 +48,8 @@ def load_frozen_plan(path: str | Path) -> FrozenRouterPlan:
     raw = json.loads(Path(path).read_text())
     meta = raw.get("meta", {})
     name = str(meta.get("name", Path(path).stem))
+    hard_cap_raw = meta.get("hard_cap_usd")
+    hard_cap_usd = float(hard_cap_raw) if hard_cap_raw is not None else None
     plan_data = raw.get("plan", raw.get("tasks", {}))
     if not isinstance(plan_data, dict) or not plan_data:
         raise ValueError("frozen router plan must contain a non-empty 'plan' object")
@@ -68,4 +75,4 @@ def load_frozen_plan(path: str | Path) -> FrozenRouterPlan:
             base_cap=base_cap,
             priority=priority,
         )
-    return FrozenRouterPlan(name=name, plan=plan)
+    return FrozenRouterPlan(name=name, plan=plan, hard_cap_usd=hard_cap_usd)
