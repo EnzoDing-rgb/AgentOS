@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .console_log import tag
+from .failure_classification import is_score_abort, is_score_pass, is_score_true_fail
 
 # Defaults tuned for 15×7 (105 runs); override via CompareRunGuards config.
 GLOBAL_WINDOW = 200
@@ -114,12 +115,14 @@ class CompareRunGuards:
 
             if len(self._recent) >= self.global_min_samples:
                 window = list(self._recent)
-                resolved_n = sum(1 for r in window if r.get("harness_resolved"))
-                patch_n = sum(1 for r in window if r.get("patch_extracted"))
+                scoreable = [r for r in window if not is_score_abort(r)]
+                resolved_n = sum(1 for r in scoreable if is_score_pass(r))
+                patch_n = sum(1 for r in scoreable if r.get("patch_extracted"))
                 if resolved_n == 0:
-                    patch_rate = patch_n / len(window)
+                    patch_rate = patch_n / max(len(scoreable), 1)
                     self._abort_all_reason = (
-                        f"global_guard last={len(window)} resolved=0 patch_extracted={patch_n} "
+                        f"global_guard last={len(window)} scoreable={len(scoreable)} "
+                        f"resolved=0 patch_extracted={patch_n} "
                         f"patch_rate={patch_rate:.0%} (agent/harness not producing passes)"
                     )
                     return GuardAction(halt_all=True, reason=self._abort_all_reason)
@@ -182,7 +185,11 @@ def record_upstream_error(message: str, *, backend: str) -> GuardAction:
 
 
 def _is_pipeline_failure(record: dict[str, Any]) -> bool:
-    if record.get("harness_resolved"):
+    if is_score_abort(record):
+        return False
+    if is_score_pass(record):
+        return False
+    if not is_score_true_fail(record):
         return False
     if not record.get("patch_extracted"):
         return True

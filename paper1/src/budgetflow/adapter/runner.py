@@ -24,6 +24,7 @@ from ..heartbeat import run_with_heartbeat
 from ..ledger import WorkflowLedgerStore
 from ..lite_tasks import LiteTaskRecord
 from ..local_harness import clone_or_checkout, evaluate_local_harness, get_last_compat_files
+from ..observability import parse_harness_evidence
 from ..run_trace import (
     RunTraceLogger,
     TracedDefaultAgent,
@@ -55,6 +56,8 @@ class MiniSweRunResult:
     patch_text: str | None
     exit_status: str
     exit_reason: str | None
+    agent_exit_status: str
+    agent_exit_reason: str | None
     total_cost: float
     budget_cap: float
     budget_snapshot: dict[str, float]
@@ -261,6 +264,14 @@ def run_mini_swe_task(
     agent_summary = trace.agent_summary()
     if patch_from_worktree and exit_reason in {"stagnation_no_progress", "stagnation_repeat_command"}:
         exit_reason = f"{exit_reason}_worktree_patch"
+    agent_exit_status = exit_status
+    agent_exit_reason = exit_reason
+    if harness.harness_resolved and exit_status.lower() not in {"submitted", "complete"}:
+        exit_status = "HarnessResolved"
+        exit_reason = "harness_resolved"
+    elif patch_text and parse_harness_evidence(harness.detail).evaluated_complete:
+        exit_status = "HarnessFailed"
+        exit_reason = "harness_failed"
     violations: list[str] = []
     if governor.state.available_budget < 0:
         violations.append("budget_violation")
@@ -273,6 +284,8 @@ def run_mini_swe_task(
         patch_text=patch_text,
         exit_status=exit_status,
         exit_reason=exit_reason,
+        agent_exit_status=agent_exit_status,
+        agent_exit_reason=agent_exit_reason,
         total_cost=task_cost,
         budget_cap=cap,
         budget_snapshot=snapshot,

@@ -137,6 +137,8 @@ def run_task_record(
         **outcome.as_record(),
         "exit_status": result.exit_status,
         "exit_reason": result.exit_reason,
+        "agent_exit_status": result.agent_exit_status,
+        "agent_exit_reason": result.agent_exit_reason,
         "total_cost": result.total_cost,
         "backend_picks": list(result.backend_picks),
         "llm_turns": result.llm_turns,

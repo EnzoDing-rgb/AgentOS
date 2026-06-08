@@ -28,6 +28,7 @@ TEST_FILE_PURPOSES = {
     "test_provider_fallback.py": "provider-infra",
     "test_run_guards.py": "stop-loss",
     "test_run_observability_audit.py": "evidence-audit",
+    "test_runner_exit_status.py": "runtime-adapter",
     "test_stall_guard.py": "stop-loss",
     "test_swebench_adapters.py": "swebench-adapter",
     "test_trace_fields.py": "decision-observability",

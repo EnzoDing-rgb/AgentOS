@@ -14,7 +14,10 @@ class StrategySummary:
     strategy: str
     tasks: int
     passed: int
+    true_failed: int
+    aborted: int
     cost: float
+    abort_cost: float
     turns: int
     failures: Counter[str]
     forensic_axes: Counter[str]
@@ -46,11 +49,32 @@ def _cost(row: dict) -> float:
     return float(value or 0.0)
 
 
+def _score_status(row: dict) -> str:
+    status = str(row.get("score_status") or "")
+    if status in {"pass", "true_fail", "abort"}:
+        return status
+    return "pass" if row.get("harness_resolved") else "true_fail"
+
+
+def _is_pass(row: dict) -> bool:
+    return _score_status(row) == "pass"
+
+
+def _is_true_fail(row: dict) -> bool:
+    return _score_status(row) == "true_fail"
+
+
+def _is_abort(row: dict) -> bool:
+    return _score_status(row) == "abort"
+
+
 def _turns(row: dict) -> int:
     return int(row.get("llm_turns") or row.get("turns") or 0)
 
 
 def _failure_class(row: dict) -> str:
+    if _is_abort(row):
+        return f"abort:{row.get('abort_reason') or 'unknown'}"
     failure = row.get("failure_class")
     if failure:
         return str(failure)
@@ -58,6 +82,8 @@ def _failure_class(row: dict) -> str:
 
 
 def _forensic_axis(row: dict) -> str:
+    if _is_abort(row):
+        return f"abort:{row.get('abort_owner') or 'unknown'}"
     summary = row.get("forensic_summary")
     if isinstance(summary, dict) and summary.get("primary_axis"):
         return str(summary["primary_axis"])
@@ -71,6 +97,7 @@ def summarize_rows(rows: list[dict], group: str) -> list[StrategySummary]:
 
     summaries: list[StrategySummary] = []
     for strategy, items in sorted(by_strategy.items()):
+        scoreable = [row for row in items if not _is_abort(row)]
         failures = Counter(_failure_class(row) for row in items)
         axes = Counter(_forensic_axis(row) for row in items)
         summaries.append(
@@ -78,8 +105,11 @@ def summarize_rows(rows: list[dict], group: str) -> list[StrategySummary]:
                 group=group,
                 strategy=strategy,
                 tasks=len(items),
-                passed=sum(1 for row in items if bool(row.get("harness_resolved"))),
-                cost=sum(_cost(row) for row in items),
+                passed=sum(1 for row in items if _is_pass(row)),
+                true_failed=sum(1 for row in items if _is_true_fail(row)),
+                aborted=sum(1 for row in items if _is_abort(row)),
+                cost=sum(_cost(row) for row in scoreable),
+                abort_cost=sum(_cost(row) for row in items if _is_abort(row)),
                 turns=sum(_turns(row) for row in items),
                 failures=failures,
                 forensic_axes=axes,
@@ -146,14 +176,15 @@ def build_markdown_table(
         summaries.extend(summarize_rows(load_rows(run_dir / f"{stem}.jsonl"), group=group))
 
     lines = [
-        "| group | strategy | tasks | pass | cost | avg_cost | turns | failure_classes | forensic_axes | next_action |",
-        "|---|---:|---:|---:|---:|---:|---:|---|---|---|",
+        "| group | strategy | tasks | pass | true_fail | abort | cost | abort_cost | avg_cost | turns | failure_classes | forensic_axes | next_action |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|---|",
     ]
     for summary in summaries:
         lines.append(
             "| "
             f"{summary.group} | `{summary.strategy}` | {summary.tasks} | "
-            f"{summary.passed}/{summary.tasks} | {summary.cost:.1f} | {summary.avg_cost:.1f} | "
+            f"{summary.passed}/{summary.tasks} | {summary.true_failed} | {summary.aborted} | "
+            f"{summary.cost:.1f} | {summary.abort_cost:.1f} | {summary.avg_cost:.1f} | "
             f"{summary.turns} | {format_counter(summary.failures)} | "
             f"{format_counter(summary.forensic_axes)} | {next_action(summary)} |"
         )

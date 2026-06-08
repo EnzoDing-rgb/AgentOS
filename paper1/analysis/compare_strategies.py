@@ -66,16 +66,35 @@ def _append_stage_tier_mix(out: list[str], lines: list[dict]) -> None:
     out.append("")
 
 
+def _score_status(row: dict) -> str:
+    status = str(row.get("score_status") or "")
+    if status in {"pass", "true_fail", "abort"}:
+        return status
+    return "pass" if row.get("harness_resolved") else "true_fail"
+
+
+def _is_pass(row: dict) -> bool:
+    return _score_status(row) == "pass"
+
+
+def _is_true_fail(row: dict) -> bool:
+    return _score_status(row) == "true_fail"
+
+
+def _is_abort(row: dict) -> bool:
+    return _score_status(row) == "abort"
+
+
 def _append_patch_but_fail(out: list[str], lines: list[dict]) -> None:
-    """Count gold_edited=True but harness_resolved=False per strategy."""
-    out.append("--- Patch-but-fail rate (gold_edited=True, harness_resolved=False) ---")
+    """Count scoreable gold_edited=True but unresolved per strategy."""
+    out.append("--- Patch-but-true-fail rate (scoreable gold_edited=True, score_status=true_fail) ---")
     targets = {"budgetflow_full_tight", "budgetflow_full_loose",
                "budget_only_tight", "budget_only_loose",
                "stage_blind_tight", "stage_blind_loose", "all_pro"}
     for strat in sorted(targets):
         tasks = [t for t in lines if t.get("strategy") == strat]
         gold_hit = sum(1 for t in tasks if t.get("agent_gold_edited"))
-        gold_fail = sum(1 for t in tasks if t.get("agent_gold_edited") and not t.get("harness_resolved"))
+        gold_fail = sum(1 for t in tasks if t.get("agent_gold_edited") and _is_true_fail(t))
         gold_win = gold_hit - gold_fail
         label = DISPLAY_NAMES.get(strat, strat)
         if gold_hit:
@@ -114,7 +133,7 @@ def _append_discordant_tasks(
     out.append("--- Discordant tasks (bo != bf) ---")
 
     def _resolved_map(task_list):
-        return {t["instance_id"]: t.get("harness_resolved", False) for t in task_list}
+        return {t["instance_id"]: _is_pass(t) for t in task_list if not _is_abort(t)}
 
     for label, bf, bo in [("loose", bf_L, bo_L), ("tight", bf_T, bo_T)]:
         bf_map = _resolved_map(bf)
@@ -136,7 +155,7 @@ def _append_discordant_tasks(
 
 def analyze(jsonl_path: str) -> str:
     lines = [json.loads(l) for l in Path(jsonl_path).read_text().splitlines() if l.strip()]
-    lines = [r for r in lines if r.get("exit_status") not in ("BadRequestError", "infra_error", "UpstreamExit")]
+    lines = [r for r in lines if not _is_abort(r)]
 
     # Merge old strategy names
     _ALIASES = {"all_spark_tight": "all_t1_tight", "all_spark_loose": "all_t1_loose",
@@ -157,7 +176,7 @@ def analyze(jsonl_path: str) -> str:
     for strat in ordered + remaining:
         tasks = by_strat[strat]
         n = len(tasks)
-        resolved = sum(1 for t in tasks if t.get("harness_resolved"))
+        resolved = sum(1 for t in tasks if _is_pass(t))
         avg_cost = sum(t["total_cost"] for t in tasks) / n / COST_SCALE if n else 0
         cost_per = sum(t["total_cost"] for t in tasks) / max(1, resolved) / COST_SCALE
         label = DISPLAY_NAMES.get(strat, strat)
@@ -166,8 +185,10 @@ def analyze(jsonl_path: str) -> str:
     out.append("")
 
     def show(n1, g1, n2, g2):
-        r1 = sum(1 for t in g1 if t.get("harness_resolved"))
-        r2 = sum(1 for t in g2 if t.get("harness_resolved"))
+        g1 = [t for t in g1 if not _is_abort(t)]
+        g2 = [t for t in g2 if not _is_abort(t)]
+        r1 = sum(1 for t in g1 if _is_pass(t))
+        r2 = sum(1 for t in g2 if _is_pass(t))
         c1 = sum(t["total_cost"] for t in g1) / COST_SCALE
         c2 = sum(t["total_cost"] for t in g2) / COST_SCALE
         n1n, n2n = len(g1), len(g2)
