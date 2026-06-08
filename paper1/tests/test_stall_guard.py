@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from collections import deque
+from pathlib import Path
+import subprocess
 
 from budgetflow.adapter.stall_guard import (
+    check_post_patch_stop,
     check_stagnation,
     no_progress_limit,
     normalize_bash_command,
@@ -37,3 +40,54 @@ def test_check_stagnation_no_progress() -> None:
     )
     assert stop is True
     assert reason == "stagnation_no_progress"
+
+
+def test_post_patch_stop_only_for_verified_stable_budgetflow_patch() -> None:
+    assert check_post_patch_stop(
+        strategy="budgetflow_value_aware",
+        patch_digest="abc123",
+        patch_stable_steps=4,
+        agent_pytest="pass",
+    ) == (True, "post_patch_verified_stable")
+
+    assert check_post_patch_stop(
+        strategy="budgetflow_value_aware",
+        patch_digest="abc123",
+        patch_stable_steps=4,
+        agent_pytest="fail",
+    ) == (False, "")
+    assert check_post_patch_stop(
+        strategy="budgetflow_value_aware",
+        patch_digest="abc123",
+        patch_stable_steps=1,
+        agent_pytest="pass",
+    ) == (False, "")
+    assert check_post_patch_stop(
+        strategy="budget_only",
+        patch_digest="abc123",
+        patch_stable_steps=4,
+        agent_pytest="pass",
+    ) == (False, "")
+
+
+def test_git_diff_digest_tracks_stable_patch(tmp_path: Path) -> None:
+    from budgetflow.run_trace import git_diff_digest
+
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    target = tmp_path / "x.py"
+    target.write_text("a = 1\n")
+    subprocess.run(["git", "add", "x.py"], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-c", "user.email=a@b.c", "-c", "user.name=t", "commit", "-m", "init"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
+
+    target.write_text("a = 2\n")
+    first = git_diff_digest(tmp_path, changed_files=["x.py"])
+    assert first
+    assert git_diff_digest(tmp_path, changed_files=["x.py"]) == first
+
+    target.write_text("a = 3\n")
+    assert git_diff_digest(tmp_path, changed_files=["x.py"]) != first

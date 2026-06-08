@@ -6,6 +6,17 @@ from collections import deque
 
 from ..defaults import STAGNATION_NO_PROGRESS_STEPS, STAGNATION_REPEAT_CMD_LIMIT
 
+POST_PATCH_STABLE_PASS_STEPS = 4
+_POST_PATCH_STOP_STRATEGIES = frozenset(
+    {
+        "budgetflow_full",
+        "budgetflow_conservative",
+        "budgetflow_value_aware",
+        "budgetflow_equal_weight",
+        "stage_blind",
+    }
+)
+
 
 def normalize_bash_command(command: str | None) -> str:
     return " ".join((command or "").split())
@@ -39,3 +50,27 @@ def check_stagnation(
     if no_progress_streak >= limit:
         return True, "stagnation_no_progress", None
     return False, "", None
+
+
+def check_post_patch_stop(
+    *,
+    strategy: str,
+    patch_digest: str | None,
+    patch_stable_steps: int,
+    agent_pytest: str | None,
+    stable_pass_limit: int = POST_PATCH_STABLE_PASS_STEPS,
+) -> tuple[bool, str]:
+    """Stop BudgetFlow-only spend after a verified patch stops changing.
+
+    This is deliberately narrower than generic post-patch stopping: failed
+    validation still needs repair runway, and budget baselines remain unchanged.
+    """
+    if strategy not in _POST_PATCH_STOP_STRATEGIES:
+        return False, ""
+    if not patch_digest:
+        return False, ""
+    if agent_pytest != "pass":
+        return False, ""
+    if patch_stable_steps < stable_pass_limit:
+        return False, ""
+    return True, "post_patch_verified_stable"

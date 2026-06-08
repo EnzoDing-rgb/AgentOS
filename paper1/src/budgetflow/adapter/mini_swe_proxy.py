@@ -41,7 +41,7 @@ from .bash_stage import (
     extract_touched_file_paths, extract_trace_file_paths,
 )
 from .action_parsing import format_error_stop_after, parse_text_actions, parse_tool_actions
-from .stall_guard import check_stagnation, normalize_bash_command
+from .stall_guard import check_post_patch_stop, check_stagnation, normalize_bash_command
 from .message_utils import estimate_input_tokens, extract_bash_context
 from .protocol_adapter import ActionProtocolAdapter
 from .strategies import RoutingContext, choose_backend, stage_weight
@@ -185,6 +185,9 @@ class BudgetFlowLitellmModel:
         self.last_backend_name: str = "-"
         self.agent_phase: str | None = None
         self.agent_gold_edited: bool = False
+        self.agent_pytest: str | None = None
+        self.agent_patch_digest: str | None = None
+        self.agent_patch_stable_steps: int = 0
         self.last_exit_reason: str | None = None
         self.last_budget_snapshot: dict[str, float] | None = None
         self._enable_turn_trace: bool = enable_turn_trace
@@ -204,6 +207,25 @@ class BudgetFlowLitellmModel:
 
     def query(self, messages: list[dict[str, str]], **kwargs) -> dict:
         self.step_index += 1
+        should_stop_patch, post_patch_reason = check_post_patch_stop(
+            strategy=self.routing.strategy,
+            patch_digest=self.agent_patch_digest,
+            patch_stable_steps=self.agent_patch_stable_steps,
+            agent_pytest=self.agent_pytest,
+        )
+        if should_stop_patch:
+            print(
+                f"{tag('stop', bold=False)} #{self.step_index} "
+                f"reason={post_patch_reason} stable={self.agent_patch_stable_steps} "
+                f"pytest={self.agent_pytest}",
+                flush=True,
+            )
+            raise BudgetFlowStagnationError(
+                self.workflow_id,
+                exit_reason=post_patch_reason,
+                step_index=self.step_index,
+                no_progress_streak=self.agent_patch_stable_steps,
+            )
         bash_command, observation = extract_bash_context(messages)
         stage = classify_routing_stage(bash_command, observation, agent_phase=self.agent_phase)
         input_tokens = estimate_input_tokens(messages)

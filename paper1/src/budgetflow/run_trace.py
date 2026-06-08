@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import hashlib
 import subprocess
 import sys
 import time
@@ -120,6 +121,31 @@ def git_changed_files(repo_dir: Path, *, timeout_s: int = 8) -> list[str]:
         return []
 
 
+def git_diff_digest(
+    repo_dir: Path,
+    *,
+    changed_files: list[str],
+    ignore_paths: frozenset[str] | set[str] = frozenset(),
+    timeout_s: int = 8,
+) -> str | None:
+    paths = [f for f in changed_files if f not in ignore_paths]
+    if not paths:
+        return None
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--no-color", "--", *paths],
+            cwd=repo_dir,
+            capture_output=True,
+            text=True,
+            timeout=timeout_s,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+    return hashlib.sha256(result.stdout.encode("utf-8", errors="replace")).hexdigest()
+
+
 def extract_worktree_patch(
     repo_dir: Path,
     *,
@@ -216,6 +242,8 @@ class RunTraceLogger:
         self._submitted = False
         self._attempted_submit = False
         self._last_agent_pytest: str | None = None
+        self._last_patch_digest: str | None = None
+        self._patch_stable_steps = 0
         self._harness_resolved: bool | None = None
         self._harness_detail: str = ""
         self._patch_extracted: bool | None = None
@@ -405,6 +433,18 @@ class RunTraceLogger:
         changed = git_changed_files(self.repo_dir)
         self._last_changed = changed
         agent_changed = [f for f in changed if f not in self.ignore_changed_files]
+        patch_digest = git_diff_digest(
+            self.repo_dir,
+            changed_files=changed,
+            ignore_paths=self.ignore_changed_files,
+        )
+        if patch_digest and patch_digest == self._last_patch_digest:
+            self._patch_stable_steps += 1
+        elif patch_digest:
+            self._patch_stable_steps = 0
+        else:
+            self._patch_stable_steps = 0
+        self._last_patch_digest = patch_digest
         gold_edited = [f for f in agent_changed if f in self.target_files]
         self._gold_files_edited.update(gold_edited)
         observation = _last_observation_summary(messages)
@@ -427,6 +467,8 @@ class RunTraceLogger:
             "backend": route_backend,
             "commands": commands[:6],
             "changed_files": agent_changed[:12],
+            "patch_digest": patch_digest,
+            "patch_stable_steps": self._patch_stable_steps,
             "compat_baseline_files": sorted(self.ignore_changed_files),
             "gold_edited_files": gold_edited,
             "target_files": list(self.target_files),
@@ -489,6 +531,8 @@ class RunTraceLogger:
             "attempted_submit": self._attempted_submit,
             "submitted": self._submitted,
             "agent_pytest": self._last_agent_pytest,
+            "patch_digest": self._last_patch_digest,
+            "patch_stable_steps": self._patch_stable_steps,
         }
 
 
@@ -503,8 +547,20 @@ class TracedDefaultAgent(DefaultAgent):
             self.model.agent_phase = self._trace.last_agent_phase
         if hasattr(self.model, "agent_gold_edited"):
             self.model.agent_gold_edited = bool(self._trace._gold_files_edited)
+        if hasattr(self.model, "agent_pytest"):
+            self.model.agent_pytest = self._trace._last_agent_pytest
+        if hasattr(self.model, "agent_patch_digest"):
+            self.model.agent_patch_digest = self._trace._last_patch_digest
+        if hasattr(self.model, "agent_patch_stable_steps"):
+            self.model.agent_patch_stable_steps = self._trace._patch_stable_steps
         result = super().step()
         self._trace.log_step(self, elapsed_s=time.time() - self._run_started)
         if hasattr(self.model, "agent_gold_edited"):
             self.model.agent_gold_edited = bool(self._trace._gold_files_edited)
+        if hasattr(self.model, "agent_pytest"):
+            self.model.agent_pytest = self._trace._last_agent_pytest
+        if hasattr(self.model, "agent_patch_digest"):
+            self.model.agent_patch_digest = self._trace._last_patch_digest
+        if hasattr(self.model, "agent_patch_stable_steps"):
+            self.model.agent_patch_stable_steps = self._trace._patch_stable_steps
         return result
