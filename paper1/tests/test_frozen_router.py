@@ -101,6 +101,35 @@ class TestFrozenRouterPlan:
         finally:
             tmp.unlink()
 
+    def test_load_requires_explicit_fields(self):
+        from budgetflow.frozen_router import load_frozen_plan
+
+        data = {"meta": {"name": "bad"}, "plan": {"x": {"preferred_model": "tier2", "priority": 1}}}
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(data, f)
+            tmp = Path(f.name)
+        try:
+            with pytest.raises(ValueError, match="missing required fields"):
+                load_frozen_plan(tmp)
+        finally:
+            tmp.unlink()
+
+    def test_load_rejects_non_positive_base_cap(self):
+        from budgetflow.frozen_router import load_frozen_plan
+
+        data = {
+            "meta": {"name": "bad"},
+            "plan": {"x": {"preferred_model": "tier2", "base_cap": 0.0, "priority": 1}},
+        }
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(data, f)
+            tmp = Path(f.name)
+        try:
+            with pytest.raises(ValueError, match="non-positive base_cap"):
+                load_frozen_plan(tmp)
+        finally:
+            tmp.unlink()
+
 
 class TestMechanismStrategiesRegistered:
     def test_all_three_in_catalog(self):

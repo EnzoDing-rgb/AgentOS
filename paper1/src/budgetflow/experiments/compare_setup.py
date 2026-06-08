@@ -131,30 +131,37 @@ def build_batch_budget_modes(
     per_task_cap: float | None,
     auto_budget_task_caps: dict[str, float] | None,
     constrained_budget: float,
+    frozen_task_caps: dict[str, float] | None = None,
 ) -> BatchBudgetModes:
+    _frozen_routings = frozenset({"enterprise_router", "budgetflow_same_router"})
     use_fixed_per_task_cap = per_task_cap is not None and per_task_cap > 0
     use_dynamic_task_caps = auto_budget_task_caps is not None
+    use_frozen_caps = frozen_task_caps is not None
     planned_dynamic_cap = sum(auto_budget_task_caps.values()) if auto_budget_task_caps else None
-    batch_caps: dict[str, float | None] = {
-        s.name: (
-            per_task_cap
-            if use_fixed_per_task_cap
-            else planned_dynamic_cap
-            if use_dynamic_task_caps and s.budgeted
-            else None if not s.budgeted else constrained_budget
-        )
-        for s in strategies
-    }
-    budget_modes: dict[str, str] = {
-        s.name: (
-            "per_task_cap"
-            if use_fixed_per_task_cap and s.budgeted
-            else "dynamic_task_caps"
-            if use_dynamic_task_caps and s.budgeted
-            else "shared"
-        )
-        for s in strategies
-    }
+    planned_frozen_cap = sum(frozen_task_caps.values()) if frozen_task_caps else None
+
+    def _cap_for(s: CompareStrategy) -> float | None:
+        if use_fixed_per_task_cap:
+            return per_task_cap
+        if use_frozen_caps and s.routing in _frozen_routings:
+            return planned_frozen_cap
+        if use_dynamic_task_caps and s.budgeted:
+            return planned_dynamic_cap
+        if not s.budgeted:
+            return None
+        return constrained_budget
+
+    def _mode_for(s: CompareStrategy) -> str:
+        if use_fixed_per_task_cap and s.budgeted:
+            return "per_task_cap"
+        if use_frozen_caps and s.routing in _frozen_routings:
+            return "frozen_router_caps"
+        if use_dynamic_task_caps and s.budgeted:
+            return "dynamic_task_caps"
+        return "shared"
+
+    batch_caps: dict[str, float | None] = {s.name: _cap_for(s) for s in strategies}
+    budget_modes: dict[str, str] = {s.name: _mode_for(s) for s in strategies}
     return BatchBudgetModes(
         batch_caps=batch_caps,
         budget_modes=budget_modes,

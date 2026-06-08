@@ -1,0 +1,39 @@
+{
+  "meta": {
+    "name": "087_familiar_3x4_frozen_router_plan",
+    "created": "2026-06-08",
+    "description": "Pre-registered static enterprise-router plan for the familiar 3x4 mechanism-isolation diagnostic.",
+    "source_class": "human_pre_registered_from_recent_budgetflow_history",
+    "budget_window": "policy_batch",
+    "hard_cap_usd": 0.72,
+    "task_order": [
+      "sympy__sympy-13480",
+      "sympy__sympy-14774",
+      "sympy__sympy-16988",
+      "sympy__sympy-20212"
+    ],
+    "note": "The plan is frozen before execution. It maps each task to a preferred backend and an explanatory base_cap/priority. It does not read runtime progress, shared ledger state, or learning signals."
+  },
+  "plan": {
+    "sympy__sympy-13480": {
+      "preferred_model": "tier2",
+      "base_cap": 0.16,
+      "priority": 2
+    },
+    "sympy__sympy-14774": {
+      "preferred_model": "tier2",
+      "base_cap": 0.14,
+      "priority": 1
+    },
+    "sympy__sympy-16988": {
+      "preferred_model": "tier3",
+      "base_cap": 0.24,
+      "priority": 4
+    },
+    "sympy__sympy-20212": {
+      "preferred_model": "tier2",
+      "base_cap": 0.18,
+      "priority": 3
+    }
+  }
+}

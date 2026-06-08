@@ -278,11 +278,18 @@ def main() -> None:
     checkpoint = CompareCheckpointStore(checkpoint_path, stem=out_stem, total_runs=total_runs)
     # ── Frozen router plan for mechanism isolation ─────────────────────────
     frozen_plan = None
+    frozen_task_caps: dict[str, float] | None = None
+    _frozen_routing_set = frozenset({"enterprise_router", "budgetflow_same_router"})
     if args.frozen_plan:
         frozen_plan = load_frozen_plan(args.frozen_plan)
+        frozen_task_caps = {
+            task.instance_id: entry.base_cap
+            for task in tasks
+            if (entry := frozen_plan.lookup(task.instance_id)) is not None
+        }
         print(
             f"{tag('frozen_plan', bold=False)} loaded '{frozen_plan.name}' "
-            f"with {len(frozen_plan.plan)} task entries",
+            f"with {len(frozen_plan.plan)} task entries, selected_base_caps={len(frozen_task_caps)}",
             flush=True,
         )
 
@@ -291,6 +298,7 @@ def main() -> None:
         per_task_cap=args.per_task_cap,
         auto_budget_task_caps=auto_budget_task_caps,
         constrained_budget=budget_input["hard_cap_usd"],
+        frozen_task_caps=frozen_task_caps,
     )
     batch_caps = budget_modes_plan.batch_caps
     budget_modes = budget_modes_plan.budget_modes
@@ -476,6 +484,9 @@ def main() -> None:
                 last_completed=str(record.get("instance_id", "")),
             )
 
+        _uses_frozen_caps = frozen_task_caps is not None and cfg.routing in _frozen_routing_set
+        _eff_task_caps = frozen_task_caps if _uses_frozen_caps else auto_budget_task_caps
+        _eff_budget_mode = "frozen_router_caps" if _uses_frozen_caps else None
         records, batch_spent = run_strategy_batch(
             cfg,
             batch_tasks,
@@ -500,7 +511,7 @@ def main() -> None:
             enable_turn_trace=args.trace_turns,
             trace_max_turns=args.trace_max_turns,
             trace_truncate_chars=args.trace_truncate_chars,
-            task_caps=auto_budget_task_caps,
+            task_caps=_eff_task_caps,
             budget_estimates=auto_budget_estimates,
             budget_input=budget_input,
             run_series=run_series,
@@ -508,6 +519,7 @@ def main() -> None:
             task_set=args.task_set,
             task_set_kind=task_set_kind,
             frozen_plan=frozen_plan,
+            budget_mode=_eff_budget_mode,
         )
         return cfg, records, batch_spent, batch_cap
 

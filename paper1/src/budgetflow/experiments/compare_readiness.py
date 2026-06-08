@@ -65,6 +65,22 @@ def build_compare_readiness_report(
 
     if not task_ids:
         blocking.append("no tasks selected")
+    missing_test_patch = [task_id for task_id, task in zip(task_ids, tasks) if not getattr(task, "test_patch", None)]
+    missing_fail_to_pass = [task_id for task_id, task in zip(task_ids, tasks) if not getattr(task, "fail_to_pass", ())]
+    if missing_test_patch:
+        preview = ", ".join(missing_test_patch[:8])
+        suffix = "" if len(missing_test_patch) <= 8 else f", ... +{len(missing_test_patch) - 8} more"
+        blocking.append(
+            f"{len(missing_test_patch)} selected tasks lack test_patch; evaluation cannot verify fail-before/fail-after: "
+            f"{preview}{suffix}"
+        )
+    if missing_fail_to_pass:
+        preview = ", ".join(missing_fail_to_pass[:8])
+        suffix = "" if len(missing_fail_to_pass) <= 8 else f", ... +{len(missing_fail_to_pass) - 8} more"
+        blocking.append(
+            f"{len(missing_fail_to_pass)} selected tasks lack fail_to_pass tests; verified value cannot be trusted: "
+            f"{preview}{suffix}"
+        )
     if not strategy_names:
         blocking.append("no strategies selected")
     if len(strategy_names) > 1 and policy_jobs < len(strategy_names):

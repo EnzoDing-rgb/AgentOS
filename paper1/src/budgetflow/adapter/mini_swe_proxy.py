@@ -42,8 +42,10 @@ from .protocol_adapter import ActionProtocolAdapter
 from .strategies import RoutingContext, choose_backend, stage_weight
 from .turn_trace import (
     build_turn_trace,
+    action_trace_fields,
     cost_basis_trace_fields,
     parser_input_snippet,
+    parser_error_trace_fields,
     protocol_trace_fields,
     provider_trace_fields,
     router_trace_fields,
@@ -504,6 +506,7 @@ class BudgetFlowLitellmModel:
             if self._enable_turn_trace:
                 content_head = safe_content_head(response)
                 parser_snippet = parser_input_snippet(response, text_mode)
+                parser_error_fields = parser_error_trace_fields(exc)
                 parser_progress_signal = self._progress_adapter.signal_from_context(
                     bash_command=bash_command,
                     observation=observation,
@@ -550,8 +553,7 @@ class BudgetFlowLitellmModel:
                     assistant_content_head=content_head,
                     tool_call_summary=tool_call_summary(response),
                     parser_input_snippet=parser_snippet,
-                    parser_error_type=type(exc).__name__,
-                    parser_error_message=str(exc)[:500],
+                    **parser_error_fields,
                     reservation_id=reservation_id,
                     reserved_cost=round(actual_cost, 6),
                     reservation_settled=True,
@@ -560,6 +562,7 @@ class BudgetFlowLitellmModel:
         action_progress = self._progress_adapter.signal_from_actions(actions)
         action_has_progress = action_progress.has_progress
         action_progress_reason = action_progress.progress_reason
+        action_fields = action_trace_fields(actions)
         message["extra"] = {
             "actions": actions,
             "response": response.model_dump(),
@@ -602,6 +605,7 @@ class BudgetFlowLitellmModel:
                 progress_reason=progress_reason,
                 action_has_progress=action_has_progress,
                 action_progress_reason=action_progress_reason,
+                **action_fields,
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
                 actual_cost=actual_cost,

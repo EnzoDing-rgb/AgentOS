@@ -1,0 +1,50 @@
+{
+  "meta": {
+    "name": "087_familiar_3x4_manual_value_matrix",
+    "created": "2026-06-08",
+    "task_count": 4,
+    "profiles": ["equal", "manual_value"],
+    "value_source_kind": "pre_registered_manual",
+    "source_class": "human_pre_registered_from_recent_budgetflow_history",
+    "outcome_free_for_this_run": true,
+    "note": "Manual per-task value weights registered before the mechanism-isolation run. Values reflect the team's prior familiarity from recent SWE-bench/Gold Pass work, not outcomes from the upcoming run."
+  },
+  "tasks": {
+    "sympy__sympy-13480": {
+      "instance_id": "sympy__sympy-13480",
+      "repo": "sympy/sympy",
+      "values": {
+        "equal": 1.0,
+        "manual_value": 1.0
+      },
+      "rationale": "Familiar low-to-medium value SymPy fix; useful calibration task but not the highest-value target."
+    },
+    "sympy__sympy-14774": {
+      "instance_id": "sympy__sympy-14774",
+      "repo": "sympy/sympy",
+      "values": {
+        "equal": 1.0,
+        "manual_value": 0.8
+      },
+      "rationale": "Familiar lower-value task; good sanity check but less important than the harder/high-value tasks."
+    },
+    "sympy__sympy-16988": {
+      "instance_id": "sympy__sympy-16988",
+      "repo": "sympy/sympy",
+      "values": {
+        "equal": 1.0,
+        "manual_value": 2.0
+      },
+      "rationale": "Known high-value/harder task from repeated recent diagnostics; should receive the highest priority."
+    },
+    "sympy__sympy-20212": {
+      "instance_id": "sympy__sympy-20212",
+      "repo": "sympy/sympy",
+      "values": {
+        "equal": 1.0,
+        "manual_value": 1.3
+      },
+      "rationale": "Familiar but somewhat more delicate SymPy semantics task; higher than routine sanity tasks, below 16988."
+    }
+  }
+}

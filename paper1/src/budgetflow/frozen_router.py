@@ -44,14 +44,28 @@ def load_frozen_plan(path: str | Path) -> FrozenRouterPlan:
     meta = raw.get("meta", {})
     name = str(meta.get("name", Path(path).stem))
     plan_data = raw.get("plan", raw.get("tasks", {}))
+    if not isinstance(plan_data, dict) or not plan_data:
+        raise ValueError("frozen router plan must contain a non-empty 'plan' object")
     plan: dict[str, FrozenPlanEntry] = {}
     for instance_id, entry in plan_data.items():
         if not isinstance(entry, dict):
-            continue
+            raise ValueError(f"frozen plan entry {instance_id!r} must be an object")
+        missing = [field for field in ("preferred_model", "base_cap", "priority") if field not in entry]
+        if missing:
+            raise ValueError(f"frozen plan entry {instance_id!r} missing required fields: {missing}")
+        base_cap = float(entry["base_cap"])
+        priority = int(entry["priority"])
+        preferred_model = str(entry["preferred_model"])
+        if not preferred_model:
+            raise ValueError(f"frozen plan entry {instance_id!r} has empty preferred_model")
+        if base_cap <= 0:
+            raise ValueError(f"frozen plan entry {instance_id!r} has non-positive base_cap={base_cap}")
+        if priority < 0:
+            raise ValueError(f"frozen plan entry {instance_id!r} has negative priority={priority}")
         plan[instance_id] = FrozenPlanEntry(
             instance_id=instance_id,
-            preferred_model=str(entry.get("preferred_model", "tier2")),
-            base_cap=float(entry.get("base_cap", 0.5)),
-            priority=int(entry.get("priority", 1)),
+            preferred_model=preferred_model,
+            base_cap=base_cap,
+            priority=priority,
         )
     return FrozenRouterPlan(name=name, plan=plan)

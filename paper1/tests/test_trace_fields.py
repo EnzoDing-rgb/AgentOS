@@ -44,6 +44,8 @@ def test_turn_trace_has_fields_needed_to_debug_value_routing_and_provider_failur
         progress_reason="repair_pattern",
         action_has_progress=True,
         action_progress_reason="action_repair_pattern",
+        action_digest="python - <<'PY'\nfrom pathlib import Path\nPath('src/file.py').write_text('x')\nPY",
+        action_touched_file_paths=["src/file.py"],
         prompt_tokens=100,
         completion_tokens=50,
         actual_cost=0.02,
@@ -76,6 +78,8 @@ def test_turn_trace_has_fields_needed_to_debug_value_routing_and_provider_failur
     assert trace["segment_signals"]["agent_phase"] == "edit_gold"
     assert trace["progress_state"] == "progress"
     assert trace["action_progress_state"] == "progress"
+    assert "Path('src/file.py')" in trace["action_digest"]
+    assert trace["action_touched_file_paths"] == ["src/file.py"]
     assert trace["touched_file_paths"] == ["src/file.py"]
     assert trace["provider"] == "openai_compatible"
     assert trace["cost_estimate_source"] == "tier_catalog:test"
@@ -160,6 +164,37 @@ def test_cost_basis_trace_fields_use_cost_adapter_contract() -> None:
     assert fields["cost_estimate_usd"] > 0
     assert fields["cost_input_per_1m"] > 0
     assert fields["cost_output_per_1m"] > 0
+
+
+def test_action_trace_fields_capture_current_text_regex_action() -> None:
+    from budgetflow.adapter.turn_trace import action_trace_fields
+
+    command = """cd /work && python - <<'PY'
+from pathlib import Path
+Path("sympy/functions/elementary/hyperbolic.py").write_text("fixed")
+PY"""
+
+    fields = action_trace_fields([{"command": command}])
+
+    assert fields["action_digest"].startswith("cd /work")
+    assert fields["action_touched_file_paths"] == ["sympy/functions/elementary/hyperbolic.py"]
+
+
+def test_parser_error_trace_fields_extracts_format_error_action_count() -> None:
+    from minisweagent.exceptions import FormatError
+    from budgetflow.adapter.turn_trace import parser_error_trace_fields
+
+    exc = FormatError({
+        "role": "user",
+        "content": "",
+        "extra": {"n_actions": 0, "model_response": "THOUGHT only"},
+    })
+
+    fields = parser_error_trace_fields(exc)
+
+    assert fields["parser_error_type"] == "FormatError"
+    assert fields["parser_error_message"] == "Expected exactly 1 action, found 0."
+    assert fields["parser_error_action_count"] == 0
 
 
 @pytest.mark.parametrize(

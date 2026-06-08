@@ -41,6 +41,18 @@ def test_real_repair_command_counts_as_progress_even_without_phase():
     ) == (True, "repair_pattern")
 
 
+def test_python_file_write_counts_as_repair_progress():
+    command = """cd /work && python - <<'PY'
+from pathlib import Path
+path = Path("sympy/functions/elementary/hyperbolic.py")
+text = path.read_text()
+path.write_text(text.replace("cotm", "cothm"))
+PY"""
+
+    assert bash_has_progress(command) == (True, "repair_pattern")
+    assert actions_count_as_progress([{"command": command}]) == (True, "action_repair_pattern")
+
+
 def test_validation_phase_counts_as_progress_for_stop_loss():
     assert command_counts_as_progress(
         "",

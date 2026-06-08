@@ -66,6 +66,30 @@ def _check_trace_coverage(records: list[dict]) -> list[str]:
             inst = rec.get("instance_id", "?")
             strat = rec.get("strategy", "?")
             issues.append(f"NO_TRACE row {i}: {inst} {strat} — turn_trace_count={trace_count}")
+            continue
+        traces = rec.get("turn_traces") or []
+        if not isinstance(traces, list):
+            issues.append(f"BAD_TRACE row {i}: {rec.get('instance_id', '?')} {rec.get('strategy', '?')} — turn_traces is not a list")
+            continue
+        for j, trace in enumerate(traces):
+            if not isinstance(trace, dict):
+                continue
+            if trace.get("response_ok") is not True:
+                continue
+            if trace.get("parser_error_type"):
+                if not trace.get("parser_error_message") and trace.get("parser_error_action_count") is None:
+                    issues.append(
+                        f"PARSER_ERROR_OPAQUE row {i} trace {j}: {rec.get('instance_id', '?')} "
+                        f"{rec.get('strategy', '?')} — parser error lacks message/action count"
+                    )
+                continue
+            protocol = str(trace.get("protocol") or "")
+            action_state = str(trace.get("action_progress_state") or "")
+            if protocol == "text_regex" and action_state in {"progress", "no_progress"} and not trace.get("action_digest"):
+                issues.append(
+                    f"ACTION_TRACE_MISSING row {i} trace {j}: {rec.get('instance_id', '?')} "
+                    f"{rec.get('strategy', '?')} — text action parsed but current action_digest missing"
+                )
     return issues
 
 

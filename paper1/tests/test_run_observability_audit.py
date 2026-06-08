@@ -227,6 +227,7 @@ def test_compact_audit_uses_current_action_progress_for_t3_productivity() -> Non
                     "progress_reason": "none",
                     "action_has_progress": True,
                     "action_progress_reason": "action_repair_pattern",
+                    "action_digest": "apply_patch <<'PATCH'",
                     "billable_cost": 0.03,
                     "strongest_starter_applied": True,
                 },
@@ -239,6 +240,23 @@ def test_compact_audit_uses_current_action_progress_for_t3_productivity() -> Non
     assert stats["t3_productive_turns"] == 1
     assert stats["t3_no_progress_turns"] == 0
     assert stats["t3_no_progress_cost"] == 0.0
+
+
+def test_checker_flags_text_action_trace_missing_current_action_digest(tmp_path) -> None:
+    path = tmp_path / "run.jsonl"
+    path.write_text(
+        '{"instance_id":"task-a","strategy":"budgetflow_same_router","routing":"budgetflow_same_router",'
+        '"harness_resolved":false,"exit_status":"failed","exit_reason":"stagnation","total_cost":0.1,'
+        '"llm_turns":1,"elapsed_s":1,"detail":"test_patch=ok; fail_before=fail; model_patch=ok; fail_after=fail; pass_to_pass=pass",'
+        '"turn_trace_count":1,"run_series":"unit","policy_lane":"budgetflow_same_router","task_order_index":0,'
+        '"row_started_at":1,"row_finished_at":2,"harness_evidence":{"evidence_complete":true},'
+        '"observability_status":{},'
+        '"turn_traces":[{"response_ok":true,"protocol":"text_regex","action_progress_state":"no_progress"}]}\n'
+    )
+
+    result = check_jsonl(path)
+
+    assert any("ACTION_TRACE_MISSING" in issue for issue in result["issues"])
 
 
 def test_compact_audit_does_not_count_unknown_progress_as_no_progress() -> None:

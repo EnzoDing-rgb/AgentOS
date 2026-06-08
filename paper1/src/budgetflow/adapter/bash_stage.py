@@ -36,6 +36,12 @@ _REPAIR_PATTERNS = (
     r"\bcp\s+",
     r"\bmv\s+",
 )
+_PYTHON_WRITE_PATTERNS = (
+    r"\.write_text\s*\(",
+    r"\.write_bytes\s*\(",
+    r"\.open\s*\([^)]*[\"']w",
+    r"\bopen\s*\([^)]*,\s*[\"'][wa]",
+)
 _VALIDATION_PATTERNS = (
     r"\bpytest\b",
     r"python -m pytest",
@@ -152,6 +158,11 @@ def bash_has_progress(bash_command: str | None) -> tuple[bool, str]:
         return False, "none"
     haystack = command.lower()
     if any(re.search(pattern, haystack, flags=re.IGNORECASE) for pattern in _REPAIR_PATTERNS):
+        return True, "repair_pattern"
+    if (
+        re.search(r"\bpython(?:\s+-|3?\b)", haystack)
+        and any(re.search(pattern, command, flags=re.IGNORECASE) for pattern in _PYTHON_WRITE_PATTERNS)
+    ):
         return True, "repair_pattern"
     if any(re.search(pattern, haystack, flags=re.IGNORECASE) for pattern in _VALIDATION_PATTERNS):
         return True, "validation_pattern"

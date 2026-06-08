@@ -44,6 +44,9 @@ def truncate_turn_traces(
         digest = trace.get("bash_digest")
         if isinstance(digest, str) and len(digest) > max_chars:
             trace["bash_digest"] = digest[:max_chars]
+        action_digest = trace.get("action_digest")
+        if isinstance(action_digest, str) and len(action_digest) > max_chars:
+            trace["action_digest"] = action_digest[:max_chars]
     return trimmed
 
 
@@ -257,6 +260,7 @@ def run_strategy_batch(
     task_set: str = "",
     task_set_kind: str = "",
     frozen_plan: FrozenRouterPlan | None = None,
+    budget_mode: str | None = None,
 ) -> tuple[list[dict], float]:
     def log(msg: str) -> None:
         if print_lock:
@@ -389,9 +393,12 @@ def run_strategy_batch(
                 budget_input=budget_input,
                 run_series=run_series,
                 policy_lane=cfg.name,
-                budget_mode="dynamic_task_caps" if task_caps is not None and task_cap is not None
-                else "per_task_cap" if task_cap is not None
-                else "shared",
+                budget_mode=budget_mode
+                or (
+                    "dynamic_task_caps" if task_caps is not None and task_cap is not None
+                    else "per_task_cap" if task_cap is not None
+                    else "shared"
+                ),
                 per_task_cap=task_cap,
                 task_set=task_set,
                 task_set_kind=task_set_kind,

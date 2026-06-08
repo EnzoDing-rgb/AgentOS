@@ -4,6 +4,7 @@ import json
 from typing import Any
 
 from ..adapters import SwebenchCostAdapter
+from .bash_stage import extract_trace_file_paths
 from ..model_tiers import MODEL_CATALOG, tier_confidence, token_cost_rates
 from .protocol_adapter import ActionProtocolAdapter
 
@@ -47,6 +48,8 @@ def build_turn_trace(
     error_type: str | None,
     action_has_progress: bool | None = None,
     action_progress_reason: str | None = None,
+    action_digest: str | None = None,
+    action_touched_file_paths: list[str] | None = None,
     provider: str | None = None,
     model: str | None = None,
     cost_source: str | None = None,
@@ -70,6 +73,7 @@ def build_turn_trace(
     parser_input_snippet: str | None = None,
     parser_error_type: str | None = None,
     parser_error_message: str | None = None,
+    parser_error_action_count: int | None = None,
     provider_status_code: int | None = None,
     provider_error_body: str | None = None,
     provider_request_id: str | None = None,
@@ -126,6 +130,8 @@ def build_turn_trace(
         "action_has_progress": action_has_progress,
         "action_progress_state": progress_state(action_has_progress),
         "action_progress_reason": action_progress_reason,
+        "action_digest": (action_digest or "")[:300],
+        "action_touched_file_paths": action_touched_file_paths or [],
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
         "actual_cost": round(actual_cost, 6),
@@ -155,6 +161,7 @@ def build_turn_trace(
         "parser_input_snippet": parser_input_snippet,
         "parser_error_type": parser_error_type,
         "parser_error_message": parser_error_message,
+        "parser_error_action_count": parser_error_action_count,
         "provider_status_code": provider_status_code,
         "provider_error_body": provider_error_body,
         "provider_request_id": provider_request_id,
@@ -334,3 +341,47 @@ def parser_input_snippet(response, text_mode: bool) -> str | None:
         return json.dumps(summary)
     except Exception:
         return str(summary)
+
+
+def action_trace_fields(actions: list[dict] | tuple[dict, ...] | None, *, max_chars: int = 300) -> dict:
+    commands: list[str] = []
+    for action in actions or []:
+        if not isinstance(action, dict):
+            continue
+        command = action.get("command")
+        if isinstance(command, str) and command.strip():
+            commands.append(command.strip())
+    digest = "\n\n".join(commands)
+    return {
+        "action_digest": digest[:max_chars],
+        "action_touched_file_paths": extract_trace_file_paths(bash_command=digest),
+    }
+
+
+def parser_error_trace_fields(exc: Exception) -> dict:
+    payload = exc.args[0] if getattr(exc, "args", None) else None
+    if payload is None:
+        messages = getattr(exc, "messages", None)
+        if isinstance(messages, (list, tuple)) and messages:
+            payload = messages[0]
+    message = str(exc)
+    action_count = None
+    if isinstance(payload, dict):
+        extra = payload.get("extra") or {}
+        if isinstance(extra, dict):
+            raw_count = extra.get("n_actions")
+            if raw_count is not None:
+                try:
+                    action_count = int(raw_count)
+                except (TypeError, ValueError):
+                    action_count = None
+        content = payload.get("content")
+        if not message and isinstance(content, str):
+            message = content
+    if not message and action_count is not None:
+        message = f"Expected exactly 1 action, found {action_count}."
+    return {
+        "parser_error_type": type(exc).__name__,
+        "parser_error_message": message[:500],
+        "parser_error_action_count": action_count,
+    }

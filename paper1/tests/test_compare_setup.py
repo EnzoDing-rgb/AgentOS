@@ -109,3 +109,49 @@ def test_batch_budget_modes_distinguish_dynamic_caps() -> None:
     assert modes.budget_modes["budgetflow_full"] == "dynamic_task_caps"
     assert modes.batch_caps["all_pro"] is None
     assert modes.budget_modes["all_pro"] == "shared"
+
+
+def test_batch_budget_modes_frozen_router_caps_for_mechanism_strategies() -> None:
+    """enterprise_router and budgetflow_same_router get frozen_router_caps mode."""
+    strategies = (
+        CompareStrategy("enterprise_router_baseline", "enterprise_router"),
+        CompareStrategy("budgetflow_same_router", "budgetflow_same_router"),
+        CompareStrategy("bare_strong_model", "bare_strong"),
+    )
+    frozen_caps = {"task-a": 0.25, "task-b": 0.50}
+    modes = build_batch_budget_modes(
+        strategies=strategies,
+        per_task_cap=None,
+        auto_budget_task_caps=None,
+        constrained_budget=1.0,
+        frozen_task_caps=frozen_caps,
+    )
+
+    assert modes.budget_modes["enterprise_router_baseline"] == "frozen_router_caps"
+    assert modes.budget_modes["budgetflow_same_router"] == "frozen_router_caps"
+    assert modes.budget_modes["bare_strong_model"] == "shared"
+    assert modes.batch_caps["enterprise_router_baseline"] == pytest.approx(0.75)
+    assert modes.batch_caps["budgetflow_same_router"] == pytest.approx(0.75)
+    assert modes.batch_caps["bare_strong_model"] == pytest.approx(1.0)
+
+
+def test_batch_budget_modes_frozen_caps_override_dynamic_caps() -> None:
+    """frozen_task_caps take priority over auto_budget_task_caps for mechanism strategies."""
+    strategies = (
+        CompareStrategy("enterprise_router_baseline", "enterprise_router"),
+        CompareStrategy("budgetflow_full", "budgetflow_value_aware"),
+    )
+    frozen_caps = {"task-a": 0.25}
+    auto_caps = {"task-a": 0.99}
+    modes = build_batch_budget_modes(
+        strategies=strategies,
+        per_task_cap=None,
+        auto_budget_task_caps=auto_caps,
+        constrained_budget=1.0,
+        frozen_task_caps=frozen_caps,
+    )
+
+    assert modes.budget_modes["enterprise_router_baseline"] == "frozen_router_caps"
+    assert modes.budget_modes["budgetflow_full"] == "dynamic_task_caps"
+    assert modes.batch_caps["enterprise_router_baseline"] == pytest.approx(0.25)
+    assert modes.batch_caps["budgetflow_full"] == pytest.approx(0.99)
