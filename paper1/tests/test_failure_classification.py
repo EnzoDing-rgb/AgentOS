@@ -316,3 +316,26 @@ def test_stagnation_without_patch_is_localization_fail_not_extract_fail() -> Non
     }
 
     assert classify_failure(rec) == "loc_fail"
+
+
+def test_post_patch_verified_stable_is_model_validation_not_budget_or_infra() -> None:
+    rec = {
+        "harness_resolved": False,
+        "exit_status": "StagnationExit",
+        "exit_reason": "post_patch_verified_stable",
+        "routing": "budgetflow_value_aware",
+        "patch_extracted": True,
+        "agent_gold_edited": True,
+        "agent_attempted_submit": False,
+        "agent_submitted": False,
+        "detail": "test_patch=ok; fail_before=fail; model_patch=ok; fail_after=fail; pass_to_pass=pass",
+        "turn_trace_count": 5,
+        "turn_traces": [{"patch_stable_steps": 4, "agent_pytest": "pass"}],
+    }
+
+    assert classify_failure(rec) == "repair_fail"
+    verdict = build_verdict(rec)
+    assert verdict["verdict_axis"] == "model_fail"
+    assert verdict["failure_owner"] == "model"
+    assert verdict["failure_stage"] == "validation"
+    assert verdict["failure_subtype"] == "validation_model_fail"
