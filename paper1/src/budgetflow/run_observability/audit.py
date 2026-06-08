@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from collections import Counter
 
-from budgetflow.failure_classification import build_verdict, classify_failure
+from budgetflow.failure_classification import (
+    build_verdict,
+    classify_failure,
+    is_score_abort,
+    is_score_pass,
+    is_score_true_fail,
+)
 from budgetflow.model_tiers import MODEL_CATALOG, parse_tier_label
 from budgetflow.observability import build_harness_trust
 
@@ -338,13 +344,18 @@ def _task_set_metrics(records: list[dict]) -> dict[str, dict[str, dict[str, dict
         for task_set, by_strategy in by_set.items():
             result[kind][task_set] = {}
             for strategy, rows in by_strategy.items():
-                cost = sum(float(row.get("total_cost") or 0.0) for row in rows)
-                resolved_value = sum(float(row.get("resolved_value") or 0.0) for row in rows)
-                task_value = sum(float(row.get("task_value") or 1.0) for row in rows)
+                scoreable_rows = [row for row in rows if not is_score_abort(row)]
+                cost = sum(float(row.get("total_cost") or 0.0) for row in scoreable_rows)
+                abort_cost = sum(float(row.get("total_cost") or 0.0) for row in rows if is_score_abort(row))
+                resolved_value = sum(float(row.get("resolved_value") or 0.0) for row in scoreable_rows)
+                task_value = sum(float(row.get("task_value") or 1.0) for row in scoreable_rows)
                 result[kind][task_set][strategy] = {
                     "rows": len(rows),
-                    "pass": sum(1 for row in rows if row.get("harness_resolved")),
+                    "pass": sum(1 for row in rows if is_score_pass(row)),
+                    "true_fail": sum(1 for row in rows if is_score_true_fail(row)),
+                    "abort": sum(1 for row in rows if is_score_abort(row)),
                     "cost": cost,
+                    "abort_cost": abort_cost,
                     "yield_score": resolved_value,
                     "yield_coverage": resolved_value / task_value if task_value > 0 else 0.0,
                     "yield_per_dollar": resolved_value / cost if cost > 0 else 0.0,
@@ -464,7 +475,8 @@ def _per_task_comparison(records: list[dict], t3_tier: int) -> list[dict]:
         by_task[iid][strat] = {
             "instance_id": iid,
             "strategy": strat,
-            "resolved": bool(record.get("harness_resolved")),
+            "resolved": is_score_pass(record),
+            "score_status": str(record.get("score_status") or ""),
             "cost": float(record.get("total_cost") or 0),
             "task_value": float(record.get("task_value") or 1.0),
             "yield_score": float(record.get("resolved_value") or 0.0),
@@ -520,9 +532,12 @@ def build_compact_audit(records: list[dict]) -> dict:
     Returns a dict suitable for format_compact_audit().
     """
     total = len(records)
-    resolved = sum(1 for r in records if r.get("harness_resolved"))
-    failed = total - resolved
+    resolved = sum(1 for r in records if is_score_pass(r))
+    failed = sum(1 for r in records if is_score_true_fail(r))
+    aborted = sum(1 for r in records if is_score_abort(r))
     total_cost = sum(float(r.get("total_cost") or 0) for r in records)
+    scoreable_cost = sum(float(r.get("total_cost") or 0) for r in records if not is_score_abort(r))
+    abort_cost = total_cost - scoreable_cost
     verdicts = {id(r): build_verdict(r) for r in records}
     t3_tier = _t3_id(records)
     t3_stats = _t3_productivity(records, t3_tier)
@@ -551,27 +566,33 @@ def build_compact_audit(records: list[dict]) -> dict:
         strat = str(r.get("strategy", "unknown"))
         if strat not in by_strategy:
             by_strategy[strat] = {
-                "total": 0, "pass": 0, "fail": 0,
-                "cost": 0.0, "turns": 0, "tier_turns": {},
+                "total": 0, "pass": 0, "fail": 0, "abort": 0,
+                "cost": 0.0, "abort_cost": 0.0, "turns": 0, "tier_turns": {},
                 "resolved_value": 0.0, "task_value": 0.0,
                 "suspicious": 0, "no_trace": 0,
                 "tasks": set(),
             }
         s = by_strategy[strat]
         s["total"] += 1
-        s["cost"] += float(r.get("total_cost") or 0)
-        s["resolved_value"] += float(r.get("resolved_value") or 0.0)
-        s["task_value"] += float(r.get("task_value") or 1.0)
+        row_cost = float(r.get("total_cost") or 0)
+        if is_score_abort(r):
+            s["abort_cost"] += row_cost
+        else:
+            s["cost"] += row_cost
+            s["resolved_value"] += float(r.get("resolved_value") or 0.0)
+            s["task_value"] += float(r.get("task_value") or 1.0)
         turns = int(r.get("llm_turns") or 0)
         s["turns"] += turns
         picks = r.get("backend_picks") or []
         for tier, count in _tier_counts(picks).items():
             s["tier_turns"][tier] = s["tier_turns"].get(tier, 0) + count
         s["tasks"].add(r.get("instance_id", "?"))
-        if r.get("harness_resolved"):
+        if is_score_pass(r):
             s["pass"] += 1
-        else:
+        elif is_score_true_fail(r):
             s["fail"] += 1
+        else:
+            s["abort"] += 1
         if r.get("harness_resolved") and not (r.get("harness_evidence") or {}).get("evidence_complete", False):
             s["suspicious"] += 1
         if int(r.get("turn_trace_count") or 0) <= 0:
@@ -585,14 +606,16 @@ def build_compact_audit(records: list[dict]) -> dict:
     common_stats: dict[str, dict] = {}
     for strat, s in by_strategy.items():
         ct_recs = [r for r in records if r.get("strategy") == strat and r.get("instance_id") in common_tasks]
-        ct_cost = sum(float(r.get("total_cost") or 0) for r in ct_recs)
-        ct_pass = sum(1 for r in ct_recs if r.get("harness_resolved"))
+        ct_cost = sum(float(r.get("total_cost") or 0) for r in ct_recs if not is_score_abort(r))
+        ct_pass = sum(1 for r in ct_recs if is_score_pass(r))
+        ct_fail = sum(1 for r in ct_recs if is_score_true_fail(r))
+        ct_abort = sum(1 for r in ct_recs if is_score_abort(r))
         ct_tiers: dict[int, int] = {}
         for r in ct_recs:
             for tier, count in _tier_counts(r.get("backend_picks") or []).items():
                 ct_tiers[tier] = ct_tiers.get(tier, 0) + count
         common_stats[strat] = {
-            "tasks": len(ct_recs), "pass": ct_pass,
+            "tasks": len(ct_recs), "pass": ct_pass, "fail": ct_fail, "abort": ct_abort,
             "cost": ct_cost, "tier_turns": dict(sorted(ct_tiers.items())),
             "t2": ct_tiers.get(2, 0), "t3": ct_tiers.get(3, 0),
         }
@@ -600,17 +623,17 @@ def build_compact_audit(records: list[dict]) -> dict:
     # Failure axis / class counts
     fail_classes = Counter(
         classify_failure(r)
-        for r in records if not r.get("harness_resolved")
+        for r in records if is_score_true_fail(r)
     )
     fail_exits = Counter(
         str(r.get("exit_status") or "unknown")
-        for r in records if not r.get("harness_resolved")
+        for r in records if is_score_true_fail(r)
     )
 
     # Failure subtypes (020)
     fail_subtypes = Counter(
         str(verdicts[id(r)].get("failure_subtype") or "unknown")
-        for r in records if not r.get("harness_resolved")
+        for r in records if is_score_true_fail(r)
     )
     stored_verdict_mismatches = 0
     for r in records:
@@ -644,7 +667,7 @@ def build_compact_audit(records: list[dict]) -> dict:
     # StagnationExit PASS rate
     stag_pass = sum(
         1 for r in records
-        if r.get("harness_resolved") and str(r.get("exit_status") or "").startswith("Stagnation")
+        if is_score_pass(r) and str(r.get("exit_status") or "").startswith("Stagnation")
     )
 
     # Failure owner / verdict axis counts
@@ -676,7 +699,8 @@ def build_compact_audit(records: list[dict]) -> dict:
     strategy_metrics = {
         strat: {
             "total": s["total"], "pass": s["pass"], "fail": s["fail"],
-            "cost": s["cost"], "avg_turns": s["turns"] / max(s["total"], 1),
+            "cost": s["cost"], "abort_cost": s["abort_cost"],
+            "avg_turns": s["turns"] / max(s["total"], 1),
             "resolved_value": s["resolved_value"],
             "total_task_value": s["task_value"],
             "yield_score": s["resolved_value"],
@@ -692,6 +716,7 @@ def build_compact_audit(records: list[dict]) -> dict:
             "t3_turns": s["tier_turns"].get(3, 0),
             "t3_share": s["tier_turns"].get(3, 0) / max(sum(s["tier_turns"].values()), 1),
             "suspicious": s["suspicious"], "no_trace": s["no_trace"],
+            "abort": s["abort"],
         }
         for strat, s in by_strategy.items()
     }
@@ -700,7 +725,10 @@ def build_compact_audit(records: list[dict]) -> dict:
         "total": total,
         "pass": resolved,
         "fail": failed,
+        "abort": aborted,
         "total_cost": total_cost,
+        "scoreable_cost": scoreable_cost,
+        "abort_cost": abort_cost,
         "suspicious": suspicious,
         "no_trace": no_trace,
         "stagnation_pass": stag_pass,

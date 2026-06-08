@@ -13,6 +13,7 @@ REQUIRED_FIELDS = frozenset({
     "run_series", "policy_lane", "task_order_index",
     "row_started_at", "row_finished_at",
     "harness_evidence", "observability_status",
+    "score_status", "scoreable",
 })
 
 OPTIONAL_BUT_DESIRED = frozenset({
@@ -20,6 +21,7 @@ OPTIONAL_BUT_DESIRED = frozenset({
     "submitted_patch", "attempt_id",
     "frozen_plan_name", "frozen_plan_preferred_model",
     "frozen_plan_base_cap", "frozen_plan_priority",
+    "abort_reason", "abort_owner", "abort_stage", "true_fail_reason",
 })
 
 
@@ -132,6 +134,23 @@ def _check_observability_schema(records: list[dict]) -> list[str]:
             issues.append(
                 f"BUDGET_MODE_MISSING row {i}: {inst} {strat} — "
                 "cannot distinguish shared-cap from per-task-cap semantics"
+            )
+        score_status = str(rec.get("score_status") or "")
+        if score_status not in {"pass", "true_fail", "abort"}:
+            issues.append(
+                f"SCORE_STATUS_INVALID row {i}: {inst} {strat} — score_status={score_status!r}"
+            )
+        if score_status == "abort" and not rec.get("abort_reason"):
+            issues.append(
+                f"ABORT_REASON_MISSING row {i}: {inst} {strat} — abort rows must explain owner/reason"
+            )
+        if score_status == "pass" and not rec.get("harness_resolved"):
+            issues.append(
+                f"SCORE_PASS_MISMATCH row {i}: {inst} {strat} — score_status=pass but harness_resolved=false"
+            )
+        if score_status == "true_fail" and rec.get("harness_resolved"):
+            issues.append(
+                f"SCORE_FAIL_MISMATCH row {i}: {inst} {strat} — score_status=true_fail but harness_resolved=true"
             )
     return issues
 

@@ -15,6 +15,7 @@ def _run_record(**kw) -> dict:
         "strategy": "budgetflow_full",
         "routing": "budgetflow_value_aware",
         "harness_resolved": True,
+        "score_status": "pass",
         "total_cost": 0.1,
         "backend_picks": ["tier2", "tier3"],
         "turn_traces": [{"workflow_segment": "Action", "backend_tier": 3}],
@@ -71,6 +72,7 @@ def test_default_policy_memory_source_skips_old_schema_runs(tmp_path) -> None:
     current_schema = tmp_path / "current_schema.jsonl"
     old_record = _run_record()
     old_record.pop("routing_decision_schema")
+    old_record.pop("score_status")
     _write_jsonl(old_schema, [old_record])
     _write_jsonl(current_schema, [_run_record(instance_id="r__current")])
 
@@ -78,10 +80,20 @@ def test_default_policy_memory_source_skips_old_schema_runs(tmp_path) -> None:
     assert default_policy_memory_source(tmp_path) == current_schema
 
 
+def test_policy_memory_source_requires_score_status_schema(tmp_path) -> None:
+    old_score_schema = tmp_path / "old_score_schema.jsonl"
+    record = _run_record()
+    record.pop("score_status")
+    _write_jsonl(old_score_schema, [record])
+
+    assert looks_like_policy_memory_source(old_score_schema) is False
+
+
 def test_explicit_policy_memory_rejects_old_schema(tmp_path) -> None:
     old_schema = tmp_path / "old_schema.jsonl"
     old_record = _run_record()
     old_record.pop("routing_decision_schema")
+    old_record.pop("score_status")
     _write_jsonl(old_schema, [old_record])
 
     ctx = load_policy_memory_context(

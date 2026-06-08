@@ -25,6 +25,7 @@ from budgetflow.failure_classification import classify_failure
 class CompareRunState:
     summary_lines: list[str]
     resolved_by_strategy: dict[str, list[bool]]
+    score_status_by_strategy: dict[str, list[str]]
     task_cost_by_strategy: dict[str, list[float]]
     batch_spent_by_strategy: dict[str, float]
     turns_by_strategy: dict[str, list[int]]
@@ -39,6 +40,7 @@ class CompareRunState:
         return cls(
             summary_lines=list(header_lines),
             resolved_by_strategy={},
+            score_status_by_strategy={},
             task_cost_by_strategy={},
             batch_spent_by_strategy={},
             turns_by_strategy={},
@@ -53,7 +55,14 @@ class CompareRunState:
         if not name:
             return
         self.runs_done += 1
-        self.resolved_by_strategy.setdefault(name, []).append(bool(record.get("harness_resolved")))
+        score_status = str(record.get("score_status") or "")
+        if not score_status:
+            if record.get("harness_resolved") is True:
+                score_status = "pass"
+            elif record.get("harness_resolved") is False:
+                score_status = "true_fail"
+        self.resolved_by_strategy.setdefault(name, []).append(score_status == "pass")
+        self.score_status_by_strategy.setdefault(name, []).append(score_status)
         self.task_cost_by_strategy.setdefault(name, []).append(float(record.get("total_cost") or 0.0))
         self.turns_by_strategy.setdefault(name, []).append(int(record.get("llm_turns") or 0))
         picks = record.get("backend_picks") or []
@@ -98,6 +107,8 @@ def rebuild_state_from_jsonl(
 def write_auto_budget_memory(memory: AutoBudgetMemory, record: dict[str, Any]) -> None:
     forensic = record.get("forensic_summary") or {}
     features = record.get("auto_budget_features") or record.get("task_features") or {}
+    score_status = str(record.get("score_status") or "")
+    abort_reason = str(record.get("abort_reason") or "")
     mem = AutoBudgetMemory.build_record(
         instance_id=str(record.get("instance_id", "")),
         repo=str(record.get("instance_id", "")).rsplit("__", 1)[0].replace("__", "/"),
@@ -123,6 +134,8 @@ def write_auto_budget_memory(memory: AutoBudgetMemory, record: dict[str, Any]) -
         dominant_tier=str(record.get("dominant_tier") or ""),
         exit_status=str(record.get("exit_status") or ""),
         detail=str(record.get("detail") or ""),
+        score_status=score_status,
+        abort_reason=abort_reason,
     )
     memory.write_record(mem)
 
@@ -154,7 +167,13 @@ def persist_task_record(
             str(auto_budget_memory._path or "") if auto_budget_memory is not None else ""
         )
         record["budget_learning_applied_to_cap"] = bool(record.get("auto_budget_enabled"))
-        if auto_budget_memory is not None and not no_auto_budget_learn:
+        record["budget_learning_skipped_due_to_abort"] = False
+        score_status = str(record.get("score_status") or "")
+        if score_status == "abort":
+            record["budget_learning_skipped_due_to_abort"] = True
+        elif not score_status and record.get("harness_resolved") is False and str(record.get("abort_reason") or ""):
+            record["budget_learning_skipped_due_to_abort"] = True
+        if auto_budget_memory is not None and not no_auto_budget_learn and not record["budget_learning_skipped_due_to_abort"]:
             write_auto_budget_memory(auto_budget_memory, record)
             record["budget_learning_update_written"] = True
 
@@ -246,8 +265,11 @@ def ingest_batch_footer(
             else governor_avail(batch_records)
         )
         state.summary_lines.append(
-            f"=== BATCH END strategy={cfg.name} resolved="
-            f"{sum(1 for r in batch_records if r['harness_resolved'])}/{len(batch_records)} "
+            f"=== BATCH END strategy={cfg.name} "
+            f"pass={sum(1 for r in batch_records if (str(r.get('score_status') or '') == 'pass' or (not r.get('score_status') and r.get('harness_resolved') is True)))} "
+            f"true_fail={sum(1 for r in batch_records if str(r.get('score_status') or '') == 'true_fail')} "
+            f"abort={sum(1 for r in batch_records if str(r.get('score_status') or '') == 'abort')} "
+            f"rows={len(batch_records)} "
             f"batch_spent={_fmt_usd(batch_spent)} batch_avail={_fmt_usd(batch_avail)} ==="
         )
         state.summary_lines.append("")
@@ -301,6 +323,7 @@ def write_summary_snapshot(
         resolved_value_by_strategy=state.resolved_value_by_strategy,
         task_value_by_strategy=state.task_value_by_strategy,
         value_profile=value_profile,
+        score_status_by_strategy=state.score_status_by_strategy,
     )
 
 

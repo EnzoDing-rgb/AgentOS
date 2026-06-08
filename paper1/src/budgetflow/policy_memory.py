@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .defaults import POLICY_REGRET_THRESHOLD
+from .failure_classification import SCOREABLE_STATUSES, is_scoreable
 from .model_tiers import parse_tier_label
 from .types import WorkflowSegment
 
@@ -225,9 +226,13 @@ class PolicyMemory:
         self._repo_starters.clear()
         self._task_starters.clear()
         self._record_count = len(records)
-        self._effective_record_weight = round(sum(_record_weight(record) for record in records), 4)
+        learnable_records = [
+            record for record in records
+            if str(record.get("score_status") or "") in SCOREABLE_STATUSES
+        ]
+        self._effective_record_weight = round(sum(_record_weight(record) for record in learnable_records), 4)
         source_weights: dict[str, float] = defaultdict(float)
-        for record in records:
+        for record in learnable_records:
             source = str(record.get("_policy_memory_source") or "unknown")
             source_weights[source] += _record_weight(record)
         self._source_weight_summary = {source: round(weight, 4) for source, weight in sorted(source_weights.items())}
@@ -235,7 +240,7 @@ class PolicyMemory:
         # Group by repo
         repo_records: dict[str, list[dict]] = defaultdict(list)
         task_records: dict[str, list[dict]] = defaultdict(list)
-        for r in records:
+        for r in learnable_records:
             iid = str(r.get("instance_id") or "")
             if not iid:
                 continue
@@ -644,6 +649,8 @@ class PolicyMemory:
 
     def record_outcome(self, record: dict) -> None:
         """Incrementally update priors after a single task completes."""
+        if not is_scoreable(record):
+            return
         iid = str(record.get("instance_id") or "")
         if not iid:
             return

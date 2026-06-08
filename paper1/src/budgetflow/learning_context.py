@@ -87,6 +87,8 @@ def _record_has_current_memory_schema(record: dict) -> bool:
         return False
     if not isinstance(record.get("learn_policy_input_views"), list):
         return False
+    if str(record.get("score_status") or "") not in {"pass", "true_fail", "abort"}:
+        return False
     return True
 
 

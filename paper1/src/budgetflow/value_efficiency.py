@@ -11,6 +11,8 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from .failure_classification import is_score_abort, is_score_pass, is_score_true_fail
+
 
 @dataclass(frozen=True)
 class ValueSourceInfo:
@@ -111,11 +113,13 @@ class ValueEfficiencyContext:
     def enrich_record(self, record: dict) -> dict:
         """Add value-efficiency observability fields. Mutates and returns."""
         instance_id = str(record.get("instance_id", ""))
-        resolved = bool(record.get("harness_resolved"))
+        resolved = is_score_pass(record)
+        scoreable = not is_score_abort(record)
         task_cost = float(record.get("total_cost") or 0)
         task_value, value_source = self.task_value(instance_id)
         resolved_value = task_value if resolved else 0.0
-        yield_per_dollar = resolved_value / task_cost if task_cost > 0 else 0.0
+        scoreable_cost = task_cost if scoreable else 0.0
+        yield_per_dollar = resolved_value / scoreable_cost if scoreable_cost > 0 else 0.0
 
         routing = str(record.get("routing", ""))
         va_active = routing in {"budgetflow_value_aware", "value_aware_task_level", "budgetflow_same_router"}
@@ -127,6 +131,7 @@ class ValueEfficiencyContext:
         record["task_value_primary_t1"] = self.is_primary_value_evidence
         record["task_value"] = task_value
         record["resolved_value"] = resolved_value
+        record["scoreable_cost"] = scoreable_cost
         record["value_source"] = value_source
         record["value_matrix_artifact"] = self.matrix_path
         record["yield_per_dollar"] = round(yield_per_dollar, 6)
@@ -145,14 +150,21 @@ class ValueEfficiencyContext:
         return record
 
     def summary_for_strategy(self, records: list[dict]) -> dict:
-        resolved_count = sum(1 for r in records if r.get("harness_resolved"))
-        total_cost = sum(float(r.get("total_cost") or 0) for r in records)
-        resolved_value = sum(float(r.get("resolved_value") or 0) for r in records)
-        total_task_value = sum(float(r.get("task_value") or 1.0) for r in records)
+        resolved_count = sum(1 for r in records if is_score_pass(r))
+        true_fail_count = sum(1 for r in records if is_score_true_fail(r))
+        abort_count = sum(1 for r in records if is_score_abort(r))
+        total_cost = sum(float(r.get("scoreable_cost", r.get("total_cost") or 0)) for r in records if not is_score_abort(r))
+        abort_cost = sum(float(r.get("total_cost") or 0) for r in records if is_score_abort(r))
+        resolved_value = sum(float(r.get("resolved_value") or 0) for r in records if not is_score_abort(r))
+        total_task_value = sum(float(r.get("task_value") or 1.0) for r in records if not is_score_abort(r))
         yield_per_dollar = resolved_value / total_cost if total_cost > 0 else 0.0
         yield_coverage = resolved_value / total_task_value if total_task_value > 0 else 0.0
         return {
             "resolved_count": resolved_count,
+            "true_fail_count": true_fail_count,
+            "abort_count": abort_count,
+            "abort_cost": round(abort_cost, 6),
+            "scoreable_count": resolved_count + true_fail_count,
             "total_cost": round(total_cost, 6),
             "resolved_value": round(resolved_value, 6),
             "total_task_value": round(total_task_value, 6),

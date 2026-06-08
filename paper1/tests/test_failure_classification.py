@@ -3,6 +3,7 @@ from __future__ import annotations
 from budgetflow.failure_classification import (
     _is_conservation_lockout,
     build_forensic_summary,
+    build_score_status,
     build_verdict,
     classify_failure,
 )
@@ -339,3 +340,98 @@ def test_post_patch_verified_stable_is_model_validation_not_budget_or_infra() ->
     assert verdict["failure_owner"] == "model"
     assert verdict["failure_stage"] == "validation"
     assert verdict["failure_subtype"] == "validation_model_fail"
+
+
+def test_score_status_pass_requires_trusted_evidence() -> None:
+    rec = {
+        "harness_resolved": True,
+        "patch_extracted": True,
+        "patch_source": "submission",
+        "submitted_patch": "/tmp/patch.diff",
+        "agent_gold_edited": True,
+        "agent_gold_files": ["sympy/core/basic.py"],
+        "detail": "test_patch=ok; fail_before=fail; model_patch=ok; fail_after=pass; pass_to_pass=pass",
+        "turn_trace_count": 1,
+    }
+
+    score = build_score_status(rec)
+
+    assert score["score_status"] == "pass"
+    assert score["scoreable"] is True
+
+
+def test_score_status_true_fail_for_clean_validation_failure() -> None:
+    rec = {
+        "harness_resolved": False,
+        "patch_extracted": True,
+        "patch_source": "submission",
+        "submitted_patch": "/tmp/patch.diff",
+        "agent_gold_edited": True,
+        "detail": "test_patch=ok; fail_before=fail; model_patch=ok; fail_after=fail; pass_to_pass=pass",
+        "turn_trace_count": 3,
+        "turn_traces": [{"backend_tier": 2}],
+    }
+
+    score = build_score_status(rec)
+
+    assert score["score_status"] == "true_fail"
+    assert score["scoreable"] is True
+    assert score["true_fail_reason"] == "model_fail"
+
+
+def test_score_status_abort_for_provider_failure() -> None:
+    rec = {
+        "harness_resolved": False,
+        "patch_extracted": False,
+        "agent_gold_edited": False,
+        "exit_status": "ServiceUnavailableError",
+        "exit_reason": "ServiceUnavailableError",
+        "detail": "",
+        "turn_trace_count": 1,
+        "turn_traces": [{"error_type": "ServiceUnavailableError"}],
+    }
+
+    score = build_score_status(rec)
+
+    assert score["score_status"] == "abort"
+    assert score["scoreable"] is False
+    assert score["abort_owner"] == "infra"
+    assert score["abort_reason"] == "provider_or_infra_error"
+
+
+def test_score_status_abort_for_protocol_failure() -> None:
+    rec = {
+        "harness_resolved": False,
+        "patch_extracted": False,
+        "agent_gold_edited": False,
+        "exit_status": "FormatError",
+        "exit_reason": "format_error_no_actions",
+        "detail": "no model patch extracted",
+        "turn_trace_count": 1,
+    }
+
+    score = build_score_status(rec)
+
+    assert score["score_status"] == "abort"
+    assert score["abort_owner"] == "protocol"
+    assert score["abort_stage"] == "extraction"
+
+
+def test_score_status_budget_exhaustion_with_trace_is_true_fail() -> None:
+    rec = {
+        "harness_resolved": False,
+        "patch_extracted": True,
+        "patch_source": "submission",
+        "submitted_patch": "/tmp/patch.diff",
+        "agent_gold_edited": True,
+        "exit_status": "BudgetFlowBudgetError",
+        "exit_reason": "budget_exhausted",
+        "detail": "test_patch=ok; fail_before=fail; model_patch=ok; fail_after=fail; pass_to_pass=pass",
+        "turn_trace_count": 4,
+        "turn_traces": [{"backend_tier": 3}],
+    }
+
+    score = build_score_status(rec)
+
+    assert score["score_status"] == "true_fail"
+    assert score["true_fail_reason"] == "budget_fail"

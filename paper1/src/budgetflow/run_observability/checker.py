@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from budgetflow.observability import heartbeat_is_stale, load_heartbeat
+from budgetflow.failure_classification import is_score_abort, is_score_pass, is_score_true_fail
 
 from .audit import build_compact_audit
 from .checks import (
@@ -60,7 +61,9 @@ def check_jsonl(jsonl_path: Path, heartbeat_stale_s: float = 600.0) -> dict:
     all_issues.extend(_check_value_profile_fallback(records))
     all_issues.extend(_check_policy_parallel(records))
 
-    resolved = sum(1 for r in records if r.get("harness_resolved"))
+    resolved = sum(1 for r in records if is_score_pass(r))
+    true_fail = sum(1 for r in records if is_score_true_fail(r))
+    abort = sum(1 for r in records if is_score_abort(r))
     suspicious = sum(
         1 for r in records
         if r.get("harness_resolved") and not (r.get("harness_evidence") or {}).get("evidence_complete", False)
@@ -72,12 +75,17 @@ def check_jsonl(jsonl_path: Path, heartbeat_stale_s: float = 600.0) -> dict:
     for r in records:
         strat = str(r.get("strategy", "unknown"))
         if strat not in by_strategy:
-            by_strategy[strat] = {"total": 0, "pass": 0, "fail": 0, "no_trace": 0, "suspicious_pass": 0}
+            by_strategy[strat] = {
+                "total": 0, "pass": 0, "fail": 0, "abort": 0,
+                "no_trace": 0, "suspicious_pass": 0,
+            }
         by_strategy[strat]["total"] += 1
-        if r.get("harness_resolved"):
+        if is_score_pass(r):
             by_strategy[strat]["pass"] += 1
-        else:
+        elif is_score_true_fail(r):
             by_strategy[strat]["fail"] += 1
+        else:
+            by_strategy[strat]["abort"] += 1
         if int(r.get("turn_trace_count") or 0) <= 0:
             by_strategy[strat]["no_trace"] += 1
         if r.get("harness_resolved") and not (r.get("harness_evidence") or {}).get("evidence_complete", False):
@@ -184,14 +192,16 @@ def check_jsonl(jsonl_path: Path, heartbeat_stale_s: float = 600.0) -> dict:
         "HARNESS_INVALID", "STALE_VERDICT_FIELDS",
         "HEARTBEAT_DEAD_PID", "HEARTBEAT_STUCK",
         "CROSS_SERIES_DUPLICATE", "PARTIAL_RUN", "SHARED_CAP_STARVATION",
-        "VALUE_FALLBACK", "SEQUENTIAL_POLICY",
+        "VALUE_FALLBACK", "SEQUENTIAL_POLICY", "SCORE_STATUS_INVALID",
+        "ABORT_REASON_MISSING", "SCORE_PASS_MISMATCH", "SCORE_FAIL_MISMATCH",
     )))
     warn_count = len(all_issues) - error_count
 
     return {
         "records": len(records),
         "resolved": resolved,
-        "failed": len(records) - resolved,
+        "failed": true_fail,
+        "aborted": abort,
         "suspicious_passes": suspicious,
         "no_trace_rows": no_trace,
         "errors": error_count,

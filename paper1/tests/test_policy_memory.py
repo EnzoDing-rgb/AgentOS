@@ -20,6 +20,7 @@ def _record(**overrides) -> dict:
         "strategy": "budgetflow_full",
         "routing": "budgetflow_value_aware",
         "harness_resolved": False,
+        "score_status": "true_fail",
         "failure_class": "repair_fail",
         "total_cost": 0.10,
         "backend_picks": ["tier2", "tier2"],
@@ -38,6 +39,7 @@ def _record(**overrides) -> dict:
 def _pass_record(**overrides) -> dict:
     return _record(
         harness_resolved=True,
+        score_status="pass",
         failure_class="pass",
         backend_picks=["tier2"],
         turn_traces=[{"workflow_segment": "Context", "backend_tier": 2, "has_progress": True}],
@@ -80,6 +82,36 @@ def test_policy_memory_rebuilds_task_repo_and_routing_priors() -> None:
     assert summary["repo_t2_success"] >= 0.0
     assert "learned_action" in summary
     assert "regret_threshold" in summary
+
+
+def test_policy_memory_ignores_abort_records() -> None:
+    memory = PolicyMemory()
+    memory.rebuild_from_records([
+        _record(
+            instance_id="sympy__sympy-abort",
+            score_status="abort",
+            abort_reason="provider_or_infra_error",
+            failure_class="infra_fail",
+            total_cost=0.40,
+        ),
+    ])
+
+    assert memory.task_prior("sympy__sympy-abort").seen == 0
+    assert memory.repo_prior("sympy__sympy-abort").evidence_weight == 0.0
+
+    memory.rebuild_from_records([
+        _record(
+            instance_id="sympy__sympy-abort",
+            score_status="abort",
+            abort_reason="provider_or_infra_error",
+            failure_class="infra_fail",
+            total_cost=0.40,
+        ),
+        _pass_record(instance_id="sympy__sympy-pass", total_cost=0.10),
+    ])
+
+    assert memory.task_prior("sympy__sympy-pass").seen == 1
+    assert memory.repo_prior("sympy__sympy-pass").evidence_weight == 1.0
 
 
 def test_policy_memory_preserves_generic_tier_evidence() -> None:

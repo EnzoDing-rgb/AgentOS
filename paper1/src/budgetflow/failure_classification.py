@@ -5,7 +5,12 @@ from typing import Any
 
 from .harness_contamination import has_host_dependency_contamination
 from .model_tiers import MODEL_CATALOG, parse_tier_label
-from .observability import parse_harness_evidence
+from .observability import build_harness_trust, parse_harness_evidence
+
+SCORE_PASS = "pass"
+SCORE_TRUE_FAIL = "true_fail"
+SCORE_ABORT = "abort"
+SCOREABLE_STATUSES = frozenset({SCORE_PASS, SCORE_TRUE_FAIL})
 
 
 _INFRA_STATUSES = {
@@ -109,6 +114,120 @@ def _turn_error_types(record: dict[str, Any]) -> set[str]:
         if error:
             errors.add(str(error))
     return errors
+
+
+def score_status(record: dict[str, Any]) -> str:
+    status = str(record.get("score_status") or "")
+    if status in (SCORE_PASS, SCORE_TRUE_FAIL, SCORE_ABORT):
+        return status
+    if record.get("harness_resolved") in (True, "True", "true"):
+        return SCORE_PASS
+    return SCORE_TRUE_FAIL
+
+
+def is_score_pass(record: dict[str, Any]) -> bool:
+    return score_status(record) == SCORE_PASS
+
+
+def is_score_true_fail(record: dict[str, Any]) -> bool:
+    return score_status(record) == SCORE_TRUE_FAIL
+
+
+def is_score_abort(record: dict[str, Any]) -> bool:
+    return score_status(record) == SCORE_ABORT
+
+
+def is_scoreable(record: dict[str, Any]) -> bool:
+    return score_status(record) in SCOREABLE_STATUSES
+
+
+def build_score_status(record: dict[str, Any]) -> dict[str, Any]:
+    """Classify whether a row is scoreable evidence.
+
+    Raw harness FAIL means only "not resolved". This converts it into either a
+    true strategy/model failure or an abort caused by infra/protocol/harness
+    evidence gaps. Paper metrics and learning should consume score_status, not
+    harness_resolved directly.
+    """
+    resolved = record.get("harness_resolved") in (True, "True", "true")
+    verdict = build_verdict(record)
+    axis = str(verdict.get("verdict_axis") or "")
+    owner = str(verdict.get("failure_owner") or "")
+    stage = str(verdict.get("failure_stage") or "")
+    status = str(record.get("exit_status") or "")
+    reason = str(record.get("exit_reason") or "")
+    errors = _turn_error_types(record)
+    detail = str(record.get("detail") or "")
+    trust = build_harness_trust(record)
+    trust_level = str(trust.get("harness_trust") or "")
+    severity = str(trust.get("severity") or "")
+
+    if resolved:
+        if (
+            axis == "pass"
+            and bool(verdict.get("evidence_complete"))
+            and trust_level not in {"invalid", "suspicious"}
+            and severity != "blocking"
+        ):
+            return {
+                "score_status": SCORE_PASS,
+                "scoreable": True,
+                "abort_reason": "",
+                "abort_owner": "",
+                "abort_stage": "",
+                "true_fail_reason": "",
+            }
+        return {
+            "score_status": SCORE_ABORT,
+            "scoreable": False,
+            "abort_reason": "untrusted_pass_evidence",
+            "abort_owner": owner if owner != "none" else str(trust.get("harness_owner") or "harness"),
+            "abort_stage": stage if stage != "none" else "harness",
+            "true_fail_reason": "",
+        }
+
+    abort_reason = ""
+    abort_owner = owner
+    abort_stage = stage
+    if has_host_dependency_contamination(detail):
+        abort_reason = "host_dependency_contamination"
+        abort_owner = "infra"
+        abort_stage = "runtime"
+    elif _is_provider_unavailable(status, reason, errors) or axis == "infra_fail":
+        abort_reason = "provider_or_infra_error"
+        abort_owner = "infra"
+        abort_stage = "runtime"
+    elif axis == "protocol_fail":
+        abort_reason = "protocol_or_parser_error"
+        abort_owner = "protocol"
+        abort_stage = "extraction"
+    elif axis == "harness_fail" or (severity == "blocking" and trust_level in {"invalid", "incomplete"}):
+        abort_reason = "untrusted_harness_evidence"
+        abort_owner = str(trust.get("harness_owner") or "harness")
+        abort_stage = stage if stage else "harness"
+    elif int(record.get("turn_trace_count") or 0) <= 0:
+        abort_reason = "missing_turn_trace"
+        abort_owner = "infra"
+        abort_stage = "runtime"
+
+    if abort_reason:
+        return {
+            "score_status": SCORE_ABORT,
+            "scoreable": False,
+            "abort_reason": abort_reason,
+            "abort_owner": abort_owner or "infra",
+            "abort_stage": abort_stage or "runtime",
+            "true_fail_reason": "",
+        }
+
+    return {
+        "score_status": SCORE_TRUE_FAIL,
+        "scoreable": True,
+        "abort_reason": "",
+        "abort_owner": "",
+        "abort_stage": "",
+        "true_fail_reason": axis or classify_failure(record),
+    }
 
 
 def _failure_chain(record: dict[str, Any], harness: dict[str, str]) -> list[str]:

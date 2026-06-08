@@ -17,6 +17,7 @@ from .defaults import (
     ADAPTIVE_WINDOW,
     PRESSURE_MAX,
 )
+from .failure_classification import is_scoreable
 from .learn_policy import LearnPolicyInputs
 from .types import WorkflowSegment
 
@@ -169,6 +170,8 @@ class AdaptiveRoutingState:
         )
 
     def record_task(self, record: dict) -> None:
+        if not is_scoreable(record):
+            return
         self._recent.append(record)
         if not record.get("harness_resolved"):
             segment = _classify_weak_segment(record)

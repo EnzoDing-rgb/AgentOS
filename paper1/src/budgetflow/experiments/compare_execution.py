@@ -23,7 +23,12 @@ from budgetflow.experiments.compare_config import (
     workspace_key,
 )
 from budgetflow.experiments.compare_summary import _print_run_done
-from budgetflow.failure_classification import build_forensic_summary, build_verdict, classify_failure
+from budgetflow.failure_classification import (
+    build_forensic_summary,
+    build_score_status,
+    build_verdict,
+    classify_failure,
+)
 from budgetflow.governor import BudgetGovernor, GovernorConfig
 from budgetflow.heartbeat import run_with_heartbeat
 from budgetflow.ledger import WorkflowLedgerStore
@@ -212,6 +217,7 @@ def run_task_record(
     record["failure_subtype"] = verdict.get("failure_subtype", "")
     record["evidence_complete"] = verdict["evidence_complete"]
     record["missing_evidence"] = verdict["missing_evidence"]
+    record.update(build_score_status(record))
 
     if budget_estimate is not None:
         record["auto_budget_enabled"] = True

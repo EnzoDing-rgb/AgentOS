@@ -140,6 +140,38 @@ def test_summary_reports_primary_fixed_budget_value_metric() -> None:
     assert summary["task_value_primary_t1"] is False
 
 
+def test_abort_rows_are_reported_but_excluded_from_paper_metrics() -> None:
+    ctx = ValueEfficiencyContext()
+    ctx.init(value_profile="equal")
+
+    pass_record = ctx.enrich_record({
+        "instance_id": "task-a",
+        "routing": "budgetflow_same_router",
+        "harness_resolved": True,
+        "score_status": "pass",
+        "total_cost": 0.25,
+    })
+    abort_record = ctx.enrich_record({
+        "instance_id": "task-b",
+        "routing": "budgetflow_same_router",
+        "harness_resolved": False,
+        "score_status": "abort",
+        "abort_reason": "provider_or_infra_error",
+        "total_cost": 0.75,
+    })
+
+    summary = ctx.summary_for_strategy([pass_record, abort_record])
+
+    assert abort_record["resolved_value"] == 0.0
+    assert abort_record["scoreable_cost"] == 0.0
+    assert summary["resolved_count"] == 1
+    assert summary["true_fail_count"] == 0
+    assert summary["abort_count"] == 1
+    assert summary["total_cost"] == 0.25
+    assert summary["abort_cost"] == 0.75
+    assert summary["yield_per_dollar"] == 4.0
+
+
 def test_missing_non_equal_task_fails_fast(tmp_path) -> None:
     matrix = tmp_path / "value_matrix.json"
     matrix.write_text(json.dumps({"tasks": {"x": {"values": {"difficulty": 0.1}}}}))

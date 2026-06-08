@@ -17,6 +17,7 @@ def _state() -> CompareRunState:
     return CompareRunState(
         summary_lines=[],
         resolved_by_strategy={},
+        score_status_by_strategy={},
         task_cost_by_strategy={},
         batch_spent_by_strategy={},
         turns_by_strategy={},
@@ -39,6 +40,8 @@ def _record(**overrides) -> dict:
         "strategy": "budgetflow_full",
         "routing": "budgetflow_value_aware",
         "harness_resolved": True,
+        "score_status": "pass",
+        "abort_reason": "",
         "patch_extracted": True,
         "agent_gold_edited": True,
         "agent_gold_files": ["sympy/printing/latex.py"],
@@ -230,10 +233,48 @@ def test_persisted_jsonl_contains_t1_t2_observability_and_learning_memory(tmp_pa
     assert learned[0]["run_id"] == "schema_contract_budgetflow_full_sympy__sympy-14774"
 
 
+def test_abort_records_skip_auto_budget_memory(tmp_path) -> None:
+    out_path = tmp_path / "out.jsonl"
+    memory_path = tmp_path / "learning.jsonl"
+    memory = AutoBudgetMemory(memory_path)
+    ctx = _value_context()
+    record = _record(score_status="abort", abort_reason="provider_or_infra_error", harness_resolved=False)
+
+    with out_path.open("w") as handle:
+        persist_task_record(
+            _state(),
+            record,
+            handle=handle,
+            io_lock=threading.Lock(),
+            total_runs=1,
+            tasks_per_strategy=1,
+            global_progress=GlobalRunProgress(1),
+            scoreboard=None,
+            summary_path=tmp_path / "summary.log",
+            strategy_names=["budgetflow_full"],
+            batch_caps={"budgetflow_full": 0.5},
+            budget_modes={"budgetflow_full": "per_task_cap"},
+            started=0.0,
+            out_path=out_path,
+            value_profile="equal",
+            enrich_value=ctx.enrich_record,
+            auto_budget_memory=memory,
+            no_auto_budget_learn=False,
+        )
+
+    persisted = json.loads(out_path.read_text().splitlines()[0])
+    assert persisted["score_status"] == "abort"
+    assert persisted["abort_reason"] == "provider_or_infra_error"
+    assert persisted["budget_learning_update_written"] is False
+    assert persisted["budget_learning_skipped_due_to_abort"] is True
+    assert AutoBudgetMemory(memory_path).records == []
+
+
 def test_budget_summary_reports_planned_cap_not_provider_runtime_balance() -> None:
     lines = _format_strategy_totals(
         strategy_names=["budgetflow_full"],
         resolved_by_strategy={"budgetflow_full": [True, False]},
+        score_status_by_strategy={"budgetflow_full": ["pass", "true_fail"]},
         task_cost_by_strategy={"budgetflow_full": [0.2, 0.3]},
         batch_spent_by_strategy={"budgetflow_full": 0.5},
         turns_by_strategy={"budgetflow_full": [3, 7]},
@@ -254,6 +295,7 @@ def test_value_summary_reports_primary_normalized_value_metric(tmp_path) -> None
     lines = _format_live_snapshot(
         strategy_names=["budgetflow_full"],
         resolved_by_strategy={"budgetflow_full": [True, False]},
+        score_status_by_strategy={"budgetflow_full": ["pass", "abort"]},
         task_cost_by_strategy={"budgetflow_full": [0.2, 0.1]},
         turns_by_strategy={"budgetflow_full": [4, 3]},
         tier_mix_by_strategy={"budgetflow_full": [{2: 1.0}, {5: 1.0}]},
@@ -274,4 +316,5 @@ def test_value_summary_reports_primary_normalized_value_metric(tmp_path) -> None
     assert "Yield" in text
     assert "Yield/$" in text
     assert "0.60" in text
-    assert "2.00" in text
+    assert "3.00" in text
+    assert "abort=1" in text

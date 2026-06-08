@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Protocol
 
+from .failure_classification import is_score_abort
 from .model_tiers import catalog_revision
 
 # Difficulty bucket thresholds.
@@ -125,15 +126,20 @@ class AutoBudgetMemory:
         dominant_tier: str = "",
         exit_status: str = "",
         detail: str = "",
+        score_status: str = "",
+        abort_reason: str = "",
     ) -> dict:
-        cap_was_sufficient = _classify_cap_sufficiency(
-            resolved=resolved,
-            harness_resolved=harness_resolved,
-            exit_status=exit_status,
-            failure_class=failure_class,
-            patch_extracted=patch_extracted,
-            agent_gold_edited=agent_gold_edited,
-        )
+        if score_status == "abort":
+            cap_was_sufficient = "exclude_abort"
+        else:
+            cap_was_sufficient = _classify_cap_sufficiency(
+                resolved=resolved,
+                harness_resolved=harness_resolved,
+                exit_status=exit_status,
+                failure_class=failure_class,
+                patch_extracted=patch_extracted,
+                agent_gold_edited=agent_gold_edited,
+            )
         return {
             "instance_id": instance_id,
             "repo": repo,
@@ -143,6 +149,8 @@ class AutoBudgetMemory:
             "resolved": resolved,
             "harness_resolved": harness_resolved,
             "failure_class": failure_class,
+            "score_status": score_status,
+            "abort_reason": abort_reason,
             "forensic_primary_axis": forensic_primary_axis,
             "total_cost": total_cost,
             "estimated_task_cap": estimated_task_cap,

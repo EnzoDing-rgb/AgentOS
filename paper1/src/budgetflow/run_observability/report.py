@@ -22,8 +22,15 @@ def format_compact_audit(audit: dict) -> str:
     lines = []
     banner = "=" * 64
     lines.append(banner)
-    lines.append(f"COMPACT AUDIT  |  rows={audit['total']}  pass={audit['pass']}  fail={audit['fail']}  "
-                 f"cost=${audit['total_cost']:.2f}")
+    lines.append(
+        f"COMPACT AUDIT  |  rows={audit['total']}  pass={audit['pass']}  "
+        f"true_fail={audit['fail']}  abort={audit.get('abort', 0)}  cost=${audit['total_cost']:.2f}"
+    )
+    if audit.get("abort"):
+        lines.append(
+            f"  scoreable_cost=${audit.get('scoreable_cost', 0.0):.2f}  "
+            f"abort_cost=${audit.get('abort_cost', 0.0):.2f}"
+        )
     lines.append(f"  suspicious_pass={audit['suspicious']}  no_trace={audit['no_trace']}  "
                  f"stagnation_pass={audit['stagnation_pass']}")
     lines.append(f"  invoice_accurate={audit['invoice_accurate']}  "
@@ -37,12 +44,12 @@ def format_compact_audit(audit: dict) -> str:
 
     # Per strategy
     lines.append(banner)
-    lines.append(f"{'strategy':<26} {'rows':>4} {'P':>2} {'F':>2} {'cost':>8} {'t/task':>6} {'tiers':>18} {'susp':>4}")
+    lines.append(f"{'strategy':<26} {'rows':>4} {'P':>2} {'F':>2} {'A':>2} {'cost':>8} {'t/task':>6} {'tiers':>18} {'susp':>4}")
     lines.append("-" * 64)
     for strat in sorted(audit["by_strategy"]):
         s = audit["by_strategy"][strat]
         lines.append(
-            f"{strat:<26} {s['total']:>4} {s['pass']:>2} {s['fail']:>2} "
+            f"{strat:<26} {s['total']:>4} {s['pass']:>2} {s['fail']:>2} {s.get('abort', 0):>2} "
             f"${s['cost']:>7.2f} {s['avg_turns']:>5.0f} "
             f"{_format_tier_turns(s.get('tier_turns') or {}):>18} {s['suspicious']:>4}"
         )
@@ -50,7 +57,7 @@ def format_compact_audit(audit: dict) -> str:
     if any("yield_score" in s for s in audit["by_strategy"].values()):
         lines.append(banner)
         lines.append("PAPER METRICS")
-        lines.append(f"{'strategy':<26} {'res_value':>9} {'task_value':>10} {'Yield':>7} {'coverage':>8} {'Yield/$':>9}")
+        lines.append(f"{'strategy':<26} {'res_value':>9} {'task_value':>10} {'Yield':>7} {'coverage':>8} {'Yield/$':>9} {'abort$':>8}")
         lines.append("-" * 64)
         for strat in sorted(audit["by_strategy"]):
             s = audit["by_strategy"][strat]
@@ -59,13 +66,14 @@ def format_compact_audit(audit: dict) -> str:
                 f"{s.get('total_task_value', 0.0):>10.2f} "
                 f"{s.get('yield_score', 0.0):>7.2f} "
                 f"{s.get('yield_coverage', 0.0):>8.2f} "
-                f"{s.get('yield_per_dollar', 0.0):>9.2f}"
+                f"{s.get('yield_per_dollar', 0.0):>9.2f} "
+                f"${s.get('abort_cost', 0.0):>7.2f}"
             )
 
     if audit.get("task_set_metrics"):
         lines.append(banner)
         lines.append("TASK SET METRICS")
-        lines.append(f"{'kind':<10} {'task_set':<14} {'strategy':<26} {'rows':>5} {'P':>3} {'cost':>8} {'Yield':>7} {'Yield/$':>9}")
+        lines.append(f"{'kind':<10} {'task_set':<14} {'strategy':<26} {'rows':>5} {'P':>3} {'F':>3} {'A':>3} {'cost':>8} {'Yield':>7} {'Yield/$':>9}")
         lines.append("-" * 104)
         for kind in sorted(audit["task_set_metrics"]):
             for task_set in sorted(audit["task_set_metrics"][kind]):
@@ -73,6 +81,7 @@ def format_compact_audit(audit: dict) -> str:
                     s = audit["task_set_metrics"][kind][task_set][strategy]
                     lines.append(
                         f"{kind:<10} {task_set:<14} {strategy:<26} {s['rows']:>5} {s['pass']:>3} "
+                        f"{s.get('true_fail', 0):>3} {s.get('abort', 0):>3} "
                         f"${s['cost']:>7.2f} {s['yield_score']:>7.2f} {s['yield_per_dollar']:>9.2f}"
                     )
 
@@ -80,12 +89,12 @@ def format_compact_audit(audit: dict) -> str:
     if audit["common_task_count"] > 0:
         lines.append(banner)
         lines.append(f"COMMON-TASK POLICY COMPARISON ({audit['common_task_count']} tasks shared across all strategies)")
-        lines.append(f"{'strategy':<26} {'tasks':>5} {'P':>3} {'cost':>8} {'tiers':>18}")
+        lines.append(f"{'strategy':<26} {'tasks':>5} {'P':>3} {'F':>3} {'A':>3} {'cost':>8} {'tiers':>18}")
         lines.append("-" * 64)
         for strat in sorted(audit["common_stats"]):
             cs = audit["common_stats"][strat]
             lines.append(
-                f"{strat:<26} {cs['tasks']:>5} {cs['pass']:>3} "
+                f"{strat:<26} {cs['tasks']:>5} {cs['pass']:>3} {cs.get('fail', 0):>3} {cs.get('abort', 0):>3} "
                 f"${cs['cost']:>7.2f} {_format_tier_turns(cs.get('tier_turns') or {}):>18}"
             )
 
@@ -201,7 +210,7 @@ def format_compact_audit(audit: dict) -> str:
         lines.append(banner)
         lines.append("PER-TASK POLICY COMPARISON")
         lines.append(
-            f"{'instance_id':<30} {'strategy':<34} {'R':>1} {'cost':>7} {'val':>5} "
+            f"{'instance_id':<30} {'strategy':<34} {'S':>4} {'cost':>7} {'val':>5} "
             f"{'plan':>5} {'cap':>5} {'turn':>4} {'1st':>5} {'T3@':>4} {'use@':>4} {'gap':>3} "
             f"{'patch':>5} {'fail':<14} {'trust':<5}"
         )
@@ -211,7 +220,7 @@ def format_compact_audit(audit: dict) -> str:
             plan_cap = row.get("frozen_plan_base_cap")
             plan_cap_text = "-" if plan_cap in (None, "") else f"{float(plan_cap):.2f}"
             lines.append(
-                f"{row['instance_id']:<30} {row['strategy']:<34} {'Y' if row['resolved'] else 'N':>1} "
+                f"{row['instance_id']:<30} {row['strategy']:<34} {str(row.get('score_status') or '-')[:4]:>4} "
                 f"${row['cost']:>6.2f} {row['task_value']:>5.2f} "
                 f"{plan_model:>5} {plan_cap_text:>5} "
                 f"{row['turns']:>4} T{row['first_tier']:>4} "
@@ -227,7 +236,7 @@ def format_compact_audit(audit: dict) -> str:
                 lines.append(f"  decision: {detail}")
         # Legend
         lines.append(
-            "  R=resolved  val=task_value  turn=llm_turns  1st=first_backend_tier  "
+            "  S=score_status(pass/true_fail/abort)  val=task_value  turn=llm_turns  1st=first_backend_tier  "
             "plan=frozen_plan_preferred_model  cap=frozen_plan_base_cap  "
             "T3@=first_T3_turn  use@=first_useful_action  gap=max_no_progress_streak"
         )
