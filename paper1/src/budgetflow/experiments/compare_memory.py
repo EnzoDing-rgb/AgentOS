@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from budgetflow.auto_budget import AutoBudgetEstimator, AutoBudgetMemory, BudgetEstimate
+from budgetflow.adapters import SwebenchTaskAdapter
 from budgetflow.console_log import tag
 from budgetflow.experiments.compare_config import fmt_usd
 from budgetflow.learning_context import load_policy_memory_context
@@ -133,7 +134,11 @@ def build_auto_budget_plan(args: Namespace, *, tasks: list, runs_dir: Path) -> A
     estimates: dict[str, BudgetEstimate] = {}
     task_caps: dict[str, float] | None = None
     if args.auto_budget or args.auto_budget_dry_run:
-        estimator = AutoBudgetEstimator(memory=memory, k=args.auto_budget_k)
+        estimator = AutoBudgetEstimator(
+            memory=memory,
+            feature_adapter=SwebenchTaskAdapter(),
+            k=args.auto_budget_k,
+        )
         for task in tasks:
             estimate = estimator.estimate(
                 task,

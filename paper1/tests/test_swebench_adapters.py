@@ -74,6 +74,30 @@ def test_swebench_progress_adapter_maps_command_to_segment() -> None:
     assert signal.touched_file_paths == ["tests/test_example.py"]
 
 
+def test_swebench_progress_adapter_handles_empty_context() -> None:
+    signal = SwebenchProgressAdapter().signal_from_context(
+        bash_command=None,
+        observation="",
+        agent_phase=None,
+    )
+
+    assert signal.stage is Stage.LOCALIZATION
+    assert signal.segment.name == WorkflowSegment.CONTEXT
+    assert signal.has_progress is False
+    assert signal.touched_file_paths == []
+
+
+def test_swebench_progress_adapter_maps_edit_phase_to_action_segment() -> None:
+    signal = SwebenchProgressAdapter().signal_from_context(
+        bash_command="grep -R pattern src",
+        observation="",
+        agent_phase="edit_gold",
+    )
+
+    assert signal.stage is Stage.REPAIR
+    assert signal.segment.name == WorkflowSegment.ACTION
+
+
 def test_runtime_adapter_calls_mini_swe_runner(monkeypatch) -> None:
     import budgetflow.adapter.runner as runner
 

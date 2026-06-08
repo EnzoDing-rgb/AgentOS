@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
+from ..auto_budget import CostTaskFeatures
+
 
 @dataclass(frozen=True)
 class TaskFeatures:
@@ -46,4 +48,14 @@ class SwebenchTaskAdapter:
             f2p_count=len(getattr(task, "fail_to_pass", ()) or ()),
             p2p_count=len(getattr(task, "pass_to_pass", ()) or ()),
             problem_length=len(str(getattr(task, "problem_statement", "") or "")),
+        )
+
+    def cost_features(self, task: Any) -> CostTaskFeatures:
+        features = self.features(task)
+        return CostTaskFeatures(
+            instance_id=self.instance_id(task),
+            repo=str(getattr(task, "repo", "") or ""),
+            patch_lines=features.patch_lines,
+            f2p_count=features.f2p_count,
+            p2p_count=features.p2p_count,
         )

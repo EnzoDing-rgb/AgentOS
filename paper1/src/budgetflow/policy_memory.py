@@ -13,7 +13,7 @@ from pathlib import Path
 
 from .defaults import POLICY_REGRET_THRESHOLD
 from .model_tiers import parse_tier_label
-from .types import Stage
+from .types import Stage, WorkflowSegment
 
 
 def _extract_repo(instance_id: str) -> str:
@@ -293,23 +293,21 @@ class PolicyMemory:
 
             # Stage-level priors from turn_traces
             traces = r.get("turn_traces") or []
-            stages_by_tier: dict[int, set[Stage]] = defaultdict(set)
+            segments_by_tier: dict[int, set[str]] = defaultdict(set)
             for t in traces:
-                stage_str = str(t.get("stage") or "").lower()
+                segment = _trace_segment_key(t)
                 tier = t.get("backend_tier")
-                try:
-                    stage = Stage(stage_str)
-                except ValueError:
+                if not segment:
                     continue
                 try:
                     tier_int = int(tier)
                 except (TypeError, ValueError):
                     continue
                 if tier_int > 0:
-                    stages_by_tier[tier_int].add(stage)
-            for tier, stages in stages_by_tier.items():
-                for stage in stages:
-                    stage_tier_pass[stage.value][tier].append((weight if passed else 0.0, weight))
+                    segments_by_tier[tier_int].add(segment)
+            for tier, segments in segments_by_tier.items():
+                for segment in segments:
+                    stage_tier_pass[segment][tier].append((weight if passed else 0.0, weight))
 
         prior.tier_success_rate = {
             tier: tier_pass[tier] / max(tier_total[tier], 1e-9)
@@ -591,15 +589,16 @@ class PolicyMemory:
             "strongest_starter_window": starter_window,
         }
         if stage:
-            summary["stage_t2_success"] = round(repo.t2_stage_success.get(stage.value, 0), 3)
-            summary["stage_t3_success"] = round(repo.t3_stage_success.get(stage.value, 0), 3)
+            segment_key = _stage_to_segment_key(stage)
+            summary["stage_t2_success"] = round(repo.t2_stage_success.get(segment_key, 0), 3)
+            summary["stage_t3_success"] = round(repo.t3_stage_success.get(segment_key, 0), 3)
             summary["stage_tier_success"] = {
                 str(k): round(v, 3)
-                for k, v in sorted(repo.stage_tier_success.get(stage.value, {}).items())
+                for k, v in sorted(repo.stage_tier_success.get(segment_key, {}).items())
             }
             summary["stage_tier_weight"] = {
                 str(k): round(v, 4)
-                for k, v in sorted(repo.stage_tier_weight.get(stage.value, {}).items())
+                for k, v in sorted(repo.stage_tier_weight.get(segment_key, {}).items())
             }
         return summary
 
@@ -623,8 +622,8 @@ class PolicyMemory:
         if regret and regret.regret > self.regret_threshold and regret.full_count >= 2:
             return "cap_strongest"
 
-        repair_key = Stage.REPAIR.value
-        loc_key = Stage.LOCALIZATION.value
+        repair_key = _stage_to_segment_key(Stage.REPAIR)
+        loc_key = _stage_to_segment_key(Stage.LOCALIZATION)
 
         # Rule 1: second-tier repair success low → early strongest-tier rescue
         if stage == Stage.REPAIR or stage is None:
@@ -714,6 +713,27 @@ class PolicyMemory:
 
 def _pick_tier(pick) -> int:
     return parse_tier_label(pick)
+
+
+def _stage_to_segment_key(stage: Stage) -> str:
+    if stage is Stage.LOCALIZATION:
+        return WorkflowSegment.CONTEXT
+    if stage is Stage.REPAIR:
+        return WorkflowSegment.ACTION
+    if stage is Stage.VALIDATION:
+        return WorkflowSegment.VERIFICATION
+    return str(stage.value)
+
+
+def _trace_segment_key(trace: dict) -> str:
+    segment = str(trace.get("workflow_segment") or "")
+    if segment:
+        return segment
+    stage_str = str(trace.get("stage") or "").lower()
+    try:
+        return _stage_to_segment_key(Stage(stage_str))
+    except ValueError:
+        return ""
 
 
 def _record_weight(record: dict) -> float:

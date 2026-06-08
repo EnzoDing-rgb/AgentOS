@@ -108,6 +108,29 @@ def test_policy_memory_preserves_generic_tier_evidence() -> None:
     assert summary["repo_t3_success"] == 0
 
 
+def test_policy_memory_uses_workflow_segment_keys_when_available() -> None:
+    memory = PolicyMemory()
+    memory.rebuild_from_records([
+        _record(
+            instance_id="repo__repair-a",
+            turn_traces=[{"workflow_segment": "Action", "stage": "LOCALIZATION", "backend_tier": 2}],
+        ),
+        _record(
+            instance_id="repo__repair-b",
+            turn_traces=[{"workflow_segment": "Action", "stage": "LOCALIZATION", "backend_tier": 2}],
+        ),
+        _record(
+            instance_id="repo__repair-c",
+            turn_traces=[{"workflow_segment": "Action", "stage": "LOCALIZATION", "backend_tier": 2}],
+        ),
+    ])
+
+    summary = memory.routing_prior_summary("repo__new-repair", Stage.REPAIR)
+
+    assert summary["stage_tier_weight"]["2"] == 3.0
+    assert summary["learned_action"] == "early_rescue"
+
+
 def test_policy_memory_learns_t1_t2_actions_from_prior_runs() -> None:
     records = [
         _record(instance_id="repair__task-a", backend_picks=["tier2"]),

@@ -5,7 +5,7 @@ import math
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Protocol
 
 from .model_tiers import catalog_revision
 
@@ -36,6 +36,19 @@ _LEARNABLE_CAP_SUFFICIENCY = {
 }
 
 LEGACY_COST_MEMORY_UPLIFT = 1.8
+
+
+@dataclass(frozen=True)
+class CostTaskFeatures:
+    instance_id: str
+    repo: str
+    patch_lines: int
+    f2p_count: int
+    p2p_count: int
+
+
+class CostFeatureAdapter(Protocol):
+    def cost_features(self, task: object) -> CostTaskFeatures: ...
 
 
 @dataclass(frozen=True)
@@ -192,14 +205,21 @@ class AutoBudgetEstimator:
         self,
         prior: dict[str, dict] | None = None,
         memory: AutoBudgetMemory | None = None,
+        feature_adapter: CostFeatureAdapter | None = None,
         k: int = 3,
     ):
         self._prior = dict(prior) if prior is not None else {}
         self._memory = memory
+        self._feature_adapter = feature_adapter
         self._k = k
 
     @classmethod
-    def from_history(cls, path: Path) -> "AutoBudgetEstimator":
+    def from_history(
+        cls,
+        path: Path,
+        *,
+        feature_adapter: CostFeatureAdapter | None = None,
+    ) -> "AutoBudgetEstimator":
         prior: dict[str, dict] = {}
         if path.is_file():
             records = []
@@ -228,7 +248,7 @@ class AutoBudgetEstimator:
                     "resolved": len(costs),
                     "total": len(costs),
                 }
-        return cls(prior)
+        return cls(prior, feature_adapter=feature_adapter)
 
     @property
     def memory(self) -> AutoBudgetMemory | None:
@@ -246,11 +266,12 @@ class AutoBudgetEstimator:
         min_cap: float = 0.10,
         max_cap: float = 10.0,
     ) -> BudgetEstimate:
-        iid = task.instance_id
-        patch_lines = len(task.patch.splitlines())
-        f2p_count = len(task.fail_to_pass)
-        p2p_count = len(task.pass_to_pass)
-        repo = getattr(task, "repo", "") or ""
+        features = self._features(task)
+        iid = features.instance_id
+        repo = features.repo
+        patch_lines = features.patch_lines
+        f2p_count = features.f2p_count
+        p2p_count = features.p2p_count
         base_features = {
             "patch_lines": patch_lines,
             "f2p_count": f2p_count,
@@ -310,6 +331,11 @@ class AutoBudgetEstimator:
             iid, repo, patch_lines, f2p_count, p2p_count,
             scale, min_cap, max_cap,
         )
+
+    def _features(self, task: object) -> CostTaskFeatures:
+        if self._feature_adapter is None:
+            raise TypeError("AutoBudgetEstimator requires a CostFeatureAdapter")
+        return self._feature_adapter.cost_features(task)
 
     # ------------------------------------------------------------------
     # Estimation helpers
