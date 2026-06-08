@@ -20,7 +20,7 @@ def test_equal_profile_is_t2_equal_value_ablation() -> None:
     assert record["task_value_source_class"] == "default_equal"
     assert record["task_value"] == 1.0
     assert record["resolved_value"] == 1.0
-    assert record["resolved_value_per_dollar"] == 4.0
+    assert record["yield_per_dollar"] == 4.0
     assert record["task_value_multiplier"] is None
 
 
@@ -46,7 +46,7 @@ def test_non_equal_profile_is_t1_value_efficiency(tmp_path) -> None:
     assert record["task_value_source_class"] == "historical_cross_strategy"
     assert record["task_value"] == 0.5
     assert record["resolved_value"] == 0.5
-    assert record["resolved_value_per_dollar"] == 2.0
+    assert record["yield_per_dollar"] == 2.0
     assert record["task_value_multiplier"] == pytest.approx(1.6667, abs=0.0001)
 
 
@@ -84,8 +84,8 @@ def test_summary_reports_primary_fixed_budget_value_metric() -> None:
 
     assert summary["resolved_value"] == 0.6
     assert summary["total_task_value"] == 1.0
-    assert summary["normalized_verified_resolved_value"] == 0.6
-    assert summary["resolved_value_per_dollar"] == 2.0
+    assert summary["yield_score"] == 0.6
+    assert summary["yield_per_dollar"] == 2.0
 
 
 def test_missing_non_equal_task_fails_fast(tmp_path) -> None:

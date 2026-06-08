@@ -1,7 +1,7 @@
 """Value proxy noise robustness analysis.
 
 Offline analysis: adds controlled noise to task_value and measures
-whether strategy comparison conclusions (resolved_value, RVPD, winner
+whether strategy comparison conclusions (resolved_value, Yield per Dollar, winner
 stability) remain stable.  Purpose is NOT to prove the proxy is the
 true value — it is to show that reasonable proxy uncertainty does not
 flip the qualitative conclusion.
@@ -35,7 +35,7 @@ class StrategySummary:
     total_tasks: int
     total_cost: float
     total_resolved_value: float
-    rvpd: float = 0.0
+    yield_per_dollar: float = 0.0
 
     @property
     def pass_rate(self) -> float:
@@ -47,7 +47,7 @@ class TrialResult:
     trial: int
     noise_config: NoiseConfig
     summaries: dict[str, StrategySummary] = field(default_factory=dict)
-    rvpd_winner: str = ""
+    yield_per_dollar_winner: str = ""
     resolved_value_winner: str = ""
 
 
@@ -97,7 +97,7 @@ def compute_summary(rows: list[dict], noise_config: NoiseConfig | None = None) -
             total_tasks=n,
             total_cost=total_cost,
             total_resolved_value=total_rv,
-            rvpd=total_rv / max(0.001, total_cost),
+            yield_per_dollar=total_rv / max(0.001, total_cost),
         )
     return summaries
 
@@ -118,13 +118,13 @@ def run_noise_trials(
             strategies = list(summaries.values())
             if not strategies:
                 continue
-            rvpd_winner = max(strategies, key=lambda s: s.rvpd).strategy
+            yield_per_dollar_winner = max(strategies, key=lambda s: s.yield_per_dollar).strategy
             rv_winner = max(strategies, key=lambda s: s.total_resolved_value).strategy
             results.append(TrialResult(
                 trial=trial,
                 noise_config=trial_cfg,
                 summaries=summaries,
-                rvpd_winner=rvpd_winner,
+                yield_per_dollar_winner=yield_per_dollar_winner,
                 resolved_value_winner=rv_winner,
             ))
     return results
@@ -139,37 +139,41 @@ def winner_stability(trials: list[TrialResult]) -> dict[str, dict[str, float]]:
     stability: dict[str, dict[str, float]] = {}
     for label, group in by_label.items():
         n = len(group)
-        rvpd_counts: dict[str, int] = defaultdict(int)
+        yield_per_dollar_counts: dict[str, int] = defaultdict(int)
         rv_counts: dict[str, int] = defaultdict(int)
         for tr in group:
-            rvpd_counts[tr.rvpd_winner] += 1
+            yield_per_dollar_counts[tr.yield_per_dollar_winner] += 1
             rv_counts[tr.resolved_value_winner] += 1
-        all_strategies = set(rvpd_counts) | set(rv_counts)
+        all_strategies = set(yield_per_dollar_counts) | set(rv_counts)
         stability[label] = {
             "n_trials": n,
-            "rvpd": {s: rvpd_counts.get(s, 0) / n for s in all_strategies},
+            "yield_per_dollar": {s: yield_per_dollar_counts.get(s, 0) / n for s in all_strategies},
             "resolved_value": {s: rv_counts.get(s, 0) / n for s in all_strategies},
         }
     return stability
 
 
-def rvpd_variance(rows: list[dict], noise_configs: list[NoiseConfig] | None = None, trials: int = 100) -> dict:
-    """Compute RVPD mean and std for each strategy at each noise level."""
+def yield_per_dollar_variance(
+    rows: list[dict],
+    noise_configs: list[NoiseConfig] | None = None,
+    trials: int = 100,
+) -> dict:
+    """Compute Yield per Dollar mean and std for each strategy at each noise level."""
     if noise_configs is None:
         noise_configs = default_noise_configs()
 
     result: dict[str, dict] = {}
     rng = random.Random(42)
     for cfg in noise_configs:
-        strategy_rvpds: dict[str, list[float]] = defaultdict(list)
+        strategy_yields: dict[str, list[float]] = defaultdict(list)
         for _ in range(trials):
             trial_cfg = NoiseConfig(cfg.label, cfg.multiplier_range, seed=rng.randint(0, 10**9))
             summaries = compute_summary(rows, noise_config=trial_cfg)
             for s, summary in summaries.items():
-                strategy_rvpds[s].append(summary.rvpd)
+                strategy_yields[s].append(summary.yield_per_dollar)
         result[cfg.label] = {
             s: {"mean": statistics.mean(vals), "std": statistics.stdev(vals) if len(vals) > 1 else 0.0}
-            for s, vals in strategy_rvpds.items()
+            for s, vals in strategy_yields.items()
         }
     return result
 
@@ -194,16 +198,16 @@ def noise_report(jsonl_path: str | Path, trials_per_config: int = 100) -> str:
         lines.append(
             f"  {s}: pass={summary.resolved_count}/{summary.total_tasks} "
             f"cost=${summary.total_cost:.4f} rv={summary.total_resolved_value:.4f} "
-            f"rvpd={summary.rvpd:.4f}"
+            f"yield_per_dollar={summary.yield_per_dollar:.4f}"
         )
 
     lines.append("")
-    lines.append("--- RVPD stability under noise ---")
-    rvpd_var = rvpd_variance(rows, configs, trials_per_config)
-    for label, data in rvpd_var.items():
+    lines.append("--- Yield per Dollar stability under noise ---")
+    yield_var = yield_per_dollar_variance(rows, configs, trials_per_config)
+    for label, data in yield_var.items():
         lines.append(f"  {label}:")
         for strategy, stats in data.items():
-            lines.append(f"    {strategy}: rvpd={stats['mean']:.4f} ± {stats['std']:.4f}")
+            lines.append(f"    {strategy}: yield_per_dollar={stats['mean']:.4f} ± {stats['std']:.4f}")
 
     lines.append("")
     lines.append("--- Winner stability (fraction of trials) ---")
@@ -211,8 +215,8 @@ def noise_report(jsonl_path: str | Path, trials_per_config: int = 100) -> str:
     stability = winner_stability(trial_results)
     for label, data in stability.items():
         lines.append(f"  {label} (n={data['n_trials']}):")
-        for s in sorted(data["rvpd"]):
-            lines.append(f"    RVPD  winner: {s} = {data['rvpd'][s]:.2%}")
+        for s in sorted(data["yield_per_dollar"]):
+            lines.append(f"    Yield/$ winner: {s} = {data['yield_per_dollar'][s]:.2%}")
         for s in sorted(data["resolved_value"]):
             lines.append(f"    Value winner: {s} = {data['resolved_value'][s]:.2%}")
 

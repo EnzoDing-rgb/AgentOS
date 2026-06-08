@@ -112,7 +112,7 @@ def test_compare_runner_records_turns_value_and_task_features(monkeypatch) -> No
 
     assert record["turns"] == record["llm_turns"] == 2
     assert record["resolved"] is True
-    assert "resolved_value_per_dollar" not in record
+    assert "yield_per_dollar" not in record
     assert record["task_features"] == {"patch_lines": 1, "f2p_count": 1, "p2p_count": 0, "problem_length": 0}
 
 
@@ -217,7 +217,7 @@ def test_persisted_jsonl_contains_t1_t2_observability_and_learning_memory(tmp_pa
 
     assert persisted["turns"] == 2
     assert persisted["value_objective"] == "t2_equal_value_ablation"
-    assert persisted["resolved_value_per_dollar"] == 4.0
+    assert persisted["yield_per_dollar"] == 4.0
     assert persisted["routing_policy_family"] == "bfv_equal_value_ablation"
     assert persisted["routing_learned_action"] == "early_rescue"
     assert persisted["routing_policy_memory_source"].endswith("066_postfix_3x3.jsonl")
@@ -266,7 +266,7 @@ def test_value_summary_reports_primary_normalized_value_metric(tmp_path) -> None
     )
 
     text = "\n".join(lines)
-    assert "nvrv" in text
-    assert "rv_per_$" in text
+    assert "Yield" in text
+    assert "Yield/$" in text
     assert "0.60" in text
     assert "2.00" in text

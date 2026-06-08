@@ -2,12 +2,23 @@
 
 > 单一入口：进度、跑法、历史结果。
 
-## 当前快照（2026-06-07）
+## 当前快照（2026-06-08）
+
+### 087 / Policy-backend architecture and documentation source cleanup
+
+- **North Star source of truth:** `paper1/docs/north_star.md` now owns current terminology, T1/T2 claims, policy-backend architecture, workflow segments, evaluation discipline, and next engineering direction.
+- **Documentation entrypoints simplified:** active project guidance is now `AGENTS.md` for agent operating rules, `north_star.md` for research/system definition, and `progress.md` for timeline. `paper1/docs/CONTEXT.md` was deleted to avoid duplicate terminology sources.
+- **Policy layer decision:** BudgetFlow core is budget governance, evidence, memory, audit, and same-budget policy comparison. Routing and stop/continue logic belongs behind pluggable Policy Backends.
+- **Default policy decision:** `HeuristicPolicy` is the explainable cold-start and safety policy. `Memory-Tuned HeuristicPolicy` is the auditable warm-start path. `Adaptive Learning Policy` is the public term for learned policy backends. BudgetFlow only requires learned policies to satisfy the Policy Backend interface.
+- **Segment decision:** default workflow segments are **Context / Action / Verification**. Segment-aware routing means segment is a policy signal, not a forced model-switch boundary. Task-level or per-request controls remain required to measure cache/context-continuity costs.
+- **Yield decision:** the primary T1 metric is now **Yield**, meaning verified resolved value divided by total task value at fixed budget. **Yield per Dollar** remains an efficiency diagnostic.
+- **Value/Cost source decision:** BudgetFlow core does not hard-code what value or cost means. ValueSource, CostSource, ValueAdapter, and CostAdapter provide cold-start inputs, manual overrides, public price catalogs, enterprise imports, and learned calibration through a normalized estimate plus confidence.
+- **Worker direction:** the next implementation slice should wrap existing BFV/BFC behavior as a SWE-bench `HeuristicPolicy` plugin behind a policy-backend interface, then move SWE-bench stage and harness assumptions behind adapters.
 
 ### 084 / Starter stop-loss negative diagnostic
 
 - **084_starter_stoploss_4x4_qwen37 COMPLETE — negative small paid diagnostic, not paper evidence.** 4 policies x 4 tasks, `--jobs 4`, pre-registered outcome-free value matrix `docs/reports/084_starter_stoploss_4x4_value_matrix.json`, and Qwen3.7-Max as T2.
-- **T1/T2 result is all-zero:** BO, BFC, BFV, and value-aware task-level each resolved **0/4**. NVRV and RVPD are **0.0** for all strategies, so this run provides no positive value evidence.
+- **T1/T2 result is all-zero:** BO, BFC, BFV, and value-aware task-level each resolved **0/4**. Yield and Yield per Dollar are **0.0** for all strategies, so this run provides no positive value evidence.
 - **Mechanism signal is still useful:** BFV spent less than BFC/task-level but produced **0/4**, including no-patch early stops on high-value `sympy__sympy-16988` and `sympy__sympy-20212`. This shows that stop-loss without enough effective repair runway hurts T1.
 - **Learning bug found after audit:** the first starter stop-loss rule over-weighted turn-level `has_progress=0` and under-weighted verified starter-backed success. 083 had starter-backed BudgetFlow successes as well as failures, so turn-level no-progress alone should not disable BO-style frontload. Routing Memory must learn BO's useful starter/runway behavior, not only cheap early stopping.
 - **Post-audit routing fix:** weak task-level starter evidence no longer overrides stronger repo-level starter evidence, and BO-style starter detection accepts moderate early T3 pressure when matched BO success / BudgetFlow failure-cost evidence is sufficient. This restores bounded BO-style starter windows for the next diagnostic instead of letting one all-fail run erase the mechanism.
@@ -16,18 +27,18 @@
 ### 083 / Anti-overfit starter-memory diagnostic
 
 - **083_legacy_memory4_antioverfit_qwen37 COMPLETE — small paid diagnostic, not paper evidence.** 4 policies x 4 less-familiar SymPy tasks, `--jobs 4`, Value-Driven Budget Allocation, pre-registered outcome-free value matrix `docs/reports/083_legacy_memory4_value_matrix.json`, and Qwen3.7-Max as T2.
-- **T1 primary is neutral for stage-aware BF:** BO, BFC, and BFV each resolved **2/4** with identical NVRV **0.4910**; task-level resolved **1/4** with NVRV **0.2361**. RVPD: BFC **70.98**, BFV **69.28**, BO **61.73**, task-level **23.76**.
-- **T2 stage-aware control remains positive:** BFV vs value-aware task-level on the same 4 tasks: `delta_pass=+1`, `delta_cost=$-0.2565`, `delta_nvrv=+0.2550`, `delta_rv_per_$=+45.5256`.
-- **Mechanism diagnosis:** 083 did not prove BFV value superiority, but it exposed a real starter-memory weakness. BFV/BFC learned BO-style early T3 frontload, yet T3 Productive Rate for BFV was **0/13** and starter-memory T3 was **12 turns / 0 productive**. The fix direction is not weakening BO or removing stage-aware routing; it is teaching Routing Memory to shorten or disable unproductive BudgetFlow starter windows after verifier-trusted evidence shows no progress.
+- **T1 primary is neutral for segment-aware BF:** BO, BFC, and BFV each resolved **2/4** with identical Yield **0.4910**; task-level resolved **1/4** with Yield **0.2361**. Yield per Dollar: BFC **70.98**, BFV **69.28**, BO **61.73**, task-level **23.76**.
+- **T2 segment-aware control remains positive:** BFV vs value-aware task-level on the same 4 tasks: `delta_pass=+1`, `delta_cost=$-0.2565`, `delta_yield=+0.2550`, `delta_yield_per_dollar=+45.5256`.
+- **Mechanism diagnosis:** 083 did not prove BFV value superiority, but it exposed a real starter-memory weakness. BFV/BFC learned BO-style early expensive-tier frontload, yet expensive-tier productive rate for BFV was **0/13** and starter-memory expensive-tier use was **12 turns / 0 productive**. The fix direction is teaching Routing Memory to shorten or disable unproductive BudgetFlow starter windows after verifier-trusted evidence shows no progress.
 - **Audit caveat:** `sympy__sympy-17630` used a low-confidence global fallback cap. Compact audit reported suspicious_pass=0, no_trace=0, policy_memory_used=True, canonical estimated cost only, and provider invoice actual cost unavailable.
 
 ### 082 / Qwen3.7-Max T2 and BO-style starter-memory diagnostic
 
 - **082_qwen37_starter_memory_4x6 COMPLETE — small paid diagnostic, not paper evidence.** 4 policies x 6 tasks, `--jobs 4`, Value-Driven Budget Allocation, frozen `053_exact_cap_cold_start_value_matrix`, and T2 catalog swapped to Alibaba `qwen3.7-max`.
 - **No-paid and provider gates passed before paid run:** full tests `211 passed`, py_compile passed, `git diff --check` passed, auto-budget dry-run passed, paid readiness passed, and provider signature passed for T1 `qwen3-coder-flash`, T2 `qwen3.7-max`, and T3 `GPT-5.4`.
-- **T1 primary signal is positive but diagnostic-scale:** BO resolved **3/6**, BFC **4/6**, BFV **4/6**, task-level **2/6**. NVRV: BO **0.4925**, BFC **0.6345**, BFV **0.6345**, task-level **0.3118**.
-- **T1 secondary / T2 cost signal is mixed:** RVPD: BFC **61.07**, BO **59.42**, BFV **43.81**, task-level **17.08**. BFC slightly beats BO on resolved value per dollar; BFV beats BO on NVRV but spends more, mostly from long Qwen3.7-Max repair/validation loops.
-- **Stage-aware vs task-level control is strongly positive:** BFV vs value-aware task-level on the same 6 tasks: `delta_pass=+2`, `delta_cost=$-0.4861`, `delta_nvrv=+0.3227`, `delta_rv_per_$=+26.7242`. This supports keeping StageAware as a T2 mechanism while continuing to audit T1 risk.
+- **T1 primary signal is positive but diagnostic-scale:** BO resolved **3/6**, BFC **4/6**, BFV **4/6**, task-level **2/6**. Yield: BO **0.4925**, BFC **0.6345**, BFV **0.6345**, task-level **0.3118**.
+- **T1 secondary / T2 cost signal is mixed:** Yield per Dollar: BFC **61.07**, BO **59.42**, BFV **43.81**, task-level **17.08**. BFC slightly beats BO on resolved value per dollar; BFV beats BO on Yield but spends more, mostly from long Qwen3.7-Max repair/validation loops.
+- **Segment-aware vs task-level control is strongly positive:** BFV vs value-aware task-level on the same 6 tasks: `delta_pass=+2`, `delta_cost=$-0.4861`, `delta_yield=+0.3227`, `delta_yield_per_dollar=+26.7242`. This supports keeping Segment-Aware Routing as a T2 mechanism while continuing to audit T1 risk.
 - **BO-style starter memory was actually consumed:** BFC/BFV rows show learned `frontload_strongest` starter windows from Routing Memory, and runtime logs show `starting_tier=3` / `strongest_starter_window`. This confirms the BO imitation mechanism entered routing rather than only logs.
 - **Mechanism diagnosis:** BO is not globally dominant. It failed on `sympy__sympy-16988`, `django__django-10924`, and `sympy__sympy-18057`; BFV/BFC passed Django 10924 where BO all-T3 failed. However, both BFV and BFC spent heavily on `sympy__sympy-20212` before passing, so the next root-cause work is stop/cap/repair cost control, not more blind T3.
 - **Audit caveat:** compact audit reports suspicious_pass=0, no_trace=0, policy_memory_used=True, canonical estimated cost only, and provider invoice actual cost unavailable. Harness trust has warnings on failed rows; treat 082 as a useful T1/T2 diagnostic, not final evidence.
@@ -37,26 +48,26 @@
 - **No-paid infra cleanup:** centralized paid readiness now reports planned policy/total cap, blocks all-global-fallback auto-budget paid runs by default, and labels cold-start value runs separately from historical T1 value evidence.
 - **Learning-loop audit:** Cost Memory affects caps, Routing Memory affects starting tier/rescue, and Escalation Memory affects Value-Triggered Escalation window/action; dry-run surfaces all three.
 - **Pre-registered diagnostic value sources:** added outcome-free cold-start matrices for the medium set and the exact-cap candidate set. Paid diagnostic used 4 policies x 4 tasks, exact cap memory, and cold-start values.
-- **Post-run audit cleanup:** compact audit now labels the common-task T2 frontier and reports stage-aware vs task-level control deltas.
-- **080_exact_cap_cold_start_4x4 COMPLETE — small paid diagnostic, not paper evidence.** BO resolved **2/4**; BFC, BFV, and value-aware task-level each resolved **1/4**. NVRV: BO **0.48**, others **0.27**. RVPD: BO **52.95**, BFC **26.40**, BFV **27.04**, task-level **17.03**.
-- **Mechanism signal is negative/mixed for BFV:** on the common-task T2 frontier, BFV did not beat BO on pass rate or cost. Stage-aware BFV and task-level control tied on passes, but stage-aware spent **$0.51 less**, so task-level routing is not the immediate fix.
+- **Post-run audit cleanup:** compact audit now labels the common-task T2 frontier and reports segment-aware vs task-level control deltas.
+- **080_exact_cap_cold_start_4x4 COMPLETE — small paid diagnostic, not paper evidence.** BO resolved **2/4**; BFC, BFV, and value-aware task-level each resolved **1/4**. Yield: BO **0.48**, others **0.27**. Yield per Dollar: BO **52.95**, BFC **26.40**, BFV **27.04**, task-level **17.03**.
+- **Mechanism signal is negative/mixed for BFV:** on the common-task T2 frontier, BFV did not beat BO on pass rate or cost. Segment-aware BFV and task-level control tied on passes, but segment-aware spent **$0.51 less**, so task-level routing is not the immediate fix.
 - **Audit caveat:** observability had no suspicious passes and policy memory was used, but provider invoice cost is unavailable and several failed rows have incomplete harness evidence. Treat the run as a routing/repair diagnostic, not a final value claim.
 
 ### 079 / Escalation Memory gate
 
 - **079_escalation_memory_3x3_v1 COMPLETE — small paid diagnostic, not paper evidence.** Same 3 tasks and 3 policies as 067, `--jobs 3`, `unsolved_difficulty`, `048_value_matrix`, Value-Driven Budget Allocation, and explicit Routing/Escalation Memory from `067_metrics_3x3_v1`.
 - **Learning loop verified:** dry-run and runtime logs showed Escalation Memory affecting BFV: `shorten_value_triggered_escalation/w=1`.
-- **T1 result is negative for BFV:** BO 2/3, BFC 2/3, BFV 1/3. NVRV: BO **0.5023**, BFC **0.5871**, BFV **0.0894**. BFV solved only the lowest-value task.
+- **T1 result is negative for BFV:** BO 2/3, BFC 2/3, BFV 1/3. Yield: BO **0.5023**, BFC **0.5871**, BFV **0.0894**. BFV solved only the lowest-value task.
 - **T3 source breakdown added:** compact audit now separates T3 from `value_triggered`, `evidence_triggered`, and `routing_or_progress`. In 079, BFV had only **1** value-triggered T3 turn; its improved raw T3 Productive Rate mostly came from evidence-triggered escalation, so raw T3 productivity alone would have been misleading.
 - **Next direction:** do not tune only the Value-Triggered Escalation window. The stronger issue is broader routing/stop/repair learning and overfitting to the recurring small task set. Before paper-scale runs, pick a small but less familiar task gate, then scale toward 3 policies × 30-50 tasks once infra remains clean.
 
 ### 078 / 067 metric-contract paid gate and checker fix
 
 - **Continual-learning bug fixed after 067:** BFV's high-value pre-patch T3 window is now **Value-Triggered Escalation** and is connected to **Escalation Memory**. Prior paid outcomes can disable, shorten, keep, or extend the next run's T3 window based on verified outcome, T3 Productive Rate, and T3 No-Progress Cost.
-- **Terminology cleanup in active runtime:** current JSONL traces and compact audit now use `value_triggered_escalation_*` and `t3_productivity`; old `value_salvage_*` and strong-tier metric aliases are not written by new runtime paths.
+- **Terminology cleanup in active runtime:** current JSONL traces and compact audit now use `value_triggered_escalation_*` and `t3_productivity`; retired metric aliases are not written by new runtime paths.
 - **067_metrics_3x3_v1 COMPLETE — small paid diagnostic after metric-contract cleanup.** 3 tasks × 3 policies, `--jobs 3`, `--auto-budget`, frozen `048_value_matrix.json`, `unsolved_difficulty`, `--auto-budget-max 0.50`. 9/9 rows complete; provider preflight passed; runtime root was `/tmp/budgetflow-runtime`.
-- **T1 primary is not won:** BO, BFC, and BFV all resolved the same two tasks, so Normalized Verified Resolved Value is identical at **0.5871**. This run is not value-allocation win evidence.
-- **T1 secondary / T2 frontier signal is positive for BFV:** same 2/3 verified resolution at lower cost: BFV **$0.3510**, BFC **$0.4478**, BO **$0.5925**. RVPD: BFV **1.1058**, BFC **0.8667**, BO **0.6550**.
+- **T1 primary is not won:** BO, BFC, and BFV all resolved the same two tasks, so Yield is identical at **0.5871**. This run is not value-allocation win evidence.
+- **T1 secondary / T2 frontier signal is positive for BFV:** same 2/3 verified resolution at lower cost: BFV **$0.3510**, BFC **$0.4478**, BO **$0.5925**. Yield per Dollar: BFV **1.1058**, BFC **0.8667**, BO **0.6550**.
 - **T2 mechanism is mixed/negative for BFV:** T3 Productive Rate is BO 0/9, BFC 4/8, BFV 1/12; BFV T3 No-Progress Cost is **$0.2739**. BFV is cheapest overall by reducing total turns, but its Value-Triggered Escalation is still too wasteful.
 - **Checker bug fixed during review:** `build_harness_trust()` now distinguishes PASS-complete evidence from evaluated-failure evidence. No-patch FAIL rows are non-blocking incomplete evidence; patch-evaluated `fail_after=fail` rows are trusted failures; resolved rows with missing pass evidence remain blocking. Re-audit of 067: suspicious_pass=0, no_trace=0, no blocking harness severity.
 - **Report:** `docs/reports/067.md`.
@@ -74,7 +85,7 @@
 - **Run persistence rename:** `compare_artifacts.py` was renamed to `compare_persistence.py`; the module now reflects its active responsibility: run state, JSONL persistence, learning-memory writes, and summary snapshots.
 - **Tier evidence interface cleanup:** compare summaries and compact audits now use generic tier mixes / `tier_turns` instead of storing `spark/flash/pro` or fixed T1/T2/T3 summary state. Conservation-lockout classification now checks strongest-tier access from the model-tier catalog, so future 5-tier catalogs do not misclassify T3 access as strongest-tier access.
 - **Obsolete analysis CLI cleanup:** deleted the old `check_consistency.py` checkpoint checker and `value_rescore.py` Phase-N rescore CLI from active code. Current evidence checks live under `run_observability`; current value semantics live in `value_efficiency.py` / value-matrix tooling. `proxy_noise.py` was renamed to `value_proxy_noise.py`.
-- **T1/T2 metric contract fixed:** `north_star.md` now freezes T1 primary metric as Normalized Verified Resolved Value at fixed budget, with RVPD and Online Learning Lift as supporting evidence. T2 now has two standalone routing metrics: Verified Resolution-Cost Frontier plus T3 Productive Rate / T3 No-Progress Cost. Runtime summaries expose `nvrv`; compact audit exposes T3 productivity from turn traces.
+- **T1/T2 metric contract fixed:** `north_star.md` now freezes T1 primary metric as Yield at fixed budget, with Yield per Dollar and Online Learning Lift as supporting evidence. T2 now has two standalone routing metrics: Verified Resolution-Cost Frontier plus T3 Productive Rate / T3 No-Progress Cost. Runtime summaries expose `yield`; compact audit exposes T3 productivity from turn traces.
 - **Verification:** `176 passed`, `py_compile` passed for `paper1/src/budgetflow`, `git diff --check` passed, and no-provider `--auto-budget-dry-run` loaded cap memory plus routing policy memory.
 
 ### 076 / Provider-agnostic tier seam and obsolete probe cleanup
@@ -91,7 +102,7 @@
 - **075 COMPLETE SLICE — no-paid deletion cleanup.** No historical JSONL was edited and no paid experiment was run.
 - **Deleted old replay tool:** removed `src/budgetflow/offline_replay.py`. It was only referenced by historical reports and targeted old 017/018 plus legacy `BudgetMemory` LOO audits.
 - **North Star judgment:** current continual learning uses `auto_budget_memory.jsonl` for cap/value-cost learning and run JSONL through `PolicyMemory`/`learning_context.py` for routing memory. The old replay CLI did not feed the current T1 Value-Driven Budget Allocation loop or current no-paid gates.
-- **Architecture judgment:** if replay becomes important again, rebuild it around current `AutoBudgetMemory`, `PolicyMemory`, value/RVPD fields, and standardized run schema rather than preserving an old report-era CLI.
+- **Architecture judgment:** if replay becomes important again, rebuild it around current `AutoBudgetMemory`, `PolicyMemory`, value/Yield per Dollar fields, and standardized run schema rather than preserving an old report-era CLI.
 
 ### 074 / Action parsing seam
 
@@ -112,7 +123,7 @@
 
 - **072 COMPLETE SLICE — no-paid architecture cleanup.** No historical experiment JSONL was edited and no paid experiment was run.
 - **AutoResearch document preserved:** `docs/autoresearch_workflow.md` remains the canonical memory of the owner/Codex/Worker productivity design.
-- **Paused implementation removed:** deleted the inactive AutoResearch Python modules, worker scripts, and tracked `.autoresearch/` smoke/workflow artifacts from the active tree. They were self-contained and not imported by the compare runner, observability checker, value/RVPD path, learning context, routing policy, or no-paid gates.
+- **Paused implementation removed:** deleted the inactive AutoResearch Python modules, worker scripts, and tracked `.autoresearch/` smoke/workflow artifacts from the active tree. They were self-contained and not imported by the compare runner, observability checker, value/Yield per Dollar path, learning context, routing policy, or no-paid gates.
 - **Architecture judgment:** future AutoResearch should be rebuilt from the workflow document when it again accelerates BudgetFlow. Keeping old coordinator code and old smoke artifacts in the active tree now slows navigation and invites stale-test maintenance.
 - **Evidence status:** this is not new T1/T2 experiment evidence. It reduces non-paper surface area so future infra/debug work can focus on runtime, evaluation, observability, routing, and learning.
 
@@ -129,7 +140,7 @@
 
 - **070 COMPLETE SLICE — no-paid architecture/document cleanup.** No historical JSONL was edited and no paid experiment was run.
 - **AutoResearch document rewritten:** `docs/autoresearch_workflow.md` moved from 373 lines of mixed current/old implementation narrative to a 129-line current design note. It preserves the useful productivity thinking (owner/Codex/Worker loop, artifact-first review, pause gates, recoverability) while deleting stale phase history, implementation inventories, directory scaffolding, and old 3x10 readiness details.
-- **Runtime locality improvement:** `run_mini_swe_compare.py` no longer keeps module-level `_VALUE_CONTEXT` state. `ValueEfficiencyContext` is now constructed inside `main()` and passed/closed over explicitly for record enrichment and strategy execution. This reduces cross-run/test leakage risk and keeps value/RVPD state local to one compare invocation.
+- **Runtime locality improvement:** `run_mini_swe_compare.py` no longer keeps module-level `_VALUE_CONTEXT` state. `ValueEfficiencyContext` is now constructed inside `main()` and passed/closed over explicitly for record enrichment and strategy execution. This reduces cross-run/test leakage risk and keeps value/Yield per Dollar state local to one compare invocation.
 - **Architecture judgment:** checker/observability is already split into `run_observability/{audit,checks,schema,report,cli}` with `check_run_observability.py` as a thin compatibility entrypoint. Legacy fallback remains only at analysis/checker edges.
 - **Verification:** `171 passed`, `py_compile` passed for `paper1/src/budgetflow`, `git diff --check` passed, and no-provider `--auto-budget-dry-run` still loaded both cap memory and routing policy memory.
 - **Evidence status:** this is not new T1/T2 experiment evidence. It makes the core loop easier to reason about before the next paid experiment.
@@ -138,7 +149,7 @@
 
 - **069 COMPLETE SLICE — no-paid test/infra cleanup.** No historical JSONL was edited and no paid experiment was run.
 - **Test-suite contraction:** `paper1/tests` moved from 50 files / ~11.1k LOC to 19 files / ~2.6k LOC. Deleted AutoResearch implementation tests, phase-era regression bundles, old compatibility tests, result-table display tests, and duplicated micro-helper tests that did not protect T1/T2 evidence quality.
-- **Contract tests kept:** compare-path row schema, value/RVPD enrichment, learning-context source separation, Routing Memory priors, value-aware routing/escalation, anti-spin/timeout/provider guards, local harness sanity, policy parallelism, and failure classification.
+- **Contract tests kept:** compare-path row schema, value/Yield per Dollar enrichment, learning-context source separation, Routing Memory priors, value-aware routing/escalation, anti-spin/timeout/provider guards, local harness sanity, policy parallelism, and failure classification.
 - **Large test files rewritten:** `test_policy_memory.py`, `test_adaptive_routing.py`, `test_compare_record_schema.py`, and `test_trace_fields.py` now test current paper/runtime contracts instead of historical implementation details.
 - **AutoResearch positioning:** `autoresearch_workflow.md` is preserved and updated as a research-productivity thinking artifact. AutoResearch code/tests are not part of the current BudgetFlow T1/T2 proof path unless they affect compare runtime, JSONL observability, value accounting, or learning gates.
 - **Observability architecture judgment:** `check_run_observability.py` is already a thin compatibility entrypoint over `run_observability/{audit,checks,schema,report,cli}`. Legacy fallback remains isolated at checker/analysis edges and does not shape current runtime code.
@@ -171,8 +182,8 @@
 
 - **065_value_salvage_3x3 COMPLETE — fresh BFV salvage gate.** Same 3 tasks × 3 policies, `--jobs 3`, `--auto-budget`, cost about **$1.09**, 9/9 rows complete. JSONL checker: 0 suspicious pass, 0 no trace.
 - **Tier 1 mechanism signal:** On highest-value `sympy__sympy-16988` (value 0.329), BFV triggered value salvage (`task_value_multiplier=1.478`), patched `sympy/sets/sets.py`, and passed. BO and BFC both stopped with no patch. This supports value-aware stop/continue as a mechanism.
-- **Aggregate result is mixed/negative:** BO 2/3, $0.2180, RVPD 1.523; BFC 2/3, $0.3354, RVPD 0.990; BFV 2/3, $0.5332, RVPD 0.728. BFV resolves more value than BO/BFC but spends too much and fails Django 10924.
-- **Tier 2 not supported:** BFC does not beat BO on pass, cost, or RVPD. It passes Django but takes 25 turns versus BO's 8.
+- **Aggregate result is mixed/negative:** BO 2/3, $0.2180, Yield per Dollar 1.523; BFC 2/3, $0.3354, Yield per Dollar 0.990; BFV 2/3, $0.5332, Yield per Dollar 0.728. BFV resolves more value than BO/BFC but spends too much and fails Django 10924.
+- **Tier 2 not supported:** BFC does not beat BO on pass, cost, or Yield per Dollar. It passes Django but takes 25 turns versus BO's 8.
 - **Post-run infra fixes:** heartbeat writer race fixed (`10041ef`), concrete `out_stem` now becomes `run_series` for new artifacts (`10041ef`), and live summary strategy spend aggregation fixed (`65fb6a5`). Historical 065 JSONL is not edited; summary/heartbeat are forensic.
 - **No-paid gate after fixes:** `066_dryrun_identity_gate --auto-budget-dry-run` created no run artifacts and read high-confidence exact memory caps: 14774 $0.1000, 16988 $0.3547, Django 10924 $1.0000.
 - **Next direction:** run a fresh paid 3x3/3x5 only after schema/summary/heartbeat stay clean on the post-fix path. Main policy question: BFV needs better mid-high-value Django behavior, either through lower salvage threshold or better post-gold-edit repair quality.
@@ -200,8 +211,8 @@
 
 - **062 COMPLETE — Value-Driven Budget Allocation learning gate + fresh 3-policy validation.** 新增 `--auto-budget-dry-run`，可零 API 审计 learned caps；修复 `not_enough_evidence` 低证据失败污染 learned median 的 P0 bug。
 - **Fresh run:** `062_autobudget_3x3`，3 tasks × 3 policies，`--jobs 3` policy-parallel，`--auto-budget` learned caps，包含 1 个 Django task。9/9 rows complete，API cost **$1.1337**。
-- **结果:** BFV 3/3，resolved value 0.6610，cost $0.4622，RVPD 1.430；BO 2/3，value 0.3320，cost $0.2253，RVPD 1.474；BFC 2/3，value 0.3881，cost $0.4463，RVPD 0.870。
-- **Tier 1 判断:** 正信号但非 headline。BFV 是唯一解决全部任务的策略，并解决 BO 失败的高价值 `sympy__sympy-16988`；但 RVPD 略低于 BO，说明现在证据更支持“resolved value under budget”，不是简单 per-task cost win。
+- **结果:** BFV 3/3，resolved value 0.6610，cost $0.4622，Yield per Dollar 1.430；BO 2/3，value 0.3320，cost $0.2253，Yield per Dollar 1.474；BFC 2/3，value 0.3881，cost $0.4463，Yield per Dollar 0.870。
+- **Tier 1 判断:** 正信号但非 headline。BFV 是唯一解决全部任务的策略，并解决 BO 失败的高价值 `sympy__sympy-16988`；但 Yield per Dollar 略低于 BO，说明现在证据更支持“resolved value under budget”，不是简单 per-task cost win。
 - **Tier 2 判断:** 062 不支持 BFC routing efficiency。BFC 比 BO 更贵、turns 更多，虽然能 rescue `16988`，但成本效率不干净。
 - **新 P0 runtime bug:** gold-file edit 后 fallback/evaluation 太晚。多条 row 在 first repair 后继续消耗 5-18 turns，最终靠 `StagnationExit` worktree diff 评测。worktree fallback 有价值，但 `rescue_timeout_gold_edited evidence_turns=10` 太慢。
 - **Summary bug fixed after run:** raw JSONL 的 dynamic per-task caps 正确；summary 误把 auto-budget sentinel 显示成 shared `batch_cap=100.00`。代码已区分 `dynamic_task_caps`，历史 summary 不回写。
@@ -223,7 +234,7 @@
 - **Runtime/evaluator fixes confirmed:** new rows have `turns == llm_turns`, explicit `budget_mode=per_task_cap`, `per_task_cap=0.5`, `value_source=value_matrix`, and BFV-only `va_active=True`. Checker reports 9 records, 8 pass / 1 fail, 0 suspicious pass, 0 no_trace, 0 warnings.
 - **Summary bug fixed after 060:** final table correctly reports `planned_cap=1.50`; 060 footer still shows stale `per_task_cap=100.00` because `_ingest_batch_footer()` used shared `batch_cap` for display. Code now displays `batch_caps[cfg.name]` in per-task mode; historical summary not edited.
 - **Timeout fix hardened:** LLM timeout is now configurable via `BUDGETFLOW_LLM_TIMEOUT_S` with default 90s, and timeout exceptions abort tenacity retry so provider fallback can happen instead of 50-minute stalls.
-- **Fresh signal:** BFV 3/3, $0.4859, RVPD 1.123; BFC 3/3, $0.9100, RVPD 0.5995; BO 2/3, $0.6109, RVPD 0.3546. BFV is both the cheapest successful strategy and the only strategy that solves all tasks without hitting the cap.
+- **Fresh signal:** BFV 3/3, $0.4859, Yield per Dollar 1.123; BFC 3/3, $0.9100, Yield per Dollar 0.5995; BO 2/3, $0.6109, Yield per Dollar 0.3546. BFV is both the cheapest successful strategy and the only strategy that solves all tasks without hitting the cap.
 - **Tier 1 signal:** highest-value task `sympy__sympy-16988` (value=0.329) is solved by BFV and BFC, failed by BO. BFV solves it at $0.2029 / 26 turns; BFC needs $0.5000 / 44 turns and hits cap. This supports task-wise value awareness as a practical improvement over both BO and value-blind conservation.
 - **Tier 2 signal:** on common successful tasks, BFV also reduces waste versus BO/BFC; on `sympy__sympy-20212`, BFV spends $0.2509 vs BFC $0.3665 and BO $0.4831.
 - **Remaining bugs / risks:** BO's 16988 row is `extract_fail` / protocol failure, so BO comparison is not a pure model-capability loss. BFC still shows repeated exploration and late rescue on 16988. These are runtime/anti-spin targets before scaling to 3×5/3×10 or adding more repos.
@@ -236,7 +247,7 @@
 - **3 bugs fixed**: (1) BFV missing from escalation/reserve allowlists, (2) HTTP timeout retry-loop → 50-min stalls, (3) BFC conservation lockout misclassification as protocol_fail
 - **25 regression tests added**, all passing. 0 regressions in existing suite.
 - **Validation experiment (058_5x1_v1)**: 15/15 rows, 3 strategies × 5 tasks, per-task cap $0.50, jobs=3
-- **Reviewer correction:** 058 is an engineering/evaluator signal, not Tier 1 evidence. All 3 strategies resolve the same 4/5 tasks, so resolved value is identical (0.3798). BFV has the best RVPD/cost among the 4 resolved tasks, but this is cost efficiency, not value allocation.
+- **Reviewer correction:** 058 is an engineering/evaluator signal, not Tier 1 evidence. All 3 strategies resolve the same 4/5 tasks, so resolved value is identical (0.3798). BFV has the best Yield per Dollar/cost among the 4 resolved tasks, but this is cost efficiency, not value allocation.
 - **16988 not evaluable in 058:** highest-value task (value=0.329) fails across the board. BFC/BFV hit provider/billing guard on dashscope T2; BO fails with repair/protocol behavior. This row cannot decide whether BFV rescues high-value tasks.
 - **Phase AB runtime signals partially confirmed**: va_active/task_value_multiplier correct in all 15 rows, BFV escalation working, zero timeout retry loops. Post-review replay now flags 058 as old-schema artifact: missing `turns` alias and explicit `budget_mode` on all 15 rows, plus 2 stale verdict fields.
 - **Post-review evaluator fixes:** compact audit now recomputes verdict fields from current classifier instead of trusting stale JSONL cache; per-task-cap budget exhaustion no longer triggers SHARED_CAP_STARVATION; new rows write `turns == llm_turns`, `budget_mode`, and `per_task_cap`.
@@ -261,12 +272,12 @@
 ### 055 后 Phase Y 状态
 
 - **Phase Y COMPLETE — BudgetFlowValueAware (BFV) implemented and validated**
-- **BFV WINS on both Tier 1 and Tier 2**: 6/6 combined resolution, RVPD=0.977 vs BFC=0.741 vs BO=0.473
+- **BFV WINS on both Tier 1 and Tier 2**: 6/6 combined resolution, Yield per Dollar=0.977 vs BFC=0.741 vs BO=0.473
 - **BFV is the only strategy to resolve the highest-value task** (sympy-16988, value=0.329): BFC spent $0.028 then stagnated, BO exhausted budget, BFV spent $0.279 and succeeded with multiplier=1.48
 - **Value-aware multiplier works**: 0.50 for below-median tasks → conservative, 1.48 for high-value outlier → aggressive. T3 allocation: 8% low-value → 32% high-value.
 - **BFC's value-blind conservation backfires on the most valuable task**: conservation factor prevented T3 escalation, task stagnated after 7 turns and $0.028. BFV's value_multiplier counterbalances this.
 - **Implementation**: ValueAwareSelector (72 lines), cleanly separated from ConservativeSelector. `_build_turn_trace()` bug found and fixed (missing value-aware kwargs).
-- **Proxy noise**: BFV winner stability 96-100% at ±50% noise on RVPD, 100% on total value.
+- **Proxy noise**: BFV winner stability 96-100% at ±50% noise on Yield per Dollar, 100% on total value.
 - **Combined evidence: 3x3 (primary) + 3x5 (supplementary) = 18 paid rows**. 3x3 had full task coverage (all 3 tasks, value spread 5x). 3x5 budget-exhausted before reaching high-value tasks.
 - **Total cost Phase Y**: $3.00 (v1 crash $0.90 + v2 3x3 $1.14 + v2 3x5 $0.96)
 - **Running total all phases**: ~$9.14 (exceeds original $8 cap for phases through X; Phase Y authorized as new phase)
@@ -309,11 +320,11 @@
 - **Task A — P0 Value Matrix Lookup Fix：** `_init_value_observability()` 从 `artifact["tasks"][instance_id]["values"][profile]` 读取（当前 schema），legacy `matrix[profile]` 作为 fallback。修复前所有 049 smoke rows 得到 `value_source=default_equal`、`task_value=1.0`（真实值 0.066-0.097）；修复后 050 smoke 全部 `value_source=value_matrix`。
 - **Task B — touched_file_paths text_regex：** `extract_text_file_paths()` + `extract_trace_file_paths()` 覆盖 bash_command、assistant_content_head、parser_input_snippet。9 新 tests。31/31 bash_stage tests pass。
 - **Task C — Checker Validation：** 049 smoke checker CLEAN (4/4 rows pass)，050 smoke checker CLEAN (6/6 rows pass)。
-- **Task D — Expanded Paid Smoke：** 3 tasks × 2 policies, 6/6 PASS, total $0.6648。BF 比 BO 便宜 36% ($0.0865 vs $0.1351 avg)，RVPD 高 56% ($0.86 vs $0.55)。JSONL: `/tmp/budgetflow-runtime/050_smoke.jsonl`。
+- **Task D — Expanded Paid Smoke：** 3 tasks × 2 policies, 6/6 PASS, total $0.6648。BF 比 BO 便宜 36% ($0.0865 vs $0.1351 avg)，Yield per Dollar 高 56% ($0.86 vs $0.55)。JSONL: `/tmp/budgetflow-runtime/050_smoke.jsonl`。
 - **Task E — Value Matrix Update：** 生成 `050_clean_runs.json`、`050_value_matrix.json`。Sympy smoke 不进入 django clean universe。
 - **Task F — AutoResearch 回归：** 96 value tests pass (13 observability + 83 matrix)，31 bash_stage tests pass，goal-loop smoke exit 0。
 - **Task G — 报告/提交：** 050.md, progress.md, takeaway.md 更新，commit + push。
-- **关键发现：** (1) P0 bug 根因是 `artifact["matrix"]` 在 048+ artifact 中总是 `{}`；(2) touched_file_paths 增强使 text_regex 模式的路径提取覆盖完整；(3) BF 在两个独立 smoke 上一致优于 BO（049: 4/4, 050: 6/6）；(4) First Claim（RVPD）差异主要由 cost efficiency 驱动，需要不同 task subset 才能独立测试 value differentiation。
+- **关键发现：** (1) P0 bug 根因是 `artifact["matrix"]` 在 048+ artifact 中总是 `{}`；(2) touched_file_paths 增强使 text_regex 模式的路径提取覆盖完整；(3) BF 在两个独立 smoke 上一致优于 BO（049: 4/4, 050: 6/6）；(4) First Claim（Yield per Dollar）差异主要由 cost efficiency 驱动，需要不同 task subset 才能独立测试 value differentiation。
 
 ### 049 后 Phase S 状态
 
@@ -322,7 +333,7 @@
 - **Task B — 安全 env 加载：** 从旧 `.env` shell-source 加载（不复制文件），只 export DASHSCOPE_API_KEY + AICODE007_API_KEY，不写任何 key 到 repo。
 - **Task C — 真实 provider preflight：** DashScope chat completion PASS (200, qwen3-coder-flash)，AICode007 chat completion PASS (200, gpt-5.4)。Runner preflight 三层全部 PASS。Phase R `/models` endpoint 是 false blocker。
 - **Task D — Preflight 代码审查：** `provider_signature.py` 已使用 `litellm.completion()` 做真实 chat preflight。代码正确，无需修改。
-- **Task E — Paid smoke：** 2 tasks × 2 policies, 4/4 PASS, total $0.36。JSONL: `/tmp/budgetflow-runtime/049_smoke.jsonl`。BF 比 BO 便宜 22% ($0.0784 vs $0.1010 avg)，RVPD 高 29% ($12.76 vs $9.90)。
+- **Task E — Paid smoke：** 2 tasks × 2 policies, 4/4 PASS, total $0.36。JSONL: `/tmp/budgetflow-runtime/049_smoke.jsonl`。BF 比 BO 便宜 22% ($0.0784 vs $0.1010 avg)，Yield per Dollar 高 29% ($12.76 vs $9.90)。
 - **Task F — Manifest：** 生成 `049_clean_runs.json`。Sympy smoke 不进入 django clean universe（不同 task pool）。
 - **Task G — AutoResearch 回归：** 93 value tests pass，goal-loop smoke exit 0。
 - **Task H — 报告/提交：** 049.md, progress.md, takeaway.md 更新，commit + push。
@@ -332,13 +343,13 @@
 
 - **Phase R 部分完成：** Tasks A/B/C/E/F 完成，Task D (paid smoke) BLOCKED — 两个 API key 均返回 401。详细报告：`docs/reports/048.md`。
 - **Task A — Q-fix consistency：** 修复 047.md 中错误的 API key gate（DeepSeek/OpenAI → DashScope/AICode007），regenerate 047_value_matrix.json 使用正确的 Phase Q manifest，新增 manifest provenance test。
-- **Task B — Value observability：** `_enrich_record_with_value()` 在每个 run JSONL row 写入 6 个新字段（task_value_profile, task_value, resolved_value, value_source, value_matrix_artifact, resolved_value_per_dollar）。新增 CLI flags `--value-profile` 和 `--value-matrix`。Summary 输出包含 per-strategy value metrics。不改变路由决策。
+- **Task B — Value observability：** `_enrich_record_with_value()` 在每个 run JSONL row 写入 6 个新字段（task_value_profile, task_value, resolved_value, value_source, value_matrix_artifact, yield_per_dollar）。新增 CLI flags `--value-profile` 和 `--value-matrix`。Summary 输出包含 per-strategy value metrics。不改变路由决策。
 - **Task C — Tests：** 10 new tests in `test_value_observability.py`（enrichment 6, summary 2, no-secret-leak 2）。93/93 value-related tests pass。
 - **Task D — Paid smoke：** BLOCKED。DASHSCOPE_API_KEY 和 AICODE007_API_KEY 均返回 HTTP 401。Preflight check 正确阻止了带无效 key 的 paid run。
 - **Task E — Artifact regeneration：** 生成 048_clean_runs.json 和 048_value_matrix.json（无新 paid data）。
 - **Task F — AutoResearch 回归：** 93 value tests pass + goal-loop smoke exit 0。
 - **333 total tests pass（33 pre-existing failures），git diff --check CLEAN。**
-- **关键变化：** 每个 run record 现在携带 value observability 字段，使事后分析可以从 JSONL 中直接读取 value 信息，无需回到 value matrix artifact。Summary 输出也包含 resolved_value 和 resolved_value_per_dollar，使 value-aware 比较成为一等公民。
+- **关键变化：** 每个 run record 现在携带 value observability 字段，使事后分析可以从 JSONL 中直接读取 value 信息，无需回到 value matrix artifact。Summary 输出也包含 resolved_value 和 yield_per_dollar，使 value-aware 比较成为一等公民。
 
 ### 047 后 Phase Q 状态
 
@@ -453,8 +464,8 @@
 ### 最新改动（2026-06-05）
 
 - **Phase U (051)**：首次 3-policy value-stress experiment。5 tasks × 3 strategies (BO/SB/BF), 15/15 rows, $1.50。BF LOSES: 3/5 vs 4/5 PASS。BF 20% 更贵。First Claim 无独立证据。Second Claim 不支持。KV/cache downside 确认。详细报告：`paper1/docs/reports/051.md`。
-- **Phase T (050)**：P0 value matrix lookup fix (wrong schema: `matrix[profile]` vs `tasks[id].values[profile]`)。touched_file_paths text_regex 增强。049 smoke checker CLEAN。Expanded paid smoke 6/6 PASS ($0.66)。BF 36% 更便宜，56% 更高 RVPD。127 tests pass。详细报告：`paper1/docs/reports/050.md`。
-- **Phase S (049)**：Provider migration recovery + real preflight + paid smoke 4/4 PASS ($0.36)。Diagnose Phase R 401 as false blocker (missing `.env`)。Shell-sourcing keys for secure migration。BF 22% cheaper, 29% higher RVPD。详细报告：`paper1/docs/reports/049.md`。
+- **Phase T (050)**：P0 value matrix lookup fix (wrong schema: `matrix[profile]` vs `tasks[id].values[profile]`)。touched_file_paths text_regex 增强。049 smoke checker CLEAN。Expanded paid smoke 6/6 PASS ($0.66)。BF 36% 更便宜，56% 更高 Yield per Dollar。127 tests pass。详细报告：`paper1/docs/reports/050.md`。
+- **Phase S (049)**：Provider migration recovery + real preflight + paid smoke 4/4 PASS ($0.36)。Diagnose Phase R 401 as false blocker (missing `.env`)。Shell-sourcing keys for secure migration。BF 22% cheaper, 29% higher Yield per Dollar。详细报告：`paper1/docs/reports/049.md`。
 - **Phase O (045)**：Value Matrix + Progress Calibration 基础设施。4 种 ex-ante value profile（equal/difficulty/solve_rarity/combined）+ sensitivity analysis + 自定义 profile。Progress calibration 从 639 turns 确认 selection-bias caveat。LOCALIZATION progress signal 发现为死信号（0% rate）。AutoResearch 回归 186 + goal-loop smoke exit 0。272 tests pass。建议暂不启动 paid run。详细报告：`paper1/docs/reports/045.md`。
 - **Phase N (044)**：Value-aware offline rescore。新增 `value_rescore.py`（equal/heuristic/custom profile）。030/031 re-score：BF 不赢 BO。Routing trace audit：second-claim evidence WEAK。建议暂不启动 paid run。32 tests pass。详细报告：`paper1/docs/reports/044.md`。
 - **Phase M (043)**：AutoResearch infra 验收 + paper doc 一致性审计。No-paid goal-loop smoke (2/2 PASS, exit 0)。186 tests pass。4 docs 审计无矛盾。takeaway.md 竞争定位段标注 pre-pivot 上下文。详细报告：`paper1/docs/reports/043.md`。
@@ -482,7 +493,7 @@
 
 当前下一步分两条并行线：
 
-1. **BudgetFlow paper 线：重设 Key Indicator。** 为 SWE-bench task 构造 value / difficulty proxy，先明确 `value_i` 如何从 historical trajectories、gold patch complexity、known solve difficulty、repo/task family、model success/cost 等信号得到。然后重跑小规模 value-aware 评估，主表改为 `resolved_value_per_dollar` 和 fixed-budget resolved value。
+1. **BudgetFlow paper 线：重设 Key Indicator。** 为 SWE-bench task 构造 value / difficulty proxy，先明确 `value_i` 如何从 historical trajectories、gold patch complexity、known solve difficulty、repo/task family、model success/cost 等信号得到。然后重跑小规模 value-aware 评估，主表改为 `yield_per_dollar` 和 fixed-budget resolved value。
 2. **AutoResearch 线：已闭环，后续做 real API goal-loop smoke 和实战 commit/push 测试。** Phase K 完成 goal-loop、owner_decision、safe commit/push、报告生成。下一步用真实 API (≤$0.02) 验证 goal-loop + review gate 全链路，以及 `--commit-after-pass --push-after-commit` 在真实 git remote 上的行为。
 3. **实验 hygiene 保持不变：** 所有新 BudgetFlow paid run 仍必须先过 gate：无 orphan/stuck heartbeat、无 suspicious pass、无 no_trace，value source / budget mode / AutoBudgetMemory cap source / PolicyMemory routing source 符合实验语义。
 4. **不要直接扩规模。** 在新 indicator 未定义前，继续 5×10/10×N 只会烧钱并强化旧问题。先做 value model + 2-3 个 baseline 的小型验证。
@@ -504,7 +515,7 @@ which policy resolves the highest total verified value within the same budget?
 **核心指标：**
 
 ```text
-resolved_value_per_dollar = sum(value_i * harness_resolved_i) / sum(cost_i)
+yield_per_dollar = sum(value_i * harness_resolved_i) / sum(cost_i)
 ```
 
 也可以在 fixed budget 下报告：

@@ -1,8 +1,8 @@
 """Value-driven token-efficiency metrics for BudgetFlow.
 
-Tier 1 primary metric is normalized verified resolved value at a fixed budget.
-Resolved value per dollar is a secondary efficiency metric. Tier 2 is the
-equal-value special case used as a mechanism ablation.
+Tier 1 primary metric is Yield: verified resolved value divided by total task
+value at a fixed budget. Yield per Dollar is the secondary efficiency metric.
+Tier 2 is the equal-value special case used as a mechanism ablation.
 """
 
 from __future__ import annotations
@@ -75,7 +75,7 @@ class ValueEfficiencyContext:
         task_cost = float(record.get("task_cost") or record.get("total_cost") or 0)
         task_value, value_source = self.task_value(instance_id)
         resolved_value = task_value if resolved else 0.0
-        rvpd = resolved_value / task_cost if task_cost > 0 else 0.0
+        yield_per_dollar = resolved_value / task_cost if task_cost > 0 else 0.0
 
         routing = str(record.get("routing", ""))
         va_active = routing in {"budgetflow_value_aware", "value_aware_task_level"}
@@ -86,7 +86,7 @@ class ValueEfficiencyContext:
         record["resolved_value"] = resolved_value
         record["value_source"] = value_source
         record["value_matrix_artifact"] = self.matrix_path
-        record["resolved_value_per_dollar"] = round(rvpd, 6)
+        record["yield_per_dollar"] = round(yield_per_dollar, 6)
         record["va_active"] = va_active
         if va_active:
             raw = task_value / max(0.001, self.median_task_value) if self.median_task_value > 0 else 1.0
@@ -106,15 +106,15 @@ class ValueEfficiencyContext:
         total_cost = sum(float(r.get("task_cost") or r.get("total_cost") or 0) for r in records)
         resolved_value = sum(float(r.get("resolved_value") or 0) for r in records)
         total_task_value = sum(float(r.get("task_value") or 1.0) for r in records)
-        rvpd = resolved_value / total_cost if total_cost > 0 else 0.0
-        nvrv = resolved_value / total_task_value if total_task_value > 0 else 0.0
+        yield_per_dollar = resolved_value / total_cost if total_cost > 0 else 0.0
+        yield_score = resolved_value / total_task_value if total_task_value > 0 else 0.0
         return {
             "resolved_count": resolved_count,
             "total_cost": round(total_cost, 6),
             "resolved_value": round(resolved_value, 6),
             "total_task_value": round(total_task_value, 6),
-            "normalized_verified_resolved_value": round(nvrv, 6),
-            "resolved_value_per_dollar": round(rvpd, 6),
+            "yield_score": round(yield_score, 6),
+            "yield_per_dollar": round(yield_per_dollar, 6),
             "value_profile": self.profile,
             "task_value_source_class": self.source_class,
             "value_source": self.matrix_path or "default_equal",

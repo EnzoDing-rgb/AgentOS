@@ -11,7 +11,7 @@
       "description": "Clean-run manifest for 050 smoke. P0 value matrix lookup fix verified — all rows show value_source=value_matrix.",
       "created": "2026-06-05",
       "phase": "Phase T",
-      "note": "3 sympy tasks × 2 strategies. 6/6 PASS. BF 36% cheaper, 56% higher RVPD. discriminative_rarity flat — need 3+ strategies or different task subsets."
+      "note": "3 sympy tasks × 2 strategies. 6/6 PASS. BF 36% cheaper, 56% higher Yield per Dollar. discriminative_rarity flat — need 3+ strategies or different task subsets."
     },
     "source": "manifest — 050 smoke allowlist"
   },

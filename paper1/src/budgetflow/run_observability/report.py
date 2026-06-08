@@ -47,18 +47,18 @@ def format_compact_audit(audit: dict) -> str:
             f"{_format_tier_turns(s.get('tier_turns') or {}):>18} {s['suspicious']:>4}"
         )
 
-    if any("normalized_verified_resolved_value" in s for s in audit["by_strategy"].values()):
+    if any("yield_score" in s for s in audit["by_strategy"].values()):
         lines.append(banner)
         lines.append("T1 VALUE METRICS")
-        lines.append(f"{'strategy':<26} {'res_value':>9} {'task_value':>10} {'nvrv':>7} {'rv_per_$':>9}")
+        lines.append(f"{'strategy':<26} {'res_value':>9} {'task_value':>10} {'Yield':>7} {'Yield/$':>9}")
         lines.append("-" * 64)
         for strat in sorted(audit["by_strategy"]):
             s = audit["by_strategy"][strat]
             lines.append(
                 f"{strat:<26} {s.get('resolved_value', 0.0):>9.2f} "
                 f"{s.get('total_task_value', 0.0):>10.2f} "
-                f"{s.get('normalized_verified_resolved_value', 0.0):>7.2f} "
-                f"{s.get('resolved_value_per_dollar', 0.0):>9.2f}"
+                f"{s.get('yield_score', 0.0):>7.2f} "
+                f"{s.get('yield_per_dollar', 0.0):>9.2f}"
             )
 
     # Common-task comparison
@@ -74,16 +74,16 @@ def format_compact_audit(audit: dict) -> str:
                 f"${cs['cost']:>7.2f} {_format_tier_turns(cs.get('tier_turns') or {}):>18}"
             )
 
-    control_delta = audit.get("stage_split_control_delta") or {}
+    control_delta = audit.get("segment_control_delta") or {}
     if control_delta:
         lines.append(banner)
-        lines.append("STAGE-AWARE VS TASK-LEVEL CONTROL")
+        lines.append("SEGMENT-AWARE VS TASK-LEVEL CONTROL")
         lines.append(
-            f"{control_delta['stage_aware_strategy']} - {control_delta['task_level_control']}: "
+            f"{control_delta['segment_aware_strategy']} - {control_delta['task_level_control']}: "
             f"delta_pass={control_delta['delta_pass']} "
             f"delta_cost=${control_delta['delta_cost']:.4f} "
-            f"delta_nvrv={control_delta['delta_normalized_verified_resolved_value']:.4f} "
-            f"delta_rv_per_$={control_delta['delta_resolved_value_per_dollar']:.4f}"
+            f"delta_yield={control_delta['delta_yield']:.4f} "
+            f"delta_yield_per_dollar={control_delta['delta_yield_per_dollar']:.4f}"
         )
 
     # Failure axis

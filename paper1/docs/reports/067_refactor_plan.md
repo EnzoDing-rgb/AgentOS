@@ -30,7 +30,7 @@ Purpose: continual-learning source selection and loading.
 Purpose: T1/T2 metric semantics.
 
 - Owns task value lookup initialization.
-- Enriches rows with `task_value`, `resolved_value`, `value_source`, `resolved_value_per_dollar`, `va_active`, and `task_value_multiplier`.
+- Enriches rows with `task_value`, `resolved_value`, `value_source`, `yield_per_dollar`, `va_active`, and `task_value_multiplier`.
 - Defines T2 as equal-value T1, not a separate metric family.
 - Provides compatibility wrappers while tests and runner migrate.
 

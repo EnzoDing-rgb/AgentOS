@@ -8,7 +8,7 @@
 
 0. **Value-aware salvage can work, but it is not a free lunch.** On `sympy__sympy-16988`, BFV used task value to override early stagnation, entered a bounded strong-model salvage window, patched, and passed while BO/BFC stopped with no patch. That is real Tier 1 mechanism evidence.
 
-1. **Aggregate RVPD still matters.** The same run shows BFV losing aggregate RVPD because it fails Django 10924 after spending 30 turns. A single high-value rescue is useful, but the policy must avoid turning every mid-high value task into an expensive repair-quality failure.
+1. **Aggregate Yield per Dollar still matters.** The same run shows BFV losing aggregate Yield per Dollar because it fails Django 10924 after spending 30 turns. A single high-value rescue is useful, but the policy must avoid turning every mid-high value task into an expensive repair-quality failure.
 
 2. **T2 remains unproven.** BFC stayed value-blind as intended, but in 065 it was more expensive than BO for the same pass count and resolved value. Do not use BFV's value-aware success to claim value-blind routing efficiency.
 
@@ -116,9 +116,9 @@
 
 0. **BFV resolves the highest-value task that BO and BFC both fail.** The value_multiplier (1.48 for value=0.329) counterbalances the conservation factor, allowing T3 access when value justifies it. Without value awareness, BFC's conservation locks out T3 and the task stagnates after $0.028.
 
-1. **Value-aware routing works on a small scale.** 6/6 resolution with RVPD=0.977 — 2.1× BO, 1.3× BFC. Value multiplier drives T3 allocation gradient: 8% T3 at multiplier=0.50 → 32% T3 at multiplier=1.48.
+1. **Value-aware routing works on a small scale.** 6/6 resolution with Yield per Dollar=0.977 — 2.1× BO, 1.3× BFC. Value multiplier drives T3 allocation gradient: 8% T3 at multiplier=0.50 → 32% T3 at multiplier=1.48.
 
-2. **BFC remains the correct value-blind Tier 2 baseline.** Its conservation mechanism proves that routing restraint alone improves cost efficiency (RVPD 0.741 vs BO 0.473). But value-blindness means it saves budget on the WRONG task — the high-value one. BFV fixes this by injecting task value into the same routing framework.
+2. **BFC remains the correct value-blind Tier 2 baseline.** Its conservation mechanism proves that routing restraint alone improves cost efficiency (Yield per Dollar 0.741 vs BO 0.473). But value-blindness means it saves budget on the WRONG task — the high-value one. BFV fixes this by injecting task value into the same routing framework.
 
 3. **The value_multiplier approach is clean and testable.** Clamp(task_value / median_task_value, 0.5, 2.0) gives a 4× range between lowest and highest value tasks. No ML, no RL — just a deterministic scaling of the existing progress table weights.
 
@@ -180,7 +180,7 @@
 
 5. **Stage-blind (equal weights) matched BO and beat BF.** `stage_blind_tight` (w_i=1/1/1) achieved 4/5 PASS at $0.50 — identical to BO and better than BF (3/5). This suggests that adaptive routing without stage weights may be the sweet spot, and repair-heavy weights (w_i=1/3/2.5) may be harmful in the current calibration.
 
-6. **First Claim still lacks independent evidence.** With identical resolved sets across strategies (minus BF's extra failure), RVPD differences remain purely cost-driven. To test value allocation, strategies must demonstrate different task selection or different budget allocation patterns — not just the same tasks with different costs.
+6. **First Claim still lacks independent evidence.** With identical resolved sets across strategies (minus BF's extra failure), Yield per Dollar differences remain purely cost-driven. To test value allocation, strategies must demonstrate different task selection or different budget allocation patterns — not just the same tasks with different costs.
 
 ### Phase T / P0 Value Matrix Fix + Expanded Paid Smoke Takeaway
 
@@ -188,11 +188,11 @@
 
 2. **Silent fallback to default is worse than a crash.** The bug went undetected through Phase S because `_enrich_record_with_value()` silently used `default_equal` when the lookup returned None. If it had crashed on "profile not found in matrix," the bug would have been caught immediately. The fix adds `value_source="missing_profile_fallback"` to make the fallback explicit and auditable.
 
-3. **Value observability is only as good as the lookup it depends on.** All 6 value fields (`task_value`, `resolved_value`, `value_source`, etc.) are computed downstream from a single lookup. If the lookup is wrong, every downstream metric — RVPD, strategy comparison, claim attribution — is corrupted. The fix doubled the test coverage (10→13 tests) and added CurrentSchema-specific tests that validate against real 050 smoke data.
+3. **Value observability is only as good as the lookup it depends on.** All 6 value fields (`task_value`, `resolved_value`, `value_source`, etc.) are computed downstream from a single lookup. If the lookup is wrong, every downstream metric — Yield per Dollar, strategy comparison, claim attribution — is corrupted. The fix doubled the test coverage (10→13 tests) and added CurrentSchema-specific tests that validate against real 050 smoke data.
 
 4. **touched_file_paths needs text_regex coverage.** In GPT text_regex mode, file paths appear in `assistant_content_head` and `parser_input_snippet`, not in `bash_command`. Without extracting from these sources, text_regex turns have empty `touched_file_paths` — losing localization signal. The fix added two extractors (text + trace) with 9 tests and updated both call sites in `mini_swe_proxy.py`. Cost: zero tokens, zero API calls, one regex pass.
 
-5. **Both claims survive independent smoke tests:** BF beats BO on cost efficiency (22-36% cheaper, 049+050) and RVPD (29-56% higher). But RVPD differences are primarily driven by cost savings when both strategies resolve the same tasks. First Claim needs task-set variation (different tasks for different strategies) to show value differentiation independently of cost efficiency.
+5. **Both claims survive independent smoke tests:** BF beats BO on cost efficiency (22-36% cheaper, 049+050) and Yield per Dollar (29-56% higher). But Yield per Dollar differences are primarily driven by cost savings when both strategies resolve the same tasks. First Claim needs task-set variation (different tasks for different strategies) to show value differentiation independently of cost efficiency.
 
 ### Phase P / Profile Fix + Manifest + Localization Diag Takeaway
 

@@ -61,8 +61,8 @@ def test_compact_audit_reports_value_metrics() -> None:
     stats = audit["by_strategy"]["budgetflow_value_aware_tight"]
 
     assert audit["value_profile"] == "difficulty"
-    assert stats["normalized_verified_resolved_value"] == 0.6
-    assert stats["resolved_value_per_dollar"] == pytest.approx(2.0)
+    assert stats["yield_score"] == 0.6
+    assert stats["yield_per_dollar"] == pytest.approx(2.0)
     assert "T1 VALUE METRICS" in format_compact_audit(audit)
 
 
@@ -177,7 +177,7 @@ def test_compact_audit_uses_current_action_progress_for_t3_productivity() -> Non
     assert stats["t3_no_progress_cost"] == 0.0
 
 
-def test_compact_audit_reports_t2_frontier_and_stage_split_control() -> None:
+def test_compact_audit_reports_t2_frontier_and_segment_control() -> None:
     records = [
         {
             "instance_id": "repo__task-a",
@@ -230,14 +230,14 @@ def test_compact_audit_reports_t2_frontier_and_stage_split_control() -> None:
     ]
 
     audit = build_compact_audit(records)
-    delta = audit["stage_split_control_delta"]
+    delta = audit["segment_control_delta"]
     text = format_compact_audit(audit)
 
     assert audit["common_task_count"] == 2
     assert delta["delta_pass"] == 1
-    assert delta["delta_normalized_verified_resolved_value"] == pytest.approx(2 / 3)
+    assert delta["delta_yield"] == pytest.approx(2 / 3)
     assert "T2 FRONTIER COMMON-TASK" in text
-    assert "STAGE-AWARE VS TASK-LEVEL CONTROL" in text
+    assert "SEGMENT-AWARE VS TASK-LEVEL CONTROL" in text
 
 
 def test_value_fallback_check_allows_explicit_equal_value_t2_runs() -> None:

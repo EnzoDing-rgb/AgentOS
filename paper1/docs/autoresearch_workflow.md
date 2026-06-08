@@ -29,7 +29,7 @@ T2: explain value-fixed routing efficiency as a mechanism ablation inside T1
 
 Therefore AutoResearch code, worker dispatch, and old coordinator tests are
 non-blocking unless they affect the BudgetFlow compare path, JSONL
-observability, value/RVPD accounting, policy memory, or no-paid verification
+observability, value/Yield per Dollar accounting, policy memory, or no-paid verification
 gates. This document should stay because it preserves useful thinking about
 research acceleration. Stale implementation details should not slow the core
 BudgetFlow refactor.

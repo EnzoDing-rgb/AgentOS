@@ -73,13 +73,13 @@
   "hypotheses": {
     "H1_first_claim": {
       "description": "Different policies resolve DIFFERENT task/value subsets. Specifically, bf_full solves harder (higher-value) tasks that bo and stage_blind miss.",
-      "test": "Compare resolved sets across 3 policies. If sets differ, compute resolved_value and RVPD by policy. If bf_full has higher resolved_value (not just lower cost), First Claim gets independent evidence.",
-      "null_hypothesis": "All 3 policies resolve the same tasks. RVPD differences are purely cost-driven.",
+      "test": "Compare resolved sets across 3 policies. If sets differ, compute resolved_value and Yield per Dollar by policy. If bf_full has higher resolved_value (not just lower cost), First Claim gets independent evidence.",
+      "null_hypothesis": "All 3 policies resolve the same tasks. Yield per Dollar differences are purely cost-driven.",
       "evidence_required": "At least one task resolved by bf_full but NOT by bo or stage_blind, AND that task must have non-trivial difficulty value."
     },
     "H2_second_claim": {
       "description": "BudgetFlow (both bf_full and stage_blind) is cheaper per task than budget_only.",
-      "test": "Compare avg_cost, total_cost, turns, and RVPD across 3 policies.",
+      "test": "Compare avg_cost, total_cost, turns, and Yield per Dollar across 3 policies.",
       "null_hypothesis": "BF is not cheaper than BO, or the savings are within noise.",
       "evidence_required": "BF policies show >= 15% cost reduction vs BO, consistent across tasks."
     },
@@ -105,7 +105,7 @@
       "task_value",
       "value_source",
       "resolved_value",
-      "resolved_value_per_dollar",
+      "yield_per_dollar",
       "task_value_profile",
       "value_matrix_artifact",
       "exit_reason",
@@ -117,7 +117,7 @@
       "total_cost",
       "avg_cost",
       "resolved_value",
-      "resolved_value_per_dollar",
+      "yield_per_dollar",
       "T2_pct",
       "T3_pct"
     ]
