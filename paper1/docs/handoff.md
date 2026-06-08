@@ -196,6 +196,62 @@ the current runtime while making the boundaries visible.
   old implementation details.
 - `paper1/docs/north_star.md` stays the terminology source of truth.
 
+## Decision Rules
+
+Use these rules when the implementation has multiple reasonable paths:
+
+- Prefer preserving current runtime behavior while moving boundaries.
+- Prefer active runtime and active tests over historical reports and artifacts.
+- Prefer deleting stale compatibility tests over keeping old names alive.
+- Prefer making entrypoints thinner and adapters clearer.
+- Prefer behavior-based tests over string snapshots and alias-preservation tests.
+- If a change alters paid-run semantics, stop and document the risk before
+  continuing.
+- If two designs both work, choose the one that makes BudgetFlow core less aware
+  of SWE-bench, provider pricing files, value-matrix schemas, and pytest output.
+- If a learned policy would complicate the slice, keep the interface ready for
+  it and leave the implementation as HeuristicPolicy.
+
+## Eight Gold Standards
+
+Keep these checks visible while working:
+
+- T1 first: report Yield and Yield per Dollar before mechanism storytelling.
+- T2 frontier: compare verified resolution and cost under the same budget.
+- Model-tier diagnosis: report productive use, no-progress spend, and why
+  expensive tiers were selected.
+- No-patch rate: distinguish no-patch exits, failed patches, verifier failures,
+  and infra failures.
+- Segment control: compare Segment-Aware Routing against a task-level or
+  per-request control.
+- Checker first: inspect JSONL, trace, checker, compact audit, and harness trust
+  before drawing conclusions.
+- No-paid gates first: pass no-paid tests, dry-runs, value/cost confidence, and
+  provider preflight before paid runs.
+- Historical evidence is immutable: do not patch historical JSONL or old reports
+  to make a current story cleaner.
+
+## Worker Report
+
+At the end of the implementation slice, write a new report:
+
+```text
+paper1/docs/reports/088_policy_backend_refactor.md
+```
+
+The report should be concise and include:
+
+- objective and scope;
+- files changed;
+- interfaces added or changed;
+- stale paths/tests deleted or rewritten;
+- verification commands and results;
+- residual risks;
+- recommended next slice.
+
+Do not edit old reports for terminology cleanup. This report records the new
+work only.
+
 ## Evidence Rules
 
 - Same policy comparison means same task set, verifier, hard budget,

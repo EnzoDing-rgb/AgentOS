@@ -23,6 +23,19 @@ After every experiment, inspect artifacts before drawing conclusions:
 - Long-Term Iteration Value: before fixing a symptom, ask whether the fix improves future diagnosis, scale-up, or paper evidence. Do not overfit the current five familiar tasks.
 - Reflection Loop: after each experiment, audit whether the metric matrix, logs, checker output, and memory updates are sufficient to support the next learning/routing decision. Do not treat pass rate alone as an explanation.
 
+## Eight Gold Standards
+
+These are the short-form checks every worker should keep in view:
+
+- T1 first: report Yield and Yield per Dollar before mechanism storytelling.
+- T2 frontier: compare verified resolution and cost under the same budget.
+- Model-tier diagnosis: report productive use, no-progress spend, and why expensive tiers were selected.
+- No-patch rate: distinguish no-patch exits, failed patches, verifier failures, and infra failures.
+- Segment control: compare Segment-Aware Routing against a task-level or per-request control.
+- Checker first: inspect JSONL, trace, checker, compact audit, and harness trust before drawing conclusions.
+- No-paid gates first: pass no-paid tests, dry-runs, value/cost confidence, and provider preflight before paid runs.
+- Historical evidence is immutable: do not patch historical JSONL or old reports to make a current story cleaner.
+
 ## Run Discipline
 
 - Fix known infra, learning, observability, value-source, or harness bugs before running paid experiments.
@@ -54,6 +67,12 @@ After every experiment, inspect artifacts before drawing conclusions:
 - Avoid broad, unbounded repo archaeology. Read the few files and artifacts needed to answer the current evidence question, then act or summarize the remaining uncertainty.
 - Keep docs meaningful: update `paper1/docs/north_star.md` or `paper1/docs/progress.md` only when a real decision changes.
 - Commit and push stable slices after no-paid gates pass. Avoid noisy commits, but do not leave verified core changes uncommitted.
+
+## Worker Reports
+
+- For substantial worker implementation slices, write a new report under `paper1/docs/reports/`.
+- The report should include: objective, files changed, interface decisions, deleted stale paths/tests, verification commands and results, residual risks, and next recommended slice.
+- Do not spend time rewriting historical reports. New reports describe new work.
 
 ## Learning Scope
 
