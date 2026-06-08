@@ -10,7 +10,7 @@ def test_compact_audit_preserves_generic_tier_counts() -> None:
     audit = build_compact_audit([
         {
             "instance_id": "repo__task",
-            "strategy": "budgetflow_value_aware_tight",
+            "strategy": "budgetflow_full",
             "harness_resolved": True,
             "harness_evidence": {"evidence_complete": True},
             "total_cost": 0.25,
@@ -20,7 +20,7 @@ def test_compact_audit_preserves_generic_tier_counts() -> None:
         }
     ])
 
-    stats = audit["by_strategy"]["budgetflow_value_aware_tight"]
+    stats = audit["by_strategy"]["budgetflow_full"]
 
     assert stats["tier_turns"] == {2: 1, 4: 1, 5: 2}
     assert stats["t3_turns"] == 0
@@ -30,7 +30,7 @@ def test_compact_audit_reports_value_metrics() -> None:
     audit = build_compact_audit([
         {
             "instance_id": "repo__task-a",
-            "strategy": "budgetflow_value_aware_tight",
+            "strategy": "budgetflow_full",
             "harness_resolved": True,
             "harness_evidence": {"evidence_complete": True},
             "total_cost": 0.20,
@@ -44,7 +44,7 @@ def test_compact_audit_reports_value_metrics() -> None:
         },
         {
             "instance_id": "repo__task-b",
-            "strategy": "budgetflow_value_aware_tight",
+            "strategy": "budgetflow_full",
             "harness_resolved": False,
             "harness_evidence": {"evidence_complete": True},
             "total_cost": 0.10,
@@ -58,7 +58,7 @@ def test_compact_audit_reports_value_metrics() -> None:
         },
     ])
 
-    stats = audit["by_strategy"]["budgetflow_value_aware_tight"]
+    stats = audit["by_strategy"]["budgetflow_full"]
 
     assert audit["value_profile"] == "difficulty"
     assert stats["yield_score"] == 0.6
@@ -71,7 +71,7 @@ def test_compact_audit_counts_actionable_decision_issues() -> None:
     audit = build_compact_audit([
         {
             "instance_id": "repo__task-a",
-            "strategy": "budgetflow_value_aware_tight",
+            "strategy": "budgetflow_full",
             "harness_resolved": True,
             "harness_evidence": {"evidence_complete": False},
             "patch_extracted": True,
@@ -108,7 +108,7 @@ def test_compact_audit_accepts_trace_cost_confidence() -> None:
     audit = build_compact_audit([
         {
             "instance_id": "repo__task-a",
-            "strategy": "budgetflow_value_aware_tight",
+            "strategy": "budgetflow_full",
             "harness_resolved": False,
             "harness_evidence": {"evidence_complete": True},
             "task_value": 1.0,
@@ -133,7 +133,7 @@ def test_compact_audit_reports_repo_memory_evidence_for_new_tasks() -> None:
     audit = build_compact_audit([
         {
             "instance_id": "repo__new-task",
-            "strategy": "budgetflow_value_aware_tight",
+            "strategy": "budgetflow_full",
             "harness_resolved": False,
             "harness_evidence": {"evidence_complete": True},
             "total_cost": 0.10,
@@ -160,7 +160,7 @@ def test_compact_audit_reports_t3_productivity() -> None:
     audit = build_compact_audit([
         {
             "instance_id": "repo__task",
-            "strategy": "budgetflow_conservative_tight",
+            "strategy": "bootstrap_conservative_diagnostic",
             "harness_resolved": False,
             "harness_evidence": {"evidence_complete": True},
             "total_cost": 0.07,
@@ -188,7 +188,7 @@ def test_compact_audit_reports_t3_productivity() -> None:
         }
     ])
 
-    stats = audit["t3_productivity"]["budgetflow_conservative_tight"]
+    stats = audit["t3_productivity"]["bootstrap_conservative_diagnostic"]
 
     assert audit["t3_tier"] == 5
     assert stats["t3_turns"] == 2
@@ -196,8 +196,8 @@ def test_compact_audit_reports_t3_productivity() -> None:
     assert stats["t3_no_progress_turns"] == 1
     assert stats["t3_productive_rate"] == 0.5
     assert stats["t3_no_progress_cost"] == 0.04
-    assert audit["t3_source_breakdown"]["budgetflow_conservative_tight"]["evidence_triggered"]["t3_turns"] == 1
-    value_triggered = audit["t3_source_breakdown"]["budgetflow_conservative_tight"]["value_triggered"]
+    assert audit["t3_source_breakdown"]["bootstrap_conservative_diagnostic"]["evidence_triggered"]["t3_turns"] == 1
+    value_triggered = audit["t3_source_breakdown"]["bootstrap_conservative_diagnostic"]["value_triggered"]
     assert value_triggered["t3_turns"] == 1
     assert value_triggered["t3_no_progress_cost"] == 0.04
 
@@ -212,7 +212,7 @@ def test_compact_audit_uses_current_action_progress_for_t3_productivity() -> Non
     audit = build_compact_audit([
         {
             "instance_id": "repo__task",
-            "strategy": "budgetflow_value_aware_tight",
+            "strategy": "budgetflow_full",
             "harness_resolved": False,
             "harness_evidence": {"evidence_complete": True},
             "total_cost": 0.07,
@@ -234,7 +234,7 @@ def test_compact_audit_uses_current_action_progress_for_t3_productivity() -> Non
         }
     ])
 
-    stats = audit["t3_productivity"]["budgetflow_value_aware_tight"]
+    stats = audit["t3_productivity"]["budgetflow_full"]
 
     assert stats["t3_productive_turns"] == 1
     assert stats["t3_no_progress_turns"] == 0
@@ -245,7 +245,7 @@ def test_compact_audit_does_not_count_unknown_progress_as_no_progress() -> None:
     audit = build_compact_audit([
         {
             "instance_id": "repo__task",
-            "strategy": "budgetflow_value_aware_tight",
+            "strategy": "budgetflow_full",
             "harness_resolved": False,
             "harness_evidence": {"evidence_complete": True},
             "total_cost": 0.07,
@@ -271,7 +271,7 @@ def test_compact_audit_does_not_count_unknown_progress_as_no_progress() -> None:
         }
     ])
 
-    stats = audit["t3_productivity"]["budgetflow_value_aware_tight"]
+    stats = audit["t3_productivity"]["budgetflow_full"]
     row = audit["per_task_comparison"][0]
 
     assert stats["t3_turns"] == 2
@@ -290,7 +290,7 @@ def test_compact_audit_reports_t2_frontier_and_segment_control() -> None:
     records = [
         {
             "instance_id": "repo__task-a",
-            "strategy": "budgetflow_value_aware_tight",
+            "strategy": "budgetflow_full",
             "harness_resolved": True,
             "harness_evidence": {"evidence_complete": True},
             "total_cost": 0.30,
@@ -302,7 +302,7 @@ def test_compact_audit_reports_t2_frontier_and_segment_control() -> None:
         },
         {
             "instance_id": "repo__task-b",
-            "strategy": "budgetflow_value_aware_tight",
+            "strategy": "budgetflow_full",
             "harness_resolved": False,
             "harness_evidence": {"evidence_complete": True},
             "total_cost": 0.20,
@@ -314,7 +314,7 @@ def test_compact_audit_reports_t2_frontier_and_segment_control() -> None:
         },
         {
             "instance_id": "repo__task-a",
-            "strategy": "value_aware_task_level_tight",
+            "strategy": "task_level_control",
             "harness_resolved": False,
             "harness_evidence": {"evidence_complete": True},
             "total_cost": 0.10,
@@ -326,7 +326,7 @@ def test_compact_audit_reports_t2_frontier_and_segment_control() -> None:
         },
         {
             "instance_id": "repo__task-b",
-            "strategy": "value_aware_task_level_tight",
+            "strategy": "task_level_control",
             "harness_resolved": False,
             "harness_evidence": {"evidence_complete": True},
             "total_cost": 0.10,
@@ -354,7 +354,7 @@ def test_compact_audit_reports_task_set_metrics() -> None:
     audit = build_compact_audit([
         {
             "instance_id": "repo__task-a",
-            "strategy": "budgetflow_value_aware_tight",
+            "strategy": "budgetflow_full",
             "harness_resolved": True,
             "harness_evidence": {"evidence_complete": True},
             "total_cost": 0.50,
@@ -368,7 +368,7 @@ def test_compact_audit_reports_task_set_metrics() -> None:
         },
         {
             "instance_id": "repo__task-b",
-            "strategy": "budgetflow_value_aware_tight",
+            "strategy": "budgetflow_full",
             "harness_resolved": False,
             "harness_evidence": {"evidence_complete": True},
             "total_cost": 0.25,
@@ -382,8 +382,8 @@ def test_compact_audit_reports_task_set_metrics() -> None:
         },
     ])
 
-    familiar = audit["task_set_metrics"]["familiar"]["easy"]["budgetflow_value_aware_tight"]
-    unseen = audit["task_set_metrics"]["unseen"]["medium"]["budgetflow_value_aware_tight"]
+    familiar = audit["task_set_metrics"]["familiar"]["easy"]["budgetflow_full"]
+    unseen = audit["task_set_metrics"]["unseen"]["medium"]["budgetflow_full"]
 
     assert familiar["yield_score"] == pytest.approx(3.0)
     assert familiar["yield_per_dollar"] == pytest.approx(6.0)
@@ -473,12 +473,12 @@ def test_harness_trust_blocks_host_dependency_contamination() -> None:
 def test_checker_counts_invalid_harness_as_error(tmp_path) -> None:
     path = tmp_path / "run.jsonl"
     path.write_text(
-        '{"instance_id":"sympy__sympy-1","strategy":"budgetflow_value_aware_tight",'
+        '{"instance_id":"sympy__sympy-1","strategy":"budgetflow_full",'
         '"routing":"budgetflow_value_aware","harness_resolved":false,'
         '"patch_extracted":true,"patch_source":"submission","submitted_patch":"/tmp/p.patch",'
         '"exit_status":"Submitted","exit_reason":"submitted","total_cost":0.1,'
         '"llm_turns":1,"turns":1,"elapsed_s":1,"turn_trace_count":1,'
-        '"run_series":"unit","policy_lane":"budgetflow_value_aware_tight",'
+        '"run_series":"unit","policy_lane":"budgetflow_full",'
         '"task_order_index":1,"row_started_at":1,"row_finished_at":2,'
         '"harness_evidence":{"evidence_complete":false},'
         '"observability_status":{"trace_available":true},'
@@ -509,7 +509,7 @@ def test_per_task_comparison_includes_cross_policy_rows() -> None:
     audit = build_compact_audit([
         {
             "instance_id": "repo__task-a",
-            "strategy": "budget_only_tight",
+            "strategy": "budget_only_baseline",
             "harness_resolved": True,
             "harness_evidence": {"evidence_complete": True},
             "total_cost": 0.30,
@@ -527,7 +527,7 @@ def test_per_task_comparison_includes_cross_policy_rows() -> None:
         },
         {
             "instance_id": "repo__task-a",
-            "strategy": "budgetflow_conservative_tight",
+            "strategy": "bootstrap_conservative_diagnostic",
             "harness_resolved": False,
             "harness_evidence": {"evidence_complete": True},
             "total_cost": 0.50,
@@ -573,14 +573,14 @@ def test_per_task_comparison_includes_cross_policy_rows() -> None:
     bf_row = per_task[1]
 
     assert bo_row["instance_id"] == "repo__task-a"
-    assert bo_row["strategy"] == "budget_only_tight"
+    assert bo_row["strategy"] == "budget_only_baseline"
     assert bo_row["resolved"] is True
     assert bo_row["first_tier"] == 3
     assert bo_row["first_t3_turn"] == 0
     assert bo_row["first_useful_action"] == 0
     assert bo_row["max_no_progress_streak"] == 1
 
-    assert bf_row["strategy"] == "budgetflow_conservative_tight"
+    assert bf_row["strategy"] == "bootstrap_conservative_diagnostic"
     assert bf_row["resolved"] is False
     assert bf_row["first_tier"] == 2
     assert bf_row["first_t3_turn"] == 4
@@ -597,8 +597,8 @@ def test_per_task_comparison_includes_cross_policy_rows() -> None:
     text = format_compact_audit(audit)
     assert "PER-TASK POLICY COMPARISON" in text
     assert "repo__task-a" in text
-    assert "budget_only_tight" in text
-    assert "budgetflow_conservative_tight" in text
+    assert "budget_only_baseline" in text
+    assert "bootstrap_conservative_diagnostic" in text
     assert "decision:" in text
     assert "memory=built_in" in text
     assert "cost=tier_catalog:test" in text

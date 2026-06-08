@@ -12,7 +12,7 @@ from budgetflow.learning_context import (
 def _run_record(**kw) -> dict:
     record = {
         "instance_id": "r__t-a",
-        "strategy": "budgetflow_value_aware_tight",
+        "strategy": "budgetflow_full",
         "routing": "budgetflow_value_aware",
         "harness_resolved": True,
         "total_cost": 0.1,

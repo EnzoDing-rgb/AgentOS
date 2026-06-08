@@ -36,7 +36,7 @@ def _value_context() -> ValueEfficiencyContext:
 def _record(**overrides) -> dict:
     record = {
         "instance_id": "sympy__sympy-14774",
-        "strategy": "budgetflow_value_aware_tight",
+        "strategy": "budgetflow_full",
         "routing": "budgetflow_value_aware",
         "harness_resolved": True,
         "patch_extracted": True,
@@ -55,7 +55,7 @@ def _record(**overrides) -> dict:
             "policy_memory_source": "data/runs/066_postfix_3x3.jsonl",
         },
         "run_series": "schema_contract",
-        "attempt_id": "schema_contract_budgetflow_value_aware_tight_sympy__sympy-14774",
+        "attempt_id": "schema_contract_budgetflow_full_sympy__sympy-14774",
     }
     record.update(overrides)
     return record
@@ -99,7 +99,7 @@ def test_compare_runner_records_turns_value_and_task_features(monkeypatch) -> No
 
     record = run_task_record(
         task,
-        cfg=CompareStrategy("budget_only_tight", "budget_only", "tight"),
+        cfg=CompareStrategy("budget_only_baseline", "budget_only"),
         batch_budget_cap=1.0,
         governor=governor,
         ledger=WorkflowLedgerStore(),
@@ -162,7 +162,7 @@ def test_auto_budget_records_dynamic_task_cap_mode(monkeypatch) -> None:
     )
 
     records, _ = run_strategy_batch(
-        CompareStrategy("budgetflow_value_aware_tight", "budgetflow_value_aware", "tight"),
+        CompareStrategy("budgetflow_full", "budgetflow_value_aware"),
         [task],
         batch_budget_cap=0.12,
         value_context=_value_context(),
@@ -203,9 +203,9 @@ def test_persisted_jsonl_contains_t1_t2_observability_and_learning_memory(tmp_pa
             global_progress=GlobalRunProgress(1),
             scoreboard=None,
             summary_path=tmp_path / "summary.log",
-            strategy_names=["budgetflow_value_aware_tight"],
-            batch_caps={"budgetflow_value_aware_tight": 0.5},
-            budget_modes={"budgetflow_value_aware_tight": "per_task_cap"},
+            strategy_names=["budgetflow_full"],
+            batch_caps={"budgetflow_full": 0.5},
+            budget_modes={"budgetflow_full": "per_task_cap"},
             started=0.0,
             out_path=out_path,
             value_profile="equal",
@@ -227,20 +227,20 @@ def test_persisted_jsonl_contains_t1_t2_observability_and_learning_memory(tmp_pa
     assert persisted["routing_learned_action"] == "early_rescue"
     assert persisted["routing_policy_memory_source"].endswith("066_postfix_3x3.jsonl")
     assert record["budget_learning_update_written"] is True
-    assert learned[0]["run_id"] == "schema_contract_budgetflow_value_aware_tight_sympy__sympy-14774"
+    assert learned[0]["run_id"] == "schema_contract_budgetflow_full_sympy__sympy-14774"
 
 
 def test_budget_summary_reports_planned_cap_not_provider_runtime_balance() -> None:
     lines = _format_strategy_totals(
-        strategy_names=["budgetflow_value_aware_tight"],
-        resolved_by_strategy={"budgetflow_value_aware_tight": [True, False]},
-        task_cost_by_strategy={"budgetflow_value_aware_tight": [0.2, 0.3]},
-        batch_spent_by_strategy={"budgetflow_value_aware_tight": 0.5},
-        turns_by_strategy={"budgetflow_value_aware_tight": [3, 7]},
-        tier_mix_by_strategy={"budgetflow_value_aware_tight": [{2: 0.5, 5: 0.5}, {5: 1.0}]},
-        failure_by_strategy={"budgetflow_value_aware_tight": {"pass": 1, "repair_fail": 1}},
-        batch_caps={"budgetflow_value_aware_tight": 1.5},
-        budget_modes={"budgetflow_value_aware_tight": "dynamic_task_caps"},
+        strategy_names=["budgetflow_full"],
+        resolved_by_strategy={"budgetflow_full": [True, False]},
+        task_cost_by_strategy={"budgetflow_full": [0.2, 0.3]},
+        batch_spent_by_strategy={"budgetflow_full": 0.5},
+        turns_by_strategy={"budgetflow_full": [3, 7]},
+        tier_mix_by_strategy={"budgetflow_full": [{2: 0.5, 5: 0.5}, {5: 1.0}]},
+        failure_by_strategy={"budgetflow_full": {"pass": 1, "repair_fail": 1}},
+        batch_caps={"budgetflow_full": 1.5},
+        budget_modes={"budgetflow_full": "dynamic_task_caps"},
     )
 
     text = "\n".join(lines)
@@ -252,21 +252,21 @@ def test_budget_summary_reports_planned_cap_not_provider_runtime_balance() -> No
 
 def test_value_summary_reports_primary_normalized_value_metric(tmp_path) -> None:
     lines = _format_live_snapshot(
-        strategy_names=["budgetflow_value_aware_tight"],
-        resolved_by_strategy={"budgetflow_value_aware_tight": [True, False]},
-        task_cost_by_strategy={"budgetflow_value_aware_tight": [0.2, 0.1]},
-        turns_by_strategy={"budgetflow_value_aware_tight": [4, 3]},
-        tier_mix_by_strategy={"budgetflow_value_aware_tight": [{2: 1.0}, {5: 1.0}]},
-        batch_spent_by_strategy={"budgetflow_value_aware_tight": 0.3},
-        batch_caps={"budgetflow_value_aware_tight": 0.5},
-        budget_modes={"budgetflow_value_aware_tight": "dynamic_task_caps"},
+        strategy_names=["budgetflow_full"],
+        resolved_by_strategy={"budgetflow_full": [True, False]},
+        task_cost_by_strategy={"budgetflow_full": [0.2, 0.1]},
+        turns_by_strategy={"budgetflow_full": [4, 3]},
+        tier_mix_by_strategy={"budgetflow_full": [{2: 1.0}, {5: 1.0}]},
+        batch_spent_by_strategy={"budgetflow_full": 0.3},
+        batch_caps={"budgetflow_full": 0.5},
+        budget_modes={"budgetflow_full": "dynamic_task_caps"},
         runs_done=2,
         total_runs=2,
         tasks_per_strategy=2,
         started=0.0,
         out_path=tmp_path / "run.jsonl",
-        resolved_value_by_strategy={"budgetflow_value_aware_tight": [0.6, 0.0]},
-        task_value_by_strategy={"budgetflow_value_aware_tight": [0.6, 0.4]},
+        resolved_value_by_strategy={"budgetflow_full": [0.6, 0.0]},
+        task_value_by_strategy={"budgetflow_full": [0.6, 0.4]},
         value_profile="difficulty",
     )
 

@@ -17,7 +17,7 @@ from budgetflow.run_guards import (  # noqa: E402
 
 def _rec(*, resolved=False, patch=False, reason="", status=""):
     return {
-        "strategy": "all_t1_tight",
+        "strategy": "all_t1_baseline",
         "harness_resolved": resolved,
         "patch_extracted": patch,
         "exit_reason": reason,
@@ -57,9 +57,9 @@ def test_policy_guard_halts_strategy_only() -> None:
     g = CompareRunGuards(policy_consecutive_fail=3, policy_pipeline_fail_min=2)
     for _ in range(3):
         action = g.record_task(_rec(patch=False, reason="stagnation_no_progress", status="StagnationExit"))
-    assert action.halt_strategy == "all_t1_tight"
+    assert action.halt_strategy == "all_t1_baseline"
     assert not action.halt_all
-    assert g.is_strategy_halted("all_t1_tight")
+    assert g.is_strategy_halted("all_t1_baseline")
 
 
 def test_upstream_pattern() -> None:

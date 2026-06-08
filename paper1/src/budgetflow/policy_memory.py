@@ -101,11 +101,11 @@ class TaskPrior:
 class PolicyRegret:
     repo: str
     full_cost: float = 0.0
-    tight_cost: float = 0.0
+    baseline_cost: float = 0.0
     full_pass: float = 0.0
-    tight_pass: float = 0.0
+    baseline_pass: float = 0.0
     full_count: float = 0.0
-    tight_count: float = 0.0
+    baseline_count: float = 0.0
     regret: float = 0.0  # positive = full more expensive without more passes
 
     @property
@@ -113,8 +113,8 @@ class PolicyRegret:
         return self.full_cost / max(self.full_count, 1)
 
     @property
-    def tight_avg_cost(self) -> float:
-        return self.tight_cost / max(self.tight_count, 1)
+    def baseline_avg_cost(self) -> float:
+        return self.baseline_cost / max(self.baseline_count, 1)
 
 
 @dataclass
@@ -351,7 +351,7 @@ class PolicyMemory:
 
     def _build_policy_regret(self, repo: str, records: list[dict]) -> PolicyRegret:
         regret = PolicyRegret(repo=repo)
-        # Group by instance_id to compare full vs tight
+        # Group by instance_id to compare full vs baseline
         by_task: dict[str, dict[str, list[dict]]] = defaultdict(lambda: defaultdict(list))
         for r in records:
             iid = str(r.get("instance_id") or "")
@@ -359,29 +359,29 @@ class PolicyMemory:
             if routing in ("budgetflow_full", "budgetflow_conservative", "budgetflow_value_aware", "value_aware_task_level") or "budgetflow_full" in routing:
                 by_task[iid]["full"].append(r)
             elif "budget_only" in routing:
-                by_task[iid]["tight"].append(r)
+                by_task[iid]["baseline"].append(r)
 
         for iid, groups in by_task.items():
             full_recs = groups.get("full", [])
-            tight_recs = groups.get("tight", [])
-            if not full_recs or not tight_recs:
+            baseline_recs = groups.get("baseline", [])
+            if not full_recs or not baseline_recs:
                 continue
             regret.full_count += _weighted_count(full_recs)
-            regret.tight_count += _weighted_count(tight_recs)
+            regret.baseline_count += _weighted_count(baseline_recs)
             regret.full_cost += _weighted_cost(full_recs)
-            regret.tight_cost += _weighted_cost(tight_recs)
+            regret.baseline_cost += _weighted_cost(baseline_recs)
             regret.full_pass += sum(_record_weight(r) for r in full_recs if r.get("harness_resolved"))
-            regret.tight_pass += sum(_record_weight(r) for r in tight_recs if r.get("harness_resolved"))
+            regret.baseline_pass += sum(_record_weight(r) for r in baseline_recs if r.get("harness_resolved"))
 
-        if regret.tight_count > 0 and regret.full_count > 0:
+        if regret.baseline_count > 0 and regret.full_count > 0:
             full_avg = regret.full_avg_cost
-            tight_avg = regret.tight_avg_cost
+            baseline_avg = regret.baseline_avg_cost
             full_rate = regret.full_pass / max(regret.full_count, 1)
-            tight_rate = regret.tight_pass / max(regret.tight_count, 1)
-            if full_rate <= tight_rate and full_avg > tight_avg:
-                regret.regret = full_avg - tight_avg
-            elif full_avg > tight_avg * 1.3:
-                regret.regret = (full_avg - tight_avg) / tight_avg
+            baseline_rate = regret.baseline_pass / max(regret.baseline_count, 1)
+            if full_rate <= baseline_rate and full_avg > baseline_avg:
+                regret.regret = full_avg - baseline_avg
+            elif full_avg > baseline_avg * 1.3:
+                regret.regret = (full_avg - baseline_avg) / baseline_avg
         return regret
 
     def _build_escalation_prior(self, records: list[dict]) -> EscalationPrior:
@@ -559,7 +559,7 @@ class PolicyMemory:
             "task_all_pro_failures": task.all_pro_failures,
             "task_all_pro_failure_weight": task.all_pro_failures,
             "recent_failure_axis": task_top_failure,
-            "full_vs_tight_regret": round(regret.regret if regret else 0, 3),
+            "full_vs_baseline_regret": round(regret.regret if regret else 0, 3),
             "learned_action": action,
             "regret_threshold": self.regret_threshold,
             "policy_memory_source": self._source_path or "",
@@ -617,7 +617,7 @@ class PolicyMemory:
         if task.all_pro_failures >= 2:
             return "reduce_rescue"
 
-        # Rule 3: full vs tight regret → cap strongest-tier rescue
+        # Rule 3: full vs baseline regret → cap strongest-tier rescue
         if regret and regret.regret > self.regret_threshold and regret.full_count >= 2:
             return "cap_strongest"
 
@@ -705,7 +705,7 @@ class PolicyMemory:
             if regret.regret > 0:
                 lines.append(
                     f"  regret {repo}: full_avg=${regret.full_avg_cost:.4f} vs "
-                    f"tight_avg=${regret.tight_avg_cost:.4f} regret={regret.regret:.3f}"
+                    f"baseline_avg=${regret.baseline_avg_cost:.4f} regret={regret.regret:.3f}"
                 )
         return lines
 

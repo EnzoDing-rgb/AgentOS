@@ -31,7 +31,7 @@ def test_readiness_blocks_uncovered_non_equal_value_matrix(tmp_path) -> None:
     report = build_compare_readiness_report(
         args=_args(),
         tasks=[SimpleNamespace(instance_id="covered"), SimpleNamespace(instance_id="missing")],
-        strategies=(CompareStrategy("budgetflow_value_aware_tight", "budgetflow_value_aware", "tight"),),
+        strategies=(CompareStrategy("budgetflow_full", "budgetflow_value_aware"),),
         policy_jobs=1,
         value_context=value_context,
         catalog_issues=[],
@@ -53,7 +53,7 @@ def test_readiness_warns_equal_value_is_not_t1_evidence() -> None:
     report = build_compare_readiness_report(
         args=_args(),
         tasks=[SimpleNamespace(instance_id="task-a")],
-        strategies=(CompareStrategy("budgetflow_value_aware_tight", "budgetflow_value_aware", "tight"),),
+        strategies=(CompareStrategy("budgetflow_full", "budgetflow_value_aware"),),
         policy_jobs=1,
         value_context=value_context,
         catalog_issues=[],
@@ -78,7 +78,7 @@ def test_readiness_warns_plain_matrix_is_not_primary_t1_evidence(tmp_path) -> No
     report = build_compare_readiness_report(
         args=_args(),
         tasks=[SimpleNamespace(instance_id="task-a")],
-        strategies=(CompareStrategy("budgetflow_value_aware_tight", "budgetflow_value_aware", "tight"),),
+        strategies=(CompareStrategy("budgetflow_full", "budgetflow_value_aware"),),
         policy_jobs=1,
         value_context=value_context,
         catalog_issues=[],
@@ -107,7 +107,7 @@ def test_readiness_accepts_pre_registered_manual_as_primary_t1_evidence(tmp_path
     report = build_compare_readiness_report(
         args=_args(),
         tasks=[SimpleNamespace(instance_id="task-a")],
-        strategies=(CompareStrategy("budgetflow_value_aware_tight", "budgetflow_value_aware", "tight"),),
+        strategies=(CompareStrategy("budgetflow_full", "budgetflow_value_aware"),),
         policy_jobs=1,
         value_context=value_context,
         catalog_issues=[],
@@ -132,8 +132,8 @@ def test_readiness_blocks_underparallel_policy_jobs() -> None:
         args=_args(),
         tasks=[SimpleNamespace(instance_id="task-a")],
         strategies=(
-            CompareStrategy("budget_only_tight", "budget_only", "tight"),
-            CompareStrategy("budgetflow_value_aware_tight", "budgetflow_value_aware", "tight"),
+            CompareStrategy("budget_only_baseline", "budget_only"),
+            CompareStrategy("budgetflow_full", "budgetflow_value_aware"),
         ),
         policy_jobs=1,
         value_context=value_context,
@@ -154,7 +154,7 @@ def test_readiness_blocks_paid_run_when_auto_budget_has_no_memory_lift() -> None
     report = build_compare_readiness_report(
         args=_args(),
         tasks=[SimpleNamespace(instance_id="task-a"), SimpleNamespace(instance_id="task-b")],
-        strategies=(CompareStrategy("budget_only_tight", "budget_only", "tight"),),
+        strategies=(CompareStrategy("budget_only_baseline", "budget_only"),),
         policy_jobs=1,
         value_context=value_context,
         catalog_issues=[],
@@ -178,7 +178,7 @@ def test_readiness_allows_explicit_global_fallback_cap_diagnostic() -> None:
     report = build_compare_readiness_report(
         args=_args(allow_global_fallback_auto_budget=True),
         tasks=[SimpleNamespace(instance_id="task-a"), SimpleNamespace(instance_id="task-b")],
-        strategies=(CompareStrategy("budget_only_tight", "budget_only", "tight"),),
+        strategies=(CompareStrategy("budget_only_baseline", "budget_only"),),
         policy_jobs=1,
         value_context=value_context,
         catalog_issues=[],

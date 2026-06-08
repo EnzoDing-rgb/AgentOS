@@ -95,22 +95,15 @@ class CompareCheckpointStore:
 
 
 _STRATEGY_ABBREV: dict[str, str] = {
-    "all_t1_tight": "t1-T",
-    "all_t1_loose": "t1-L",
-    "budget_only_tight": "bo-T",
-    "budget_only_loose": "bo-L",
-    "budgetflow_full_tight": "bf-T",
-    "budgetflow_full_loose": "bf-L",
+    "all_t1_baseline": "t1",
+    "budget_only_baseline": "budget-only",
+    "budgetflow_mechanism_diagnostic": "bf-mech",
     "all_pro": "apro",
-    "all_t3": "t3",
-    "budget_only_t2_tight": "bo2-T",
-    "budget_only_t2_loose": "bo2-L",
-    "budgetflow_conservative_tight": "bf-conservative-T",
-    "budgetflow_conservative_loose": "bf-conservative-L",
-    "budgetflow_value_aware_tight": "bf-value-aware-T",
-    "budgetflow_value_aware_loose": "bf-value-aware-L",
-    "value_aware_task_level_tight": "va-task-level-T",
-    "value_aware_task_level_loose": "va-task-level-L",
+    "all_strongest_model": "strongest",
+    "budget_only_t2_baseline": "budget-only-t2",
+    "bootstrap_conservative_diagnostic": "bootstrap-conservative",
+    "budgetflow_full": "budgetflow-full",
+    "task_level_control": "task-level",
 }
 
 

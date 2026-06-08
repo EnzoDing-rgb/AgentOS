@@ -52,6 +52,7 @@ from budgetflow.experiments.compare_config import (  # noqa: E402
     task_descriptor as _task_descriptor,
     task_set_kind as _task_set_kind,
 )
+from budgetflow.adapters import SwebenchBudgetAdapter  # noqa: E402
 from budgetflow.experiments.compare_cli import parse_compare_args  # noqa: E402
 from budgetflow.experiments.compare_memory import (  # noqa: E402
     build_auto_budget_plan,
@@ -186,7 +187,13 @@ def main() -> None:
             flush=True,
         )
 
-    budget_caps = budget_plan.budget_caps
+    budget_context = SwebenchBudgetAdapter().context(
+        hard_cap_usd=budget_plan.constrained,
+        soft_cap_usd=args.soft_budget,
+        window="policy_batch",
+        shared=True,
+        budget_scale=args.budget_scale,
+    )
     tasks = load_tasks_for_compare(args, tasks_n=tasks_n)
 
     catalog_issues = print_tier_catalog_preflight()
@@ -272,7 +279,7 @@ def main() -> None:
         strategies=strategies,
         per_task_cap=args.per_task_cap,
         auto_budget_task_caps=auto_budget_task_caps,
-        budget_caps=budget_caps,
+        constrained_budget=budget_context.hard_cap_usd,
     )
     batch_caps = budget_modes_plan.batch_caps
     budget_modes = budget_modes_plan.budget_modes
@@ -291,7 +298,7 @@ def main() -> None:
         f"{tag('compare', bold=False)} task_set={args.task_set} preset={args.preset} tasks={len(tasks)} "
         f"task_set_kind={task_set_kind} "
         f"strategies={len(strategies)} batches={len(strategies)} runs={total_runs} "
-        f"loose={budget_plan.loose} tight={budget_plan.tight} "
+        f"budget={budget_context.hard_cap_usd} budget_source={budget_context.source} "
         f"pressure_init={budget_plan.pressure_init} pressure_max={budget_plan.pressure_max} "
         f"policy_jobs={policy_jobs} heartbeat={args.heartbeat}s hard_cap=settle_clamp",
         flush=True,
@@ -358,7 +365,7 @@ def main() -> None:
         f"task_set_kind={task_set_kind} tasks={len(tasks)} strategies={strategy_names}",
         f"budget_mode={'per_task_cap=' + str(args.per_task_cap) if args.per_task_cap else 'shared'} "
         f"soft_budget={args.soft_budget} max_overrun={max_overrun} "
-        f"loose={budget_plan.loose} tight={budget_plan.tight} "
+        f"budget={budget_context.hard_cap_usd} budget_source={budget_context.source} "
         f"w_i_profile={args.w_profile or active_w_i_profile_name()} "
         f"pressure_init={budget_plan.pressure_init} pressure_max={budget_plan.pressure_max} "
         f"policy_jobs={policy_jobs} hard_cap=settle_clamp",
@@ -418,9 +425,9 @@ def main() -> None:
                 f"{tag('guard', bold=False)} skip strategy={cfg.name} batch (global halt: {run_guards.abort_reason()})",
                 flush=True,
             )
-            batch_cap = _batch_budget_cap(cfg, budget_caps)
+            batch_cap = _batch_budget_cap(cfg, budget_context.hard_cap_usd)
             return cfg, [], checkpoint.initial_spent(cfg.name) if args.resume else 0.0, batch_cap
-        batch_cap = _batch_budget_cap(cfg, budget_caps)
+        batch_cap = _batch_budget_cap(cfg, budget_context.hard_cap_usd)
         batch_tasks = list(tasks)
         if completed:
             batch_tasks = [t for t in tasks if (cfg.name, t.instance_id) not in completed]
@@ -484,6 +491,7 @@ def main() -> None:
             trace_truncate_chars=args.trace_truncate_chars,
             task_caps=auto_budget_task_caps,
             budget_estimates=auto_budget_estimates,
+            budget_context=budget_context,
             run_series=run_series,
             heartbeat_writer=heartbeat_writer,
             task_set=args.task_set,

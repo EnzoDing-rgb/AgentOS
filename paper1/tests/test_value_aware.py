@@ -28,20 +28,20 @@ class TestStrategyCatalog:
     def test_value_aware_registered_in_default_strategies(self):
         from budgetflow.experiments.compare_config import DEFAULT_STRATEGIES
         names = {s.name for s in DEFAULT_STRATEGIES}
-        assert "budgetflow_value_aware_tight" in names
-        assert "budgetflow_value_aware_loose" in names
+        assert "budgetflow_full" in names
+        assert "task_level_control" in names
 
-    def test_value_aware_tight_routing_is_value_aware(self):
+    def test_budgetflow_full_routing_is_value_aware(self):
         from budgetflow.experiments.compare_config import DEFAULT_STRATEGIES
-        strategy = next(s for s in DEFAULT_STRATEGIES if s.name == "budgetflow_value_aware_tight")
+        strategy = next(s for s in DEFAULT_STRATEGIES if s.name == "budgetflow_full")
         assert strategy.routing == "budgetflow_value_aware"
-        assert strategy.budget_tier == "tight"
+        assert strategy.budgeted is True
 
     def test_task_level_value_control_registered(self):
         from budgetflow.experiments.compare_config import DEFAULT_STRATEGIES
-        control = next(s for s in DEFAULT_STRATEGIES if s.name == "value_aware_task_level_tight")
+        control = next(s for s in DEFAULT_STRATEGIES if s.name == "task_level_control")
         assert control.routing == "value_aware_task_level"
-        assert control.budget_tier == "tight"
+        assert control.budgeted is True
 
 
 class TestValueMultiplier:

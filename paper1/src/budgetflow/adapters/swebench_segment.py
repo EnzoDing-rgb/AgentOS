@@ -12,21 +12,15 @@ checking, analysis/execution/QA, etc.).
 
 from __future__ import annotations
 
-from typing import Protocol
-
 from ..types import Stage, WorkflowSegment
 
 
-class WorkflowAdapter(Protocol):
-    def to_segment(self, stage: Stage, **signals: float | str | bool) -> WorkflowSegment: ...
-
-
 class SwebenchSegmentAdapter:
-    """Maps SWE-bench workflow stages to BudgetFlow WorkflowSegments.
+    """Internal helper for ProgressAdapter's SWE-bench segment mapping.
 
-    This is a thin mapping adapter. BudgetFlow Mechanism only sees
+    BudgetFlow Mechanism only sees
     Context / Action / Verification. The SWE-bench terms
-    LOCALIZATION / REPAIR / VALIDATION stay inside this adapter.
+    LOCALIZATION / REPAIR / VALIDATION stay inside the SWE-bench adapter layer.
     """
 
     # Bidirectional mapping

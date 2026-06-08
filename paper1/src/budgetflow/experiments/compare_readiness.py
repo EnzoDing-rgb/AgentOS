@@ -106,8 +106,8 @@ def build_compare_readiness_report(
             "use --value-source-kind pre_registered_manual with a frozen matrix for main Yield claims"
         )
 
-    if args.preset == "segment-control" and "value_aware_task_level_tight" not in strategy_names:
-        blocking.append("segment-control preset must include value_aware_task_level_tight task-level control")
+    if args.preset == "segment-control" and "task_level_control" not in strategy_names:
+        blocking.append("segment-control preset must include Task-Level Control")
     if args.task_set != "medium" and not args.ids and len(task_ids) <= 3:
         warnings.append("small familiar task set; diagnostic only, weak anti-overfitting evidence")
     if auto_budget_enabled and not auto_budget_caps:

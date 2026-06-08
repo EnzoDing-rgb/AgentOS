@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def _record(**overrides) -> dict:
     record = {
         "instance_id": "sympy__sympy-10001",
-        "strategy": "budgetflow_value_aware_tight",
+        "strategy": "budgetflow_full",
         "routing": "budgetflow_value_aware",
         "harness_resolved": False,
         "failure_class": "repair_fail",
@@ -137,9 +137,9 @@ def test_policy_memory_learns_t1_t2_actions_from_prior_runs() -> None:
         _record(instance_id="repair__task-b", backend_picks=["tier2"]),
         _record(instance_id="repair__task-c", backend_picks=["tier2"]),
         _record(instance_id="cost__task-a", routing="budgetflow_value_aware", total_cost=0.35),
-        _record(instance_id="cost__task-a", routing="budget_only", strategy="budget_only_tight", total_cost=0.05),
+        _record(instance_id="cost__task-a", routing="budget_only", strategy="budget_only_baseline", total_cost=0.05),
         _record(instance_id="cost__task-b", routing="budgetflow_value_aware", total_cost=0.30),
-        _record(instance_id="cost__task-b", routing="budget_only", strategy="budget_only_tight", total_cost=0.06),
+        _record(instance_id="cost__task-b", routing="budget_only", strategy="budget_only_baseline", total_cost=0.06),
     ]
     memory = PolicyMemory()
     memory.rebuild_from_records(records)
@@ -251,7 +251,7 @@ def test_policy_memory_changes_runtime_rescue_and_starting_tier() -> None:
     ])
 
     rescue = rescue_state_for_strategy("budgetflow_value_aware", memory, "repo__repair-a")
-    state = AdaptiveRoutingState(strategy_name="budgetflow_value_aware_tight", policy_memory=memory)
+    state = AdaptiveRoutingState(strategy_name="budgetflow_full", policy_memory=memory)
     state.set_task_context("repo__loc-a")
 
     assert rescue.trigger_turns < 6
@@ -269,7 +269,7 @@ def test_policy_memory_can_imitate_budget_only_strongest_starter_window() -> Non
         _record(
             instance_id="django__task-a",
             routing="budget_only",
-            strategy="budget_only_tight",
+            strategy="budget_only_baseline",
             harness_resolved=True,
             failure_class="pass",
             turn_traces=bo_t3_frontload,
@@ -277,13 +277,13 @@ def test_policy_memory_can_imitate_budget_only_strongest_starter_window() -> Non
         _record(
             instance_id="django__task-a",
             routing="budgetflow_value_aware",
-            strategy="budgetflow_value_aware_tight",
+            strategy="budgetflow_full",
             turn_traces=[{"workflow_segment": "Action", "backend_tier": 2}],
         ),
     ])
 
     summary = memory.routing_prior_summary("django__new-task", WorkflowSegment.CONTEXT)
-    state = AdaptiveRoutingState(strategy_name="budgetflow_value_aware_tight", policy_memory=memory)
+    state = AdaptiveRoutingState(strategy_name="budgetflow_full", policy_memory=memory)
     state.set_task_context("django__new-task")
 
     assert summary["starter_memory_source"] == "repo"
@@ -302,7 +302,7 @@ def test_low_weight_budget_only_starter_evidence_does_not_frontload_strongest() 
         _record(
             instance_id="django__task-a",
             routing="budget_only",
-            strategy="budget_only_tight",
+            strategy="budget_only_baseline",
             harness_resolved=True,
             failure_class="pass",
             _policy_memory_weight=0.4,
@@ -311,7 +311,7 @@ def test_low_weight_budget_only_starter_evidence_does_not_frontload_strongest() 
         _record(
             instance_id="django__task-a",
             routing="budgetflow_value_aware",
-            strategy="budgetflow_value_aware_tight",
+            strategy="budgetflow_full",
             _policy_memory_weight=0.4,
             turn_traces=[{"workflow_segment": "Action", "backend_tier": 2}],
         ),
@@ -329,7 +329,7 @@ def test_weak_task_starter_prior_does_not_override_repo_frontload() -> None:
         _record(
             instance_id="sympy__repo-a",
             routing="budget_only",
-            strategy="budget_only_tight",
+            strategy="budget_only_baseline",
             harness_resolved=True,
             failure_class="pass",
             turn_traces=[
@@ -340,14 +340,14 @@ def test_weak_task_starter_prior_does_not_override_repo_frontload() -> None:
         _record(
             instance_id="sympy__repo-a",
             routing="budgetflow_value_aware",
-            strategy="budgetflow_value_aware_tight",
+            strategy="budgetflow_full",
             harness_resolved=False,
             turn_traces=[{"workflow_segment": "Action", "backend_tier": 2, "final_backend": "tier2"}],
         ),
         _record(
             instance_id="sympy__repo-b",
             routing="budget_only",
-            strategy="budget_only_tight",
+            strategy="budget_only_baseline",
             harness_resolved=True,
             failure_class="pass",
             turn_traces=[
@@ -358,14 +358,14 @@ def test_weak_task_starter_prior_does_not_override_repo_frontload() -> None:
         _record(
             instance_id="sympy__repo-b",
             routing="budgetflow_value_aware",
-            strategy="budgetflow_value_aware_tight",
+            strategy="budgetflow_full",
             harness_resolved=False,
             turn_traces=[{"workflow_segment": "Action", "backend_tier": 2, "final_backend": "tier2"}],
         ),
         _record(
             instance_id="sympy__weak-task",
             routing="budget_only",
-            strategy="budget_only_tight",
+            strategy="budget_only_baseline",
             harness_resolved=True,
             failure_class="pass",
             _policy_memory_weight=0.35,
@@ -374,7 +374,7 @@ def test_weak_task_starter_prior_does_not_override_repo_frontload() -> None:
         _record(
             instance_id="sympy__weak-task",
             routing="budgetflow_value_aware",
-            strategy="budgetflow_value_aware_tight",
+            strategy="budgetflow_full",
             harness_resolved=False,
             _policy_memory_weight=0.35,
             turn_traces=[{"workflow_segment": "Action", "backend_tier": 2, "final_backend": "tier2"}],
@@ -394,7 +394,7 @@ def test_low_budget_only_frontload_rate_does_not_create_starter_action() -> None
         _record(
             instance_id="sympy__task-a",
             routing="budget_only",
-            strategy="budget_only_tight",
+            strategy="budget_only_baseline",
             harness_resolved=True,
             failure_class="pass",
             turn_traces=[
@@ -406,7 +406,7 @@ def test_low_budget_only_frontload_rate_does_not_create_starter_action() -> None
         _record(
             instance_id="sympy__task-a",
             routing="budgetflow_value_aware",
-            strategy="budgetflow_value_aware_tight",
+            strategy="budgetflow_full",
             harness_resolved=False,
             turn_traces=[{"workflow_segment": "Action", "backend_tier": 2, "final_backend": "tier2"}],
         ),
@@ -424,7 +424,7 @@ def test_budget_only_cheaper_success_extends_strongest_starter_window() -> None:
         _record(
             instance_id="sympy__task-a",
             routing="budget_only",
-            strategy="budget_only_tight",
+            strategy="budget_only_baseline",
             harness_resolved=True,
             failure_class="pass",
             total_cost=0.20,
@@ -438,7 +438,7 @@ def test_budget_only_cheaper_success_extends_strongest_starter_window() -> None:
         _record(
             instance_id="sympy__task-a",
             routing="budgetflow_value_aware",
-            strategy="budgetflow_value_aware_tight",
+            strategy="budgetflow_full",
             harness_resolved=True,
             failure_class="pass",
             total_cost=0.90,
@@ -464,7 +464,7 @@ def test_unproductive_budgetflow_starter_shortens_frontload_window() -> None:
         _record(
             instance_id="sympy__task-a",
             routing="budget_only",
-            strategy="budget_only_tight",
+            strategy="budget_only_baseline",
             harness_resolved=True,
             failure_class="pass",
             turn_traces=[
@@ -475,7 +475,7 @@ def test_unproductive_budgetflow_starter_shortens_frontload_window() -> None:
         _record(
             instance_id="sympy__task-a",
             routing="budgetflow_value_aware",
-            strategy="budgetflow_value_aware_tight",
+            strategy="budgetflow_full",
             harness_resolved=False,
             turn_traces=[
                 {
@@ -508,7 +508,7 @@ def test_repeated_unproductive_budgetflow_starter_disables_frontload() -> None:
         _record(
             instance_id=f"sympy__task-{i}",
             routing="budget_only",
-            strategy="budget_only_tight",
+            strategy="budget_only_baseline",
             harness_resolved=True,
             failure_class="pass",
             turn_traces=[
@@ -521,7 +521,7 @@ def test_repeated_unproductive_budgetflow_starter_disables_frontload() -> None:
         _record(
             instance_id=f"sympy__task-{i}",
             routing="budgetflow_value_aware",
-            strategy="budgetflow_value_aware_tight",
+            strategy="budgetflow_full",
             harness_resolved=False,
             turn_traces=[
                 {
@@ -554,7 +554,7 @@ def test_verified_starter_success_prevents_turn_level_no_progress_from_disabling
         records.append(_record(
             instance_id=f"sympy__task-{i}",
             routing="budget_only",
-            strategy="budget_only_tight",
+            strategy="budget_only_baseline",
             harness_resolved=True,
             failure_class="pass",
             turn_traces=[
@@ -565,7 +565,7 @@ def test_verified_starter_success_prevents_turn_level_no_progress_from_disabling
         records.append(_record(
             instance_id=f"sympy__task-{i}",
             routing="budgetflow_value_aware",
-            strategy="budgetflow_value_aware_tight",
+            strategy="budgetflow_full",
             harness_resolved=resolved,
             failure_class="pass" if resolved else "repair_fail",
             turn_traces=[
@@ -598,7 +598,7 @@ def test_budget_only_equal_cost_success_does_not_create_starter_evidence() -> No
         _record(
             instance_id="sympy__task-a",
             routing="budget_only",
-            strategy="budget_only_tight",
+            strategy="budget_only_baseline",
             harness_resolved=True,
             failure_class="pass",
             total_cost=0.20,
@@ -607,7 +607,7 @@ def test_budget_only_equal_cost_success_does_not_create_starter_evidence() -> No
         _record(
             instance_id="sympy__task-a",
             routing="budgetflow_value_aware",
-            strategy="budgetflow_value_aware_tight",
+            strategy="budgetflow_full",
             harness_resolved=True,
             failure_class="pass",
             total_cost=0.25,
@@ -815,7 +815,7 @@ def test_auto_budget_dry_run_exposes_escalation_memory_decision(tmp_path: Path) 
             "--ids",
             "sympy__sympy-14774",
             "--strategies",
-            "budgetflow_value_aware_tight",
+            "budgetflow_full",
             "--auto-budget",
             "--auto-budget-dry-run",
             "--auto-budget-memory",
@@ -849,7 +849,7 @@ def test_budgetflow_full_routing_contributes_to_starter_prior() -> None:
         _record(
             instance_id="django__task-bf-full",
             routing="budget_only",
-            strategy="budget_only_tight",
+            strategy="budget_only_baseline",
             harness_resolved=True,
             failure_class="pass",
             total_cost=0.15,
@@ -858,7 +858,7 @@ def test_budgetflow_full_routing_contributes_to_starter_prior() -> None:
         _record(
             instance_id="django__task-bf-full",
             routing="budgetflow_full",
-            strategy="budgetflow_full_tight",
+            strategy="budgetflow_mechanism_diagnostic",
             harness_resolved=False,
             total_cost=0.60,
             turn_traces=[{"workflow_segment": "Action", "backend_tier": 2, "final_backend": "tier2"}],

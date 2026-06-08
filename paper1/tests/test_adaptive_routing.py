@@ -16,7 +16,7 @@ def _fail_record(**extra) -> dict:
 
 
 def test_runtime_state_resets_between_tasks() -> None:
-    state = AdaptiveRoutingState(strategy_name="budgetflow_value_aware_tight")
+    state = AdaptiveRoutingState(strategy_name="budgetflow_full")
     state.rescue.evidence_turns = 10
     state.rescue.window_opened = True
     state.ttl_steps_remaining = 2
@@ -29,7 +29,7 @@ def test_runtime_state_resets_between_tasks() -> None:
 
 
 def test_starting_tier_can_skip_t1_but_never_starts_t3() -> None:
-    state = AdaptiveRoutingState(strategy_name="budgetflow_value_aware_tight")
+    state = AdaptiveRoutingState(strategy_name="budgetflow_full")
     for _ in range(10):
         state.record_task(_fail_record())
 

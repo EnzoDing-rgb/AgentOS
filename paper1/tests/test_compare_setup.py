@@ -20,12 +20,10 @@ def _args(**overrides):
         preset="3x3",
         limit=None,
         task_set="easy",
-        loose=None,
-        tight=None,
+        budget=None,
         pressure_init=None,
         pressure_max=None,
-        tight_scale=1.0,
-        loose_scale=1.0,
+        budget_scale=1.0,
         max_overrun=0.0,
         trace_verbose=False,
         trace_quiet=False,
@@ -61,12 +59,10 @@ def test_task_set_kind_labels_experiment_groups() -> None:
 
 
 def test_budget_plan_uses_defaults_and_scales() -> None:
-    plan = resolve_budget_plan(_args(tight=2.0, loose=5.0, tight_scale=2.0), tasks_n=3)
+    plan = resolve_budget_plan(_args(budget=2.0, budget_scale=2.0), tasks_n=3)
 
-    assert plan.tight == 4.0
-    assert plan.loose == 5.0
+    assert plan.constrained == 4.0
     assert plan.max_overrun == 0.0
-    assert plan.budget_caps == {"loose": 5.0, "tight": 4.0}
 
 
 def test_trace_console_priority() -> None:
@@ -80,9 +76,9 @@ def test_3x3_selects_canonical_diagnostic_strategies_and_parallel_jobs() -> None
     names = {s.name for s in selection.strategies}
 
     assert names == {
-        "budget_only_tight",
-        "budgetflow_conservative_tight",
-        "budgetflow_value_aware_tight",
+        "budget_only_baseline",
+        "task_level_control",
+        "budgetflow_full",
     }
     assert selection.policy_jobs == 3
     assert selection.jobs_upgraded is True
@@ -93,12 +89,11 @@ def test_segment_control_preset_adds_task_level_value_control_and_parallel_jobs(
     names = {s.name for s in selection.strategies}
 
     assert names == {
-        "budget_only_tight",
-        "budgetflow_conservative_tight",
-        "budgetflow_value_aware_tight",
-        "value_aware_task_level_tight",
+        "budget_only_baseline",
+        "budgetflow_full",
+        "task_level_control",
     }
-    assert selection.policy_jobs == 4
+    assert selection.policy_jobs == 3
     assert selection.jobs_upgraded is True
 
 
@@ -113,17 +108,17 @@ def test_unknown_strategy_name_fails_fast() -> None:
 
 def test_batch_budget_modes_distinguish_dynamic_caps() -> None:
     strategies = (
-        CompareStrategy("budgetflow_value_aware_tight", "budgetflow_value_aware", "tight"),
-        CompareStrategy("all_pro", "all_pro", None),
+        CompareStrategy("budgetflow_full", "budgetflow_value_aware"),
+        CompareStrategy("all_pro", "all_pro", budgeted=False),
     )
     modes = build_batch_budget_modes(
         strategies=strategies,
         per_task_cap=None,
         auto_budget_task_caps={"t1": 0.1, "t2": 0.2},
-        budget_caps={"tight": 1.0, "loose": 2.0},
+        constrained_budget=1.0,
     )
 
-    assert modes.batch_caps["budgetflow_value_aware_tight"] == pytest.approx(0.3)
-    assert modes.budget_modes["budgetflow_value_aware_tight"] == "dynamic_task_caps"
+    assert modes.batch_caps["budgetflow_full"] == pytest.approx(0.3)
+    assert modes.budget_modes["budgetflow_full"] == "dynamic_task_caps"
     assert modes.batch_caps["all_pro"] is None
     assert modes.budget_modes["all_pro"] == "shared"

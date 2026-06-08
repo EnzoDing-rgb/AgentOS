@@ -5,7 +5,7 @@ This file is the repo-level operating contract for Codex-style agents working in
 ## North Star
 
 - BudgetFlow's Tier 1 claim is the compass: under a shared hard budget, maximize Yield.
-- Tier 2 is a mechanism claim: policy/routing efficiency must not be weaker than dummy/static/budget-tight baselines, and must show whether model-tier decisions improve value and cost efficiency.
+- Tier 2 is a mechanism claim: policy/routing efficiency must not be weaker than dummy/static/shared-budget baselines, and must show whether model-tier decisions improve value and cost efficiency.
 - Tier 2 serves Tier 1. Do not optimize routing savings in a way that reduces value-weighted outcomes.
 
 ## Experiment Gold Standard
@@ -19,7 +19,7 @@ After every experiment, inspect artifacts before drawing conclusions:
 - Mechanism Diagnosis: explain whether outcomes came from model capability, task difficulty, routing, caps, Value-Triggered Escalation, evaluation, or observability.
 - Segment-Splitting Risk: workflow-segment-aware routing is a mechanism hypothesis, not an axiom. It may improve T2 by using tiers at the right work segment, but it may also add switching noise, cache loss, prompt drift, or brittle heuristics that hurt T1.
 - Segment-Aware Control: when evaluating the T2 mechanism, report segment-aware BudgetFlow against a task-level or per-request control. Explain pass/value delta, cost delta, model-tier use, and whether segment signals helped routing or merely added noise.
-- Strong Baseline Diagnosis: `budget_only_tight` is a strong budget-pressure baseline and diagnostic mirror, not the paper target. When a Bootstrap Policy loses to it, first diagnose which reusable mechanism principle the budget-only control exposed, such as early expensive-tier frontload, pressure gating, repair runway, or stop-loss behavior, then decide whether BudgetFlow should absorb that principle through its own value-aware, segment-aware, repair/escalation/stop mechanisms. Do not weaken the control, cherry-pick tasks, tune values after outcomes, or turn the story into "BudgetFlow copied the baseline."
+- Strong Baseline Diagnosis: `budget_only_baseline` is a strong shared-budget baseline and diagnostic mirror, not the paper target. When a Bootstrap Policy loses to it, first diagnose which reusable mechanism principle the budget-only control exposed, such as early expensive-tier frontload, pressure gating, repair runway, or stop-loss behavior, then decide whether BudgetFlow should absorb that principle through its own value-aware, segment-aware, repair/escalation/stop mechanisms. Do not weaken the control, cherry-pick tasks, tune values after outcomes, or turn the story into "BudgetFlow copied the baseline."
 - Long-Term Iteration Value: before fixing a symptom, ask whether the fix improves future diagnosis, scale-up, or paper evidence. Do not overfit the current five familiar tasks.
 - Reflection Loop: after each experiment, audit whether the metric matrix, logs, checker output, and memory updates are sufficient to support the next learning/routing decision. Do not treat pass rate alone as an explanation.
 

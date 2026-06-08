@@ -101,8 +101,8 @@ VALUE_TRIGGERED_ESCALATION_MIN_MULTIPLIER = 1.15
 VALUE_TRIGGERED_ESCALATION_DEFAULT_WINDOW_TURNS = 3
 VALUE_TRIGGERED_ESCALATION_MIN_HEADROOM_FRAC = 0.12
 
-# PolicyMemory regret threshold: when full_vs_tight_regret exceeds this,
-# budgetflow_full is auto-tightened.
+# PolicyMemory regret threshold: when full_vs_baseline_regret exceeds this,
+# budgetflow_full receives stronger budget-pressure correction.
 POLICY_REGRET_THRESHOLD = 0.15
 
 BUDGET_PRESSURE_INIT = 0.01

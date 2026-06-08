@@ -16,7 +16,7 @@ comments, and reports should use these names.
 | ValueSource | Versioned input that defines or estimates task value for one run or deployment. |
 | CostSource | Versioned input that defines or estimates model cost for one run or deployment. |
 | TaskAdapter | Adapter that turns external work into standard BudgetFlow task inputs, including task identity, description, features, difficulty/value hints, and value-source metadata. |
-| WorkflowAdapter | Adapter that maps external work phases onto BudgetFlow Workflow Segments. |
+| BudgetAdapter | Adapter that turns customer or experiment budget input into a standard BudgetContext: budget window, hard/soft cap, shared scope, allowed model pool, source, and confidence. |
 | ProgressAdapter | Adapter that turns process evidence and final acceptance into standard progress/outcome signals. Intermediate progress can be unknown; final acceptance defines resolved. |
 | CostAdapter | Adapter that turns public price catalogs, provider estimates, invoices, enterprise rate cards, or manual overrides into a standard cost signal. |
 | Confidence | A short record of where a value or cost estimate came from and how trustworthy it is. |
@@ -53,8 +53,8 @@ difficulty, progress, and budget pressure instead of by fixed per-person quotas.
 The paper studies online, value-aware budget governance for multi-step agent
 tasks. SWE-bench is the current controlled evaluation adapter because it
 provides repeatable tasks and verifiers. The system boundary is broader:
-enterprise deployments can replace TaskAdapter, WorkflowAdapter,
-ProgressAdapter, and CostAdapter while keeping the BudgetFlow Mechanism.
+enterprise deployments can replace TaskAdapter, BudgetAdapter,
+CostAdapter, and ProgressAdapter while keeping the BudgetFlow Mechanism.
 
 ## BudgetFlow Mechanism
 
@@ -76,9 +76,9 @@ belong behind adapters. They can power benchmark experiments; they do not define
 BudgetFlow Mechanism or the default Bootstrap Policy.
 
 Adapter boundaries should be useful even when the user provides very little.
-TaskAdapter is the only mandatory input: BudgetFlow must know what work is being
-attempted. WorkflowAdapter, ProgressAdapter, and CostAdapter may start with
-conservative defaults or unknown signals, as long as those defaults are
+TaskAdapter and BudgetAdapter are the mandatory deployment inputs: BudgetFlow
+must know what work is being attempted and what budget window constrains it.
+CostAdapter and ProgressAdapter may start with conservative defaults or unknown signals, as long as those defaults are
 auditable. More customer metadata improves routing quality, but missing metadata
 should not make the system unusable.
 
@@ -230,13 +230,13 @@ T2 diagnostics:
 | Learn Policy | Customer-facing learned policy. It can use built-in Memory or a customer-owned machine learning system behind the same Policy Backend interface. |
 | Fixed Baseline Policy | Evaluation-only control policy such as static routing, all-cheap, all-strong, task-level routing, or budget-only routing. |
 
-Current main experiments use tight-budget mode and three policy roles:
+Current main experiments use a reasonable pre-registered shared budget and three policy roles:
 
 | Experiment Role | CLI Strategy | Meaning |
 |---|---|---|
-| Budget-Only Baseline | `budget_only_tight` | Strong tight-budget control. It tests what budget pressure alone can achieve. |
-| Task-Level Control | `value_aware_task_level_tight` | Value-aware control that chooses at task/request level and preserves cache/context continuity. |
-| BudgetFlow Full | `budgetflow_value_aware_tight` | Main BudgetFlow policy: shared hard budget, value-aware allocation, workflow-segment signal, stop-loss, escalation, audit, and Learn Policy Inputs readiness. |
+| Budget-Only Baseline | `budget_only_baseline` | Strong shared-budget control. It tests what budget pressure alone can achieve. |
+| Task-Level Control | `task_level_control` | Value-aware control that chooses at task/request level and preserves cache/context continuity. |
+| BudgetFlow Full | `budgetflow_full` | Main BudgetFlow policy: shared hard budget, value-aware allocation, workflow-segment signal, stop-loss, escalation, audit, and Learn Policy Inputs readiness. |
 
 The task-level control is mandatory when evaluating segment-aware routing. It
 tests whether segment features help, or whether they add switching noise,
@@ -270,7 +270,7 @@ Observability follows the same boundary. Each adapter should emit enough
 current-schema evidence to explain its inputs, defaults, confidence, unknowns,
 and final outcome. Do not add a pluggable observability framework until a real
 runtime needs it; first keep the active JSONL and compact audit aligned with
-TaskAdapter, WorkflowAdapter, ProgressAdapter, CostAdapter, Policy Backend, and
+TaskAdapter, BudgetAdapter, CostAdapter, ProgressAdapter, Policy Backend, and
 Learn Policy Inputs.
 
 The policy should optimize expected marginal value:

@@ -31,34 +31,23 @@ def fmt_usd(value: float | None) -> str:
 class CompareStrategy:
     name: str
     routing: str
-    budget_tier: str | None  # None = uncapped (all_pro)
+    budgeted: bool = True
 
 
 DEFAULT_STRATEGIES: tuple[CompareStrategy, ...] = (
-    CompareStrategy("all_t1_tight", "all_flash", "tight"),
-    CompareStrategy("all_t1_loose", "all_flash", "loose"),
-    CompareStrategy("budget_only_tight", "budget_only", "tight"),
-    CompareStrategy("stage_blind_tight", "stage_blind", "tight"),
-    CompareStrategy("budgetflow_full_tight", "budgetflow_full", "tight"),
-    CompareStrategy("budgetflow_equal_weight_tight", "budgetflow_equal_weight", "tight"),
-    CompareStrategy("budget_only_loose", "budget_only", "loose"),
-    CompareStrategy("stage_blind_loose", "stage_blind", "loose"),
-    CompareStrategy("budgetflow_full_loose", "budgetflow_full", "loose"),
-    CompareStrategy("budgetflow_equal_weight_loose", "budgetflow_equal_weight", "loose"),
-    CompareStrategy("all_pro", "all_pro", None),
-    CompareStrategy("budget_only_t2_tight", "budget_only_t2", "tight"),
-    CompareStrategy("budget_only_t2_loose", "budget_only_t2", "loose"),
-    CompareStrategy("budgetflow_conservative_tight", "budgetflow_conservative", "tight"),
-    CompareStrategy("budgetflow_conservative_loose", "budgetflow_conservative", "loose"),
-    CompareStrategy("budgetflow_value_aware_tight", "budgetflow_value_aware", "tight"),
-    CompareStrategy("budgetflow_value_aware_loose", "budgetflow_value_aware", "loose"),
-    CompareStrategy("value_aware_task_level_tight", "value_aware_task_level", "tight"),
-    CompareStrategy("value_aware_task_level_loose", "value_aware_task_level", "loose"),
+    CompareStrategy("budget_only_baseline", "budget_only"),
+    CompareStrategy("task_level_control", "value_aware_task_level"),
+    CompareStrategy("budgetflow_full", "budgetflow_value_aware"),
 )
 
 DIAGNOSTIC_STRATEGIES: tuple[CompareStrategy, ...] = (
-    CompareStrategy("all_t3", "all_t3", None),
-    CompareStrategy("budget_tight_dummy", "all_flash", "tight"),
+    CompareStrategy("all_strongest_model", "all_t3", budgeted=False),
+    CompareStrategy("all_t1_baseline", "all_flash"),
+    CompareStrategy("budget_only_t2_baseline", "budget_only_t2"),
+    CompareStrategy("bootstrap_conservative_diagnostic", "budgetflow_conservative"),
+    CompareStrategy("budgetflow_mechanism_diagnostic", "budgetflow_full"),
+    CompareStrategy("segment_blind_control", "stage_blind"),
+    CompareStrategy("equal_weight_control", "budgetflow_equal_weight"),
 )
 
 
@@ -106,10 +95,10 @@ def w_i_profile_for_record(routing: str) -> str:
     return active_w_i_profile_name()
 
 
-def batch_budget_cap(cfg: CompareStrategy, budget_caps: dict[str, float]) -> float:
-    if cfg.budget_tier is None:
+def batch_budget_cap(cfg: CompareStrategy, constrained_budget: float) -> float:
+    if not cfg.budgeted:
         return UNCAPPED_BUDGET
-    return budget_caps[cfg.budget_tier]
+    return constrained_budget
 
 
 def task_difficulty_key(task) -> tuple[int, int, int, str]:

@@ -87,13 +87,13 @@ def run_policy_memory_gate(policy_memory: PolicyMemory | None, source_path: str)
         regret = policy_memory._policy_regrets[repo_key]
         print(
             f"  {repo_key}: full_avg=${regret.full_avg_cost:.4f} "
-            f"tight_avg=${regret.tight_avg_cost:.4f} "
+            f"baseline_avg=${regret.baseline_avg_cost:.4f} "
             f"regret={regret.regret:.3f} threshold={policy_memory.regret_threshold}"
         )
         if regret.regret > policy_memory.regret_threshold:
             print("    EXCEEDS threshold: cap_strongest would be triggered")
         else:
-            print("    below threshold: no auto-tightening")
+            print("    below threshold: no policy constraint")
 
     print(banner)
     print("NEXT-RUN ROUTING IMPACT")

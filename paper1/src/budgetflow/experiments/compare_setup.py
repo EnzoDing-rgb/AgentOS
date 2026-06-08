@@ -25,30 +25,24 @@ DIAGNOSTIC_3X3_IDS = (
     "sympy__sympy-16988",
 )
 DIAGNOSTIC_3X3_STRATEGIES = (
-    "budget_only_tight",
-    "budgetflow_conservative_tight",
-    "budgetflow_value_aware_tight",
+    "budget_only_baseline",
+    "task_level_control",
+    "budgetflow_full",
 )
 
 SEGMENT_CONTROL_DIAGNOSTIC_STRATEGIES = (
-    "budget_only_tight",
-    "budgetflow_conservative_tight",
-    "budgetflow_value_aware_tight",
-    "value_aware_task_level_tight",
+    "budget_only_baseline",
+    "task_level_control",
+    "budgetflow_full",
 )
 
 
 @dataclass(frozen=True)
 class CompareBudgetPlan:
-    loose: float
-    tight: float
+    constrained: float
     pressure_init: float
     pressure_max: float
     max_overrun: float
-
-    @property
-    def budget_caps(self) -> dict[str, float]:
-        return {"loose": self.loose, "tight": self.tight}
 
 
 @dataclass(frozen=True)
@@ -75,19 +69,15 @@ def resolve_task_count(args: Namespace) -> int:
 
 
 def resolve_budget_plan(args: Namespace, *, tasks_n: int) -> CompareBudgetPlan:
-    loose = args.loose
-    tight = args.tight
+    constrained = args.budget
     pressure_init = args.pressure_init
     pressure_max = args.pressure_max
     pressure_init = BUDGET_PRESSURE_INIT if pressure_init is None else pressure_init
     pressure_max = PRESSURE_MAX if pressure_max is None else pressure_max
-    if args.tight_scale != 1.0:
-        tight = (tight or 100.0) * args.tight_scale
-    if args.loose_scale != 1.0:
-        loose = (loose or 400.0) * args.loose_scale
+    if args.budget_scale != 1.0:
+        constrained = (constrained or 100.0) * args.budget_scale
     return CompareBudgetPlan(
-        loose=400.0 if loose is None else loose,
-        tight=100.0 if tight is None else tight,
+        constrained=100.0 if constrained is None else constrained,
         pressure_init=pressure_init,
         pressure_max=pressure_max,
         max_overrun=max(0.0, args.max_overrun),
@@ -149,7 +139,7 @@ def build_batch_budget_modes(
     strategies: tuple[CompareStrategy, ...],
     per_task_cap: float | None,
     auto_budget_task_caps: dict[str, float] | None,
-    budget_caps: dict[str, float],
+    constrained_budget: float,
 ) -> BatchBudgetModes:
     use_fixed_per_task_cap = per_task_cap is not None and per_task_cap > 0
     use_dynamic_task_caps = auto_budget_task_caps is not None
@@ -159,17 +149,17 @@ def build_batch_budget_modes(
             per_task_cap
             if use_fixed_per_task_cap
             else planned_dynamic_cap
-            if use_dynamic_task_caps and s.budget_tier is not None
-            else None if s.budget_tier is None else budget_caps[s.budget_tier]
+            if use_dynamic_task_caps and s.budgeted
+            else None if not s.budgeted else constrained_budget
         )
         for s in strategies
     }
     budget_modes: dict[str, str] = {
         s.name: (
             "per_task_cap"
-            if use_fixed_per_task_cap and s.budget_tier is not None
+            if use_fixed_per_task_cap and s.budgeted
             else "dynamic_task_caps"
-            if use_dynamic_task_caps and s.budget_tier is not None
+            if use_dynamic_task_caps and s.budgeted
             else "shared"
         )
         for s in strategies

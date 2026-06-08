@@ -189,13 +189,13 @@ def _t3_source_breakdown(records: list[dict], t3_tier: int) -> dict[str, dict[st
 
 
 def _segment_control_delta(by_strategy: dict[str, dict]) -> dict:
-    segment = by_strategy.get("budgetflow_value_aware_tight")
-    task = by_strategy.get("value_aware_task_level_tight")
+    segment = by_strategy.get("budgetflow_full")
+    task = by_strategy.get("task_level_control")
     if not segment or not task:
         return {}
     return {
-        "segment_aware_strategy": "budgetflow_value_aware_tight",
-        "task_level_control": "value_aware_task_level_tight",
+        "segment_aware_strategy": "BudgetFlow Full",
+        "task_level_control": "Task-Level Control",
         "delta_pass": int(segment.get("pass", 0)) - int(task.get("pass", 0)),
         "delta_cost": float(segment.get("cost", 0.0)) - float(task.get("cost", 0.0)),
         "delta_yield": (
@@ -280,6 +280,17 @@ _DECISION_ISSUE_AREA = {
     "memory_enabled_missing_source": "memory",
     "harness_blocking": "verifier",
 }
+
+
+_STRATEGY_REPORT_ORDER = {
+    "budget_only_baseline": 0,
+    "task_level_control": 1,
+    "budgetflow_full": 2,
+}
+
+
+def _strategy_report_sort_key(strategy: str) -> tuple[int, str]:
+    return (_STRATEGY_REPORT_ORDER.get(strategy, 100), strategy)
 
 
 def _decision_area_counts(records: list[dict]) -> dict[str, int]:
@@ -471,7 +482,7 @@ def _per_task_comparison(records: list[dict], t3_tier: int) -> list[dict]:
     return [
         row
         for iid in sorted(by_task)
-        for strat in sorted(by_task[iid])
+        for strat in sorted(by_task[iid], key=_strategy_report_sort_key)
         for row in [by_task[iid][strat]]
     ]
 

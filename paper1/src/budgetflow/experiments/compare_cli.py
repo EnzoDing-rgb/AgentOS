@@ -20,8 +20,7 @@ def parse_compare_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="3x3=budget-only plus Bootstrap Policy diagnostic; segment-control=adds value-aware task-level control",
     )
     parser.add_argument("--limit", type=int, default=None, help="task count (default from --preset)")
-    parser.add_argument("--loose", type=float, default=None, help="shared batch budget for *_loose strategies")
-    parser.add_argument("--tight", type=float, default=None, help="shared batch budget for *_tight strategies")
+    parser.add_argument("--budget", type=float, default=None, help="shared hard budget per policy")
     parser.add_argument(
         "--step-limit",
         type=int,
@@ -67,8 +66,7 @@ def parse_compare_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help=f"override PRESSURE_MAX ceiling (default {PRESSURE_MAX})",
     )
-    parser.add_argument("--tight-scale", type=float, default=1.0, help="multiply tight batch cap")
-    parser.add_argument("--loose-scale", type=float, default=1.0, help="multiply loose batch cap")
+    parser.add_argument("--budget-scale", type=float, default=1.0, help="multiply shared hard budget")
     parser.add_argument("--no-run-guards", action="store_true", help="disable auto-halt guards")
     parser.add_argument("--no-provider-signature-check", action="store_true", help="skip provider preflight checks")
     parser.add_argument("--trace-turns", action="store_true", help="collect per-turn routing traces")

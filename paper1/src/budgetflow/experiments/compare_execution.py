@@ -9,7 +9,6 @@ from collections.abc import Callable
 from budgetflow.adaptive_routing import AdaptiveRoutingRegistry
 from budgetflow.adapters import (
     SwebenchProgressAdapter,
-    SwebenchSegmentAdapter,
     SwebenchTaskAdapter,
 )
 from budgetflow.adapter import runner as mini_swe_runner
@@ -29,8 +28,9 @@ from budgetflow.ledger import WorkflowLedgerStore
 from budgetflow.observability import build_observability_status, parse_harness_evidence
 from budgetflow.run_guards import CompareRunGuards
 from budgetflow.run_trace import TraceConsoleLevel
-from budgetflow.types import Stage
+from budgetflow.types import WorkflowSegment
 from budgetflow.value_efficiency import ValueEfficiencyContext
+from budgetflow.adapters.swebench_budget import BudgetContext
 
 
 def truncate_turn_traces(
@@ -69,13 +69,13 @@ def run_task_record(
     policy_lane: str = "",
     budget_mode: str = "shared",
     per_task_cap: float | None = None,
+    budget_context: BudgetContext | None = None,
     task_set: str = "",
     task_set_kind: str = "",
 ) -> dict:
     started = time.time()
     task_adapter = SwebenchTaskAdapter()
     progress_adapter = SwebenchProgressAdapter()
-    segment_adapter = SwebenchSegmentAdapter()
     instance_id = task_adapter.instance_id(task)
     task_features = task_adapter.features(task).as_record()
     key = workspace_key(cfg, instance_id)
@@ -112,8 +112,9 @@ def run_task_record(
         "strategy": cfg.name,
         "routing": cfg.routing,
         "w_i_profile": w_i_profile_for_record(cfg.routing),
-        "budget_tier": cfg.budget_tier or "uncapped",
-        "batch_budget_cap": None if cfg.budget_tier is None else batch_budget_cap,
+        "budget_scope": "shared_constrained" if cfg.budgeted else "unconstrained_diagnostic",
+        "batch_budget_cap": batch_budget_cap if cfg.budgeted else None,
+        "budget_context": budget_context.as_record() if budget_context is not None else None,
         "batch_spent": batch_snapshot.get("spent_budget"),
         "batch_available": batch_snapshot.get("available_budget"),
         "batch_snapshot": batch_snapshot,
@@ -162,14 +163,13 @@ def run_task_record(
         record["memory_mode"] = getattr(adaptive, "memory_mode", "off")
         if prior:
             record["routing_prior_summary"] = prior
-            record["routing_prior_segment"] = segment_adapter.to_segment(Stage.LOCALIZATION).name
+            record["routing_prior_segment"] = WorkflowSegment.CONTEXT
             if adaptive_registry is not None and adaptive_registry.policy_memory is not None:
-                repair_segment = segment_adapter.to_segment(Stage.REPAIR)
                 record["routing_repair_prior_summary"] = adaptive_registry.policy_memory.routing_prior_summary(
                     instance_id,
-                    repair_segment.name,
+                    WorkflowSegment.ACTION,
                 )
-                record["routing_repair_prior_segment"] = repair_segment.name
+                record["routing_repair_prior_segment"] = WorkflowSegment.ACTION
             record["policy_memory_enabled"] = True
         else:
             record["policy_memory_enabled"] = False
@@ -239,6 +239,7 @@ def run_strategy_batch(
     trace_truncate_chars: int = 120,
     task_caps: dict[str, float] | None = None,
     budget_estimates: dict[str, BudgetEstimate] | None = None,
+    budget_context: BudgetContext | None = None,
     run_series: str = "",
     heartbeat_writer: object | None = None,
     task_set: str = "",
@@ -251,7 +252,7 @@ def run_strategy_batch(
         else:
             print(msg, flush=True)
 
-    use_per_task = cfg.budget_tier is not None and (
+    use_per_task = cfg.budgeted and (
         (per_task_cap is not None and per_task_cap > 0) or (task_caps is not None)
     )
     ledger = WorkflowLedgerStore()
@@ -323,7 +324,7 @@ def run_strategy_batch(
                     f"prior_action={prior_summary.get('learned_action', 'default')} "
                     f"esc={prior_summary.get('value_triggered_escalation_action', 'default')}"
                     f"/w={prior_summary.get('value_triggered_escalation_window', '?')} "
-                    f"regret={prior_summary.get('full_vs_tight_regret', 0):.3f} "
+                    f"regret={prior_summary.get('full_vs_baseline_regret', 0):.3f} "
                     f"task_seen={prior_summary.get('task_seen', '?')}"
                 )
             elif cfg.routing == "all_pro":
@@ -336,7 +337,7 @@ def run_strategy_batch(
             task_ledger = ledger
             effective_batch_cap = batch_budget_cap
             task_cap: float | None = None
-            if cfg.budget_tier is not None:
+            if cfg.budgeted:
                 if task_caps is not None:
                     task_cap = task_caps.get(task.instance_id)
                 elif per_task_cap is not None and per_task_cap > 0:
@@ -372,6 +373,7 @@ def run_strategy_batch(
                 trace_max_turns=trace_max_turns,
                 trace_truncate_chars=trace_truncate_chars,
                 budget_estimate=budget_estimates.get(task.instance_id) if budget_estimates else None,
+                budget_context=budget_context,
                 run_series=run_series,
                 policy_lane=cfg.name,
                 budget_mode="dynamic_task_caps" if task_caps is not None and task_cap is not None
