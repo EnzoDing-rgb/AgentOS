@@ -11,6 +11,8 @@ from budgetflow.experiments.compare_config import fmt_usd as _fmt_usd
 from budgetflow.failure_classification import classify_failure
 from budgetflow.model_tiers import parse_tier_label
 
+_PLANNED_CAP_MODES = frozenset({"per_task_cap", "dynamic_task_caps", "frozen_router_caps"})
+
 
 def _record_score_status(record: dict) -> str:
     status = str(record.get("score_status") or "")
@@ -153,7 +155,7 @@ def _format_strategy_totals(
     batch_caps: dict[str, float | None],
     budget_modes: dict[str, str] | None = None,
 ) -> list[str]:
-    has_per_task = any(mode in {"per_task_cap", "dynamic_task_caps"} for mode in (budget_modes or {}).values())
+    has_per_task = any(mode in _PLANNED_CAP_MODES for mode in (budget_modes or {}).values())
     cap_label = "planned_cap" if has_per_task else "batch_cap"
     mode_label = "per-task cap" if has_per_task else "shared pool"
     lines = [f"=== BATCH RESOLVED + COST BY STRATEGY (governor units, {mode_label}) ==="]
@@ -234,7 +236,7 @@ def _format_live_snapshot(
         f"{'strategy':<28} {'done':>4} {'plan':>4} {'PASS':>5} {'TRUEFAIL':>9} {'ABORT':>5} {'rate':>6} "
         f"{'avg_cost':>8} {'avg_turn':>7} {'tiers':>24} "
         f"{'batch_spent':>11} "
-        f"{'planned_cap' if any(mode in {'per_task_cap', 'dynamic_task_caps'} for mode in (budget_modes or {}).values()) else 'batch_cap':>10}"
+        f"{'planned_cap' if any(mode in _PLANNED_CAP_MODES for mode in (budget_modes or {}).values()) else 'batch_cap':>10}"
     )
     lines.append("-" * 110)
     for name in strategy_names:
@@ -289,8 +291,9 @@ def _format_live_snapshot(
             yield_score = resolved_val
             yield_coverage = resolved_val / total_val if total_val > 0 else 0.0
             yield_per_dollar = resolved_val / total_cost if total_cost > 0 else 0.0
+            pass_n, _, _ = _status_counts(statuses, resolved_by_strategy.get(name, []))
             lines.append(
-                f"{name:<28} {sum(1 for r in resolved_by_strategy.get(name, []) if r):>8} "
+                f"{name:<28} {pass_n:>8} "
                 f"{_fmt_usd(total_cost):>8} {abort_n:>6} {resolved_val:>9.2f} "
                 f"{yield_score:>7.2f} {yield_coverage:>8.2f} {yield_per_dollar:>9.2f} {value_profile:>12}"
             )

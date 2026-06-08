@@ -120,18 +120,32 @@ class StrategyScoreboard:
         self._resolved: dict[str, int] = {n: 0 for n in strategy_names}
         self._done: dict[str, int] = {n: 0 for n in strategy_names}
 
-    def record(self, strategy: str, *, resolved: bool) -> None:
+    def record(self, strategy: str, *, resolved: bool | None = None, score_status: str = "") -> None:
         with self._lock:
             self._done[strategy] = self._done.get(strategy, 0) + 1
-            if resolved:
+            if score_status:
+                is_pass = score_status == "pass"
+            else:
+                is_pass = bool(resolved)
+            if is_pass:
                 self._resolved[strategy] = self._resolved.get(strategy, 0) + 1
 
-    def seed_from_resolved(self, resolved_by_strategy: dict[str, list[bool]]) -> None:
+    def seed_from_resolved(
+        self,
+        resolved_by_strategy: dict[str, list[bool]],
+        score_status_by_strategy: dict[str, list[str]] | None = None,
+    ) -> None:
         with self._lock:
             for name in self._names:
                 flags = resolved_by_strategy.get(name, [])
+                statuses = (score_status_by_strategy or {}).get(name, [])
                 self._done[name] = len(flags)
-                self._resolved[name] = sum(1 for f in flags if f)
+                self._resolved[name] = sum(
+                    1
+                    for index, flag in enumerate(flags)
+                    if (statuses[index] if index < len(statuses) else "") == "pass"
+                    or (index >= len(statuses) and flag)
+                )
 
     def format_line(self) -> str:
         with self._lock:

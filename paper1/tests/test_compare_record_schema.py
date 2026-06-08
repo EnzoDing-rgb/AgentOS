@@ -3,8 +3,13 @@ import threading
 from types import SimpleNamespace
 
 from budgetflow.auto_budget import AutoBudgetMemory
-from budgetflow.compare_checkpoint import GlobalRunProgress
-from budgetflow.experiments.compare_persistence import CompareRunState, persist_task_record
+from budgetflow.compare_checkpoint import GlobalRunProgress, StrategyScoreboard
+from budgetflow.experiments.compare_persistence import (
+    CompareRunState,
+    completed_keys,
+    persist_task_record,
+    rebuild_state_from_jsonl,
+)
 from budgetflow.experiments.compare_config import CompareStrategy
 from budgetflow.experiments.compare_execution import run_strategy_batch, run_task_record
 from budgetflow.experiments.compare_summary import _format_live_snapshot, _format_strategy_totals
@@ -192,6 +197,37 @@ def test_auto_budget_records_dynamic_task_cap_mode(monkeypatch) -> None:
     assert record["budget_prior_source"] == "memory_exact"
 
 
+def test_rebuild_state_ignores_current_schema_missing_score_status(tmp_path) -> None:
+    path = tmp_path / "run.jsonl"
+    path.write_text(
+        json.dumps(_record(score_status="pass", harness_resolved=True)) + "\n"
+        + json.dumps(_record(instance_id="sympy__sympy-old", harness_resolved=True, score_status="")) + "\n"
+    )
+
+    state = rebuild_state_from_jsonl(
+        path,
+        [],
+        normalize_strategy=lambda name: name,
+        enrich_value=lambda record: record,
+    )
+
+    assert state.runs_done == 1
+    assert state.score_status_by_strategy["budgetflow_full"] == ["pass"]
+
+
+def test_completed_keys_excludes_abort_rows(tmp_path) -> None:
+    path = tmp_path / "run.jsonl"
+    path.write_text(
+        json.dumps(_record(instance_id="task-pass", score_status="pass")) + "\n"
+        + json.dumps(_record(instance_id="task-abort", score_status="abort", harness_resolved=False)) + "\n"
+    )
+
+    keys = completed_keys(path, normalize_strategy=lambda name: name)
+
+    assert ("budgetflow_full", "task-pass") in keys
+    assert ("budgetflow_full", "task-abort") not in keys
+
+
 def test_persisted_jsonl_contains_t1_t2_observability_and_learning_memory(tmp_path) -> None:
     out_path = tmp_path / "out.jsonl"
     memory_path = tmp_path / "learning.jsonl"
@@ -293,6 +329,71 @@ def test_budget_summary_reports_planned_cap_not_provider_runtime_balance() -> No
     assert "1.50" in text
     assert "T5=75%" in text
     assert "100.00" not in text
+
+
+def test_budget_summary_treats_frozen_router_caps_as_planned_cap() -> None:
+    lines = _format_strategy_totals(
+        strategy_names=["budgetflow_same_router"],
+        resolved_by_strategy={"budgetflow_same_router": [True, False]},
+        score_status_by_strategy={"budgetflow_same_router": ["pass", "true_fail"]},
+        task_cost_by_strategy={"budgetflow_same_router": [0.2, 0.3]},
+        batch_spent_by_strategy={"budgetflow_same_router": 0.5},
+        turns_by_strategy={"budgetflow_same_router": [3, 7]},
+        tier_mix_by_strategy={"budgetflow_same_router": [{2: 1.0}, {3: 1.0}]},
+        failure_by_strategy={"budgetflow_same_router": {"pass": 1, "budget_fail": 1}},
+        batch_caps={"budgetflow_same_router": 0.75},
+        budget_modes={"budgetflow_same_router": "frozen_router_caps"},
+    )
+
+    text = "\n".join(lines)
+    assert "per-task cap" in text
+    assert "planned_cap" in text
+    assert "0.7500" in text
+
+
+def test_live_snapshot_uses_score_status_for_value_pass_count(tmp_path) -> None:
+    lines = _format_live_snapshot(
+        strategy_names=["budgetflow_full"],
+        resolved_by_strategy={"budgetflow_full": [True, True]},
+        score_status_by_strategy={"budgetflow_full": ["pass", "abort"]},
+        task_cost_by_strategy={"budgetflow_full": [0.2, 0.1]},
+        turns_by_strategy={"budgetflow_full": [4, 3]},
+        tier_mix_by_strategy={"budgetflow_full": [{2: 1.0}, {5: 1.0}]},
+        batch_spent_by_strategy={"budgetflow_full": 0.3},
+        batch_caps={"budgetflow_full": 0.5},
+        budget_modes={"budgetflow_full": "frozen_router_caps"},
+        runs_done=2,
+        total_runs=2,
+        tasks_per_strategy=2,
+        started=0.0,
+        out_path=tmp_path / "run.jsonl",
+        resolved_value_by_strategy={"budgetflow_full": [0.6, 0.0]},
+        task_value_by_strategy={"budgetflow_full": [0.6, 0.4]},
+        value_profile="difficulty",
+    )
+
+    text = "\n".join(lines)
+    assert "pass=1 true_fail=0 abort=1" in text
+    assert any(line.startswith("budgetflow_full") and " 1 " in line for line in lines)
+    assert "planned_cap" in text
+
+
+def test_scoreboard_records_abort_by_score_status_not_raw_harness_resolved() -> None:
+    scoreboard = StrategyScoreboard(["budgetflow_full"])
+    scoreboard.record("budgetflow_full", resolved=True, score_status="abort")
+    scoreboard.record("budgetflow_full", resolved=True, score_status="pass")
+
+    assert "budgetflow-full 1/2" in scoreboard.format_line()
+
+
+def test_scoreboard_resume_seed_uses_score_status() -> None:
+    scoreboard = StrategyScoreboard(["budgetflow_full"])
+    scoreboard.seed_from_resolved(
+        {"budgetflow_full": [True, True, False]},
+        {"budgetflow_full": ["pass", "abort", "true_fail"]},
+    )
+
+    assert "budgetflow-full 1/3" in scoreboard.format_line()
 
 
 def test_value_summary_reports_primary_normalized_value_metric(tmp_path) -> None:

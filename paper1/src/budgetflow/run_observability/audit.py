@@ -92,6 +92,20 @@ def _optional_bool(value) -> bool | None:
     return None
 
 
+def _trace_tier(trace: dict) -> int:
+    """Actual tier used by this turn.
+
+    ``backend_tier`` is the execution tier. ``final_backend`` is only a legacy
+    fallback for old traces that did not persist backend_tier; taking max()
+    across both can misattribute downgraded/fallback turns to the strongest
+    model.
+    """
+    backend_tier = int(trace.get("backend_tier") or 0)
+    if backend_tier > 0:
+        return backend_tier
+    return parse_tier_label(trace.get("final_backend") or "")
+
+
 def _t3_productivity(records: list[dict], t3_tier: int) -> dict[str, dict]:
     by_strategy: dict[str, dict] = {}
     if t3_tier <= 0:
@@ -116,10 +130,7 @@ def _t3_productivity(records: list[dict], t3_tier: int) -> dict[str, dict]:
         for trace in traces:
             if not isinstance(trace, dict):
                 continue
-            tier = max(
-                int(trace.get("backend_tier") or 0),
-                parse_tier_label(trace.get("final_backend") or ""),
-            )
+            tier = _trace_tier(trace)
             if tier < t3_tier:
                 continue
             cost = float(trace.get("billable_cost") or trace.get("actual_cost") or 0.0)
@@ -163,10 +174,7 @@ def _t3_source_breakdown(records: list[dict], t3_tier: int) -> dict[str, dict[st
         for trace in traces:
             if not isinstance(trace, dict):
                 continue
-            tier = max(
-                int(trace.get("backend_tier") or 0),
-                parse_tier_label(trace.get("final_backend") or ""),
-            )
+            tier = _trace_tier(trace)
             if tier < t3_tier:
                 continue
             source = _t3_source(trace)

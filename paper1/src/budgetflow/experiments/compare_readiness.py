@@ -56,7 +56,16 @@ def build_compare_readiness_report(
     facts.append(f"value_primary_t1={str(value_context.is_primary_value_evidence).lower()}")
     facts.append(f"value_matrix={value_context.matrix_path or 'equal_sanity'}")
     facts.append(f"runtime_root={runtime_root}")
-    facts.append("budget_mode=dynamic_task_caps" if auto_budget_caps else "budget_mode=static_or_shared")
+    uses_frozen_plan_caps = any(
+        strategy.routing in {"enterprise_router", "budgetflow_same_router"}
+        for strategy in strategies
+    ) and bool(getattr(args, "frozen_plan", None))
+    if auto_budget_caps:
+        facts.append("budget_mode=dynamic_task_caps")
+    elif uses_frozen_plan_caps:
+        facts.append("budget_mode=frozen_router_caps")
+    else:
+        facts.append("budget_mode=static_or_shared")
     facts.append(f"dynamic_caps={'on' if auto_budget_enabled else 'off'}")
     if auto_budget_caps:
         planned_policy_cap = sum(float(cap) for cap in auto_budget_caps.values())

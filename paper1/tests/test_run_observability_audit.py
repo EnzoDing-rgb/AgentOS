@@ -242,6 +242,67 @@ def test_compact_audit_uses_current_action_progress_for_t3_productivity() -> Non
     assert stats["t3_no_progress_cost"] == 0.0
 
 
+def test_compact_audit_uses_backend_tier_before_final_backend_for_t3_productivity() -> None:
+    audit = build_compact_audit([
+        {
+            "instance_id": "repo__task",
+            "strategy": "budgetflow_full",
+            "harness_resolved": False,
+            "harness_evidence": {"evidence_complete": True},
+            "total_cost": 0.07,
+            "llm_turns": 2,
+            "turn_trace_count": 2,
+            "backend_picks": ["tier3", "tier2"],
+            "turn_traces": [
+                {
+                    "backend_tier": 3,
+                    "final_backend": "tier3",
+                    "action_has_progress": True,
+                    "billable_cost": 0.03,
+                },
+                {
+                    "backend_tier": 2,
+                    "final_backend": "tier3",
+                    "action_has_progress": True,
+                    "billable_cost": 0.04,
+                },
+            ],
+        }
+    ])
+
+    stats = audit["t3_productivity"]["budgetflow_full"]
+
+    assert stats["t3_turns"] == 1
+    assert stats["t3_productive_turns"] == 1
+    assert stats["t3_cost"] == pytest.approx(0.03)
+
+
+def test_checker_ignores_unrelated_stale_heartbeat_files(tmp_path) -> None:
+    path = tmp_path / "current.jsonl"
+    path.write_text(
+        '{"instance_id":"task-a","strategy":"budgetflow_same_router","routing":"budgetflow_same_router",'
+        '"harness_resolved":false,"exit_status":"failed","exit_reason":"stagnation","total_cost":0.1,'
+        '"llm_turns":1,"elapsed_s":1,"detail":"test_patch=ok; fail_before=fail; model_patch=ok; fail_after=fail; pass_to_pass=pass",'
+        '"turn_trace_count":1,"run_series":"current","policy_lane":"budgetflow_same_router","task_order_index":1,'
+        '"row_started_at":1,"row_finished_at":2,"harness_evidence":{"evidence_complete":true},'
+        '"observability_status":{},"score_status":"true_fail","scoreable":true,'
+        '"turn_traces":[{"response_ok":true,"protocol":"text_regex","action_progress_state":"progress","action_digest":"edit"}]}\n'
+    )
+    (tmp_path / "current.heartbeat.json").write_text(
+        '{"run_series":"current","rows_done":1,"total_expected":1,"status":"completed","current_pid":0}\n'
+    )
+    (tmp_path / "old_run.heartbeat.json").write_text(
+        '{"run_series":"old_run","rows_done":0,"total_expected":10,"status":"running","current_pid":99999999,'
+        '"updated_at":1,"started_at":1}\n'
+    )
+
+    result = check_jsonl(path, heartbeat_stale_s=1)
+
+    assert "old_run" not in result["heartbeat_summary"]
+    assert not any("old_run" in issue for issue in result["issues"])
+    assert result["heartbeat_suspicious"] is False
+
+
 def test_checker_flags_text_action_trace_missing_current_action_digest(tmp_path) -> None:
     path = tmp_path / "run.jsonl"
     path.write_text(

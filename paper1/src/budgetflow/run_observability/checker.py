@@ -28,6 +28,27 @@ from .schema import (
     _check_trace_coverage,
 )
 
+
+def _heartbeat_run_series_for_artifact(jsonl_path: Path, records: list[dict]) -> set[str]:
+    """Heartbeat files relevant to this JSONL artifact.
+
+    With records, the JSONL's own run_series is authoritative.  For a 0-row
+    artifact, only the same-stem heartbeat can belong to this artifact.  Scanning
+    every heartbeat in the directory makes unrelated stale runs poison a clean
+    artifact's liveness verdict.
+    """
+    series = {str(r.get("run_series", "")) for r in records if r.get("run_series")}
+    if series:
+        return series
+    heartbeat_suffix = ".heartbeat"
+    if jsonl_path.stem.endswith(heartbeat_suffix):
+        return {jsonl_path.stem.removesuffix(heartbeat_suffix)}
+    same_stem_heartbeat = jsonl_path.with_name(f"{jsonl_path.stem}.heartbeat.json")
+    if same_stem_heartbeat.is_file():
+        return {jsonl_path.stem}
+    return set()
+
+
 def check_jsonl(jsonl_path: Path, heartbeat_stale_s: float = 600.0) -> dict:
     """Run all checks on a JSONL file. Returns summary dict."""
     records: list[dict] = []
@@ -91,15 +112,9 @@ def check_jsonl(jsonl_path: Path, heartbeat_stale_s: float = 600.0) -> dict:
         if r.get("harness_resolved") and not (r.get("harness_evidence") or {}).get("evidence_complete", False):
             by_strategy[strat]["suspicious_pass"] += 1
 
-    # Heartbeat check
-    # Detect heartbeat files from JSONL run_series fields, AND from .heartbeat.json files
-    # in the same directory (handles 0-record JSONL cases).
-    run_series_set = {str(r.get("run_series", "")) for r in records if r.get("run_series")}
-    # Also scan for orphaned heartbeat files (JSONL has 0 rows but heartbeat exists)
-    for hb_path in sorted(runs_dir.glob("*.heartbeat.json")):
-        rs = hb_path.stem.replace(".heartbeat", "")
-        if rs:
-            run_series_set.add(rs)
+    # Heartbeat check: artifact-scoped only. Unrelated stale heartbeat files in
+    # the same runs directory are evidence about those runs, not this JSONL.
+    run_series_set = _heartbeat_run_series_for_artifact(jsonl_path, records)
     hb_stale = False
     hb_suspicious = False
     hb_summary = "no heartbeat files found"

@@ -20,6 +20,8 @@ from budgetflow.experiments.compare_summary import (
 )
 from budgetflow.failure_classification import classify_failure
 
+_PLANNED_CAP_MODES = frozenset({"per_task_cap", "dynamic_task_caps", "frozen_router_caps"})
+
 
 @dataclass
 class CompareRunState:
@@ -54,13 +56,10 @@ class CompareRunState:
         name = strategy_name or str(record.get("strategy") or "")
         if not name:
             return
-        self.runs_done += 1
         score_status = str(record.get("score_status") or "")
-        if not score_status:
-            if record.get("harness_resolved") is True:
-                score_status = "pass"
-            elif record.get("harness_resolved") is False:
-                score_status = "true_fail"
+        if score_status not in {"pass", "true_fail", "abort"}:
+            return
+        self.runs_done += 1
         self.resolved_by_strategy.setdefault(name, []).append(score_status == "pass")
         self.score_status_by_strategy.setdefault(name, []).append(score_status)
         self.task_cost_by_strategy.setdefault(name, []).append(float(record.get("total_cost") or 0.0))
@@ -186,7 +185,11 @@ def persist_task_record(
         _append_summary(state.summary_lines, record, index=done, total=total_runs)
         state.ingest_record(record, strategy_name=str(record.get("strategy") or ""))
         if scoreboard is not None:
-            scoreboard.record(str(record.get("strategy") or ""), resolved=bool(record.get("harness_resolved")))
+            scoreboard.record(
+                str(record.get("strategy") or ""),
+                score_status=str(record.get("score_status") or ""),
+                resolved=bool(record.get("harness_resolved")),
+            )
         write_summary_snapshot(
             summary_path,
             state=state,
@@ -225,7 +228,8 @@ def completed_keys(
             continue
         strategy = normalize_strategy(str(record.get("strategy") or ""))
         task = record.get("instance_id")
-        if strategy and task:
+        score_status = str(record.get("score_status") or "")
+        if strategy and task and score_status in {"pass", "true_fail"}:
             done.add((strategy, str(task)))
     return done
 
@@ -253,15 +257,19 @@ def ingest_batch_footer(
         return
     with io_lock:
         mode = budget_modes.get(cfg.name, "shared")
-        cap_label = "planned_cap" if mode == "dynamic_task_caps" else "per_task_cap" if mode == "per_task_cap" else "shared_cap"
-        display_cap = batch_caps.get(cfg.name) if mode in {"per_task_cap", "dynamic_task_caps"} else batch_cap
+        cap_label = (
+            "planned_cap" if mode in {"dynamic_task_caps", "frozen_router_caps"}
+            else "per_task_cap" if mode == "per_task_cap"
+            else "shared_cap"
+        )
+        display_cap = batch_caps.get(cfg.name) if mode in _PLANNED_CAP_MODES else batch_cap
         state.summary_lines.append(
             f"=== BATCH START strategy={cfg.name} {cap_label}={_fmt_usd(display_cap)} ==="
         )
         state.batch_spent_by_strategy[cfg.name] = batch_spent
         batch_avail = (
             max(0.0, float(display_cap or 0.0) - batch_spent)
-            if mode in {"per_task_cap", "dynamic_task_caps"} and display_cap is not None
+            if mode in _PLANNED_CAP_MODES and display_cap is not None
             else governor_avail(batch_records)
         )
         state.summary_lines.append(

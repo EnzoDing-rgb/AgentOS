@@ -326,13 +326,14 @@ def main() -> None:
     print(f"{dim('tasks=' + ','.join(t.instance_id for t in tasks))}", flush=True)
     print(f"{dim('task_order=' + ', '.join(_task_descriptor(t) for t in tasks))}", flush=True)
     print(f"{dim('strategies=' + ','.join(strategy_names))}", flush=True)
-    budget_mode = (
-        f"per_task_cap={args.per_task_cap}" + (f"+overrun={max_overrun}" if max_overrun else "")
-        if args.per_task_cap
-        else "shared_batch_budget" + (
+    if any(mode == "frozen_router_caps" for mode in budget_modes.values()):
+        budget_mode = "frozen_router_caps"
+    elif args.per_task_cap:
+        budget_mode = f"per_task_cap={args.per_task_cap}" + (f"+overrun={max_overrun}" if max_overrun else "")
+    else:
+        budget_mode = "shared_batch_budget" + (
             f" soft_budget={args.soft_budget}+overrun={max_overrun}" if args.soft_budget is not None else ""
         )
-    )
     print(
         f"{dim('mode=' + budget_mode + '; tasks serial within policy; policies parallel with --jobs')}",
         flush=True,
@@ -382,7 +383,7 @@ def main() -> None:
     header_lines = [
         f"compare_{len(tasks)}x{len(strategies)} task_set={args.task_set} preset={args.preset} "
         f"task_set_kind={task_set_kind} tasks={len(tasks)} strategies={strategy_names}",
-        f"budget_mode={'per_task_cap=' + str(args.per_task_cap) if args.per_task_cap else 'shared'} "
+        f"budget_mode={budget_mode} "
         f"soft_budget={args.soft_budget} max_overrun={max_overrun} "
         f"budget={budget_input['hard_cap_usd']} budget_source={budget_input['source']} "
         f"w_i_profile={args.w_profile or active_w_i_profile_name()} "
@@ -419,7 +420,7 @@ def main() -> None:
     if args.append:
         heartbeat_writer.pulse(rows_done=state.runs_done)
     if args.append and state.resolved_by_strategy:
-        scoreboard.seed_from_resolved(state.resolved_by_strategy)
+        scoreboard.seed_from_resolved(state.resolved_by_strategy, state.score_status_by_strategy)
 
     _write_summary_snapshot(
         summary_path,
@@ -605,6 +606,7 @@ def main() -> None:
     for line in _format_strategy_totals(
         strategy_names=strategy_names,
         resolved_by_strategy=state.resolved_by_strategy,
+        score_status_by_strategy=state.score_status_by_strategy,
         task_cost_by_strategy=state.task_cost_by_strategy,
         batch_spent_by_strategy=state.batch_spent_by_strategy,
         turns_by_strategy=state.turns_by_strategy,
