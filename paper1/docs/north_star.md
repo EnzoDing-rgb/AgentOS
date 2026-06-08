@@ -9,8 +9,8 @@ comments, and reports should use these names.
 |---|---|
 | BudgetFlow | Value-aware budget governance for multi-step agent workflows under shared hard budgets. |
 | Tier 1 / T1 | Primary claim: maximize Yield under the same shared hard budget. |
-| Yield | The share of total task value that was verified as resolved at a fixed budget. |
-| Yield per Dollar | Verified resolved value divided by model spend. It is an efficiency diagnostic, not the primary claim by itself. |
+| Yield | Total resolved task value within a shared budget window. It is not raw task count. |
+| Yield per Dollar | Total resolved task value divided by model spend. It is the main efficiency diagnostic. |
 | Tier 2 / T2 | Mechanism claim: compare policy and routing efficiency against task-level, static, and budget-only controls. |
 | Value-Driven Budget Allocation | Allocation of task caps and spend from task value, history, expected payoff, cost, and budget pressure. |
 | ValueSource | Versioned input that defines or estimates task value for one run or deployment. |
@@ -19,9 +19,10 @@ comments, and reports should use these names.
 | CostAdapter | Adapter that turns public price catalogs, provider estimates, invoices, enterprise rate cards, or manual overrides into a standard cost signal. |
 | Confidence | A short record of where a value or cost estimate came from and how trustworthy it is. |
 | Policy Backend | Pluggable strategy that recommends cap, model tier, escalation, de-escalation, stop, and continue decisions. |
-| HeuristicPolicy | Default explainable cold-start policy. It is a first-class policy backend, not a temporary hack. |
-| Memory-Tuned HeuristicPolicy | HeuristicPolicy with thresholds adjusted from verified outcomes while staying auditable. |
-| Adaptive Learning Policy | Learned policy backend. BudgetFlow only requires it to satisfy the Policy Backend interface; the learning method is not part of the core contract. |
+| Bootstrap Policy | Default explainable policy that runs without customer history or machine learning. It uses general budget, cost, progress, value, escalation, and stop-loss rules. |
+| Learn Policy | Policy backend that uses Cost Memory, Routing Memory, Escalation Memory, statistical learning, or customer-owned machine learning to improve future decisions. |
+| Fixed Baseline Policy | Experimental control policy such as static routing or budget-only routing. It is for evaluation, not the customer-facing policy family. |
+| Task Set | A named group of tasks used for evaluation, such as Familiar Tasks or Unseen Tasks. |
 | Workflow Segment | Coarse work state used as a policy signal. Default segments are Context, Action, and Verification. |
 | Segment-Aware Routing | Routing that can use workflow segment as a feature. It does not force model switching. |
 | Task-Level Policy | Control policy that chooses a backend at task/request level and preserves cache/context continuity. |
@@ -54,20 +55,22 @@ verifier while keeping the BudgetFlow core.
 
 ## Core Architecture
 
-BudgetFlow separates core mechanisms, domain adapters, and policy backends.
+BudgetFlow separates core mechanisms, domain adapters, policy backends, memory,
+and observability. The core must not depend on SWE-bench, a specific verifier,
+or a specific learning method.
 
 | Layer | Responsibility |
 |---|---|
 | Core Mechanism | Hard budget ledger, reservation, settlement, verifier-grounded outcome, trace/audit/replay, stop-loss primitives, and same-budget policy comparison. |
 | Domain Adapters | Task, segment, verifier, value, cost, model-tier, progress-signal, and runtime mappings for one benchmark or enterprise workflow. |
 | Policy Backend | Cap recommendations, backend routing, escalation, de-escalation, stop/continue, and learned or heuristic priors. |
-| Memory | Cost Memory, Routing Memory, and Escalation Memory. |
-| Observability | JSONL schema, turn traces, checker, compact audit, failure attribution, and reports. |
+| Memory | Cost Memory, Routing Memory, and Escalation Memory. These are optional inputs for Learn Policy and audit, not hidden core behavior. |
+| Observability | Minimal decision records, JSONL schema, turn traces, checker, compact audit, failure attribution, and reports. |
 
 SWE-bench-specific concepts such as localization, repair, validation,
 fail-to-pass tests, pass-to-pass tests, patch extraction, and worktree diffs
-belong behind adapters. They can power a SWE-bench policy plugin; they do not
-define BudgetFlow core.
+belong behind adapters. They can power benchmark experiments; they do not define
+BudgetFlow core or the default Bootstrap Policy.
 
 ## Conceptual Interfaces
 
@@ -132,9 +135,10 @@ class PolicyBackend:
     def learn(self, task: TaskContext, outcome: VerifiedOutcome) -> None: ...
 ```
 
-The default policy backend is `HeuristicPolicy`. Enterprises can use it as-is,
-tune it with memory, or replace it with an Adaptive Learning Policy. Customers
-do not need a learned policy to get value from BudgetFlow.
+The default policy backend is the Bootstrap Policy. Enterprises can use it
+as-is or replace it with a Learn Policy. Customers do not need a learned policy
+to get value from BudgetFlow, but Learn Policy is the main place for Memory or
+customer-owned machine learning.
 
 ## Workflow Segments
 
@@ -166,7 +170,7 @@ BudgetFlow has a two-level claim ladder.
 
 | Claim | Meaning | Main Evidence |
 |---|---|---|
-| T1: Value-Driven Budget Allocation | Under one shared hard budget, BudgetFlow completes the highest verified task value. | Yield at fixed budget, plus Yield per Dollar. |
+| T1: Value-Driven Budget Allocation | Under one shared hard budget, BudgetFlow resolves the highest total task value. | Yield at fixed budget, plus Yield per Dollar. |
 | T2: Policy/routing mechanism | Policy backends use budget, progress, segment, value, cost, and model-tier signals productively. | Verified resolution-cost frontier, model-tier use diagnostics, and segment-aware vs task-level deltas. |
 
 T1 is the compass. T2 explains mechanisms inside T1. Routing savings are useful
@@ -175,14 +179,18 @@ when they preserve or improve value-weighted outcomes.
 Primary T1 metric:
 
 ```text
-Yield = sum(value_i * verified_resolved_i) / sum(value_i)
+Yield = total resolved task value
 ```
 
 Secondary T1 diagnostic:
 
 ```text
-Yield per Dollar = sum(value_i * verified_resolved_i) / sum(cost_i)
+Yield per Dollar = total resolved task value / total model spend
 ```
+
+Resolved task count may be reported as a supporting diagnostic, but it is not
+the BudgetFlow objective. Task count per dollar is not a core metric because
+tasks differ in value, difficulty, and model solvability.
 
 T2 diagnostics:
 
@@ -198,25 +206,26 @@ T2 diagnostics:
 
 | Policy | Role |
 |---|---|
-| `budget_only_tight` | Strong budget-pressure baseline and diagnostic mirror. |
-| `budget_only_t2_tight` | Cheapest-tier / dummy control. |
-| `value_aware_task_level_tight` | Task-level control that protects cache/context continuity. |
-| `budgetflow_conservative_tight` | Value-blind HeuristicPolicy for T2 mechanism evidence. |
-| `budgetflow_value_aware_tight` | Value-aware HeuristicPolicy for T1 evidence. |
-| Future Adaptive Learning Policy | Learned policy backend evaluated against the same budget and verifier. |
+| Bootstrap Policy | Customer-facing default policy. It should contain general, explainable budget-control rules, not benchmark-tuned experience. |
+| Learn Policy | Customer-facing learned policy. It can use built-in Memory or a customer-owned machine learning system behind the same Policy Backend interface. |
+| Fixed Baseline Policy | Evaluation-only control policy such as static routing, all-cheap, all-strong, task-level routing, or budget-only routing. |
 
 The task-level control is mandatory when evaluating segment-aware routing. It
 tests whether segment features help, or whether they add switching noise,
 prompt drift, cache loss, and coordination cost.
 
+Historical SWE-bench tuned heuristics should be archived or treated as
+benchmark variants. They are not the default Bootstrap Policy and they are not
+the product claim.
+
 ## Value Model
 
-Task value is a proxy. BudgetFlow does not hard-code what value means.
-Cold start can use a default heuristic, a human-authored value matrix, natural
-language policy translated by an adapter, benchmark solve rarity, or an
-enterprise data import. Warm start can learn from verified outcomes, accepted
-work, repeated priority patterns, human correction, or external systems when
-those signals are available.
+Task value is a proxy. BudgetFlow does not hard-code what value means. A
+ValueAdapter can use a default heuristic, a human-authored value matrix, natural
+language policy translated by an adapter, benchmark metadata, or an enterprise
+data import. A Learn Policy can improve future value and budget decisions from
+outcomes, accepted work, repeated priority patterns, human correction, or
+external systems when those signals are available.
 
 `ValueContext` is a standard input wrapper, not a fixed enterprise schema.
 Fields such as project, customer, SLA, risk, revenue impact, research priority,
@@ -246,12 +255,29 @@ estimates. It may also help calibrate task value when value feedback is
 available, but the system must not treat "easy to solve" as the same thing as
 "high value."
 
+Learning belongs behind Policy Backend and Memory interfaces. Bootstrap Policy
+may use configuration and simple priors, but Cost Memory, Routing Memory, and
+Escalation Memory are primarily inputs for Learn Policy or audit. Customers may
+use BudgetFlow's built-in Learn Policy or replace it with their own machine
+learning system if it produces the same policy decisions and audit fields.
+
 ## Evaluation Discipline
 
-Every compared policy uses the same task set, verifier, budget, value source,
-model-tier catalog, and run shape. Paid runs use frozen value proxies and
-pre-registered command lines. Small paid runs are diagnostics, not paper-level
-evidence.
+Every compared policy uses the same Task Set, resolver, budget, value source,
+model-tier catalog, and run shape. Paid runs use decision-time value estimates
+and pre-registered command lines. Small paid runs are diagnostics, not
+paper-level evidence.
+
+The main experiment should report both Familiar Tasks and Unseen Tasks. Familiar
+Tasks protect against harness contamination and environment failures. Unseen
+Tasks test whether the policy generalizes beyond the tasks used during
+development. The same policies, budget rules, cost source, value source, and
+resolver apply to both Task Sets.
+
+Policy observability should be minimal and stable. Each decision record should
+make it possible to answer: what went in, what the policy decided, what it cost,
+whether the task resolved, what value was resolved, and what failed if it did
+not. This is required for debugging, learning, and paper evidence.
 
 After every experiment, inspect artifacts before drawing conclusions:
 
@@ -278,12 +304,17 @@ The codebase should make the architecture visible:
 - Policy backends own routing and stop/continue recommendations.
 - Domain adapters own SWE-bench or enterprise-specific task, segment, verifier,
   value, cost, progress, and runtime mapping.
+- Memory belongs behind Learn Policy or audit interfaces. BudgetFlow core should
+  not hide learning behavior.
+- Observability should converge on a compact policy decision record rather than
+  scattered benchmark-specific trace fields.
 - Entry points such as `run_mini_swe_compare.py` and
   `check_run_observability.py` stay thin.
 - Tests protect current evidence quality and architecture boundaries. Tests
   that only preserve stale terminology, retired paths, or old aliases should be
   deleted or rewritten.
 
-The next implementation direction is to wrap current BFV/BFC behavior as a
-SWE-bench `HeuristicPolicy` plugin behind the policy-backend interface, then
-move SWE-bench stage and harness assumptions behind adapters.
+The next implementation direction is to finish decoupling Bootstrap Policy,
+Learn Policy, Memory, adapters, and minimal decision records. Experiment reports
+should then compute Yield and Yield per Dollar by Task Set before any larger
+paid run.
