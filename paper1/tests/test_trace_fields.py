@@ -11,7 +11,7 @@ from budgetflow.adapter.turn_trace import (
     provider_trace_fields,
 )
 from budgetflow.adapter.strategies import build_routing_context
-from budgetflow.types import Backend, Stage
+from budgetflow.types import Backend, Stage, WorkflowSegment
 
 
 def _backend(name: str, tier: int) -> Backend:
@@ -23,7 +23,9 @@ def test_turn_trace_has_fields_needed_to_debug_value_routing_and_provider_failur
         step_index=1,
         agent_phase="edit_gold",
         stage=Stage.REPAIR,
+        workflow_segment=WorkflowSegment.action(agent_phase="edit_gold", touched_files=1),
         bash_command="git diff",
+        touched_file_paths=["src/file.py"],
         input_tokens=100,
         expected_costs={"tier2": 0.01},
         base_pressure=0.1,
@@ -67,6 +69,9 @@ def test_turn_trace_has_fields_needed_to_debug_value_routing_and_provider_failur
     )
 
     assert trace["turns_on_tier"] == 2
+    assert trace["workflow_segment"] == "Action"
+    assert trace["segment_signals"]["agent_phase"] == "edit_gold"
+    assert trace["touched_file_paths"] == ["src/file.py"]
     assert trace["provider"] == "openai_compatible"
     assert trace["protocol"] == "text_regex"
     assert trace["provider_status_code"] == 503
@@ -76,7 +81,22 @@ def test_turn_trace_has_fields_needed_to_debug_value_routing_and_provider_failur
     assert trace["value_triggered_escalation_turns_remaining"] == 2
     assert trace["value_triggered_escalation_opened"] is True
     assert trace["value_triggered_escalation_action"] == "default"
-    assert "value_salvage_active" not in trace
+
+
+def test_swebench_progress_adapter_emits_workflow_segment_and_progress_signal() -> None:
+    from budgetflow.adapters import SwebenchProgressAdapter
+
+    adapter = SwebenchProgressAdapter()
+    signal = adapter.signal_from_context(
+        bash_command="apply_patch <<'PATCH'\n*** Begin Patch\n*** End Patch\nPATCH",
+        observation="",
+        agent_phase="edit_gold",
+    )
+
+    assert signal.stage is Stage.REPAIR
+    assert signal.segment.name == WorkflowSegment.ACTION
+    assert signal.has_progress is True
+    assert signal.progress_reason == "repair_pattern"
 
 
 def test_provider_and_protocol_helpers_identify_real_backend_contracts() -> None:

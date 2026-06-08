@@ -4,7 +4,7 @@ from argparse import Namespace
 
 import pytest
 
-from budgetflow.experiments.compare_config import CompareStrategy
+from budgetflow.experiments.compare_config import CompareStrategy, task_set_kind
 from budgetflow.experiments.compare_setup import (
     build_batch_budget_modes,
     load_tasks_for_compare,
@@ -52,6 +52,12 @@ def test_medium_task_set_uses_medium_pool_not_3x3_preset() -> None:
         "sympy__sympy-20212",
         "sympy__sympy-16988",
     }
+
+
+def test_task_set_kind_labels_experiment_groups() -> None:
+    assert task_set_kind(task_set="easy") == "familiar"
+    assert task_set_kind(task_set="medium") == "unseen"
+    assert task_set_kind(task_set="easy", ids="repo__task") == "custom"
 
 
 def test_budget_plan_uses_defaults_and_scales() -> None:

@@ -34,12 +34,7 @@ from ..governor import BudgetGovernor
 from ..types import Backend, Stage, TurnInfo, WorkflowStatus
 from .errors import BudgetFlowBudgetError, BudgetFlowStagnationError, BudgetFlowUpstreamError
 from ..run_guards import is_fatal_billing_error, record_billing_halt, record_upstream_error
-from .bash_stage import (
-    actions_count_as_progress,
-    classify_routing_stage,
-    command_counts_as_progress,
-    extract_touched_file_paths, extract_trace_file_paths,
-)
+from ..adapters import SwebenchProgressAdapter
 from .action_parsing import format_error_stop_after, parse_text_actions, parse_tool_actions
 from .stall_guard import check_post_patch_stop, check_stagnation, normalize_bash_command
 from .message_utils import estimate_input_tokens, extract_bash_context
@@ -202,6 +197,7 @@ class BudgetFlowLitellmModel:
         self._value_triggered_escalation_reason: str | None = None
         self._value_triggered_escalation_action = "default"
         self._value_triggered_escalation_window = VALUE_TRIGGERED_ESCALATION_DEFAULT_WINDOW_TURNS
+        self._progress_adapter = SwebenchProgressAdapter()
         strongest = ModelCatalog.strongest(routing.backends)
         self.config = type("Config", (), {"model_name": MODEL_CATALOG.require_config(strongest.name).model})()
 
@@ -227,7 +223,12 @@ class BudgetFlowLitellmModel:
                 no_progress_streak=self.agent_patch_stable_steps,
             )
         bash_command, observation = extract_bash_context(messages)
-        stage = classify_routing_stage(bash_command, observation, agent_phase=self.agent_phase)
+        progress_signal = self._progress_adapter.signal_from_context(
+            bash_command=bash_command,
+            observation=observation,
+            agent_phase=self.agent_phase,
+        )
+        stage = progress_signal.stage
         input_tokens = estimate_input_tokens(messages)
         turn = TurnInfo(
             workflow_id=self.workflow_id,
@@ -236,6 +237,7 @@ class BudgetFlowLitellmModel:
             w_i=1.0 if self.routing.strategy in ("stage_blind", "budgetflow_equal_weight") else stage_weight(stage),
             context_len=input_tokens,
             tool_name="bash",
+            segment=progress_signal.segment,
         )
         expected_costs = {
             backend.name: self.governor.estimate_cost(
@@ -256,11 +258,8 @@ class BudgetFlowLitellmModel:
             self.routing.budget_pressure = adaptive.effective_pressure(base_pressure)
         else:
             self.routing.budget_pressure = base_pressure
-        phase = (self.agent_phase or "").strip()
-        has_progress, progress_reason = command_counts_as_progress(
-            bash_command,
-            agent_phase=self.agent_phase,
-        )
+        has_progress = progress_signal.has_progress
+        progress_reason = progress_signal.progress_reason
         if has_progress:
             self._no_progress_streak = 0
             self._no_progress_on_current_tier = 0
@@ -421,8 +420,9 @@ class BudgetFlowLitellmModel:
                         step_index=self.step_index,
                         agent_phase=self.agent_phase,
                         stage=stage,
+                        workflow_segment=progress_signal.segment,
                         bash_command=bash_command,
-                        touched_file_paths=extract_trace_file_paths(bash_command=bash_command),
+                        touched_file_paths=progress_signal.touched_file_paths,
                         input_tokens=input_tokens,
                         expected_costs=expected_costs,
                         base_pressure=base_pressure,
@@ -500,16 +500,20 @@ class BudgetFlowLitellmModel:
             if self._enable_turn_trace:
                 content_head = safe_content_head(response)
                 parser_snippet = parser_input_snippet(response, text_mode)
+                parser_progress_signal = self._progress_adapter.signal_from_context(
+                    bash_command=bash_command,
+                    observation=observation,
+                    agent_phase=self.agent_phase,
+                    assistant_content_head=content_head,
+                    parser_input_snippet=parser_snippet,
+                )
                 self.turn_traces.append(build_turn_trace(
                     step_index=self.step_index,
                     agent_phase=self.agent_phase,
                     stage=stage,
+                    workflow_segment=parser_progress_signal.segment,
                     bash_command=bash_command,
-                    touched_file_paths=extract_trace_file_paths(
-                        bash_command=bash_command,
-                        assistant_content_head=content_head,
-                        parser_input_snippet=parser_snippet,
-                    ),
+                    touched_file_paths=parser_progress_signal.touched_file_paths,
                     input_tokens=input_tokens,
                     expected_costs=expected_costs,
                     base_pressure=base_pressure,
@@ -549,7 +553,9 @@ class BudgetFlowLitellmModel:
                     reservation_settled=True,
                 ))
             raise
-        action_has_progress, action_progress_reason = actions_count_as_progress(actions)
+        action_progress = self._progress_adapter.signal_from_actions(actions)
+        action_has_progress = action_progress.has_progress
+        action_progress_reason = action_progress.progress_reason
         message["extra"] = {
             "actions": actions,
             "response": response.model_dump(),
@@ -561,16 +567,20 @@ class BudgetFlowLitellmModel:
         if self._enable_turn_trace:
             content_head = safe_content_head(response)
             parser_snippet = parser_input_snippet(response, text_mode)
+            parser_progress_signal = self._progress_adapter.signal_from_context(
+                bash_command=bash_command,
+                observation=observation,
+                agent_phase=self.agent_phase,
+                assistant_content_head=content_head,
+                parser_input_snippet=parser_snippet,
+            )
             self.turn_traces.append(build_turn_trace(
                 step_index=self.step_index,
                 agent_phase=self.agent_phase,
                 stage=stage,
+                workflow_segment=parser_progress_signal.segment,
                 bash_command=bash_command,
-                touched_file_paths=extract_trace_file_paths(
-                    bash_command=bash_command,
-                    assistant_content_head=content_head,
-                    parser_input_snippet=parser_snippet,
-                ),
+                touched_file_paths=parser_progress_signal.touched_file_paths,
                 input_tokens=input_tokens,
                 expected_costs=expected_costs,
                 base_pressure=base_pressure,

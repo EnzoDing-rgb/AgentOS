@@ -105,6 +105,7 @@ def build_routing_context(
             stage=Stage.REPAIR,
             w_i=avg_w,
             context_len=0,
+            segment=None,
         )
         expected_costs = {
             backend.name: backend.mean_output_tokens * backend.cost_per_output_token
@@ -230,6 +231,7 @@ def choose_backend(ctx: RoutingContext, turn: TurnInfo, expected_costs: dict[str
             backends=ctx.backends,
             budget_pressure=ctx.budget_pressure,
             expected_costs=expected_costs,
+            segment=turn.segment,
         )
         if ctx.strategy == "budgetflow_value_aware":
             policy_kwargs["task_value"] = ctx.task_value

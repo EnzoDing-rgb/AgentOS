@@ -1,8 +1,8 @@
 """Value adapter: normalizes task-value signals for BudgetFlow core.
 
-Cold start can use a default heuristic, a human-authored value matrix,
-natural-language policy, benchmark solve rarity, or enterprise data import.
-Warm start can learn from verified outcomes, accepted work, priority patterns,
+Bootstrap value estimation can use a default heuristic, a human-authored value
+matrix, natural-language policy, benchmark metadata, or enterprise data import.
+Learn Policy can use verified outcomes, accepted work, priority patterns,
 human correction, or external systems.
 
 The core only consumes a normalized ValueEstimate plus confidence.
@@ -13,7 +13,6 @@ SWE-bench task metadata.
 from __future__ import annotations
 
 import json
-import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
@@ -42,8 +41,8 @@ class ValueAdapter(Protocol):
 class SwebenchValueAdapter:
     """SWE-bench value adapter wrapping the existing value matrix.
 
-    Cold-start: uses a JSON value-matrix file (built offline from
-    cross-strategy stats) or falls back to equal-weight (1.0).
+    Bootstrap profile: uses a JSON value-matrix file or falls back to
+    equal-weight (1.0).
 
     The value matrix schema, profile names, and task metadata are
     SWE-bench adapter details. BudgetFlow core only sees ValueEstimate.
@@ -82,7 +81,7 @@ class SwebenchValueAdapter:
         )
 
     def learn(self, task_id: str, resolved: bool, **context: Any) -> None:
-        # Cold-start adapter is read-only; warm-start learning is a future path.
+        # The SWE-bench bootstrap value adapter is read-only; learned value is a future path.
         pass
 
     # Internal
@@ -122,81 +121,6 @@ class SwebenchValueAdapter:
     def task_value(self, instance_id: str) -> tuple[float, str]:
         estimate = self.estimate(instance_id)
         return estimate.value, estimate.source
-
-
-# Bootstrap value feature extraction (SWE-bench specific)
-
-
-def cold_start_task_features(task: Any) -> dict[str, int]:
-    """Ex-ante SWE-bench task features used by the bootstrap value profile."""
-    return {
-        "patch_lines": len(str(getattr(task, "patch", "") or "").splitlines()),
-        "f2p_count": len(getattr(task, "fail_to_pass", ()) or ()),
-        "p2p_count": len(getattr(task, "pass_to_pass", ()) or ()),
-        "problem_words": len(str(getattr(task, "problem_statement", "") or "").split()),
-        "gold_file_count": len(getattr(task, "gold_files", ()) or ()),
-    }
-
-
-def cold_start_task_values(task: Any) -> dict[str, float]:
-    """No-outcome bootstrap values from SWE-bench task metadata only."""
-    features = cold_start_task_features(task)
-    raw = (
-        1.0
-        + features["patch_lines"]
-        + 2.0 * features["f2p_count"]
-        + math.log1p(features["p2p_count"])
-        + 0.01 * features["problem_words"]
-        + 1.5 * features["gold_file_count"]
-    )
-    return {
-        "equal": 1.0,
-        "cold_start_difficulty": round(raw, 4),
-    }
-
-
-def build_cold_start_value_matrix(tasks: list[Any], *, task_source: str) -> dict[str, Any]:
-    """Build value matrix for a selected task set without historical outcomes."""
-    matrix: dict[str, Any] = {
-        "meta": {
-            "task_count": len(tasks),
-            "profiles": ["equal", "cold_start_difficulty"],
-            "source": task_source,
-            "source_class": "cold_start_ex_ante_metadata",
-            "outcome_free": True,
-            "note": (
-                "Cold-start task values use only ex-ante SWE-bench task metadata: "
-                "patch lines, fail/pass test counts, problem words, and gold file count. "
-                "No strategy outcome, cost, solve rarity, or BudgetFlow signal is used."
-            ),
-            "formula": (
-                "cold_start_difficulty = 1 + patch_lines + 2*f2p_count + "
-                "log1p(p2p_count) + 0.01*problem_words + 1.5*gold_file_count"
-            ),
-        },
-        "tasks": {},
-    }
-    for task in tasks:
-        features = cold_start_task_features(task)
-        values = cold_start_task_values(task)
-        matrix["tasks"][task.instance_id] = {
-            "instance_id": task.instance_id,
-            "repo": task.repo,
-            "features": features,
-            "values": values,
-        }
-    matrix["rankings"] = {}
-    for profile in ("equal", "cold_start_difficulty"):
-        ranked = sorted(
-            matrix["tasks"].items(),
-            key=lambda item: item[1]["values"][profile],
-            reverse=True,
-        )
-        matrix["rankings"][profile] = [
-            {"rank": index + 1, "instance_id": iid, "value": entry["values"][profile]}
-            for index, (iid, entry) in enumerate(ranked)
-        ]
-    return matrix
 
 
 def _median(values: Any) -> float:

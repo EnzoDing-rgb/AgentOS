@@ -15,7 +15,7 @@ comments, and reports should use these names.
 | Value-Driven Budget Allocation | Allocation of task caps and spend from task value, history, expected payoff, cost, and budget pressure. |
 | ValueSource | Versioned input that defines or estimates task value for one run or deployment. |
 | CostSource | Versioned input that defines or estimates model cost for one run or deployment. |
-| ValueAdapter | Adapter that turns task descriptions, organization hints, historical signals, human overrides, or business systems into a standard task-value signal. |
+| ValueAdapter | Adapter that turns task descriptions, organization hints, accepted outcomes, human overrides, or business systems into a standard task-value signal. |
 | CostAdapter | Adapter that turns public price catalogs, provider estimates, invoices, enterprise rate cards, or manual overrides into a standard cost signal. |
 | Confidence | A short record of where a value or cost estimate came from and how trustworthy it is. |
 | Policy Backend | Pluggable strategy that recommends cap, model tier, escalation, de-escalation, stop, and continue decisions. |
@@ -214,9 +214,10 @@ The task-level control is mandatory when evaluating segment-aware routing. It
 tests whether segment features help, or whether they add switching noise,
 prompt drift, cache loss, and coordination cost.
 
-Historical SWE-bench tuned heuristics should be archived or treated as
-benchmark variants. They are not the default Bootstrap Policy and they are not
-the product claim.
+Bootstrap Policy is the default customer-facing policy. It uses general,
+explainable budget-control rules. Learn Policy uses current trusted Memory
+views, adapter configuration, or customer-owned learning systems behind the
+same Policy Backend interface.
 
 ## Value Model
 
@@ -241,12 +242,6 @@ The policy should optimize expected marginal value:
 
 ```text
 route_score = expected_value_gain(task, action) / expected_marginal_cost(action)
-```
-
-A practical objective:
-
-```text
-reward = value(task) * resolved(task) - cost(task) - latency_penalty(task)
 ```
 
 Verified outcome is the strongest correctness signal. It should improve
@@ -292,8 +287,7 @@ After every experiment, inspect artifacts before drawing conclusions:
 - Cost Memory, Routing Memory, and Escalation Memory confidence;
 - infra health: provider, parser, runtime root, worktrees, NFS, checker, budget mode, ValueSource, and CostSource.
 
-Historical JSONL and reports are evidence records. Keep them immutable. New
-runtime and docs should use the terminology in this file.
+Runtime, docs, prompts, and reports should use the terminology in this file.
 
 ## Engineering Direction
 

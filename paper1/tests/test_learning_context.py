@@ -18,6 +18,10 @@ def _run_record(**kw) -> dict:
         "total_cost": 0.1,
         "backend_picks": ["tier2", "tier3"],
         "turn_traces": [{"stage": "REPAIR", "backend_tier": 3}],
+        "routing_decision_schema": "v1",
+        "task_set_kind": "familiar",
+        "policy_kind": "bootstrap",
+        "learn_memory_views": ["routing", "escalation"],
     }
     record.update(kw)
     return record
@@ -60,6 +64,40 @@ def test_looks_like_policy_memory_source_requires_routing_evidence(tmp_path) -> 
     assert looks_like_policy_memory_source(cap_memory) is False
     assert looks_like_policy_memory_source(no_routing) is False
     assert looks_like_policy_memory_source(with_routing) is True
+
+
+def test_default_policy_memory_source_skips_old_schema_runs(tmp_path) -> None:
+    old_schema = tmp_path / "old_schema.jsonl"
+    current_schema = tmp_path / "current_schema.jsonl"
+    old_record = _run_record()
+    old_record.pop("routing_decision_schema")
+    _write_jsonl(old_schema, [old_record])
+    _write_jsonl(current_schema, [_run_record(instance_id="r__current")])
+
+    assert looks_like_policy_memory_source(old_schema) is False
+    assert default_policy_memory_source(tmp_path) == current_schema
+
+
+def test_explicit_policy_memory_can_load_old_schema_as_forensic_low_weight(tmp_path) -> None:
+    old_schema = tmp_path / "old_schema.jsonl"
+    old_record = _run_record()
+    old_record.pop("routing_decision_schema")
+    _write_jsonl(old_schema, [old_record])
+
+    ctx = load_policy_memory_context(
+        runs_dir=tmp_path,
+        repo_root=tmp_path,
+        explicit_path=str(old_schema),
+        resume=False,
+        resume_path=None,
+        disable=False,
+        regret_threshold=None,
+    )
+
+    assert ctx.enabled is True
+    assert ctx.source_kind == "explicit"
+    assert ctx.memory is not None
+    assert ctx.memory.routing_prior_summary("r__t-a")["policy_memory_effective_weight"] < 1.0
 
 
 def test_load_policy_memory_context_from_default_recent(tmp_path) -> None:

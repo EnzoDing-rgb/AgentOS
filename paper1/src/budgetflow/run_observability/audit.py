@@ -226,6 +226,54 @@ def _decision_issue_counts(records: list[dict]) -> dict[str, int]:
     return dict(counts.most_common())
 
 
+_DECISION_ISSUE_AREA = {
+    "missing_value": "value",
+    "missing_value_source": "value",
+    "missing_cost": "cost",
+    "missing_cost_confidence": "cost",
+    "missing_policy_decision": "routing",
+    "provider_error": "provider",
+    "memory_enabled_missing_source": "memory",
+    "harness_blocking": "verifier",
+}
+
+
+def _decision_area_counts(records: list[dict]) -> dict[str, int]:
+    counts: Counter = Counter()
+    for record in records:
+        for issue in _decision_issues(record):
+            counts[_DECISION_ISSUE_AREA.get(issue, "runtime")] += 1
+    return dict(counts.most_common())
+
+
+def _task_set_metrics(records: list[dict]) -> dict[str, dict[str, dict[str, dict]]]:
+    grouped: dict[str, dict[str, dict[str, list[dict]]]] = {}
+    for record in records:
+        kind = str(record.get("task_set_kind") or "unknown")
+        task_set = str(record.get("task_set") or "unknown")
+        strategy = str(record.get("strategy") or "unknown")
+        grouped.setdefault(kind, {}).setdefault(task_set, {}).setdefault(strategy, []).append(record)
+
+    result: dict[str, dict[str, dict[str, dict]]] = {}
+    for kind, by_set in grouped.items():
+        result[kind] = {}
+        for task_set, by_strategy in by_set.items():
+            result[kind][task_set] = {}
+            for strategy, rows in by_strategy.items():
+                cost = sum(float(row.get("total_cost") or row.get("task_cost") or 0.0) for row in rows)
+                resolved_value = sum(float(row.get("resolved_value") or 0.0) for row in rows)
+                task_value = sum(float(row.get("task_value") or 1.0) for row in rows)
+                result[kind][task_set][strategy] = {
+                    "rows": len(rows),
+                    "pass": sum(1 for row in rows if row.get("harness_resolved")),
+                    "cost": cost,
+                    "yield_score": resolved_value,
+                    "yield_coverage": resolved_value / task_value if task_value > 0 else 0.0,
+                    "yield_per_dollar": resolved_value / cost if cost > 0 else 0.0,
+                }
+    return result
+
+
 def build_compact_audit(records: list[dict]) -> dict:
     """Build a high-density audit summary from JSONL records.
 
@@ -440,4 +488,6 @@ def build_compact_audit(records: list[dict]) -> dict:
         "harness_owner": ht_owner_counts,
         "harness_severity": ht_severity_counts,
         "decision_issue_counts": _decision_issue_counts(records),
+        "decision_area_counts": _decision_area_counts(records),
+        "task_set_metrics": _task_set_metrics(records),
     }

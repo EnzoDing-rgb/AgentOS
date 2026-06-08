@@ -7,6 +7,7 @@ TEST_DIR = Path(__file__).resolve().parent
 
 TEST_FILE_PURPOSES = {
     "test_adaptive_routing.py": "learn-policy-memory",
+    "test_auto_budget.py": "cost-memory",
     "test_bash_stage.py": "swebench-adapter",
     "test_budgetflow_runtime.py": "core-mechanism",
     "test_compare_readiness.py": "paid-run-gate",
@@ -26,11 +27,12 @@ TEST_FILE_PURPOSES = {
     "test_run_guards.py": "stop-loss",
     "test_run_observability_audit.py": "evidence-audit",
     "test_stall_guard.py": "stop-loss",
+    "test_swebench_adapters.py": "swebench-adapter",
     "test_trace_fields.py": "decision-observability",
     "test_test_inventory.py": "test-audit",
     "test_value_aware.py": "bootstrap-policy",
     "test_value_efficiency.py": "yield-metrics",
-    "test_value_matrix_cold_start.py": "value-adapter",
+    "test_value_matrix_bootstrap.py": "value-adapter",
 }
 
 

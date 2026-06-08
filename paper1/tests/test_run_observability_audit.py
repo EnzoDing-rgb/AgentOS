@@ -64,7 +64,7 @@ def test_compact_audit_reports_value_metrics() -> None:
     assert stats["yield_score"] == 0.6
     assert stats["yield_coverage"] == 0.6
     assert stats["yield_per_dollar"] == pytest.approx(2.0)
-    assert "T1 VALUE METRICS" in format_compact_audit(audit)
+    assert "PAPER METRICS" in format_compact_audit(audit)
 
 
 def test_compact_audit_counts_actionable_decision_issues() -> None:
@@ -97,6 +97,10 @@ def test_compact_audit_counts_actionable_decision_issues() -> None:
     assert issues["provider_error"] == 1
     assert issues["memory_enabled_missing_source"] == 1
     assert issues["harness_blocking"] == 1
+    assert audit["decision_area_counts"]["value"] == 2
+    assert audit["decision_area_counts"]["cost"] == 1
+    assert audit["decision_area_counts"]["routing"] == 1
+    assert "DECISION ISSUE AREAS" in format_compact_audit(audit)
     assert "DECISION ISSUES" in format_compact_audit(audit)
 
 
@@ -172,7 +176,7 @@ def test_compact_audit_reports_t3_productivity() -> None:
     assert value_triggered["t3_no_progress_cost"] == 0.04
 
     text = format_compact_audit(audit)
-    assert "T2 T3 PRODUCTIVITY" in text
+    assert "STRONGEST MODEL PRODUCTIVITY" in text
     assert "strongest_model=T5" in text
     assert "T3 SOURCE BREAKDOWN" in text
     assert "value_triggered" in text
@@ -271,8 +275,49 @@ def test_compact_audit_reports_t2_frontier_and_segment_control() -> None:
     assert delta["delta_pass"] == 1
     assert delta["delta_yield"] == pytest.approx(2.0)
     assert delta["delta_yield_coverage"] == pytest.approx(2 / 3)
-    assert "T2 FRONTIER COMMON-TASK" in text
-    assert "SEGMENT-AWARE VS TASK-LEVEL CONTROL" in text
+    assert "COMMON-TASK POLICY COMPARISON" in text
+    assert "SEGMENT CONTROL" in text
+
+
+def test_compact_audit_reports_task_set_metrics() -> None:
+    audit = build_compact_audit([
+        {
+            "instance_id": "repo__task-a",
+            "strategy": "budgetflow_value_aware_tight",
+            "harness_resolved": True,
+            "harness_evidence": {"evidence_complete": True},
+            "total_cost": 0.50,
+            "llm_turns": 2,
+            "turn_trace_count": 2,
+            "backend_picks": ["tier2"],
+            "task_value": 3.0,
+            "resolved_value": 3.0,
+            "task_set": "easy",
+            "task_set_kind": "familiar",
+        },
+        {
+            "instance_id": "repo__task-b",
+            "strategy": "budgetflow_value_aware_tight",
+            "harness_resolved": False,
+            "harness_evidence": {"evidence_complete": True},
+            "total_cost": 0.25,
+            "llm_turns": 1,
+            "turn_trace_count": 1,
+            "backend_picks": ["tier2"],
+            "task_value": 1.0,
+            "resolved_value": 0.0,
+            "task_set": "medium",
+            "task_set_kind": "unseen",
+        },
+    ])
+
+    familiar = audit["task_set_metrics"]["familiar"]["easy"]["budgetflow_value_aware_tight"]
+    unseen = audit["task_set_metrics"]["unseen"]["medium"]["budgetflow_value_aware_tight"]
+
+    assert familiar["yield_score"] == pytest.approx(3.0)
+    assert familiar["yield_per_dollar"] == pytest.approx(6.0)
+    assert unseen["pass"] == 0
+    assert "TASK SET METRICS" in format_compact_audit(audit)
 
 
 def test_value_fallback_check_allows_explicit_equal_value_t2_runs() -> None:

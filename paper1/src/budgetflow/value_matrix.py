@@ -190,7 +190,7 @@ PROFILES: dict[str, ValueFn] = {
 }
 
 
-def cold_start_task_features(task) -> dict[str, int]:
+def bootstrap_task_features(task) -> dict[str, int]:
     """Extract ex-ante task features used by the bootstrap value profile."""
     return {
         "patch_lines": len(str(getattr(task, "patch", "") or "").splitlines()),
@@ -201,9 +201,9 @@ def cold_start_task_features(task) -> dict[str, int]:
     }
 
 
-def cold_start_task_values(task) -> dict[str, float]:
+def bootstrap_task_values(task) -> dict[str, float]:
     """No-outcome bootstrap values from task text/patch/test metadata only."""
-    features = cold_start_task_features(task)
+    features = bootstrap_task_features(task)
     import math
 
     raw = (
@@ -216,34 +216,34 @@ def cold_start_task_values(task) -> dict[str, float]:
     )
     return {
         "equal": 1.0,
-        "cold_start_difficulty": round(raw, 4),
+        "bootstrap_difficulty": round(raw, 4),
     }
 
 
-def build_cold_start_value_matrix(tasks: list, *, task_source: str) -> dict[str, Any]:
+def build_bootstrap_value_matrix(tasks: list, *, task_source: str) -> dict[str, Any]:
     """Build value matrix for a selected task set without historical outcomes."""
     matrix: dict[str, Any] = {
         "meta": {
             "task_count": len(tasks),
-            "profiles": ["equal", "cold_start_difficulty"],
+            "profiles": ["equal", "bootstrap_difficulty"],
             "source": task_source,
-            "source_class": "cold_start_ex_ante_metadata",
+            "source_class": "bootstrap_ex_ante_metadata",
             "outcome_free": True,
             "note": (
-                "Cold-start task values use only ex-ante SWE-bench task metadata: "
+                "Bootstrap task values use only ex-ante SWE-bench task metadata: "
                 "patch lines, fail/pass test counts, problem words, and gold file count. "
                 "No strategy outcome, cost, solve rarity, or BudgetFlow signal is used."
             ),
             "formula": (
-                "cold_start_difficulty = 1 + patch_lines + 2*f2p_count + "
+                "bootstrap_difficulty = 1 + patch_lines + 2*f2p_count + "
                 "log1p(p2p_count) + 0.01*problem_words + 1.5*gold_file_count"
             ),
         },
         "tasks": {},
     }
     for task in tasks:
-        features = cold_start_task_features(task)
-        values = cold_start_task_values(task)
+        features = bootstrap_task_features(task)
+        values = bootstrap_task_values(task)
         matrix["tasks"][task.instance_id] = {
             "instance_id": task.instance_id,
             "repo": task.repo,
@@ -251,7 +251,7 @@ def build_cold_start_value_matrix(tasks: list, *, task_source: str) -> dict[str,
             "values": values,
         }
     matrix["rankings"] = {}
-    for profile in ("equal", "cold_start_difficulty"):
+    for profile in ("equal", "bootstrap_difficulty"):
         ranked = sorted(
             matrix["tasks"].items(),
             key=lambda item: item[1]["values"][profile],
@@ -861,14 +861,14 @@ def main(argv: list[str] | None = None) -> dict:
                 print("ERROR: --ids did not contain any task IDs", file=sys.stderr)
                 sys.exit(1)
             tasks = load_swebench_lite_tasks(instance_ids=ids)
-            task_source = f"cold_start_ids:{','.join(ids)}"
+            task_source = f"bootstrap_ids:{','.join(ids)}"
         elif args.task_set == "medium":
             tasks = load_compare_medium_tasks(args.limit or 15)
-            task_source = f"cold_start_task_set:medium:{len(tasks)}"
+            task_source = f"bootstrap_task_set:medium:{len(tasks)}"
         else:
             tasks = load_compare_easy_tasks(args.limit or 5)
-            task_source = f"cold_start_task_set:easy:{len(tasks)}"
-        matrix = build_cold_start_value_matrix(tasks, task_source=task_source)
+            task_source = f"bootstrap_task_set:easy:{len(tasks)}"
+        matrix = build_bootstrap_value_matrix(tasks, task_source=task_source)
         output_text = json.dumps(matrix, indent=2, ensure_ascii=False)
         if args.output == "-":
             sys.stdout.write(output_text + "\n")

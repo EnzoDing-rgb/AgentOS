@@ -6,13 +6,7 @@ from typing import Literal
 
 
 class Stage(str, Enum):
-    """SWE-bench workflow stages: adapter detail, not BudgetFlow core.
-
-    These map to BudgetFlow WorkflowSegments via the SWE-bench segment adapter.
-    New policy code should use WorkflowSegment; Stage is retained for existing
-    harness adapters, progress tables, and trace schemas that reference
-    LOCALIZATION / REPAIR / VALIDATION directly.
-    """
+    """Compatibility stage labels used by existing harness adapters."""
 
     LOCALIZATION = "localization"
     REPAIR = "repair"
@@ -71,6 +65,7 @@ class TurnInfo:
     signal_source: Literal["explicit", "callback", "proxy", "budget_only"] = "explicit"
     tool_name: str | None = None
     observation_type: str | None = None
+    segment: WorkflowSegment | None = None
 
 
 @dataclass(frozen=True)

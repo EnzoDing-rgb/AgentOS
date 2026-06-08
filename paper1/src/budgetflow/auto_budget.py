@@ -9,25 +9,6 @@ from typing import Iterable
 
 from .model_tiers import catalog_revision
 
-
-# Embedded historical prior from paper1/docs/reports/historical_budgeting_prior.md.
-# Costs recalibrated to real USD (2026-06).
-# Updated 2026-06-03: added 5 tasks from postfix_011_sanity (5-strategy observed costs).
-_HISTORICAL_PRIOR: dict[str, dict] = {
-    # From 7×15 historical data (recalibrated).
-    "sympy__sympy-13480": {"median_cost": 0.04, "median_turns": 14, "resolved": 7, "total": 8},
-    "sympy__sympy-13647": {"median_cost": 0.11, "median_turns": 25, "resolved": 7, "total": 8},
-    "sympy__sympy-16988": {"median_cost": 0.70, "median_turns": 141, "resolved": 3, "total": 8},
-    "sympy__sympy-17139": {"median_cost": 0.24, "median_turns": 39, "resolved": 1, "total": 1},
-    "sympy__sympy-20212": {"median_cost": 0.10, "median_turns": 46, "resolved": 8, "total": 8},
-    # From postfix_011_sanity (2026-06-03, 4-5 strategies observed).
-    "sympy__sympy-14774": {"median_cost": 0.05, "median_turns": 6, "resolved": 5, "total": 5},
-    "sympy__sympy-18057": {"median_cost": 0.08, "median_turns": 5, "resolved": 3, "total": 4},
-    "sympy__sympy-18189": {"median_cost": 0.12, "median_turns": 8, "resolved": 4, "total": 4},
-    "sympy__sympy-18621": {"median_cost": 0.17, "median_turns": 7, "resolved": 4, "total": 4},
-    "django__django-10924": {"median_cost": 0.13, "median_turns": 8, "resolved": 4, "total": 4},
-}
-
 # Difficulty bucket thresholds.
 _EASY_PATCH_LINES = 15
 _EASY_F2P_COUNT = 3
@@ -62,7 +43,7 @@ class BudgetEstimate:
     instance_id: str
     estimated_cost: float
     cap: float
-    source: str  # "history_exact", "memory_exact", "memory_exact_any", "memory_repo_knn", "global_fallback"
+    source: str  # "explicit_prior_exact", "memory_exact", "memory_exact_any", "memory_repo_knn", "global_fallback"
     confidence: str  # "high", "medium", "low"
     features: dict[str, float | int | str] = field(default_factory=dict)
     memory_neighbors: int = 0  # kNN count used (for memory-based estimates)
@@ -213,7 +194,7 @@ class AutoBudgetEstimator:
         memory: AutoBudgetMemory | None = None,
         k: int = 3,
     ):
-        self._prior = dict(prior) if prior is not None else dict(_HISTORICAL_PRIOR)
+        self._prior = dict(prior) if prior is not None else {}
         self._memory = memory
         self._k = k
 
@@ -247,8 +228,6 @@ class AutoBudgetEstimator:
                     "resolved": len(costs),
                     "total": len(costs),
                 }
-        if not prior:
-            prior = dict(_HISTORICAL_PRIOR)
         return cls(prior)
 
     @property
@@ -295,7 +274,7 @@ class AutoBudgetEstimator:
                     features=base_features,
                 )
 
-        # 3. Embedded historical prior.
+        # 3. Explicit prior from a user-selected source.
         hist = self._prior.get(iid)
         if hist is not None:
             median = float(hist["median_cost"])
@@ -306,7 +285,7 @@ class AutoBudgetEstimator:
                 instance_id=iid,
                 estimated_cost=median,
                 cap=cap,
-                source="history_exact",
+                source="explicit_prior_exact",
                 confidence=confidence,
                 features={
                     **base_features,

@@ -50,6 +50,7 @@ from budgetflow.experiments.compare_config import (  # noqa: E402
     normalize_strategy as _normalize_strategy,
     required_backends_for_strategies as _required_backends_for_strategies,
     task_descriptor as _task_descriptor,
+    task_set_kind as _task_set_kind,
 )
 from budgetflow.experiments.compare_cli import parse_compare_args  # noqa: E402
 from budgetflow.experiments.compare_memory import (  # noqa: E402
@@ -85,6 +86,7 @@ from budgetflow.observability import (  # noqa: E402
     HeartbeatWriter,
 )
 from budgetflow.learning_context import load_policy_memory_context  # noqa: E402
+from budgetflow.learn_policy import combine_memory_views  # noqa: E402
 from budgetflow.local_harness import set_worktree_root  # noqa: E402
 from budgetflow.adaptive_routing import AdaptiveRoutingRegistry  # noqa: E402
 from budgetflow.run_guards import CompareRunGuards, set_active_guard  # noqa: E402
@@ -240,6 +242,7 @@ def main() -> None:
             )
 
     total_runs = len(tasks) * len(strategies)
+    task_set_kind = _task_set_kind(task_set=args.task_set, ids=args.ids)
     out_stem, stem_mode, series_base, run_series = resolve_run_identity(
         RUNS_DIR,
         tasks_n=len(tasks),
@@ -282,6 +285,7 @@ def main() -> None:
 
     print(
         f"{tag('compare', bold=False)} task_set={args.task_set} preset={args.preset} tasks={len(tasks)} "
+        f"task_set_kind={task_set_kind} "
         f"strategies={len(strategies)} batches={len(strategies)} runs={total_runs} "
         f"loose={budget_plan.loose} tight={budget_plan.tight} "
         f"pressure_init={budget_plan.pressure_init} pressure_max={budget_plan.pressure_max} "
@@ -336,13 +340,18 @@ def main() -> None:
     else:
         print(f"{tag('policy_memory', bold=False)} disabled — {policy_ctx.reason or 'no usable run JSONL source found'}")
 
-    adaptive_registry = AdaptiveRoutingRegistry(memory_bundle=policy_ctx.memory_bundle)
+    learn_memory_bundle = combine_memory_views(
+        cost=auto_budget_memory,
+        routing_bundle=policy_ctx.memory_bundle,
+        source=str(auto_budget_plan.memory_path) if auto_budget_memory is not None else "",
+    )
+    adaptive_registry = AdaptiveRoutingRegistry(memory_bundle=learn_memory_bundle)
     if args.append and out_path.is_file():
         adaptive_registry.rebuild_from_jsonl(out_path)
 
     header_lines = [
         f"compare_{len(tasks)}x{len(strategies)} task_set={args.task_set} preset={args.preset} "
-        f"tasks={len(tasks)} strategies={strategy_names}",
+        f"task_set_kind={task_set_kind} tasks={len(tasks)} strategies={strategy_names}",
         f"budget_mode={'per_task_cap=' + str(args.per_task_cap) if args.per_task_cap else 'shared'} "
         f"soft_budget={args.soft_budget} max_overrun={max_overrun} "
         f"loose={budget_plan.loose} tight={budget_plan.tight} "
@@ -473,6 +482,8 @@ def main() -> None:
             budget_estimates=auto_budget_estimates,
             run_series=run_series,
             heartbeat_writer=heartbeat_writer,
+            task_set=args.task_set,
+            task_set_kind=task_set_kind,
         )
         return cfg, records, batch_spent, batch_cap
 

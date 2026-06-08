@@ -78,7 +78,7 @@ def parse_compare_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--trace-truncate-chars", type=int, default=120, help="max bash digest chars")
     parser.add_argument(
         "--value-profile",
-        choices=("equal", "difficulty", "discriminative_rarity", "unsolved_difficulty", "combined", "cold_start_difficulty"),
+        choices=("equal", "difficulty", "discriminative_rarity", "unsolved_difficulty", "combined", "bootstrap_difficulty"),
         default="equal",
         help="Value profile for task value assignment",
     )

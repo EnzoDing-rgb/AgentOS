@@ -26,6 +26,10 @@ def _record(**overrides) -> dict:
         "turn_traces": [
             {"stage": "REPAIR", "backend_tier": 2, "has_progress": False},
         ],
+        "routing_decision_schema": "v1",
+        "task_set_kind": "familiar",
+        "policy_kind": "bootstrap",
+        "learn_memory_views": ["routing", "escalation"],
     }
     record.update(overrides)
     return record

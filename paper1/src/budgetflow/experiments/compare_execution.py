@@ -7,6 +7,12 @@ import time
 from collections.abc import Callable
 
 from budgetflow.adaptive_routing import AdaptiveRoutingRegistry
+from budgetflow.adapters import (
+    MiniSweRuntimeAdapter,
+    SwebenchSegmentAdapter,
+    SwebenchTaskAdapter,
+    SwebenchVerifierAdapter,
+)
 from budgetflow.auto_budget import BudgetEstimate
 from budgetflow.compare_checkpoint import CompareCheckpointStore, GlobalRunProgress, StrategyScoreboard
 from budgetflow.experiments.compare_config import (
@@ -63,20 +69,26 @@ def run_task_record(
     policy_lane: str = "",
     budget_mode: str = "shared",
     per_task_cap: float | None = None,
+    task_set: str = "",
+    task_set_kind: str = "",
 ) -> dict:
     started = time.time()
-    key = workspace_key(cfg, task.instance_id)
+    task_adapter = SwebenchTaskAdapter()
+    verifier_adapter = SwebenchVerifierAdapter()
+    runtime_adapter = MiniSweRuntimeAdapter()
+    segment_adapter = SwebenchSegmentAdapter()
+    instance_id = task_adapter.instance_id(task)
+    task_features = task_adapter.features(task).as_record()
+    key = workspace_key(cfg, instance_id)
     adaptive = None
     if adaptive_registry is not None:
         adaptive = adaptive_registry.for_strategy(cfg.name, cfg.routing)
     if adaptive is not None:
         adaptive.reset_task_runtime()
-        adaptive.set_task_context(task.instance_id)
+        adaptive.set_task_context(instance_id)
 
-    from budgetflow.adapter.runner import run_mini_swe_task
-
-    task_value, _ = value_context.task_value(task.instance_id)
-    result = run_mini_swe_task(
+    task_value, _ = value_context.task_value(instance_id)
+    result = runtime_adapter.run_task(
         task,
         strategy=cfg.routing,
         strategy_label=cfg.name,
@@ -94,6 +106,7 @@ def run_task_record(
         task_value=task_value,
         median_task_value=value_context.median_task_value,
     )
+    outcome = verifier_adapter.outcome_from_result(result)
     batch_snapshot = governor.budget_snapshot()
     record = {
         "instance_id": result.instance_id,
@@ -111,11 +124,7 @@ def run_task_record(
         "budget_snapshot": batch_snapshot,
         "task_index_in_batch": task_index,
         "workspace_key": key,
-        "harness_resolved": result.harness_resolved,
-        "resolved": result.harness_resolved,
-        "patch_extracted": bool(result.patch_text),
-        "patch_source": result.patch_source,
-        "submitted_patch": result.submitted_patch_path,
+        **outcome.as_record(),
         "exit_status": result.exit_status,
         "exit_reason": result.exit_reason,
         "total_cost": result.total_cost,
@@ -123,7 +132,6 @@ def run_task_record(
         "llm_turns": result.llm_turns,
         "turns": result.llm_turns,
         "violations": list(result.violations),
-        "detail": result.harness_detail,
         "agent_gold_edited": result.agent_gold_edited,
         "agent_gold_files": list(result.agent_gold_files),
         "agent_attempted_submit": result.agent_attempted_submit,
@@ -145,15 +153,12 @@ def run_task_record(
         "budget_mode": budget_mode,
         "per_task_cap": per_task_cap,
         "task_order_index": task_index,
-        "task_features": {
-            "patch_lines": len(str(getattr(task, "patch", "") or "").splitlines()),
-            "f2p_count": len(getattr(task, "fail_to_pass", ()) or ()),
-            "p2p_count": len(getattr(task, "pass_to_pass", ()) or ()),
-            "problem_length": len(str(getattr(task, "problem_statement", "") or "")),
-        },
+        "task_features": task_features,
+        "task_set": task_set,
+        "task_set_kind": task_set_kind,
         "row_started_at": started,
         "row_finished_at": time.time(),
-        "attempt_id": f"{run_series}_{cfg.name}_{task.instance_id}" if run_series else "",
+        "attempt_id": f"{run_series}_{cfg.name}_{instance_id}" if run_series else "",
     }
     if adaptive is not None:
         prior = adaptive.prior_summary_for_trace()
@@ -161,21 +166,29 @@ def run_task_record(
         if prior:
             record["routing_prior_summary"] = prior
             record["routing_prior_stage"] = Stage.LOCALIZATION.value
+            record["routing_prior_segment"] = segment_adapter.to_segment(Stage.LOCALIZATION).name
             if adaptive_registry is not None and adaptive_registry.policy_memory is not None:
-                record["routing_repair_prior_summary"] = (
-                    adaptive_registry.policy_memory.routing_prior_summary(task.instance_id, Stage.REPAIR)
+                repair_segment = segment_adapter.to_segment(Stage.REPAIR)
+                record["routing_repair_prior_summary"] = adaptive_registry.policy_memory.routing_prior_summary(
+                    instance_id,
+                    Stage.REPAIR,
                 )
+                record["routing_repair_prior_segment"] = repair_segment.name
             record["policy_memory_enabled"] = True
         else:
             record["policy_memory_enabled"] = False
+        if adaptive_registry is not None:
+            record["learn_memory_views"] = list(adaptive_registry.memory_bundle.active_views)
     elif adaptive_registry is not None and adaptive_registry.policy_memory is not None:
-        prior = adaptive_registry.policy_memory.routing_prior_summary(task.instance_id)
+        prior = adaptive_registry.policy_memory.routing_prior_summary(instance_id)
         record["routing_prior_summary"] = prior
         record["policy_memory_enabled"] = True
         record["memory_mode"] = getattr(adaptive_registry, "memory_mode", "built_in")
+        record["learn_memory_views"] = list(adaptive_registry.memory_bundle.active_views)
     else:
         record["policy_memory_enabled"] = False
         record["memory_mode"] = "off"
+        record["learn_memory_views"] = []
 
     record["failure_class"] = classify_failure(record)
     record["forensic_summary"] = build_forensic_summary(record)
@@ -232,6 +245,8 @@ def run_strategy_batch(
     budget_estimates: dict[str, BudgetEstimate] | None = None,
     run_series: str = "",
     heartbeat_writer: object | None = None,
+    task_set: str = "",
+    task_set_kind: str = "",
 ) -> tuple[list[dict], float]:
     def log(msg: str) -> None:
         if print_lock:
@@ -367,6 +382,8 @@ def run_strategy_batch(
                 else "per_task_cap" if task_cap is not None
                 else "shared",
                 per_task_cap=task_cap,
+                task_set=task_set,
+                task_set_kind=task_set_kind,
             )
 
         try:

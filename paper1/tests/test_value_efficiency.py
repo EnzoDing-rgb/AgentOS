@@ -43,23 +43,23 @@ def test_non_equal_profile_is_t1_value_efficiency(tmp_path) -> None:
     })
 
     assert record["value_objective"] == "t1_value_efficiency"
-    assert record["task_value_source_class"] == "historical_cross_strategy"
+    assert record["task_value_source_class"] == "predefined_value_matrix"
     assert record["task_value"] == 0.5
     assert record["resolved_value"] == 0.5
     assert record["yield_per_dollar"] == 2.0
     assert record["task_value_multiplier"] == pytest.approx(1.6667, abs=0.0001)
 
 
-def test_cold_start_profile_is_separate_t1_diagnostic(tmp_path) -> None:
+def test_bootstrap_profile_is_separate_t1_diagnostic(tmp_path) -> None:
     matrix = tmp_path / "value_matrix.json"
     matrix.write_text(json.dumps({
         "tasks": {
-            "task-a": {"values": {"cold_start_difficulty": 4.0}},
-            "task-b": {"values": {"cold_start_difficulty": 2.0}},
+            "task-a": {"values": {"bootstrap_difficulty": 4.0}},
+            "task-b": {"values": {"bootstrap_difficulty": 2.0}},
         }
     }))
     ctx = ValueEfficiencyContext()
-    ctx.init(value_profile="cold_start_difficulty", value_matrix_path=str(matrix))
+    ctx.init(value_profile="bootstrap_difficulty", value_matrix_path=str(matrix))
 
     record = ctx.enrich_record({
         "instance_id": "task-a",
@@ -68,8 +68,8 @@ def test_cold_start_profile_is_separate_t1_diagnostic(tmp_path) -> None:
         "task_cost": 0.5,
     })
 
-    assert record["value_objective"] == "t1_cold_start_value_diagnostic"
-    assert record["task_value_source_class"] == "cold_start_ex_ante_metadata"
+    assert record["value_objective"] == "t1_bootstrap_value_diagnostic"
+    assert record["task_value_source_class"] == "bootstrap_ex_ante_metadata"
     assert record["resolved_value"] == 4.0
 
 

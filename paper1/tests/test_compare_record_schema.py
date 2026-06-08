@@ -108,12 +108,16 @@ def test_compare_runner_records_turns_value_and_task_features(monkeypatch) -> No
         task_index=1,
         step_limit=1,
         value_context=_value_context(),
+        task_set="easy",
+        task_set_kind="familiar",
     )
 
     assert record["turns"] == record["llm_turns"] == 2
     assert record["resolved"] is True
     assert "yield_per_dollar" not in record
     assert record["task_features"] == {"patch_lines": 1, "f2p_count": 1, "p2p_count": 0, "problem_length": 0}
+    assert record["task_set"] == "easy"
+    assert record["task_set_kind"] == "familiar"
 
 
 def test_auto_budget_records_dynamic_task_cap_mode(monkeypatch) -> None:
@@ -218,7 +222,8 @@ def test_persisted_jsonl_contains_t1_t2_observability_and_learning_memory(tmp_pa
     assert persisted["turns"] == 2
     assert persisted["value_objective"] == "t2_equal_value_ablation"
     assert persisted["yield_per_dollar"] == 4.0
-    assert persisted["routing_policy_family"] == "bootstrap_equal_value_t2"
+    assert persisted["routing_policy_family"] == "bootstrap:value_aware_segment"
+    assert persisted["policy_kind"] == "bootstrap"
     assert persisted["routing_learned_action"] == "early_rescue"
     assert persisted["routing_policy_memory_source"].endswith("066_postfix_3x3.jsonl")
     assert record["budget_learning_update_written"] is True

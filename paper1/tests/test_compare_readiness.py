@@ -110,7 +110,7 @@ def test_readiness_blocks_paid_run_when_auto_budget_has_no_memory_lift() -> None
     )
 
     assert not report.ok
-    assert any("do not claim Cost Memory lift" in issue for issue in report.blocking)
+    assert any("dynamic task caps are all global_fallback" in issue for issue in report.blocking)
 
 
 def test_readiness_allows_explicit_global_fallback_cap_diagnostic() -> None:
@@ -134,4 +134,4 @@ def test_readiness_allows_explicit_global_fallback_cap_diagnostic() -> None:
     )
 
     assert report.ok
-    assert any("do not claim Cost Memory lift" in warning for warning in report.warnings)
+    assert any("dynamic task caps are all global_fallback" in warning for warning in report.warnings)

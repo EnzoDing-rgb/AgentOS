@@ -49,7 +49,7 @@ def format_compact_audit(audit: dict) -> str:
 
     if any("yield_score" in s for s in audit["by_strategy"].values()):
         lines.append(banner)
-        lines.append("T1 VALUE METRICS")
+        lines.append("PAPER METRICS")
         lines.append(f"{'strategy':<26} {'res_value':>9} {'task_value':>10} {'Yield':>7} {'coverage':>8} {'Yield/$':>9}")
         lines.append("-" * 64)
         for strat in sorted(audit["by_strategy"]):
@@ -62,10 +62,24 @@ def format_compact_audit(audit: dict) -> str:
                 f"{s.get('yield_per_dollar', 0.0):>9.2f}"
             )
 
+    if audit.get("task_set_metrics"):
+        lines.append(banner)
+        lines.append("TASK SET METRICS")
+        lines.append(f"{'kind':<10} {'task_set':<14} {'strategy':<26} {'rows':>5} {'P':>3} {'cost':>8} {'Yield':>7} {'Yield/$':>9}")
+        lines.append("-" * 104)
+        for kind in sorted(audit["task_set_metrics"]):
+            for task_set in sorted(audit["task_set_metrics"][kind]):
+                for strategy in sorted(audit["task_set_metrics"][kind][task_set]):
+                    s = audit["task_set_metrics"][kind][task_set][strategy]
+                    lines.append(
+                        f"{kind:<10} {task_set:<14} {strategy:<26} {s['rows']:>5} {s['pass']:>3} "
+                        f"${s['cost']:>7.2f} {s['yield_score']:>7.2f} {s['yield_per_dollar']:>9.2f}"
+                    )
+
     # Common-task comparison
     if audit["common_task_count"] > 0:
         lines.append(banner)
-        lines.append(f"T2 FRONTIER COMMON-TASK ({audit['common_task_count']} tasks shared across all strategies)")
+        lines.append(f"COMMON-TASK POLICY COMPARISON ({audit['common_task_count']} tasks shared across all strategies)")
         lines.append(f"{'strategy':<26} {'tasks':>5} {'P':>3} {'cost':>8} {'tiers':>18}")
         lines.append("-" * 64)
         for strat in sorted(audit["common_stats"]):
@@ -78,7 +92,7 @@ def format_compact_audit(audit: dict) -> str:
     control_delta = audit.get("segment_control_delta") or {}
     if control_delta:
         lines.append(banner)
-        lines.append("SEGMENT-AWARE VS TASK-LEVEL CONTROL")
+        lines.append("SEGMENT CONTROL")
         lines.append(
             f"{control_delta['segment_aware_strategy']} - {control_delta['task_level_control']}: "
             f"delta_pass={control_delta['delta_pass']} "
@@ -118,7 +132,7 @@ def format_compact_audit(audit: dict) -> str:
     t3_productivity = audit.get("t3_productivity")
     if t3_productivity:
         lines.append(banner)
-        lines.append(f"T2 T3 PRODUCTIVITY  |  strongest_model=T{audit.get('t3_tier', '?')}")
+        lines.append(f"STRONGEST MODEL PRODUCTIVITY  |  strongest_model=T{audit.get('t3_tier', '?')}")
         lines.append(
             f"{'strategy':<26} {'t3':>6} {'productive':>10} {'rate':>7} "
             f"{'no_prog':>7} {'no_prog_cost':>12}"
@@ -175,6 +189,10 @@ def format_compact_audit(audit: dict) -> str:
 
     if audit.get("decision_issue_counts"):
         lines.append(banner)
+        if audit.get("decision_area_counts"):
+            lines.append("DECISION ISSUE AREAS: " + " | ".join(
+                f"{k}={v}" for k, v in sorted(audit["decision_area_counts"].items())
+            ))
         lines.append("DECISION ISSUES: " + " | ".join(
             f"{k}={v}" for k, v in sorted(audit["decision_issue_counts"].items())
         ))

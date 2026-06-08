@@ -79,5 +79,5 @@ These are the short-form checks every worker should keep in view:
 - Do not assume every failure signal is learnable. Pick a few general, reusable signals and make sure the runtime actually consumes them.
 - Current core learning signals are cap sufficiency/cost, routing outcome by task/repo/segment, model-tier productivity versus no-progress cost, provider/parser failures, and harness-trusted verified outcome.
 - A new signal earns its place only if it can influence a future cap, route, stop/continue, or escalation decision and can be audited from JSONL.
-- Schema-aware learning matters: old trace fields may be forensic or weak positive evidence, but schema-mismatched missing/false progress must not create negative T3 no-progress evidence that changes routing.
-- Cost Memory, Routing Memory, and Escalation Memory must learn from history without overfitting it. Prefer fresh, schema-compatible, harness-trusted runs over old forensic data; old runs may be weak priors but must not dominate current routing through raw counts or stale failure semantics.
+- Schema-aware learning matters: default Memory loading uses current-schema, harness-trusted records. Archived rows are forensic unless an experiment explicitly selects them.
+- Cost Memory, Routing Memory, and Escalation Memory learn from clean current records and explicit adapter configuration. Historical runs inform design review and reports, not default routing behavior.

@@ -123,8 +123,8 @@ class BootstrapPolicy(PolicyBackend):
     ) -> float:
         """Not yet wired into runtime; returns budget_remaining as pass-through.
 
-        Cap estimation is owned by the budget plan (auto_budget / static caps)
-        and per-task cap gating in the execution layer. This method exists to
+        Cap estimation is owned by Value-Driven Budget Allocation and
+        per-task cap gating in the execution layer. This method exists to
         satisfy the PolicyBackend interface contract but must not affect runtime
         budget behavior in this slice. Future slices will wire a value-aware
         formula here once the cap-allocation path is refactored.

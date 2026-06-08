@@ -149,11 +149,11 @@ def validate_tier_catalog(configs: tuple[TierConfig, ...] = DEFAULT_TIER_CONFIGS
         if cfg.cost_per_input_token <= 0 or cfg.cost_per_output_token <= 0:
             issues.append(f"{cfg.backend}: non-positive token cost")
         if not cfg.cost_source or cfg.cost_source == "manual":
-            issues.append(f"{cfg.backend}: missing cost source confidence")
+            issues.append(f"{cfg.backend}: missing cost confidence")
         if not _looks_like_iso_date(cfg.cost_updated):
             issues.append(f"{cfg.backend}: missing cost_updated YYYY-MM-DD")
         if not cfg.progress_source or cfg.progress_source == "manual":
-            issues.append(f"{cfg.backend}: missing progress source confidence")
+            issues.append(f"{cfg.backend}: missing progress confidence")
         if not _looks_like_iso_date(cfg.progress_updated):
             issues.append(f"{cfg.backend}: missing progress_updated YYYY-MM-DD")
         for stage, value in cfg.progress_prior.items():

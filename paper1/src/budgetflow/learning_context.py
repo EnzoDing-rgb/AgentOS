@@ -1,4 +1,4 @@
-"""Continual-learning source selection for BudgetFlow runs.
+"""Learn Policy memory source selection for BudgetFlow runs.
 
 Cap learning and routing learning use different artifacts:
 
@@ -47,7 +47,7 @@ class PolicyMemoryContext:
     reason: str = ""
 
 
-def looks_like_policy_memory_source(path: Path) -> bool:
+def looks_like_policy_memory_source(path: Path, *, require_current_schema: bool = True) -> bool:
     """Return True for run JSONL that can teach routing priors."""
     if not path.is_file() or path.name.startswith("auto_budget"):
         return False
@@ -70,9 +70,24 @@ def looks_like_policy_memory_source(path: Path) -> bool:
             continue
         if not record.get("instance_id"):
             continue
+        if require_current_schema and not _record_has_current_memory_schema(record):
+            continue
         if record.get("backend_picks") or record.get("turn_traces"):
             return True
     return False
+
+
+def _record_has_current_memory_schema(record: dict) -> bool:
+    """Default memory only consumes rows from the current auditable schema."""
+    if record.get("routing_decision_schema") != "v1":
+        return False
+    if not record.get("task_set_kind"):
+        return False
+    if not record.get("policy_kind"):
+        return False
+    if not isinstance(record.get("learn_memory_views"), list):
+        return False
+    return True
 
 
 def default_policy_memory_source(runs_dir: Path, *, exclude: Path | None = None) -> Path | None:
@@ -82,7 +97,7 @@ def default_policy_memory_source(runs_dir: Path, *, exclude: Path | None = None)
     for path in runs_dir.glob("*.jsonl"):
         if exclude_resolved is not None and path.resolve() == exclude_resolved:
             continue
-        if looks_like_policy_memory_source(path):
+        if looks_like_policy_memory_source(path, require_current_schema=True):
             candidates.append(path)
     if not candidates:
         return None
@@ -96,14 +111,14 @@ def default_policy_memory_sources(runs_dir: Path, *, exclude: Path | None = None
     for path in runs_dir.glob("*.jsonl"):
         if exclude_resolved is not None and path.resolve() == exclude_resolved:
             continue
-        if looks_like_policy_memory_source(path):
+        if looks_like_policy_memory_source(path, require_current_schema=True):
             candidates.append(path)
     candidates.sort(key=lambda p: (p.stat().st_mtime_ns, p.name), reverse=True)
     return tuple(candidates[:limit])
 
 
 def policy_memory_source_weight(source_index: int) -> float:
-    """Recency weighting: newest run dominates, older runs are weak priors."""
+    """Recency weighting for explicitly selected multi-source memory."""
     return max(POLICY_MEMORY_MIN_WEIGHT, POLICY_MEMORY_SOURCE_DECAY ** max(0, source_index))
 
 
@@ -154,7 +169,11 @@ def load_policy_memory_context(
         return PolicyMemoryContext(
             None, LearnMemoryBundle.off("file_not_found"), missing[0], sources, source_kind, False, "file_not_found"
         )
-    unusable = [path for path in sources if not looks_like_policy_memory_source(path)]
+    require_current_schema = source_kind != "explicit"
+    unusable = [
+        path for path in sources
+        if not looks_like_policy_memory_source(path, require_current_schema=require_current_schema)
+    ]
     if unusable:
         return PolicyMemoryContext(
             None, LearnMemoryBundle.off("not_routing_run_jsonl"), unusable[0], sources, source_kind, False, "not_routing_run_jsonl"
@@ -171,9 +190,14 @@ def load_policy_memory_context(
                 record = json.loads(line)
             except json.JSONDecodeError:
                 continue
+            if not _record_has_current_memory_schema(record):
+                record["_policy_memory_schema"] = "forensic"
+                record["_policy_memory_weight"] = min(weight, POLICY_MEMORY_MIN_WEIGHT)
+            else:
+                record["_policy_memory_schema"] = "current"
+                record["_policy_memory_weight"] = weight
             record["_policy_memory_source"] = str(source)
             record["_policy_memory_source_rank"] = source_index
-            record["_policy_memory_weight"] = weight
             records.append(record)
     memory.rebuild_from_records(records)
     memory._source_path = ",".join(str(path) for path in sources)

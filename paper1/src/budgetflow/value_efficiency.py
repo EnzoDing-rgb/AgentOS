@@ -21,17 +21,17 @@ class ValueEfficiencyContext:
 
     @property
     def objective(self) -> str:
-        if self.profile == "cold_start_difficulty":
-            return "t1_cold_start_value_diagnostic"
+        if self.profile == "bootstrap_difficulty":
+            return "t1_bootstrap_value_diagnostic"
         return "t2_equal_value_ablation" if self.profile == "equal" else "t1_value_efficiency"
 
     @property
     def source_class(self) -> str:
         if self.profile == "equal":
             return "default_equal"
-        if self.profile == "cold_start_difficulty":
-            return "cold_start_ex_ante_metadata"
-        return "historical_cross_strategy"
+        if self.profile == "bootstrap_difficulty":
+            return "bootstrap_ex_ante_metadata"
+        return "predefined_value_matrix"
 
     def init(self, *, value_profile: str = "equal", value_matrix_path: str | None = None) -> None:
         self.profile = value_profile

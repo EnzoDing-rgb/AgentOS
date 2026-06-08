@@ -52,7 +52,7 @@ def build_compare_readiness_report(
     facts.append(f"value_matrix={value_context.matrix_path or 'default_equal'}")
     facts.append(f"runtime_root={runtime_root}")
     facts.append("budget_mode=dynamic_task_caps" if auto_budget_caps else "budget_mode=static_or_shared")
-    facts.append(f"auto_budget={'on' if auto_budget_enabled else 'off'}")
+    facts.append(f"dynamic_caps={'on' if auto_budget_enabled else 'off'}")
     if auto_budget_caps:
         planned_policy_cap = sum(float(cap) for cap in auto_budget_caps.values())
         facts.append(f"planned_policy_cap={planned_policy_cap:.4f}")
@@ -88,13 +88,13 @@ def build_compare_readiness_report(
     if args.task_set != "medium" and not args.ids and len(task_ids) <= 3:
         warnings.append("small familiar task set; diagnostic only, weak anti-overfitting evidence")
     if auto_budget_enabled and not auto_budget_caps:
-        blocking.append("auto-budget enabled but no dynamic task caps were produced")
+        blocking.append("dynamic task caps enabled but no task caps were produced")
     if auto_budget_enabled and auto_budget_estimates:
         estimates = list(auto_budget_estimates.values())
         fallback_n = sum(1 for estimate in estimates if str(getattr(estimate, "source", "")) == "global_fallback")
         low_conf_n = sum(1 for estimate in estimates if str(getattr(estimate, "confidence", "")) == "low")
         if estimates and fallback_n == len(estimates):
-            msg = "auto-budget caps are all global_fallback; do not claim Cost Memory lift"
+            msg = "dynamic task caps are all global_fallback; do not claim Cost Memory lift"
             if (
                 getattr(args, "allow_global_fallback_auto_budget", False)
                 or getattr(args, "auto_budget_dry_run", False)
@@ -106,11 +106,11 @@ def build_compare_readiness_report(
                     + "; pass --allow-global-fallback-auto-budget only for a fallback-cap diagnostic"
                 )
         elif estimates and fallback_n / len(estimates) >= 0.5:
-            warnings.append(f"auto-budget caps mostly global_fallback ({fallback_n}/{len(estimates)}); cap learning is weak")
+            warnings.append(f"dynamic task caps mostly global_fallback ({fallback_n}/{len(estimates)}); Cost Memory signal is weak")
         if estimates and low_conf_n / len(estimates) >= 0.5:
-            warnings.append(f"auto-budget estimates mostly low confidence ({low_conf_n}/{len(estimates)})")
+            warnings.append(f"dynamic cap estimates mostly low confidence ({low_conf_n}/{len(estimates)})")
     if not args.trace_turns:
-        warnings.append("turn traces disabled; T3 Productive Rate/source breakdown will be weak")
+        warnings.append("turn traces disabled; strongest-model productivity/source breakdown will be weak")
 
     return ReadinessReport(tuple(blocking), tuple(warnings), tuple(facts))
 

@@ -371,8 +371,8 @@ class AdaptiveRoutingRegistry:
             )
         self._memory_bundle = memory_bundle
         self._policy_memory = policy_memory or memory_bundle.routing
-        self._memory_mode = memory_bundle.mode if memory_bundle.enabled else "off"
-        if memory_bundle.enabled and memory_mode != "off":
+        self._memory_mode = memory_bundle.mode if memory_bundle.routing_enabled else "off"
+        if memory_bundle.routing_enabled and memory_mode != "off":
             self._memory_mode = memory_mode
 
     @property

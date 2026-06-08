@@ -137,6 +137,16 @@ def task_descriptor(task) -> str:
     )
 
 
+def task_set_kind(*, task_set: str, ids: str | None = None) -> str:
+    if ids:
+        return "custom"
+    if task_set == "easy":
+        return "familiar"
+    if task_set == "medium":
+        return "unseen"
+    return "unknown"
+
+
 def workspace_key(cfg: CompareStrategy, instance_id: str) -> str:
     safe = cfg.name.replace("/", "_")
     return f"{safe}_{instance_id}"

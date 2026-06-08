@@ -742,12 +742,10 @@ def _trace_tier(trace: dict) -> int:
 
 
 def _trace_has_value_triggered_escalation(trace: dict) -> bool:
-    """Read both new and historical trace field names."""
+    """Read current trace fields for Value-Triggered Escalation."""
     return bool(
         trace.get("value_triggered_escalation_active")
         or trace.get("value_triggered_escalation_opened")
-        or trace.get("value_salvage_active")
-        or trace.get("value_salvage_triggered")
     )
 
 
@@ -755,10 +753,8 @@ def _trace_productivity(trace: dict) -> bool | None:
     """Whether this backend turn produced a useful action without infra noise.
 
     New traces attribute productivity to the action emitted by the selected
-    backend. Historical traces only had ``has_progress``, which describes the
-    previous observation context and can misattribute T3 turns. Use old
-    positive evidence as a weak usable signal, but do not let old missing/false
-    action evidence create no-progress cost that changes routing.
+    backend. Explicitly selected old traces may only contribute positive
+    progress from ``has_progress``; missing old action evidence stays unknown.
     """
     if trace.get("error_type") or trace.get("parser_error_type"):
         return False
