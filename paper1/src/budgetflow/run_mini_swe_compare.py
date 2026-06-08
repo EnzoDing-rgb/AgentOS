@@ -124,7 +124,11 @@ def main() -> None:
         )
         sys.exit(2)
     value_context = ValueEfficiencyContext()
-    value_context.init(value_profile=args.value_profile, value_matrix_path=args.value_matrix)
+    value_context.init(
+        value_profile=args.value_profile,
+        value_matrix_path=args.value_matrix,
+        value_source_kind=args.value_source_kind,
+    )
 
     def enrich_record_with_value(record: dict) -> dict:
         return value_context.enrich_record(record)

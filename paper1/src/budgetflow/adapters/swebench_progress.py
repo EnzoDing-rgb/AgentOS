@@ -2,7 +2,7 @@
 
 This adapter keeps bash-command and agent-phase heuristics behind the
 SWE-bench boundary. BudgetFlow policies consume normalized workflow segments
-and progress signals.
+and progress/outcome signals.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ from .swebench_segment import SwebenchSegmentAdapter
 class ProgressSignal:
     stage: Stage
     segment: WorkflowSegment
-    has_progress: bool
+    has_progress: bool | None
     progress_reason: str
     touched_file_paths: list[str] = field(default_factory=list)
 
@@ -41,8 +41,26 @@ class ProgressSignal:
 
 @dataclass(frozen=True)
 class ActionProgressSignal:
-    has_progress: bool
+    has_progress: bool | None
     progress_reason: str
+
+
+@dataclass(frozen=True)
+class VerifiedOutcome:
+    resolved: bool
+    detail: str
+    patch_extracted: bool
+    patch_source: str
+    submitted_patch: str | None
+
+    def as_record(self) -> dict[str, Any]:
+        return {
+            "harness_resolved": self.resolved,
+            "patch_extracted": self.patch_extracted,
+            "patch_source": self.patch_source,
+            "submitted_patch": self.submitted_patch,
+            "detail": self.detail,
+        }
 
 
 class ProgressAdapter(Protocol):
@@ -57,10 +75,16 @@ class ProgressAdapter(Protocol):
     ) -> ProgressSignal: ...
 
     def signal_from_actions(self, actions: list[dict] | tuple[dict, ...] | None) -> ActionProgressSignal: ...
+    def outcome_from_result(self, result: Any) -> VerifiedOutcome: ...
 
 
 class SwebenchProgressAdapter:
-    """Normalize mini-SWE bash/phase traces into BudgetFlow progress signals."""
+    """Normalize mini-SWE traces and harness results into BudgetFlow signals.
+
+    Progress is optional diagnostic evidence. If a task type cannot provide a
+    trustworthy intermediate signal, adapters should emit unknown/no-signal
+    rather than invent a score. Final acceptance remains the resolved outcome.
+    """
 
     def __init__(self, segment_adapter: SwebenchSegmentAdapter | None = None) -> None:
         self._segment_adapter = segment_adapter or SwebenchSegmentAdapter()
@@ -101,3 +125,13 @@ class SwebenchProgressAdapter:
     def signal_from_actions(self, actions: list[dict] | tuple[dict, ...] | None) -> ActionProgressSignal:
         has_progress, reason = actions_count_as_progress(actions)
         return ActionProgressSignal(has_progress=has_progress, progress_reason=reason)
+
+    def outcome_from_result(self, result: Any) -> VerifiedOutcome:
+        patch_text = getattr(result, "patch_text", None)
+        return VerifiedOutcome(
+            resolved=bool(getattr(result, "harness_resolved", False)),
+            detail=str(getattr(result, "harness_detail", "") or ""),
+            patch_extracted=bool(patch_text),
+            patch_source=str(getattr(result, "patch_source", "") or "none"),
+            submitted_patch=getattr(result, "submitted_patch_path", None),
+        )

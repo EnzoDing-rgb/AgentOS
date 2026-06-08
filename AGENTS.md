@@ -35,6 +35,7 @@ These are the short-form checks every worker should keep in view:
 - Checker first: inspect JSONL, trace, checker, compact audit, and harness trust before drawing conclusions.
 - No-paid gates first: pass no-paid tests, dry-runs, value/cost confidence, and provider preflight before paid runs.
 - Historical evidence is immutable: do not patch historical JSONL or old reports to make a current story cleaner.
+- SWE-bench as testbed: SWE-bench is the current strongest pressure test for the abstraction, not the BudgetFlow Mechanism itself. If an interface makes SWE-bench adaptation awkward, it is probably over-abstracted or misplaced; if it only works for SWE-bench, benchmark detail has leaked into the mechanism.
 
 ## Run Discipline
 
@@ -65,6 +66,7 @@ These are the short-form checks every worker should keep in view:
 - Use subagents for low-value, high-token scans, narrow code/test edits, artifact enumeration, or failure classification when it saves cost or wall time without outsourcing main-agent judgment. Main-agent judgment owns architecture, routing, evaluation, learning, and paper-claim decisions.
 - Use skills only when they materially improve the current work. Do not mechanically read or invoke generic system skills in a way that distracts from BudgetFlow's north star, experiment discipline, or the user's immediate instruction. In particular, do not force a Test-Driven Development workflow for documentation-only work, experiment judgment, review, or other changes where it is not actually needed.
 - Avoid broad, unbounded repo archaeology. Read the few files and artifacts needed to answer the current evidence question, then act or summarize the remaining uncertainty.
+- Do not keep historical compatibility in active runtime, tests, or current docs unless it protects a current paid-run safety boundary. Historical JSONL/reports are forensic evidence; old schemas and retired terms must not drive Learn Policy Inputs, ValueSource, CostSource, routing, or paper metrics.
 - Keep docs meaningful: update `paper1/docs/north_star.md` or `paper1/docs/progress.md` only when a real decision changes.
 - Commit and push stable slices after no-paid gates pass. Avoid noisy commits, but do not leave verified mechanism changes uncommitted.
 
@@ -79,5 +81,5 @@ These are the short-form checks every worker should keep in view:
 - Do not assume every failure signal is learnable. Pick a few general, reusable signals and make sure the runtime actually consumes them.
 - Current learning signals are cap sufficiency/cost, routing outcome by task/repo/segment, model-tier productivity versus no-progress cost, provider/parser failures, and harness-trusted verified outcome.
 - A new signal earns its place only if it can influence a future cap, route, stop/continue, or escalation decision and can be audited from JSONL.
-- Schema-aware learning matters: default Memory loading uses current-schema, harness-trusted records. Archived rows are forensic unless an experiment explicitly selects them.
-- Cost Memory, Routing Memory, and Escalation Memory learn from clean current records and explicit adapter configuration. Historical runs inform design review and reports, not default routing behavior.
+- Schema-aware learning matters: Memory loading uses current-schema, harness-trusted records. Archived rows are forensic and cannot enter active Learn Policy Inputs.
+- Cost Memory, Routing Memory, and Escalation Memory learn from clean current records and explicit adapter configuration. Historical runs inform design review and reports, not runtime routing behavior.

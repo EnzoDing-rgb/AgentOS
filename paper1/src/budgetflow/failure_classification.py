@@ -206,7 +206,7 @@ def build_forensic_summary(record: dict[str, Any]) -> dict[str, Any]:
         "budget": {
             "exhausted": budget_exhausted,
             "exhausted_after_patch": budget_exhausted and (patch_extracted or gold_edited),
-            "spent": record.get("budget_spent") or record.get("task_cost") or record.get("total_cost"),
+            "spent": record.get("budget_spent") or record.get("total_cost"),
             "available": record.get("budget_available") or record.get("batch_available"),
         },
         "policy": {

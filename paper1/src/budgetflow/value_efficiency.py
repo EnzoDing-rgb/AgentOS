@@ -12,32 +12,65 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+@dataclass(frozen=True)
+class ValueSourceInfo:
+    """Audit contract for task-value evidence used in a run."""
+
+    kind: str
+    evidence_role: str
+    confidence: str
+    primary_t1: bool
+
+
 @dataclass
 class ValueEfficiencyContext:
     profile: str = "equal"
     matrix_path: str | None = None
     lookup: dict[str, float] | None = None
     median_task_value: float = 1.0
+    source_info: ValueSourceInfo = ValueSourceInfo(
+        kind="equal_sanity",
+        evidence_role="sanity_fallback",
+        confidence="none",
+        primary_t1=False,
+    )
 
     @property
     def objective(self) -> str:
-        if self.profile == "bootstrap_difficulty":
-            return "t1_bootstrap_value_diagnostic"
-        return "t2_equal_value_ablation" if self.profile == "equal" else "t1_value_efficiency"
+        return "t1_value_efficiency" if self.source_info.primary_t1 else "t2_value_source_diagnostic"
 
     @property
     def source_class(self) -> str:
-        if self.profile == "equal":
-            return "default_equal"
-        if self.profile == "bootstrap_difficulty":
-            return "bootstrap_ex_ante_metadata"
-        return "predefined_value_matrix"
+        return self.source_info.kind
 
-    def init(self, *, value_profile: str = "equal", value_matrix_path: str | None = None) -> None:
+    @property
+    def evidence_role(self) -> str:
+        return self.source_info.evidence_role
+
+    @property
+    def confidence(self) -> str:
+        return self.source_info.confidence
+
+    @property
+    def is_pre_registered_manual(self) -> bool:
+        return self.source_info.kind == "pre_registered_manual"
+
+    @property
+    def is_primary_value_evidence(self) -> bool:
+        return self.source_info.primary_t1
+
+    def init(
+        self,
+        *,
+        value_profile: str = "equal",
+        value_matrix_path: str | None = None,
+        value_source_kind: str | None = None,
+    ) -> None:
         self.profile = value_profile
         self.matrix_path = value_matrix_path
         self.lookup = None
         self.median_task_value = 1.0
+        artifact: dict | None = None
         if value_matrix_path:
             artifact = json.loads(Path(value_matrix_path).read_text())
             self.lookup = _extract_lookup(artifact, value_profile)
@@ -49,12 +82,19 @@ class ValueEfficiencyContext:
                     f"in value matrix {value_matrix_path}",
                     flush=True,
                 )
+        self.source_info = _resolve_value_source_info(
+            profile=value_profile,
+            value_matrix_path=value_matrix_path,
+            value_source_kind=value_source_kind,
+            artifact=artifact,
+            lookup=self.lookup,
+        )
 
     def task_value(self, instance_id: str) -> tuple[float, str]:
         if self.lookup is not None and instance_id in self.lookup:
             return float(self.lookup[instance_id]), "value_matrix"
         if self.profile == "equal":
-            return 1.0, "default_equal"
+            return 1.0, "equal_sanity"
         raise SystemExit(
             f"[value_observability] FATAL: instance_id='{instance_id}' not found "
             f"in value matrix {self.matrix_path} for profile '{self.profile}'. "
@@ -72,7 +112,7 @@ class ValueEfficiencyContext:
         """Add value-efficiency observability fields. Mutates and returns."""
         instance_id = str(record.get("instance_id", ""))
         resolved = bool(record.get("harness_resolved"))
-        task_cost = float(record.get("task_cost") or record.get("total_cost") or 0)
+        task_cost = float(record.get("total_cost") or 0)
         task_value, value_source = self.task_value(instance_id)
         resolved_value = task_value if resolved else 0.0
         yield_per_dollar = resolved_value / task_cost if task_cost > 0 else 0.0
@@ -82,6 +122,9 @@ class ValueEfficiencyContext:
         record["value_objective"] = self.objective
         record["task_value_profile"] = self.profile
         record["task_value_source_class"] = self.source_class
+        record["task_value_evidence_role"] = self.evidence_role
+        record["task_value_confidence"] = self.confidence
+        record["task_value_primary_t1"] = self.is_primary_value_evidence
         record["task_value"] = task_value
         record["resolved_value"] = resolved_value
         record["value_source"] = value_source
@@ -103,7 +146,7 @@ class ValueEfficiencyContext:
 
     def summary_for_strategy(self, records: list[dict]) -> dict:
         resolved_count = sum(1 for r in records if r.get("harness_resolved"))
-        total_cost = sum(float(r.get("task_cost") or r.get("total_cost") or 0) for r in records)
+        total_cost = sum(float(r.get("total_cost") or 0) for r in records)
         resolved_value = sum(float(r.get("resolved_value") or 0) for r in records)
         total_task_value = sum(float(r.get("task_value") or 1.0) for r in records)
         yield_per_dollar = resolved_value / total_cost if total_cost > 0 else 0.0
@@ -118,7 +161,10 @@ class ValueEfficiencyContext:
             "yield_per_dollar": round(yield_per_dollar, 6),
             "value_profile": self.profile,
             "task_value_source_class": self.source_class,
-            "value_source": self.matrix_path or "default_equal",
+            "task_value_evidence_role": self.evidence_role,
+            "task_value_confidence": self.confidence,
+            "task_value_primary_t1": self.is_primary_value_evidence,
+            "value_source": self.matrix_path or "equal_sanity",
             "value_objective": self.objective,
         }
 
@@ -136,15 +182,115 @@ def _extract_lookup(artifact: dict, profile: str) -> dict[str, float] | None:
         if lookup:
             return lookup
 
-    matrix = artifact.get("matrix", {})
-    profile_data = matrix.get(profile) if isinstance(matrix, dict) else None
-    if profile_data and isinstance(profile_data, dict):
-        return {
-            task_id: float(entry.get("value", 1.0))
-            for task_id, entry in profile_data.items()
-            if isinstance(entry, dict)
-        }
     return None
+
+
+def _resolve_value_source_info(
+    *,
+    profile: str,
+    value_matrix_path: str | None,
+    value_source_kind: str | None,
+    artifact: dict | None,
+    lookup: dict[str, float] | None,
+) -> ValueSourceInfo:
+    requested = value_source_kind or _infer_value_source_kind(profile, artifact, lookup)
+    valid = {
+        "equal_sanity",
+        "bootstrap_heuristic",
+        "pre_registered_manual",
+        "value_matrix_diagnostic",
+        "learned_calibrated",
+    }
+    if requested not in valid:
+        raise SystemExit(
+            f"[value_observability] FATAL: unsupported value_source_kind='{requested}'. "
+            f"Expected one of {sorted(valid)}."
+        )
+    if requested == "equal_sanity":
+        if profile != "equal":
+            raise SystemExit(
+                "[value_observability] FATAL: value_source_kind=equal_sanity "
+                "requires --value-profile=equal."
+            )
+        return ValueSourceInfo(
+            kind="equal_sanity",
+            evidence_role="sanity_fallback",
+            confidence="none",
+            primary_t1=False,
+        )
+    if requested == "bootstrap_heuristic":
+        if profile == "equal" or lookup is None:
+            raise SystemExit(
+                "[value_observability] FATAL: value_source_kind=bootstrap_heuristic "
+                "requires a non-equal profile covered by --value-matrix."
+            )
+        return ValueSourceInfo(
+            kind="bootstrap_heuristic",
+            evidence_role="heuristic_bootstrap",
+            confidence="medium",
+            primary_t1=False,
+        )
+    if requested == "pre_registered_manual":
+        if profile == "equal" or not value_matrix_path or lookup is None:
+            raise SystemExit(
+                "[value_observability] FATAL: value_source_kind=pre_registered_manual "
+                "requires a non-equal profile covered by --value-matrix."
+            )
+        return ValueSourceInfo(
+            kind="pre_registered_manual",
+            evidence_role="primary_t1",
+            confidence="manual",
+            primary_t1=True,
+        )
+    if requested == "learned_calibrated":
+        if profile == "equal" or not value_matrix_path or lookup is None:
+            raise SystemExit(
+                "[value_observability] FATAL: value_source_kind=learned_calibrated "
+                "requires a non-equal profile covered by --value-matrix."
+            )
+        return ValueSourceInfo(
+            kind="learned_calibrated",
+            evidence_role="learned_t1",
+            confidence="high",
+            primary_t1=True,
+        )
+    if profile == "equal" or lookup is None:
+        raise SystemExit(
+            "[value_observability] FATAL: value_source_kind=value_matrix_diagnostic "
+            "requires a non-equal profile covered by --value-matrix."
+        )
+    return ValueSourceInfo(
+        kind="value_matrix_diagnostic",
+        evidence_role="value_matrix_diagnostic",
+        confidence="medium",
+        primary_t1=False,
+    )
+
+
+def _infer_value_source_kind(
+    profile: str,
+    artifact: dict | None,
+    lookup: dict[str, float] | None,
+) -> str:
+    if profile == "equal":
+        return "equal_sanity"
+    meta = artifact.get("meta", {}) if isinstance(artifact, dict) else {}
+    raw = str(
+        meta.get("value_source_kind")
+        or meta.get("source_kind")
+        or meta.get("source_class")
+        or ""
+    )
+    normalized = raw.lower().replace("-", "_").replace(" ", "_")
+    if normalized in {"pre_registered_manual", "pre_registered_manual_value", "manual_pre_registered"}:
+        return "pre_registered_manual"
+    if normalized in {"learned_calibrated", "learned_value", "calibrated_value"}:
+        return "learned_calibrated"
+    if normalized in {"bootstrap_heuristic", "bootstrap_ex_ante_metadata"} or profile.startswith("bootstrap_"):
+        return "bootstrap_heuristic"
+    if lookup is not None:
+        return "value_matrix_diagnostic"
+    return "value_matrix_diagnostic"
 
 
 def _median(values) -> float:

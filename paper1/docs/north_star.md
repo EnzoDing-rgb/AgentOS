@@ -15,7 +15,9 @@ comments, and reports should use these names.
 | Value-Driven Budget Allocation | Allocation of task caps and spend from task value, history, expected payoff, cost, and budget pressure. |
 | ValueSource | Versioned input that defines or estimates task value for one run or deployment. |
 | CostSource | Versioned input that defines or estimates model cost for one run or deployment. |
-| ValueAdapter | Adapter that turns task descriptions, organization hints, accepted outcomes, human overrides, or business systems into a standard task-value signal. |
+| TaskAdapter | Adapter that turns external work into standard BudgetFlow task inputs, including task identity, description, features, difficulty/value hints, and value-source metadata. |
+| WorkflowAdapter | Adapter that maps external work phases onto BudgetFlow Workflow Segments. |
+| ProgressAdapter | Adapter that turns process evidence and final acceptance into standard progress/outcome signals. Intermediate progress can be unknown; final acceptance defines resolved. |
 | CostAdapter | Adapter that turns public price catalogs, provider estimates, invoices, enterprise rate cards, or manual overrides into a standard cost signal. |
 | Confidence | A short record of where a value or cost estimate came from and how trustworthy it is. |
 | Policy Backend | Pluggable strategy that recommends cap, model tier, escalation, de-escalation, stop, and continue decisions. |
@@ -51,8 +53,8 @@ difficulty, progress, and budget pressure instead of by fixed per-person quotas.
 The paper studies online, value-aware budget governance for multi-step agent
 tasks. SWE-bench is the current controlled evaluation adapter because it
 provides repeatable tasks and verifiers. The system boundary is broader:
-enterprise deployments can replace the task adapter, ValueSource, CostSource, runtime, and
-verifier while keeping the BudgetFlow Mechanism.
+enterprise deployments can replace TaskAdapter, WorkflowAdapter,
+ProgressAdapter, and CostAdapter while keeping the BudgetFlow Mechanism.
 
 ## BudgetFlow Mechanism
 
@@ -63,7 +65,7 @@ depend on SWE-bench, a specific verifier, or a specific learning method.
 | Layer | Responsibility |
 |---|---|
 | BudgetFlow Mechanism | Hard budget ledger, reservation, settlement, verifier-grounded outcome, trace/audit/replay, stop-loss primitives, and same-budget policy comparison. |
-| Domain Adapters | Task, segment, verifier, value, cost, model-tier, progress-signal, and runtime mappings for one benchmark or enterprise workflow. |
+| Domain Adapters | Task, workflow segment, progress/outcome, and cost mappings for one benchmark or enterprise workflow. |
 | Policy Backend | Cap recommendations, backend routing, escalation, de-escalation, stop/continue, and learned or heuristic priors. |
 | Learn Policy Inputs | Cost Memory, Routing Memory, and Escalation Memory. These are optional inputs for Learn Policy and audit, not hidden mechanism behavior. |
 | Observability | Minimal decision records, JSONL schema, turn traces, checker, compact audit, failure attribution, and reports. |
@@ -72,6 +74,18 @@ SWE-bench-specific concepts such as localization, repair, validation,
 fail-to-pass tests, pass-to-pass tests, patch extraction, and worktree diffs
 belong behind adapters. They can power benchmark experiments; they do not define
 BudgetFlow Mechanism or the default Bootstrap Policy.
+
+Adapter boundaries should be useful even when the user provides very little.
+TaskAdapter is the only mandatory input: BudgetFlow must know what work is being
+attempted. WorkflowAdapter, ProgressAdapter, and CostAdapter may start with
+conservative defaults or unknown signals, as long as those defaults are
+auditable. More customer metadata improves routing quality, but missing metadata
+should not make the system unusable.
+
+SWE-bench is the pressure test for this design. If an interface makes SWE-bench
+adaptation awkward, it is probably over-abstracted or placed at the wrong
+boundary. If an interface only works for SWE-bench, benchmark detail has leaked
+into the mechanism.
 
 ## Conceptual Interfaces
 
@@ -82,23 +96,8 @@ class TaskContext:
     task_type: str
     description: str
     features: dict[str, float | str | bool]
-    verifier: Verifier
-    runtime: AgentRuntime
-
-@dataclass
-class ValueContext:
-    task: TaskContext
-    hints: dict[str, float | str | bool]
-    history: HistoryContext
-    confidence: dict[str, float | str | bool]
-
-class ValueAdapter:
-    def estimate(self, value_context: ValueContext) -> ValueEstimate: ...
-    def learn(self, value_context: ValueContext, outcome: VerifiedOutcome) -> None: ...
-
-class CostAdapter:
-    def estimate(self, backend: str, state: WorkflowState, budget: BudgetContext) -> CostEstimate: ...
-    def settle(self, estimate: CostEstimate, actual: CostActual | None) -> CostRecord: ...
+    value: ValueEstimate
+    value_source: ValueSourceInfo
 
 @dataclass
 class BudgetContext:
@@ -122,6 +121,17 @@ class WorkflowSegment:
     name: str  # Context, Action, Verification, or adapter-defined equivalent
     signals: dict[str, float | str | bool]
 
+@dataclass
+class ProgressSignal:
+    segment: WorkflowSegment
+    has_progress: bool | None  # None means unknown/no reliable signal
+    reason: str
+    confidence: str
+
+class CostAdapter:
+    def estimate(self, backend: str, state: WorkflowState, budget: BudgetContext) -> CostEstimate: ...
+    def settle(self, estimate: CostEstimate, actual: CostActual | None) -> CostRecord: ...
+
 class PolicyBackend:
     def estimate_cap(self, task: TaskContext, value: ValueEstimate, budget: BudgetContext, history: HistoryContext) -> float: ...
     def choose_backend(
@@ -137,9 +147,11 @@ class PolicyBackend:
 ```
 
 The default policy backend is the Bootstrap Policy. Enterprises can use it
-as-is or replace it with a Learn Policy. Customers do not need a learned policy
-to get value from BudgetFlow, but Learn Policy is the main place for Memory or
-customer-owned machine learning.
+as-is. As current-schema trusted records accumulate, the same interface can feed
+Learn Policy Inputs without asking the user to manually switch modes. Customers
+do not need a learned policy to get value from BudgetFlow, but the system should
+naturally become more accurate when Memory or customer-owned machine learning is
+available.
 
 ## Workflow Segments
 
@@ -164,6 +176,13 @@ drift, and handoff risk.
 
 Enterprise adapters can map their own phases onto these segments. Examples:
 triage/action/review, retrieval/drafting/checking, or analysis/execution/QA.
+
+Progress is not a demand for human step-by-step scoring. For SWE-bench, command
+patterns, touched files, patch extraction, and verifier output provide useful
+progress/outcome evidence. For enterprise tasks without reliable intermediate
+signals, ProgressAdapter should record unknown or no-signal and rely on final
+acceptance for resolved outcome. Unknown progress must not be converted into
+fake no-progress evidence that pollutes learning.
 
 ## Claims And Metrics
 
@@ -223,29 +242,36 @@ The task-level control is mandatory when evaluating segment-aware routing. It
 tests whether segment features help, or whether they add switching noise,
 prompt drift, cache loss, and coordination cost.
 
-Bootstrap Policy is a startup mode: no customer history and no machine
-learning. BudgetFlow Full can run in Bootstrap mode. Learn Policy uses current
-trusted Memory views, adapter configuration, or customer-owned learning systems
-behind the same Policy Backend interface.
+Bootstrap Policy is the cold-start behavior: no customer history and no machine
+learning required. As current trusted records accumulate, Learn Policy Inputs
+can be consumed behind the same Policy Backend interface. The user-facing story
+is continuous improvement, not a manual policy switch.
 
 ## Value Model
 
-Task value is a proxy. BudgetFlow does not hard-code what value means. A
-ValueAdapter can use a default heuristic, a human-authored value matrix, natural
+Task value is a proxy. BudgetFlow does not hard-code what value means.
+TaskAdapter can use a default heuristic, a human-authored value matrix, natural
 language policy translated by an adapter, benchmark metadata, or an enterprise
 data import. A Learn Policy can improve future value and budget decisions from
 outcomes, accepted work, repeated priority patterns, human correction, or
 external systems when those signals are available.
 
-`ValueContext` is a standard input wrapper, not a fixed enterprise schema.
+TaskAdapter output is a standard input wrapper, not a fixed enterprise schema.
 Fields such as project, customer, SLA, risk, revenue impact, research priority,
-or content priority may be useful in an enterprise adapter, but the BudgetFlow Mechanism
-only consumes a normalized task-value estimate plus confidence.
+or content priority may be useful in an enterprise adapter, but the BudgetFlow
+Mechanism only consumes a normalized task-value estimate plus confidence.
 
 Cost follows the same rule. Default experiments should anchor cost to a
 versioned public price catalog. Enterprise deployments can replace or calibrate
 that with provider estimates, invoices, internal rate cards, or manual
 overrides. The BudgetFlow Mechanism consumes a normalized cost estimate plus confidence.
+
+Observability follows the same boundary. Each adapter should emit enough
+current-schema evidence to explain its inputs, defaults, confidence, unknowns,
+and final outcome. Do not add a pluggable observability framework until a real
+runtime needs it; first keep the active JSONL and compact audit aligned with
+TaskAdapter, WorkflowAdapter, ProgressAdapter, CostAdapter, Policy Backend, and
+Learn Policy Inputs.
 
 The policy should optimize expected marginal value:
 
@@ -302,11 +328,11 @@ Runtime, docs, prompts, and reports should use the terminology in this file.
 
 The codebase should make the architecture visible:
 
-- BudgetFlow Mechanism owns budget accounting, memory contracts, verified outcomes,
+- BudgetFlow Mechanism owns budget accounting, memory contracts, resolved outcomes,
   trace/audit/replay, and policy comparison.
 - Policy backends own routing and stop/continue recommendations.
-- Domain adapters own SWE-bench or enterprise-specific task, segment, verifier,
-  value, cost, progress, and runtime mapping.
+- Domain adapters own SWE-bench or enterprise-specific task, workflow segment,
+  progress/outcome, and cost mapping.
 - Memory belongs behind Learn Policy or audit interfaces. BudgetFlow Mechanism should
   not hide learning behavior.
 - Observability should converge on a compact policy decision record rather than

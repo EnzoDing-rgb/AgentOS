@@ -88,24 +88,6 @@ def _is_per_task_budget_series(recs: list[dict]) -> bool:
         return True
     if any(r.get("per_task_cap") not in (None, "", 0, 0.0) for r in recs):
         return True
-
-    # Backward-compatible detection for older rows: in per-task mode each task
-    # row records an independent cap and batch_spent resets instead of
-    # accumulating across the policy lane.
-    by_strategy: dict[str, list[dict]] = {}
-    for rec in recs:
-        by_strategy.setdefault(str(rec.get("strategy") or ""), []).append(rec)
-    for strat_rows in by_strategy.values():
-        if len(strat_rows) < 2:
-            continue
-        caps = {float(r.get("batch_budget_cap") or 0.0) for r in strat_rows}
-        if len(caps) != 1 or next(iter(caps)) <= 0:
-            continue
-        spent = [float(r.get("batch_spent") or 0.0) for r in strat_rows]
-        if len(set(round(x, 8) for x in spent)) < len(spent):
-            return True
-        if any(later + 1e-9 < earlier for earlier, later in zip(spent, spent[1:])):
-            return True
     return False
 
 
@@ -180,7 +162,7 @@ def _check_value_profile_fallback(records: list[dict]) -> list[str]:
             msg += " — if non-equal profile requested, values may have fallen back"
             issues.append(msg)
         # Check for explicit fallback source
-        if "equal" in value_sources or "fallback_equal" in value_sources:
+        if "equal_sanity" in value_sources or "equal" in value_sources or "fallback_equal" in value_sources:
             issues.append(
                 f"VALUE_FALLBACK {rs}: value_source contains 'equal' — "
                 f"possible silent fallback from non-equal profile. "

@@ -90,29 +90,17 @@ def _check_desired_fields(records: list[dict]) -> list[str]:
 
 
 def _check_observability_schema(records: list[dict]) -> list[str]:
-    """Warn when record schema can silently confuse downstream evaluation.
-
-    These are warnings for old artifacts, but new experiment rows should be
-    clean. Do not mutate historical JSONL; replay should reveal its limits.
-    """
+    """Warn when current records can silently confuse downstream evaluation."""
     issues: list[str] = []
     for i, rec in enumerate(records):
         inst = rec.get("instance_id", "?")
         strat = rec.get("strategy", "?")
-        llm_turns = rec.get("llm_turns")
-        turns = rec.get("turns")
-        if llm_turns not in (None, "") and turns != llm_turns:
-            issues.append(
-                f"TURN_ALIAS_MISMATCH row {i}: {inst} {strat} — "
-                f"turns={turns!r} llm_turns={llm_turns!r}"
-            )
-        harness_resolved = rec.get("harness_resolved")
-        resolved = rec.get("resolved")
-        if harness_resolved is not None and resolved != harness_resolved:
-            issues.append(
-                f"RESOLVED_ALIAS_MISMATCH row {i}: {inst} {strat} — "
-                f"resolved={resolved!r} harness_resolved={harness_resolved!r}"
-            )
+        for legacy in ("turns", "resolved", "task_cost"):
+            if legacy in rec:
+                issues.append(
+                    f"LEGACY_FIELD row {i}: {inst} {strat} — "
+                    f"{legacy} is not part of the current evaluation schema"
+                )
         has_budget_cap = rec.get("batch_budget_cap") not in (None, "", 0, 0.0)
         if has_budget_cap and not rec.get("budget_mode"):
             issues.append(
@@ -123,14 +111,8 @@ def _check_observability_schema(records: list[dict]) -> list[str]:
 
 
 def _routing_memory_source(record: dict) -> str:
-    """Return the standard routing-memory source, with legacy fallback."""
-    source = record.get("routing_policy_memory_source")
-    if source:
-        return str(source)
-    prior = record.get("routing_prior_summary") or {}
-    if isinstance(prior, dict):
-        return str(prior.get("policy_memory_source") or "")
-    return ""
+    """Return the standard routing-memory source."""
+    return str(record.get("routing_policy_memory_source") or "")
 
 
 def _routing_prior_task_seen(record: dict) -> float:
@@ -153,12 +135,10 @@ def _routing_prior_task_seen(record: dict) -> float:
 
 
 def _routing_memory_used(record: dict) -> bool:
-    """Use the standardized row schema first, then legacy run fields."""
+    """Return whether current routing-memory fields show active memory use."""
     if record.get("routing_policy_memory_source"):
         return True
-    if record.get("routing_learned_action") not in (None, "", "none", "default"):
-        return True
-    return bool(record.get("policy_memory_enabled"))
+    return False
 
 
 def _check_harness_trust(records: list[dict]) -> tuple[list[str], dict[str, int], dict[str, int], dict[str, int]]:

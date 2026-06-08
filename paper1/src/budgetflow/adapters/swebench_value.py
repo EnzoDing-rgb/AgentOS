@@ -1,13 +1,7 @@
-"""Value adapter: normalizes task-value signals for BudgetFlow Mechanism.
+"""SWE-bench task-value helper.
 
-Bootstrap value estimation can use a default heuristic, a human-authored value
-matrix, natural-language policy, benchmark metadata, or enterprise data import.
-Learn Policy can use verified outcomes, accepted work, priority patterns,
-human correction, or external systems.
-
-The BudgetFlow Mechanism only consumes a normalized ValueEstimate plus confidence.
-It does not know the value-matrix schema, enterprise field names, or
-SWE-bench task metadata.
+Task value is part of TaskAdapter output in the architecture. This module is a
+SWE-bench helper owned by that boundary; it is not a standalone adapter family.
 """
 
 from __future__ import annotations
@@ -15,7 +9,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any
 
 
 @dataclass
@@ -27,19 +21,8 @@ class ValueEstimate:
     confidence: dict[str, float | str | bool] = field(default_factory=dict)
 
 
-class ValueAdapter(Protocol):
-    """Contract: normalize task-value signals into ValueEstimate.
-
-    Concrete adapters may use value matrices, NL rules, enterprise imports,
-    or learned estimates. BudgetFlow Mechanism only consumes ValueEstimate.
-    """
-
-    def estimate(self, task_id: str, **hints: Any) -> ValueEstimate: ...
-    def learn(self, task_id: str, resolved: bool, **context: Any) -> None: ...
-
-
 class SwebenchValueAdapter:
-    """SWE-bench value adapter wrapping the existing value matrix.
+    """SWE-bench task-value helper wrapping the existing value matrix.
 
     Bootstrap profile: uses a JSON value-matrix file or falls back to
     equal-weight (1.0).
@@ -60,8 +43,6 @@ class SwebenchValueAdapter:
         if value_matrix_path:
             self._load_matrix(value_matrix_path, value_profile)
 
-    # ValueAdapter protocol
-
     def estimate(self, task_id: str, **hints: Any) -> ValueEstimate:
         if self._lookup is not None and task_id in self._lookup:
             return ValueEstimate(
@@ -70,12 +51,12 @@ class SwebenchValueAdapter:
                 confidence={"matrix_path": self.matrix_path or "none", "profile": self.profile},
             )
         if self.profile == "equal":
-            return ValueEstimate(value=1.0, source="default_equal", confidence={})
+            return ValueEstimate(value=1.0, source="equal_sanity", confidence={})
         # Non-equal profiles: missing task is a readiness failure, not a
         # silent fallback. BudgetFlow value discipline requires every task
         # to have an explicit value before paid experiments.
         raise ValueError(
-            f"ValueAdapter: task '{task_id}' not found in value matrix "
+            f"SWE-bench task value: task '{task_id}' not found in value matrix "
             f"'{self.matrix_path}' for profile '{self.profile}'. "
             f"Add this task to the matrix or use --value-profile=equal."
         )
@@ -105,19 +86,6 @@ class SwebenchValueAdapter:
                 self._lookup = lookup
                 self._median = _median(lookup.values())
                 return
-        # Fallback: try legacy matrix format
-        matrix = artifact.get("matrix", {})
-        profile_data = matrix.get(profile) if isinstance(matrix, dict) else None
-        if profile_data and isinstance(profile_data, dict):
-            lookup = {
-                task_id: float(entry.get("value", 1.0))
-                for task_id, entry in profile_data.items()
-                if isinstance(entry, dict)
-            }
-            if lookup:
-                self._lookup = lookup
-                self._median = _median(lookup.values())
-
     def task_value(self, instance_id: str) -> tuple[float, str]:
         estimate = self.estimate(instance_id)
         return estimate.value, estimate.source

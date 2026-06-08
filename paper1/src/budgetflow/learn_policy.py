@@ -10,9 +10,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-from .types import Stage
-
-
 class CostMemory(Protocol):
     @property
     def records(self) -> list[dict]:
@@ -20,12 +17,12 @@ class CostMemory(Protocol):
 
 
 class RoutingMemory(Protocol):
-    def routing_prior_summary(self, instance_id: str, stage: Stage | None = None) -> dict:
+    def routing_prior_summary(self, instance_id: str, segment: str | None = None) -> dict:
         ...
 
 
 class EscalationMemory(Protocol):
-    def routing_prior_summary(self, instance_id: str, stage: Stage | None = None) -> dict:
+    def routing_prior_summary(self, instance_id: str, segment: str | None = None) -> dict:
         ...
 
 

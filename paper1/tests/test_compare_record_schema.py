@@ -43,8 +43,6 @@ def _record(**overrides) -> dict:
         "agent_gold_edited": True,
         "agent_gold_files": ["sympy/printing/latex.py"],
         "llm_turns": 2,
-        "turns": 2,
-        "task_cost": 0.25,
         "total_cost": 0.25,
         "batch_spent": 0.25,
         "backend_picks": ["tier2", "tier3"],
@@ -112,8 +110,8 @@ def test_compare_runner_records_turns_value_and_task_features(monkeypatch) -> No
         task_set_kind="familiar",
     )
 
-    assert record["turns"] == record["llm_turns"] == 2
-    assert record["resolved"] is True
+    assert record["llm_turns"] == 2
+    assert record["harness_resolved"] is True
     assert "yield_per_dollar" not in record
     assert record["task_features"] == {"patch_lines": 1, "f2p_count": 1, "p2p_count": 0, "problem_length": 0}
     assert record["task_set"] == "easy"
@@ -219,8 +217,10 @@ def test_persisted_jsonl_contains_t1_t2_observability_and_learning_memory(tmp_pa
     persisted = json.loads(out_path.read_text().splitlines()[0])
     learned = AutoBudgetMemory(memory_path).records
 
-    assert persisted["turns"] == 2
-    assert persisted["value_objective"] == "t2_equal_value_ablation"
+    assert persisted["llm_turns"] == 2
+    assert persisted["value_objective"] == "t2_value_source_diagnostic"
+    assert persisted["task_value_source_class"] == "equal_sanity"
+    assert persisted["task_value_primary_t1"] is False
     assert persisted["yield_per_dollar"] == 4.0
     assert persisted["routing_policy_family"] == "bootstrap:value_aware_segment"
     assert persisted["policy_kind"] == "bootstrap"

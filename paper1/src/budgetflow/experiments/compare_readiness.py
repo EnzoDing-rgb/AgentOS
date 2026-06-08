@@ -49,7 +49,11 @@ def build_compare_readiness_report(
     facts.append(f"strategies={len(strategy_names)}")
     facts.append(f"policy_jobs={policy_jobs}")
     facts.append(f"value_profile={value_context.profile}")
-    facts.append(f"value_matrix={value_context.matrix_path or 'default_equal'}")
+    facts.append(f"value_source_class={value_context.source_class}")
+    facts.append(f"value_evidence={value_context.evidence_role}")
+    facts.append(f"value_confidence={value_context.confidence}")
+    facts.append(f"value_primary_t1={str(value_context.is_primary_value_evidence).lower()}")
+    facts.append(f"value_matrix={value_context.matrix_path or 'equal_sanity'}")
     facts.append(f"runtime_root={runtime_root}")
     facts.append("budget_mode=dynamic_task_caps" if auto_budget_caps else "budget_mode=static_or_shared")
     facts.append(f"dynamic_caps={'on' if auto_budget_enabled else 'off'}")
@@ -80,8 +84,27 @@ def build_compare_readiness_report(
             blocking.append(
                 f"value matrix is missing {len(missing)} selected task values: {preview}{suffix}"
             )
-    elif any(strategy.routing in {"budgetflow_value_aware", "value_aware_task_level"} for strategy in strategies):
-        warnings.append("value-aware strategy with equal task values supports T2/ablation, not T1 value evidence")
+    has_value_aware_strategy = any(
+        strategy.routing in {"budgetflow_value_aware", "value_aware_task_level"}
+        for strategy in strategies
+    )
+    if value_context.profile == "equal" and not (
+        args.preset == "segment-control" and args.task_set == "easy" and len(task_ids) <= 5
+    ):
+        warnings.append(
+            "running non-trivial experiment with equal task values; "
+            "Yield numbers are T2 mechanism diagnostics, not T1 value evidence. "
+            "Use a pre-registered manual value matrix for T1 claims."
+        )
+    if has_value_aware_strategy and value_context.profile == "equal":
+        warnings.append(
+            "equal task values make value-aware strategies a T2 mechanism diagnostic, not T1 value evidence"
+        )
+    if has_value_aware_strategy and not value_context.is_primary_value_evidence:
+        warnings.append(
+            f"value_source_kind={value_context.source_class} is not primary T1 evidence; "
+            "use --value-source-kind pre_registered_manual with a frozen matrix for main Yield claims"
+        )
 
     if args.preset == "segment-control" and "value_aware_task_level_tight" not in strategy_names:
         blocking.append("segment-control preset must include value_aware_task_level_tight task-level control")

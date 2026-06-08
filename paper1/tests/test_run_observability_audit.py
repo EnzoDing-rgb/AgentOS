@@ -121,9 +121,10 @@ def test_compact_audit_reports_repo_memory_evidence_for_new_tasks() -> None:
                 "repo_evidence_weight": 25.25,
                 "policy_memory_effective_weight": 26.14,
                 "policy_memory_source": "runs/recent.jsonl",
+                },
+                "routing_policy_memory_source": "runs/recent.jsonl",
             },
-        },
-    ])
+        ])
 
     assert audit["policy_memory_used"] is True
     assert audit["prior_records"] == pytest.approx(26.14)
@@ -326,13 +327,13 @@ def test_value_fallback_check_allows_explicit_equal_value_t2_runs() -> None:
             "run_series": "equal_t2",
             "task_value_profile": "equal",
             "task_value": 1.0,
-            "value_source": "default_equal",
+            "value_source": "equal_sanity",
         },
         {
             "run_series": "equal_t2",
             "task_value_profile": "equal",
             "task_value": 1.0,
-            "value_source": "default_equal",
+            "value_source": "equal_sanity",
         },
     ])
 
@@ -432,3 +433,76 @@ def test_harness_trust_blocks_resolved_rows_with_missing_pass_evidence() -> None
 
     assert trust["harness_trust"] == "invalid"
     assert trust["severity"] == "blocking"
+
+
+def test_per_task_comparison_includes_cross_policy_rows() -> None:
+    audit = build_compact_audit([
+        {
+            "instance_id": "repo__task-a",
+            "strategy": "budget_only_tight",
+            "harness_resolved": True,
+            "harness_evidence": {"evidence_complete": True},
+            "total_cost": 0.30,
+            "llm_turns": 3,
+            "turn_trace_count": 3,
+            "backend_picks": ["tier3", "tier3", "tier2"],
+            "task_value": 2.0,
+            "resolved_value": 2.0,
+            "turn_traces": [
+                {"workflow_segment": "Context", "backend_tier": 3, "has_progress": True},
+                {"workflow_segment": "Action", "backend_tier": 3, "has_progress": True},
+                {"workflow_segment": "Action", "backend_tier": 2, "has_progress": False},
+            ],
+            "patch_extracted": True,
+        },
+        {
+            "instance_id": "repo__task-a",
+            "strategy": "budgetflow_conservative_tight",
+            "harness_resolved": False,
+            "harness_evidence": {"evidence_complete": True},
+            "total_cost": 0.50,
+            "llm_turns": 5,
+            "turn_trace_count": 5,
+            "backend_picks": ["tier2", "tier2", "tier2", "tier2", "tier3"],
+            "task_value": 2.0,
+            "resolved_value": 0.0,
+            "turn_traces": [
+                {"workflow_segment": "Context", "backend_tier": 2, "has_progress": False},
+                {"workflow_segment": "Action", "backend_tier": 2, "has_progress": False},
+                {"workflow_segment": "Action", "backend_tier": 2, "has_progress": False},
+                {"workflow_segment": "Action", "backend_tier": 2, "has_progress": False},
+                {"workflow_segment": "Action", "backend_tier": 3, "has_progress": False},
+            ],
+            "patch_extracted": False,
+            "failure_class": "repair_fail",
+        },
+    ])
+
+    per_task = audit["per_task_comparison"]
+
+    assert len(per_task) == 2
+    bo_row = per_task[0]
+    bf_row = per_task[1]
+
+    assert bo_row["instance_id"] == "repo__task-a"
+    assert bo_row["strategy"] == "budget_only_tight"
+    assert bo_row["resolved"] is True
+    assert bo_row["first_tier"] == 3
+    assert bo_row["first_t3_turn"] == 0
+    assert bo_row["first_useful_action"] == 0
+    assert bo_row["max_no_progress_streak"] == 1
+
+    assert bf_row["strategy"] == "budgetflow_conservative_tight"
+    assert bf_row["resolved"] is False
+    assert bf_row["first_tier"] == 2
+    assert bf_row["first_t3_turn"] == 4
+    assert bf_row["first_useful_action"] is None
+    assert bf_row["max_no_progress_streak"] == 5
+    assert bf_row["no_patch"] is True
+    assert bf_row["failure_class"] == "repair_fail"
+
+    text = format_compact_audit(audit)
+    assert "PER-TASK POLICY COMPARISON" in text
+    assert "repo__task-a" in text
+    assert "budget_only_tight" in text
+    assert "budgetflow_conservative_tight" in text

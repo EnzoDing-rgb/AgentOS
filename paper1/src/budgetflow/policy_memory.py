@@ -13,7 +13,7 @@ from pathlib import Path
 
 from .defaults import POLICY_REGRET_THRESHOLD
 from .model_tiers import parse_tier_label
-from .types import Stage, WorkflowSegment
+from .types import WorkflowSegment
 
 
 def _extract_repo(instance_id: str) -> str:
@@ -52,8 +52,8 @@ class RepoPrior:
     tier_success_rate: dict[int, float] = field(default_factory=dict)
     median_cost: float = 0.0
     failure_classes: Counter = field(default_factory=Counter)
-    stage_tier_success: dict[str, dict[int, float]] = field(default_factory=lambda: defaultdict(dict))
-    stage_tier_weight: dict[str, dict[int, float]] = field(default_factory=lambda: defaultdict(dict))
+    segment_tier_success: dict[str, dict[int, float]] = field(default_factory=lambda: defaultdict(dict))
+    segment_tier_weight: dict[str, dict[int, float]] = field(default_factory=lambda: defaultdict(dict))
 
     @property
     def t2_turns(self) -> int:
@@ -72,12 +72,12 @@ class RepoPrior:
         return self.tier_success_rate.get(3, 0.0)
 
     @property
-    def t2_stage_success(self) -> dict[str, float]:
-        return {stage: by_tier.get(2, 0.0) for stage, by_tier in self.stage_tier_success.items()}
+    def t2_segment_success(self) -> dict[str, float]:
+        return {stage: by_tier.get(2, 0.0) for stage, by_tier in self.segment_tier_success.items()}
 
     @property
-    def t3_stage_success(self) -> dict[str, float]:
-        return {stage: by_tier.get(3, 0.0) for stage, by_tier in self.stage_tier_success.items()}
+    def t3_segment_success(self) -> dict[str, float]:
+        return {stage: by_tier.get(3, 0.0) for stage, by_tier in self.segment_tier_success.items()}
 
 
 @dataclass
@@ -273,7 +273,7 @@ class PolicyMemory:
 
         tier_pass: dict[int, float] = defaultdict(float)
         tier_total: dict[int, float] = defaultdict(float)
-        stage_tier_pass: dict[str, dict[int, list[tuple[float, float]]]] = defaultdict(lambda: defaultdict(list))
+        segment_tier_pass: dict[str, dict[int, list[tuple[float, float]]]] = defaultdict(lambda: defaultdict(list))
 
         for r in records:
             picks = r.get("backend_picks") or []
@@ -291,7 +291,7 @@ class PolicyMemory:
 
             prior.failure_classes[str(r.get("failure_class") or "unknown")] += weight
 
-            # Stage-level priors from turn_traces
+            # Segment-level priors from turn_traces
             traces = r.get("turn_traces") or []
             segments_by_tier: dict[int, set[str]] = defaultdict(set)
             for t in traces:
@@ -307,19 +307,19 @@ class PolicyMemory:
                     segments_by_tier[tier_int].add(segment)
             for tier, segments in segments_by_tier.items():
                 for segment in segments:
-                    stage_tier_pass[segment][tier].append((weight if passed else 0.0, weight))
+                    segment_tier_pass[segment][tier].append((weight if passed else 0.0, weight))
 
         prior.tier_success_rate = {
             tier: tier_pass[tier] / max(tier_total[tier], 1e-9)
             for tier in sorted(tier_total)
         }
-        prior.stage_tier_success = defaultdict(dict)
-        for stage, by_tier in stage_tier_pass.items():
-            prior.stage_tier_success[stage] = {
+        prior.segment_tier_success = defaultdict(dict)
+        for stage, by_tier in segment_tier_pass.items():
+            prior.segment_tier_success[stage] = {
                 tier: sum(pass_weight for pass_weight, _ in values) / max(sum(total_weight for _, total_weight in values), 1e-9)
                 for tier, values in sorted(by_tier.items())
             }
-            prior.stage_tier_weight[stage] = {
+            prior.segment_tier_weight[stage] = {
                 tier: round(sum(total_weight for _, total_weight in values), 4)
                 for tier, values in sorted(by_tier.items())
             }
@@ -430,7 +430,7 @@ class PolicyMemory:
             ]
             budgetflow = [
                 record for record in task_records
-                if str(record.get("routing") or "") in {"budgetflow_conservative", "budgetflow_value_aware"}
+                if str(record.get("routing") or "") in {"budgetflow_conservative", "budgetflow_value_aware", "budgetflow_full"}
             ]
             for record in budgetflow:
                 traces = [trace for trace in (record.get("turn_traces") or []) if isinstance(trace, dict)]
@@ -523,13 +523,13 @@ class PolicyMemory:
         repo = _extract_repo(instance_id)
         return self._repo_starters.get(repo, StarterPrior()), "repo"
 
-    def routing_prior_summary(self, instance_id: str, stage: Stage | None = None) -> dict:
+    def routing_prior_summary(self, instance_id: str, segment: str | None = None) -> dict:
         repo = self.repo_prior(instance_id)
         task = self.task_prior(instance_id)
         regret = self.policy_regret(instance_id)
 
         # Determine learned action
-        action = self._learned_action(instance_id, stage)
+        action = self._learned_action(instance_id, segment)
         escalation, escalation_source = self.escalation_prior(instance_id)
         escalation_action, escalation_window = _escalation_action(escalation)
         starter, starter_source = self.starter_prior(instance_id)
@@ -588,21 +588,20 @@ class PolicyMemory:
             "strongest_starter_action": starter_action,
             "strongest_starter_window": starter_window,
         }
-        if stage:
-            segment_key = _stage_to_segment_key(stage)
-            summary["stage_t2_success"] = round(repo.t2_stage_success.get(segment_key, 0), 3)
-            summary["stage_t3_success"] = round(repo.t3_stage_success.get(segment_key, 0), 3)
-            summary["stage_tier_success"] = {
+        if segment:
+            summary["segment_t2_success"] = round(repo.t2_segment_success.get(segment, 0), 3)
+            summary["segment_t3_success"] = round(repo.t3_segment_success.get(segment, 0), 3)
+            summary["segment_tier_success"] = {
                 str(k): round(v, 3)
-                for k, v in sorted(repo.stage_tier_success.get(segment_key, {}).items())
+                for k, v in sorted(repo.segment_tier_success.get(segment, {}).items())
             }
-            summary["stage_tier_weight"] = {
+            summary["segment_tier_weight"] = {
                 str(k): round(v, 4)
-                for k, v in sorted(repo.stage_tier_weight.get(segment_key, {}).items())
+                for k, v in sorted(repo.segment_tier_weight.get(segment, {}).items())
             }
         return summary
 
-    def _learned_action(self, instance_id: str, stage: Stage | None) -> str:
+    def _learned_action(self, instance_id: str, segment: str | None) -> str:
         repo = self.repo_prior(instance_id)
         task = self.task_prior(instance_id)
         regret = self.policy_regret(instance_id)
@@ -622,20 +621,20 @@ class PolicyMemory:
         if regret and regret.regret > self.regret_threshold and regret.full_count >= 2:
             return "cap_strongest"
 
-        repair_key = _stage_to_segment_key(Stage.REPAIR)
-        loc_key = _stage_to_segment_key(Stage.LOCALIZATION)
+        repair_key = WorkflowSegment.ACTION
+        loc_key = WorkflowSegment.CONTEXT
 
         # Rule 1: second-tier repair success low → early strongest-tier rescue
-        if stage == Stage.REPAIR or stage is None:
-            t2_repair = repo.t2_stage_success.get(repair_key, 0)
-            t2_repair_weight = repo.stage_tier_weight.get(repair_key, {}).get(2, 0.0)
+        if segment == WorkflowSegment.ACTION or segment is None:
+            t2_repair = repo.t2_segment_success.get(repair_key, 0)
+            t2_repair_weight = repo.segment_tier_weight.get(repair_key, {}).get(2, 0.0)
             if t2_repair < 0.35 and t2_repair_weight >= 3.0:
                 return "early_rescue"
 
         # Rule 2: second-tier localization good → skip cheapest on start
-        if stage == Stage.LOCALIZATION:
-            t2_loc = repo.t2_stage_success.get(loc_key, 0)
-            t2_loc_weight = repo.stage_tier_weight.get(loc_key, {}).get(2, 0.0)
+        if segment == WorkflowSegment.CONTEXT:
+            t2_loc = repo.t2_segment_success.get(loc_key, 0)
+            t2_loc_weight = repo.segment_tier_weight.get(loc_key, {}).get(2, 0.0)
             if t2_loc > 0.55 and t2_loc_weight >= 2.0:
                 return "start_second_cheapest"
 
@@ -715,25 +714,11 @@ def _pick_tier(pick) -> int:
     return parse_tier_label(pick)
 
 
-def _stage_to_segment_key(stage: Stage) -> str:
-    if stage is Stage.LOCALIZATION:
-        return WorkflowSegment.CONTEXT
-    if stage is Stage.REPAIR:
-        return WorkflowSegment.ACTION
-    if stage is Stage.VALIDATION:
-        return WorkflowSegment.VERIFICATION
-    return str(stage.value)
-
-
 def _trace_segment_key(trace: dict) -> str:
     segment = str(trace.get("workflow_segment") or "")
     if segment:
         return segment
-    stage_str = str(trace.get("stage") or "").lower()
-    try:
-        return _stage_to_segment_key(Stage(stage_str))
-    except ValueError:
-        return ""
+    return ""
 
 
 def _record_weight(record: dict) -> float:
@@ -770,18 +755,11 @@ def _trace_has_value_triggered_escalation(trace: dict) -> bool:
 
 
 def _trace_productivity(trace: dict) -> bool | None:
-    """Whether this backend turn produced a useful action without infra noise.
-
-    New traces attribute productivity to the action emitted by the selected
-    backend. Explicitly selected old traces may only contribute positive
-    progress from ``has_progress``; missing old action evidence stays unknown.
-    """
+    """Whether this backend turn produced a useful action without infra noise."""
     if trace.get("error_type") or trace.get("parser_error_type"):
         return False
     if "action_has_progress" in trace:
         return bool(trace.get("action_has_progress"))
-    if trace.get("has_progress"):
-        return True
     return None
 
 

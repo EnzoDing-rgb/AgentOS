@@ -187,6 +187,35 @@ def format_compact_audit(audit: dict) -> str:
                 f"{k}={v}" for k, v in sorted(audit["harness_owner"].items())
             ))
 
+    # Per-task cross-policy comparison
+    per_task = audit.get("per_task_comparison")
+    if per_task:
+        lines.append(banner)
+        lines.append("PER-TASK POLICY COMPARISON")
+        lines.append(
+            f"{'instance_id':<30} {'strategy':<34} {'R':>1} {'cost':>7} {'val':>5} "
+            f"{'turn':>4} {'1st':>5} {'T3@':>4} {'use@':>4} {'gap':>3} "
+            f"{'patch':>5} {'fail':<14} {'trust':<5}"
+        )
+        lines.append("-" * 128)
+        for row in per_task:
+            lines.append(
+                f"{row['instance_id']:<30} {row['strategy']:<34} {'Y' if row['resolved'] else 'N':>1} "
+                f"${row['cost']:>6.2f} {row['task_value']:>5.2f} "
+                f"{row['turns']:>4} T{row['first_tier']:>4} "
+                f"{row['first_t3_turn'] if row['first_t3_turn'] is not None else '-':>4} "
+                f"{row['first_useful_action'] if row['first_useful_action'] is not None else '-':>4} "
+                f"{row['max_no_progress_streak']:>3} "
+                f"{'no' if row['no_patch'] else 'yes':>5} "
+                f"{row['failure_class']:<14} "
+                f"{row['harness_trust']:<5}"
+            )
+        # Legend
+        lines.append(
+            "  R=resolved  val=task_value  turn=llm_turns  1st=first_backend_tier  "
+            "T3@=first_T3_turn  use@=first_useful_action  gap=max_no_progress_streak"
+        )
+
     if audit.get("decision_issue_counts"):
         lines.append(banner)
         if audit.get("decision_area_counts"):

@@ -303,14 +303,14 @@ class TestSegmentAdapter:
         assert segment.signals["priority"] == "high"
 
 
-class TestValueAdapter:
+class TestSwebenchTaskValueHelper:
     def test_equal_profile_returns_one(self):
         from budgetflow.adapters.swebench_value import SwebenchValueAdapter
 
         adapter = SwebenchValueAdapter(value_profile="equal")
         estimate = adapter.estimate("task-a")
         assert estimate.value == 1.0
-        assert estimate.source == "default_equal"
+        assert estimate.source == "equal_sanity"
 
     def test_median_default_is_one(self):
         from budgetflow.adapters.swebench_value import SwebenchValueAdapter
@@ -325,7 +325,7 @@ class TestValueAdapter:
         adapter = SwebenchValueAdapter(value_profile="equal")
         value, source = adapter.task_value("nonexistent-task")
         assert value == 1.0
-        assert source == "default_equal"
+        assert source == "equal_sanity"
 
     def test_non_equal_profile_missing_task_fails_fast(self):
         """Non-equal profiles must not silently fallback when task is missing."""

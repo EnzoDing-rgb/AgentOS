@@ -5,11 +5,9 @@ from types import SimpleNamespace
 import pytest
 
 from budgetflow.adapters import (
-    MiniSweRuntimeAdapter,
     SwebenchCostAdapter,
     SwebenchProgressAdapter,
     SwebenchTaskAdapter,
-    SwebenchVerifierAdapter,
 )
 from budgetflow.types import Stage, WorkflowSegment
 
@@ -34,7 +32,7 @@ def test_swebench_task_adapter_normalizes_task_features() -> None:
     }
 
 
-def test_swebench_verifier_adapter_normalizes_result_fields() -> None:
+def test_swebench_progress_adapter_normalizes_result_fields() -> None:
     result = SimpleNamespace(
         harness_resolved=True,
         harness_detail="test_patch=ok",
@@ -43,11 +41,10 @@ def test_swebench_verifier_adapter_normalizes_result_fields() -> None:
         submitted_patch_path="/tmp/submitted.patch",
     )
 
-    outcome = SwebenchVerifierAdapter().outcome_from_result(result)
+    outcome = SwebenchProgressAdapter().outcome_from_result(result)
 
     assert outcome.as_record() == {
         "harness_resolved": True,
-        "resolved": True,
         "patch_extracted": True,
         "patch_source": "submission",
         "submitted_patch": "/tmp/submitted.patch",
@@ -96,23 +93,3 @@ def test_swebench_progress_adapter_maps_edit_phase_to_action_segment() -> None:
 
     assert signal.stage is Stage.REPAIR
     assert signal.segment.name == WorkflowSegment.ACTION
-
-
-def test_runtime_adapter_calls_mini_swe_runner(monkeypatch) -> None:
-    import budgetflow.adapter.runner as runner
-
-    calls = {}
-
-    def fake_run(task, **kwargs):
-        calls["task"] = task
-        calls["kwargs"] = kwargs
-        return SimpleNamespace(instance_id=task.instance_id)
-
-    monkeypatch.setattr(runner, "run_mini_swe_task", fake_run)
-    task = SimpleNamespace(instance_id="repo__task-1")
-
-    result = MiniSweRuntimeAdapter().run_task(task, strategy="budget_only")
-
-    assert result.instance_id == "repo__task-1"
-    assert calls["task"] is task
-    assert calls["kwargs"]["strategy"] == "budget_only"

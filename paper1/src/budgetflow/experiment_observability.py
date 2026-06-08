@@ -13,13 +13,8 @@ def enrich_routing_observability(record: dict, *, policy_memory_source: str = ""
     prior = record.get("routing_prior_summary") or {}
     objective = str(record.get("value_objective") or "")
     if not objective:
-        profile = str(record.get("task_value_profile") or "equal")
-        if profile == "equal":
-            objective = "t2_equal_value_ablation"
-        elif profile == "bootstrap_difficulty":
-            objective = "t1_bootstrap_value_diagnostic"
-        else:
-            objective = "t1_value_efficiency"
+        primary_t1 = bool(record.get("task_value_primary_t1", False))
+        objective = "t1_value_efficiency" if primary_t1 else "t2_value_source_diagnostic"
 
     policy_kind = _policy_kind(routing)
     policy_role = _policy_role(routing)
@@ -33,7 +28,6 @@ def enrich_routing_observability(record: dict, *, policy_memory_source: str = ""
         str(prior.get("policy_memory_source") or policy_memory_source or "")
     )
     record["routing_learned_action"] = str(prior.get("learned_action") or "none")
-    record["routing_learned_action_stage"] = str(record.get("routing_prior_stage") or "")
     record["routing_learned_action_segment"] = str(record.get("routing_prior_segment") or "")
     repair_prior = record.get("routing_repair_prior_summary") or {}
     record["routing_repair_learned_action"] = str(repair_prior.get("learned_action") or "")

@@ -18,7 +18,7 @@ from .defaults import (
     PRESSURE_MAX,
 )
 from .learn_policy import LearnPolicyInputs
-from .types import Stage
+from .types import Stage, WorkflowSegment
 
 if TYPE_CHECKING:
     from .policy_memory import PolicyMemory
@@ -119,7 +119,7 @@ def rescue_state_for_strategy(
 ) -> EvidenceRescueState:
     base = EvidenceRescueState()
     if policy_memory is not None and instance_id is not None:
-        prior = policy_memory.routing_prior_summary(instance_id, Stage.REPAIR)
+        prior = policy_memory.routing_prior_summary(instance_id, WorkflowSegment.ACTION)
         action = prior.get("learned_action", "default")
         if action == "early_rescue":
             base.trigger_turns = max(2, base.trigger_turns - 3)
@@ -220,7 +220,7 @@ class AdaptiveRoutingState:
         self._current_instance_id = instance_id
         if self.policy_memory is not None:
             self._prior_summary = self.policy_memory.routing_prior_summary(
-                instance_id, Stage.LOCALIZATION
+                instance_id, WorkflowSegment.CONTEXT
             )
         self._refresh_strongest_starter_window()
         self.rescue = rescue_state_for_strategy(

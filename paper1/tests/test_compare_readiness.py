@@ -64,6 +64,64 @@ def test_readiness_warns_equal_value_is_not_t1_evidence() -> None:
 
     assert report.ok
     assert any("not T1 value evidence" in warning for warning in report.warnings)
+    assert "value_source_class=equal_sanity" in report.facts
+    assert "value_evidence=sanity_fallback" in report.facts
+    assert "value_primary_t1=false" in report.facts
+
+
+def test_readiness_warns_plain_matrix_is_not_primary_t1_evidence(tmp_path) -> None:
+    matrix = tmp_path / "value_matrix.json"
+    matrix.write_text('{"tasks":{"task-a":{"values":{"difficulty":0.2}}}}')
+    value_context = ValueEfficiencyContext()
+    value_context.init(value_profile="difficulty", value_matrix_path=str(matrix))
+
+    report = build_compare_readiness_report(
+        args=_args(),
+        tasks=[SimpleNamespace(instance_id="task-a")],
+        strategies=(CompareStrategy("budgetflow_value_aware_tight", "budgetflow_value_aware", "tight"),),
+        policy_jobs=1,
+        value_context=value_context,
+        catalog_issues=[],
+        runtime_root=Path("/tmp/budgetflow-runtime"),
+        auto_budget_enabled=False,
+        auto_budget_caps=None,
+    )
+
+    assert report.ok
+    assert "value_source_class=value_matrix_diagnostic" in report.facts
+    assert "value_evidence=value_matrix_diagnostic" in report.facts
+    assert "value_primary_t1=false" in report.facts
+    assert any("not primary T1 evidence" in warning for warning in report.warnings)
+
+
+def test_readiness_accepts_pre_registered_manual_as_primary_t1_evidence(tmp_path) -> None:
+    matrix = tmp_path / "value_matrix.json"
+    matrix.write_text('{"tasks":{"task-a":{"values":{"difficulty":0.2}}}}')
+    value_context = ValueEfficiencyContext()
+    value_context.init(
+        value_profile="difficulty",
+        value_matrix_path=str(matrix),
+        value_source_kind="pre_registered_manual",
+    )
+
+    report = build_compare_readiness_report(
+        args=_args(),
+        tasks=[SimpleNamespace(instance_id="task-a")],
+        strategies=(CompareStrategy("budgetflow_value_aware_tight", "budgetflow_value_aware", "tight"),),
+        policy_jobs=1,
+        value_context=value_context,
+        catalog_issues=[],
+        runtime_root=Path("/tmp/budgetflow-runtime"),
+        auto_budget_enabled=False,
+        auto_budget_caps=None,
+    )
+
+    assert report.ok
+    assert "value_source_class=pre_registered_manual" in report.facts
+    assert "value_evidence=primary_t1" in report.facts
+    assert "value_confidence=manual" in report.facts
+    assert "value_primary_t1=true" in report.facts
+    assert not any("not primary T1 evidence" in warning for warning in report.warnings)
 
 
 def test_readiness_blocks_underparallel_policy_jobs() -> None:

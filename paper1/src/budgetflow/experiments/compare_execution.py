@@ -8,11 +8,11 @@ from collections.abc import Callable
 
 from budgetflow.adaptive_routing import AdaptiveRoutingRegistry
 from budgetflow.adapters import (
-    MiniSweRuntimeAdapter,
+    SwebenchProgressAdapter,
     SwebenchSegmentAdapter,
     SwebenchTaskAdapter,
-    SwebenchVerifierAdapter,
 )
+from budgetflow.adapter import runner as mini_swe_runner
 from budgetflow.auto_budget import BudgetEstimate
 from budgetflow.compare_checkpoint import CompareCheckpointStore, GlobalRunProgress, StrategyScoreboard
 from budgetflow.experiments.compare_config import (
@@ -74,8 +74,7 @@ def run_task_record(
 ) -> dict:
     started = time.time()
     task_adapter = SwebenchTaskAdapter()
-    verifier_adapter = SwebenchVerifierAdapter()
-    runtime_adapter = MiniSweRuntimeAdapter()
+    progress_adapter = SwebenchProgressAdapter()
     segment_adapter = SwebenchSegmentAdapter()
     instance_id = task_adapter.instance_id(task)
     task_features = task_adapter.features(task).as_record()
@@ -88,7 +87,7 @@ def run_task_record(
         adaptive.set_task_context(instance_id)
 
     task_value, _ = value_context.task_value(instance_id)
-    result = runtime_adapter.run_task(
+    result = mini_swe_runner.run_mini_swe_task(
         task,
         strategy=cfg.routing,
         strategy_label=cfg.name,
@@ -106,7 +105,7 @@ def run_task_record(
         task_value=task_value,
         median_task_value=value_context.median_task_value,
     )
-    outcome = verifier_adapter.outcome_from_result(result)
+    outcome = progress_adapter.outcome_from_result(result)
     batch_snapshot = governor.budget_snapshot()
     record = {
         "instance_id": result.instance_id,
@@ -118,7 +117,6 @@ def run_task_record(
         "batch_spent": batch_snapshot.get("spent_budget"),
         "batch_available": batch_snapshot.get("available_budget"),
         "batch_snapshot": batch_snapshot,
-        "task_cost": result.total_cost,
         "budget_spent": result.total_cost,
         "budget_available": batch_snapshot.get("available_budget"),
         "budget_snapshot": batch_snapshot,
@@ -130,7 +128,6 @@ def run_task_record(
         "total_cost": result.total_cost,
         "backend_picks": list(result.backend_picks),
         "llm_turns": result.llm_turns,
-        "turns": result.llm_turns,
         "violations": list(result.violations),
         "agent_gold_edited": result.agent_gold_edited,
         "agent_gold_files": list(result.agent_gold_files),
@@ -165,13 +162,12 @@ def run_task_record(
         record["memory_mode"] = getattr(adaptive, "memory_mode", "off")
         if prior:
             record["routing_prior_summary"] = prior
-            record["routing_prior_stage"] = Stage.LOCALIZATION.value
             record["routing_prior_segment"] = segment_adapter.to_segment(Stage.LOCALIZATION).name
             if adaptive_registry is not None and adaptive_registry.policy_memory is not None:
                 repair_segment = segment_adapter.to_segment(Stage.REPAIR)
                 record["routing_repair_prior_summary"] = adaptive_registry.policy_memory.routing_prior_summary(
                     instance_id,
-                    Stage.REPAIR,
+                    repair_segment.name,
                 )
                 record["routing_repair_prior_segment"] = repair_segment.name
             record["policy_memory_enabled"] = True
@@ -417,7 +413,7 @@ def run_strategy_batch(
             _print_run_done(record, done=done_n, total=global_progress.total, strategy=cfg.name)
         records.append(record)
         if checkpoint is not None:
-            task_spent = float(record.get("task_cost") or record.get("total_cost") or 0)
+            task_spent = float(record.get("total_cost") or 0)
             checkpoint.mark_task_done(
                 cfg.name,
                 task.instance_id,
@@ -436,7 +432,7 @@ def run_strategy_batch(
                 break
 
     if use_per_task:
-        batch_spent_total = sum(float(r.get("task_cost") or r.get("total_cost") or 0) for r in records)
+        batch_spent_total = sum(float(r.get("total_cost") or 0) for r in records)
     else:
         assert governor is not None
         batch_spent_total = governor.state.spent_budget

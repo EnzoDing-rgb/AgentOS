@@ -23,20 +23,11 @@ _FALLBACK_COST = {
     "hard": 1.50,
 }
 
-# Per-repo minimum estimated_cost before scaling.
-# Ensures repos known to be harder (Django) get adequate budget even for "easy" tasks.
-_REPO_FLOOR_ESTIMATED_COST: dict[str, float] = {
-    "django/django": 1.00,
-}
-
 _LEARNABLE_CAP_SUFFICIENCY = {
     "sufficient",
     "likely_underbudget",
     "underbudget_or_model",
 }
-
-LEGACY_COST_MEMORY_UPLIFT = 1.8
-
 
 @dataclass(frozen=True)
 class CostTaskFeatures:
@@ -45,6 +36,7 @@ class CostTaskFeatures:
     patch_lines: int
     f2p_count: int
     p2p_count: int
+    cost_floor: float = 0.0
 
 
 class CostFeatureAdapter(Protocol):
@@ -272,10 +264,12 @@ class AutoBudgetEstimator:
         patch_lines = features.patch_lines
         f2p_count = features.f2p_count
         p2p_count = features.p2p_count
+        cost_floor = features.cost_floor
         base_features = {
             "patch_lines": patch_lines,
             "f2p_count": f2p_count,
             "p2p_count": p2p_count,
+            "cost_floor": cost_floor,
         }
 
         # 1. Memory: exact task + strategy match (most specific).
@@ -283,7 +277,7 @@ class AutoBudgetEstimator:
             est = self._estimate_from_memory_exact(iid, patch_lines, f2p_count, p2p_count)
             if est is not None:
                 return self._finalize(
-                    est, scale, min_cap, max_cap, repo,
+                    est, scale, min_cap, max_cap, cost_floor,
                     features=base_features,
                 )
 
@@ -291,7 +285,7 @@ class AutoBudgetEstimator:
             est = self._estimate_from_memory_exact_any(iid, patch_lines, f2p_count, p2p_count)
             if est is not None:
                 return self._finalize(
-                    est, scale, min_cap, max_cap, repo,
+                    est, scale, min_cap, max_cap, cost_floor,
                     features=base_features,
                 )
 
@@ -301,7 +295,7 @@ class AutoBudgetEstimator:
             median = float(hist["median_cost"])
             resolved_ratio = hist["resolved"] / max(hist["total"], 1)
             confidence = "high" if resolved_ratio >= 0.75 and hist["resolved"] >= 3 else "medium"
-            cap = self._compute_cap(median, scale, min_cap, max_cap, repo)
+            cap = self._compute_cap(median, scale, min_cap, max_cap, cost_floor)
             return BudgetEstimate(
                 instance_id=iid,
                 estimated_cost=median,
@@ -322,14 +316,14 @@ class AutoBudgetEstimator:
             if est is not None and est.get("neighbors", 0) > 0:
                 median = est["median_cost"]
                 return self._finalize(
-                    est, scale, min_cap, max_cap, repo,
+                    est, scale, min_cap, max_cap, cost_floor,
                     features=base_features,
                 )
 
         # 5. Global fallback.
         return self._fallback_estimate(
             iid, repo, patch_lines, f2p_count, p2p_count,
-            scale, min_cap, max_cap,
+            cost_floor, scale, min_cap, max_cap,
         )
 
     def _features(self, task: object) -> CostTaskFeatures:
@@ -347,22 +341,17 @@ class AutoBudgetEstimator:
         scale: float,
         min_cap: float,
         max_cap: float,
-        repo: str,
+        cost_floor: float,
         *,
         features: dict,
     ) -> BudgetEstimate:
         median = float(est["median_cost"])
         source = est.get("source", "memory_exact")
-        legacy_cost_memory = bool(est.get("legacy_cost_memory", False))
-        if legacy_cost_memory:
-            median *= LEGACY_COST_MEMORY_UPLIFT
-            if source.startswith("memory_") and not source.startswith("memory_legacy_"):
-                source = "memory_legacy_" + source.removeprefix("memory_")
         neighbors = est.get("neighbors", 0)
         confidence = est.get("confidence", "low")
         if confidence == "low" and neighbors >= 2:
             confidence = "medium"
-        cap = self._compute_cap(median, scale, min_cap, max_cap, repo)
+        cap = self._compute_cap(median, scale, min_cap, max_cap, cost_floor)
         return BudgetEstimate(
             instance_id=est.get("instance_id", ""),
             estimated_cost=median,
@@ -379,11 +368,10 @@ class AutoBudgetEstimator:
         scale: float,
         min_cap: float,
         max_cap: float,
-        repo: str,
+        cost_floor: float = 0.0,
     ) -> float:
-        """cap = max(repo_floor, min_cap, estimated_cost * scale), clamped to max_cap."""
-        floor = _REPO_FLOOR_ESTIMATED_COST.get(repo, 0.0)
-        raw = max(floor, min_cap, estimated_cost * scale)
+        """cap = max(adapter_floor, min_cap, estimated_cost * scale), clamped to max_cap."""
+        raw = max(float(cost_floor or 0.0), min_cap, estimated_cost * scale)
         return _clamp(raw, min_cap, max_cap)
 
     def _estimate_from_memory_exact(
@@ -448,7 +436,6 @@ class AutoBudgetEstimator:
             "source": "memory_repo_knn",
             "neighbors": len(neighbors),
             "confidence": "medium" if len(neighbors) >= 2 else "low",
-            "legacy_cost_memory": any(_is_legacy_cost_record(r) for _, r in neighbors),
         }
 
     def _median_from_records(self, records: list[dict], *, source: str, features: dict) -> dict | None:
@@ -479,7 +466,6 @@ class AutoBudgetEstimator:
             "source": source,
             "neighbors": len(usable),
             "confidence": confidence,
-            "legacy_cost_memory": any(_is_legacy_cost_record(r) for r in usable),
         }
         result.update({f"features_{k}": v for k, v in features.items()})
         return result
@@ -491,6 +477,7 @@ class AutoBudgetEstimator:
         patch_lines: int,
         f2p_count: int,
         p2p_count: int,
+        cost_floor: float,
         scale: float,
         min_cap: float,
         max_cap: float,
@@ -504,10 +491,8 @@ class AutoBudgetEstimator:
             bucket = "medium"
 
         base = _FALLBACK_COST[bucket]
-        # Apply repo floor: some repos need higher baseline even for "easy" tasks.
-        repo_floor = _REPO_FLOOR_ESTIMATED_COST.get(repo, 0.0)
-        estimated_cost = max(base, repo_floor)
-        cap = self._compute_cap(estimated_cost, scale, min_cap, max_cap, repo)
+        estimated_cost = max(base, float(cost_floor or 0.0))
+        cap = self._compute_cap(estimated_cost, scale, min_cap, max_cap, cost_floor)
 
         features: dict[str, float | int | str] = {
             "patch_lines": patch_lines,
@@ -515,6 +500,7 @@ class AutoBudgetEstimator:
             "p2p_count": p2p_count,
             "bucket": bucket,
             "difficulty_score": difficulty_score,
+            "cost_floor": float(cost_floor or 0.0),
         }
         return BudgetEstimate(
             instance_id=iid,
@@ -528,7 +514,3 @@ class AutoBudgetEstimator:
 
 def _clamp(value: float, lo: float, hi: float) -> float:
     return max(lo, min(value, hi))
-
-
-def _is_legacy_cost_record(record: dict) -> bool:
-    return record.get("cost_catalog_revision") != catalog_revision()

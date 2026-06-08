@@ -9,7 +9,7 @@ from pathlib import Path
 from budgetflow.adaptive_routing import AdaptiveRoutingState, rescue_state_for_strategy
 from budgetflow.learning_context import looks_like_policy_memory_source
 from budgetflow.policy_memory import PolicyMemory
-from budgetflow.types import Stage
+from budgetflow.types import WorkflowSegment
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -24,7 +24,7 @@ def _record(**overrides) -> dict:
         "total_cost": 0.10,
         "backend_picks": ["tier2", "tier2"],
         "turn_traces": [
-            {"stage": "REPAIR", "backend_tier": 2, "has_progress": False},
+            {"workflow_segment": "Action", "backend_tier": 2, "has_progress": False},
         ],
         "routing_decision_schema": "v1",
         "task_set_kind": "familiar",
@@ -40,7 +40,7 @@ def _pass_record(**overrides) -> dict:
         harness_resolved=True,
         failure_class="pass",
         backend_picks=["tier2"],
-        turn_traces=[{"stage": "LOCALIZATION", "backend_tier": 2, "has_progress": True}],
+        turn_traces=[{"workflow_segment": "Context", "backend_tier": 2, "has_progress": True}],
         **overrides,
     )
 
@@ -69,7 +69,7 @@ def test_policy_memory_rebuilds_task_repo_and_routing_priors() -> None:
 
     task = memory.task_prior("sympy__sympy-2")
     repo = memory.repo_prior("sympy__sympy-1")
-    summary = memory.routing_prior_summary("sympy__sympy-2", Stage.REPAIR)
+    summary = memory.routing_prior_summary("sympy__sympy-2", WorkflowSegment.ACTION)
 
     assert task.seen == 2
     assert task.pass_count == 0
@@ -91,20 +91,20 @@ def test_policy_memory_preserves_generic_tier_evidence() -> None:
             failure_class="pass",
             backend_picks=["tier2_balanced", "tier4", "tier5", "tier5"],
             turn_traces=[
-                {"stage": "REPAIR", "backend_tier": 4},
-                {"stage": "REPAIR", "backend_tier": 5},
+                {"workflow_segment": "Action", "backend_tier": 4},
+                {"workflow_segment": "Action", "backend_tier": 5},
             ],
         )
     ])
 
     repo = memory.repo_prior("sympy__sympy-1")
     task = memory.task_prior("sympy__sympy-1")
-    summary = memory.routing_prior_summary("sympy__sympy-1", Stage.REPAIR)
+    summary = memory.routing_prior_summary("sympy__sympy-1", WorkflowSegment.ACTION)
 
     assert dict(repo.tier_turns) == {2: 1, 4: 1, 5: 2}
     assert dict(task.tier_turns) == {2: 1, 4: 1, 5: 2}
     assert summary["repo_tier_turns"] == {"2": 1, "4": 1, "5": 2}
-    assert summary["stage_tier_success"] == {"4": 1.0, "5": 1.0}
+    assert summary["segment_tier_success"] == {"4": 1.0, "5": 1.0}
     assert summary["repo_t3_success"] == 0
 
 
@@ -113,21 +113,21 @@ def test_policy_memory_uses_workflow_segment_keys_when_available() -> None:
     memory.rebuild_from_records([
         _record(
             instance_id="repo__repair-a",
-            turn_traces=[{"workflow_segment": "Action", "stage": "LOCALIZATION", "backend_tier": 2}],
+            turn_traces=[{"workflow_segment": "Action", "backend_tier": 2}],
         ),
         _record(
             instance_id="repo__repair-b",
-            turn_traces=[{"workflow_segment": "Action", "stage": "LOCALIZATION", "backend_tier": 2}],
+            turn_traces=[{"workflow_segment": "Action", "backend_tier": 2}],
         ),
         _record(
             instance_id="repo__repair-c",
-            turn_traces=[{"workflow_segment": "Action", "stage": "LOCALIZATION", "backend_tier": 2}],
+            turn_traces=[{"workflow_segment": "Action", "backend_tier": 2}],
         ),
     ])
 
-    summary = memory.routing_prior_summary("repo__new-repair", Stage.REPAIR)
+    summary = memory.routing_prior_summary("repo__new-repair", WorkflowSegment.ACTION)
 
-    assert summary["stage_tier_weight"]["2"] == 3.0
+    assert summary["segment_tier_weight"]["2"] == 3.0
     assert summary["learned_action"] == "early_rescue"
 
 
@@ -144,8 +144,8 @@ def test_policy_memory_learns_t1_t2_actions_from_prior_runs() -> None:
     memory = PolicyMemory()
     memory.rebuild_from_records(records)
 
-    assert memory.routing_prior_summary("repair__task-a", Stage.REPAIR)["learned_action"] == "early_rescue"
-    assert memory.routing_prior_summary("cost__task-a", Stage.REPAIR)["learned_action"] == "cap_strongest"
+    assert memory.routing_prior_summary("repair__task-a", WorkflowSegment.ACTION)["learned_action"] == "early_rescue"
+    assert memory.routing_prior_summary("cost__task-a", WorkflowSegment.ACTION)["learned_action"] == "cap_strongest"
 
 
 def test_low_weight_stage_evidence_does_not_drive_learned_actions() -> None:
@@ -160,12 +160,12 @@ def test_low_weight_stage_evidence_does_not_drive_learned_actions() -> None:
     memory = PolicyMemory()
     memory.rebuild_from_records(stale_failures + stale_localization_passes)
 
-    repair = memory.routing_prior_summary("repo__new-repair", Stage.REPAIR)
-    localization = memory.routing_prior_summary("repo__new-loc", Stage.LOCALIZATION)
+    repair = memory.routing_prior_summary("repo__new-repair", WorkflowSegment.ACTION)
+    localization = memory.routing_prior_summary("repo__new-loc", WorkflowSegment.CONTEXT)
 
-    assert repair["stage_tier_weight"]["2"] == 0.5
+    assert repair["segment_tier_weight"]["2"] == 0.5
     assert repair["learned_action"] == "default"
-    assert localization["stage_tier_weight"]["2"] == 0.5
+    assert localization["segment_tier_weight"]["2"] == 0.5
     assert localization["learned_action"] == "default"
 
 
@@ -183,7 +183,7 @@ def test_low_weight_protocol_evidence_does_not_drive_learned_action() -> None:
         ),
     ])
 
-    summary = memory.routing_prior_summary("repo__same-task", Stage.REPAIR)
+    summary = memory.routing_prior_summary("repo__same-task", WorkflowSegment.ACTION)
 
     assert summary["task_evidence_weight"] == 1.05
     assert summary["recent_failure_axis"] == "format_error"
@@ -200,7 +200,7 @@ def test_sufficient_weight_protocol_evidence_drives_learned_action() -> None:
         ),
     ])
 
-    summary = memory.routing_prior_summary("repo__same-task", Stage.REPAIR)
+    summary = memory.routing_prior_summary("repo__same-task", WorkflowSegment.ACTION)
 
     assert summary["task_evidence_weight"] == 1.0
     assert summary["learned_action"] == "protocol_issue"
@@ -221,7 +221,7 @@ def test_low_weight_all_pro_failures_do_not_reduce_rescue() -> None:
         ),
     ])
 
-    summary = memory.routing_prior_summary("repo__same-task", Stage.REPAIR)
+    summary = memory.routing_prior_summary("repo__same-task", WorkflowSegment.ACTION)
 
     assert summary["task_all_pro_failure_weight"] == 0.8
     assert summary["learned_action"] == "default"
@@ -233,11 +233,11 @@ def test_weighted_tier_success_uses_effective_evidence_denominator() -> None:
         _pass_record(instance_id="repo__loc-a", _policy_memory_weight=0.35),
     ])
 
-    summary = memory.routing_prior_summary("repo__loc-b", Stage.LOCALIZATION)
+    summary = memory.routing_prior_summary("repo__loc-b", WorkflowSegment.CONTEXT)
 
     assert summary["repo_evidence_weight"] == 0.35
     assert summary["repo_tier_success"]["2"] == 1.0
-    assert summary["stage_tier_success"]["2"] == 1.0
+    assert summary["segment_tier_success"]["2"] == 1.0
 
 
 def test_policy_memory_changes_runtime_rescue_and_starting_tier() -> None:
@@ -261,8 +261,8 @@ def test_policy_memory_changes_runtime_rescue_and_starting_tier() -> None:
 
 def test_policy_memory_can_imitate_budget_only_strongest_starter_window() -> None:
     bo_t3_frontload = [
-        {"stage": "LOCALIZATION", "backend_tier": 3, "final_backend": "tier3"},
-        {"stage": "REPAIR", "backend_tier": 3, "final_backend": "tier3"},
+        {"workflow_segment": "Context", "backend_tier": 3, "final_backend": "tier3"},
+        {"workflow_segment": "Action", "backend_tier": 3, "final_backend": "tier3"},
     ]
     memory = PolicyMemory()
     memory.rebuild_from_records([
@@ -278,11 +278,11 @@ def test_policy_memory_can_imitate_budget_only_strongest_starter_window() -> Non
             instance_id="django__task-a",
             routing="budgetflow_value_aware",
             strategy="budgetflow_value_aware_tight",
-            turn_traces=[{"stage": "REPAIR", "backend_tier": 2}],
+            turn_traces=[{"workflow_segment": "Action", "backend_tier": 2}],
         ),
     ])
 
-    summary = memory.routing_prior_summary("django__new-task", Stage.LOCALIZATION)
+    summary = memory.routing_prior_summary("django__new-task", WorkflowSegment.CONTEXT)
     state = AdaptiveRoutingState(strategy_name="budgetflow_value_aware_tight", policy_memory=memory)
     state.set_task_context("django__new-task")
 
@@ -306,18 +306,18 @@ def test_low_weight_budget_only_starter_evidence_does_not_frontload_strongest() 
             harness_resolved=True,
             failure_class="pass",
             _policy_memory_weight=0.4,
-            turn_traces=[{"stage": "LOCALIZATION", "backend_tier": 3, "final_backend": "tier3"}],
+            turn_traces=[{"workflow_segment": "Context", "backend_tier": 3, "final_backend": "tier3"}],
         ),
         _record(
             instance_id="django__task-a",
             routing="budgetflow_value_aware",
             strategy="budgetflow_value_aware_tight",
             _policy_memory_weight=0.4,
-            turn_traces=[{"stage": "REPAIR", "backend_tier": 2}],
+            turn_traces=[{"workflow_segment": "Action", "backend_tier": 2}],
         ),
     ])
 
-    summary = memory.routing_prior_summary("django__new-task", Stage.LOCALIZATION)
+    summary = memory.routing_prior_summary("django__new-task", WorkflowSegment.CONTEXT)
 
     assert summary["starter_attempts"] == 0.4
     assert summary["strongest_starter_action"] == "default"
@@ -333,8 +333,8 @@ def test_weak_task_starter_prior_does_not_override_repo_frontload() -> None:
             harness_resolved=True,
             failure_class="pass",
             turn_traces=[
-                {"stage": "LOCALIZATION", "backend_tier": 3, "final_backend": "tier3"},
-                {"stage": "REPAIR", "backend_tier": 3, "final_backend": "tier3"},
+                {"workflow_segment": "Context", "backend_tier": 3, "final_backend": "tier3"},
+                {"workflow_segment": "Action", "backend_tier": 3, "final_backend": "tier3"},
             ],
         ),
         _record(
@@ -342,7 +342,7 @@ def test_weak_task_starter_prior_does_not_override_repo_frontload() -> None:
             routing="budgetflow_value_aware",
             strategy="budgetflow_value_aware_tight",
             harness_resolved=False,
-            turn_traces=[{"stage": "REPAIR", "backend_tier": 2, "final_backend": "tier2"}],
+            turn_traces=[{"workflow_segment": "Action", "backend_tier": 2, "final_backend": "tier2"}],
         ),
         _record(
             instance_id="sympy__repo-b",
@@ -351,8 +351,8 @@ def test_weak_task_starter_prior_does_not_override_repo_frontload() -> None:
             harness_resolved=True,
             failure_class="pass",
             turn_traces=[
-                {"stage": "LOCALIZATION", "backend_tier": 3, "final_backend": "tier3"},
-                {"stage": "REPAIR", "backend_tier": 3, "final_backend": "tier3"},
+                {"workflow_segment": "Context", "backend_tier": 3, "final_backend": "tier3"},
+                {"workflow_segment": "Action", "backend_tier": 3, "final_backend": "tier3"},
             ],
         ),
         _record(
@@ -360,7 +360,7 @@ def test_weak_task_starter_prior_does_not_override_repo_frontload() -> None:
             routing="budgetflow_value_aware",
             strategy="budgetflow_value_aware_tight",
             harness_resolved=False,
-            turn_traces=[{"stage": "REPAIR", "backend_tier": 2, "final_backend": "tier2"}],
+            turn_traces=[{"workflow_segment": "Action", "backend_tier": 2, "final_backend": "tier2"}],
         ),
         _record(
             instance_id="sympy__weak-task",
@@ -369,7 +369,7 @@ def test_weak_task_starter_prior_does_not_override_repo_frontload() -> None:
             harness_resolved=True,
             failure_class="pass",
             _policy_memory_weight=0.35,
-            turn_traces=[{"stage": "LOCALIZATION", "backend_tier": 2, "final_backend": "tier2"}],
+            turn_traces=[{"workflow_segment": "Context", "backend_tier": 2, "final_backend": "tier2"}],
         ),
         _record(
             instance_id="sympy__weak-task",
@@ -377,11 +377,11 @@ def test_weak_task_starter_prior_does_not_override_repo_frontload() -> None:
             strategy="budgetflow_value_aware_tight",
             harness_resolved=False,
             _policy_memory_weight=0.35,
-            turn_traces=[{"stage": "REPAIR", "backend_tier": 2, "final_backend": "tier2"}],
+            turn_traces=[{"workflow_segment": "Action", "backend_tier": 2, "final_backend": "tier2"}],
         ),
     ])
 
-    summary = memory.routing_prior_summary("sympy__weak-task", Stage.LOCALIZATION)
+    summary = memory.routing_prior_summary("sympy__weak-task", WorkflowSegment.CONTEXT)
 
     assert summary["starter_memory_source"] == "repo"
     assert summary["starter_attempts"] >= 2.0
@@ -398,9 +398,9 @@ def test_low_budget_only_frontload_rate_does_not_create_starter_action() -> None
             harness_resolved=True,
             failure_class="pass",
             turn_traces=[
-                {"stage": "LOCALIZATION", "backend_tier": 2, "final_backend": "tier2"},
-                {"stage": "REPAIR", "backend_tier": 2, "final_backend": "tier2"},
-                {"stage": "REPAIR", "backend_tier": 3, "final_backend": "tier3"},
+                {"workflow_segment": "Context", "backend_tier": 2, "final_backend": "tier2"},
+                {"workflow_segment": "Action", "backend_tier": 2, "final_backend": "tier2"},
+                {"workflow_segment": "Action", "backend_tier": 3, "final_backend": "tier3"},
             ],
         ),
         _record(
@@ -408,11 +408,11 @@ def test_low_budget_only_frontload_rate_does_not_create_starter_action() -> None
             routing="budgetflow_value_aware",
             strategy="budgetflow_value_aware_tight",
             harness_resolved=False,
-            turn_traces=[{"stage": "REPAIR", "backend_tier": 2, "final_backend": "tier2"}],
+            turn_traces=[{"workflow_segment": "Action", "backend_tier": 2, "final_backend": "tier2"}],
         ),
     ])
 
-    summary = memory.routing_prior_summary("sympy__new-task", Stage.LOCALIZATION)
+    summary = memory.routing_prior_summary("sympy__new-task", WorkflowSegment.CONTEXT)
 
     assert summary["starter_bo_frontload_rate"] < 0.4
     assert summary["strongest_starter_action"] == "default"
@@ -429,10 +429,10 @@ def test_budget_only_cheaper_success_extends_strongest_starter_window() -> None:
             failure_class="pass",
             total_cost=0.20,
             turn_traces=[
-                {"stage": "LOCALIZATION", "backend_tier": 3, "final_backend": "tier3"},
-                {"stage": "REPAIR", "backend_tier": 3, "final_backend": "tier3"},
-                {"stage": "REPAIR", "backend_tier": 3, "final_backend": "tier3"},
-                {"stage": "REPAIR", "backend_tier": 2, "final_backend": "tier2"},
+                {"workflow_segment": "Context", "backend_tier": 3, "final_backend": "tier3"},
+                {"workflow_segment": "Action", "backend_tier": 3, "final_backend": "tier3"},
+                {"workflow_segment": "Action", "backend_tier": 3, "final_backend": "tier3"},
+                {"workflow_segment": "Action", "backend_tier": 2, "final_backend": "tier2"},
             ],
         ),
         _record(
@@ -442,12 +442,12 @@ def test_budget_only_cheaper_success_extends_strongest_starter_window() -> None:
             harness_resolved=True,
             failure_class="pass",
             total_cost=0.90,
-            turn_traces=[{"stage": "REPAIR", "backend_tier": 2, "final_backend": "tier2"}],
+            turn_traces=[{"workflow_segment": "Action", "backend_tier": 2, "final_backend": "tier2"}],
         ),
     ])
 
-    task_summary = memory.routing_prior_summary("sympy__task-a", Stage.LOCALIZATION)
-    repo_summary = memory.routing_prior_summary("sympy__new-task", Stage.LOCALIZATION)
+    task_summary = memory.routing_prior_summary("sympy__task-a", WorkflowSegment.CONTEXT)
+    repo_summary = memory.routing_prior_summary("sympy__new-task", WorkflowSegment.CONTEXT)
 
     assert task_summary["starter_memory_source"] == "task"
     assert task_summary["starter_budgetflow_expensive_success_weight"] == 1.0
@@ -468,8 +468,8 @@ def test_unproductive_budgetflow_starter_shortens_frontload_window() -> None:
             harness_resolved=True,
             failure_class="pass",
             turn_traces=[
-                {"stage": "LOCALIZATION", "backend_tier": 3, "final_backend": "tier3"},
-                {"stage": "REPAIR", "backend_tier": 3, "final_backend": "tier3"},
+                {"workflow_segment": "Context", "backend_tier": 3, "final_backend": "tier3"},
+                {"workflow_segment": "Action", "backend_tier": 3, "final_backend": "tier3"},
             ],
         ),
         _record(
@@ -479,7 +479,7 @@ def test_unproductive_budgetflow_starter_shortens_frontload_window() -> None:
             harness_resolved=False,
             turn_traces=[
                 {
-                    "stage": "LOCALIZATION",
+                    "workflow_segment": "Context",
                     "backend_tier": 3,
                     "final_backend": "tier3",
                     "strongest_starter_applied": True,
@@ -491,7 +491,7 @@ def test_unproductive_budgetflow_starter_shortens_frontload_window() -> None:
         ),
     ])
 
-    summary = memory.routing_prior_summary("sympy__new-task", Stage.LOCALIZATION)
+    summary = memory.routing_prior_summary("sympy__new-task", WorkflowSegment.CONTEXT)
 
     assert summary["starter_budgetflow_applied_weight"] == 1.0
     assert summary["starter_budgetflow_applied_failure_weight"] == 1.0
@@ -512,8 +512,8 @@ def test_repeated_unproductive_budgetflow_starter_disables_frontload() -> None:
             harness_resolved=True,
             failure_class="pass",
             turn_traces=[
-                {"stage": "LOCALIZATION", "backend_tier": 3, "final_backend": "tier3"},
-                {"stage": "REPAIR", "backend_tier": 3, "final_backend": "tier3"},
+                {"workflow_segment": "Context", "backend_tier": 3, "final_backend": "tier3"},
+                {"workflow_segment": "Action", "backend_tier": 3, "final_backend": "tier3"},
             ],
         )
         for i in range(2)
@@ -525,7 +525,7 @@ def test_repeated_unproductive_budgetflow_starter_disables_frontload() -> None:
             harness_resolved=False,
             turn_traces=[
                 {
-                    "stage": "LOCALIZATION",
+                    "workflow_segment": "Context",
                     "backend_tier": 3,
                     "final_backend": "tier3",
                     "strongest_starter_applied": True,
@@ -538,55 +538,13 @@ def test_repeated_unproductive_budgetflow_starter_disables_frontload() -> None:
         for i in range(2)
     ])
 
-    summary = memory.routing_prior_summary("sympy__new-task", Stage.LOCALIZATION)
+    summary = memory.routing_prior_summary("sympy__new-task", WorkflowSegment.CONTEXT)
 
     assert summary["starter_attempts"] == 2.0
     assert summary["starter_budgetflow_applied_weight"] == 2.0
     assert summary["starter_budgetflow_t3_no_progress_cost"] == 0.16
     assert summary["strongest_starter_action"] == "default"
     assert summary["strongest_starter_window"] == 0
-
-
-def test_legacy_starter_traces_do_not_disable_frontload_from_no_progress_cost() -> None:
-    memory = PolicyMemory()
-    memory.rebuild_from_records([
-        _record(
-            instance_id=f"sympy__legacy-{i}",
-            routing="budget_only",
-            strategy="budget_only_tight",
-            harness_resolved=True,
-            failure_class="pass",
-            turn_traces=[
-                {"stage": "LOCALIZATION", "backend_tier": 3, "final_backend": "tier3"},
-                {"stage": "REPAIR", "backend_tier": 3, "final_backend": "tier3"},
-            ],
-        )
-        for i in range(2)
-    ] + [
-        _record(
-            instance_id=f"sympy__legacy-{i}",
-            routing="budgetflow_value_aware",
-            strategy="budgetflow_value_aware_tight",
-            harness_resolved=False,
-            turn_traces=[
-                {
-                    "stage": "LOCALIZATION",
-                    "backend_tier": 3,
-                    "final_backend": "tier3",
-                    "strongest_starter_applied": True,
-                    "has_progress": False,
-                    "billable_cost": 0.08,
-                }
-            ],
-        )
-        for i in range(2)
-    ])
-
-    summary = memory.routing_prior_summary("sympy__new-task", Stage.LOCALIZATION)
-
-    assert summary["starter_budgetflow_applied_weight"] == 2.0
-    assert summary["starter_budgetflow_t3_no_progress_cost"] == 0.0
-    assert summary["strongest_starter_action"] == "frontload_strongest"
 
 
 def test_verified_starter_success_prevents_turn_level_no_progress_from_disabling_frontload() -> None:
@@ -600,8 +558,8 @@ def test_verified_starter_success_prevents_turn_level_no_progress_from_disabling
             harness_resolved=True,
             failure_class="pass",
             turn_traces=[
-                {"stage": "LOCALIZATION", "backend_tier": 3, "final_backend": "tier3"},
-                {"stage": "REPAIR", "backend_tier": 3, "final_backend": "tier3"},
+                {"workflow_segment": "Context", "backend_tier": 3, "final_backend": "tier3"},
+                {"workflow_segment": "Action", "backend_tier": 3, "final_backend": "tier3"},
             ],
         ))
         records.append(_record(
@@ -612,7 +570,7 @@ def test_verified_starter_success_prevents_turn_level_no_progress_from_disabling
             failure_class="pass" if resolved else "repair_fail",
             turn_traces=[
                 {
-                    "stage": "LOCALIZATION",
+                    "workflow_segment": "Context",
                     "backend_tier": 3,
                     "final_backend": "tier3",
                     "strongest_starter_applied": True,
@@ -624,7 +582,7 @@ def test_verified_starter_success_prevents_turn_level_no_progress_from_disabling
         ))
     memory.rebuild_from_records(records)
 
-    summary = memory.routing_prior_summary("sympy__new-task", Stage.LOCALIZATION)
+    summary = memory.routing_prior_summary("sympy__new-task", WorkflowSegment.CONTEXT)
 
     assert summary["starter_budgetflow_applied_success_weight"] == 2.0
     assert summary["starter_budgetflow_applied_failure_weight"] == 2.0
@@ -644,7 +602,7 @@ def test_budget_only_equal_cost_success_does_not_create_starter_evidence() -> No
             harness_resolved=True,
             failure_class="pass",
             total_cost=0.20,
-            turn_traces=[{"stage": "LOCALIZATION", "backend_tier": 3, "final_backend": "tier3"}],
+            turn_traces=[{"workflow_segment": "Context", "backend_tier": 3, "final_backend": "tier3"}],
         ),
         _record(
             instance_id="sympy__task-a",
@@ -653,11 +611,11 @@ def test_budget_only_equal_cost_success_does_not_create_starter_evidence() -> No
             harness_resolved=True,
             failure_class="pass",
             total_cost=0.25,
-            turn_traces=[{"stage": "REPAIR", "backend_tier": 2, "final_backend": "tier2"}],
+            turn_traces=[{"workflow_segment": "Action", "backend_tier": 2, "final_backend": "tier2"}],
         ),
     ])
 
-    summary = memory.routing_prior_summary("sympy__new-task", Stage.LOCALIZATION)
+    summary = memory.routing_prior_summary("sympy__new-task", WorkflowSegment.CONTEXT)
 
     assert summary["starter_attempts"] == 0
     assert summary["strongest_starter_action"] == "default"
@@ -666,7 +624,7 @@ def test_budget_only_equal_cost_success_does_not_create_starter_evidence() -> No
 def test_policy_memory_learns_value_triggered_escalation_policy() -> None:
     memory = PolicyMemory()
     bad_t3_trace = {
-        "stage": "REPAIR",
+        "workflow_segment": "Action",
         "backend_tier": 3,
         "final_backend": "tier3",
         "value_triggered_escalation_active": True,
@@ -687,7 +645,7 @@ def test_policy_memory_learns_value_triggered_escalation_policy() -> None:
         ),
     ])
 
-    summary = memory.routing_prior_summary("django__django-3", Stage.REPAIR)
+    summary = memory.routing_prior_summary("django__django-3", WorkflowSegment.ACTION)
 
     assert summary["escalation_memory_source"] == "repo"
     assert summary["escalation_attempts"] == 2
@@ -697,40 +655,10 @@ def test_policy_memory_learns_value_triggered_escalation_policy() -> None:
     assert summary["value_triggered_escalation_window"] == 0
 
 
-def test_legacy_value_triggered_escalation_does_not_create_no_progress_cost() -> None:
-    memory = PolicyMemory()
-    legacy_t3_trace = {
-        "stage": "REPAIR",
-        "backend_tier": 3,
-        "final_backend": "tier3",
-        "value_triggered_escalation_active": True,
-        "has_progress": False,
-        "billable_cost": 0.08,
-    }
-    memory.rebuild_from_records([
-        _record(
-            instance_id="django__django-1",
-            routing="budgetflow_value_aware",
-            turn_traces=[legacy_t3_trace],
-        ),
-        _record(
-            instance_id="django__django-2",
-            routing="budgetflow_value_aware",
-            turn_traces=[legacy_t3_trace],
-        ),
-    ])
-
-    summary = memory.routing_prior_summary("django__django-3", Stage.REPAIR)
-
-    assert summary["escalation_attempts"] == 2
-    assert summary["t3_no_progress_cost"] == 0.0
-    assert summary["value_triggered_escalation_action"] == "default"
-
-
 def test_low_weight_value_triggered_escalation_does_not_disable_policy() -> None:
     memory = PolicyMemory()
     bad_t3_trace = {
-        "stage": "REPAIR",
+        "workflow_segment": "Action",
         "backend_tier": 3,
         "final_backend": "tier3",
         "value_triggered_escalation_active": True,
@@ -753,7 +681,7 @@ def test_low_weight_value_triggered_escalation_does_not_disable_policy() -> None
         ),
     ])
 
-    summary = memory.routing_prior_summary("django__django-3", Stage.REPAIR)
+    summary = memory.routing_prior_summary("django__django-3", WorkflowSegment.ACTION)
 
     assert summary["escalation_attempts"] == 0.8
     assert summary["t3_no_progress_cost"] == 0.064
@@ -768,7 +696,7 @@ def test_policy_memory_shortens_after_one_costly_unproductive_escalation() -> No
             routing="budgetflow_value_aware",
             turn_traces=[
                 {
-                    "stage": "REPAIR",
+                    "workflow_segment": "Action",
                     "backend_tier": 3,
                     "final_backend": "tier3",
                     "value_triggered_escalation_active": True,
@@ -780,7 +708,7 @@ def test_policy_memory_shortens_after_one_costly_unproductive_escalation() -> No
         )
     ])
 
-    summary = memory.routing_prior_summary("django__django-2", Stage.REPAIR)
+    summary = memory.routing_prior_summary("django__django-2", WorkflowSegment.ACTION)
 
     assert summary["escalation_memory_source"] == "repo"
     assert summary["escalation_attempts"] == 1
@@ -798,7 +726,7 @@ def test_policy_memory_uses_current_action_progress_for_t3_productivity() -> Non
             failure_class="pass",
             turn_traces=[
                 {
-                    "stage": "REPAIR",
+                    "workflow_segment": "Action",
                     "backend_tier": 3,
                     "final_backend": "tier3",
                     "value_triggered_escalation_active": True,
@@ -811,7 +739,7 @@ def test_policy_memory_uses_current_action_progress_for_t3_productivity() -> Non
         )
     ])
 
-    summary = memory.routing_prior_summary("django__django-2", Stage.REPAIR)
+    summary = memory.routing_prior_summary("django__django-2", WorkflowSegment.ACTION)
 
     assert summary["t3_productive_rate"] == 1.0
     assert summary["t3_no_progress_cost"] == 0.0
@@ -837,7 +765,7 @@ def test_auto_budget_dry_run_exposes_escalation_memory_decision(tmp_path: Path) 
         routing="budgetflow_value_aware",
         turn_traces=[
             {
-                "stage": "REPAIR",
+                "workflow_segment": "Action",
                 "backend_tier": 3,
                 "final_backend": "tier3",
                 "value_triggered_escalation_active": True,
@@ -880,3 +808,43 @@ def test_auto_budget_dry_run_exposes_escalation_memory_decision(tmp_path: Path) 
     assert str(policy_memory) in policy_line
     assert "shorten_value_triggered_escalation" in result.stdout
     assert "/w=1" in result.stdout
+
+
+def test_budgetflow_full_routing_contributes_to_starter_prior() -> None:
+    """budgetflow_full must learn from budget_only frontload evidence same as other budgetflow strategies."""
+    bo_t3_frontload = [
+        {"workflow_segment": "Context", "backend_tier": 3, "final_backend": "tier3"},
+        {"workflow_segment": "Action", "backend_tier": 3, "final_backend": "tier3"},
+        {"workflow_segment": "Action", "backend_tier": 2, "final_backend": "tier2"},
+    ]
+    memory = PolicyMemory()
+    memory.rebuild_from_records([
+        _record(
+            instance_id="django__task-bf-full",
+            routing="budget_only",
+            strategy="budget_only_tight",
+            harness_resolved=True,
+            failure_class="pass",
+            total_cost=0.15,
+            turn_traces=bo_t3_frontload,
+        ),
+        _record(
+            instance_id="django__task-bf-full",
+            routing="budgetflow_full",
+            strategy="budgetflow_full_tight",
+            harness_resolved=False,
+            total_cost=0.60,
+            turn_traces=[{"workflow_segment": "Action", "backend_tier": 2, "final_backend": "tier2"}],
+        ),
+    ])
+
+    summary = memory.routing_prior_summary("django__new-bf-full", WorkflowSegment.CONTEXT)
+    starter, source = memory.starter_prior("django__new-bf-full")
+
+    assert source == "repo"
+    assert starter.attempts >= 1.0
+    assert starter.budget_only_successes >= 1.0
+    assert starter.budgetflow_failures >= 1.0
+    assert summary["starter_attempts"] >= 1.0
+    assert summary["strongest_starter_action"] == "frontload_strongest"
+    assert summary["strongest_starter_window"] >= 2

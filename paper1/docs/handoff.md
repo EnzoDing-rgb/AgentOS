@@ -1,282 +1,216 @@
-# BudgetFlow Worker Handoff
+# BudgetFlow Adapter Refactor Handoff
 
-This document is for DeepSeek V4 or another fresh worker taking over the next
-implementation slice. It is not a prompt. Treat `paper1/docs/north_star.md` as
-the terminology and architecture source of truth.
+This document is for a fresh worker taking the next implementation slice. It is
+not a prompt. Do not redesign the architecture; implement the design below.
 
-## Current System Definition
+`paper1/docs/north_star.md` is the terminology source of truth. `AGENTS.md`
+contains run and evidence discipline.
 
-BudgetFlow is value-aware budget governance for multi-step agent workflows under
-shared hard budgets. The primary goal is to maximize **Yield**: total resolved
-task value within a shared budget window.
+## Objective
 
-The system has three layers:
+Make BudgetFlow's active code match the adapter boundary we have now chosen:
+BudgetFlow Mechanism and PolicyBackend consume a small set of standard signals.
+SWE-bench is one integration that maps its task/harness/runtime details into
+those signals.
 
-| Layer | Owns |
+The core theme is **decoupling**:
+
+- BudgetFlow Mechanism must not know SWE-bench stages, mini-SWE-agent, pytest
+  output, worktree details, value-matrix schemas, or old JSONL schemas.
+- Policy and Memory must use BudgetFlow terms: task, value/difficulty hints,
+  workflow segment, progress/outcome, cost, budget, and verified result.
+- Historical artifacts are forensic evidence. Active runtime and active tests do
+  not keep old schema compatibility.
+- Adapter design should not shift most implementation burden to the customer.
+  Task is the only mandatory input. Workflow, progress, and cost can start from
+  conservative defaults or unknown signals if those defaults are auditable.
+- Bootstrap Policy is the cold-start behavior. As clean current-schema records
+  accumulate, Learn Policy Inputs should naturally improve decisions behind the
+  same Policy Backend interface. Do not require a user-facing manual mode switch.
+- Observability must follow the same abstractions: task/value source, workflow
+  segment, progress/outcome confidence, cost source, policy decision, final
+  acceptance, and failure attribution.
+
+## Final Adapter Set
+
+Use four adapter families. Do not add more unless a concrete current runtime
+need proves it.
+
+| Adapter | Responsibility |
 |---|---|
-| BudgetFlow core | hard budget ledger, reservation, settlement, verified outcome, memory contracts, trace/audit/replay, stop-loss primitives, same-budget policy comparison |
-| Policy Backend | cap, model-tier choice, escalation, de-escalation, stop, and continue recommendations |
-| Domain Adapters | task, segment, verifier, value, cost, model-tier, progress-signal, and runtime mappings for SWE-bench or an enterprise workflow |
-| Memory | Cost Memory, Routing Memory, and Escalation Memory as optional Learn Policy inputs and audit evidence |
+| `TaskAdapter` | Convert an external task into BudgetFlow task inputs, including description, metadata, difficulty hints, value hints, manual pre-registered value, bootstrap value, and learned-value input hooks. This absorbs the old separate `ValueAdapter` boundary. |
+| `WorkflowAdapter` | Convert concrete work phases into `WorkflowSegment` values: `Context`, `Action`, `Verification`. SWE-bench localization/repair/validation belongs here only. |
+| `ProgressAdapter` | Convert process and acceptance evidence into standard progress/outcome signals: progress/no-progress, patch/no-patch, verifier pass/fail, human acceptance, failure reason. This absorbs the old separate verifier/outcome adapter boundary. |
+| `CostAdapter` | Convert public model prices, provider estimates, invoices, enterprise rate cards, and manual overrides into standard cost estimates/records. |
 
-SWE-bench is an adapter and testbed. SWE-bench concepts such as localization,
-repair, validation, fail-to-pass tests, patch extraction, and worktree diffs
-must not define BudgetFlow core.
+There is no `RuntimeAdapter` in the BudgetFlow architecture. The agent harness
+is execution integration, not BudgetFlow Mechanism. For SWE-bench, the
+mini-SWE-agent bridge should live in the SWE-bench runner/integration layer and
+emit standard BudgetFlow records. Enterprises can use their own agent harness as
+long as it emits the required standard signals.
 
-## Required Vocabulary
+## Current Refactor State
 
-Use these terms exactly:
+The main agent has an active worktree with cleanup already started:
 
-- `Yield`: total resolved task value within a shared budget window.
-- `Yield per Dollar`: total resolved task value divided by model spend.
-- `PolicyBackend`: pluggable strategy interface.
-- `BootstrapPolicy`: default explainable policy that runs without customer history or machine learning.
-- `Learn Policy`: policy backend that uses Memory, statistical learning, or customer-owned machine learning.
-- `Fixed Baseline Policy`: evaluation-only control such as static routing, all-cheap, all-strong, or budget-only routing.
-- `Task Set`: named evaluation group such as Familiar Tasks or Unseen Tasks.
-- `Workflow Segment`: coarse policy signal; defaults are `Context`, `Action`, `Verification`.
-- `Segment-Aware Routing`: routing that can use segment as a feature.
-- `Task-Level Policy`: policy/control that chooses at task or request level and preserves cache/context continuity.
-- `ValueSource` / `CostSource`: versioned value/cost inputs.
-- `ValueAdapter` / `CostAdapter`: adapters that normalize value/cost signals.
-- `Confidence`: compact record of where a value/cost estimate came from and how trustworthy it is.
+- `ValueSourceInfo` now distinguishes `equal_sanity`,
+  `bootstrap_heuristic`, `pre_registered_manual`,
+  `value_matrix_diagnostic`, and `learned_calibrated`.
+- `equal_sanity` is a diagnostic fallback, not T1 evidence.
+- `pre_registered_manual` is the main T1 value-source path.
+- `PolicyMemory` is being moved from SWE-bench `Stage` to
+  `WorkflowSegment`.
+- old `value_proxy_noise.py`, `swebench_runtime.py`, and
+  `swebench_verifier.py` were removed from active source.
+- `AutoBudgetEstimator` is being moved away from repo-specific hardcoding;
+  benchmark-specific floors belong in `TaskAdapter` output.
 
-Use the vocabulary above in active code and docs. Remove retired names, unclear
-research jargon, old metric abbreviations, and workflow-stage wording that
-treats a SWE-bench schema as BudgetFlow core.
+Before editing, inspect `git status --short` and the relevant diffs. Do not
+revert main-agent changes.
 
-## Interface Shape
+## Required Code Direction
 
-The implementation does not need to match this pseudocode exactly, but it
-should preserve the boundaries.
+### 1. Task + Value Merge
 
-```python
-@dataclass
-class TaskContext:
-    task_id: str
-    task_type: str
-    description: str
-    features: dict[str, float | str | bool]
-    verifier: Verifier
-    runtime: AgentRuntime
+Keep `ValueAdapter` retired as a standalone architecture concept.
+Value belongs inside `TaskAdapter` / task context.
 
-@dataclass
-class WorkflowSegment:
-    name: str  # Context, Action, Verification, or adapter-defined equivalent
-    signals: dict[str, float | str | bool]
+Expected shape:
 
-@dataclass
-class ValueEstimate:
-    value: float
-    source: str
-    confidence: dict[str, float | str | bool]
+- `TaskAdapter` returns task identity, description, normalized features,
+  difficulty hints, value hints, and value-source metadata.
+- SWE-bench task/value matrix handling becomes part of the SWE-bench
+  `TaskAdapter` implementation or a helper owned by it.
+- active docs/tests should not describe `ValueAdapter` as a separate core
+  adapter.
 
-@dataclass
-class CostEstimate:
-    usd: float
-    source: str
-    confidence: dict[str, float | str | bool]
+Do not delete value observability behavior. Move the boundary, not the evidence.
 
-class ValueAdapter:
-    def estimate(self, task: TaskContext, history: HistoryContext) -> ValueEstimate: ...
-    def learn(self, task: TaskContext, outcome: VerifiedOutcome) -> None: ...
+### 2. Workflow Segment Boundary
 
-class CostAdapter:
-    def estimate(self, backend: str, state: WorkflowState, budget: BudgetContext) -> CostEstimate: ...
-    def settle(self, estimate: CostEstimate, actual: CostActual | None) -> CostRecord: ...
+`Stage` is SWE-bench-specific. It may exist inside SWE-bench adapter/runtime
+code, but PolicyMemory, Learn Policy Inputs, PolicyBackend contracts, JSONL
+standard fields, and audit logic should use `WorkflowSegment`.
 
-@dataclass
-class PolicyDecision:
-    backend: str
-    cap_usd: float | None
-    should_stop: bool
-    should_escalate: bool
-    reason: str
-    scores: dict[str, float]
-    confidence: dict[str, float | str | bool]
+Required cleanup:
 
-class PolicyBackend:
-    def estimate_cap(
-        self,
-        task: TaskContext,
-        value: ValueEstimate,
-        budget: BudgetContext,
-        history: HistoryContext,
-    ) -> float: ...
+- `PolicyMemory.routing_prior_summary(...)` should accept a segment, not a
+  SWE-bench `Stage`.
+- standard record fields should use `routing_prior_segment`, not
+  `routing_prior_stage`.
+- test fixtures for PolicyMemory should use `workflow_segment`.
+- Stage-to-segment mapping belongs in `SwebenchWorkflowAdapter` or the existing
+  SWE-bench segment adapter, not in memory or policy logic.
 
-    def choose_backend(
-        self,
-        task: TaskContext,
-        segment: WorkflowSegment,
-        state: WorkflowState,
-        budget: BudgetContext,
-    ) -> str: ...
+### 3. Progress + Outcome Boundary
 
-    def should_escalate(self, task: TaskContext, state: WorkflowState, history: HistoryContext) -> bool: ...
-    def should_stop(self, task: TaskContext, state: WorkflowState, budget: BudgetContext) -> bool: ...
-    def learn(self, task: TaskContext, outcome: VerifiedOutcome) -> None: ...
-```
+Keep the name `ProgressAdapter`.
 
-`WorkflowSegment` is a policy signal, not a forced model-switch boundary. A
-segment-aware policy may keep one model for the whole task to preserve KV cache,
-prefix reuse, context continuity, and lower coordination cost.
+It should own both process progress and final acceptance/outcome translation:
 
-## Boundary Contracts
+- progress/no-progress/unknown;
+- first useful action / no-progress streak inputs;
+- patch/no-patch;
+- verifier pass/fail;
+- harness trust;
+- human or enterprise acceptance when available.
 
-Keep these contracts explicit in code:
+Do not keep a separate verifier adapter as a core architecture concept. A
+SWE-bench progress adapter may internally call verifier/harness helpers. For
+enterprise tasks without reliable intermediate signals, record unknown/no-signal
+instead of inventing progress scores.
 
-- `PolicyBackend` receives normalized task, value, cost, budget, segment,
-  history, and runtime state. It returns recommendations and reasons. It should
-  not read SWE-bench files, parse pytest output, inspect worktrees directly, or
-  load provider price files by itself.
-- `TaskAdapter` turns a benchmark or enterprise item into `TaskContext` and
-  task features. SWE-bench instance IDs, fail-to-pass tests, patch metadata, and
-  repo names belong here.
-- `SegmentAdapter` maps runtime signals into `Context`, `Action`, or
-  `Verification`. SWE-bench localization/repair/validation names may exist
-  inside this adapter but should not be the core interface.
-- `VerifierAdapter` owns verifier execution and converts raw harness output into
-  `VerifiedOutcome`. Policy code should consume verifier-grounded outcome, not
-  raw harness logs.
-- `ValueAdapter` owns task-value estimation and calibration. It may use a value
-  matrix, natural-language rules translated into config, enterprise imports, or
-  learned estimates. The core consumes `ValueEstimate`.
-- `CostAdapter` owns public price catalogs, provider estimates, invoices,
-  enterprise rate cards, and settlement. The core consumes `CostEstimate` and
-  `CostRecord`.
-- Memory stores should stay separate: Cost Memory for cap/cost/value-cost
-  evidence, Routing Memory for route outcomes, and Escalation Memory for
-  expensive-tier escalation outcomes. They belong behind Learn Policy or audit
-  interfaces, not hidden core behavior.
+### 4. Runtime/Harness Boundary
 
-The core may orchestrate these contracts, but it should not know the details of
-SWE-bench, provider pricing files, task-value matrix schemas, or pytest output.
+Do not keep `RuntimeAdapter` as a BudgetFlow adapter.
 
-## Implementation Assignment
+The mini-SWE-agent bridge can remain as SWE-bench integration code, but it
+should not be exported as a core adapter or appear in North Star architecture.
+BudgetFlow expects standard events/records; it does not care whether they came
+from mini-SWE-agent, Claude Code, Codex, LangChain, or an enterprise harness.
 
-Build the smallest clean architecture slice that makes the above boundaries
-real:
+### 5. No Historical Compatibility
 
-1. Keep active policy code on `BootstrapPolicy` and `Learn Policy` terminology.
-   Do not revive old heuristic-policy naming in active code or tests.
-2. Move SWE-bench-specific stage and harness assumptions behind adapter-shaped
-   modules. Use `Workflow Segment` naming for active interfaces.
-3. Introduce `ValueAdapter` and `CostAdapter` contracts or contract-shaped
-   modules. The existing SWE-bench value matrix and public model price catalog
-   should become concrete adapters, not core assumptions.
-4. Keep active summaries centered on `Yield` and `Yield per Dollar`. If the
-   compatibility field `yield_score` appears in JSONL, it means total resolved
-   task value, not a normalized coverage ratio.
-5. Keep `run_mini_swe_compare.py` and `check_run_observability.py` thin. Move
-   policy, value, cost, and adapter semantics out of entrypoints where practical.
-6. Delete or rewrite tests that only preserve old names, old aliases, or retired
-   paths. Keep tests that protect current evidence quality, budget accounting,
-   adapter boundaries, Yield calculation, and policy comparison.
+Active runtime and tests should not preserve old schemas or old names.
 
-Suggested order:
+Allowed:
 
-1. Add the interfaces/types in a small module before moving behavior.
-2. Wrap the current behavior behind those interfaces with minimal logic change.
-3. Move one concern at a time behind adapters: value, cost, segment, verifier.
-4. Update entrypoints to call the interfaces instead of owning the semantics.
-5. Delete stale tests and add focused contract tests for each interface.
+- provider/runtime failure fallback;
+- current Bootstrap Policy fallback when no history exists;
+- current global fallback cap diagnostic, clearly labeled.
 
-Do not perform a broad rewrite first. The first passing slice should behave like
-the current runtime while making the boundaries visible.
+Not allowed:
+
+- old JSONL schema loading into Learn Policy Inputs;
+- old value-matrix schema fallback;
+- retired terms in active code/tests/docs;
+- compatibility tests whose only purpose is to keep old field names alive.
+
+Historical JSONL and old reports are immutable forensic artifacts. Do not edit
+them.
+
+## Files To Inspect First
+
+Start with these files:
+
+- `paper1/src/budgetflow/adapters/__init__.py`
+- `paper1/src/budgetflow/adapters/swebench_task.py`
+- `paper1/src/budgetflow/adapters/swebench_value.py`
+- `paper1/src/budgetflow/adapters/swebench_segment.py`
+- `paper1/src/budgetflow/adapters/swebench_progress.py`
+- `paper1/src/budgetflow/policy_memory.py`
+- `paper1/src/budgetflow/learn_policy.py`
+- `paper1/src/budgetflow/learning_context.py`
+- `paper1/src/budgetflow/experiments/compare_execution.py`
+- `paper1/src/budgetflow/run_observability/schema.py`
+- `paper1/docs/north_star.md`
+- `AGENTS.md`
+
+## Implementation Rules
+
+- Keep behavior stable unless a behavior was only historical compatibility.
+- Prefer deleting stale wrappers/tests over preserving aliases.
+- Make entrypoints thinner; do not move more semantics into
+  `run_mini_swe_compare.py`.
+- Do not introduce a new universal runtime abstraction.
+- Do not write or rewrite historical reports.
+- Do not commit runtime artifacts under `paper1/data/`.
+- If a change would alter paid-run semantics, stop and report the exact risk.
 
 ## Acceptance Criteria
 
-- Current compare and observability paths still run through no-paid tests.
-- Active JSONL rows and summaries report Yield and Yield per Dollar.
-- `budgetflow_value_aware_tight`, `budgetflow_conservative_tight`, and
-  task-level controls are represented as policy backends or thin wrappers over
-  policy backends.
-- SWE-bench-specific names are behind adapters or compatibility edges, not in
-  core policy interfaces.
-- A task-level or per-request control remains available for segment-aware
-  evaluations.
-- New tests exercise the interfaces through behavior, not string snapshots of
-  old implementation details.
-- `paper1/docs/north_star.md` stays the terminology source of truth.
+- Active adapter vocabulary is four families:
+  `TaskAdapter`, `WorkflowAdapter`, `ProgressAdapter`, `CostAdapter`.
+- `RuntimeAdapter`, `VerifierAdapter`, and standalone `ValueAdapter` are not
+  presented as core BudgetFlow architecture.
+- PolicyMemory and Learn Policy Inputs consume `WorkflowSegment`, not
+  SWE-bench `Stage`.
+- SWE-bench-specific concepts are confined to SWE-bench integration/adapters.
+- Active value-source records clearly separate sanity fallback, bootstrap
+  heuristic, manual pre-registered values, diagnostic matrices, and learned
+  calibrated values.
+- Old schema compatibility tests are deleted or rewritten as current contract
+  tests.
+- No-paid tests pass.
 
-## Decision Rules
+## Verification
 
-Use these rules when the implementation has multiple reasonable paths:
+Run at minimum:
 
-- Prefer preserving current runtime behavior while moving boundaries.
-- Prefer active runtime and active tests over historical reports and artifacts.
-- Prefer deleting stale compatibility tests over keeping old names alive.
-- Prefer making entrypoints thinner and adapters clearer.
-- Prefer behavior-based tests over string snapshots and alias-preservation tests.
-- If a change alters paid-run semantics, stop and document the risk before
-  continuing.
-- If two designs both work, choose the one that makes BudgetFlow core less aware
-  of SWE-bench, provider pricing files, value-matrix schemas, and pytest output.
-- If a learned policy would complicate the slice, keep the interface ready for
-  it and leave active runtime behavior in BootstrapPolicy.
-
-## Eight Gold Standards
-
-Keep these checks visible while working:
-
-- T1 first: report Yield and Yield per Dollar before mechanism storytelling.
-- T2 frontier: compare verified resolution and cost under the same budget.
-- Model-tier diagnosis: report productive use, no-progress spend, and why
-  expensive tiers were selected.
-- No-patch rate: distinguish no-patch exits, failed patches, verifier failures,
-  and infra failures.
-- Segment control: compare Segment-Aware Routing against a task-level or
-  per-request control.
-- Checker first: inspect JSONL, trace, checker, compact audit, and harness trust
-  before drawing conclusions.
-- No-paid gates first: pass no-paid tests, dry-runs, value/cost confidence, and
-  provider preflight before paid runs.
-- Historical evidence is immutable: do not patch historical JSONL or old reports
-  to make a current story cleaner.
-
-## Worker Report
-
-At the end of the implementation slice, write a new report:
-
-```text
-paper1/docs/reports/088_policy_backend_refactor.md
+```bash
+PYTHONPATH=paper1/src:paper1/../external/mini-swe-agent/src python -m pytest paper1/tests/test_policy_memory.py paper1/tests/test_learning_context.py paper1/tests/test_value_efficiency.py paper1/tests/test_compare_readiness.py paper1/tests/test_experiment_observability.py paper1/tests/test_run_observability_audit.py -q
+PYTHONPATH=paper1/src:paper1/../external/mini-swe-agent/src python -m pytest paper1/tests/ -q
+git diff --check
 ```
 
-The report should be concise and include:
+## Report Back
 
-- objective and scope;
+Return a concise summary with:
+
 - files changed;
-- interfaces added or changed;
-- stale paths/tests deleted or rewritten;
-- verification commands and results;
-- residual risks;
-- recommended next slice.
+- stale abstractions deleted or renamed;
+- remaining places where SWE-bench concepts still touch non-adapter code;
+- tests run and exact results;
+- any paid-run semantic risk.
 
-Do not edit old reports for terminology cleanup. This report records the new
-work only.
-
-## Evidence Rules
-
-- Same policy comparison means same task set, verifier, hard budget,
-  ValueSource, CostSource, model-tier catalog, and run shape.
-- A run's ValueSource and CostSource must be frozen before that run starts.
-  Learning from the run can update the next run.
-- Historical JSONL and historical reports are evidence records. Do not patch
-  them to change past facts; update active code, active docs, and new reports.
-- Do not spend implementation time batch-editing `paper1/docs/reports/`,
-  historical JSONL, or old experiment artifacts for terminology cleanup. Touch
-  historical material only when active code/tests import it or a current doc
-  directly depends on it.
-- Stop on provider billing, authentication, model-access, preflight, missing
-  cost confidence, or missing value confidence blockers.
-- Report segment-aware policy against a task-level or per-request control when
-  evaluating the segment mechanism.
-
-## Non-Goals
-
-- Do not build a full learned policy in this slice.
-- Do not make the strongest model tier the center of the architecture.
-- Do not add a new decision-record system.
-- Do not burn tokens rewriting historical reports.
-- Do not preserve old terms for compatibility if they only keep obsolete tests
-  or retired code paths alive.
+Do not write a new report file unless explicitly asked.

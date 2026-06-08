@@ -84,6 +84,21 @@ def parse_compare_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--value-matrix", type=str, default=None, help="path to value matrix JSON artifact")
     parser.add_argument(
+        "--value-source-kind",
+        choices=(
+            "equal_sanity",
+            "bootstrap_heuristic",
+            "pre_registered_manual",
+            "value_matrix_diagnostic",
+            "learned_calibrated",
+        ),
+        default=None,
+        help=(
+            "evidence role for task values. Use pre_registered_manual for primary T1 runs; "
+            "equal_sanity is only a fallback diagnostic."
+        ),
+    )
+    parser.add_argument(
         "--per-task-cap",
         type=float,
         default=None,

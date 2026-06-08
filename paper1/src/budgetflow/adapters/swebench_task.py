@@ -11,6 +11,11 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from ..auto_budget import CostTaskFeatures
+from .swebench_value import SwebenchValueAdapter, ValueEstimate
+
+SWEBENCH_COST_FLOORS: dict[str, float] = {
+    "django/django": 1.00,
+}
 
 
 @dataclass(frozen=True)
@@ -34,10 +39,14 @@ class TaskFeatures:
 class TaskAdapter(Protocol):
     def instance_id(self, task: Any) -> str: ...
     def features(self, task: Any) -> TaskFeatures: ...
+    def value_estimate(self, task: Any) -> ValueEstimate: ...
 
 
 class SwebenchTaskAdapter:
     """Normalize SWE-bench task records into BudgetFlow task fields."""
+
+    def __init__(self, value_helper: SwebenchValueAdapter | None = None) -> None:
+        self._value_helper = value_helper or SwebenchValueAdapter()
 
     def instance_id(self, task: Any) -> str:
         return str(getattr(task, "instance_id"))
@@ -50,12 +59,17 @@ class SwebenchTaskAdapter:
             problem_length=len(str(getattr(task, "problem_statement", "") or "")),
         )
 
+    def value_estimate(self, task: Any) -> ValueEstimate:
+        return self._value_helper.estimate(self.instance_id(task))
+
     def cost_features(self, task: Any) -> CostTaskFeatures:
         features = self.features(task)
+        repo = str(getattr(task, "repo", "") or "")
         return CostTaskFeatures(
             instance_id=self.instance_id(task),
-            repo=str(getattr(task, "repo", "") or ""),
+            repo=repo,
             patch_lines=features.patch_lines,
             f2p_count=features.f2p_count,
             p2p_count=features.p2p_count,
+            cost_floor=SWEBENCH_COST_FLOORS.get(repo, 0.0),
         )

@@ -12,7 +12,13 @@ checking, analysis/execution/QA, etc.).
 
 from __future__ import annotations
 
+from typing import Protocol
+
 from ..types import Stage, WorkflowSegment
+
+
+class WorkflowAdapter(Protocol):
+    def to_segment(self, stage: Stage, **signals: float | str | bool) -> WorkflowSegment: ...
 
 
 class SwebenchSegmentAdapter:

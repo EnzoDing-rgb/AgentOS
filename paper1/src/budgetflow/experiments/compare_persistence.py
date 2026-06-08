@@ -54,7 +54,7 @@ class CompareRunState:
             return
         self.runs_done += 1
         self.resolved_by_strategy.setdefault(name, []).append(bool(record.get("harness_resolved")))
-        self.task_cost_by_strategy.setdefault(name, []).append(float(record.get("task_cost") or 0.0))
+        self.task_cost_by_strategy.setdefault(name, []).append(float(record.get("total_cost") or 0.0))
         self.turns_by_strategy.setdefault(name, []).append(int(record.get("llm_turns") or 0))
         picks = record.get("backend_picks") or []
         self.tier_mix_by_strategy.setdefault(name, []).append(_tier_ratios(picks))
@@ -107,7 +107,7 @@ def write_auto_budget_memory(memory: AutoBudgetMemory, record: dict[str, Any]) -
         harness_resolved=bool(record.get("harness_resolved")),
         failure_class=str(record.get("failure_class") or ""),
         forensic_primary_axis=str(forensic.get("primary_axis") or record.get("failure_class") or ""),
-        total_cost=float(record.get("task_cost") or 0.0),
+        total_cost=float(record.get("total_cost") or 0.0),
         estimated_task_cap=record.get("estimated_task_cap"),
         estimated_task_cost=record.get("estimated_task_cost"),
         patch_extracted=bool(record.get("patch_extracted")),

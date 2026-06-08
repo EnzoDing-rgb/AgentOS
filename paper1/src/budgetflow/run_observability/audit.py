@@ -187,7 +187,7 @@ def _decision_issues(record: dict) -> list[str]:
         issues.append("missing_value")
     if not (record.get("value_source") or record.get("task_value_source_class")):
         issues.append("missing_value_source")
-    if record.get("total_cost") is None and record.get("task_cost") is None:
+    if record.get("total_cost") is None:
         issues.append("missing_cost")
     if not (record.get("budget_prior_confidence") or record.get("cost_source")):
         issues.append("missing_cost_confidence")
@@ -260,7 +260,7 @@ def _task_set_metrics(records: list[dict]) -> dict[str, dict[str, dict[str, dict
         for task_set, by_strategy in by_set.items():
             result[kind][task_set] = {}
             for strategy, rows in by_strategy.items():
-                cost = sum(float(row.get("total_cost") or row.get("task_cost") or 0.0) for row in rows)
+                cost = sum(float(row.get("total_cost") or 0.0) for row in rows)
                 resolved_value = sum(float(row.get("resolved_value") or 0.0) for row in rows)
                 task_value = sum(float(row.get("task_value") or 1.0) for row in rows)
                 result[kind][task_set][strategy] = {
@@ -272,6 +272,92 @@ def _task_set_metrics(records: list[dict]) -> dict[str, dict[str, dict[str, dict
                     "yield_per_dollar": resolved_value / cost if cost > 0 else 0.0,
                 }
     return result
+
+
+def _first_t3_turn(record: dict, t3_tier: int) -> int | None:
+    """Return the 0-indexed turn when T3 was first used, or None if never."""
+    picks = record.get("backend_picks") or []
+    for i, pick in enumerate(picks):
+        if parse_tier_label(pick) >= t3_tier:
+            return i
+    return None
+
+
+def _first_useful_action_turn(record: dict) -> int | None:
+    """Return the turn index of the first trace with a useful action, or None."""
+    traces = record.get("turn_traces") or []
+    if not isinstance(traces, list):
+        return None
+    for i, trace in enumerate(traces):
+        if not isinstance(trace, dict):
+            continue
+        if trace.get("action_has_progress") or trace.get("has_progress"):
+            return i
+    return None
+
+
+def _max_no_progress_streak(record: dict) -> int:
+    """Max consecutive turns without useful progress."""
+    traces = record.get("turn_traces") or []
+    if not isinstance(traces, list):
+        return 0
+    max_streak = 0
+    current = 0
+    for trace in traces:
+        if not isinstance(trace, dict):
+            continue
+        if trace.get("action_has_progress") or trace.get("has_progress"):
+            current = 0
+        else:
+            current += 1
+            max_streak = max(max_streak, current)
+    return max_streak
+
+
+def _per_task_comparison(records: list[dict], t3_tier: int) -> list[dict]:
+    """Build per-instance_id cross-policy comparison rows.
+
+    One row per (instance_id, strategy) with fields that explain
+    *why* one policy won or lost relative to others on the same task.
+    """
+    by_task: dict[str, dict[str, dict]] = {}
+    for record in records:
+        iid = str(record.get("instance_id") or "")
+        strat = str(record.get("strategy") or "unknown")
+        if iid not in by_task:
+            by_task[iid] = {}
+        traces = record.get("turn_traces") or []
+        first_trace = traces[0] if isinstance(traces, list) and traces else {}
+        picks = record.get("backend_picks") or []
+        first_pick = picks[0] if picks else "?"
+        first_tier = parse_tier_label(first_pick) if first_pick != "?" else 0
+
+        by_task[iid][strat] = {
+            "instance_id": iid,
+            "strategy": strat,
+            "resolved": bool(record.get("harness_resolved")),
+            "cost": float(record.get("total_cost") or 0),
+            "task_value": float(record.get("task_value") or 1.0),
+            "yield_score": float(record.get("resolved_value") or 0.0),
+            "turns": int(record.get("llm_turns") or 0),
+            "first_backend": str(first_pick),
+            "first_tier": first_tier,
+            "first_segment": str(first_trace.get("workflow_segment") or "?"),
+            "first_t3_turn": _first_t3_turn(record, t3_tier),
+            "first_useful_action": _first_useful_action_turn(record),
+            "max_no_progress_streak": _max_no_progress_streak(record),
+            "no_patch": not bool(record.get("patch_extracted")),
+            "failure_class": str(record.get("failure_class") or "pass"),
+            "failure_subtype": str(record.get("failure_subtype") or ""),
+            "harness_trust": str((record.get("harness_evidence") or {}).get("evidence_complete", False)),
+            "exit_status": str(record.get("exit_status") or ""),
+        }
+    return [
+        row
+        for iid in sorted(by_task)
+        for strat in sorted(by_task[iid])
+        for row in [by_task[iid][strat]]
+    ]
 
 
 def build_compact_audit(records: list[dict]) -> dict:
@@ -389,7 +475,7 @@ def build_compact_audit(records: list[dict]) -> dict:
     # Invoice accuracy: check if at least one record has provider actual cost
     invoice_accurate = any(_has_invoice_accurate_cost(r) for r in records)
 
-    # PolicyMemory detection from standardized records, with legacy fallback.
+    # PolicyMemory detection from standardized current-schema records.
     policy_memory_used = any(_routing_memory_used(r) for r in records)
     policy_memory_source = ""
     prior_records = 0
@@ -490,4 +576,5 @@ def build_compact_audit(records: list[dict]) -> dict:
         "decision_issue_counts": _decision_issue_counts(records),
         "decision_area_counts": _decision_area_counts(records),
         "task_set_metrics": _task_set_metrics(records),
+        "per_task_comparison": _per_task_comparison(records, t3_tier),
     }

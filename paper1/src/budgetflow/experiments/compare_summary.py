@@ -22,7 +22,7 @@ def _print_run_done(record: dict, *, done: int, total: int, strategy: str) -> No
         tier_line = f" models: last={last} mix {_format_tier_mix(_tier_ratios(picks))}"
     print(
         f"{banner} {record['instance_id']} {strategy} "
-        f"turns={record.get('llm_turns')} cost={_fmt_usd(record.get('task_cost', record.get('total_cost', 0)))} "
+        f"turns={record.get('llm_turns')} cost={_fmt_usd(record.get('total_cost', 0))} "
         f"batch_left={_fmt_usd(float(record.get('batch_available') or 0))} "
         f"exit={record.get('exit_status')} elapsed={record.get('elapsed_s')}s{tier_line}",
         flush=True,
@@ -73,7 +73,7 @@ def _append_summary(lines: list[str], record: dict, *, index: int, total: int) -
     status = "PASS" if record["harness_resolved"] else "FAIL"
     cap = record.get("batch_budget_cap")
     cap_s = _fmt_usd(cap)
-    task_cost = float(record.get("task_cost") or record.get("total_cost") or 0.0)
+    task_cost = float(record.get("total_cost") or 0.0)
     picks = record.get("backend_picks") or []
     tier_mix = _format_tier_mix(_tier_ratios(picks))
     lines.append(

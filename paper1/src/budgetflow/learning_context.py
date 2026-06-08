@@ -169,10 +169,9 @@ def load_policy_memory_context(
         return PolicyMemoryContext(
             None, LearnPolicyInputs.off("file_not_found"), missing[0], sources, source_kind, False, "file_not_found"
         )
-    require_current_schema = source_kind != "explicit"
     unusable = [
         path for path in sources
-        if not looks_like_policy_memory_source(path, require_current_schema=require_current_schema)
+        if not looks_like_policy_memory_source(path, require_current_schema=True)
     ]
     if unusable:
         return PolicyMemoryContext(
@@ -191,11 +190,9 @@ def load_policy_memory_context(
             except json.JSONDecodeError:
                 continue
             if not _record_has_current_memory_schema(record):
-                record["_policy_memory_schema"] = "forensic"
-                record["_policy_memory_weight"] = min(weight, POLICY_MEMORY_MIN_WEIGHT)
-            else:
-                record["_policy_memory_schema"] = "current"
-                record["_policy_memory_weight"] = weight
+                continue
+            record["_policy_memory_schema"] = "current"
+            record["_policy_memory_weight"] = weight
             record["_policy_memory_source"] = str(source)
             record["_policy_memory_source_rank"] = source_index
             records.append(record)
