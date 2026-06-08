@@ -25,23 +25,50 @@ def _turn(stage=None, w_i=0.4):
 
 
 class TestStrategyCatalog:
-    def test_value_aware_registered_in_default_strategies(self):
-        from budgetflow.experiments.compare_config import DEFAULT_STRATEGIES
-        names = {s.name for s in DEFAULT_STRATEGIES}
+    def test_mechanism_strategies_in_default(self):
+        from budgetflow.experiments.compare_config import DEFAULT_STRATEGIES, mechanism_strategy_names
+        names = mechanism_strategy_names()
+        assert "bare_strong_model" in names
+        assert "enterprise_router_baseline" in names
+        assert "budgetflow_same_router" in names
+        default_names = {s.name for s in DEFAULT_STRATEGIES}
+        assert default_names == names
+
+    def test_diagnostic_control_strategies_retained(self):
+        from budgetflow.experiments.compare_config import CONTROL_STRATEGIES
+        names = {s.name for s in CONTROL_STRATEGIES}
         assert "budgetflow_full" in names
         assert "task_level_control" in names
 
     def test_budgetflow_full_routing_is_value_aware(self):
-        from budgetflow.experiments.compare_config import DEFAULT_STRATEGIES
-        strategy = next(s for s in DEFAULT_STRATEGIES if s.name == "budgetflow_full")
+        from budgetflow.experiments.compare_config import CONTROL_STRATEGIES
+        strategy = next(s for s in CONTROL_STRATEGIES if s.name == "budgetflow_full")
         assert strategy.routing == "budgetflow_value_aware"
         assert strategy.budgeted is True
 
     def test_task_level_value_control_registered(self):
-        from budgetflow.experiments.compare_config import DEFAULT_STRATEGIES
-        control = next(s for s in DEFAULT_STRATEGIES if s.name == "task_level_control")
+        from budgetflow.experiments.compare_config import CONTROL_STRATEGIES
+        control = next(s for s in CONTROL_STRATEGIES if s.name == "task_level_control")
         assert control.routing == "value_aware_task_level"
         assert control.budgeted is True
+
+    def test_bare_strong_uses_shared_hard_budget(self):
+        from budgetflow.experiments.compare_config import DEFAULT_STRATEGIES
+        strategy = next(s for s in DEFAULT_STRATEGIES if s.name == "bare_strong_model")
+        assert strategy.routing == "bare_strong"
+        assert strategy.budgeted is True
+
+    def test_enterprise_router_uses_shared_hard_budget(self):
+        from budgetflow.experiments.compare_config import DEFAULT_STRATEGIES
+        strategy = next(s for s in DEFAULT_STRATEGIES if s.name == "enterprise_router_baseline")
+        assert strategy.routing == "enterprise_router"
+        assert strategy.budgeted is True
+
+    def test_budgetflow_same_router_budgeted(self):
+        from budgetflow.experiments.compare_config import DEFAULT_STRATEGIES
+        strategy = next(s for s in DEFAULT_STRATEGIES if s.name == "budgetflow_same_router")
+        assert strategy.routing == "budgetflow_same_router"
+        assert strategy.budgeted is True
 
 
 class TestValueMultiplier:

@@ -83,6 +83,7 @@ from budgetflow.experiments.compare_execution import run_strategy_batch  # noqa:
 from budgetflow.experiments.compare_summary import (  # noqa: E402
     _format_strategy_totals,
 )
+from budgetflow.frozen_router import load_frozen_plan  # noqa: E402
 from budgetflow.observability import (  # noqa: E402
     HeartbeatWriter,
 )
@@ -275,6 +276,16 @@ def main() -> None:
     if args.skip_completed and completed:
         print(f"{tag('resume', bold=False)} skip {len(completed)} completed (strategy,task) pairs", flush=True)
     checkpoint = CompareCheckpointStore(checkpoint_path, stem=out_stem, total_runs=total_runs)
+    # ── Frozen router plan for mechanism isolation ─────────────────────────
+    frozen_plan = None
+    if args.frozen_plan:
+        frozen_plan = load_frozen_plan(args.frozen_plan)
+        print(
+            f"{tag('frozen_plan', bold=False)} loaded '{frozen_plan.name}' "
+            f"with {len(frozen_plan.plan)} task entries",
+            flush=True,
+        )
+
     budget_modes_plan = build_batch_budget_modes(
         strategies=strategies,
         per_task_cap=args.per_task_cap,
@@ -496,6 +507,7 @@ def main() -> None:
             heartbeat_writer=heartbeat_writer,
             task_set=args.task_set,
             task_set_kind=task_set_kind,
+            frozen_plan=frozen_plan,
         )
         return cfg, records, batch_spent, batch_cap
 

@@ -14,6 +14,7 @@ from budgetflow.adapters import (
 )
 from budgetflow.adapter import runner as mini_swe_runner
 from budgetflow.auto_budget import BudgetEstimate
+from budgetflow.frozen_router import FrozenRouterPlan
 from budgetflow.compare_checkpoint import CompareCheckpointStore, GlobalRunProgress, StrategyScoreboard
 from budgetflow.experiments.compare_config import (
     CompareStrategy,
@@ -72,6 +73,7 @@ def run_task_record(
     budget_input: dict[str, Any] | None = None,
     task_set: str = "",
     task_set_kind: str = "",
+    frozen_plan: FrozenRouterPlan | None = None,
 ) -> dict:
     started = time.time()
     task_adapter = SwebenchTaskAdapter()
@@ -104,6 +106,7 @@ def run_task_record(
         enable_turn_trace=enable_turn_trace,
         task_value=task_value,
         median_task_value=value_context.median_task_value,
+        frozen_plan=frozen_plan,
     )
     outcome = progress_adapter.outcome_from_result(result)
     batch_snapshot = governor.budget_snapshot()
@@ -112,7 +115,7 @@ def run_task_record(
         "strategy": cfg.name,
         "routing": cfg.routing,
         "w_i_profile": w_i_profile_for_record(cfg.routing),
-        "budget_scope": "shared_constrained" if cfg.budgeted else "unconstrained_diagnostic",
+        "budget_scope": "shared_hard_budget" if cfg.budgeted else "unconstrained_diagnostic",
         "batch_budget_cap": batch_budget_cap if cfg.budgeted else None,
         "budget_input": dict(budget_input) if budget_input is not None else None,
         "batch_spent": batch_snapshot.get("spent_budget"),
@@ -186,6 +189,15 @@ def run_task_record(
         record["memory_mode"] = "off"
         record["learn_policy_input_views"] = []
 
+    # Frozen router plan audit fields.
+    if frozen_plan is not None:
+        record.update(frozen_plan.as_jsonl_record(instance_id))
+    else:
+        record["frozen_plan_name"] = None
+        record["frozen_plan_preferred_model"] = None
+        record["frozen_plan_base_cap"] = None
+        record["frozen_plan_priority"] = None
+
     record["failure_class"] = classify_failure(record)
     record["forensic_summary"] = build_forensic_summary(record)
     record["harness_evidence"] = parse_harness_evidence(str(record.get("detail") or "")).__dict__
@@ -244,6 +256,7 @@ def run_strategy_batch(
     heartbeat_writer: object | None = None,
     task_set: str = "",
     task_set_kind: str = "",
+    frozen_plan: FrozenRouterPlan | None = None,
 ) -> tuple[list[dict], float]:
     def log(msg: str) -> None:
         if print_lock:
@@ -382,6 +395,7 @@ def run_strategy_batch(
                 per_task_cap=task_cap,
                 task_set=task_set,
                 task_set_kind=task_set_kind,
+                frozen_plan=frozen_plan,
             )
 
         try:

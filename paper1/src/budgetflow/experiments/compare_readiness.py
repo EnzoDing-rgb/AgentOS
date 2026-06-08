@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from budgetflow.experiments.compare_config import CompareStrategy
+from budgetflow.frozen_router import load_frozen_plan
 from budgetflow.value_efficiency import ValueEfficiencyContext
 
 
@@ -85,12 +86,34 @@ def build_compare_readiness_report(
                 f"value matrix is missing {len(missing)} selected task values: {preview}{suffix}"
             )
     has_value_aware_strategy = any(
-        strategy.routing in {"budgetflow_value_aware", "value_aware_task_level"}
+        strategy.routing in {"budgetflow_value_aware", "value_aware_task_level", "budgetflow_same_router"}
         for strategy in strategies
     )
-    if value_context.profile == "equal" and not (
-        args.preset == "segment-control" and args.task_set == "easy" and len(task_ids) <= 5
-    ):
+    needs_frozen_plan = any(
+        strategy.routing in {"enterprise_router", "budgetflow_same_router"}
+        for strategy in strategies
+    )
+    if needs_frozen_plan and not args.frozen_plan:
+        blocking.append(
+            "enterprise_router_baseline and budgetflow_same_router require --frozen-plan"
+        )
+    elif needs_frozen_plan and args.frozen_plan:
+        try:
+            frozen_plan = load_frozen_plan(args.frozen_plan)
+        except (OSError, ValueError, TypeError) as exc:
+            blocking.append(f"cannot load frozen router plan: {exc}")
+        else:
+            facts.append(f"frozen_plan={frozen_plan.name}")
+            facts.append(f"frozen_plan_entries={len(frozen_plan.plan)}")
+            missing_plan = [task_id for task_id in task_ids if frozen_plan.lookup(task_id) is None]
+            if missing_plan:
+                preview = ", ".join(missing_plan[:8])
+                suffix = "" if len(missing_plan) <= 8 else f", ... +{len(missing_plan) - 8} more"
+                blocking.append(
+                    f"frozen router plan is missing {len(missing_plan)} selected tasks: "
+                    f"{preview}{suffix}"
+                )
+    if value_context.profile == "equal":
         warnings.append(
             "running non-trivial experiment with equal task values; "
             "Yield numbers are T2 mechanism diagnostics, not T1 value evidence. "
@@ -106,8 +129,6 @@ def build_compare_readiness_report(
             "use --value-source-kind pre_registered_manual with a frozen matrix for main Yield claims"
         )
 
-    if args.preset == "segment-control" and "task_level_control" not in strategy_names:
-        blocking.append("segment-control preset must include Task-Level Control")
     if args.task_set != "medium" and not args.ids and len(task_ids) <= 3:
         warnings.append("small familiar task set; diagnostic only, weak anti-overfitting evidence")
     if auto_budget_enabled and not auto_budget_caps:

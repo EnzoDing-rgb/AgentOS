@@ -196,28 +196,41 @@ def _t3_source_breakdown(records: list[dict], t3_tier: int) -> dict[str, dict[st
 
 
 def _segment_control_delta(by_strategy: dict[str, dict]) -> dict:
-    segment = by_strategy.get("budgetflow_full")
-    task = by_strategy.get("task_level_control")
-    if not segment or not task:
+    # Mechanism-first delta: BudgetFlow mechanism vs enterprise router baseline.
+    # Both use the same frozen router plan; the only difference is the
+    # execution mechanism (shared ledger, reservation/settlement, stop-loss).
+    mechanism = by_strategy.get("budgetflow_same_router")
+    baseline = by_strategy.get("enterprise_router_baseline")
+    bare = by_strategy.get("bare_strong_model")
+    if not mechanism or not baseline:
+        # Optional policy-ablation delta for non-default diagnostic runs.
+        mechanism = by_strategy.get("budgetflow_full")
+        baseline = by_strategy.get("task_level_control")
+    if not mechanism or not baseline:
         return {}
-    return {
-        "segment_aware_strategy": "BudgetFlow Full",
-        "task_level_control": "Task-Level Control",
-        "delta_pass": int(segment.get("pass", 0)) - int(task.get("pass", 0)),
-        "delta_cost": float(segment.get("cost", 0.0)) - float(task.get("cost", 0.0)),
+    delta = {
+        "segment_aware_strategy": "BudgetFlow Same Router",
+        "task_level_control": "Enterprise Router Baseline",
+        "delta_pass": int(mechanism.get("pass", 0)) - int(baseline.get("pass", 0)),
+        "delta_cost": float(mechanism.get("cost", 0.0)) - float(baseline.get("cost", 0.0)),
         "delta_yield": (
-            float(segment.get("yield_score", 0.0))
-            - float(task.get("yield_score", 0.0))
+            float(mechanism.get("yield_score", 0.0))
+            - float(baseline.get("yield_score", 0.0))
         ),
         "delta_yield_coverage": (
-            float(segment.get("yield_coverage", 0.0))
-            - float(task.get("yield_coverage", 0.0))
+            float(mechanism.get("yield_coverage", 0.0))
+            - float(baseline.get("yield_coverage", 0.0))
         ),
         "delta_yield_per_dollar": (
-            float(segment.get("yield_per_dollar", 0.0))
-            - float(task.get("yield_per_dollar", 0.0))
+            float(mechanism.get("yield_per_dollar", 0.0))
+            - float(baseline.get("yield_per_dollar", 0.0))
         ),
     }
+    if bare:
+        delta["bare_strong_pass"] = int(bare.get("pass", 0))
+        delta["bare_strong_cost"] = float(bare.get("cost", 0.0))
+        delta["bare_strong_yield"] = float(bare.get("yield_score", 0.0))
+    return delta
 
 
 def _decision_issues(record: dict) -> list[str]:
@@ -290,9 +303,12 @@ _DECISION_ISSUE_AREA = {
 
 
 _STRATEGY_REPORT_ORDER = {
-    "budget_only_baseline": 0,
-    "task_level_control": 1,
-    "budgetflow_full": 2,
+    "bare_strong_model": 0,
+    "enterprise_router_baseline": 1,
+    "budgetflow_same_router": 2,
+    "budget_only_baseline": 10,
+    "task_level_control": 11,
+    "budgetflow_full": 12,
 }
 
 
@@ -456,6 +472,10 @@ def _per_task_comparison(records: list[dict], t3_tier: int) -> list[dict]:
             "first_backend": str(first_pick),
             "first_tier": first_tier,
             "first_segment": str(first_trace.get("workflow_segment") or "?"),
+            "frozen_plan_name": str(record.get("frozen_plan_name") or ""),
+            "frozen_plan_preferred_model": str(record.get("frozen_plan_preferred_model") or ""),
+            "frozen_plan_base_cap": record.get("frozen_plan_base_cap"),
+            "frozen_plan_priority": record.get("frozen_plan_priority"),
             "first_router_branch": _first_non_empty_trace_value(record, "router_branch"),
             "last_router_reason": _last_non_empty_trace_value(record, "router_reason"),
             "policy_type": _first_non_empty_trace_value(record, "policy_type"),

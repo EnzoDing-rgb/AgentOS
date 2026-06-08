@@ -8,7 +8,7 @@ from typing import Any
 from budgetflow.defaults import BUDGET_PRESSURE_INIT, PRESSURE_MAX
 
 
-PRESET_TASKS = {"3x3": 3, "3x5": 3, "5x5": 5, "segment-control": 3}
+PRESET_TASKS = {"3x3": 3, "3x5": 3, "5x5": 5}
 
 
 def parse_compare_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -17,7 +17,7 @@ def parse_compare_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--preset",
         choices=sorted(PRESET_TASKS),
         default="3x3",
-        help="3x3=budget-only plus Bootstrap Policy diagnostic; segment-control=adds value-aware task-level control",
+        help="3x3=mechanism isolation (bare_strong, enterprise_router, budgetflow_same_router)",
     )
     parser.add_argument("--limit", type=int, default=None, help="task count (default from --preset)")
     parser.add_argument("--budget", type=float, default=None, help="shared hard budget per policy")
@@ -127,10 +127,11 @@ def parse_compare_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--w-profile",
         choices=("repair_heavy", "validation_heavy", "flat"),
         default=None,
-        help="w_i ordering for budgetflow_full",
+        help="w_i ordering for BudgetFlow policy diagnostics",
     )
     parser.add_argument("--policy-memory", type=str, default=None, help="JSONL source for PolicyMemory priors")
     parser.add_argument("--disable-policy-memory", action="store_true", default=False, help="disable PolicyMemory")
     parser.add_argument("--policy-memory-gate-only", action="store_true", default=False, help="print policy-memory gate")
     parser.add_argument("--regret-threshold", type=float, default=None, help="override policy regret threshold")
+    parser.add_argument("--frozen-plan", type=str, default=None, help="path to frozen router plan JSON for mechanism isolation")
     return parser.parse_args(argv)

@@ -71,27 +71,14 @@ def test_trace_console_priority() -> None:
     assert trace_console_from_args(_args(trace_quiet=True, trace_verbose=True)) == "verbose"
 
 
-def test_3x3_selects_canonical_diagnostic_strategies_and_parallel_jobs() -> None:
+def test_3x3_selects_mechanism_isolation_strategies_and_parallel_jobs() -> None:
     selection = select_strategies(_args(jobs=1))
     names = {s.name for s in selection.strategies}
 
     assert names == {
-        "budget_only_baseline",
-        "task_level_control",
-        "budgetflow_full",
-    }
-    assert selection.policy_jobs == 3
-    assert selection.jobs_upgraded is True
-
-
-def test_segment_control_preset_adds_task_level_value_control_and_parallel_jobs() -> None:
-    selection = select_strategies(_args(preset="segment-control", jobs=1))
-    names = {s.name for s in selection.strategies}
-
-    assert names == {
-        "budget_only_baseline",
-        "budgetflow_full",
-        "task_level_control",
+        "bare_strong_model",
+        "enterprise_router_baseline",
+        "budgetflow_same_router",
     }
     assert selection.policy_jobs == 3
     assert selection.jobs_upgraded is True

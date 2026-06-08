@@ -35,6 +35,7 @@ from .backends import build_backends_for_strategy
 from .errors import BudgetFlowBudgetError, BudgetFlowStagnationError, BudgetFlowUpstreamError
 from .mini_swe_proxy import BudgetFlowLitellmModel
 from ..adaptive_routing import AdaptiveRoutingState
+from ..frozen_router import FrozenRouterPlan
 from .strategies import build_routing_context
 
 # Config paths derived from resolved mini-swe-agent src.
@@ -111,6 +112,7 @@ def run_mini_swe_task(
     enable_turn_trace: bool = False,
     task_value: float = 1.0,
     median_task_value: float = 1.0,
+    frozen_plan: FrozenRouterPlan | None = None,
 ) -> MiniSweRunResult:
     label = strategy_label or strategy
     ledger = ledger or WorkflowLedgerStore()
@@ -145,6 +147,7 @@ def run_mini_swe_task(
         adaptive=adaptive,
         task_value=task_value,
         median_task_value=median_task_value,
+        frozen_plan=frozen_plan,
     )
     model_cfg = config.get("model", {})
     model = BudgetFlowLitellmModel(

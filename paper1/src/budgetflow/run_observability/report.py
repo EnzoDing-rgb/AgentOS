@@ -92,7 +92,7 @@ def format_compact_audit(audit: dict) -> str:
     control_delta = audit.get("segment_control_delta") or {}
     if control_delta:
         lines.append(banner)
-        lines.append("SEGMENT CONTROL")
+        lines.append("MECHANISM ISOLATION DELTA")
         lines.append(
             f"{control_delta['segment_aware_strategy']} - {control_delta['task_level_control']}: "
             f"delta_pass={control_delta['delta_pass']} "
@@ -100,6 +100,12 @@ def format_compact_audit(audit: dict) -> str:
             f"delta_yield={control_delta['delta_yield']:.4f} "
             f"delta_yield_per_dollar={control_delta['delta_yield_per_dollar']:.4f}"
         )
+        if "bare_strong_pass" in control_delta:
+            lines.append(
+                f"  bare_strong_model: pass={control_delta['bare_strong_pass']} "
+                f"cost=${control_delta['bare_strong_cost']:.4f} "
+                f"yield={control_delta['bare_strong_yield']:.4f}"
+            )
 
     # Failure axis
     if audit["fail_classes"]:
@@ -196,14 +202,18 @@ def format_compact_audit(audit: dict) -> str:
         lines.append("PER-TASK POLICY COMPARISON")
         lines.append(
             f"{'instance_id':<30} {'strategy':<34} {'R':>1} {'cost':>7} {'val':>5} "
-            f"{'turn':>4} {'1st':>5} {'T3@':>4} {'use@':>4} {'gap':>3} "
+            f"{'plan':>5} {'cap':>5} {'turn':>4} {'1st':>5} {'T3@':>4} {'use@':>4} {'gap':>3} "
             f"{'patch':>5} {'fail':<14} {'trust':<5}"
         )
-        lines.append("-" * 128)
+        lines.append("-" * 140)
         for row in per_task:
+            plan_model = row.get("frozen_plan_preferred_model") or "-"
+            plan_cap = row.get("frozen_plan_base_cap")
+            plan_cap_text = "-" if plan_cap in (None, "") else f"{float(plan_cap):.2f}"
             lines.append(
                 f"{row['instance_id']:<30} {row['strategy']:<34} {'Y' if row['resolved'] else 'N':>1} "
                 f"${row['cost']:>6.2f} {row['task_value']:>5.2f} "
+                f"{plan_model:>5} {plan_cap_text:>5} "
                 f"{row['turns']:>4} T{row['first_tier']:>4} "
                 f"{row['first_t3_turn'] if row['first_t3_turn'] is not None else '-':>4} "
                 f"{row['first_useful_action'] if row['first_useful_action'] is not None else '-':>4} "
@@ -218,6 +228,7 @@ def format_compact_audit(audit: dict) -> str:
         # Legend
         lines.append(
             "  R=resolved  val=task_value  turn=llm_turns  1st=first_backend_tier  "
+            "plan=frozen_plan_preferred_model  cap=frozen_plan_base_cap  "
             "T3@=first_T3_turn  use@=first_useful_action  gap=max_no_progress_streak"
         )
 
@@ -251,6 +262,18 @@ def _format_per_task_decision_detail(row: dict) -> str:
         "imitation",
         row.get("routing_imitation_source") if row.get("routing_imitation_active") else "",
     )
+    frozen = _compact_pair(
+        "frozen",
+        "/".join(
+            str(value)
+            for value in (
+                row.get("frozen_plan_name"),
+                row.get("frozen_plan_preferred_model"),
+                row.get("frozen_plan_priority"),
+            )
+            if value not in (None, "")
+        ),
+    )
     cost = _compact_pair("cost", row.get("cost_estimate_source") or row.get("cost_source"))
     provider = _compact_pair("provider", row.get("provider_status_code") or row.get("provider"))
     parser = _compact_pair("parser", row.get("parser_error_type") or row.get("parser"))
@@ -266,7 +289,7 @@ def _format_per_task_decision_detail(row: dict) -> str:
             if value
         ),
     )
-    for item in (policy, route, memory, learned, imitation, cost, provider, parser, harness):
+    for item in (policy, route, memory, learned, imitation, frozen, cost, provider, parser, harness):
         if item:
             parts.append(item)
     return " | ".join(parts)

@@ -18,6 +18,8 @@ REQUIRED_FIELDS = frozenset({
 OPTIONAL_BUT_DESIRED = frozenset({
     "failure_class", "forensic_summary", "backend_picks",
     "submitted_patch", "attempt_id",
+    "frozen_plan_name", "frozen_plan_preferred_model",
+    "frozen_plan_base_cap", "frozen_plan_priority",
 })
 
 

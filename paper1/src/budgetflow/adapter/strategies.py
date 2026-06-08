@@ -12,6 +12,7 @@ from ..defaults import (
     active_w_i,
     active_w_i_profile_name,
 )
+from ..frozen_router import FrozenRouterPlan
 from ..policies import BudgetOnlyStepRouter, BudgetOnlyT2Router, WorkflowLevelRouter
 from ..policy_backend import BootstrapPolicy, PolicyDecision
 from ..selector import BudgetFlowSelector, ConservativeSelector, RouterDecision, ValueAwareSelector
@@ -32,6 +33,7 @@ class RoutingContext:
     budget_only_router: BudgetOnlyStepRouter | None = None
     workflow_router: WorkflowLevelRouter | None = None
     bootstrap_policy: BootstrapPolicy | None = None
+    frozen_plan: FrozenRouterPlan | None = None
     last_decision: RouterDecision | None = None
     last_policy_decision: PolicyDecision | None = None
     last_backend: Backend | None = None
@@ -65,6 +67,7 @@ def build_routing_context(
     adaptive: AdaptiveRoutingState | None = None,
     task_value: float = 1.0,
     median_task_value: float = 1.0,
+    frozen_plan: FrozenRouterPlan | None = None,
 ) -> RoutingContext:
     ordered = sorted(backends, key=lambda backend: backend.tier)
     pressure = BUDGET_PRESSURE_INIT if budget_pressure is None else budget_pressure
@@ -79,6 +82,7 @@ def build_routing_context(
         adaptive=adaptive,
         task_value=task_value,
         median_task_value=median_task_value,
+        frozen_plan=frozen_plan,
     )
     if strategy == "workflow_level":
         ctx.workflow_router = WorkflowLevelRouter()
@@ -268,6 +272,35 @@ def choose_backend(ctx: RoutingContext, turn: TurnInfo, expected_costs: dict[str
             branch=branch,
         )
         return chosen
+
+    # ── Mechanism-first strategies ──────────────────────────────────────────
+    if ctx.strategy == "bare_strong":
+        backend = ModelCatalog.strongest(ctx.backends)
+        ctx.last_decision = RouterDecision(
+            backend=backend, reason="bare_strong_fixed",
+            scores={}, pressure=ctx.budget_pressure, branch="bare_strong",
+        )
+        return backend
+
+    if ctx.strategy == "enterprise_router":
+        backend = _backend_from_frozen_plan(ctx, turn)
+        ctx.last_decision = RouterDecision(
+            backend=backend, reason="enterprise_router_frozen_plan",
+            scores={}, pressure=ctx.budget_pressure, branch="enterprise_router",
+        )
+        return backend
+
+    if ctx.strategy == "budgetflow_same_router":
+        chosen = _backend_from_frozen_plan(ctx, turn)
+        ctx.last_decision = RouterDecision(
+            backend=chosen,
+            reason="bf_same_router_frozen_plan",
+            scores={chosen.name: 0.0},
+            pressure=ctx.budget_pressure,
+            branch="budgetflow_same_router",
+        )
+        return chosen
+
     sel = ctx.selector.select_backend(
         turn_info=turn,
         backends=ctx.backends,
@@ -280,6 +313,24 @@ def choose_backend(ctx: RoutingContext, turn: TurnInfo, expected_costs: dict[str
         branch="selector",
     )
     return sel.backend
+
+
+def _backend_from_frozen_plan(ctx: RoutingContext, turn: TurnInfo) -> Backend:
+    """Look up preferred backend from the frozen router plan.
+
+    Falls back to the cheapest backend when no plan is loaded or the
+    instance is not found.
+    """
+    if ctx.frozen_plan is None:
+        return ModelCatalog.cheapest(ctx.backends)
+    entry = ctx.frozen_plan.lookup(turn.workflow_id)
+    if entry is None:
+        return ModelCatalog.cheapest(ctx.backends)
+    preferred = next(
+        (b for b in ctx.backends if b.name == entry.preferred_model),
+        None,
+    )
+    return preferred if preferred is not None else ModelCatalog.cheapest(ctx.backends)
 
 
 def stage_weight(stage: Stage) -> float:

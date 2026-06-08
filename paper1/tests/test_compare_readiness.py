@@ -147,6 +147,77 @@ def test_readiness_blocks_underparallel_policy_jobs() -> None:
     assert any("policy_jobs=1" in issue for issue in report.blocking)
 
 
+def test_readiness_blocks_missing_frozen_plan_for_mechanism_router() -> None:
+    value_context = ValueEfficiencyContext()
+    value_context.init(value_profile="equal")
+
+    report = build_compare_readiness_report(
+        args=_args(frozen_plan=None),
+        tasks=[SimpleNamespace(instance_id="task-a")],
+        strategies=(CompareStrategy("budgetflow_same_router", "budgetflow_same_router"),),
+        policy_jobs=1,
+        value_context=value_context,
+        catalog_issues=[],
+        runtime_root=Path("/tmp/budgetflow-runtime"),
+        auto_budget_enabled=False,
+        auto_budget_caps=None,
+    )
+
+    assert not report.ok
+    assert any("require --frozen-plan" in issue for issue in report.blocking)
+
+
+def test_readiness_blocks_frozen_plan_without_selected_task(tmp_path) -> None:
+    plan = tmp_path / "frozen_plan.json"
+    plan.write_text(
+        '{"meta":{"name":"unit_plan"},"plan":{"task-a":{"preferred_model":"tier2","base_cap":0.2,"priority":1}}}'
+    )
+    value_context = ValueEfficiencyContext()
+    value_context.init(value_profile="equal")
+
+    report = build_compare_readiness_report(
+        args=_args(frozen_plan=str(plan)),
+        tasks=[SimpleNamespace(instance_id="task-a"), SimpleNamespace(instance_id="task-b")],
+        strategies=(CompareStrategy("enterprise_router_baseline", "enterprise_router"),),
+        policy_jobs=1,
+        value_context=value_context,
+        catalog_issues=[],
+        runtime_root=Path("/tmp/budgetflow-runtime"),
+        auto_budget_enabled=False,
+        auto_budget_caps=None,
+    )
+
+    assert not report.ok
+    assert "frozen_plan=unit_plan" in report.facts
+    assert "frozen_plan_entries=1" in report.facts
+    assert any("missing 1 selected tasks: task-b" in issue for issue in report.blocking)
+
+
+def test_readiness_accepts_frozen_plan_covering_selected_tasks(tmp_path) -> None:
+    plan = tmp_path / "frozen_plan.json"
+    plan.write_text(
+        '{"meta":{"name":"unit_plan"},"plan":{"task-a":{"preferred_model":"tier2","base_cap":0.2,"priority":1}}}'
+    )
+    value_context = ValueEfficiencyContext()
+    value_context.init(value_profile="equal")
+
+    report = build_compare_readiness_report(
+        args=_args(frozen_plan=str(plan)),
+        tasks=[SimpleNamespace(instance_id="task-a")],
+        strategies=(CompareStrategy("budgetflow_same_router", "budgetflow_same_router"),),
+        policy_jobs=1,
+        value_context=value_context,
+        catalog_issues=[],
+        runtime_root=Path("/tmp/budgetflow-runtime"),
+        auto_budget_enabled=False,
+        auto_budget_caps=None,
+    )
+
+    assert report.ok
+    assert "frozen_plan=unit_plan" in report.facts
+    assert "frozen_plan_entries=1" in report.facts
+
+
 def test_readiness_blocks_paid_run_when_auto_budget_has_no_memory_lift() -> None:
     value_context = ValueEfficiencyContext()
     value_context.init(value_profile="equal")

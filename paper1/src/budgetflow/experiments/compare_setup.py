@@ -25,17 +25,10 @@ DIAGNOSTIC_3X3_IDS = (
     "sympy__sympy-16988",
 )
 DIAGNOSTIC_3X3_STRATEGIES = (
-    "budget_only_baseline",
-    "task_level_control",
-    "budgetflow_full",
+    "bare_strong_model",
+    "enterprise_router_baseline",
+    "budgetflow_same_router",
 )
-
-SEGMENT_CONTROL_DIAGNOSTIC_STRATEGIES = (
-    "budget_only_baseline",
-    "task_level_control",
-    "budgetflow_full",
-)
-
 
 @dataclass(frozen=True)
 class CompareBudgetPlan:
@@ -98,8 +91,6 @@ def select_strategies(args: Namespace) -> StrategySelection:
         wanted_raw = {s.strip() for s in args.strategies.split(",") if s.strip()}
     elif args.preset == "3x3":
         wanted_raw = set(DIAGNOSTIC_3X3_STRATEGIES)
-    elif args.preset == "segment-control":
-        wanted_raw = set(SEGMENT_CONTROL_DIAGNOSTIC_STRATEGIES)
     else:
         wanted_raw = set()
     if wanted_raw:
@@ -127,7 +118,7 @@ def load_tasks_for_compare(args: Namespace, *, tasks_n: int) -> list:
         tasks = load_swebench_lite_tasks(instance_ids=ids)
     elif args.task_set == "medium":
         tasks = load_compare_medium_tasks(tasks_n)
-    elif args.preset in {"3x3", "segment-control"}:
+    elif args.preset == "3x3":
         tasks = load_swebench_lite_tasks(instance_ids=DIAGNOSTIC_3X3_IDS)
     else:
         tasks = load_compare_easy_tasks(tasks_n)

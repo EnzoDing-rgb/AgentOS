@@ -34,7 +34,20 @@ class CompareStrategy:
     budgeted: bool = True
 
 
+# Mechanism-first default strategies: same hard budget, different execution
+# mechanism.  bare_strong_model and enterprise_router_baseline use the harness
+# with a hard-kill budget adapter.  budgetflow_same_router consumes the same
+# frozen plan through BudgetFlow's shared ledger, reservation/settlement,
+# stop-loss, escalation, and audit path.
 DEFAULT_STRATEGIES: tuple[CompareStrategy, ...] = (
+    CompareStrategy("bare_strong_model", "bare_strong"),
+    CompareStrategy("enterprise_router_baseline", "enterprise_router"),
+    CompareStrategy("budgetflow_same_router", "budgetflow_same_router"),
+)
+
+# Current diagnostic controls. They are not the default mechanism-isolation
+# comparison, but remain useful for targeted policy ablations.
+CONTROL_STRATEGIES: tuple[CompareStrategy, ...] = (
     CompareStrategy("budget_only_baseline", "budget_only"),
     CompareStrategy("task_level_control", "value_aware_task_level"),
     CompareStrategy("budgetflow_full", "budgetflow_value_aware"),
@@ -57,7 +70,11 @@ def normalize_strategy(name: str) -> str:
 
 
 def strategy_catalog() -> tuple[CompareStrategy, ...]:
-    return DEFAULT_STRATEGIES + DIAGNOSTIC_STRATEGIES
+    return DEFAULT_STRATEGIES + CONTROL_STRATEGIES + DIAGNOSTIC_STRATEGIES
+
+
+def mechanism_strategy_names() -> frozenset[str]:
+    return frozenset({s.name for s in DEFAULT_STRATEGIES})
 
 
 def effective_policy_jobs(requested_jobs: int | None, strategy_count: int) -> int:
@@ -73,11 +90,11 @@ def required_backends_for_strategies(strategies: tuple[CompareStrategy, ...]) ->
     required: set[str] = set()
     tier2_backend = MODEL_CATALOG.tier(MODEL_CATALOG.backends(), 2).name
     for cfg in strategies:
-        if cfg.routing == "all_flash":
+        if cfg.routing in {"all_flash", "all_t1"}:
             required.add(TIER1_BACKEND)
         elif cfg.routing in {"all_tier2"}:
             required.add(tier2_backend)
-        elif cfg.routing in {"all_pro", "all_t3"}:
+        elif cfg.routing in {"all_pro", "all_t3", "bare_strong"}:
             required.add(TIER3_BACKEND)
         else:
             required.update({backend.name for backend in MODEL_CATALOG.backends()})
@@ -86,6 +103,8 @@ def required_backends_for_strategies(strategies: tuple[CompareStrategy, ...]) ->
 
 def w_i_profile_for_record(routing: str) -> str:
     """JSONL field: stage_blind forces w_i=1 at query time."""
+    if routing in {"bare_strong", "enterprise_router", "budgetflow_same_router"}:
+        return "mechanism_isolation"
     if routing == "stage_blind":
         return "flat_forced"
     if routing == "budgetflow_equal_weight":

@@ -15,6 +15,7 @@ TEST_FILE_PURPOSES = {
     "test_compare_record_schema.py": "evidence-schema",
     "test_compare_setup.py": "experiment-setup",
     "test_experiment_observability.py": "evidence-schema",
+    "test_frozen_router.py": "frozen-router-plan",
     "test_failure_classification.py": "failure-diagnosis",
     "test_gpt54_text_parser.py": "runtime-adapter",
     "test_learn_policy.py": "learn-policy-interface",
