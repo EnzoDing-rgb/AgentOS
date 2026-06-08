@@ -758,27 +758,35 @@ def _trace_productivity(trace: dict) -> bool | None:
     """Whether this backend turn produced a useful action without infra noise."""
     if trace.get("error_type") or trace.get("parser_error_type"):
         return False
-    if trace.get("action_progress_state") in {"progress", "no_progress", "unknown"}:
-        state = str(trace.get("action_progress_state"))
-        if state == "progress":
-            return True
-        if state == "no_progress":
-            return False
-        return None
-    if trace.get("progress_state") in {"progress", "no_progress", "unknown"}:
-        state = str(trace.get("progress_state"))
-        if state == "progress":
-            return True
-        if state == "no_progress":
-            return False
-        return None
+    signals: list[bool | None] = []
+    if "action_progress_state" in trace:
+        signals.append(_progress_state_productivity(str(trace.get("action_progress_state"))))
+    if "progress_state" in trace:
+        signals.append(_progress_state_productivity(str(trace.get("progress_state"))))
     if "action_has_progress" in trace:
-        value = trace.get("action_has_progress")
-        if value is True:
-            return True
-        if value is False:
-            return False
+        signals.append(_optional_trace_bool(trace.get("action_has_progress")))
+    if "has_progress" in trace:
+        signals.append(_optional_trace_bool(trace.get("has_progress")))
+    if True in signals:
+        return True
+    if any(signal is None for signal in signals):
         return None
+    return False if signals else None
+
+
+def _progress_state_productivity(state: str) -> bool | None:
+    if state == "progress":
+        return True
+    if state == "no_progress":
+        return False
+    return None
+
+
+def _optional_trace_bool(value) -> bool | None:
+    if value is True:
+        return True
+    if value is False:
+        return False
     return None
 
 

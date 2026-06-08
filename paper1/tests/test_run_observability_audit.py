@@ -286,6 +286,37 @@ def test_compact_audit_does_not_count_unknown_progress_as_no_progress() -> None:
     assert "unknown" in text
 
 
+def test_compact_audit_treats_any_progress_channel_as_productive() -> None:
+    audit = build_compact_audit([
+        {
+            "instance_id": "repo__task",
+            "strategy": "budgetflow_full",
+            "harness_resolved": False,
+            "harness_evidence": {"evidence_complete": True},
+            "total_cost": 0.05,
+            "llm_turns": 1,
+            "turn_trace_count": 1,
+            "backend_picks": ["tier3"],
+            "turn_traces": [
+                {
+                    "backend_tier": 3,
+                    "final_backend": "tier3",
+                    "progress_state": "progress",
+                    "action_progress_state": "no_progress",
+                    "billable_cost": 0.05,
+                },
+            ],
+        }
+    ])
+
+    stats = audit["t3_productivity"]["budgetflow_full"]
+
+    assert stats["t3_turns"] == 1
+    assert stats["t3_productive_turns"] == 1
+    assert stats["t3_no_progress_turns"] == 0
+    assert stats["t3_no_progress_cost"] == 0.0
+
+
 def test_compact_audit_reports_t2_frontier_and_segment_control() -> None:
     records = [
         {

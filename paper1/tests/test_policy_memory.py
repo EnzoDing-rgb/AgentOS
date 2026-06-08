@@ -773,6 +773,34 @@ def test_policy_memory_does_not_treat_unknown_progress_as_negative_evidence() ->
     assert summary["value_triggered_escalation_action"] == "default"
 
 
+def test_policy_memory_treats_any_progress_channel_as_productive() -> None:
+    memory = PolicyMemory()
+    memory.rebuild_from_records([
+        _record(
+            instance_id="django__django-1",
+            routing="budgetflow_value_aware",
+            turn_traces=[
+                {
+                    "workflow_segment": "Action",
+                    "backend_tier": 3,
+                    "final_backend": "tier3",
+                    "value_triggered_escalation_active": True,
+                    "progress_state": "progress",
+                    "action_progress_state": "no_progress",
+                    "billable_cost": 0.08,
+                }
+            ],
+        )
+    ])
+
+    summary = memory.routing_prior_summary("django__django-2", WorkflowSegment.ACTION)
+
+    assert summary["escalation_attempts"] == 1
+    assert summary["t3_productive_rate"] == 1.0
+    assert summary["t3_no_progress_cost"] == 0.0
+    assert summary["value_triggered_escalation_action"] == "default"
+
+
 def test_rebuild_from_jsonl_sets_source_and_ignores_bad_lines(tmp_path: Path) -> None:
     source = tmp_path / "run.jsonl"
     source.write_text(json.dumps(_pass_record(instance_id="django__django-1")) + "\nnot-json\n")

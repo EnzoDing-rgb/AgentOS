@@ -11,7 +11,7 @@ comments, and reports should use these names.
 | Tier 1 / T1 | Primary claim: maximize Yield under the same shared hard budget. |
 | Yield | Total resolved task value within a shared budget window. It is not raw task count. |
 | Yield per Dollar | Total resolved task value divided by model spend. It is the main efficiency diagnostic. |
-| Tier 2 / T2 | Mechanism claim: compare policy and routing efficiency against task-level, static, and budget-only controls. |
+| Tier 2 / T2 | Mechanism claim: compare policy and routing efficiency after Tier 1 is credible. |
 | Value-Driven Budget Allocation | Allocation of task caps and spend from task value, history, expected payoff, cost, and budget pressure. |
 | ValueSource | Versioned input that defines or estimates task value for one run or deployment. |
 | CostSource | Versioned input that defines or estimates model cost for one run or deployment. |
@@ -29,6 +29,7 @@ comments, and reports should use these names.
 | Workflow Segment | Coarse work state used as a policy signal. Default segments are Context, Action, and Verification. |
 | Segment-Aware Routing | Routing that can use workflow segment as a feature. It does not force model switching. |
 | Task-Level Policy | Control policy that chooses a backend at task/request level and preserves cache/context continuity. |
+| Frozen Enterprise Router | Pre-registered task/workflow-level router baseline. It uses metadata and value/difficulty buckets once before execution; it does not use runtime progress, shared-budget reallocation, or learning. |
 | Cost Memory | Memory for cost, cap sufficiency, task value, and Yield per Dollar evidence. |
 | Routing Memory | Memory for backend choices, segment outcomes, failure axes, and route effectiveness. |
 | Escalation Memory | Memory for whether expensive model-tier turns were productive. |
@@ -221,17 +222,24 @@ T2 diagnostics:
 | Learn Policy | Customer-facing learned policy. It can use built-in Memory or a customer-owned machine learning system behind the same Policy Backend interface. |
 | Fixed Baseline Policy | Evaluation-only control policy such as static routing, all-cheap, all-strong, task-level routing, or budget-only routing. |
 
-Current main experiments use a reasonable pre-registered shared budget and three policy roles:
+The main mechanism experiment isolates BudgetFlow Mechanism from policy quality.
+It uses the same task set, same value matrix, same hard budget, and same
+SWE-agent harness across three roles:
 
 | Experiment Role | CLI Strategy | Meaning |
 |---|---|---|
-| Budget-Only Baseline | `budget_only_baseline` | Strong shared-budget control. It tests what budget pressure alone can achieve. |
-| Task-Level Control | `task_level_control` | Value-aware control that chooses at task/request level and preserves cache/context continuity. |
-| BudgetFlow Full | `budgetflow_full` | Main BudgetFlow policy: shared hard budget, value-aware allocation, workflow-segment signal, stop-loss, escalation, audit, and Learn Policy Inputs readiness. |
+| Bare Strong Model | `bare_strong_model` | Bare SWE-agent harness with a hard budget kill adapter and the strongest configured model. It represents the expensive "use the strongest model" default. |
+| Frozen Enterprise Router | `enterprise_router_baseline` | Bare SWE-agent harness with a pre-registered task/workflow-level router and hard budget kill. It represents a realistic enterprise router without BudgetFlow's shared-budget mechanism. |
+| BudgetFlow Mechanism + Same Router | `budgetflow_same_router` | The same frozen router inside BudgetFlow Mechanism: shared ledger, value/cost/progress inputs, stop/escalation primitives, trace/audit, and same-budget accounting. This is the primary mechanism isolation comparison. |
 
-The task-level control is mandatory when evaluating segment-aware routing. It
-tests whether segment features help, or whether they add switching noise,
-prompt drift, cache loss, and coordination cost.
+`Bootstrap Policy` is a separate product-default experiment role, not the sole
+mechanism proof. It should be evaluated as `budgetflow_bootstrap_policy` after
+the mechanism comparison is credible: customer has no history, no ML, and no
+enterprise router, but still gets a useful cold-start policy.
+
+Task-level and segment-aware controls remain Tier 2 follow-up experiments. They
+answer whether turn/segment-level routing beats one-shot task/workflow routing;
+they should not be mixed into the first mechanism proof.
 
 Bootstrap Policy is the cold-start behavior: no customer history and no machine
 learning required. As current trusted records accumulate, Learn Policy Inputs

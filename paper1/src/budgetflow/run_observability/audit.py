@@ -54,13 +54,20 @@ def _t3_id(records: list[dict]) -> int:
 def _trace_productive(trace: dict) -> bool | None:
     if trace.get("error_type") or trace.get("parser_error_type"):
         return False
-    if trace.get("action_progress_state") in {"progress", "no_progress", "unknown"}:
-        return _progress_state_productive(str(trace.get("action_progress_state")))
-    if trace.get("progress_state") in {"progress", "no_progress", "unknown"}:
-        return _progress_state_productive(str(trace.get("progress_state")))
+    signals: list[bool | None] = []
+    if "action_progress_state" in trace:
+        signals.append(_progress_state_productive(str(trace.get("action_progress_state"))))
+    if "progress_state" in trace:
+        signals.append(_progress_state_productive(str(trace.get("progress_state"))))
     if "action_has_progress" in trace:
-        return _optional_bool(trace.get("action_has_progress"))
-    return _optional_bool(trace.get("has_progress"))
+        signals.append(_optional_bool(trace.get("action_has_progress")))
+    if "has_progress" in trace:
+        signals.append(_optional_bool(trace.get("has_progress")))
+    if True in signals:
+        return True
+    if any(signal is None for signal in signals):
+        return None
+    return False if signals else None
 
 
 def _progress_state_productive(state: str) -> bool | None:
