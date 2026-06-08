@@ -13,7 +13,8 @@ from ..defaults import (
     active_w_i_profile_name,
 )
 from ..policies import BudgetOnlyStepRouter, BudgetOnlyT2Router, WorkflowLevelRouter
-from ..selector import BudgetFlowSelector, ConservativeSelector, RouterDecision, SelectionDecision, ValueAwareSelector
+from ..policy_backend import HeuristicPolicy, PolicyDecision
+from ..selector import BudgetFlowSelector, ConservativeSelector, RouterDecision, ValueAwareSelector
 from ..types import Backend, ProgressTable, Stage, TurnInfo
 
 
@@ -30,7 +31,9 @@ class RoutingContext:
     task_level_backend: Backend | None = None
     budget_only_router: BudgetOnlyStepRouter | None = None
     workflow_router: WorkflowLevelRouter | None = None
+    heuristic_policy: HeuristicPolicy | None = None
     last_decision: RouterDecision | None = None
+    last_policy_decision: PolicyDecision | None = None
     last_backend: Backend | None = None
     task_value: float = 1.0
     median_task_value: float = 1.0
@@ -85,10 +88,14 @@ def build_routing_context(
         ctx.budget_only_router = BudgetOnlyStepRouter()
     if strategy == "budget_only_t2":
         ctx.budget_only_router = BudgetOnlyT2Router()
+    if strategy == "budgetflow_full":
+        ctx.heuristic_policy = HeuristicPolicy(ctx.selector, name=strategy)
     if strategy == "budgetflow_conservative":
         ctx.selector = ConservativeSelector(build_progress_table_from_defaults(backends))
+        ctx.heuristic_policy = HeuristicPolicy(ctx.selector, name=strategy)
     if strategy == "budgetflow_value_aware":
         ctx.selector = ValueAwareSelector(build_progress_table_from_defaults(backends), median_task_value=median_task_value)
+        ctx.heuristic_policy = HeuristicPolicy(ctx.selector, name=strategy)
     if strategy == "value_aware_task_level":
         selector = ValueAwareSelector(build_progress_table_from_defaults(backends), median_task_value=median_task_value)
         avg_w = sum(active_w_i().values()) / len(active_w_i())
@@ -215,21 +222,30 @@ def choose_backend(ctx: RoutingContext, turn: TurnInfo, expected_costs: dict[str
         return decision.backend
     if ctx.strategy in {"budgetflow_full", "budgetflow_conservative", "budgetflow_value_aware"}:
         max_tier = _budgetflow_max_tier(ctx)
-        sel_kwargs: dict = dict(
+        policy = ctx.heuristic_policy
+        if policy is None:
+            raise RuntimeError(f"strategy {ctx.strategy!r} requires a HeuristicPolicy")
+        policy_kwargs: dict = dict(
             turn_info=turn,
             backends=ctx.backends,
             budget_pressure=ctx.budget_pressure,
             expected_costs=expected_costs,
         )
         if ctx.strategy == "budgetflow_value_aware":
-            sel_kwargs["task_value"] = ctx.task_value
-        sel = ctx.selector.select_backend(**sel_kwargs)
-        if sel.backend.tier > max_tier:
-            capped = next(
+            policy_kwargs["task_value"] = ctx.task_value
+        policy_decision = policy.choose_backend(**policy_kwargs)
+        ctx.last_policy_decision = policy_decision
+        chosen = next(
+            (b for b in ctx.backends if b.name == policy_decision.backend),
+            ctx.backends[0],
+        )
+        sel_score = policy_decision.scores.get("selection_score", 0.0)
+
+        if chosen.tier > max_tier:
+            chosen = next(
                 (b for b in reversed(ctx.backends) if b.tier <= max_tier),
                 ctx.backends[0],
             )
-            sel = SelectionDecision(backend=capped, score=sel.score, upgraded=False)
         branch_map = {
             "budgetflow_conservative": "budgetflow_conservative",
             "budgetflow_value_aware": "budgetflow_value_aware",
@@ -243,13 +259,13 @@ def choose_backend(ctx: RoutingContext, turn: TurnInfo, expected_costs: dict[str
         branch = branch_map.get(ctx.strategy, "budgetflow_full")
         reason_prefix = reason_map.get(ctx.strategy, "bf_full")
         ctx.last_decision = RouterDecision(
-            backend=sel.backend,
+            backend=chosen,
             reason=f"{reason_prefix}_max_tier={max_tier}" if max_tier < ModelCatalog.strongest(ctx.backends).tier else f"{reason_prefix}_strongest_allowed",
-            scores={sel.backend.name: sel.score},
+            scores={chosen.name: sel_score},
             pressure=ctx.budget_pressure,
             branch=branch,
         )
-        return sel.backend
+        return chosen
     sel = ctx.selector.select_backend(
         turn_info=turn,
         backends=ctx.backends,

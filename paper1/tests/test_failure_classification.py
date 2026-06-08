@@ -187,7 +187,7 @@ def test_forensic_summary_budget_after_patch() -> None:
 
 # ── Phase AA: Conservation lockout tests ──────────────────────────────────────
 
-def _bfc_lockout_record(**overrides):
+def _conservative_lockout_record(**overrides):
     return {
         "harness_resolved": False,
         "exit_reason": "stagnation_repeat_command",
@@ -209,17 +209,17 @@ def _bfc_lockout_record(**overrides):
 
 
 def test_conservation_lockout_detected() -> None:
-    rec = _bfc_lockout_record()
+    rec = _conservative_lockout_record()
     assert _is_conservation_lockout(rec) is True
 
 
 def test_conservation_lockout_classify_as_budget_fail() -> None:
-    rec = _bfc_lockout_record()
+    rec = _conservative_lockout_record()
     assert classify_failure(rec) == "budget_fail"
 
 
 def test_conservation_lockout_verdict_axis() -> None:
-    rec = _bfc_lockout_record()
+    rec = _conservative_lockout_record()
     v = build_verdict(rec)
     assert v["verdict_axis"] == "budget_fail"
     assert v["failure_owner"] == "budget"
@@ -227,42 +227,42 @@ def test_conservation_lockout_verdict_axis() -> None:
 
 
 def test_conservation_lockout_not_triggered_for_bo() -> None:
-    rec = _bfc_lockout_record(routing="budget_only")
+    rec = _conservative_lockout_record(routing="budget_only")
     assert _is_conservation_lockout(rec) is False
     assert classify_failure(rec) == "loc_fail"
 
 
 def test_conservation_lockout_not_triggered_when_budget_exhausted() -> None:
-    rec = _bfc_lockout_record(
+    rec = _conservative_lockout_record(
         forensic_summary={"budget": {"exhausted": True, "spent": 1.0, "available": 0.0}},
     )
     assert _is_conservation_lockout(rec) is False
 
 
 def test_conservation_lockout_not_triggered_when_patch_extracted() -> None:
-    rec = _bfc_lockout_record(patch_extracted=True)
+    rec = _conservative_lockout_record(patch_extracted=True)
     assert _is_conservation_lockout(rec) is False
 
 
 def test_conservation_lockout_not_triggered_for_pass() -> None:
-    rec = _bfc_lockout_record(harness_resolved=True, patch_extracted=True, agent_gold_edited=True)
+    rec = _conservative_lockout_record(harness_resolved=True, patch_extracted=True, agent_gold_edited=True)
     assert _is_conservation_lockout(rec) is False
     assert classify_failure(rec) == "pass"
 
 
-def test_conservation_lockout_detected_for_bfv() -> None:
-    rec = _bfc_lockout_record(routing="budgetflow_value_aware")
+def test_conservation_lockout_detected_for_value_aware() -> None:
+    rec = _conservative_lockout_record(routing="budgetflow_value_aware")
     assert _is_conservation_lockout(rec) is True
     assert classify_failure(rec) == "budget_fail"
 
 
 def test_conservation_lockout_not_triggered_non_stagnation() -> None:
-    rec = _bfc_lockout_record(exit_reason="format_error_no_tool_calls")
+    rec = _conservative_lockout_record(exit_reason="format_error_no_tool_calls")
     assert _is_conservation_lockout(rec) is False
 
 
 def test_conservation_lockout_not_triggered_after_t3_access() -> None:
-    rec = _bfc_lockout_record(
+    rec = _conservative_lockout_record(
         turn_traces=[
             {"backend_tier": 2, "final_backend": "tier2", "router_reason": "bf_cons_max_tier=2"},
             {"backend_tier": 3, "final_backend": "tier3", "router_reason": "bf_cons_escalated_t3"},
@@ -289,7 +289,7 @@ def test_conservation_lockout_uses_catalog_strongest_tier(monkeypatch) -> None:
 
     monkeypatch.setattr(fc, "MODEL_CATALOG", _Catalog())
 
-    rec = _bfc_lockout_record(
+    rec = _conservative_lockout_record(
         turn_traces=[
             {"backend_tier": 3, "final_backend": "tier3", "router_reason": "bf_cons_max_tier=3"},
         ]

@@ -105,10 +105,12 @@ _STRATEGY_ABBREV: dict[str, str] = {
     "all_t3": "t3",
     "budget_only_t2_tight": "bo2-T",
     "budget_only_t2_loose": "bo2-L",
-    "budgetflow_conservative_tight": "bfc-T",
-    "budgetflow_conservative_loose": "bfc-L",
-    "budgetflow_value_aware_tight": "bfv-T",
-    "budgetflow_value_aware_loose": "bfv-L",
+    "budgetflow_conservative_tight": "bf-conservative-T",
+    "budgetflow_conservative_loose": "bf-conservative-L",
+    "budgetflow_value_aware_tight": "bf-value-aware-T",
+    "budgetflow_value_aware_loose": "bf-value-aware-L",
+    "value_aware_task_level_tight": "va-task-level-T",
+    "value_aware_task_level_loose": "va-task-level-L",
 }
 
 

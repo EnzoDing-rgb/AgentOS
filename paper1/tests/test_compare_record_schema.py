@@ -218,7 +218,7 @@ def test_persisted_jsonl_contains_t1_t2_observability_and_learning_memory(tmp_pa
     assert persisted["turns"] == 2
     assert persisted["value_objective"] == "t2_equal_value_ablation"
     assert persisted["yield_per_dollar"] == 4.0
-    assert persisted["routing_policy_family"] == "bfv_equal_value_ablation"
+    assert persisted["routing_policy_family"] == "heuristic_equal_value_t2"
     assert persisted["routing_learned_action"] == "early_rescue"
     assert persisted["routing_policy_memory_source"].endswith("066_postfix_3x3.jsonl")
     assert record["budget_learning_update_written"] is True

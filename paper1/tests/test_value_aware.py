@@ -1,4 +1,4 @@
-"""Phase Y: BudgetFlowValueAware tests."""
+"""Phase Y: Value-Aware HeuristicPolicy tests."""
 
 import sys
 
@@ -25,17 +25,17 @@ def _turn(stage=None, w_i=0.4):
 
 
 class TestStrategyCatalog:
-    def test_bfv_registered_in_default_strategies(self):
+    def test_value_aware_registered_in_default_strategies(self):
         from budgetflow.experiments.compare_config import DEFAULT_STRATEGIES
         names = {s.name for s in DEFAULT_STRATEGIES}
         assert "budgetflow_value_aware_tight" in names
         assert "budgetflow_value_aware_loose" in names
 
-    def test_bfv_tight_routing_is_value_aware(self):
+    def test_value_aware_tight_routing_is_value_aware(self):
         from budgetflow.experiments.compare_config import DEFAULT_STRATEGIES
-        bfv = next(s for s in DEFAULT_STRATEGIES if s.name == "budgetflow_value_aware_tight")
-        assert bfv.routing == "budgetflow_value_aware"
-        assert bfv.budget_tier == "tight"
+        strategy = next(s for s in DEFAULT_STRATEGIES if s.name == "budgetflow_value_aware_tight")
+        assert strategy.routing == "budgetflow_value_aware"
+        assert strategy.budget_tier == "tight"
 
     def test_task_level_value_control_registered(self):
         from budgetflow.experiments.compare_config import DEFAULT_STRATEGIES
@@ -103,8 +103,8 @@ class TestValueMultiplier:
         assert sel.last_multiplier == 1.0
 
 
-class TestBFVNotAffectBFC:
-    def test_bfc_unaffected_by_task_value(self):
+class TestConservativeNotAffectValueAware:
+    def test_conservative_unaffected_by_task_value(self):
         """ConservativeSelector should not have value awareness."""
         from budgetflow.selector import ConservativeSelector, build_zero_calibration_progress_table
         backends = _backends()
@@ -115,7 +115,7 @@ class TestBFVNotAffectBFC:
         # Should NOT have last_multiplier
         assert not hasattr(sel, "last_multiplier")
 
-    def test_bfv_has_conservation(self):
+    def test_value_aware_has_conservation(self):
         """ValueAwareSelector should also apply conservation factor."""
         from budgetflow.selector import ValueAwareSelector, build_zero_calibration_progress_table
         backends = _backends()
@@ -133,7 +133,7 @@ class TestBFVNotAffectBFC:
 
 
 class TestBuildRoutingContext:
-    def test_bfv_creates_value_aware_selector(self):
+    def test_value_aware_creates_value_aware_selector(self):
         from budgetflow.adapter.strategies import build_routing_context
         from budgetflow.selector import ValueAwareSelector
         backends = _backends()
@@ -145,7 +145,7 @@ class TestBuildRoutingContext:
         assert ctx.selector.median_task_value == 1.0
         assert ctx.task_value == 2.0
 
-    def test_bfv_context_stores_values(self):
+    def test_value_aware_context_stores_values(self):
         from budgetflow.adapter.strategies import build_routing_context
         backends = _backends()
         ctx = build_routing_context(
@@ -178,7 +178,7 @@ class TestBuildRoutingContext:
 
 
 class TestValueAwareTraceFields:
-    def test_trace_fields_present_for_bfv(self):
+    def test_trace_fields_present_for_value_aware(self):
         from budgetflow.adapter.strategies import build_routing_context
         from budgetflow.adapter.turn_trace import value_aware_trace_fields
         backends = _backends()
@@ -195,7 +195,7 @@ class TestValueAwareTraceFields:
         assert fields["task_value"] == 2.0
         assert fields["task_value_multiplier"] == 2.0
 
-    def test_trace_fields_empty_for_bfc(self):
+    def test_trace_fields_empty_for_conservative(self):
         from budgetflow.adapter.strategies import build_routing_context
         from budgetflow.adapter.turn_trace import value_aware_trace_fields
         backends = _backends()

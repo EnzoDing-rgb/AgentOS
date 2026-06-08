@@ -46,7 +46,7 @@ def test_readiness_blocks_uncovered_non_equal_value_matrix(tmp_path) -> None:
     assert "planned_total_cap=0.2000" in report.facts
 
 
-def test_readiness_warns_equal_value_bfv_is_not_t1_evidence() -> None:
+def test_readiness_warns_equal_value_is_not_t1_evidence() -> None:
     value_context = ValueEfficiencyContext()
     value_context.init(value_profile="equal")
 

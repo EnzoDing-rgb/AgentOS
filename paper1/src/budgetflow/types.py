@@ -6,9 +6,50 @@ from typing import Literal
 
 
 class Stage(str, Enum):
+    """SWE-bench workflow stages: adapter detail, not BudgetFlow core.
+
+    These map to BudgetFlow WorkflowSegments via the SWE-bench segment adapter.
+    New policy code should use WorkflowSegment; Stage is retained for existing
+    harness adapters, progress tables, and trace schemas that reference
+    LOCALIZATION / REPAIR / VALIDATION directly.
+    """
+
     LOCALIZATION = "localization"
     REPAIR = "repair"
     VALIDATION = "validation"
+
+
+@dataclass(frozen=True)
+class WorkflowSegment:
+    """Coarse workflow state used as a policy signal.
+
+    Default segments are Context, Action, Verification.
+    Segment-aware routing means the policy *can* use segment as a feature.
+    It does not force model switching.
+    """
+
+    name: str  # Context, Action, Verification, or adapter-defined equivalent
+    signals: dict[str, float | str | bool] = field(default_factory=dict)
+
+    # Canonical segment names
+    CONTEXT = "Context"
+    ACTION = "Action"
+    VERIFICATION = "Verification"
+
+    @classmethod
+    def context(cls, **signals: float | str | bool) -> WorkflowSegment:
+        """Gather information, inspect state, form a working hypothesis."""
+        return cls(name=cls.CONTEXT, signals=dict(signals))
+
+    @classmethod
+    def action(cls, **signals: float | str | bool) -> WorkflowSegment:
+        """Make an intervention: edit, write, call a tool, change task state."""
+        return cls(name=cls.ACTION, signals=dict(signals))
+
+    @classmethod
+    def verification(cls, **signals: float | str | bool) -> WorkflowSegment:
+        """Check whether the intervention worked."""
+        return cls(name=cls.VERIFICATION, signals=dict(signals))
 
 
 class WorkflowStatus(str, Enum):

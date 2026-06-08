@@ -97,7 +97,7 @@ def test_provider_and_protocol_helpers_identify_real_backend_contracts() -> None
         (2.0, "budgetflow_conservative", False),
     ],
 )
-def test_value_triggered_escalation_only_opens_for_high_value_bfv(task_value: float, strategy: str, opens: bool) -> None:
+def test_value_triggered_escalation_only_opens_for_high_value(task_value: float, strategy: str, opens: bool) -> None:
     t2 = _backend("tier2", 2)
     t3 = _backend("tier3", 3)
     model = object.__new__(BudgetFlowLitellmModel)
