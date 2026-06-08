@@ -16,7 +16,7 @@ comments, and reports should use these names.
 | ValueSource | Versioned input that defines or estimates task value for one run or deployment. |
 | CostSource | Versioned input that defines or estimates model cost for one run or deployment. |
 | TaskAdapter | Adapter that turns external work into standard BudgetFlow task inputs, including task identity, description, features, difficulty/value hints, and value-source metadata. |
-| BudgetAdapter | Adapter that turns customer or experiment budget input into a standard BudgetContext: budget window, hard/soft cap, shared scope, allowed model pool, source, and confidence. |
+| BudgetAdapter | Adapter that turns customer or experiment budget input into a standard budget input: budget window, hard/soft cap, shared scope, allowed model pool, source, and confidence. |
 | ProgressAdapter | Adapter that turns process evidence and final acceptance into standard progress/outcome signals. Intermediate progress can be unknown; final acceptance defines resolved. |
 | CostAdapter | Adapter that turns public price catalogs, provider estimates, invoices, enterprise rate cards, or manual overrides into a standard cost signal. |
 | Confidence | A short record of where a value or cost estimate came from and how trustworthy it is. |
@@ -100,15 +100,6 @@ class TaskContext:
     value_source: ValueSourceInfo
 
 @dataclass
-class BudgetContext:
-    account_id: str
-    window: str  # task, day, week, project, organization
-    remaining_usd: float
-    hard_cap_usd: float
-    soft_cap_usd: float | None
-    allowed_backends: list[str]
-
-@dataclass
 class HistoryContext:
     similar_tasks: list[OutcomeRecord]
     cost_priors: dict[str, float]
@@ -129,20 +120,20 @@ class ProgressSignal:
     confidence: str
 
 class CostAdapter:
-    def estimate(self, backend: str, state: WorkflowState, budget: BudgetContext) -> CostEstimate: ...
+    def estimate(self, backend: str, state: WorkflowState, budget: dict) -> CostEstimate: ...
     def settle(self, estimate: CostEstimate, actual: CostActual | None) -> CostRecord: ...
 
 class PolicyBackend:
-    def estimate_cap(self, task: TaskContext, value: ValueEstimate, budget: BudgetContext, history: HistoryContext) -> float: ...
+    def estimate_cap(self, task: TaskContext, value: ValueEstimate, budget_input: dict, history: HistoryContext) -> float: ...
     def choose_backend(
         self,
         task: TaskContext,
         segment: WorkflowSegment,
         state: WorkflowState,
-        budget: BudgetContext,
+        budget_input: dict,
     ) -> str: ...
     def should_escalate(self, task: TaskContext, state: WorkflowState, history: HistoryContext) -> bool: ...
-    def should_stop(self, task: TaskContext, state: WorkflowState, budget: BudgetContext) -> bool: ...
+    def should_stop(self, task: TaskContext, state: WorkflowState, budget_input: dict) -> bool: ...
     def learn(self, task: TaskContext, outcome: VerifiedOutcome) -> None: ...
 ```
 

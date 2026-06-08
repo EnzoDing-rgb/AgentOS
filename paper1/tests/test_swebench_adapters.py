@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from budgetflow.adapters import (
+    SwebenchBudgetAdapter,
     SwebenchCostAdapter,
     SwebenchProgressAdapter,
     SwebenchTaskAdapter,
@@ -55,6 +56,24 @@ def test_swebench_progress_adapter_normalizes_result_fields() -> None:
 def test_swebench_cost_adapter_fails_fast_for_unknown_backend() -> None:
     with pytest.raises(ValueError, match="unknown backend"):
         SwebenchCostAdapter().estimate("missing-tier", 100, 20)
+
+
+def test_swebench_budget_adapter_normalizes_budget_input() -> None:
+    budget_input = SwebenchBudgetAdapter().normalize(
+        hard_cap_usd=123.0,
+        soft_cap_usd=100.0,
+        window="policy_batch",
+        shared=True,
+        budget_scale=1.2,
+    )
+
+    assert budget_input["hard_cap_usd"] == 123.0
+    assert budget_input["soft_cap_usd"] == 100.0
+    assert budget_input["window"] == "policy_batch"
+    assert budget_input["source"] == "pre_registered_experiment_budget"
+    assert budget_input["shared"] is True
+    assert budget_input["confidence"]["budget_scale"] == 1.2
+    assert budget_input["allowed_backends"]
 
 
 def test_swebench_progress_adapter_maps_command_to_segment() -> None:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import threading
 import time
 from collections.abc import Callable
+from typing import Any
 
 from budgetflow.adaptive_routing import AdaptiveRoutingRegistry
 from budgetflow.adapters import (
@@ -30,7 +31,6 @@ from budgetflow.run_guards import CompareRunGuards
 from budgetflow.run_trace import TraceConsoleLevel
 from budgetflow.types import WorkflowSegment
 from budgetflow.value_efficiency import ValueEfficiencyContext
-from budgetflow.adapters.swebench_budget import BudgetContext
 
 
 def truncate_turn_traces(
@@ -69,7 +69,7 @@ def run_task_record(
     policy_lane: str = "",
     budget_mode: str = "shared",
     per_task_cap: float | None = None,
-    budget_context: BudgetContext | None = None,
+    budget_input: dict[str, Any] | None = None,
     task_set: str = "",
     task_set_kind: str = "",
 ) -> dict:
@@ -114,7 +114,7 @@ def run_task_record(
         "w_i_profile": w_i_profile_for_record(cfg.routing),
         "budget_scope": "shared_constrained" if cfg.budgeted else "unconstrained_diagnostic",
         "batch_budget_cap": batch_budget_cap if cfg.budgeted else None,
-        "budget_context": budget_context.as_record() if budget_context is not None else None,
+        "budget_input": dict(budget_input) if budget_input is not None else None,
         "batch_spent": batch_snapshot.get("spent_budget"),
         "batch_available": batch_snapshot.get("available_budget"),
         "batch_snapshot": batch_snapshot,
@@ -239,7 +239,7 @@ def run_strategy_batch(
     trace_truncate_chars: int = 120,
     task_caps: dict[str, float] | None = None,
     budget_estimates: dict[str, BudgetEstimate] | None = None,
-    budget_context: BudgetContext | None = None,
+    budget_input: dict[str, Any] | None = None,
     run_series: str = "",
     heartbeat_writer: object | None = None,
     task_set: str = "",
@@ -373,7 +373,7 @@ def run_strategy_batch(
                 trace_max_turns=trace_max_turns,
                 trace_truncate_chars=trace_truncate_chars,
                 budget_estimate=budget_estimates.get(task.instance_id) if budget_estimates else None,
-                budget_context=budget_context,
+                budget_input=budget_input,
                 run_series=run_series,
                 policy_lane=cfg.name,
                 budget_mode="dynamic_task_caps" if task_caps is not None and task_cap is not None

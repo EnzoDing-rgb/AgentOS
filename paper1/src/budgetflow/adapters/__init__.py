@@ -4,7 +4,7 @@ These adapters keep SWE-bench specifics behind clean contracts so
 BudgetFlow Mechanism stays benchmark-agnostic.
 """
 
-from .swebench_budget import BudgetAdapter, BudgetContext, SwebenchBudgetAdapter
+from .swebench_budget import BudgetAdapter, SwebenchBudgetAdapter
 from .swebench_value import SwebenchValueAdapter, ValueEstimate
 from .swebench_cost import CostAdapter, CostEstimate, SwebenchCostAdapter
 from .swebench_task import SwebenchTaskAdapter, TaskAdapter, TaskFeatures
@@ -20,7 +20,6 @@ __all__ = [
     "CostAdapter",
     "CostEstimate",
     "BudgetAdapter",
-    "BudgetContext",
     "ActionProgressSignal",
     "ProgressAdapter",
     "ProgressSignal",
