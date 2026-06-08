@@ -18,8 +18,10 @@ After every experiment, inspect artifacts before drawing conclusions:
 - Learning Loop Reality: Cost Memory, Routing Memory, and Escalation Memory must actually affect the next decision, not only appear in logs.
 - Mechanism Diagnosis: explain whether outcomes came from model capability, task difficulty, routing, caps, Value-Triggered Escalation, evaluation, or observability.
 - Stage-Splitting Risk: localization/repair/validation routing is a mechanism hypothesis, not an axiom. It may improve T2 by using tiers at the right workflow stage, but it may also add switching noise, cache loss, prompt drift, or brittle heuristics that hurt T1.
+- Stage-Aware Control: when evaluating the T2 mechanism, report stage-aware BudgetFlow against a non-stage or task-level control. Explain pass/value delta, cost delta, T3 Productive Rate, and whether stage splitting helped routing or merely added noise.
 - Strong Baseline Diagnosis: `budget_only_tight` is a strong budget-pressure baseline and diagnostic mirror, not the paper target. When BFV/BFC lose to it, first diagnose which reusable mechanism principle BO exposed, such as early T3 frontload, pressure gating, repair runway, or stop-loss behavior, then decide whether BudgetFlow should absorb that principle through its own value-aware, stage-aware, repair/escalation/stop mechanisms. Do not weaken BO, cherry-pick tasks, tune values after outcomes, or turn the story into "BudgetFlow copied BO."
 - Long-Term Iteration Value: before fixing a symptom, ask whether the fix improves future diagnosis, scale-up, or paper evidence. Do not overfit the current five familiar tasks.
+- Reflection Loop: after each experiment, audit whether the metric matrix, logs, checker output, and memory updates are sufficient to support the next learning/routing decision. Do not treat pass rate alone as an explanation.
 
 ## Run Discipline
 
@@ -33,6 +35,7 @@ After every experiment, inspect artifacts before drawing conclusions:
 - Historical JSONL and historical reports are immutable evidence. Mark old artifacts forensic-only when needed; do not patch them in place.
 - Runtime artifacts under `paper1/data/` are not source code. Do not commit trace, heartbeat, checkpoint, or run-output files unless explicitly requested.
 - Model pricing and capability priors belong in a versioned tier catalog. Web search is allowed for offline catalog calibration, but paid-run execution must use the pre-registered catalog and stop if cost/progress provenance is missing or stale.
+- Local harness results are part of the evidence system. Because nested Docker is not assumed available, local harness adapters, compat patches, host dependencies, and checker invalidation rules must be treated as first-class evaluation risks.
 
 ## Current Vocabulary
 
@@ -45,8 +48,9 @@ After every experiment, inspect artifacts before drawing conclusions:
 ## Agent Workflow
 
 - Main-agent judgment owns architecture, routing, evaluation, learning, and paper-claim decisions.
-- Use subagents for low-value, high-token scans or classification work when it saves cost without outsourcing core judgment.
+- Use subagents for low-value, high-token scans, narrow code/test edits, artifact enumeration, or failure classification when it saves cost or wall time without outsourcing core judgment. Main-agent judgment owns architecture, routing, evaluation, learning, and paper-claim decisions.
 - Use skills only when they materially improve the current work. Do not mechanically read or invoke generic system skills in a way that distracts from BudgetFlow's north star, experiment discipline, or the user's immediate instruction. In particular, do not force a Test-Driven Development workflow for documentation-only work, experiment judgment, review, or other changes where it is not actually needed.
+- Avoid broad, unbounded repo archaeology. Read the few files and artifacts needed to answer the current evidence question, then act or summarize the remaining uncertainty.
 - Keep docs load-bearing: update `paper1/docs/north_star.md`, `paper1/docs/CONTEXT.md`, or `paper1/docs/progress.md` only when a real decision changes.
 - Commit and push stable slices after no-paid gates pass. Avoid noisy commits, but do not leave verified core changes uncommitted.
 
@@ -56,3 +60,4 @@ After every experiment, inspect artifacts before drawing conclusions:
 - Current core learning signals are cap sufficiency/cost, routing outcome by task/repo/stage, T3 productivity versus no-progress cost, provider/parser failures, and harness-trusted verified outcome.
 - A new signal earns its place only if it can influence a future cap, route, stop/continue, or escalation decision and can be audited from JSONL.
 - Schema-aware learning matters: old trace fields may be forensic or weak positive evidence, but schema-mismatched missing/false progress must not create negative T3 no-progress evidence that changes routing.
+- Cost Memory, Routing Memory, and Escalation Memory must learn from history without overfitting it. Prefer fresh, schema-compatible, harness-trusted runs over old forensic data; old runs may be weak priors but must not dominate current routing through raw counts or stale failure semantics.
