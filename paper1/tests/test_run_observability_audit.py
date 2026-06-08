@@ -67,6 +67,39 @@ def test_compact_audit_reports_value_metrics() -> None:
     assert "T1 VALUE METRICS" in format_compact_audit(audit)
 
 
+def test_compact_audit_counts_actionable_decision_issues() -> None:
+    audit = build_compact_audit([
+        {
+            "instance_id": "repo__task-a",
+            "strategy": "budgetflow_value_aware_tight",
+            "harness_resolved": True,
+            "harness_evidence": {"evidence_complete": False},
+            "patch_extracted": True,
+            "patch_source": "submission",
+            "submitted_patch": "/tmp/p.patch",
+            "detail": "test_patch=ok; fail_before=fail; model_patch=ok; fail_after=fail",
+            "total_cost": 0.1,
+            "llm_turns": 1,
+            "turn_trace_count": 1,
+            "turn_traces": [
+                {"backend_tier": 2, "provider_status_code": 503},
+            ],
+            "policy_memory_enabled": True,
+        }
+    ])
+
+    issues = audit["decision_issue_counts"]
+
+    assert issues["missing_value"] == 1
+    assert issues["missing_value_source"] == 1
+    assert issues["missing_cost_confidence"] == 1
+    assert issues["missing_policy_decision"] == 1
+    assert issues["provider_error"] == 1
+    assert issues["memory_enabled_missing_source"] == 1
+    assert issues["harness_blocking"] == 1
+    assert "DECISION ISSUES" in format_compact_audit(audit)
+
+
 def test_compact_audit_reports_repo_memory_evidence_for_new_tasks() -> None:
     audit = build_compact_audit([
         {

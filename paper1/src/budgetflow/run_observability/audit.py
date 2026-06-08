@@ -181,6 +181,51 @@ def _segment_control_delta(by_strategy: dict[str, dict]) -> dict:
     }
 
 
+def _decision_issues(record: dict) -> list[str]:
+    issues: list[str] = []
+    if record.get("task_value") is None:
+        issues.append("missing_value")
+    if not (record.get("value_source") or record.get("task_value_source_class")):
+        issues.append("missing_value_source")
+    if record.get("total_cost") is None and record.get("task_cost") is None:
+        issues.append("missing_cost")
+    if not (record.get("budget_prior_confidence") or record.get("cost_source")):
+        issues.append("missing_cost_confidence")
+
+    traces = record.get("turn_traces")
+    has_policy_decision = False
+    has_provider_error = False
+    if isinstance(traces, list):
+        has_policy_decision = any(
+            isinstance(trace, dict) and bool(trace.get("policy_decision"))
+            for trace in traces
+        )
+        has_provider_error = any(
+            isinstance(trace, dict)
+            and bool(trace.get("error_type") or trace.get("provider_status_code"))
+            for trace in traces
+        )
+    if int(record.get("turn_trace_count") or 0) > 0 and not has_policy_decision:
+        issues.append("missing_policy_decision")
+    if has_provider_error:
+        issues.append("provider_error")
+
+    if record.get("policy_memory_enabled") and not _routing_memory_source(record):
+        issues.append("memory_enabled_missing_source")
+
+    trust = build_harness_trust(record)
+    if trust.get("severity") == "blocking":
+        issues.append("harness_blocking")
+    return issues
+
+
+def _decision_issue_counts(records: list[dict]) -> dict[str, int]:
+    counts: Counter = Counter()
+    for record in records:
+        counts.update(_decision_issues(record))
+    return dict(counts.most_common())
+
+
 def build_compact_audit(records: list[dict]) -> dict:
     """Build a high-density audit summary from JSONL records.
 
@@ -394,4 +439,5 @@ def build_compact_audit(records: list[dict]) -> dict:
         "harness_trust": trust_counts,
         "harness_owner": ht_owner_counts,
         "harness_severity": ht_severity_counts,
+        "decision_issue_counts": _decision_issue_counts(records),
     }

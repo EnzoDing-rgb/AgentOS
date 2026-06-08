@@ -15,6 +15,7 @@
 - **Yield decision:** the primary T1 metric is now **Yield**, meaning total resolved task value at fixed budget. **Yield per Dollar** is total resolved task value divided by model spend.
 - **Value/Cost source decision:** BudgetFlow core does not hard-code what value or cost means. ValueSource, CostSource, ValueAdapter, and CostAdapter provide bootstrap inputs, manual overrides, public price catalogs, enterprise imports, and learned calibration through a normalized estimate plus confidence.
 - **No-paid implementation status:** active runtime now routes BudgetFlow strategies through `BootstrapPolicy`, emits compact policy decision trace fields, reports Yield as total resolved task value, and exposes `yield_coverage` only as a compatibility diagnostic.
+- **Test/evidence audit status:** `test_policy_memory.py` is back in the normal no-paid suite, `LearnMemoryBundle` exposes Cost/Routing/Escalation Memory slots, compact audit reports actionable decision issues, and `test_test_inventory.py` records the current purpose of every active test file. Passing tests remain a regression gate, not paper evidence.
 
 ### 084 / Starter stop-loss negative diagnostic
 

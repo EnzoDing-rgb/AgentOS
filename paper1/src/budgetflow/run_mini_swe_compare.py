@@ -336,7 +336,7 @@ def main() -> None:
     else:
         print(f"{tag('policy_memory', bold=False)} disabled — {policy_ctx.reason or 'no usable run JSONL source found'}")
 
-    adaptive_registry = AdaptiveRoutingRegistry(policy_memory=policy_memory)
+    adaptive_registry = AdaptiveRoutingRegistry(memory_bundle=policy_ctx.memory_bundle)
     if args.append and out_path.is_file():
         adaptive_registry.rebuild_from_jsonl(out_path)
 

@@ -820,7 +820,11 @@ def test_auto_budget_dry_run_exposes_escalation_memory_decision(tmp_path: Path) 
             }
         ],
     )) + "\n")
-    env = {**os.environ, "PYTHONPATH": f"{ROOT / 'src'}:{ROOT.parent / 'external' / 'mini-swe-agent' / 'src'}"}
+    env = {
+        **os.environ,
+        "NO_COLOR": "1",
+        "PYTHONPATH": f"{ROOT / 'src'}:{ROOT.parent / 'external' / 'mini-swe-agent' / 'src'}",
+    }
     result = subprocess.run(
         [
             sys.executable,

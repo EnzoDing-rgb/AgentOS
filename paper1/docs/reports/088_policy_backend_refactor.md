@@ -216,3 +216,43 @@ $ PYTHONPATH=paper1/src:external/mini-swe-agent/src python -m pytest \
 Skipped known pre-existing failure:
 `paper1/tests/test_policy_memory.py::test_auto_budget_dry_run_exposes_escalation_memory_decision`
 still fails on ANSI-colored console text and was not part of this slice.
+
+---
+
+## Addendum - Memory Boundary And Test Audit (2026-06-08)
+
+### What Changed
+
+1. `test_policy_memory.py` is back in the normal no-paid suite. The dry-run
+   subprocess now sets `NO_COLOR=1`, so the test verifies content instead of
+   ANSI terminal styling.
+2. `LearnMemoryBundle` now has separate optional slots for Cost Memory, Routing
+   Memory, and Escalation Memory. Current runtime passes built-in Routing and
+   Escalation Memory through this bundle instead of handing a raw memory object
+   to the adaptive registry.
+3. `PolicyMemory` is documented as built-in Routing/Escalation Memory for Learn
+   Policy, not BudgetFlow core and not the only possible learning method.
+4. Compact audit now reports `decision_issue_counts`, a debugging summary for
+   missing value, missing cost confidence, missing policy decision, missing
+   memory source, provider errors, and blocking harness issues.
+5. Added `test_test_inventory.py`, a test-purpose inventory. This is not a
+   quality trophy; it forces every active test file to declare what current
+   interface or evidence path it protects.
+
+### Test Judgment
+
+Passing tests are a regression gate, not proof that the paper claim is true.
+The useful claim from this slice is narrower: the no-paid suite now includes
+Memory behavior again, and test files have a visible current-purpose inventory.
+Future cleanup should delete or rewrite tests that only preserve stale names,
+old aliases, or construction-only behavior.
+
+### Verification
+
+```
+$ PYTHONPATH=paper1/src:external/mini-swe-agent/src python -m pytest paper1/tests -q
+270 passed
+
+$ git diff --check
+clean
+```

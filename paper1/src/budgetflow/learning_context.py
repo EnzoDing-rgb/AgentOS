@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .harness_contamination import has_host_dependency_contamination
+from .learn_policy import LearnMemoryBundle
 from .policy_memory import PolicyMemory
 
 POLICY_MEMORY_SOURCE_DECAY = 0.35
@@ -38,6 +39,7 @@ ROUTING_MEMORY_ROUTINGS = frozenset(
 @dataclass(frozen=True)
 class PolicyMemoryContext:
     memory: PolicyMemory | None
+    memory_bundle: LearnMemoryBundle
     source: Path | None
     sources: tuple[Path, ...]
     source_kind: str
@@ -118,7 +120,9 @@ def load_policy_memory_context(
 ) -> PolicyMemoryContext:
     """Resolve and load routing PolicyMemory for a compare run."""
     if disable:
-        return PolicyMemoryContext(None, None, (), "disabled", False, "disabled_by_flag")
+        return PolicyMemoryContext(
+            None, LearnMemoryBundle.off("disabled_by_flag"), None, (), "disabled", False, "disabled_by_flag"
+        )
 
     sources: tuple[Path, ...] = ()
     source_kind = ""
@@ -142,13 +146,19 @@ def load_policy_memory_context(
         source_kind = "default_recent" if sources else ""
 
     if not sources:
-        return PolicyMemoryContext(None, None, (), "", False, "no_usable_run_jsonl")
+        return PolicyMemoryContext(
+            None, LearnMemoryBundle.off("no_usable_run_jsonl"), None, (), "", False, "no_usable_run_jsonl"
+        )
     missing = [path for path in sources if not path.is_file()]
     if missing:
-        return PolicyMemoryContext(None, missing[0], sources, source_kind, False, "file_not_found")
+        return PolicyMemoryContext(
+            None, LearnMemoryBundle.off("file_not_found"), missing[0], sources, source_kind, False, "file_not_found"
+        )
     unusable = [path for path in sources if not looks_like_policy_memory_source(path)]
     if unusable:
-        return PolicyMemoryContext(None, unusable[0], sources, source_kind, False, "not_routing_run_jsonl")
+        return PolicyMemoryContext(
+            None, LearnMemoryBundle.off("not_routing_run_jsonl"), unusable[0], sources, source_kind, False, "not_routing_run_jsonl"
+        )
 
     memory = PolicyMemory(regret_threshold=regret_threshold)
     records: list[dict] = []
@@ -167,4 +177,9 @@ def load_policy_memory_context(
             records.append(record)
     memory.rebuild_from_records(records)
     memory._source_path = ",".join(str(path) for path in sources)
-    return PolicyMemoryContext(memory, sources[0], sources, source_kind, True)
+    bundle = LearnMemoryBundle.built_in(
+        routing=memory,
+        escalation=memory,
+        source=",".join(str(path) for path in sources),
+    )
+    return PolicyMemoryContext(memory, bundle, sources[0], sources, source_kind, True)

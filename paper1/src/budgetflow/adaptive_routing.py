@@ -351,16 +351,29 @@ class AdaptiveRoutingState:
 class AdaptiveRoutingRegistry:
     """Thread-safe registry: one adaptive state per budgetflow_full compare policy."""
 
-    def __init__(self, policy_memory: object | None = None, memory_mode: str = "off") -> None:
+    def __init__(
+        self,
+        policy_memory: object | None = None,
+        memory_mode: str = "off",
+        memory_bundle: LearnMemoryBundle | None = None,
+    ) -> None:
         self._lock = threading.Lock()
         self._states: dict[str, AdaptiveRoutingState] = {}
-        self._policy_memory = policy_memory
-        self._memory_bundle = (
-            LearnMemoryBundle.built_in(policy_memory, source="policy_memory")
-            if policy_memory is not None
-            else LearnMemoryBundle.off()
-        )
-        self._memory_mode = memory_mode if policy_memory is not None else "off"
+        if memory_bundle is None:
+            memory_bundle = (
+                LearnMemoryBundle.built_in(
+                    routing=policy_memory,
+                    escalation=policy_memory,
+                    source="policy_memory",
+                )
+                if policy_memory is not None
+                else LearnMemoryBundle.off()
+            )
+        self._memory_bundle = memory_bundle
+        self._policy_memory = policy_memory or memory_bundle.routing
+        self._memory_mode = memory_bundle.mode if memory_bundle.enabled else "off"
+        if memory_bundle.enabled and memory_mode != "off":
+            self._memory_mode = memory_mode
 
     @property
     def policy_memory(self) -> object | None:
@@ -376,7 +389,11 @@ class AdaptiveRoutingRegistry:
 
     def set_policy_memory(self, policy_memory: object) -> None:
         self._policy_memory = policy_memory
-        self._memory_bundle = LearnMemoryBundle.built_in(policy_memory, source="policy_memory")
+        self._memory_bundle = LearnMemoryBundle.built_in(
+            routing=policy_memory,
+            escalation=policy_memory,
+            source="policy_memory",
+        )
         self._memory_mode = "built_in"
         with self._lock:
             for state in self._states.values():

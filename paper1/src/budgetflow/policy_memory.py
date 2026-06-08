@@ -1,7 +1,7 @@
-"""PolicyMemory / RoutingPrior — heuristic statistical learning from historical JSONL.
+"""Built-in Routing and Escalation Memory for Learn Policy.
 
-No ML/RL. Rolling window, EWMA, success_rate, median_cost, failure_count.
-Rebuilds on resume; writes routing_prior_summary into every routing trace.
+This module rebuilds compact priors from verified run JSONL. It is a built-in
+Memory backend, not BudgetFlow core and not the only possible learning method.
 """
 
 from __future__ import annotations
@@ -175,11 +175,11 @@ class StarterPrior:
 
 
 class PolicyMemory:
-    """Heuristic prior store rebuilt from JSONL outcomes.
+    """Built-in Routing/Escalation Memory rebuilt from JSONL outcomes.
 
     Consumes verified task records (harness_resolved, total_cost, turn_traces,
-    failure_class, backend_picks).  Zero ML/RL — just rolling window stats,
-    EWMA, counters, and medians.
+    failure_class, backend_picks). The outputs are priors that a Learn Policy
+    may consume through the PolicyBackend boundary.
     """
 
     def __init__(self, ewma_alpha: float = 0.3, window_size: int = 20, regret_threshold: float | None = None):

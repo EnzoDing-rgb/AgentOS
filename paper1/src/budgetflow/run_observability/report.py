@@ -173,6 +173,12 @@ def format_compact_audit(audit: dict) -> str:
                 f"{k}={v}" for k, v in sorted(audit["harness_owner"].items())
             ))
 
+    if audit.get("decision_issue_counts"):
+        lines.append(banner)
+        lines.append("DECISION ISSUES: " + " | ".join(
+            f"{k}={v}" for k, v in sorted(audit["decision_issue_counts"].items())
+        ))
+
     lines.append(banner)
     return "\n".join(lines)
 
