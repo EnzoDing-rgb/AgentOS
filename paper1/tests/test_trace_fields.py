@@ -7,6 +7,7 @@ from budgetflow.adapter.mini_swe_proxy import (
 )
 from budgetflow.adapter.turn_trace import (
     build_turn_trace,
+    cost_basis_trace_fields,
     protocol_trace_fields,
     provider_trace_fields,
 )
@@ -51,6 +52,8 @@ def test_turn_trace_has_fields_needed_to_debug_value_routing_and_provider_failur
         error_type="ServiceUnavailableError",
         provider="openai_compatible",
         model="openai/gpt-5.4",
+        cost_estimate_source="tier_catalog:test",
+        cost_estimate_confidence={"backend": "tier3"},
         text_mode=True,
         protocol="text_regex",
         parser="parse_regex_actions",
@@ -71,8 +74,12 @@ def test_turn_trace_has_fields_needed_to_debug_value_routing_and_provider_failur
     assert trace["turns_on_tier"] == 2
     assert trace["workflow_segment"] == "Action"
     assert trace["segment_signals"]["agent_phase"] == "edit_gold"
+    assert trace["progress_state"] == "progress"
+    assert trace["action_progress_state"] == "progress"
     assert trace["touched_file_paths"] == ["src/file.py"]
     assert trace["provider"] == "openai_compatible"
+    assert trace["cost_estimate_source"] == "tier_catalog:test"
+    assert trace["cost_estimate_confidence"]["backend"] == "tier3"
     assert trace["protocol"] == "text_regex"
     assert trace["provider_status_code"] == 503
     assert trace["router_branch"] == "budgetflow_value_aware"
@@ -81,6 +88,42 @@ def test_turn_trace_has_fields_needed_to_debug_value_routing_and_provider_failur
     assert trace["value_triggered_escalation_turns_remaining"] == 2
     assert trace["value_triggered_escalation_opened"] is True
     assert trace["value_triggered_escalation_action"] == "default"
+
+
+def test_turn_trace_preserves_unknown_progress_state() -> None:
+    trace = build_turn_trace(
+        step_index=1,
+        agent_phase=None,
+        stage=Stage.LOCALIZATION,
+        workflow_segment=WorkflowSegment.context(agent_phase=None),
+        bash_command=None,
+        input_tokens=10,
+        expected_costs={},
+        base_pressure=0.0,
+        effective_pressure=0.0,
+        backend_chosen="tier2",
+        escalated_backend="tier2",
+        final_backend="tier2",
+        backend_tier=2,
+        reserve_out=0,
+        adaptive=None,
+        no_progress_streak=0,
+        no_progress_on_tier=0,
+        turns_on_tier=1,
+        has_progress=None,
+        progress_reason="unknown",
+        action_has_progress=None,
+        action_progress_reason="unknown",
+        prompt_tokens=10,
+        completion_tokens=0,
+        actual_cost=0.0,
+        billable=0.0,
+        response_ok=True,
+        error_type=None,
+    )
+
+    assert trace["progress_state"] == "unknown"
+    assert trace["action_progress_state"] == "unknown"
 
 
 def test_swebench_progress_adapter_emits_workflow_segment_and_progress_signal() -> None:
@@ -107,6 +150,16 @@ def test_provider_and_protocol_helpers_identify_real_backend_contracts() -> None
     assert "gpt-5.4" in provider_trace_fields("tier3")["model"]
     assert protocol_trace_fields("tier3", text_mode=True)["protocol"] == "text_regex"
     assert protocol_trace_fields("tier2", text_mode=False)["protocol"] == "tool_call"
+
+
+def test_cost_basis_trace_fields_use_cost_adapter_contract() -> None:
+    fields = cost_basis_trace_fields("tier2", input_tokens=1000)
+
+    assert fields["cost_estimate_source"].startswith("tier_catalog:")
+    assert fields["cost_estimate_confidence"]["backend"] == "tier2"
+    assert fields["cost_estimate_usd"] > 0
+    assert fields["cost_input_per_1m"] > 0
+    assert fields["cost_output_per_1m"] > 0
 
 
 @pytest.mark.parametrize(

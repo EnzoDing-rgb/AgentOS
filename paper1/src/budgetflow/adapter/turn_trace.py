@@ -3,8 +3,18 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from ..adapters import SwebenchCostAdapter
 from ..model_tiers import MODEL_CATALOG, tier_confidence, token_cost_rates
 from .protocol_adapter import ActionProtocolAdapter
+
+
+def progress_state(value: bool | None) -> str:
+    """Normalize optional progress evidence into an auditable three-state field."""
+    if value is True:
+        return "progress"
+    if value is False:
+        return "no_progress"
+    return "unknown"
 
 
 def build_turn_trace(
@@ -27,7 +37,7 @@ def build_turn_trace(
     no_progress_streak: int,
     no_progress_on_tier: int,
     turns_on_tier: int,
-    has_progress: bool,
+    has_progress: bool | None,
     progress_reason: str,
     prompt_tokens: int,
     completion_tokens: int,
@@ -42,6 +52,9 @@ def build_turn_trace(
     cost_source: str | None = None,
     cost_updated: str | None = None,
     cost_notes: str | None = None,
+    cost_estimate_source: str | None = None,
+    cost_estimate_confidence: dict[str, float | str | bool] | None = None,
+    cost_estimate_usd: float | None = None,
     progress_source: str | None = None,
     progress_updated: str | None = None,
     progress_notes: str | None = None,
@@ -108,8 +121,10 @@ def build_turn_trace(
         "no_progress_on_tier": no_progress_on_tier,
         "turns_on_tier": turns_on_tier,
         "has_progress": has_progress,
+        "progress_state": progress_state(has_progress),
         "progress_reason": progress_reason,
         "action_has_progress": action_has_progress,
+        "action_progress_state": progress_state(action_has_progress),
         "action_progress_reason": action_progress_reason,
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
@@ -122,6 +137,9 @@ def build_turn_trace(
         "cost_source": cost_source,
         "cost_updated": cost_updated,
         "cost_notes": cost_notes,
+        "cost_estimate_source": cost_estimate_source,
+        "cost_estimate_confidence": cost_estimate_confidence,
+        "cost_estimate_usd": cost_estimate_usd,
         "progress_source": progress_source,
         "progress_updated": progress_updated,
         "progress_notes": progress_notes,
@@ -260,9 +278,17 @@ def cost_basis_trace_fields(backend_name: str, input_tokens: int) -> dict[str, A
     cfg = MODEL_CATALOG.config_for(backend_name)
     if cfg is None:
         return {}
+    expected = SwebenchCostAdapter(MODEL_CATALOG).estimate(
+        backend_name,
+        input_tokens=input_tokens,
+        expected_output_tokens=cfg.mean_output_tokens,
+    )
     input_rate, output_rate = token_cost_rates(backend_name, input_tokens)
     stage_priors = {stage: round(value, 4) for stage, value in cfg.progress_prior.items()}
     return {
+        "cost_estimate_source": expected.source,
+        "cost_estimate_confidence": dict(expected.confidence),
+        "cost_estimate_usd": expected.usd,
         "cost_input_per_1m": round(input_rate * 1_000_000, 6),
         "cost_output_per_1m": round(output_rate * 1_000_000, 6),
         "cost_band_input_tokens": input_tokens,

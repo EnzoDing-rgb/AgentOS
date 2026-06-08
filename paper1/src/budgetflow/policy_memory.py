@@ -758,8 +758,27 @@ def _trace_productivity(trace: dict) -> bool | None:
     """Whether this backend turn produced a useful action without infra noise."""
     if trace.get("error_type") or trace.get("parser_error_type"):
         return False
+    if trace.get("action_progress_state") in {"progress", "no_progress", "unknown"}:
+        state = str(trace.get("action_progress_state"))
+        if state == "progress":
+            return True
+        if state == "no_progress":
+            return False
+        return None
+    if trace.get("progress_state") in {"progress", "no_progress", "unknown"}:
+        state = str(trace.get("progress_state"))
+        if state == "progress":
+            return True
+        if state == "no_progress":
+            return False
+        return None
     if "action_has_progress" in trace:
-        return bool(trace.get("action_has_progress"))
+        value = trace.get("action_has_progress")
+        if value is True:
+            return True
+        if value is False:
+            return False
+        return None
     return None
 
 

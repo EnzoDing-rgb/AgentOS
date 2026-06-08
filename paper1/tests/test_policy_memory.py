@@ -148,7 +148,7 @@ def test_policy_memory_learns_t1_t2_actions_from_prior_runs() -> None:
     assert memory.routing_prior_summary("cost__task-a", WorkflowSegment.ACTION)["learned_action"] == "cap_strongest"
 
 
-def test_low_weight_stage_evidence_does_not_drive_learned_actions() -> None:
+def test_low_weight_segment_evidence_does_not_drive_learned_actions() -> None:
     stale_failures = [
         _record(instance_id=f"repo__repair-{i}", _policy_memory_weight=0.05)
         for i in range(10)
@@ -744,6 +744,33 @@ def test_policy_memory_uses_current_action_progress_for_t3_productivity() -> Non
     assert summary["t3_productive_rate"] == 1.0
     assert summary["t3_no_progress_cost"] == 0.0
     assert summary["value_triggered_escalation_action"] == "extend_value_triggered_escalation"
+
+
+def test_policy_memory_does_not_treat_unknown_progress_as_negative_evidence() -> None:
+    memory = PolicyMemory()
+    memory.rebuild_from_records([
+        _record(
+            instance_id="django__django-1",
+            routing="budgetflow_value_aware",
+            turn_traces=[
+                {
+                    "workflow_segment": "Action",
+                    "backend_tier": 3,
+                    "final_backend": "tier3",
+                    "value_triggered_escalation_active": True,
+                    "action_progress_state": "unknown",
+                    "billable_cost": 0.08,
+                }
+            ],
+        )
+    ])
+
+    summary = memory.routing_prior_summary("django__django-2", WorkflowSegment.ACTION)
+
+    assert summary["escalation_attempts"] == 1
+    assert summary["t3_productive_rate"] == 0.0
+    assert summary["t3_no_progress_cost"] == 0.0
+    assert summary["value_triggered_escalation_action"] == "default"
 
 
 def test_rebuild_from_jsonl_sets_source_and_ignores_bad_lines(tmp_path: Path) -> None:

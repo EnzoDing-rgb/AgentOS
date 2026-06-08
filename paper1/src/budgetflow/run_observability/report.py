@@ -135,7 +135,7 @@ def format_compact_audit(audit: dict) -> str:
         lines.append(f"STRONGEST MODEL PRODUCTIVITY  |  strongest_model=T{audit.get('t3_tier', '?')}")
         lines.append(
             f"{'strategy':<26} {'t3':>6} {'productive':>10} {'rate':>7} "
-            f"{'no_prog':>7} {'no_prog_cost':>12}"
+            f"{'no_prog':>7} {'unknown':>7} {'no_prog_cost':>12}"
         )
         lines.append("-" * 72)
         for strat in sorted(t3_productivity):
@@ -143,6 +143,7 @@ def format_compact_audit(audit: dict) -> str:
             lines.append(
                 f"{strat:<26} {s['t3_turns']:>6} {s['t3_productive_turns']:>10} "
                 f"{s['t3_productive_rate']:>6.0%} {s['t3_no_progress_turns']:>7} "
+                f"{s.get('t3_unknown_progress_turns', 0):>7} "
                 f"${s['t3_no_progress_cost']:>11.4f}"
             )
 
@@ -152,7 +153,7 @@ def format_compact_audit(audit: dict) -> str:
         lines.append("T3 SOURCE BREAKDOWN")
         lines.append(
             f"{'strategy':<26} {'source':<20} {'t3':>5} {'productive':>10} "
-            f"{'rate':>7} {'no_prog_cost':>12}"
+            f"{'rate':>7} {'unknown':>7} {'no_prog_cost':>12}"
         )
         lines.append("-" * 84)
         for strat in sorted(t3_sources):
@@ -161,6 +162,7 @@ def format_compact_audit(audit: dict) -> str:
                 lines.append(
                     f"{strat:<26} {source:<20} {s['t3_turns']:>5} "
                     f"{s['t3_productive_turns']:>10} {s['t3_productive_rate']:>6.0%} "
+                    f"{s.get('t3_unknown_progress_turns', 0):>7} "
                     f"${s['t3_no_progress_cost']:>11.4f}"
                 )
 
@@ -210,6 +212,9 @@ def format_compact_audit(audit: dict) -> str:
                 f"{row['failure_class']:<14} "
                 f"{row['harness_trust']:<5}"
             )
+            detail = _format_per_task_decision_detail(row)
+            if detail:
+                lines.append(f"  decision: {detail}")
         # Legend
         lines.append(
             "  R=resolved  val=task_value  turn=llm_turns  1st=first_backend_tier  "
@@ -228,6 +233,52 @@ def format_compact_audit(audit: dict) -> str:
 
     lines.append(banner)
     return "\n".join(lines)
+
+
+def _format_per_task_decision_detail(row: dict) -> str:
+    parts: list[str] = []
+    policy = _compact_pair("policy", row.get("policy_name") or row.get("policy_type"))
+    route = _compact_pair(
+        "route",
+        row.get("last_router_reason") or row.get("first_router_branch") or row.get("policy_reason"),
+    )
+    memory = _compact_pair("memory", row.get("memory_mode"))
+    learned = _compact_pair(
+        "learned",
+        row.get("routing_repair_learned_action") or row.get("routing_learned_action"),
+    )
+    imitation = _compact_pair(
+        "imitation",
+        row.get("routing_imitation_source") if row.get("routing_imitation_active") else "",
+    )
+    cost = _compact_pair("cost", row.get("cost_estimate_source") or row.get("cost_source"))
+    provider = _compact_pair("provider", row.get("provider_status_code") or row.get("provider"))
+    parser = _compact_pair("parser", row.get("parser_error_type") or row.get("parser"))
+    harness = _compact_pair(
+        "harness",
+        "/".join(
+            value
+            for value in (
+                row.get("harness_trust"),
+                row.get("harness_severity"),
+                row.get("harness_owner"),
+            )
+            if value
+        ),
+    )
+    for item in (policy, route, memory, learned, imitation, cost, provider, parser, harness):
+        if item:
+            parts.append(item)
+    return " | ".join(parts)
+
+
+def _compact_pair(label: str, value) -> str:
+    if value in (None, "", {}, [], False):
+        return ""
+    text = str(value)
+    if len(text) > 72:
+        text = text[:69] + "..."
+    return f"{label}={text}"
 
 
 # ── Phase Z Checker Warnings ──────────────────────────────────────────────────

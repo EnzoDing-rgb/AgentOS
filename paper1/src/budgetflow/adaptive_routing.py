@@ -18,7 +18,7 @@ from .defaults import (
     PRESSURE_MAX,
 )
 from .learn_policy import LearnPolicyInputs
-from .types import Stage, WorkflowSegment
+from .types import WorkflowSegment
 
 if TYPE_CHECKING:
     from .policy_memory import PolicyMemory
@@ -40,16 +40,16 @@ def _is_stagnation(record: dict) -> bool:
     return reason.startswith("stagnation_")
 
 
-def _classify_weak_stage(record: dict) -> Stage:
+def _classify_weak_segment(record: dict) -> str:
     if record.get("agent_gold_edited"):
-        return Stage.REPAIR
+        return WorkflowSegment.ACTION
     if _is_stagnation(record) and not record.get("patch_extracted"):
-        return Stage.LOCALIZATION
-    return Stage.REPAIR
+        return WorkflowSegment.CONTEXT
+    return WorkflowSegment.ACTION
 
 
 @dataclass
-class _StageBucket:
+class _SegmentBucket:
     weak_count: int = 0
     total: int = 0
 
@@ -75,13 +75,14 @@ class EvidenceRescueState:
     def forced_min_tier(
         self,
         *,
-        stage: Stage,
+        segment: str | WorkflowSegment,
         gold_edited: bool,
         current_tier: int,
         remaining_budget: float,
         total_budget: float,
     ) -> int | None:
-        has_evidence = gold_edited and stage in (Stage.REPAIR, Stage.VALIDATION)
+        segment_name = _segment_name(segment)
+        has_evidence = gold_edited and segment_name in (WorkflowSegment.ACTION, WorkflowSegment.VERIFICATION)
         if not has_evidence:
             return None
 
@@ -139,17 +140,17 @@ class AdaptiveRoutingState:
 
     strategy_name: str
     _recent: deque[dict] = field(default_factory=lambda: deque(maxlen=ADAPTIVE_WINDOW))
-    _stage_buckets: dict[Stage, _StageBucket] = field(
+    _segment_buckets: dict[str, _SegmentBucket] = field(
         default_factory=lambda: {
-            Stage.LOCALIZATION: _StageBucket(),
-            Stage.REPAIR: _StageBucket(),
-            Stage.VALIDATION: _StageBucket(),
+            WorkflowSegment.CONTEXT: _SegmentBucket(),
+            WorkflowSegment.ACTION: _SegmentBucket(),
+            WorkflowSegment.VERIFICATION: _SegmentBucket(),
         }
     )
     pressure_boost: float = 0.0
     ttl_steps_remaining: int = 0
     min_tier_floor: int = 1
-    last_weak_stage: Stage | None = None
+    last_weak_segment: str | None = None
     rescue: EvidenceRescueState = field(default_factory=EvidenceRescueState)
     policy_memory: object | None = None
     memory_mode: str = "off"
@@ -170,11 +171,11 @@ class AdaptiveRoutingState:
     def record_task(self, record: dict) -> None:
         self._recent.append(record)
         if not record.get("harness_resolved"):
-            stage = _classify_weak_stage(record)
-            bucket = self._stage_buckets[stage]
+            segment = _classify_weak_segment(record)
+            bucket = self._segment_buckets[segment]
             bucket.total += 1
             bucket.weak_count += 1
-            self.last_weak_stage = stage
+            self.last_weak_segment = segment
         self._recompute()
 
     def on_step(self) -> None:
@@ -287,11 +288,11 @@ class AdaptiveRoutingState:
             if rescue or starter:
                 return f"adapt=off{rescue}{starter}"
             return "adapt=off"
-        stage = self.last_weak_stage.value if self.last_weak_stage else "-"
+        segment = self.last_weak_segment or "-"
         return (
             f"adapt=on boost=+{self.pressure_boost:.2f} "
             f"ttl={self.ttl_steps_remaining} floor_tier={self.min_tier_for_reserve()} "
-            f"weak_stage={stage}{rescue}{starter}"
+            f"weak_segment={segment}{rescue}{starter}"
         )
 
     def _recompute(self) -> None:
@@ -303,8 +304,8 @@ class AdaptiveRoutingState:
         resolve_rate = resolved / n
         stagnation_frac = stagnation / n
 
-        rep_bucket = self._stage_buckets[Stage.REPAIR]
-        val_bucket = self._stage_buckets[Stage.VALIDATION]
+        rep_bucket = self._segment_buckets[WorkflowSegment.ACTION]
+        val_bucket = self._segment_buckets[WorkflowSegment.VERIFICATION]
         rep_weak = rep_bucket.weak_count >= 2
         val_weak = val_bucket.weak_count >= 2
 
@@ -336,16 +337,22 @@ class AdaptiveRoutingState:
 
     def rebuild_from_records(self, records: list[dict]) -> None:
         self._recent.clear()
-        for bucket in self._stage_buckets.values():
+        for bucket in self._segment_buckets.values():
             bucket.weak_count = 0
             bucket.total = 0
         self.pressure_boost = 0.0
         self.ttl_steps_remaining = 0
         self.min_tier_floor = 1
-        self.last_weak_stage = None
+        self.last_weak_segment = None
         self.rescue = rescue_state_for_strategy(self.strategy_name)
         for record in records[-ADAPTIVE_WINDOW :]:
             self.record_task(record)
+
+
+def _segment_name(segment: str | WorkflowSegment) -> str:
+    if isinstance(segment, WorkflowSegment):
+        return segment.name
+    return str(segment or "")
 
 
 class AdaptiveRoutingRegistry:

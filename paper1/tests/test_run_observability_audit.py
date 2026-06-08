@@ -104,6 +104,31 @@ def test_compact_audit_counts_actionable_decision_issues() -> None:
     assert "DECISION ISSUES" in format_compact_audit(audit)
 
 
+def test_compact_audit_accepts_trace_cost_confidence() -> None:
+    audit = build_compact_audit([
+        {
+            "instance_id": "repo__task-a",
+            "strategy": "budgetflow_value_aware_tight",
+            "harness_resolved": False,
+            "harness_evidence": {"evidence_complete": True},
+            "task_value": 1.0,
+            "value_source": "equal_sanity",
+            "total_cost": 0.1,
+            "llm_turns": 1,
+            "turn_trace_count": 1,
+            "turn_traces": [
+                {
+                    "backend_tier": 2,
+                    "policy_decision": {"backend": "tier2"},
+                    "cost_estimate_confidence": {"backend": "tier2"},
+                },
+            ],
+        }
+    ])
+
+    assert "missing_cost_confidence" not in audit["decision_issue_counts"]
+
+
 def test_compact_audit_reports_repo_memory_evidence_for_new_tasks() -> None:
     audit = build_compact_audit([
         {
@@ -214,6 +239,51 @@ def test_compact_audit_uses_current_action_progress_for_t3_productivity() -> Non
     assert stats["t3_productive_turns"] == 1
     assert stats["t3_no_progress_turns"] == 0
     assert stats["t3_no_progress_cost"] == 0.0
+
+
+def test_compact_audit_does_not_count_unknown_progress_as_no_progress() -> None:
+    audit = build_compact_audit([
+        {
+            "instance_id": "repo__task",
+            "strategy": "budgetflow_value_aware_tight",
+            "harness_resolved": False,
+            "harness_evidence": {"evidence_complete": True},
+            "total_cost": 0.07,
+            "llm_turns": 2,
+            "turn_trace_count": 2,
+            "backend_picks": ["tier5", "tier5"],
+            "turn_traces": [
+                {
+                    "backend_tier": 5,
+                    "final_backend": "tier5",
+                    "progress_state": "unknown",
+                    "action_progress_state": "unknown",
+                    "billable_cost": 0.03,
+                },
+                {
+                    "backend_tier": 5,
+                    "final_backend": "tier5",
+                    "has_progress": None,
+                    "action_has_progress": None,
+                    "billable_cost": 0.04,
+                },
+            ],
+        }
+    ])
+
+    stats = audit["t3_productivity"]["budgetflow_value_aware_tight"]
+    row = audit["per_task_comparison"][0]
+
+    assert stats["t3_turns"] == 2
+    assert stats["t3_productive_turns"] == 0
+    assert stats["t3_no_progress_turns"] == 0
+    assert stats["t3_unknown_progress_turns"] == 2
+    assert stats["t3_no_progress_cost"] == 0.0
+    assert stats["t3_unknown_progress_cost"] == pytest.approx(0.07)
+    assert row["first_useful_action"] is None
+    assert row["max_no_progress_streak"] == 0
+    text = format_compact_audit(audit)
+    assert "unknown" in text
 
 
 def test_compact_audit_reports_t2_frontier_and_segment_control() -> None:
@@ -468,13 +538,31 @@ def test_per_task_comparison_includes_cross_policy_rows() -> None:
             "resolved_value": 0.0,
             "turn_traces": [
                 {"workflow_segment": "Context", "backend_tier": 2, "has_progress": False},
-                {"workflow_segment": "Action", "backend_tier": 2, "has_progress": False},
+                {
+                    "workflow_segment": "Action",
+                    "backend_tier": 2,
+                    "has_progress": False,
+                    "router_branch": "budgetflow_value_aware",
+                    "router_reason": "bootstrap:budget_pressure",
+                    "policy_type": "bootstrap",
+                    "policy_name": "budgetflow_full",
+                    "memory_mode": "built_in",
+                    "policy_decision": {
+                        "backend": "tier2",
+                        "reason": "bootstrap:budget_pressure",
+                    },
+                    "cost_estimate_source": "tier_catalog:test",
+                    "provider": "openai_compatible",
+                    "protocol": "tool_call",
+                    "parser": "parse_tool_actions",
+                },
                 {"workflow_segment": "Action", "backend_tier": 2, "has_progress": False},
                 {"workflow_segment": "Action", "backend_tier": 2, "has_progress": False},
                 {"workflow_segment": "Action", "backend_tier": 3, "has_progress": False},
             ],
             "patch_extracted": False,
             "failure_class": "repair_fail",
+            "detail": "test_patch=ok; fail_before=fail; model_patch=ok; fail_after=fail",
         },
     ])
 
@@ -500,9 +588,17 @@ def test_per_task_comparison_includes_cross_policy_rows() -> None:
     assert bf_row["max_no_progress_streak"] == 5
     assert bf_row["no_patch"] is True
     assert bf_row["failure_class"] == "repair_fail"
+    assert bf_row["harness_trust"] == "incomplete"
+    assert bf_row["harness_evidence_complete"] is True
+    assert bf_row["policy_name"] == "budgetflow_full"
+    assert bf_row["memory_mode"] == "built_in"
+    assert bf_row["cost_estimate_source"] == "tier_catalog:test"
 
     text = format_compact_audit(audit)
     assert "PER-TASK POLICY COMPARISON" in text
     assert "repo__task-a" in text
     assert "budget_only_tight" in text
     assert "budgetflow_conservative_tight" in text
+    assert "decision:" in text
+    assert "memory=built_in" in text
+    assert "cost=tier_catalog:test" in text

@@ -51,12 +51,32 @@ def _t3_id(records: list[dict]) -> int:
     return max([tier for tier in observed + configured if tier > 0], default=0)
 
 
-def _trace_productive(trace: dict) -> bool:
+def _trace_productive(trace: dict) -> bool | None:
     if trace.get("error_type") or trace.get("parser_error_type"):
         return False
+    if trace.get("action_progress_state") in {"progress", "no_progress", "unknown"}:
+        return _progress_state_productive(str(trace.get("action_progress_state")))
+    if trace.get("progress_state") in {"progress", "no_progress", "unknown"}:
+        return _progress_state_productive(str(trace.get("progress_state")))
     if "action_has_progress" in trace:
-        return bool(trace.get("action_has_progress"))
-    return bool(trace.get("has_progress"))
+        return _optional_bool(trace.get("action_has_progress"))
+    return _optional_bool(trace.get("has_progress"))
+
+
+def _progress_state_productive(state: str) -> bool | None:
+    if state == "progress":
+        return True
+    if state == "no_progress":
+        return False
+    return None
+
+
+def _optional_bool(value) -> bool | None:
+    if value is True:
+        return True
+    if value is False:
+        return False
+    return None
 
 
 def _t3_productivity(records: list[dict], t3_tier: int) -> dict[str, dict]:
@@ -71,8 +91,10 @@ def _t3_productivity(records: list[dict], t3_tier: int) -> dict[str, dict]:
                 "t3_turns": 0,
                 "t3_productive_turns": 0,
                 "t3_no_progress_turns": 0,
+                "t3_unknown_progress_turns": 0,
                 "t3_cost": 0.0,
                 "t3_no_progress_cost": 0.0,
+                "t3_unknown_progress_cost": 0.0,
             },
         )
         traces = record.get("turn_traces") or []
@@ -91,11 +113,14 @@ def _t3_productivity(records: list[dict], t3_tier: int) -> dict[str, dict]:
             useful = _trace_productive(trace)
             stats["t3_turns"] += 1
             stats["t3_cost"] += cost
-            if useful:
+            if useful is True:
                 stats["t3_productive_turns"] += 1
-            else:
+            elif useful is False:
                 stats["t3_no_progress_turns"] += 1
                 stats["t3_no_progress_cost"] += cost
+            else:
+                stats["t3_unknown_progress_turns"] += 1
+                stats["t3_unknown_progress_cost"] += cost
     for stats in by_strategy.values():
         total = max(int(stats["t3_turns"]), 1)
         stats["t3_productive_rate"] = stats["t3_productive_turns"] / total
@@ -138,16 +163,23 @@ def _t3_source_breakdown(records: list[dict], t3_tier: int) -> dict[str, dict[st
                     "t3_turns": 0,
                     "t3_productive_turns": 0,
                     "t3_no_progress_turns": 0,
+                    "t3_unknown_progress_turns": 0,
                     "t3_no_progress_cost": 0.0,
+                    "t3_unknown_progress_cost": 0.0,
                 },
             )
             productive = _trace_productive(trace)
             stats["t3_turns"] += 1
-            if productive:
+            if productive is True:
                 stats["t3_productive_turns"] += 1
-            else:
+            elif productive is False:
                 stats["t3_no_progress_turns"] += 1
                 stats["t3_no_progress_cost"] += float(
+                    trace.get("billable_cost") or trace.get("actual_cost") or 0.0
+                )
+            else:
+                stats["t3_unknown_progress_turns"] += 1
+                stats["t3_unknown_progress_cost"] += float(
                     trace.get("billable_cost") or trace.get("actual_cost") or 0.0
                 )
     for by_source in by_strategy.values():
@@ -189,7 +221,12 @@ def _decision_issues(record: dict) -> list[str]:
         issues.append("missing_value_source")
     if record.get("total_cost") is None:
         issues.append("missing_cost")
-    if not (record.get("budget_prior_confidence") or record.get("cost_source")):
+    if not (
+        record.get("budget_prior_confidence")
+        or record.get("cost_source")
+        or _trace_has_field(record, "cost_estimate_confidence")
+        or _trace_has_field(record, "cost_source")
+    ):
         issues.append("missing_cost_confidence")
 
     traces = record.get("turn_traces")
@@ -224,6 +261,13 @@ def _decision_issue_counts(records: list[dict]) -> dict[str, int]:
     for record in records:
         counts.update(_decision_issues(record))
     return dict(counts.most_common())
+
+
+def _trace_has_field(record: dict, field: str) -> bool:
+    traces = record.get("turn_traces")
+    if not isinstance(traces, list):
+        return False
+    return any(isinstance(trace, dict) and bool(trace.get(field)) for trace in traces)
 
 
 _DECISION_ISSUE_AREA = {
@@ -291,7 +335,7 @@ def _first_useful_action_turn(record: dict) -> int | None:
     for i, trace in enumerate(traces):
         if not isinstance(trace, dict):
             continue
-        if trace.get("action_has_progress") or trace.get("has_progress"):
+        if _trace_productive(trace) is True:
             return i
     return None
 
@@ -306,12 +350,62 @@ def _max_no_progress_streak(record: dict) -> int:
     for trace in traces:
         if not isinstance(trace, dict):
             continue
-        if trace.get("action_has_progress") or trace.get("has_progress"):
+        productive = _trace_productive(trace)
+        if productive is True:
             current = 0
-        else:
+        elif productive is False:
             current += 1
             max_streak = max(max_streak, current)
     return max_streak
+
+
+def _first_non_empty_trace_value(record: dict, *fields: str) -> str:
+    for trace in record.get("turn_traces") or []:
+        if not isinstance(trace, dict):
+            continue
+        for field in fields:
+            value = trace.get(field)
+            if value not in (None, "", {}, []):
+                return str(value)
+    return ""
+
+
+def _last_non_empty_trace_value(record: dict, *fields: str) -> str:
+    traces = record.get("turn_traces") or []
+    if not isinstance(traces, list):
+        return ""
+    for trace in reversed(traces):
+        if not isinstance(trace, dict):
+            continue
+        for field in fields:
+            value = trace.get(field)
+            if value not in (None, "", {}, []):
+                return str(value)
+    return ""
+
+
+def _first_policy_decision_field(record: dict, field: str) -> str:
+    for trace in record.get("turn_traces") or []:
+        if not isinstance(trace, dict):
+            continue
+        decision = trace.get("policy_decision")
+        if isinstance(decision, dict):
+            value = decision.get(field)
+            if value not in (None, "", {}, []):
+                return str(value)
+    return ""
+
+
+def _harness_trust_row(record: dict) -> dict:
+    trust = build_harness_trust(record)
+    return {
+        "harness_trust": str(trust.get("harness_trust") or ""),
+        "harness_owner": str(trust.get("harness_owner") or ""),
+        "harness_severity": str(trust.get("severity") or ""),
+        "harness_evidence_complete": bool(
+            (record.get("harness_evidence") or {}).get("evidence_complete", False)
+        ),
+    }
 
 
 def _per_task_comparison(records: list[dict], t3_tier: int) -> list[dict]:
@@ -331,6 +425,7 @@ def _per_task_comparison(records: list[dict], t3_tier: int) -> list[dict]:
         picks = record.get("backend_picks") or []
         first_pick = picks[0] if picks else "?"
         first_tier = parse_tier_label(first_pick) if first_pick != "?" else 0
+        trust = _harness_trust_row(record)
 
         by_task[iid][strat] = {
             "instance_id": iid,
@@ -343,13 +438,34 @@ def _per_task_comparison(records: list[dict], t3_tier: int) -> list[dict]:
             "first_backend": str(first_pick),
             "first_tier": first_tier,
             "first_segment": str(first_trace.get("workflow_segment") or "?"),
+            "first_router_branch": _first_non_empty_trace_value(record, "router_branch"),
+            "last_router_reason": _last_non_empty_trace_value(record, "router_reason"),
+            "policy_type": _first_non_empty_trace_value(record, "policy_type"),
+            "policy_name": _first_non_empty_trace_value(record, "policy_name"),
+            "memory_mode": _first_non_empty_trace_value(record, "memory_mode"),
+            "policy_backend": _first_policy_decision_field(record, "backend"),
+            "policy_reason": _first_policy_decision_field(record, "reason"),
+            "routing_learned_action": str(record.get("routing_learned_action") or ""),
+            "routing_learned_action_segment": str(record.get("routing_learned_action_segment") or ""),
+            "routing_repair_learned_action": str(record.get("routing_repair_learned_action") or ""),
+            "routing_repair_learned_action_segment": str(record.get("routing_repair_learned_action_segment") or ""),
+            "routing_imitation_active": bool(record.get("routing_imitation_active")),
+            "routing_imitation_source": str(record.get("routing_imitation_source") or ""),
+            "cost_source": str(record.get("cost_source") or _first_non_empty_trace_value(record, "cost_source")),
+            "cost_estimate_source": _first_non_empty_trace_value(record, "cost_estimate_source"),
+            "provider": _first_non_empty_trace_value(record, "provider"),
+            "provider_status_code": _first_non_empty_trace_value(record, "provider_status_code"),
+            "parser_error_type": _first_non_empty_trace_value(record, "parser_error_type"),
+            "protocol": _first_non_empty_trace_value(record, "protocol"),
+            "parser": _first_non_empty_trace_value(record, "parser"),
+            "text_mode": _first_non_empty_trace_value(record, "text_mode"),
             "first_t3_turn": _first_t3_turn(record, t3_tier),
             "first_useful_action": _first_useful_action_turn(record),
             "max_no_progress_streak": _max_no_progress_streak(record),
             "no_patch": not bool(record.get("patch_extracted")),
             "failure_class": str(record.get("failure_class") or "pass"),
             "failure_subtype": str(record.get("failure_subtype") or ""),
-            "harness_trust": str((record.get("harness_evidence") or {}).get("evidence_complete", False)),
+            **trust,
             "exit_status": str(record.get("exit_status") or ""),
         }
     return [

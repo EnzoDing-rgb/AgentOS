@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from budgetflow.adaptive_routing import AdaptiveRoutingState, EvidenceRescueState, rescue_state_for_strategy
-from budgetflow.types import Stage
+from budgetflow.types import WorkflowSegment
 
 
 def _fail_record(**extra) -> dict:
@@ -40,21 +40,21 @@ def test_t3_rescue_requires_gold_edit_repair_stage_and_headroom() -> None:
     rescue = EvidenceRescueState(trigger_turns=2, window_turns=2, min_headroom_frac=0.20)
 
     assert rescue.forced_min_tier(
-        stage=Stage.REPAIR,
+        segment=WorkflowSegment.ACTION,
         gold_edited=False,
         current_tier=2,
         remaining_budget=100,
         total_budget=100,
     ) is None
     assert rescue.forced_min_tier(
-        stage=Stage.LOCALIZATION,
+        segment=WorkflowSegment.CONTEXT,
         gold_edited=True,
         current_tier=2,
         remaining_budget=100,
         total_budget=100,
     ) is None
     assert rescue.forced_min_tier(
-        stage=Stage.REPAIR,
+        segment=WorkflowSegment.ACTION,
         gold_edited=True,
         current_tier=2,
         remaining_budget=10,
@@ -62,14 +62,14 @@ def test_t3_rescue_requires_gold_edit_repair_stage_and_headroom() -> None:
     ) is None
 
     rescue.forced_min_tier(
-        stage=Stage.REPAIR,
+        segment=WorkflowSegment.ACTION,
         gold_edited=True,
         current_tier=2,
         remaining_budget=100,
         total_budget=100,
     )
     assert rescue.forced_min_tier(
-        stage=Stage.REPAIR,
+        segment=WorkflowSegment.ACTION,
         gold_edited=True,
         current_tier=2,
         remaining_budget=100,
@@ -81,21 +81,21 @@ def test_rescue_window_stop_loss_prevents_expensive_spinning() -> None:
     rescue = EvidenceRescueState(trigger_turns=1, window_turns=2, stop_loss_turns=3)
 
     assert rescue.forced_min_tier(
-        stage=Stage.REPAIR,
+        segment=WorkflowSegment.ACTION,
         gold_edited=True,
         current_tier=2,
         remaining_budget=100,
         total_budget=100,
     ) == 3
     assert rescue.forced_min_tier(
-        stage=Stage.REPAIR,
+        segment=WorkflowSegment.ACTION,
         gold_edited=True,
         current_tier=2,
         remaining_budget=100,
         total_budget=100,
     ) == 3
     rescue.forced_min_tier(
-        stage=Stage.REPAIR,
+        segment=WorkflowSegment.ACTION,
         gold_edited=True,
         current_tier=2,
         remaining_budget=100,

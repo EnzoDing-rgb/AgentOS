@@ -260,10 +260,10 @@ class BudgetFlowLitellmModel:
             self.routing.budget_pressure = base_pressure
         has_progress = progress_signal.has_progress
         progress_reason = progress_signal.progress_reason
-        if has_progress:
+        if has_progress is True:
             self._no_progress_streak = 0
             self._no_progress_on_current_tier = 0
-        else:
+        elif has_progress is False:
             self._no_progress_streak += 1
             self._no_progress_on_current_tier += 1
         norm_cmd = normalize_bash_command(bash_command)
@@ -335,7 +335,7 @@ class BudgetFlowLitellmModel:
             "stage_blind",
         ):
             forced_tier = self.routing.adaptive.rescue.forced_min_tier(
-                stage=stage,
+                segment=progress_signal.segment,
                 gold_edited=self.agent_gold_edited,
                 current_tier=backend.tier,
                 remaining_budget=self.governor.remaining_budget(),
@@ -367,7 +367,7 @@ class BudgetFlowLitellmModel:
         prev_tier = self._last_backend_tier
         backend = self._apply_value_triggered_escalation(backend, stage)
         backend = self._apply_progress_escalation(backend)
-        backend = self._apply_gold_edit_repair_guard(backend, stage)
+        backend = self._apply_gold_edit_repair_guard(backend, progress_signal.segment)
         escalated_backend = backend.name
         response = None
         text_mode = False
@@ -381,7 +381,11 @@ class BudgetFlowLitellmModel:
             self._last_backend_tier = backend.tier
             self._turns_on_current_tier += 1
             guarded_tier = ModelCatalog.second_cheapest(self.routing.backends).tier
-            if self.agent_gold_edited and stage in (Stage.REPAIR, Stage.VALIDATION) and backend.tier == guarded_tier:
+            if (
+                self.agent_gold_edited
+                and progress_signal.segment.name in (WorkflowSegment.ACTION, WorkflowSegment.VERIFICATION)
+                and backend.tier == guarded_tier
+            ):
                 self._gold_edit_mid_tier_repair_turns += 1
             if backend.tier >= ModelCatalog.strongest(self.routing.backends).tier and self._value_triggered_escalation_turns_remaining > 0:
                 self._value_triggered_escalation_turns_remaining -= 1
@@ -808,7 +812,7 @@ class BudgetFlowLitellmModel:
         self._turns_on_current_tier = 0
         return next_backend
 
-    def _apply_gold_edit_repair_guard(self, backend: Backend, stage) -> Backend:
+    def _apply_gold_edit_repair_guard(self, backend: Backend, segment: WorkflowSegment) -> Backend:
         """Avoid long second-cheapest-tier repair loops after a gold edit."""
         if self.routing.strategy not in (
             "budgetflow_full",
@@ -819,7 +823,7 @@ class BudgetFlowLitellmModel:
             "budget_only",
         ):
             return backend
-        if not self.agent_gold_edited or stage not in (Stage.REPAIR, Stage.VALIDATION):
+        if not self.agent_gold_edited or segment.name not in (WorkflowSegment.ACTION, WorkflowSegment.VERIFICATION):
             return backend
         guarded_tier = ModelCatalog.second_cheapest(self.routing.backends).tier
         if backend.tier != guarded_tier:
