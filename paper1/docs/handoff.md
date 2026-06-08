@@ -83,6 +83,16 @@ class CostAdapter:
     def estimate(self, backend: str, state: WorkflowState, budget: BudgetContext) -> CostEstimate: ...
     def settle(self, estimate: CostEstimate, actual: CostActual | None) -> CostRecord: ...
 
+@dataclass
+class PolicyDecision:
+    backend: str
+    cap_usd: float | None
+    should_stop: bool
+    should_escalate: bool
+    reason: str
+    scores: dict[str, float]
+    confidence: dict[str, float | str | bool]
+
 class PolicyBackend:
     def estimate_cap(
         self,
@@ -109,6 +119,36 @@ class PolicyBackend:
 segment-aware policy may keep one model for the whole task to preserve KV cache,
 prefix reuse, context continuity, and lower coordination cost.
 
+## Boundary Contracts
+
+Keep these contracts explicit in code:
+
+- `PolicyBackend` receives normalized task, value, cost, budget, segment,
+  history, and runtime state. It returns recommendations and reasons. It should
+  not read SWE-bench files, parse pytest output, inspect worktrees directly, or
+  load provider price files by itself.
+- `TaskAdapter` turns a benchmark or enterprise item into `TaskContext` and
+  task features. SWE-bench instance IDs, fail-to-pass tests, patch metadata, and
+  repo names belong here.
+- `SegmentAdapter` maps runtime signals into `Context`, `Action`, or
+  `Verification`. SWE-bench localization/repair/validation names may exist
+  inside this adapter but should not be the core interface.
+- `VerifierAdapter` owns verifier execution and converts raw harness output into
+  `VerifiedOutcome`. Policy code should consume verifier-grounded outcome, not
+  raw harness logs.
+- `ValueAdapter` owns task-value estimation and calibration. It may use a value
+  matrix, natural-language rules translated into config, enterprise imports, or
+  learned estimates. The core consumes `ValueEstimate`.
+- `CostAdapter` owns public price catalogs, provider estimates, invoices,
+  enterprise rate cards, and settlement. The core consumes `CostEstimate` and
+  `CostRecord`.
+- Memory stores should stay separate: Cost Memory for cap/cost/value-cost
+  evidence, Routing Memory for route outcomes, and Escalation Memory for
+  expensive-tier escalation outcomes.
+
+The core may orchestrate these contracts, but it should not know the details of
+SWE-bench, provider pricing files, task-value matrix schemas, or pytest output.
+
 ## Implementation Assignment
 
 Build the smallest clean architecture slice that makes the above boundaries
@@ -130,6 +170,32 @@ real:
    paths. Keep tests that protect current evidence quality, budget accounting,
    adapter boundaries, Yield calculation, and policy comparison.
 
+Suggested order:
+
+1. Add the interfaces/types in a small module before moving behavior.
+2. Wrap the current behavior behind those interfaces with minimal logic change.
+3. Move one concern at a time behind adapters: value, cost, segment, verifier.
+4. Update entrypoints to call the interfaces instead of owning the semantics.
+5. Delete stale tests and add focused contract tests for each interface.
+
+Do not perform a broad rewrite first. The first passing slice should behave like
+the current runtime while making the boundaries visible.
+
+## Acceptance Criteria
+
+- Current compare and observability paths still run through no-paid tests.
+- Active JSONL rows and summaries use `yield_score` and `yield_per_dollar`.
+- `budgetflow_value_aware_tight`, `budgetflow_conservative_tight`, and
+  task-level controls are represented as policy backends or thin wrappers over
+  policy backends.
+- SWE-bench-specific names are behind adapters or compatibility edges, not in
+  core policy interfaces.
+- A task-level or per-request control remains available for segment-aware
+  evaluations.
+- New tests exercise the interfaces through behavior, not string snapshots of
+  old implementation details.
+- `paper1/docs/north_star.md` stays the terminology source of truth.
+
 ## Evidence Rules
 
 - Same policy comparison means same task set, verifier, hard budget,
@@ -138,6 +204,10 @@ real:
   Learning from the run can update the next run.
 - Historical JSONL and historical reports are evidence records. Do not patch
   them to change past facts; update active code, active docs, and new reports.
+- Do not spend implementation time batch-editing `paper1/docs/reports/`,
+  historical JSONL, or old experiment artifacts for terminology cleanup. Touch
+  historical material only when active code/tests import it or a current doc
+  directly depends on it.
 - Stop on provider billing, authentication, model-access, preflight, missing
   cost confidence, or missing value confidence blockers.
 - Report segment-aware policy against a task-level or per-request control when
@@ -148,5 +218,6 @@ real:
 - Do not build a full learned policy in this slice.
 - Do not make the strongest model tier the center of the architecture.
 - Do not add a new decision-record system.
+- Do not burn tokens rewriting historical reports.
 - Do not preserve old terms for compatibility if they only keep obsolete tests
   or retired code paths alive.
