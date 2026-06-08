@@ -211,14 +211,22 @@ T2 diagnostics:
 | Learn Policy | Customer-facing learned policy. It can use built-in Memory or a customer-owned machine learning system behind the same Policy Backend interface. |
 | Fixed Baseline Policy | Evaluation-only control policy such as static routing, all-cheap, all-strong, task-level routing, or budget-only routing. |
 
+Current main experiments use tight-budget mode and three policy roles:
+
+| Experiment Role | CLI Strategy | Meaning |
+|---|---|---|
+| Budget-Only Baseline | `budget_only_tight` | Strong tight-budget control. It tests what budget pressure alone can achieve. |
+| Task-Level Control | `value_aware_task_level_tight` | Value-aware control that chooses at task/request level and preserves cache/context continuity. |
+| BudgetFlow Full | `budgetflow_value_aware_tight` | Main BudgetFlow policy: shared hard budget, value-aware allocation, workflow-segment signal, stop-loss, escalation, audit, and Learn Policy Inputs readiness. |
+
 The task-level control is mandatory when evaluating segment-aware routing. It
 tests whether segment features help, or whether they add switching noise,
 prompt drift, cache loss, and coordination cost.
 
-Bootstrap Policy is the default customer-facing policy. It uses general,
-explainable budget-control rules. Learn Policy uses current trusted Memory
-views, adapter configuration, or customer-owned learning systems behind the
-same Policy Backend interface.
+Bootstrap Policy is a startup mode: no customer history and no machine
+learning. BudgetFlow Full can run in Bootstrap mode. Learn Policy uses current
+trusted Memory views, adapter configuration, or customer-owned learning systems
+behind the same Policy Backend interface.
 
 ## Value Model
 
