@@ -6,7 +6,7 @@ Covers:
   - JSON {"command": "..."} fallback
   - [bash] {"command": "..."} variant
   - prose-only → no match
-  - T1/T2 tool_call path unaffected
+  - T1/T2/T3 share one text_regex action contract
 """
 
 from __future__ import annotations
@@ -151,27 +151,27 @@ def test_parse_regex_actions_still_works_with_new_regex() -> None:
         pass
 
 
-# ── Protocol safety: T1/T2 tool_call path unaffected ──────────────────
+# ── Protocol safety: routed tiers share one action contract ────────────
 
 
-def test_tool_call_protocol_unchanged_for_t1() -> None:
-    """T1 (qwen3-coder-flash) is tool_call, not text_regex."""
+def test_t1_uses_text_regex_protocol() -> None:
+    """T1 uses the same text_regex contract as routed stronger tiers."""
     from budgetflow.adapter.protocol_adapter import ActionProtocolAdapter
     from budgetflow.defaults import TIER1_BACKEND
 
     decision = ActionProtocolAdapter.resolve(TIER1_BACKEND)
-    assert decision.protocol == "tool_call"
-    assert decision.parser == "parse_toolcall_actions"
+    assert decision.protocol == "text_regex"
+    assert decision.parser == "parse_regex_actions"
 
 
-def test_tool_call_protocol_unchanged_for_t2() -> None:
-    """T2 is tool_call, not text_regex."""
+def test_t2_uses_text_regex_protocol() -> None:
+    """T2 uses the same text_regex contract as routed stronger tiers."""
     from budgetflow.adapter.protocol_adapter import ActionProtocolAdapter
     from budgetflow.defaults import TIER2_BACKEND
 
     decision = ActionProtocolAdapter.resolve(TIER2_BACKEND)
-    assert decision.protocol == "tool_call"
-    assert decision.parser == "parse_toolcall_actions"
+    assert decision.protocol == "text_regex"
+    assert decision.parser == "parse_regex_actions"
 
 
 def test_t3_stays_text_regex() -> None:

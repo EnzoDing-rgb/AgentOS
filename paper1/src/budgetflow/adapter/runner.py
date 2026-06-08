@@ -76,7 +76,10 @@ class MiniSweRunResult:
 
 
 def _load_agent_config(*, step_limit: int = 250) -> dict:
-    config_path = SWEBENCH_TEXT_CONFIG if os.environ.get("BF_GPT_TEXT_MODE") == "1" else SWEBENCH_CONFIG
+    # Keep one action contract across all routed tiers. BudgetFlow experiments
+    # should isolate model/routing decisions, not switch the mini-SWE protocol
+    # when a policy escalates or downgrades between tiers.
+    config_path = SWEBENCH_TEXT_CONFIG
     config = recursive_merge(
         get_config_from_spec(config_path),
         {

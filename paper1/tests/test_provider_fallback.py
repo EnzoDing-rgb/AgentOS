@@ -25,7 +25,7 @@ class ProviderUnavailable(Exception):
 
 
 class _Message:
-    content = "THOUGHT: ok"
+    content = "THOUGHT: ok\n```bash\nls\n```"
     tool_calls = [
         SimpleNamespace(
             id="call_1",
@@ -88,6 +88,7 @@ def test_provider_unavailable_releases_reservation_and_falls_back(monkeypatch) -
     assert model.turn_traces[0]["final_backend"] == TIER3_BACKEND
     assert model.turn_traces[-1]["response_ok"] is True
     assert model.turn_traces[-1]["final_backend"] == TIER2_BACKEND
+    assert model.turn_traces[-1]["protocol"] == "text_regex"
 
 
 def test_provider_all_unavailable_releases_every_reservation(monkeypatch) -> None:
@@ -136,3 +137,4 @@ def test_completion_uses_configurable_short_timeout(monkeypatch) -> None:
     )
 
     assert captured["timeout"] == 42.0
+    assert "tools" not in captured

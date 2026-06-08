@@ -153,7 +153,7 @@ def test_provider_and_protocol_helpers_identify_real_backend_contracts() -> None
     assert provider_fields["progress_updated"] == "2026-06-07"
     assert "gpt-5.4" in provider_trace_fields("tier3")["model"]
     assert protocol_trace_fields("tier3", text_mode=True)["protocol"] == "text_regex"
-    assert protocol_trace_fields("tier2", text_mode=False)["protocol"] == "tool_call"
+    assert protocol_trace_fields("tier2", text_mode=True)["protocol"] == "text_regex"
 
 
 def test_cost_basis_trace_fields_use_cost_adapter_contract() -> None:
