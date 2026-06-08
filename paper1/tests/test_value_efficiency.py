@@ -78,14 +78,15 @@ def test_summary_reports_primary_fixed_budget_value_metric() -> None:
     ctx.init(value_profile="difficulty")
 
     summary = ctx.summary_for_strategy([
-        {"harness_resolved": True, "task_cost": 0.20, "resolved_value": 0.6, "task_value": 0.6},
-        {"harness_resolved": False, "task_cost": 0.10, "resolved_value": 0.0, "task_value": 0.4},
+        {"harness_resolved": True, "task_cost": 0.20, "resolved_value": 3.0, "task_value": 3.0},
+        {"harness_resolved": False, "task_cost": 0.10, "resolved_value": 0.0, "task_value": 1.0},
     ])
 
-    assert summary["resolved_value"] == 0.6
-    assert summary["total_task_value"] == 1.0
-    assert summary["yield_score"] == 0.6
-    assert summary["yield_per_dollar"] == 2.0
+    assert summary["resolved_value"] == 3.0
+    assert summary["total_task_value"] == 4.0
+    assert summary["yield_score"] == 3.0
+    assert summary["yield_coverage"] == 0.75
+    assert summary["yield_per_dollar"] == 10.0
 
 
 def test_missing_non_equal_task_fails_fast(tmp_path) -> None:

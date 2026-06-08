@@ -1,4 +1,4 @@
-"""Phase Y: Value-Aware HeuristicPolicy tests."""
+"""Phase Y: Value-Aware BootstrapPolicy tests."""
 
 import sys
 

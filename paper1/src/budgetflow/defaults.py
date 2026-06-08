@@ -14,7 +14,7 @@ from .model_tiers import (
 )
 from .types import Stage
 
-# concept.md §3.3 / §3.4 cold-start defaults — sole source for Tier 1 reproduction.
+# concept.md §3.3 / §3.4 bootstrap defaults — sole source for Tier 1 reproduction.
 W_I: dict[Stage, float] = {
     Stage.LOCALIZATION: 1.0,
     Stage.REPAIR: 3.0,
@@ -95,8 +95,8 @@ ADAPTIVE_TTL_STEPS = 15
 STAGNATION_REPEAT_CMD_LIMIT = 6
 STAGNATION_NO_PROGRESS_STEPS = 12
 
-# BFV-only Value-Triggered Escalation: high-value tasks that stall before any
-# patch/gold edit get a short T3 / Strongest Model window before stop.
+# Value-Triggered Escalation: high-value tasks that stall before any patch/gold
+# edit get a short Strongest Model window before stop.
 VALUE_TRIGGERED_ESCALATION_MIN_MULTIPLIER = 1.15
 VALUE_TRIGGERED_ESCALATION_DEFAULT_WINDOW_TURNS = 3
 VALUE_TRIGGERED_ESCALATION_MIN_HEADROOM_FRAC = 0.12

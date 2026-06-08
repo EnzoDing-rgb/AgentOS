@@ -62,6 +62,7 @@ def test_compact_audit_reports_value_metrics() -> None:
 
     assert audit["value_profile"] == "difficulty"
     assert stats["yield_score"] == 0.6
+    assert stats["yield_coverage"] == 0.6
     assert stats["yield_per_dollar"] == pytest.approx(2.0)
     assert "T1 VALUE METRICS" in format_compact_audit(audit)
 
@@ -235,7 +236,8 @@ def test_compact_audit_reports_t2_frontier_and_segment_control() -> None:
 
     assert audit["common_task_count"] == 2
     assert delta["delta_pass"] == 1
-    assert delta["delta_yield"] == pytest.approx(2 / 3)
+    assert delta["delta_yield"] == pytest.approx(2.0)
+    assert delta["delta_yield_coverage"] == pytest.approx(2 / 3)
     assert "T2 FRONTIER COMMON-TASK" in text
     assert "SEGMENT-AWARE VS TASK-LEVEL CONTROL" in text
 

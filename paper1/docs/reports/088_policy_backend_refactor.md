@@ -2,7 +2,7 @@
 
 ## Objective
 
-Make the PolicyBackend / adapter architecture real in the smallest behavior-preserving slice. Wrap current value-aware and conservative heuristic behavior as SWE-bench HeuristicPolicy backends, move SWE-bench-specific value/cost/segment assumptions behind adapter-shaped modules, and rename retired metric labels in active runtime code.
+Make the PolicyBackend / adapter architecture real in the smallest behavior-preserving slice. Wrap current value-aware and conservative bootstrap behavior as SWE-bench BootstrapPolicy backends, move SWE-bench-specific value/cost/segment assumptions behind adapter-shaped modules, and rename retired metric labels in active runtime code.
 
 ## Files Changed
 
@@ -10,19 +10,19 @@ Make the PolicyBackend / adapter architecture real in the smallest behavior-pres
 
 | File | Purpose |
 |---|---|
-| `paper1/src/budgetflow/policy_backend.py` | `PolicyBackend` abstract interface + `HeuristicPolicy` wrapping existing BudgetFlowSelector / ValueAwareSelector / ConservativeSelector |
+| `paper1/src/budgetflow/policy_backend.py` | `PolicyBackend` abstract interface + `BootstrapPolicy` wrapping existing BudgetFlowSelector / ValueAwareSelector / ConservativeSelector |
 | `paper1/src/budgetflow/adapters/__init__.py` | Re-exports for architectural adapters |
 | `paper1/src/budgetflow/adapters/swebench_segment.py` | `SwebenchSegmentAdapter` maps Stage (LOCALIZATION/REPAIR/VALIDATION) to WorkflowSegment (Context/Action/Verification) |
-| `paper1/src/budgetflow/adapters/swebench_value.py` | `ValueAdapter` protocol + `SwebenchValueAdapter` wrapping value matrix cold-start logic |
+| `paper1/src/budgetflow/adapters/swebench_value.py` | `ValueAdapter` protocol + `SwebenchValueAdapter` wrapping value matrix bootstrap logic |
 | `paper1/src/budgetflow/adapters/swebench_cost.py` | `CostAdapter` protocol + `SwebenchCostAdapter` wrapping ModelCatalog tier pricing |
-| `paper1/tests/test_policy_backend.py` | Contract/behavior tests for PolicyBackend, HeuristicPolicy, WorkflowSegment, segment adapter, value adapter, cost adapter, and active routing integration |
+| `paper1/tests/test_policy_backend.py` | Contract/behavior tests for PolicyBackend, BootstrapPolicy, WorkflowSegment, segment adapter, value adapter, cost adapter, and active routing integration |
 
 ### Modified files
 
 | File | Change |
 |---|---|
 | `paper1/src/budgetflow/types.py` | Added `WorkflowSegment` dataclass with Context/Action/Verification factories; documented `Stage` as SWE-bench adapter detail |
-| `paper1/src/budgetflow/experiment_observability.py` | Replaced retired policy-family labels with `heuristic_value_aware_t1`, `heuristic_conservative_t2`, etc. |
+| `paper1/src/budgetflow/experiment_observability.py` | Replaced retired policy-family labels with `bootstrap_value_aware_t1`, `bootstrap_conservative_t2`, etc. |
 | `paper1/src/budgetflow/compare_checkpoint.py` | Replaced retired checkpoint abbreviations with `bf-conservative-T/L`, `bf-value-aware-T/L`; added `va-task-level-T/L` for value_aware_task_level |
 | `paper1/tests/test_value_aware.py` | Renamed test classes/methods to current value-aware and conservative vocabulary |
 | `paper1/tests/test_failure_classification.py` | Renamed conservative lockout helper to current vocabulary |
@@ -42,7 +42,7 @@ class PolicyBackend(ABC):
     def should_stop(task_id, budget_remaining, budget_total, turns_used, **kwargs) -> bool
 ```
 
-### HeuristicPolicy (concrete)
+### BootstrapPolicy (concrete)
 Wraps BudgetFlowSelector / ValueAwareSelector / ConservativeSelector behind PolicyBackend. Routes `choose_backend` to the wrapped selector; delegates task_value through kwargs for VA selectors.
 
 ### WorkflowSegment
@@ -74,7 +74,7 @@ class CostAdapter(Protocol):
 
 - **No files deleted.** All existing behavior is preserved behind new interfaces.
 - **Rewritten test names**: `test_value_aware.py` (6 test methods), `test_failure_classification.py` (1 helper + 10 call sites), `test_experiment_observability.py` (4 test methods + expected values), `test_compare_record_schema.py` (1 expected value), `test_compare_readiness.py` (1 test method), `test_trace_fields.py` (1 test method).
-- **Retired labels removed from active runtime**: policy-family strings now use `heuristic_*` equivalents.
+- **Retired labels removed from active runtime**: policy-family strings now use `bootstrap_*` names.
 
 ## Verification Commands and Results
 
@@ -115,13 +115,13 @@ Fails because ANSI color codes in console output break substring match. This exi
 
 ### What Was Fixed
 
-1. **Wired HeuristicPolicy into active routing path** (`adapter/strategies.py`):
-   - `build_routing_context()` now creates `HeuristicPolicy` for `budgetflow_full`, `budgetflow_conservative`, and `budgetflow_value_aware` strategies.
-   - `choose_backend()` routes through `HeuristicPolicy.choose_backend()` instead of calling selectors directly.
+1. **Wired BootstrapPolicy into active routing path** (`adapter/strategies.py`):
+   - `build_routing_context()` now creates `BootstrapPolicy` for `budgetflow_full`, `budgetflow_conservative`, and `budgetflow_value_aware` strategies.
+   - `choose_backend()` routes through `BootstrapPolicy.choose_backend()` instead of calling selectors directly.
    - `last_policy_decision` is set on `RoutingContext` for trace compatibility.
-   - `RoutingContext` gained `heuristic_policy` and `last_policy_decision` fields.
-   - Tests prove runtime path goes through HeuristicPolicy, not just that it can be instantiated.
-   - Missing `HeuristicPolicy` for BudgetFlow strategies is now a runtime error, not a silent fallback to direct selector calls.
+   - `RoutingContext` gained `bootstrap_policy` and `last_policy_decision` fields.
+   - Tests prove runtime path goes through BootstrapPolicy, not just that it can be instantiated.
+   - Missing `BootstrapPolicy` for BudgetFlow strategies is now a runtime error, not a silent fallback to direct selector calls.
 
 2. **Fixed `estimate_cap` to be harmless non-runtime** (`policy_backend.py`):
    - Returns `budget_remaining` as pass-through.
@@ -145,7 +145,7 @@ Fails because ANSI color codes in console output break substring match. This exi
 ### What Remains Intentionally Out of Scope
 
 - **No paid runs** - verified zero API calls.
-- **No architecture rewrite** - HeuristicPolicy wraps existing selectors; `estimate_cap` remains pass-through; CostAdapter not yet wired into governor.
+- **No architecture rewrite** - BootstrapPolicy wraps existing selectors; `estimate_cap` remains pass-through; CostAdapter not yet wired into governor.
 - **No historical artifact rewriting** - only active runtime code and tests changed.
 - **Pre-existing `test_policy_memory.py` ANSI-escape failure** - unrelated to this patch, not touched.
 
@@ -163,3 +163,56 @@ $ PYTHONPATH=src:../external/mini-swe-agent/src python -m pytest tests/test_poli
 ```
 
 Pre-existing failure (untouched): `test_policy_memory.py::test_auto_budget_dry_run_exposes_escalation_memory_decision` - ANSI color codes in console output break substring match.
+
+---
+
+## Addendum - Bootstrap Terminology And Yield Semantics (2026-06-08)
+
+### What Changed
+
+1. Active runtime code now uses `BootstrapPolicy` terminology instead of the retired heuristic-policy name.
+2. Routing context uses `bootstrap_policy` and raises if a BudgetFlow bootstrap strategy is missing its policy backend.
+3. Active policy-family labels now use `bootstrap_*` names.
+4. `Yield` now means total resolved task value. The compatibility field `yield_score` remains in JSONL/report consumers but now carries total resolved value; `yield_coverage` carries the normalized resolved-value share.
+5. Turn traces now include a compact `policy_decision` record with policy type, policy name, backend, reason, scores, budget pressure, and router branch.
+
+### Verification
+
+```
+$ PYTHONPATH=paper1/src:external/mini-swe-agent/src python -m pytest \
+  paper1/tests/test_policy_backend.py \
+  paper1/tests/test_experiment_observability.py \
+  paper1/tests/test_compare_record_schema.py \
+  paper1/tests/test_value_efficiency.py \
+  paper1/tests/test_run_observability_audit.py \
+  paper1/tests/test_trace_fields.py -q
+67 passed
+```
+
+---
+
+## Addendum - Bootstrap And Learn Boundary Cleanup (2026-06-08)
+
+### What Changed
+
+1. Added `LearnMemoryBundle` as the small boundary for Learn Policy memory inputs.
+2. Runtime records now carry `memory_mode`, so audit can distinguish no memory,
+   built-in Memory, and future external policy inputs.
+3. Turn traces report `policy_type`, `policy_name`, `memory_mode`, and compact
+   `policy_decision` fields.
+4. The active segment-control preset is now `segment-control`.
+5. Active code and docs use confidence wording for cost/progress source trust.
+6. `paper1/docs/progress.md` current snapshot now reflects Bootstrap Policy,
+   Learn Policy, Memory boundary, Yield, and adapter decisions.
+
+### Verification
+
+```
+$ PYTHONPATH=paper1/src:external/mini-swe-agent/src python -m pytest \
+  paper1/tests --ignore=paper1/tests/test_policy_memory.py -q
+240 passed
+```
+
+Skipped known pre-existing failure:
+`paper1/tests/test_policy_memory.py::test_auto_budget_dry_run_exposes_escalation_memory_decision`
+still fails on ANSI-colored console text and was not part of this slice.

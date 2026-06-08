@@ -8,7 +8,7 @@ from typing import Any
 from budgetflow.defaults import BUDGET_PRESSURE_INIT, PRESSURE_MAX
 
 
-PRESET_TASKS = {"3x3": 3, "3x5": 3, "5x5": 5, "stage-split": 3}
+PRESET_TASKS = {"3x3": 3, "3x5": 3, "5x5": 5, "segment-control": 3}
 
 
 def parse_compare_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -17,7 +17,7 @@ def parse_compare_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--preset",
         choices=sorted(PRESET_TASKS),
         default="3x3",
-        help="3x3=current BO/BFC/BFV diagnostic, stage-split=adds value-aware task-level control",
+        help="3x3=budget-only plus Bootstrap Policy diagnostic; segment-control=adds value-aware task-level control",
     )
     parser.add_argument("--limit", type=int, default=None, help="task count (default from --preset)")
     parser.add_argument("--loose", type=float, default=None, help="shared batch budget for *_loose strategies")

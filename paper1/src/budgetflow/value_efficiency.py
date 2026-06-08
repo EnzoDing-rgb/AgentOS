@@ -1,8 +1,8 @@
 """Value-driven token-efficiency metrics for BudgetFlow.
 
-Tier 1 primary metric is Yield: verified resolved value divided by total task
-value at a fixed budget. Yield per Dollar is the secondary efficiency metric.
-Tier 2 is the equal-value special case used as a mechanism ablation.
+Tier 1 primary metric is Yield: total resolved task value at a fixed budget.
+Yield per Dollar is the main efficiency diagnostic. Resolved task count and
+coverage are supporting diagnostics, not the objective.
 """
 
 from __future__ import annotations
@@ -107,13 +107,14 @@ class ValueEfficiencyContext:
         resolved_value = sum(float(r.get("resolved_value") or 0) for r in records)
         total_task_value = sum(float(r.get("task_value") or 1.0) for r in records)
         yield_per_dollar = resolved_value / total_cost if total_cost > 0 else 0.0
-        yield_score = resolved_value / total_task_value if total_task_value > 0 else 0.0
+        yield_coverage = resolved_value / total_task_value if total_task_value > 0 else 0.0
         return {
             "resolved_count": resolved_count,
             "total_cost": round(total_cost, 6),
             "resolved_value": round(resolved_value, 6),
             "total_task_value": round(total_task_value, 6),
-            "yield_score": round(yield_score, 6),
+            "yield_score": round(resolved_value, 6),
+            "yield_coverage": round(yield_coverage, 6),
             "yield_per_dollar": round(yield_per_dollar, 6),
             "value_profile": self.profile,
             "task_value_source_class": self.source_class,

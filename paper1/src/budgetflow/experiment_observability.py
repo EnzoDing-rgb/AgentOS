@@ -23,19 +23,19 @@ def enrich_routing_observability(record: dict, *, policy_memory_source: str = ""
 
     if routing == "budgetflow_value_aware":
         if objective == "t1_value_efficiency":
-            policy_family = "heuristic_value_aware_t1"
+            policy_family = "bootstrap_value_aware_t1"
         elif objective == "t1_cold_start_value_diagnostic":
-            policy_family = "heuristic_cold_start_diagnostic"
+            policy_family = "bootstrap_ex_ante_value_diagnostic"
         else:
-            policy_family = "heuristic_equal_value_t2"
+            policy_family = "bootstrap_equal_value_t2"
     elif routing == "value_aware_task_level":
         policy_family = (
-            "heuristic_cold_start_task_level"
+            "bootstrap_ex_ante_task_level"
             if objective == "t1_cold_start_value_diagnostic"
-            else "heuristic_value_aware_task_level"
+            else "bootstrap_value_aware_task_level"
         )
     elif routing in {"budgetflow_conservative", "budgetflow_full", "budgetflow_equal_weight", "stage_blind"}:
-        policy_family = "heuristic_conservative_t2"
+        policy_family = "bootstrap_conservative_t2"
     elif routing == "budget_only":
         policy_family = "bo_baseline"
     else:

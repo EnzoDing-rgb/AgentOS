@@ -124,11 +124,11 @@ class SwebenchValueAdapter:
         return estimate.value, estimate.source
 
 
-# Cold-start task feature extraction (SWE-bench specific)
+# Bootstrap value feature extraction (SWE-bench specific)
 
 
 def cold_start_task_features(task: Any) -> dict[str, int]:
-    """Ex-ante SWE-bench task features used by the cold-start value profile."""
+    """Ex-ante SWE-bench task features used by the bootstrap value profile."""
     return {
         "patch_lines": len(str(getattr(task, "patch", "") or "").splitlines()),
         "f2p_count": len(getattr(task, "fail_to_pass", ()) or ()),
@@ -139,7 +139,7 @@ def cold_start_task_features(task: Any) -> dict[str, int]:
 
 
 def cold_start_task_values(task: Any) -> dict[str, float]:
-    """No-outcome cold-start values from SWE-bench task metadata only."""
+    """No-outcome bootstrap values from SWE-bench task metadata only."""
     features = cold_start_task_features(task)
     raw = (
         1.0

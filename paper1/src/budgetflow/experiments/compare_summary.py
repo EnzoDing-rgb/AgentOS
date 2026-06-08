@@ -214,7 +214,7 @@ def _format_live_snapshot(
         lines.append("=== VALUE SUMMARY ===")
         lines.append(
             f"{'strategy':<28} {'resolved':>8} {'cost':>8} {'res_value':>9} "
-            f"{'Yield':>7} {'Yield/$':>9} {'v_profile':>12}"
+            f"{'Yield':>7} {'coverage':>8} {'Yield/$':>9} {'v_profile':>12}"
         )
         lines.append("-" * 92)
         for name in strategy_names:
@@ -223,12 +223,13 @@ def _format_live_snapshot(
             resolved_val = sum(rv_list)
             total_val = sum(tv_list)
             total_cost = sum(task_cost_by_strategy.get(name, []))
-            yield_score = resolved_val / total_val if total_val > 0 else 0.0
+            yield_score = resolved_val
+            yield_coverage = resolved_val / total_val if total_val > 0 else 0.0
             yield_per_dollar = resolved_val / total_cost if total_cost > 0 else 0.0
             lines.append(
                 f"{name:<28} {sum(1 for r in resolved_by_strategy.get(name, []) if r):>8} "
                 f"{_fmt_usd(total_cost):>8} {resolved_val:>9.2f} "
-                f"{yield_score:>7.2f} {yield_per_dollar:>9.2f} {value_profile:>12}"
+                f"{yield_score:>7.2f} {yield_coverage:>8.2f} {yield_per_dollar:>9.2f} {value_profile:>12}"
             )
         lines.append("")
     lines.append("")

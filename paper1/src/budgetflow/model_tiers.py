@@ -139,7 +139,7 @@ def _looks_like_iso_date(value: str) -> bool:
 
 
 def validate_tier_catalog(configs: tuple[TierConfig, ...] = DEFAULT_TIER_CONFIGS) -> list[str]:
-    """Return catalog provenance problems that should block paid experiments.
+    """Return catalog confidence problems that should block paid experiments.
 
     The price table is part of the evaluation harness. If it is stale or
     unexplained, T1 value-per-dollar and routing thresholds become suspect.
@@ -149,11 +149,11 @@ def validate_tier_catalog(configs: tuple[TierConfig, ...] = DEFAULT_TIER_CONFIGS
         if cfg.cost_per_input_token <= 0 or cfg.cost_per_output_token <= 0:
             issues.append(f"{cfg.backend}: non-positive token cost")
         if not cfg.cost_source or cfg.cost_source == "manual":
-            issues.append(f"{cfg.backend}: missing cost_source provenance")
+            issues.append(f"{cfg.backend}: missing cost source confidence")
         if not _looks_like_iso_date(cfg.cost_updated):
             issues.append(f"{cfg.backend}: missing cost_updated YYYY-MM-DD")
         if not cfg.progress_source or cfg.progress_source == "manual":
-            issues.append(f"{cfg.backend}: missing progress_source provenance")
+            issues.append(f"{cfg.backend}: missing progress source confidence")
         if not _looks_like_iso_date(cfg.progress_updated):
             issues.append(f"{cfg.backend}: missing progress_updated YYYY-MM-DD")
         for stage, value in cfg.progress_prior.items():
@@ -163,7 +163,7 @@ def validate_tier_catalog(configs: tuple[TierConfig, ...] = DEFAULT_TIER_CONFIGS
 
 
 def catalog_revision(configs: tuple[TierConfig, ...] = DEFAULT_TIER_CONFIGS) -> str:
-    """Small stable revision id for cost/progress catalog provenance."""
+    """Small stable revision id for cost/progress catalog confidence."""
     parts = [
         f"{cfg.backend}:{cfg.cost_updated}:{cfg.progress_updated}"
         for cfg in sorted(configs, key=lambda item: item.backend)
@@ -333,7 +333,7 @@ def protocol_for(backend_name: str) -> str:
     return config.protocol if config is not None else "tool_call"
 
 
-def tier_provenance(backend_name: str) -> dict[str, str]:
+def tier_confidence(backend_name: str) -> dict[str, str]:
     config = MODEL_CATALOG.config_for(backend_name)
     if config is None:
         return {}

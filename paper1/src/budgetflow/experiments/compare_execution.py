@@ -157,6 +157,7 @@ def run_task_record(
     }
     if adaptive is not None:
         prior = adaptive.prior_summary_for_trace()
+        record["memory_mode"] = getattr(adaptive, "memory_mode", "off")
         if prior:
             record["routing_prior_summary"] = prior
             record["routing_prior_stage"] = Stage.LOCALIZATION.value
@@ -171,8 +172,10 @@ def run_task_record(
         prior = adaptive_registry.policy_memory.routing_prior_summary(task.instance_id)
         record["routing_prior_summary"] = prior
         record["policy_memory_enabled"] = True
+        record["memory_mode"] = getattr(adaptive_registry, "memory_mode", "built_in")
     else:
         record["policy_memory_enabled"] = False
+        record["memory_mode"] = "off"
 
     record["failure_class"] = classify_failure(record)
     record["forensic_summary"] = build_forensic_summary(record)

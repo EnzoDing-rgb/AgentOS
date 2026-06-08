@@ -1,6 +1,6 @@
-"""PolicyBackend interface and HeuristicPolicy contract tests.
+"""PolicyBackend interface and BootstrapPolicy contract tests.
 
-Proves the runtime path goes through HeuristicPolicy, not only that the
+Proves the runtime path goes through BootstrapPolicy, not only that the
 class can be instantiated.
 """
 
@@ -34,35 +34,35 @@ def _turn(stage=None, w_i=0.4):
 
 
 class TestPolicyBackendInterface:
-    def test_heuristic_policy_is_policy_backend(self):
-        from budgetflow.policy_backend import HeuristicPolicy, PolicyBackend
+    def test_bootstrap_policy_is_policy_backend(self):
+        from budgetflow.policy_backend import BootstrapPolicy, PolicyBackend
         from budgetflow.selector import BudgetFlowSelector, build_zero_calibration_progress_table
 
         backends = _backends()
         table = build_zero_calibration_progress_table(backends)
         selector = BudgetFlowSelector(table)
-        policy = HeuristicPolicy(selector)
+        policy = BootstrapPolicy(selector)
         assert isinstance(policy, PolicyBackend)
 
-    def test_heuristic_policy_estimate_cap_is_pass_through(self):
-        from budgetflow.policy_backend import HeuristicPolicy
+    def test_bootstrap_policy_estimate_cap_is_pass_through(self):
+        from budgetflow.policy_backend import BootstrapPolicy
         from budgetflow.selector import BudgetFlowSelector, build_zero_calibration_progress_table
 
         backends = _backends()
         table = build_zero_calibration_progress_table(backends)
-        policy = HeuristicPolicy(BudgetFlowSelector(table))
+        policy = BootstrapPolicy(BudgetFlowSelector(table))
 
         # Not yet wired into runtime; must return budget_remaining unchanged.
         cap = policy.estimate_cap("task-a", 2.0, 0.75, 1.0)
         assert cap == 0.75
 
-    def test_heuristic_policy_choose_backend(self):
-        from budgetflow.policy_backend import HeuristicPolicy
+    def test_bootstrap_policy_choose_backend(self):
+        from budgetflow.policy_backend import BootstrapPolicy
         from budgetflow.selector import BudgetFlowSelector, build_zero_calibration_progress_table
 
         backends = _backends()
         table = build_zero_calibration_progress_table(backends)
-        policy = HeuristicPolicy(BudgetFlowSelector(table))
+        policy = BootstrapPolicy(BudgetFlowSelector(table))
 
         decision = policy.choose_backend(
             _turn(), backends, budget_pressure=0.01,
@@ -72,13 +72,13 @@ class TestPolicyBackendInterface:
         assert decision.reason != ""
         assert isinstance(decision.scores, dict)
 
-    def test_heuristic_policy_stores_last_decision(self):
-        from budgetflow.policy_backend import HeuristicPolicy
+    def test_bootstrap_policy_stores_last_decision(self):
+        from budgetflow.policy_backend import BootstrapPolicy
         from budgetflow.selector import BudgetFlowSelector, build_zero_calibration_progress_table
 
         backends = _backends()
         table = build_zero_calibration_progress_table(backends)
-        policy = HeuristicPolicy(BudgetFlowSelector(table))
+        policy = BootstrapPolicy(BudgetFlowSelector(table))
 
         assert policy.last_decision is None
         decision = policy.choose_backend(
@@ -87,56 +87,56 @@ class TestPolicyBackendInterface:
         )
         assert policy.last_decision is decision
 
-    def test_heuristic_policy_should_stop_on_exhausted_budget(self):
-        from budgetflow.policy_backend import HeuristicPolicy
+    def test_bootstrap_policy_should_stop_on_exhausted_budget(self):
+        from budgetflow.policy_backend import BootstrapPolicy
         from budgetflow.selector import BudgetFlowSelector, build_zero_calibration_progress_table
 
         backends = _backends()
         table = build_zero_calibration_progress_table(backends)
-        policy = HeuristicPolicy(BudgetFlowSelector(table))
+        policy = BootstrapPolicy(BudgetFlowSelector(table))
 
         assert policy.should_stop("task-a", 0.0, 1.0, 5) is True
 
-    def test_heuristic_policy_should_continue_with_budget(self):
-        from budgetflow.policy_backend import HeuristicPolicy
+    def test_bootstrap_policy_should_continue_with_budget(self):
+        from budgetflow.policy_backend import BootstrapPolicy
         from budgetflow.selector import BudgetFlowSelector, build_zero_calibration_progress_table
 
         backends = _backends()
         table = build_zero_calibration_progress_table(backends)
-        policy = HeuristicPolicy(BudgetFlowSelector(table))
+        policy = BootstrapPolicy(BudgetFlowSelector(table))
 
         assert policy.should_stop("task-a", 0.3, 1.0, 5) is False
 
-    def test_heuristic_policy_should_escalate_on_prolonged_stall(self):
-        from budgetflow.policy_backend import HeuristicPolicy
+    def test_bootstrap_policy_should_escalate_on_prolonged_stall(self):
+        from budgetflow.policy_backend import BootstrapPolicy
         from budgetflow.selector import BudgetFlowSelector, build_zero_calibration_progress_table
 
         backends = _backends()
         table = build_zero_calibration_progress_table(backends)
-        policy = HeuristicPolicy(BudgetFlowSelector(table))
+        policy = BootstrapPolicy(BudgetFlowSelector(table))
 
         assert policy.should_escalate("task-a", "tier2", 0, 8) is True
 
-    def test_heuristic_policy_should_not_escalate_when_making_progress(self):
-        from budgetflow.policy_backend import HeuristicPolicy
+    def test_bootstrap_policy_should_not_escalate_when_making_progress(self):
+        from budgetflow.policy_backend import BootstrapPolicy
         from budgetflow.selector import BudgetFlowSelector, build_zero_calibration_progress_table
 
         backends = _backends()
         table = build_zero_calibration_progress_table(backends)
-        policy = HeuristicPolicy(BudgetFlowSelector(table))
+        policy = BootstrapPolicy(BudgetFlowSelector(table))
 
         assert policy.should_escalate("task-a", "tier2", 3, 2) is False
 
 
-class TestHeuristicValueAwarePolicy:
+class TestBootstrapValueAwarePolicy:
     def test_value_aware_policy_passes_task_value(self):
-        from budgetflow.policy_backend import HeuristicPolicy
+        from budgetflow.policy_backend import BootstrapPolicy
         from budgetflow.selector import ValueAwareSelector, build_zero_calibration_progress_table
 
         backends = _backends()
         table = build_zero_calibration_progress_table(backends)
         selector = ValueAwareSelector(table, median_task_value=1.0)
-        policy = HeuristicPolicy(selector)
+        policy = BootstrapPolicy(selector)
 
         decision = policy.choose_backend(
             _turn(), backends, budget_pressure=0.5,
@@ -147,36 +147,36 @@ class TestHeuristicValueAwarePolicy:
         assert selector.last_multiplier > 1.0
 
 
-class TestHeuristicPolicyWiredIntoRouting:
-    """Prove that build_routing_context wires HeuristicPolicy for budgetflow
+class TestBootstrapPolicyWiredIntoRouting:
+    """Prove that build_routing_context wires BootstrapPolicy for budgetflow
     strategies and that choose_backend routes through it."""
 
-    def test_budgetflow_full_has_heuristic_policy(self):
+    def test_budgetflow_full_has_bootstrap_policy(self):
         from budgetflow.adapter.strategies import build_routing_context
-        from budgetflow.policy_backend import HeuristicPolicy
+        from budgetflow.policy_backend import BootstrapPolicy
 
         backends = _backends()
         ctx = build_routing_context("budgetflow_full", backends)
-        assert ctx.heuristic_policy is not None
-        assert isinstance(ctx.heuristic_policy, HeuristicPolicy)
+        assert ctx.bootstrap_policy is not None
+        assert isinstance(ctx.bootstrap_policy, BootstrapPolicy)
 
-    def test_budgetflow_conservative_has_heuristic_policy(self):
+    def test_budgetflow_conservative_has_bootstrap_policy(self):
         from budgetflow.adapter.strategies import build_routing_context
-        from budgetflow.policy_backend import HeuristicPolicy
+        from budgetflow.policy_backend import BootstrapPolicy
 
         backends = _backends()
         ctx = build_routing_context("budgetflow_conservative", backends)
-        assert ctx.heuristic_policy is not None
-        assert isinstance(ctx.heuristic_policy, HeuristicPolicy)
+        assert ctx.bootstrap_policy is not None
+        assert isinstance(ctx.bootstrap_policy, BootstrapPolicy)
 
-    def test_budgetflow_value_aware_has_heuristic_policy(self):
+    def test_budgetflow_value_aware_has_bootstrap_policy(self):
         from budgetflow.adapter.strategies import build_routing_context
-        from budgetflow.policy_backend import HeuristicPolicy
+        from budgetflow.policy_backend import BootstrapPolicy
 
         backends = _backends()
         ctx = build_routing_context("budgetflow_value_aware", backends, task_value=2.0)
-        assert ctx.heuristic_policy is not None
-        assert isinstance(ctx.heuristic_policy, HeuristicPolicy)
+        assert ctx.bootstrap_policy is not None
+        assert isinstance(ctx.bootstrap_policy, BootstrapPolicy)
 
     def test_choose_backend_sets_last_policy_decision(self):
         from budgetflow.adapter.strategies import build_routing_context, choose_backend
@@ -188,7 +188,7 @@ class TestHeuristicPolicyWiredIntoRouting:
         turn = TurnInfo(workflow_id="t", step_index=1, stage=Stage.LOCALIZATION, w_i=0.4, context_len=1000)
         backend = choose_backend(ctx, turn, {b.name: 0.01 for b in backends})
         assert backend is not None
-        # Must set last_policy_decision when routing through HeuristicPolicy.
+        # Must set last_policy_decision when routing through BootstrapPolicy.
         # Note: max-tier gating may override the policy choice, so
         # last_policy_decision.backend may differ from the returned backend.
         assert ctx.last_policy_decision is not None
@@ -202,10 +202,10 @@ class TestHeuristicPolicyWiredIntoRouting:
 
         backends = _backends()
         ctx = build_routing_context("budgetflow_conservative", backends)
-        ctx.heuristic_policy = None
+        ctx.bootstrap_policy = None
         turn = TurnInfo(workflow_id="t", step_index=1, stage=Stage.LOCALIZATION, w_i=0.4, context_len=1000)
 
-        with pytest.raises(RuntimeError, match="requires a HeuristicPolicy"):
+        with pytest.raises(RuntimeError, match="requires a BootstrapPolicy"):
             choose_backend(ctx, turn, {b.name: 0.01 for b in backends})
 
     def test_choose_backend_preserves_router_decision_semantics(self):

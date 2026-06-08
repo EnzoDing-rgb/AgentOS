@@ -50,7 +50,7 @@ def format_compact_audit(audit: dict) -> str:
     if any("yield_score" in s for s in audit["by_strategy"].values()):
         lines.append(banner)
         lines.append("T1 VALUE METRICS")
-        lines.append(f"{'strategy':<26} {'res_value':>9} {'task_value':>10} {'Yield':>7} {'Yield/$':>9}")
+        lines.append(f"{'strategy':<26} {'res_value':>9} {'task_value':>10} {'Yield':>7} {'coverage':>8} {'Yield/$':>9}")
         lines.append("-" * 64)
         for strat in sorted(audit["by_strategy"]):
             s = audit["by_strategy"][strat]
@@ -58,6 +58,7 @@ def format_compact_audit(audit: dict) -> str:
                 f"{strat:<26} {s.get('resolved_value', 0.0):>9.2f} "
                 f"{s.get('total_task_value', 0.0):>10.2f} "
                 f"{s.get('yield_score', 0.0):>7.2f} "
+                f"{s.get('yield_coverage', 0.0):>8.2f} "
                 f"{s.get('yield_per_dollar', 0.0):>9.2f}"
             )
 

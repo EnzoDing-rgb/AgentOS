@@ -783,7 +783,7 @@ def _escalation_action(prior: EscalationPrior) -> tuple[str, int]:
 
 
 def _starter_action(prior: StarterPrior, source: str = "") -> tuple[str, int]:
-    """Convert Routing Memory into a bounded BO-style strongest starter window."""
+    """Convert Routing Memory into a bounded strongest starter window."""
     if _starter_action_evidence_weight(prior) < 1.0:
         return "default", 0
     if prior.bo_frontload_rate < 0.4:

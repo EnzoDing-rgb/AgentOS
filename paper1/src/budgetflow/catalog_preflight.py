@@ -5,7 +5,7 @@ from .model_tiers import MODEL_CATALOG, validate_tier_catalog
 
 
 def print_tier_catalog_preflight() -> list[str]:
-    """Print cost/progress provenance and return blocking catalog issues."""
+    """Print cost/progress confidence and return blocking catalog issues."""
     issues = validate_tier_catalog()
     for cfg in MODEL_CATALOG.configs:
         print(

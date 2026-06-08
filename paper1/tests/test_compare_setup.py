@@ -82,8 +82,8 @@ def test_3x3_selects_canonical_diagnostic_strategies_and_parallel_jobs() -> None
     assert selection.jobs_upgraded is True
 
 
-def test_stage_split_preset_adds_task_level_value_control_and_parallel_jobs() -> None:
-    selection = select_strategies(_args(preset="stage-split", jobs=1))
+def test_segment_control_preset_adds_task_level_value_control_and_parallel_jobs() -> None:
+    selection = select_strategies(_args(preset="segment-control", jobs=1))
     names = {s.name for s in selection.strategies}
 
     assert names == {

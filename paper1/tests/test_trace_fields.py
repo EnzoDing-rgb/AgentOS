@@ -132,6 +132,50 @@ def test_value_triggered_escalation_only_opens_for_high_value(task_value: float,
     assert model._maybe_open_value_triggered_escalation("stagnation_no_progress") is opens
 
 
+def test_router_trace_fields_emit_minimal_policy_decision_record() -> None:
+    from budgetflow.adapter.strategies import choose_backend
+    from budgetflow.adapter.turn_trace import router_trace_fields
+    from budgetflow.types import TurnInfo
+
+    t1 = _backend("tier1", 1)
+    t2 = _backend("tier2", 2)
+    routing = build_routing_context("budgetflow_conservative", [t1, t2])
+    turn = TurnInfo(workflow_id="t", step_index=1, stage=Stage.REPAIR, w_i=0.5, context_len=100)
+
+    backend = choose_backend(routing, turn, {"tier1": 0.01, "tier2": 0.02})
+    fields = router_trace_fields(routing)
+
+    assert backend.name in {"tier1", "tier2"}
+    assert fields["policy_type"] == "bootstrap"
+    assert fields["policy_name"] == "budgetflow_conservative"
+    assert fields["memory_mode"] == "off"
+    assert fields["policy_decision"]["backend"] in {"tier1", "tier2"}
+    assert fields["policy_decision"]["reason"].startswith("bootstrap:")
+    assert fields["policy_decision"]["memory_mode"] == "off"
+
+
+def test_router_trace_fields_report_built_in_memory_mode() -> None:
+    from budgetflow.adapter.strategies import build_routing_context, choose_backend
+    from budgetflow.adapter.turn_trace import router_trace_fields
+    from budgetflow.types import TurnInfo
+
+    t1 = _backend("tier1", 1)
+    t2 = _backend("tier2", 2)
+
+    from budgetflow.adaptive_routing import AdaptiveRoutingState
+
+    adaptive = AdaptiveRoutingState("budgetflow_conservative", memory_mode="built_in")
+    routing = build_routing_context("budgetflow_conservative", [t1, t2], adaptive=adaptive)
+    turn = TurnInfo(workflow_id="t", step_index=1, stage=Stage.REPAIR, w_i=0.5, context_len=100)
+
+    choose_backend(routing, turn, {"tier1": 0.01, "tier2": 0.02})
+    fields = router_trace_fields(routing)
+
+    assert fields["policy_type"] == "bootstrap"
+    assert fields["memory_mode"] == "built_in"
+    assert fields["policy_decision"]["memory_mode"] == "built_in"
+
+
 def test_value_triggered_escalation_honors_memory_disable_window() -> None:
     t2 = _backend("tier2", 2)
     t3 = _backend("tier3", 3)

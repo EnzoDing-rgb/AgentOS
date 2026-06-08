@@ -1,4 +1,4 @@
-"""Stage-aware adaptive feedback for BudgetFlow routing (always on for budgetflow_full)."""
+"""Segment-aware adaptive feedback for BudgetFlow routing."""
 
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ from .defaults import (
     ADAPTIVE_WINDOW,
     PRESSURE_MAX,
 )
+from .learn_policy import LearnMemoryBundle
 from .types import Stage
 
 if TYPE_CHECKING:
@@ -151,6 +152,7 @@ class AdaptiveRoutingState:
     last_weak_stage: Stage | None = None
     rescue: EvidenceRescueState = field(default_factory=EvidenceRescueState)
     policy_memory: object | None = None
+    memory_mode: str = "off"
     _current_instance_id: str | None = None
     _prior_summary: dict | None = None
     strongest_starter_action: str = "default"
@@ -196,8 +198,8 @@ class AdaptiveRoutingState:
         0 consecutive fails → cheapest tier (default)
         2+ consecutive fails → second-cheapest tier (skip cheapest)
         Policy "start_second_cheapest" action → second-cheapest regardless of streak
-        Starts strongest only when Routing Memory learned that BO's bounded
-        early T3 frontload beat delayed BudgetFlow rescue on matched tasks.
+        Starts strongest only when Routing Memory learned that bounded early
+        strongest-tier frontload beat delayed BudgetFlow rescue on matched tasks.
         """
         if self.strongest_starter_window_remaining > 0:
             return 3
@@ -349,20 +351,37 @@ class AdaptiveRoutingState:
 class AdaptiveRoutingRegistry:
     """Thread-safe registry: one adaptive state per budgetflow_full compare policy."""
 
-    def __init__(self, policy_memory: object | None = None) -> None:
+    def __init__(self, policy_memory: object | None = None, memory_mode: str = "off") -> None:
         self._lock = threading.Lock()
         self._states: dict[str, AdaptiveRoutingState] = {}
         self._policy_memory = policy_memory
+        self._memory_bundle = (
+            LearnMemoryBundle.built_in(policy_memory, source="policy_memory")
+            if policy_memory is not None
+            else LearnMemoryBundle.off()
+        )
+        self._memory_mode = memory_mode if policy_memory is not None else "off"
 
     @property
     def policy_memory(self) -> object | None:
         return self._policy_memory
 
+    @property
+    def memory_bundle(self) -> LearnMemoryBundle:
+        return self._memory_bundle
+
+    @property
+    def memory_mode(self) -> str:
+        return self._memory_mode
+
     def set_policy_memory(self, policy_memory: object) -> None:
         self._policy_memory = policy_memory
+        self._memory_bundle = LearnMemoryBundle.built_in(policy_memory, source="policy_memory")
+        self._memory_mode = "built_in"
         with self._lock:
             for state in self._states.values():
                 state.policy_memory = policy_memory
+                state.memory_mode = self._memory_mode
 
     def for_strategy(self, strategy_name: str, routing: str) -> AdaptiveRoutingState | None:
         if routing not in ("budgetflow_full", "budgetflow_conservative", "budgetflow_value_aware", "budgetflow_equal_weight", "stage_blind"):
@@ -373,6 +392,7 @@ class AdaptiveRoutingRegistry:
                 state = AdaptiveRoutingState(
                     strategy_name=strategy_name,
                     policy_memory=self._policy_memory,
+                    memory_mode=self._memory_mode,
                 )
                 self._states[strategy_name] = state
             return state
@@ -406,6 +426,7 @@ class AdaptiveRoutingRegistry:
                 state = AdaptiveRoutingState(
                     strategy_name=name,
                     policy_memory=self._policy_memory,
+                    memory_mode=self._memory_mode,
                 )
                 state.rebuild_from_records(records)
                 self._states[name] = state

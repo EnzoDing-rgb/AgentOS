@@ -191,7 +191,7 @@ PROFILES: dict[str, ValueFn] = {
 
 
 def cold_start_task_features(task) -> dict[str, int]:
-    """Extract ex-ante task features used by the cold-start value profile."""
+    """Extract ex-ante task features used by the bootstrap value profile."""
     return {
         "patch_lines": len(str(getattr(task, "patch", "") or "").splitlines()),
         "f2p_count": len(getattr(task, "fail_to_pass", ()) or ()),
@@ -202,7 +202,7 @@ def cold_start_task_features(task) -> dict[str, int]:
 
 
 def cold_start_task_values(task) -> dict[str, float]:
-    """No-outcome cold-start values from task text/patch/test metadata only."""
+    """No-outcome bootstrap values from task text/patch/test metadata only."""
     features = cold_start_task_features(task)
     import math
 
@@ -378,7 +378,7 @@ def build_value_matrix(
     """Build a value matrix with all profiles and sensitivity analysis.
 
     If manifest_meta is provided, its 'meta' and 'runs' fields are embedded
-    in the output for provenance tracking.
+    in the output for confidence tracking.
     """
     if profiles is None:
         profiles = PROFILES
@@ -837,11 +837,11 @@ def _make_parser() -> argparse.ArgumentParser:
     p.add_argument("--profile", choices=list(PROFILES.keys()) + ["all"],
                    default="all", help="Which profile to compute (default: all)")
     p.add_argument("--task-set", choices=("easy", "medium"), default=None,
-                   help="Build a no-outcome cold-start matrix for a compare task set")
+                   help="Build a no-outcome bootstrap matrix for a compare task set")
     p.add_argument("--ids", default=None,
-                   help="Comma-separated task IDs for a no-outcome cold-start matrix")
+                   help="Comma-separated task IDs for a no-outcome bootstrap matrix")
     p.add_argument("--limit", type=int, default=None,
-                   help="Task count for --task-set cold-start matrix")
+                   help="Task count for --task-set bootstrap matrix")
     return p
 
 

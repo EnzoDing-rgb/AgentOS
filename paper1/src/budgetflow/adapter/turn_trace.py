@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from ..model_tiers import MODEL_CATALOG, tier_provenance, token_cost_rates
+from ..model_tiers import MODEL_CATALOG, tier_confidence, token_cost_rates
 from .protocol_adapter import ActionProtocolAdapter
 
 
@@ -67,6 +67,10 @@ def build_turn_trace(
     router_scores: dict[str, float] | None = None,
     router_pressure: float | None = None,
     router_branch: str | None = None,
+    policy_type: str | None = None,
+    policy_name: str | None = None,
+    memory_mode: str | None = None,
+    policy_decision: dict | None = None,
     gold_edit_guard_turns: int = 0,
     gold_edit_guard_limit: int | None = None,
     gold_edit_guard_active: bool = False,
@@ -141,6 +145,10 @@ def build_turn_trace(
         "router_scores": router_scores,
         "router_pressure": router_pressure,
         "router_branch": router_branch,
+        "policy_type": policy_type,
+        "policy_name": policy_name,
+        "memory_mode": memory_mode,
+        "policy_decision": policy_decision,
         "gold_edit_guard_turns": gold_edit_guard_turns,
         "gold_edit_guard_limit": gold_edit_guard_limit,
         "gold_edit_guard_active": gold_edit_guard_active,
@@ -180,12 +188,46 @@ def router_trace_fields(routing) -> dict[str, Any]:
     decision = routing.last_decision
     if decision is None:
         return {}
-    return {
+    policy_decision = getattr(routing, "last_policy_decision", None)
+    policy_type = _policy_type_for_routing(routing)
+    policy_name = getattr(getattr(routing, "bootstrap_policy", None), "name", None) or str(getattr(routing, "strategy", ""))
+    memory_mode = str(getattr(getattr(routing, "adaptive", None), "memory_mode", "off") or "off")
+    fields = {
         "router_reason": decision.reason,
         "router_scores": decision.scores,
         "router_pressure": decision.pressure,
         "router_branch": decision.branch,
+        "policy_type": policy_type,
+        "policy_name": policy_name,
+        "memory_mode": memory_mode,
+        "policy_decision": {
+            "backend": getattr(policy_decision, "backend", decision.backend.name),
+            "reason": getattr(policy_decision, "reason", decision.reason),
+            "scores": getattr(policy_decision, "scores", decision.scores),
+            "budget_pressure": decision.pressure,
+            "router_branch": decision.branch,
+            "memory_mode": memory_mode,
+        },
     }
+    return fields
+
+
+def _policy_type_for_routing(routing) -> str:
+    strategy = str(getattr(routing, "strategy", "") or "")
+    if getattr(routing, "bootstrap_policy", None) is not None:
+        return "bootstrap"
+    if strategy in {
+        "all_flash",
+        "all_tier2",
+        "all_t3",
+        "all_pro",
+        "budget_only",
+        "budget_only_t2",
+        "workflow_level",
+        "value_aware_task_level",
+    }:
+        return "fixed_baseline"
+    return "unknown"
 
 
 def value_aware_trace_fields(routing) -> dict[str, Any]:
@@ -203,11 +245,11 @@ def provider_trace_fields(backend_name: str) -> dict[str, Any]:
     cfg = MODEL_CATALOG.config_for(backend_name)
     if cfg is None:
         return {}
-    provenance = tier_provenance(backend_name)
+    confidence = tier_confidence(backend_name)
     return {
         "provider": cfg.provider,
         "model": cfg.model,
-        **provenance,
+        **confidence,
     }
 
 

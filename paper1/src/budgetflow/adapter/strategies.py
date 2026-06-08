@@ -13,7 +13,7 @@ from ..defaults import (
     active_w_i_profile_name,
 )
 from ..policies import BudgetOnlyStepRouter, BudgetOnlyT2Router, WorkflowLevelRouter
-from ..policy_backend import HeuristicPolicy, PolicyDecision
+from ..policy_backend import BootstrapPolicy, PolicyDecision
 from ..selector import BudgetFlowSelector, ConservativeSelector, RouterDecision, ValueAwareSelector
 from ..types import Backend, ProgressTable, Stage, TurnInfo
 
@@ -31,7 +31,7 @@ class RoutingContext:
     task_level_backend: Backend | None = None
     budget_only_router: BudgetOnlyStepRouter | None = None
     workflow_router: WorkflowLevelRouter | None = None
-    heuristic_policy: HeuristicPolicy | None = None
+    bootstrap_policy: BootstrapPolicy | None = None
     last_decision: RouterDecision | None = None
     last_policy_decision: PolicyDecision | None = None
     last_backend: Backend | None = None
@@ -89,13 +89,13 @@ def build_routing_context(
     if strategy == "budget_only_t2":
         ctx.budget_only_router = BudgetOnlyT2Router()
     if strategy == "budgetflow_full":
-        ctx.heuristic_policy = HeuristicPolicy(ctx.selector, name=strategy)
+        ctx.bootstrap_policy = BootstrapPolicy(ctx.selector, name=strategy)
     if strategy == "budgetflow_conservative":
         ctx.selector = ConservativeSelector(build_progress_table_from_defaults(backends))
-        ctx.heuristic_policy = HeuristicPolicy(ctx.selector, name=strategy)
+        ctx.bootstrap_policy = BootstrapPolicy(ctx.selector, name=strategy)
     if strategy == "budgetflow_value_aware":
         ctx.selector = ValueAwareSelector(build_progress_table_from_defaults(backends), median_task_value=median_task_value)
-        ctx.heuristic_policy = HeuristicPolicy(ctx.selector, name=strategy)
+        ctx.bootstrap_policy = BootstrapPolicy(ctx.selector, name=strategy)
     if strategy == "value_aware_task_level":
         selector = ValueAwareSelector(build_progress_table_from_defaults(backends), median_task_value=median_task_value)
         avg_w = sum(active_w_i().values()) / len(active_w_i())
@@ -222,9 +222,9 @@ def choose_backend(ctx: RoutingContext, turn: TurnInfo, expected_costs: dict[str
         return decision.backend
     if ctx.strategy in {"budgetflow_full", "budgetflow_conservative", "budgetflow_value_aware"}:
         max_tier = _budgetflow_max_tier(ctx)
-        policy = ctx.heuristic_policy
+        policy = ctx.bootstrap_policy
         if policy is None:
-            raise RuntimeError(f"strategy {ctx.strategy!r} requires a HeuristicPolicy")
+            raise RuntimeError(f"strategy {ctx.strategy!r} requires a BootstrapPolicy")
         policy_kwargs: dict = dict(
             turn_info=turn,
             backends=ctx.backends,

@@ -170,6 +170,10 @@ def _segment_control_delta(by_strategy: dict[str, dict]) -> dict:
             float(segment.get("yield_score", 0.0))
             - float(task.get("yield_score", 0.0))
         ),
+        "delta_yield_coverage": (
+            float(segment.get("yield_coverage", 0.0))
+            - float(task.get("yield_coverage", 0.0))
+        ),
         "delta_yield_per_dollar": (
             float(segment.get("yield_per_dollar", 0.0))
             - float(task.get("yield_per_dollar", 0.0))
@@ -342,7 +346,8 @@ def build_compact_audit(records: list[dict]) -> dict:
             "cost": s["cost"], "avg_turns": s["turns"] / max(s["total"], 1),
             "resolved_value": s["resolved_value"],
             "total_task_value": s["task_value"],
-            "yield_score": (
+            "yield_score": s["resolved_value"],
+            "yield_coverage": (
                 s["resolved_value"] / s["task_value"] if s["task_value"] > 0 else 0.0
             ),
             "yield_per_dollar": (

@@ -83,8 +83,8 @@ def build_compare_readiness_report(
     elif any(strategy.routing in {"budgetflow_value_aware", "value_aware_task_level"} for strategy in strategies):
         warnings.append("value-aware strategy with equal task values supports T2/ablation, not T1 value evidence")
 
-    if args.preset == "stage-split" and "value_aware_task_level_tight" not in strategy_names:
-        blocking.append("stage-split preset must include value_aware_task_level_tight no-stage control")
+    if args.preset == "segment-control" and "value_aware_task_level_tight" not in strategy_names:
+        blocking.append("segment-control preset must include value_aware_task_level_tight task-level control")
     if args.task_set != "medium" and not args.ids and len(task_ids) <= 3:
         warnings.append("small familiar task set; diagnostic only, weak anti-overfitting evidence")
     if auto_budget_enabled and not auto_budget_caps:

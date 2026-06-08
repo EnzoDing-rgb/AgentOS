@@ -7,8 +7,8 @@ the terminology and architecture source of truth.
 ## Current System Definition
 
 BudgetFlow is value-aware budget governance for multi-step agent workflows under
-shared hard budgets. The primary goal is to maximize **Yield**: verified
-resolved task value divided by total task value at a fixed budget.
+shared hard budgets. The primary goal is to maximize **Yield**: total resolved
+task value within a shared budget window.
 
 The system has three layers:
 
@@ -17,6 +17,7 @@ The system has three layers:
 | BudgetFlow core | hard budget ledger, reservation, settlement, verified outcome, memory contracts, trace/audit/replay, stop-loss primitives, same-budget policy comparison |
 | Policy Backend | cap, model-tier choice, escalation, de-escalation, stop, and continue recommendations |
 | Domain Adapters | task, segment, verifier, value, cost, model-tier, progress-signal, and runtime mappings for SWE-bench or an enterprise workflow |
+| Memory | Cost Memory, Routing Memory, and Escalation Memory as optional Learn Policy inputs and audit evidence |
 
 SWE-bench is an adapter and testbed. SWE-bench concepts such as localization,
 repair, validation, fail-to-pass tests, patch extraction, and worktree diffs
@@ -26,12 +27,13 @@ must not define BudgetFlow core.
 
 Use these terms exactly:
 
-- `Yield`: verified resolved value divided by total task value at a fixed budget.
-- `Yield per Dollar`: verified resolved value divided by model spend.
+- `Yield`: total resolved task value within a shared budget window.
+- `Yield per Dollar`: total resolved task value divided by model spend.
 - `PolicyBackend`: pluggable strategy interface.
-- `HeuristicPolicy`: default explainable cold-start and safety policy.
-- `Memory-Tuned HeuristicPolicy`: heuristic policy tuned from verified outcomes.
-- `Adaptive Learning Policy`: learned backend satisfying the same policy interface.
+- `BootstrapPolicy`: default explainable policy that runs without customer history or machine learning.
+- `Learn Policy`: policy backend that uses Memory, statistical learning, or customer-owned machine learning.
+- `Fixed Baseline Policy`: evaluation-only control such as static routing, all-cheap, all-strong, or budget-only routing.
+- `Task Set`: named evaluation group such as Familiar Tasks or Unseen Tasks.
 - `Workflow Segment`: coarse policy signal; defaults are `Context`, `Action`, `Verification`.
 - `Segment-Aware Routing`: routing that can use segment as a feature.
 - `Task-Level Policy`: policy/control that chooses at task or request level and preserves cache/context continuity.
@@ -144,7 +146,8 @@ Keep these contracts explicit in code:
   `CostRecord`.
 - Memory stores should stay separate: Cost Memory for cap/cost/value-cost
   evidence, Routing Memory for route outcomes, and Escalation Memory for
-  expensive-tier escalation outcomes.
+  expensive-tier escalation outcomes. They belong behind Learn Policy or audit
+  interfaces, not hidden core behavior.
 
 The core may orchestrate these contracts, but it should not know the details of
 SWE-bench, provider pricing files, task-value matrix schemas, or pytest output.
@@ -154,16 +157,16 @@ SWE-bench, provider pricing files, task-value matrix schemas, or pytest output.
 Build the smallest clean architecture slice that makes the above boundaries
 real:
 
-1. Introduce a `PolicyBackend` interface and wrap current BFV/BFC behavior as
-   SWE-bench `HeuristicPolicy` implementations.
+1. Keep active policy code on `BootstrapPolicy` and `Learn Policy` terminology.
+   Do not revive old heuristic-policy naming in active code or tests.
 2. Move SWE-bench-specific stage and harness assumptions behind adapter-shaped
    modules. Use `Workflow Segment` naming for active interfaces.
 3. Introduce `ValueAdapter` and `CostAdapter` contracts or contract-shaped
    modules. The existing SWE-bench value matrix and public model price catalog
    should become concrete adapters, not core assumptions.
-4. Rename active metric fields and display labels to `yield_score` and
-   `yield_per_dollar`. Active code should not emit old metric abbreviations or
-   their old long-form field names.
+4. Keep active summaries centered on `Yield` and `Yield per Dollar`. If the
+   compatibility field `yield_score` appears in JSONL, it means total resolved
+   task value, not a normalized coverage ratio.
 5. Keep `run_mini_swe_compare.py` and `check_run_observability.py` thin. Move
    policy, value, cost, and adapter semantics out of entrypoints where practical.
 6. Delete or rewrite tests that only preserve old names, old aliases, or retired
@@ -184,7 +187,7 @@ the current runtime while making the boundaries visible.
 ## Acceptance Criteria
 
 - Current compare and observability paths still run through no-paid tests.
-- Active JSONL rows and summaries use `yield_score` and `yield_per_dollar`.
+- Active JSONL rows and summaries report Yield and Yield per Dollar.
 - `budgetflow_value_aware_tight`, `budgetflow_conservative_tight`, and
   task-level controls are represented as policy backends or thin wrappers over
   policy backends.
@@ -210,7 +213,7 @@ Use these rules when the implementation has multiple reasonable paths:
 - If two designs both work, choose the one that makes BudgetFlow core less aware
   of SWE-bench, provider pricing files, value-matrix schemas, and pytest output.
 - If a learned policy would complicate the slice, keep the interface ready for
-  it and leave the implementation as HeuristicPolicy.
+  it and leave active runtime behavior in BootstrapPolicy.
 
 ## Eight Gold Standards
 

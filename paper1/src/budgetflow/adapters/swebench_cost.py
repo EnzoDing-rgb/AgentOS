@@ -47,7 +47,7 @@ class SwebenchCostAdapter:
 
     Uses the versioned public price catalog (ModelCatalog / TierConfig)
     to compute per-turn cost estimates. Token-cost banding, provider
-    provenance, and catalog revision are SWE-bench adapter details.
+    confidence, and catalog revision are SWE-bench adapter details.
     BudgetFlow core only sees CostEstimate.
     """
 

@@ -2,8 +2,8 @@
 
 BudgetFlow core owns the budget ledger, settlement, and verified outcomes.
 Policy backends own routing and stop/continue recommendations.
-HeuristicPolicy is the default explainable cold-start policy; it is a
-first-class policy backend, not a temporary hack.
+BootstrapPolicy is the default explainable startup policy; it is a first-class
+policy backend, not benchmark-tuned code hidden in the core.
 """
 
 from __future__ import annotations
@@ -92,19 +92,18 @@ class PolicyBackend(ABC):
         ...
 
 
-class HeuristicPolicy(PolicyBackend):
-    """Default explainable cold-start policy backed by BudgetFlowSelector.
+class BootstrapPolicy(PolicyBackend):
+    """Default explainable policy backed by BudgetFlowSelector.
 
     This wraps the current BudgetFlowSelector tier-selection logic behind
-    the PolicyBackend interface. It is a first-class policy: enterprises
-    can use it as-is, tune it with memory, or swap it for an Adaptive
-    Learning Policy.
+    the PolicyBackend interface. It is the customer-facing startup policy:
+    enterprises can use it as-is or replace it with a Learn Policy.
     """
 
     def __init__(
         self,
         selector: object,  # BudgetFlowSelector | ValueAwareSelector | ConservativeSelector
-        name: str = "heuristic",
+        name: str = "bootstrap",
     ) -> None:
         self._selector = selector
         self.name = name
@@ -166,7 +165,7 @@ class HeuristicPolicy(PolicyBackend):
             backend_name = selection.backend.name
             self._last_decision = PolicyDecision(
                 backend=backend_name,
-                reason=f"heuristic:{selector.__class__.__name__}",
+                reason=f"bootstrap:{selector.__class__.__name__}",
                 scores={"selection_score": selection.score},
                 confidence={},
             )
@@ -182,7 +181,7 @@ class HeuristicPolicy(PolicyBackend):
         no_progress_streak: int,
         **kwargs: object,
     ) -> bool:
-        # Heuristic escalation: escalate when stuck long enough.
+        # Default escalation rule: escalate when stuck long enough.
         return no_progress_streak >= 6 and progress_streak < 2
 
     def should_stop(
@@ -193,21 +192,21 @@ class HeuristicPolicy(PolicyBackend):
         turns_used: int,
         **kwargs: object,
     ) -> bool:
-        # Heuristic stop: stop when budget is exhausted or turns are very high.
+        # Default stop rule: stop when budget is exhausted or turns are very high.
         if budget_remaining <= 0.001:
             return True
         max_turns = int(kwargs.get("max_turns", 60))
         return turns_used >= max_turns
 
 
-def build_heuristic_policy(
+def build_bootstrap_policy(
     selector_class: type,
     backends: list[Backend],
     progress_table: object | None = None,
     median_task_value: float = 1.0,
-    policy_name: str = "heuristic",
-) -> HeuristicPolicy:
-    """Factory: build a HeuristicPolicy wrapping a BudgetFlow selector variant."""
+    policy_name: str = "bootstrap",
+) -> BootstrapPolicy:
+    """Factory: build a BootstrapPolicy wrapping a BudgetFlow selector variant."""
     from .selector import build_zero_calibration_progress_table
 
     table = progress_table or build_zero_calibration_progress_table(list(backends))
@@ -221,4 +220,4 @@ def build_heuristic_policy(
             selector = selector_class(table)
     else:
         selector = selector_class(table)
-    return HeuristicPolicy(selector=selector, name=policy_name)
+    return BootstrapPolicy(selector=selector, name=policy_name)

@@ -4,16 +4,17 @@
 
 ## 当前快照（2026-06-08）
 
-### 087 / Policy-backend architecture and documentation source cleanup
+### 088 / Bootstrap Policy, Learn Policy, Yield, and adapter boundary cleanup
 
-- **North Star source of truth:** `paper1/docs/north_star.md` now owns current terminology, T1/T2 claims, policy-backend architecture, workflow segments, evaluation discipline, and next engineering direction.
-- **Documentation entrypoints simplified:** active project guidance is now `AGENTS.md` for agent operating rules, `north_star.md` for research/system definition, and `progress.md` for timeline. `paper1/docs/CONTEXT.md` was deleted to avoid duplicate terminology sources.
-- **Policy layer decision:** BudgetFlow core is budget governance, evidence, memory, audit, and same-budget policy comparison. Routing and stop/continue logic belongs behind pluggable Policy Backends.
-- **Default policy decision:** `HeuristicPolicy` is the explainable cold-start and safety policy. `Memory-Tuned HeuristicPolicy` is the auditable warm-start path. `Adaptive Learning Policy` is the public term for learned policy backends. BudgetFlow only requires learned policies to satisfy the Policy Backend interface.
-- **Segment decision:** default workflow segments are **Context / Action / Verification**. Segment-aware routing means segment is a policy signal, not a forced model-switch boundary. Task-level or per-request controls remain required to measure cache/context-continuity costs.
-- **Yield decision:** the primary T1 metric is now **Yield**, meaning verified resolved value divided by total task value at fixed budget. **Yield per Dollar** remains an efficiency diagnostic.
-- **Value/Cost source decision:** BudgetFlow core does not hard-code what value or cost means. ValueSource, CostSource, ValueAdapter, and CostAdapter provide cold-start inputs, manual overrides, public price catalogs, enterprise imports, and learned calibration through a normalized estimate plus confidence.
-- **Worker direction:** the next implementation slice should wrap existing BFV/BFC behavior as a SWE-bench `HeuristicPolicy` plugin behind a policy-backend interface, then move SWE-bench stage and harness assumptions behind adapters.
+- **North Star source of truth:** `paper1/docs/north_star.md` owns current terminology, T1/T2 claims, policy-backend architecture, workflow segments, evaluation discipline, and engineering direction. Active agent rules point to it.
+- **Documentation entrypoints:** active guidance is `AGENTS.md` for operating rules, `north_star.md` for research/system definition, and `progress.md` for timeline. `paper1/docs/CONTEXT.md` is deleted.
+- **Policy layer decision:** BudgetFlow core is budget governance, evidence, audit, replay, stop-loss primitives, and same-budget policy comparison. Routing, cap, escalation, and stop/continue decisions belong behind `PolicyBackend`.
+- **Policy families:** `BootstrapPolicy` is the customer-facing default explainable policy that runs without customer history or machine learning. `Learn Policy` can use built-in Memory or customer-owned machine learning behind the same interface. `Fixed Baseline Policy` is for experiments only.
+- **Memory boundary:** Cost Memory, Routing Memory, and Escalation Memory are Learn Policy inputs or audit evidence. They are not hidden BudgetFlow core behavior.
+- **Segment decision:** default workflow segments are **Context / Action / Verification**. Segment-Aware Routing means segment is a policy signal, not a forced model-switch boundary. Task-level or per-request controls remain required to measure cache/context-continuity costs.
+- **Yield decision:** the primary T1 metric is now **Yield**, meaning total resolved task value at fixed budget. **Yield per Dollar** is total resolved task value divided by model spend.
+- **Value/Cost source decision:** BudgetFlow core does not hard-code what value or cost means. ValueSource, CostSource, ValueAdapter, and CostAdapter provide bootstrap inputs, manual overrides, public price catalogs, enterprise imports, and learned calibration through a normalized estimate plus confidence.
+- **No-paid implementation status:** active runtime now routes BudgetFlow strategies through `BootstrapPolicy`, emits compact policy decision trace fields, reports Yield as total resolved task value, and exposes `yield_coverage` only as a compatibility diagnostic.
 
 ### 084 / Starter stop-loss negative diagnostic
 
