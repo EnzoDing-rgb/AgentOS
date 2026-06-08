@@ -1,9 +1,9 @@
 """Policy Backend: pluggable strategy interface for cap, routing, escalation, stop.
 
-BudgetFlow core owns the budget ledger, settlement, and verified outcomes.
+BudgetFlow Mechanism owns the budget ledger, settlement, and verified outcomes.
 Policy backends own routing and stop/continue recommendations.
 BootstrapPolicy is the default explainable startup policy; it is a first-class
-policy backend, not benchmark-tuned code hidden in the core.
+policy backend, not benchmark-tuned code hidden in the BudgetFlow Mechanism.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 class PolicyDecision:
     """Structured recommendation from a policy backend for one turn.
 
-    The core consumes this without knowing SWE-bench, provider price files,
+    The BudgetFlow Mechanism consumes this without knowing SWE-bench, provider price files,
     value-matrix schemas, or pytest output.
     """
 

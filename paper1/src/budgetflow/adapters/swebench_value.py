@@ -1,11 +1,11 @@
-"""Value adapter: normalizes task-value signals for BudgetFlow core.
+"""Value adapter: normalizes task-value signals for BudgetFlow Mechanism.
 
 Bootstrap value estimation can use a default heuristic, a human-authored value
 matrix, natural-language policy, benchmark metadata, or enterprise data import.
 Learn Policy can use verified outcomes, accepted work, priority patterns,
 human correction, or external systems.
 
-The core only consumes a normalized ValueEstimate plus confidence.
+The BudgetFlow Mechanism only consumes a normalized ValueEstimate plus confidence.
 It does not know the value-matrix schema, enterprise field names, or
 SWE-bench task metadata.
 """
@@ -20,7 +20,7 @@ from typing import Any, Protocol
 
 @dataclass
 class ValueEstimate:
-    """Normalized task-value estimate consumed by BudgetFlow core."""
+    """Normalized task-value estimate consumed by BudgetFlow Mechanism."""
 
     value: float
     source: str
@@ -31,7 +31,7 @@ class ValueAdapter(Protocol):
     """Contract: normalize task-value signals into ValueEstimate.
 
     Concrete adapters may use value matrices, NL rules, enterprise imports,
-    or learned estimates. BudgetFlow core only consumes ValueEstimate.
+    or learned estimates. BudgetFlow Mechanism only consumes ValueEstimate.
     """
 
     def estimate(self, task_id: str, **hints: Any) -> ValueEstimate: ...
@@ -45,7 +45,7 @@ class SwebenchValueAdapter:
     equal-weight (1.0).
 
     The value matrix schema, profile names, and task metadata are
-    SWE-bench adapter details. BudgetFlow core only sees ValueEstimate.
+    SWE-bench adapter details. BudgetFlow Mechanism only sees ValueEstimate.
     """
 
     def __init__(

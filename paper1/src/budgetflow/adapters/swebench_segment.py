@@ -18,7 +18,7 @@ from ..types import Stage, WorkflowSegment
 class SwebenchSegmentAdapter:
     """Maps SWE-bench workflow stages to BudgetFlow WorkflowSegments.
 
-    This is a thin mapping adapter. BudgetFlow core only sees
+    This is a thin mapping adapter. BudgetFlow Mechanism only sees
     Context / Action / Verification. The SWE-bench terms
     LOCALIZATION / REPAIR / VALIDATION stay inside this adapter.
     """

@@ -62,11 +62,11 @@ These are the short-form checks every worker should keep in view:
 ## Agent Workflow
 
 - Main-agent judgment owns architecture, routing, evaluation, learning, and paper-claim decisions.
-- Use subagents for low-value, high-token scans, narrow code/test edits, artifact enumeration, or failure classification when it saves cost or wall time without outsourcing core judgment. Main-agent judgment owns architecture, routing, evaluation, learning, and paper-claim decisions.
+- Use subagents for low-value, high-token scans, narrow code/test edits, artifact enumeration, or failure classification when it saves cost or wall time without outsourcing main-agent judgment. Main-agent judgment owns architecture, routing, evaluation, learning, and paper-claim decisions.
 - Use skills only when they materially improve the current work. Do not mechanically read or invoke generic system skills in a way that distracts from BudgetFlow's north star, experiment discipline, or the user's immediate instruction. In particular, do not force a Test-Driven Development workflow for documentation-only work, experiment judgment, review, or other changes where it is not actually needed.
 - Avoid broad, unbounded repo archaeology. Read the few files and artifacts needed to answer the current evidence question, then act or summarize the remaining uncertainty.
 - Keep docs meaningful: update `paper1/docs/north_star.md` or `paper1/docs/progress.md` only when a real decision changes.
-- Commit and push stable slices after no-paid gates pass. Avoid noisy commits, but do not leave verified core changes uncommitted.
+- Commit and push stable slices after no-paid gates pass. Avoid noisy commits, but do not leave verified mechanism changes uncommitted.
 
 ## Worker Reports
 
@@ -77,7 +77,7 @@ These are the short-form checks every worker should keep in view:
 ## Learning Scope
 
 - Do not assume every failure signal is learnable. Pick a few general, reusable signals and make sure the runtime actually consumes them.
-- Current core learning signals are cap sufficiency/cost, routing outcome by task/repo/segment, model-tier productivity versus no-progress cost, provider/parser failures, and harness-trusted verified outcome.
+- Current learning signals are cap sufficiency/cost, routing outcome by task/repo/segment, model-tier productivity versus no-progress cost, provider/parser failures, and harness-trusted verified outcome.
 - A new signal earns its place only if it can influence a future cap, route, stop/continue, or escalation decision and can be audited from JSONL.
 - Schema-aware learning matters: default Memory loading uses current-schema, harness-trusted records. Archived rows are forensic unless an experiment explicitly selects them.
 - Cost Memory, Routing Memory, and Escalation Memory learn from clean current records and explicit adapter configuration. Historical runs inform design review and reports, not default routing behavior.

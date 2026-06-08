@@ -1,7 +1,7 @@
 """Built-in Routing and Escalation Memory for Learn Policy.
 
 This module rebuilds compact priors from verified run JSONL. It is a built-in
-Memory backend, not BudgetFlow core and not the only possible learning method.
+Memory backend, not part of the BudgetFlow Mechanism and not the only possible learning method.
 """
 
 from __future__ import annotations

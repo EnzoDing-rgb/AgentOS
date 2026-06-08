@@ -21,7 +21,7 @@ def _run_record(**kw) -> dict:
         "routing_decision_schema": "v1",
         "task_set_kind": "familiar",
         "policy_kind": "bootstrap",
-        "learn_memory_views": ["routing", "escalation"],
+        "learn_policy_input_views": ["routing", "escalation"],
     }
     record.update(kw)
     return record

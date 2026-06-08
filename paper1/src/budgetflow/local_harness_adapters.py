@@ -12,8 +12,8 @@ from .console_log import _BRIGHT_GREEN, paint, tag
 class RepoHarnessAdapter:
     """Per-repo local-harness adapter.
 
-    Adapters keep repository-specific evaluation quirks out of the core harness
-    flow.  They may patch the ephemeral harness worktree or translate SWE-bench
+    Adapters keep repository-specific evaluation quirks out of the shared
+    harness flow. They may patch the ephemeral harness worktree or translate SWE-bench
     test names into pytest node ids.
     """
 

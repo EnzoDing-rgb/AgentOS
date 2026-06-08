@@ -1,6 +1,6 @@
 """Learn Policy support types.
 
-BudgetFlow core does not own learning algorithms. Built-in Memory can be used
+BudgetFlow Mechanism does not own learning algorithms. Built-in Memory can be used
 by a Learn Policy or for audit, and customers can replace it with their own
 machine-learning policy backend.
 """
@@ -30,7 +30,7 @@ class EscalationMemory(Protocol):
 
 
 @dataclass(frozen=True)
-class LearnMemoryBundle:
+class LearnPolicyInputs:
     """Optional Memory inputs for Learn Policy and audit."""
 
     cost: CostMemory | None = None
@@ -59,7 +59,7 @@ class LearnMemoryBundle:
         return tuple(views)
 
     @classmethod
-    def off(cls, reason: str = "") -> LearnMemoryBundle:
+    def off(cls, reason: str = "") -> LearnPolicyInputs:
         return cls(source=reason, mode="off")
 
     @classmethod
@@ -70,7 +70,7 @@ class LearnMemoryBundle:
         routing: RoutingMemory | None = None,
         escalation: EscalationMemory | None = None,
         source: str = "",
-    ) -> LearnMemoryBundle:
+    ) -> LearnPolicyInputs:
         return cls(
             cost=cost,
             routing=routing,
@@ -80,20 +80,20 @@ class LearnMemoryBundle:
         )
 
 
-def combine_memory_views(
+def combine_learn_policy_inputs(
     *,
     cost: CostMemory | None = None,
-    routing_bundle: LearnMemoryBundle | None = None,
+    routing_inputs: LearnPolicyInputs | None = None,
     source: str = "",
-) -> LearnMemoryBundle:
-    """Build one LearnMemoryBundle from independent memory views."""
-    routing_bundle = routing_bundle or LearnMemoryBundle.off()
-    combined_source = source or routing_bundle.source
-    if source and routing_bundle.source:
-        combined_source = f"{source},{routing_bundle.source}"
-    return LearnMemoryBundle.built_in(
+) -> LearnPolicyInputs:
+    """Build one LearnPolicyInputs from independent memory views."""
+    routing_inputs = routing_inputs or LearnPolicyInputs.off()
+    combined_source = source or routing_inputs.source
+    if source and routing_inputs.source:
+        combined_source = f"{source},{routing_inputs.source}"
+    return LearnPolicyInputs.built_in(
         cost=cost,
-        routing=routing_bundle.routing,
-        escalation=routing_bundle.escalation,
+        routing=routing_inputs.routing,
+        escalation=routing_inputs.escalation,
         source=combined_source,
     )

@@ -86,7 +86,7 @@ from budgetflow.observability import (  # noqa: E402
     HeartbeatWriter,
 )
 from budgetflow.learning_context import load_policy_memory_context  # noqa: E402
-from budgetflow.learn_policy import combine_memory_views  # noqa: E402
+from budgetflow.learn_policy import combine_learn_policy_inputs  # noqa: E402
 from budgetflow.local_harness import set_worktree_root  # noqa: E402
 from budgetflow.adaptive_routing import AdaptiveRoutingRegistry  # noqa: E402
 from budgetflow.run_guards import CompareRunGuards, set_active_guard  # noqa: E402
@@ -340,12 +340,12 @@ def main() -> None:
     else:
         print(f"{tag('policy_memory', bold=False)} disabled — {policy_ctx.reason or 'no usable run JSONL source found'}")
 
-    learn_memory_bundle = combine_memory_views(
+    learn_policy_inputs = combine_learn_policy_inputs(
         cost=auto_budget_memory,
-        routing_bundle=policy_ctx.memory_bundle,
+        routing_inputs=policy_ctx.learn_policy_inputs,
         source=str(auto_budget_plan.memory_path) if auto_budget_memory is not None else "",
     )
-    adaptive_registry = AdaptiveRoutingRegistry(memory_bundle=learn_memory_bundle)
+    adaptive_registry = AdaptiveRoutingRegistry(learn_policy_inputs=learn_policy_inputs)
     if args.append and out_path.is_file():
         adaptive_registry.rebuild_from_jsonl(out_path)
 

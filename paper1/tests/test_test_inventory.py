@@ -9,7 +9,7 @@ TEST_FILE_PURPOSES = {
     "test_adaptive_routing.py": "learn-policy-memory",
     "test_auto_budget.py": "cost-memory",
     "test_bash_stage.py": "swebench-adapter",
-    "test_budgetflow_runtime.py": "core-mechanism",
+    "test_budgetflow_runtime.py": "budgetflow-mechanism",
     "test_compare_readiness.py": "paid-run-gate",
     "test_compare_record_schema.py": "evidence-schema",
     "test_compare_setup.py": "experiment-setup",

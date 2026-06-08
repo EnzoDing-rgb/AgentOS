@@ -293,7 +293,7 @@ def sensitivity_variants(rec: TaskRecord) -> dict[str, float]:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Core: build value matrix from JSONL
+# Build value matrix from JSONL
 # ═══════════════════════════════════════════════════════════════════════════════
 
 

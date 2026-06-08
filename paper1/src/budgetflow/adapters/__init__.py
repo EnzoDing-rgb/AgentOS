@@ -1,7 +1,7 @@
 """BudgetFlow architectural adapters: segment, progress, task, value, cost, verifier.
 
 These adapters keep SWE-bench specifics behind clean contracts so
-BudgetFlow core stays benchmark-agnostic.
+BudgetFlow Mechanism stays benchmark-agnostic.
 """
 
 from .swebench_segment import SwebenchSegmentAdapter, segment_from_stage

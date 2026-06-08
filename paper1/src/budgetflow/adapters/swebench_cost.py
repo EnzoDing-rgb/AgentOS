@@ -1,11 +1,11 @@
-"""Cost adapter: normalizes model-cost signals for BudgetFlow core.
+"""Cost adapter: normalizes model-cost signals for BudgetFlow Mechanism.
 
 Cost follows the same adapter rule as value. Default experiments anchor
 cost to a versioned public price catalog. Enterprise deployments can
 replace or calibrate that with provider estimates, invoices, internal
 rate cards, or manual overrides.
 
-BudgetFlow core consumes a normalized CostEstimate plus confidence.
+BudgetFlow Mechanism consumes a normalized CostEstimate plus confidence.
 It does not read provider price files or know the tier catalog schema.
 """
 
@@ -17,7 +17,7 @@ from typing import Any, Protocol
 
 @dataclass
 class CostEstimate:
-    """Normalized per-turn cost estimate consumed by BudgetFlow core."""
+    """Normalized per-turn cost estimate consumed by BudgetFlow Mechanism."""
 
     usd: float
     source: str
@@ -28,7 +28,7 @@ class CostAdapter(Protocol):
     """Contract: normalize cost signals into CostEstimate.
 
     Concrete adapters may use public price catalogs, provider estimates,
-    invoices, or rate cards. BudgetFlow core only consumes CostEstimate.
+    invoices, or rate cards. BudgetFlow Mechanism only consumes CostEstimate.
     """
 
     def estimate(
@@ -48,7 +48,7 @@ class SwebenchCostAdapter:
     Uses the versioned public price catalog (ModelCatalog / TierConfig)
     to compute per-turn cost estimates. Token-cost banding, provider
     confidence, and catalog revision are SWE-bench adapter details.
-    BudgetFlow core only sees CostEstimate.
+    BudgetFlow Mechanism only sees CostEstimate.
     """
 
     def __init__(self, model_catalog: Any | None = None) -> None:

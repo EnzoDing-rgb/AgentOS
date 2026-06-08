@@ -109,7 +109,7 @@ BUDGET_PRESSURE_INIT = 0.01
 PRESSURE_MAX = 1.5
 UNCAPPED_BUDGET_THRESHOLD = 1_000_000.0
 
-# Convenience labels for banners and legacy diagnostic scripts. Core routing
+# Convenience labels for banners and legacy diagnostic scripts. Runtime routing
 # must use MODEL_CATALOG / ModelCatalog instead of assuming exactly three tiers.
 TIER1_MODEL = TIER_CONFIGS[TIER1_BACKEND].model
 TIER2_MODEL = TIER_CONFIGS[TIER2_BACKEND].model

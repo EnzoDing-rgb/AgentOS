@@ -21,6 +21,7 @@ comments, and reports should use these names.
 | Policy Backend | Pluggable strategy that recommends cap, model tier, escalation, de-escalation, stop, and continue decisions. |
 | Bootstrap Policy | Default explainable policy that runs without customer history or machine learning. It uses general budget, cost, progress, value, escalation, and stop-loss rules. |
 | Learn Policy | Policy backend that uses Cost Memory, Routing Memory, Escalation Memory, statistical learning, or customer-owned machine learning to improve future decisions. |
+| Learn Policy Inputs | The three optional input views for Learn Policy: Cost Memory, Routing Memory, and Escalation Memory. |
 | Fixed Baseline Policy | Experimental control policy such as static routing or budget-only routing. It is for evaluation, not the customer-facing policy family. |
 | Task Set | A named group of tasks used for evaluation, such as Familiar Tasks or Unseen Tasks. |
 | Workflow Segment | Coarse work state used as a policy signal. Default segments are Context, Action, and Verification. |
@@ -51,26 +52,26 @@ The paper studies online, value-aware budget governance for multi-step agent
 tasks. SWE-bench is the current controlled evaluation adapter because it
 provides repeatable tasks and verifiers. The system boundary is broader:
 enterprise deployments can replace the task adapter, ValueSource, CostSource, runtime, and
-verifier while keeping the BudgetFlow core.
+verifier while keeping the BudgetFlow Mechanism.
 
-## Core Architecture
+## BudgetFlow Mechanism
 
-BudgetFlow separates core mechanisms, domain adapters, policy backends, memory,
-and observability. The core must not depend on SWE-bench, a specific verifier,
-or a specific learning method.
+BudgetFlow separates the mechanism layer, domain adapters, policy backends,
+Learn Policy Inputs, and observability. The BudgetFlow Mechanism must not
+depend on SWE-bench, a specific verifier, or a specific learning method.
 
 | Layer | Responsibility |
 |---|---|
-| Core Mechanism | Hard budget ledger, reservation, settlement, verifier-grounded outcome, trace/audit/replay, stop-loss primitives, and same-budget policy comparison. |
+| BudgetFlow Mechanism | Hard budget ledger, reservation, settlement, verifier-grounded outcome, trace/audit/replay, stop-loss primitives, and same-budget policy comparison. |
 | Domain Adapters | Task, segment, verifier, value, cost, model-tier, progress-signal, and runtime mappings for one benchmark or enterprise workflow. |
 | Policy Backend | Cap recommendations, backend routing, escalation, de-escalation, stop/continue, and learned or heuristic priors. |
-| Memory | Cost Memory, Routing Memory, and Escalation Memory. These are optional inputs for Learn Policy and audit, not hidden core behavior. |
+| Learn Policy Inputs | Cost Memory, Routing Memory, and Escalation Memory. These are optional inputs for Learn Policy and audit, not hidden mechanism behavior. |
 | Observability | Minimal decision records, JSONL schema, turn traces, checker, compact audit, failure attribution, and reports. |
 
 SWE-bench-specific concepts such as localization, repair, validation,
 fail-to-pass tests, pass-to-pass tests, patch extraction, and worktree diffs
 belong behind adapters. They can power benchmark experiments; they do not define
-BudgetFlow core or the default Bootstrap Policy.
+BudgetFlow Mechanism or the default Bootstrap Policy.
 
 ## Conceptual Interfaces
 
@@ -189,7 +190,7 @@ Yield per Dollar = total resolved task value / total model spend
 ```
 
 Resolved task count may be reported as a supporting diagnostic, but it is not
-the BudgetFlow objective. Task count per dollar is not a core metric because
+the BudgetFlow objective. Task count per dollar is not a primary metric because
 tasks differ in value, difficulty, and model solvability.
 
 T2 diagnostics:
@@ -230,13 +231,13 @@ external systems when those signals are available.
 
 `ValueContext` is a standard input wrapper, not a fixed enterprise schema.
 Fields such as project, customer, SLA, risk, revenue impact, research priority,
-or content priority may be useful in an enterprise adapter, but BudgetFlow core
+or content priority may be useful in an enterprise adapter, but the BudgetFlow Mechanism
 only consumes a normalized task-value estimate plus confidence.
 
 Cost follows the same rule. Default experiments should anchor cost to a
 versioned public price catalog. Enterprise deployments can replace or calibrate
 that with provider estimates, invoices, internal rate cards, or manual
-overrides. BudgetFlow core consumes a normalized cost estimate plus confidence.
+overrides. The BudgetFlow Mechanism consumes a normalized cost estimate plus confidence.
 
 The policy should optimize expected marginal value:
 
@@ -293,12 +294,12 @@ Runtime, docs, prompts, and reports should use the terminology in this file.
 
 The codebase should make the architecture visible:
 
-- BudgetFlow core owns budget accounting, memory contracts, verified outcomes,
+- BudgetFlow Mechanism owns budget accounting, memory contracts, verified outcomes,
   trace/audit/replay, and policy comparison.
 - Policy backends own routing and stop/continue recommendations.
 - Domain adapters own SWE-bench or enterprise-specific task, segment, verifier,
   value, cost, progress, and runtime mapping.
-- Memory belongs behind Learn Policy or audit interfaces. BudgetFlow core should
+- Memory belongs behind Learn Policy or audit interfaces. BudgetFlow Mechanism should
   not hide learning behavior.
 - Observability should converge on a compact policy decision record rather than
   scattered benchmark-specific trace fields.

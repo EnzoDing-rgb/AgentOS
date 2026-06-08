@@ -17,7 +17,7 @@ from .defaults import (
     ADAPTIVE_WINDOW,
     PRESSURE_MAX,
 )
-from .learn_policy import LearnMemoryBundle
+from .learn_policy import LearnPolicyInputs
 from .types import Stage
 
 if TYPE_CHECKING:
@@ -355,24 +355,24 @@ class AdaptiveRoutingRegistry:
         self,
         policy_memory: object | None = None,
         memory_mode: str = "off",
-        memory_bundle: LearnMemoryBundle | None = None,
+        learn_policy_inputs: LearnPolicyInputs | None = None,
     ) -> None:
         self._lock = threading.Lock()
         self._states: dict[str, AdaptiveRoutingState] = {}
-        if memory_bundle is None:
-            memory_bundle = (
-                LearnMemoryBundle.built_in(
+        if learn_policy_inputs is None:
+            learn_policy_inputs = (
+                LearnPolicyInputs.built_in(
                     routing=policy_memory,
                     escalation=policy_memory,
                     source="policy_memory",
                 )
                 if policy_memory is not None
-                else LearnMemoryBundle.off()
+                else LearnPolicyInputs.off()
             )
-        self._memory_bundle = memory_bundle
-        self._policy_memory = policy_memory or memory_bundle.routing
-        self._memory_mode = memory_bundle.mode if memory_bundle.routing_enabled else "off"
-        if memory_bundle.routing_enabled and memory_mode != "off":
+        self._learn_policy_inputs = learn_policy_inputs
+        self._policy_memory = policy_memory or learn_policy_inputs.routing
+        self._memory_mode = learn_policy_inputs.mode if learn_policy_inputs.routing_enabled else "off"
+        if learn_policy_inputs.routing_enabled and memory_mode != "off":
             self._memory_mode = memory_mode
 
     @property
@@ -380,8 +380,8 @@ class AdaptiveRoutingRegistry:
         return self._policy_memory
 
     @property
-    def memory_bundle(self) -> LearnMemoryBundle:
-        return self._memory_bundle
+    def learn_policy_inputs(self) -> LearnPolicyInputs:
+        return self._learn_policy_inputs
 
     @property
     def memory_mode(self) -> str:
@@ -389,7 +389,7 @@ class AdaptiveRoutingRegistry:
 
     def set_policy_memory(self, policy_memory: object) -> None:
         self._policy_memory = policy_memory
-        self._memory_bundle = LearnMemoryBundle.built_in(
+        self._learn_policy_inputs = LearnPolicyInputs.built_in(
             routing=policy_memory,
             escalation=policy_memory,
             source="policy_memory",

@@ -178,17 +178,17 @@ def run_task_record(
         else:
             record["policy_memory_enabled"] = False
         if adaptive_registry is not None:
-            record["learn_memory_views"] = list(adaptive_registry.memory_bundle.active_views)
+            record["learn_policy_input_views"] = list(adaptive_registry.learn_policy_inputs.active_views)
     elif adaptive_registry is not None and adaptive_registry.policy_memory is not None:
         prior = adaptive_registry.policy_memory.routing_prior_summary(instance_id)
         record["routing_prior_summary"] = prior
         record["policy_memory_enabled"] = True
         record["memory_mode"] = getattr(adaptive_registry, "memory_mode", "built_in")
-        record["learn_memory_views"] = list(adaptive_registry.memory_bundle.active_views)
+        record["learn_policy_input_views"] = list(adaptive_registry.learn_policy_inputs.active_views)
     else:
         record["policy_memory_enabled"] = False
         record["memory_mode"] = "off"
-        record["learn_memory_views"] = []
+        record["learn_policy_input_views"] = []
 
     record["failure_class"] = classify_failure(record)
     record["forensic_summary"] = build_forensic_summary(record)

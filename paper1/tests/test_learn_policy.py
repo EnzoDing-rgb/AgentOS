@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from budgetflow.learn_policy import LearnMemoryBundle, combine_memory_views
+from budgetflow.learn_policy import LearnPolicyInputs, combine_learn_policy_inputs
 from budgetflow.types import Stage
 
 
@@ -15,8 +15,8 @@ class FakeCostMemory:
         return [{"instance_id": "task-a"}]
 
 
-def test_learn_memory_bundle_defaults_to_off() -> None:
-    bundle = LearnMemoryBundle.off("bootstrap")
+def test_learn_policy_inputs_defaults_to_off() -> None:
+    bundle = LearnPolicyInputs.off("bootstrap")
 
     assert bundle.enabled is False
     assert bundle.mode == "off"
@@ -26,11 +26,11 @@ def test_learn_memory_bundle_defaults_to_off() -> None:
     assert bundle.escalation is None
 
 
-def test_learn_memory_bundle_can_wrap_built_in_memory_views() -> None:
+def test_learn_policy_inputs_can_wrap_built_in_memory_views() -> None:
     cost = FakeCostMemory()
     routing = FakeRoutingMemory()
     escalation = FakeRoutingMemory()
-    bundle = LearnMemoryBundle.built_in(
+    bundle = LearnPolicyInputs.built_in(
         cost=cost,
         routing=routing,
         escalation=escalation,
@@ -47,21 +47,21 @@ def test_learn_memory_bundle_can_wrap_built_in_memory_views() -> None:
     assert bundle.routing.routing_prior_summary("task-a", Stage.REPAIR)["stage"] == "repair"
 
 
-def test_learn_memory_bundle_reaches_adaptive_routing_state() -> None:
+def test_learn_policy_inputs_reaches_adaptive_routing_state() -> None:
     from budgetflow.adaptive_routing import AdaptiveRoutingRegistry
 
     routing = FakeRoutingMemory()
-    bundle = LearnMemoryBundle.built_in(
+    bundle = LearnPolicyInputs.built_in(
         routing=routing,
         escalation=routing,
         source="unit-routing-memory",
     )
-    registry = AdaptiveRoutingRegistry(memory_bundle=bundle)
+    registry = AdaptiveRoutingRegistry(learn_policy_inputs=bundle)
 
     state = registry.for_strategy("bootstrap_value", "budgetflow_value_aware")
 
     assert state is not None
-    assert registry.memory_bundle is bundle
+    assert registry.learn_policy_inputs is bundle
     assert registry.policy_memory is routing
     assert state.policy_memory is routing
     assert state.memory_mode == "built_in"
@@ -70,8 +70,8 @@ def test_learn_memory_bundle_reaches_adaptive_routing_state() -> None:
 def test_cost_only_memory_does_not_enable_routing_memory_mode() -> None:
     from budgetflow.adaptive_routing import AdaptiveRoutingRegistry
 
-    bundle = combine_memory_views(cost=FakeCostMemory(), routing_bundle=LearnMemoryBundle.off("no-routing"))
-    registry = AdaptiveRoutingRegistry(memory_bundle=bundle)
+    bundle = combine_learn_policy_inputs(cost=FakeCostMemory(), routing_inputs=LearnPolicyInputs.off("no-routing"))
+    registry = AdaptiveRoutingRegistry(learn_policy_inputs=bundle)
     state = registry.for_strategy("bootstrap_value", "budgetflow_value_aware")
 
     assert bundle.active_views == ("cost",)

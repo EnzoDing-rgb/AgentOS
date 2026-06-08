@@ -29,7 +29,7 @@ def _record(**overrides) -> dict:
         "routing_decision_schema": "v1",
         "task_set_kind": "familiar",
         "policy_kind": "bootstrap",
-        "learn_memory_views": ["routing", "escalation"],
+        "learn_policy_input_views": ["routing", "escalation"],
     }
     record.update(overrides)
     return record
