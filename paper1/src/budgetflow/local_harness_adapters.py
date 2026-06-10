@@ -28,6 +28,15 @@ class RepoHarnessAdapter:
     def pytest_env(self) -> dict[str, str]:
         return {}
 
+    def build_test_command(self, repo_dir: Path, test_node_ids: list[str]) -> list[str]:
+        """Return the shell command to run *test_node_ids*.
+
+        Default implementation uses pytest.  Adapters for repositories whose
+        test suite needs a custom runner (e.g. Django's DiscoverRunner) override
+        this method.
+        """
+        return [harness_python(), "-m", "pytest", "-x"] + test_node_ids
+
     @staticmethod
     def for_task(task) -> "RepoHarnessAdapter":
         repo = getattr(task, "repo", "")
@@ -91,24 +100,70 @@ class SymPyHAdapter(RepoHarnessAdapter):
 _DJANGO_TEST_NAME_RE = re.compile(r"^(\w+)\s+\((.+)\.(\w+)\)$")
 
 
+_DJANGO_CONFTEST_INSTALLED_APPS = """\
+import os
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'tests.test_sqlite')
+
+import django
+from django.conf import settings
+
+# tests/test_sqlite.py does not set INSTALLED_APPS.  The Django test runner
+# (tests/runtests.py) adds contrib apps dynamically, but pytest bypasses it.
+# Without INSTALLED_APPS any test that imports a Django Model (directly or
+# transitively) raises "Model class ... doesn't declare an explicit app_label
+# and isn't in an application in INSTALLED_APPS".  We add the standard contrib
+# set here so the harness can collect and run Django tests with pytest alone.
+_default_apps = [
+    'django.contrib.admin',
+    'django.contrib.auth',
+    'django.contrib.contenttypes',
+    'django.contrib.sessions',
+    'django.contrib.messages',
+    'django.contrib.staticfiles',
+]
+if not settings.INSTALLED_APPS:
+    settings.INSTALLED_APPS = _default_apps
+
+# Older Django versions of test_sqlite.py omit the NAME key from DATABASES.
+# The official test runner supplies it via runtests.py; pytest does not.
+# Without NAME, any TestCase (database-requiring test) raises
+# ImproperlyConfigured: "Please supply the NAME value."
+for _db_alias in ('default', 'other'):
+    _db = settings.DATABASES.get(_db_alias)
+    if _db and not _db.get('NAME'):
+        _db['NAME'] = ':memory:'
+
+django.setup()
+
+# Create test-database tables so TestCase subclasses can run.  The Django test
+# runner (runtests.py) does this automatically; pytest alone skips it, which
+# causes "no such table: <table>" failures for any test that needs the DB.
+# We only run migrate when the default database is an in-memory SQLite file —
+# never against a persistent database.
+from django.core.management import call_command
+if settings.DATABASES.get('default', {}).get('NAME') == ':memory:':
+    call_command('migrate', verbosity=0, interactive=False, run_syncdb=True)
+"""
+
+# Marker substring used to detect whether a conftest.py already contains the
+# INSTALLED_APPS bootstrap (avoid double-patching).
+_DJANGO_CONFTEST_MARKER = "_default_apps = ["
+
+
 class DjangoHAdapter(RepoHarnessAdapter):
     repo_slug = "django__django"
 
     def apply_compat(self, repo_dir: Path) -> list[str]:
         conftest = repo_dir / "conftest.py"
         if not conftest.is_file():
-            conftest.write_text(
-                "import os\n"
-                "os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'tests.test_sqlite')\n"
-                "import django\n"
-                "django.setup()\n"
-            )
+            conftest.write_text(_DJANGO_CONFTEST_INSTALLED_APPS)
             return ["conftest.py (generated)"]
         original = conftest.read_text(encoding="utf-8", errors="ignore")
-        if "django.setup()" not in original:
-            conftest.write_text("import django\ndjango.setup()\n\n" + original)
-            return ["conftest.py (patched)"]
-        return []
+        if _DJANGO_CONFTEST_MARKER in original:
+            return []
+        # Existing conftest is missing INSTALLED_APPS bootstrap — replace wholesale.
+        conftest.write_text(_DJANGO_CONFTEST_INSTALLED_APPS)
+        return ["conftest.py (replaced: added INSTALLED_APPS)"]
 
     def pytest_env(self) -> dict[str, str]:
         return {"DJANGO_SETTINGS_MODULE": "tests.test_sqlite"}
@@ -123,6 +178,42 @@ class DjangoHAdapter(RepoHarnessAdapter):
         if path_match:
             return f"{path_match.group(1)}::{path_match.group(3)}::{path_match.group(2)}"
         return None
+
+    @staticmethod
+    def _pytest_node_to_django_label(node_id: str) -> str | None:
+        """Convert a pytest node id to a Django dotted test label.
+
+        ``tests/backends/sqlite/test_creation.py::TestDbSignatureTests::test_custom_test_name``
+        becomes ``backends.sqlite.test_creation.TestDbSignatureTests.test_custom_test_name``.
+        Returns *None* when *node_id* is not a recognised format.
+        """
+        m = re.match(r"^tests/(.+)\.py::(.+)::(.+)$", node_id)
+        if m:
+            module_path, class_name, test_name = m.group(1), m.group(2), m.group(3)
+            return f"{module_path.replace('/', '.')}.{class_name}.{test_name}"
+        m = _DJANGO_TEST_NAME_RE.match(node_id)
+        if m:
+            test_name, module_path, class_name = m.group(1), m.group(2), m.group(3)
+            return f"{module_path}.{class_name}.{test_name}"
+        return None
+
+    def build_test_command(self, repo_dir: Path, test_node_ids: list[str]) -> list[str]:
+        """Use Django's ``tests/runtests.py`` so inline test models are registered.
+
+        Falls back to pytest when *test_node_ids* cannot be converted to
+        Django test labels or when ``tests/runtests.py`` is missing.
+        """
+        labels: list[str] = []
+        for nid in test_node_ids:
+            label = self._pytest_node_to_django_label(nid)
+            if label:
+                labels.append(label)
+        if not labels:
+            return super().build_test_command(repo_dir, test_node_ids)
+        runtests = repo_dir / "tests" / "runtests.py"
+        if runtests.is_file():
+            return [harness_python(), str(runtests), "--verbosity=1", "--failfast"] + labels
+        return super().build_test_command(repo_dir, test_node_ids)
 
 
 class RequestsHAdapter(RepoHarnessAdapter):
@@ -296,12 +387,23 @@ def run_pytest(
         detail = ", ".join(missing[:6]) if missing else "none"
         return False, f"no pytest node ids: {detail}"
     env = {**os.environ, "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"}
+    # Ensure repo root is on PYTHONPATH so test-directory packages
+    # (e.g. Django's ``tests.test_sqlite``) are importable regardless of
+    # which test command the adapter produces.
+    existing_path = os.environ.get("PYTHONPATH", "")
+    if existing_path:
+        env["PYTHONPATH"] = f"{repo_dir}{os.pathsep}{existing_path}"
+    else:
+        env["PYTHONPATH"] = str(repo_dir)
     if adapter:
         extra_env = adapter.pytest_env()
         if extra_env:
             env.update(extra_env)
+        cmd = adapter.build_test_command(repo_dir, node_ids)
+    else:
+        cmd = [harness_python(), "-m", "pytest", "-x"] + node_ids
     result = subprocess.run(
-        [harness_python(), "-m", "pytest", "-x", *node_ids],
+        cmd,
         cwd=repo_dir,
         capture_output=True,
         text=True,

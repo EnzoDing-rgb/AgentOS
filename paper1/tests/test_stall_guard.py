@@ -10,6 +10,7 @@ from budgetflow.adapter.stall_guard import (
     no_progress_limit,
     normalize_bash_command,
     repeat_command_streak,
+    stall_guard_enabled,
 )
 from budgetflow.defaults import STAGNATION_NO_PROGRESS_STEPS
 
@@ -91,3 +92,158 @@ def test_git_diff_digest_tracks_stable_patch(tmp_path: Path) -> None:
 
     target.write_text("a = 3\n")
     assert git_diff_digest(tmp_path, changed_files=["x.py"]) != first
+
+
+# ── stall_guard_enabled gating ─────────────────────────────────────────────
+
+
+def test_stall_guard_enabled_for_budgetflow_strategies() -> None:
+    """BudgetFlow strategies must have stall guard enabled."""
+    for strat in (
+        "budgetflow_full",
+        "budgetflow_conservative",
+        "budgetflow_value_aware",
+        "budgetflow_equal_weight",
+        "stage_blind",
+        "budgetflow_same_router",
+    ):
+        assert stall_guard_enabled(strat) is True, f"{strat} should have stall guard"
+
+
+def test_stall_guard_disabled_for_bare_baselines() -> None:
+    """Bare baselines and enterprise router must NOT have stall guard."""
+    for strat in (
+        "all_tier2",
+        "bare_t3",
+        "enterprise_router",
+        "all_flash",
+        "all_t1",
+        "all_t3",
+        "all_pro",
+        "budget_only",
+        "budget_only_t2",
+        "workflow_level",
+    ):
+        assert stall_guard_enabled(strat) is False, f"{strat} should NOT have stall guard"
+
+
+def test_stall_guard_disabled_for_unknown_strategy() -> None:
+    assert stall_guard_enabled("") is False
+    assert stall_guard_enabled("garbage") is False
+
+
+def test_check_stagnation_still_works_when_enabled() -> None:
+    """check_stagnation itself is unchanged — gating is at the call site."""
+    stop, reason, _ = check_stagnation(
+        strategy="all_tier2",
+        no_progress_streak=no_progress_limit("all_tier2"),
+        recent_commands=deque(["grep -R x"]),
+    )
+    assert stop is True
+    assert reason == "stagnation_no_progress"
+
+
+def test_check_stagnation_still_detects_repeat() -> None:
+    cmds: deque[str] = deque(["ls"] * 6, maxlen=8)
+    stop, reason, cmd = check_stagnation(
+        strategy="all_tier2",
+        no_progress_streak=0,
+        recent_commands=cmds,
+    )
+    assert stop is True
+    assert reason == "stagnation_repeat_command"
+    assert cmd == "ls"
+
+
+# ── Baseline contamination audit check ──────────────────────────────────────
+
+
+def test_baseline_contamination_detected() -> None:
+    from budgetflow.run_observability.audit import _baseline_contamination_check
+
+    records = [
+        {
+            "exit_reason": "stagnation_repeat_command",
+            "routing": "all_tier2",
+            "strategy": "bare_t2_baseline",
+            "harness_resolved": False,
+            "exit_status": "StagnationExit",
+        },
+        {
+            "exit_reason": "stagnation_no_progress",
+            "routing": "bare_t3",
+            "strategy": "bare_t3_baseline",
+            "harness_resolved": False,
+            "exit_status": "StagnationExit",
+        },
+    ]
+    result = _baseline_contamination_check(records)
+    assert result["contaminated"] is True
+    assert result["agent_harness_stagnation_count"] == 2
+    assert "bare_t2_baseline" in result["affected_strategies"]
+    assert "bare_t3_baseline" in result["affected_strategies"]
+    assert result["warn"]
+
+
+def test_baseline_contamination_not_flagged_when_clean() -> None:
+    from budgetflow.run_observability.audit import _baseline_contamination_check
+
+    records = [
+        {
+            "exit_reason": "submitted",
+            "routing": "all_tier2",
+            "strategy": "bare_t2_baseline",
+            "harness_resolved": False,
+            "exit_status": "Submitted",
+        },
+    ]
+    result = _baseline_contamination_check(records)
+    assert result["contaminated"] is False
+    assert result["agent_harness_stagnation_count"] == 0
+    assert result["warn"] == ""
+
+
+def test_baseline_contamination_ignores_budgetflow_stagnation() -> None:
+    """BudgetFlow stagnation exits are NOT contamination — they're expected."""
+    from budgetflow.run_observability.audit import _baseline_contamination_check
+
+    records = [
+        {
+            "exit_reason": "stagnation_no_progress",
+            "routing": "budgetflow_value_aware",
+            "strategy": "budgetflow_full",
+            "harness_resolved": False,
+            "exit_status": "StagnationExit",
+        },
+    ]
+    result = _baseline_contamination_check(records)
+    assert result["contaminated"] is False
+    assert result["agent_harness_stagnation_count"] == 0
+
+
+def test_5x14_jsonl_is_contaminated() -> None:
+    """The 5x14 diagnostic JSONL was recorded before the stall guard fix."""
+    import json
+    from pathlib import Path
+
+    jsonl = Path("data/runs/compare_14x5-0.jsonl")
+    if not jsonl.exists():
+        import pytest
+        pytest.skip("5x14 JSONL not available")
+
+    records = []
+    with open(jsonl) as fh:
+        for line in fh:
+            line = line.strip()
+            if line:
+                records.append(json.loads(line))
+
+    from budgetflow.run_observability.audit import _baseline_contamination_check
+    result = _baseline_contamination_check(records)
+    assert result["contaminated"] is True, (
+        "5×14 was recorded before stall guard fix — bare/enterprise baselines "
+        "were truncated by BudgetFlow check_stagnation"
+    )
+    assert result["agent_harness_stagnation_count"] >= 1
+    for strat in result["affected_strategies"]:
+        assert strat in ("bare_t2_baseline", "bare_t3_baseline", "enterprise_router_baseline")

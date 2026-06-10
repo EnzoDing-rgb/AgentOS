@@ -13,6 +13,7 @@ from budgetflow.adapters import (
     SwebenchTaskAdapter,
 )
 from budgetflow.adapter import runner as mini_swe_runner
+from budgetflow.adapter.stall_guard import stall_guard_enabled
 from budgetflow.auto_budget import BudgetEstimate
 from budgetflow.frozen_router import FrozenRouterPlan
 from budgetflow.compare_checkpoint import CompareCheckpointStore, GlobalRunProgress, StrategyScoreboard
@@ -28,6 +29,7 @@ from budgetflow.failure_classification import (
     build_score_status,
     build_verdict,
     classify_failure,
+    compute_exit_owner,
 )
 from budgetflow.governor import BudgetGovernor, GovernorConfig
 from budgetflow.heartbeat import run_with_heartbeat
@@ -171,6 +173,13 @@ def run_task_record(
         "row_finished_at": time.time(),
         "attempt_id": f"{run_series}_{cfg.name}_{instance_id}" if run_series else "",
     }
+    record["exit_owner"] = compute_exit_owner(record)
+    record["stall_guard_owner"] = "budgetflow" if stall_guard_enabled(cfg.routing) else "none"
+    record["protocol_retry_used"] = result.protocol_retry_used
+    record["protocol_retry_success"] = result.protocol_retry_success
+    record["protocol_retry_reason"] = result.protocol_retry_reason
+    record["protocol_retry_attempts"] = result.protocol_retry_attempts
+    record["protocol_retry_limit"] = result.protocol_retry_limit
     if adaptive is not None:
         prior = adaptive.prior_summary_for_trace()
         record["memory_mode"] = getattr(adaptive, "memory_mode", "off")

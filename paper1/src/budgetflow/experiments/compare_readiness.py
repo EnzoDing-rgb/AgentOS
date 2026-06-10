@@ -229,10 +229,19 @@ def build_compare_readiness_report(
             bp_reasons = bp.get("reasons", [])
             for reason in bp_reasons:
                 facts.append(f"budget_plan_reason: {reason}")
-            if bp.get("decision", "") == "BLOCK":
+            bp_decision = bp.get("decision", "")
+            if bp_decision == "BLOCK":
                 blocking.append(
                     f"budget plan decision is BLOCK: {'; '.join(bp_reasons)}"
                 )
+            elif bp_decision == "PASS_WITH_DIAGNOSTIC_OVERRIDE":
+                override = bp.get("override_reason", "")
+                warnings.append(
+                    f"budget plan decision is PASS_WITH_DIAGNOSTIC_OVERRIDE: "
+                    f"{'; '.join(bp_reasons)}"
+                )
+                if override:
+                    facts.append(f"budget_plan_override: {override}")
             requested_budget = float(getattr(args, "budget", 0.0) or 0.0)
             if requested_budget > 0 and abs(requested_budget - bp_hard_cap) > 0.0001:
                 blocking.append(

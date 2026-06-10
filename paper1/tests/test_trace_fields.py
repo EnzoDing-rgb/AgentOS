@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import pytest
 
-from budgetflow.adapter.mini_swe_proxy import (
-    BudgetFlowLitellmModel,
-)
+# mini_swe_proxy imports minisweagent, which may not be installed.
+_minisweagent_available = True
+try:
+    from budgetflow.adapter.mini_swe_proxy import BudgetFlowLitellmModel  # noqa: F401
+except ImportError:
+    _minisweagent_available = False
+
 from budgetflow.adapter.turn_trace import (
     build_turn_trace,
     cost_basis_trace_fields,
@@ -208,6 +212,7 @@ def test_parser_error_trace_fields_extracts_format_error_action_count() -> None:
         (2.0, "budgetflow_conservative", False),
     ],
 )
+@pytest.mark.skipif(not _minisweagent_available, reason="minisweagent not installed")
 def test_value_triggered_escalation_only_opens_for_high_value(task_value: float, strategy: str, opens: bool) -> None:
     t2 = _backend("tier2", 2)
     t3 = _backend("tier3", 3)
@@ -287,6 +292,7 @@ def test_router_trace_fields_report_built_in_memory_mode() -> None:
     assert fields["policy_decision"]["memory_mode"] == "built_in"
 
 
+@pytest.mark.skipif(not _minisweagent_available, reason="minisweagent not installed")
 def test_value_triggered_escalation_honors_memory_disable_window() -> None:
     t2 = _backend("tier2", 2)
     t3 = _backend("tier3", 3)

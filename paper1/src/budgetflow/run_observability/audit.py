@@ -781,6 +781,7 @@ def build_compact_audit(records: list[dict]) -> dict:
         "verdict_axes": axis_counts,
         "exit_owners": _exit_owner_counts(records),
         "stagnation_owners": _stagnation_owner_counts(records),
+        "baseline_contamination": _baseline_contamination_check(records),
         "harness_trust": trust_counts,
         "harness_owner": ht_owner_counts,
         "harness_severity": ht_severity_counts,
@@ -788,6 +789,7 @@ def build_compact_audit(records: list[dict]) -> dict:
         "decision_area_counts": _decision_area_counts(records),
         "task_set_metrics": _task_set_metrics(records),
         "per_task_comparison": _per_task_comparison(records, t3_tier),
+        "parser_abort_breakdown": _parser_abort_breakdown(records),
     }
 
 
@@ -814,3 +816,165 @@ def _stagnation_owner_counts(records: list[dict]) -> dict[str, dict[str, int]]:
             by_owner[owner] = {}
         by_owner[owner][reason] = by_owner[owner].get(reason, 0) + 1
     return by_owner
+
+
+def _baseline_contamination_check(records: list[dict]) -> dict:
+    """Detect pre-fix records where bare/enterprise baselines were truncated
+    by the BudgetFlow stall guard.
+
+    Also flags post-fix records where a baseline strategy has
+    exit_owner == 'budgetflow_stoploss', which should be impossible after
+    the stall-guard gating fix — this is a hard gate fail.
+
+    Returns a dict with:
+      contaminated: bool
+      agent_harness_stagnation_count: int
+      baseline_budgetflow_stoploss_count: int — red flag if > 0
+      affected_strategies: list[str]
+      warn: str
+    """
+    agent_harness_affected: set[str] = set()
+    agent_harness_count = 0
+    baseline_stoploss_count = 0
+    _BASELINE_STRATEGIES = frozenset({
+        "bare_t2_baseline", "bare_t3_baseline", "enterprise_router_baseline",
+    })
+    for r in records:
+        reason = str(r.get("exit_reason") or "")
+        if not reason.startswith("stagnation_"):
+            continue
+        owner = compute_exit_owner(r)
+        if owner == "agent_harness":
+            agent_harness_count += 1
+            agent_harness_affected.add(str(r.get("strategy") or "?"))
+        elif owner == "budgetflow_stoploss" and str(r.get("strategy") or "") in _BASELINE_STRATEGIES:
+            baseline_stoploss_count += 1
+    contaminated = agent_harness_count > 0 or baseline_stoploss_count > 0
+    parts: list[str] = []
+    if agent_harness_count > 0:
+        parts.append(
+            "BASELINE CONTAMINATION: bare/enterprise baselines were truncated by "
+            "BudgetFlow stall guard (check_stagnation). These exits are NOT vanilla "
+            "mini-swe-agent behavior. Tag dataset as 'baseline-contaminated "
+            "diagnostic, not clean evidence'."
+        )
+    if baseline_stoploss_count > 0:
+        parts.append(
+            "CRITICAL: baseline strategy has exit_owner='budgetflow_stoploss'. "
+            "BudgetFlow stop-loss leaked into a non-BudgetFlow baseline. "
+            "This is a hard gate fail — fix stall guard gating before rerun."
+        )
+    return {
+        "contaminated": contaminated,
+        "agent_harness_stagnation_count": agent_harness_count,
+        "baseline_budgetflow_stoploss_count": baseline_stoploss_count,
+        "affected_strategies": sorted(agent_harness_affected),
+        "warn": " | ".join(parts),
+    }
+
+
+def _parser_abort_breakdown(records: list[dict]) -> dict:
+    """Break down parser/protocol aborts by error type and retry outcome.
+
+    For historical JSONL without protocol_retry fields, infers from
+    parser_error_action_count in turn traces.
+    """
+    breakdown: dict[str, int] = {
+        "found_0_actions": 0,
+        "found_2_actions": 0,
+        "empty_response": 0,
+        "unknown": 0,
+        "retry_success": 0,
+        "retry_failed": 0,
+    }
+    for r in records:
+        # New runs keep per-turn retry outcomes in turn_traces. Prefer these
+        # over top-level booleans so multiple retries in one task are not
+        # collapsed into a single outcome.
+        traces = r.get("turn_traces") or []
+        trace_retry_rows = [
+            trace for trace in traces
+            if isinstance(trace, dict)
+            and trace.get("protocol_retry_used")
+            and int(trace.get("protocol_retry_attempts") or 0) > 0
+        ] if isinstance(traces, list) else []
+        if trace_retry_rows:
+            for trace in trace_retry_rows:
+                reason = str(trace.get("protocol_retry_reason") or "")
+                if trace.get("protocol_retry_success"):
+                    breakdown["retry_success"] += 1
+                else:
+                    breakdown["retry_failed"] += 1
+                    if "found_2" in reason:
+                        breakdown["found_2_actions"] += 1
+                    elif "found_0" in reason:
+                        breakdown["found_0_actions"] += 1
+                    elif "empty" in reason:
+                        breakdown["empty_response"] += 1
+                    else:
+                        breakdown["unknown"] += 1
+            continue
+
+        # Check for explicit top-level retry fields when turn traces are absent.
+        if r.get("protocol_retry_used"):
+            reason = str(r.get("protocol_retry_reason") or "")
+            if r.get("protocol_retry_success"):
+                breakdown["retry_success"] += 1
+            else:
+                breakdown["retry_failed"] += 1
+                # Also count by reason category for retry_failed
+                if "found_2" in reason:
+                    breakdown["found_2_actions"] = breakdown.get("found_2_actions", 0) + 1
+                elif "found_0" in reason or "empty" in reason:
+                    breakdown["found_0_actions" if "found_0" in reason else "empty_response"] = (
+                        breakdown.get("found_0_actions" if "found_0" in reason else "empty_response", 0) + 1
+                    )
+                else:
+                    breakdown["unknown"] = breakdown.get("unknown", 0) + 1
+            continue
+
+        # Historical inference: parser/protocol aborts
+        status = str(r.get("exit_status") or "")
+        reason = str(r.get("exit_reason") or "")
+        if not (reason.startswith("format_error_") or "format" in status.lower()):
+            continue
+
+        # Infer from turn traces
+        action_count = _infer_parser_action_count(r)
+        if action_count == 0:
+            traces = r.get("turn_traces") or []
+            if isinstance(traces, list):
+                for trace in traces:
+                    if isinstance(trace, dict):
+                        content = str(trace.get("assistant_content_head") or "")
+                        if not content.strip():
+                            breakdown["empty_response"] += 1
+                            break
+                else:
+                    breakdown["found_0_actions"] += 1
+            else:
+                breakdown["found_0_actions"] += 1
+        elif action_count is not None and action_count >= 2:
+            breakdown["found_2_actions"] += 1
+        elif action_count is None:
+            breakdown["unknown"] += 1
+        else:
+            breakdown["found_0_actions"] += 1
+    return breakdown
+
+
+def _infer_parser_action_count(record: dict) -> int | None:
+    """Infer parser_error_action_count from turn traces."""
+    traces = record.get("turn_traces") or []
+    if not isinstance(traces, list):
+        return None
+    for trace in reversed(traces):  # last trace usually has the error
+        if not isinstance(trace, dict):
+            continue
+        count = trace.get("parser_error_action_count")
+        if count is not None:
+            try:
+                return int(count)
+            except (TypeError, ValueError):
+                continue
+    return None

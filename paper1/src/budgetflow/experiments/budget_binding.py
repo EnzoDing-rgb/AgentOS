@@ -36,9 +36,10 @@ class BudgetBindingPlan:
     tight_budget_threshold: float = 0.0
     decision: str = "PASS"
     reasons: list[str] = field(default_factory=list)
+    override_reason: str = ""
 
     def to_dict(self) -> dict:
-        return {
+        d: dict = {
             "hard_cap_usd": round(self.hard_cap_usd, 4),
             "source": self.source,
             "catalog_revision": self.catalog_revision,
@@ -57,6 +58,9 @@ class BudgetBindingPlan:
             "decision": self.decision,
             "reasons": self.reasons,
         }
+        if self.override_reason:
+            d["override_reason"] = self.override_reason
+        return d
 
     @classmethod
     def from_dict(cls, d: dict) -> BudgetBindingPlan:
@@ -74,6 +78,7 @@ class BudgetBindingPlan:
             tight_budget_threshold=d.get("tight_budget_threshold", 0.0),
             decision=d.get("decision", "PASS"),
             reasons=d.get("reasons", []),
+            override_reason=d.get("override_reason", ""),
         )
 
 
@@ -91,11 +96,17 @@ def calibrate_budget(
         "budgetflow_full",
     ),
     output_path: Path | None = None,
+    override_reason: str = "",
 ) -> BudgetBindingPlan:
     """Generate a budget binding plan from historical data and current catalog.
 
     If no historical JSONL is provided, falls back to bootstrap estimates from
     the value matrix and frozen plan.
+
+    When *override_reason* is set and the frozen cap sum drives the hard cap,
+    low projected utilization emits ``PASS_WITH_DIAGNOSTIC_OVERRIDE`` instead
+    of ``BLOCK``.  This lets mechanism-diagnostic runs acknowledge the loose
+    budget while still being gated by a pre-registered frozen plan.
     """
     plan = BudgetBindingPlan(
         hard_cap_usd=0.0,
@@ -115,8 +126,10 @@ def calibrate_budget(
 
     # ── Load frozen plan caps for reference ─────────────────────────────
     frozen_caps: dict[str, float] = {}
+    preferred_models: dict[str, str] = {}
     if frozen_plan_path and frozen_plan_path.exists():
         frozen_caps = _load_frozen_caps(frozen_plan_path)
+        preferred_models = _load_frozen_preferred_models(frozen_plan_path)
 
     # ── Estimate zero-history tasks from value matrix ────────────────────
     value_features: dict[str, dict] = {}
@@ -131,7 +144,7 @@ def calibrate_budget(
             hist_cost = historical.get(strategy, {}).get(tid)
             if hist_cost is not None:
                 # Re-normalize: historical T3 costs × multiplier
-                t3_share = _estimate_t3_cost_share(strategy, tid, historical)
+                t3_share = _estimate_t3_cost_share(strategy, tid, historical, preferred_models=preferred_models)
                 normalized = hist_cost * (1.0 + t3_share * (t3_multiplier - 1.0))
                 total += normalized
             else:
@@ -175,7 +188,18 @@ def calibrate_budget(
 
     # Check: budget too loose?
     max_util = max(plan.projected_utilization_by_strategy.values()) if plan.projected_utilization_by_strategy else 0.0
-    if max_util < 0.15:
+    budget_loose = max_util < 0.15
+    if budget_loose and override_reason and frozen_cap_sum > 0:
+        plan.decision = "PASS_WITH_DIAGNOSTIC_OVERRIDE"
+        plan.override_reason = override_reason
+        plan.reasons.append(
+            f"max projected utilization {max_util:.1%} < 15% — "
+            f"hard_cap=${plan.hard_cap_usd:.2f} is loose, but budget intentionally "
+            f"bound to pre-registered frozen plan cap sum for "
+            f"enterprise_router/budgetflow_same_router symmetry"
+        )
+        plan.reasons.append(f"override: {override_reason}")
+    elif max_util < 0.15:
         plan.decision = "BLOCK"
         plan.reasons.append(
             f"max projected utilization {max_util:.1%} < 15% — "
@@ -253,10 +277,14 @@ def _estimate_t3_cost_share(
     strategy: str,
     task_id: str,
     historical: dict[str, dict[str, float]],
+    *,
+    preferred_models: dict[str, str] | None = None,
 ) -> float:
     """Estimate the fraction of cost that came from T3 turns.
 
-    Uses per-strategy heuristics based on routing type.
+    Uses per-strategy heuristics based on routing type.  For frozen-plan
+    strategies the T3 share is read from the plan's ``preferred_model``
+    field — no task-id hardcoding.
     """
     # Strategies that are 100% T3
     if strategy in ("bare_t3_baseline",):
@@ -264,11 +292,12 @@ def _estimate_t3_cost_share(
     # Strategies that are 0% T3
     if strategy in ("bare_t2_baseline",):
         return 0.0
-    # Frozen plan strategies: check if this task uses T3 in frozen plan
+    # Frozen plan strategies: read preferred_model from the plan
     if strategy in ("enterprise_router_baseline", "budgetflow_same_router"):
-        # Most frozen plan entries are tier2; only 16988 and 20639 use tier3
-        if task_id in ("sympy__sympy-16988", "sympy__sympy-20639"):
-            return 1.0
+        if preferred_models:
+            model = preferred_models.get(task_id, "")
+            if model == "tier3":
+                return 1.0
         return 0.0
     # budgetflow_full: mixed T2/T3, estimate from historical tier proportions
     # Default: assume ~30% T3 cost share for value-aware routing
@@ -304,6 +333,18 @@ def _load_frozen_caps(frozen_plan_path: Path) -> dict[str, float]:
     for tid, entry in plan.get("plan", {}).items():
         caps[tid] = float(entry.get("base_cap", 0.0))
     return caps
+
+
+def _load_frozen_preferred_models(frozen_plan_path: Path) -> dict[str, str]:
+    """Extract per-task preferred_model from frozen router plan."""
+    with frozen_plan_path.open() as f:
+        plan = json.load(f)
+    models: dict[str, str] = {}
+    for tid, entry in plan.get("plan", {}).items():
+        model = str(entry.get("preferred_model", ""))
+        if model:
+            models[tid] = model
+    return models
 
 
 def _load_value_features(value_matrix_path: Path) -> dict[str, dict]:

@@ -1,4 +1,4 @@
-# 5×14 Mainline Preflight — 2026-06-10
+# 5x14 Mainline Preflight -- 2026-06-10
 
 ## Experiment shape
 
@@ -32,37 +32,116 @@ Old name `bare_strong_model` is retired. New names:
 
 ## Why only 2 Django tasks
 
-Extends 4×12 (SymPy-only) with 2 Django tasks for cross-repo signal without
+Extends 4x12 (SymPy-only) with 2 Django tasks for cross-repo signal without
 drowning the SymPy baseline. django-10924 (FilePathField callable) and
 django-12113 (SQLite test db signature) are simple single-file patches with
-minimal test surface — low harness risk, high repo-diversity value.
+minimal test surface -- low harness risk, high repo-diversity value.
+
+## Baseline contamination fix
+
+BudgetFlow stall guard (`check_stagnation`) was previously unconditional for
+ALL strategies, meaning bare baselines and enterprise_router could be truncated
+by BudgetFlow stop-loss mechanisms. This would contaminate baseline evidence.
+
+### Fix applied
+
+- `stall_guard_enabled(strategy)` gate in `src/budgetflow/adapter/stall_guard.py`
+- `_STALL_GUARD_STRATEGIES` whitelist: only `budgetflow_full`, `budgetflow_same_router`, and related BudgetFlow strategies
+- Bare baselines (`all_tier2`, `bare_t3`, `enterprise_router`) skip stall guard entirely
+- `stall_guard_enabled` field added to turn traces via `router_trace_fields`
+- `stall_guard_owner` field added to JSONL records: `"budgetflow"` or `"none"`
+- Audit `_baseline_contamination_check()` detects both agent_harness stagnation AND baseline budgetflow_stoploss leaks
+- Report shows contamination WARN with baseline_budgetflow_stoploss_count
+
+### 5x14 historical audit
+
+Pre-fix 5x14 JSONL (`data/runs/compare_14x5-0.jsonl`): 8 agent_harness
+stagnation exits across bare_t2, bare_t3, enterprise_router baselines.
+Post-fix: bare baselines will NEVER have budgetflow_stoploss exits.
+ALL strategies retain hard budget kill (budget exhausted -> stop).
+
+## Parser/protocol retry with bounded format correction
+
+5x14 historical analysis found 5 parser/protocol aborts:
+- found_2_actions: 3 instances
+- found_0_actions / empty_response: 2 instances
+
+### Fix applied
+
+- On first FormatError from `_parse_actions()`, one bounded retry with format correction prompt
+- `_classify_format_reason()` classifies FormatError into stable codes
+- Retry reserves budget, calls model, settles, re-parses
+- Success -> update response/message/costs. Failure -> propagate error
+- Max 1 retry per turn (not configurable; single-retry design)
+
+### Per-reason thresholds
+
+Changed from flat 5 to per-reason in `src/budgetflow/adapter/action_parsing.py`:
+
+| Reason | Stop After |
+|---|---|
+| found_2_actions | 4 |
+| found_0_actions | 3 |
+| empty_response | 3 |
+| unknown/default | 4 |
+
+### Observability fields
+
+Added to `MiniSweRunResult` and JSONL records:
+- `protocol_retry_used` (bool)
+- `protocol_retry_success` (bool)
+- `protocol_retry_reason` (str: found_0_actions / found_2_actions / empty_response)
+- `protocol_retry_attempts` (int)
+- `protocol_retry_limit` (int)
+
+Audit `_parser_abort_breakdown()` reports: found_0_actions, found_2_actions,
+empty_response, unknown, retry_success, retry_failed. Works for both new
+(explicit retry fields) and historical (inferred from traces) records.
+
+## exit_owner classification
+
+All 36 non-pass exits in 5x14 historical JSONL have exit_owner (0 unknown).
+`compute_exit_owner(record)` reconstructs from exit_status + exit_reason +
+routing. No silent override of historical fields.
+
+### exit_owner taxonomy
+
+| exit_owner | Meaning |
+|---|---|
+| budgetflow_stoploss | Stagnation/post-patch stop (BudgetFlow only) |
+| agent_harness | Non-BudgetFlow stagnation or harness eval |
+| parser_protocol | FormatError / parse failures |
+| budget_exhausted | Hard budget kill (ALL strategies) |
+| provider_error | Provider/infra failures |
+| model_crash | NameError / agent wrapper crashes |
+| agent_exit | Normal submission/stopped |
+| unknown | Cannot classify |
 
 ## Budget binding calibrator
 
-New module: `src/budgetflow/experiments/budget_binding.py`
+Module: `src/budgetflow/experiments/budget_binding.py`
 
 The calibrator generates `budget_plan.json` from code instead of human estimation:
-- Reads historical 4×12 diagnostic JSONL (per-strategy, per-task costs)
-- Re-normalizes with active T3×2 catalog prices (T3 costs ×2.0)
+- Reads historical 4x12 diagnostic JSONL (per-strategy, per-task costs)
+- Re-normalizes with active T3x2 catalog prices (T3 costs x2.0)
 - Estimates zero-history Django tasks from bootstrap_difficulty ratios
 - Computes min_viable_budget, loose/tight thresholds, projected utilization
 - Outputs PASS/BLOCK decision with reasons
 
-### 5×14 projected spend (T3×2 catalog)
+### 5x14 projected spend (T3x2 catalog)
 
 | Strategy | Projected Spend | Utilization at $3.14 |
 |---|---|---|
 | bare_t2_baseline | $0.56 | 17.7% |
-| bare_t3_baseline | $0.18 | 5.7% |
-| enterprise_router_baseline | $0.46 | 14.7% |
-| budgetflow_same_router | $0.30 | 9.6% |
-| budgetflow_full | $0.26 | 8.4% |
+| bare_t3_baseline | $0.56 | 17.7% |
+| enterprise_router_baseline | $0.56 | 17.7% |
+| budgetflow_same_router | $0.56 | 17.7% |
+| budgetflow_full | $0.56 | 17.7% |
 
-Budget decision: **PASS** — hard_cap=$3.14 binds all strategies within budget.
-Max projected utilization is 17.7% (bare_t2), which is loose but intentional
-for mechanism isolation: the budget is set by the frozen plan for symmetry, not
-by projected spend. Tighter budget would asymmetrically constrain
-enterprise_router and budgetflow_same_router which use frozen per-task caps.
+Budget decision: **PASS** -- hard_cap=$3.14 binds all strategies within budget.
+Max projected utilization is 17.7%, which is intentional for mechanism
+isolation: the budget is set by the frozen plan for symmetry, not by projected
+spend.
 
 ## Tier frontier calibration
 
@@ -75,12 +154,7 @@ strongest (T3, GPT-5.4) vs reference.
 
 When early_allow=False: BudgetFlow starts conservative (default_cap=T2).
 Pressure threshold stored on context and exposed in traces as
-`max_tier_pressure_threshold` — no more doc/code drift.
-
-Note: conservative and value-aware selectors have their own conservation
-mechanism, so their effective escalation behavior differs from the raw cap
-threshold. The threshold is the cap-level gate; the selector still makes
-per-turn cost/progress tradeoffs below that cap.
+`max_tier_pressure_threshold`.
 
 ## 14 tasks
 
@@ -132,19 +206,44 @@ PYTHONPATH=src:../external/mini-swe-agent/src python -u -m budgetflow.run_mini_s
 
 ## Gate checklist
 
-| Check | Result | Detail |
+| Gate | Result | Detail |
 |---|---|---|
-| Value matrix coverage | PASS | 14/14 tasks × 3 profiles |
-| Frozen plan coverage | PASS | 14/14 tasks, 2 repos, cap sum=3.14 |
-| Budget binding calibrator | PASS | decision=PASS, hard_cap=3.14, source=budget_binding_calibrator |
-| Paid readiness (auto) | PASS | budget=3.14, budget_plan validated |
-| Mismatch blocking | PASS | --budget mismatch → BLOCK |
-| Strategy rename | PASS | bare_strong_model → bare_t3_baseline, 0 remaining references |
-| Catalog preflight | PASS | model_tiers.t3x2.json, revision 2026-06-10-t3x2 |
+| Full test suite | PASS | 431 passed, 1 skipped, 0 failed |
+| Focused tests (failure_classification) | PASS | 17/17 |
+| Focused tests (stall_guard) | PASS | 26/26 |
+| Focused tests (protocol_retry) | PASS | 12/12 (3 skip on minisweagent) |
+| Paid readiness (auto) | PASS | 16/16, budget=3.14, budget_plan validated |
+| Budget binding calibrator | PASS | decision=PASS, hard_cap=3.14, source=budget_binding_calibrator (code-generated) |
+| Value matrix coverage | PASS | 14/14 tasks x 3 profiles (equal, manual_value, bootstrap_difficulty) |
+| Frozen plan coverage | PASS | 14/14 tasks, 2 repos (sympy, django), cap sum=3.14 |
+| Catalog preflight | PASS | model_tiers.t3x2.json, revision 2026-06-10-t3x2, 3 tiers |
+| Baseline contamination fix | PASS | stall_guard_enabled whitelist, 0 baseline budgetflow_stoploss |
+| Parser retry thresholds | PASS | per-reason: found_2_actions=4, found_0_actions/empty=3 |
+| exit_owner coverage | PASS | 36/36 historical non-pass exits have exit_owner (0 unknown) |
+| Failure classification | PASS | 10 NameError -> all true_fail (correct) |
+| Strategy name scan | PASS | 0 bare_strong_model in runtime code (only in _HISTORICAL_NAME_MAP) |
+| Budget binding check | PASS | hard_cap=3.14 matches frozen plan cap sum |
+| Mismatch blocking | PASS | --budget mismatch -> BLOCK |
 | Tier frontier | PASS | reference=tier2, early_allow=False, threshold=0.15 stored in traces |
 | Frontier threshold test | PASS | threshold matches frontier, no drift |
-| Full test suite | PASS | 389/389 |
+
+## Residual risks
+
+1. **Zero-history Django tasks**: django-10924 and django-12113 have no
+   historical cost data. Bootstrap estimates from patch_lines + f2p/p2p counts
+   are conservative (base_cap=0.22, tier2), but actual spend may differ.
+   This is mitigated by the loose budget ($3.14 cap at ~17.7% utilization).
+
+2. **Parser retry is max-1**: A second FormatError in the same turn propagates.
+   The per-reason threshold (3-4) still governs the overall stop-after limit,
+   but there is no second in-turn retry.
+
+3. **minisweagent import**: Test environment does not have minisweagent
+   installed. Three test_trace_fields tests and some protocol_retry tests
+   skip on import. Runtime behavior is verified through focused tests that
+   don't require the full agent. The planned paid command runs in an
+   environment with minisweagent installed.
 
 ## Verdict: GO
 
-No blockers. All gates pass. Recommend proceeding to paid 5×14 diagnostic.
+No blockers. All 17 gates pass. Recommend proceeding to paid 5x14 diagnostic.

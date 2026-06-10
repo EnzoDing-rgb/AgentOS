@@ -1,0 +1,48 @@
+{
+  "hard_cap_usd": 3.58,
+  "source": "budget_binding_calibrator",
+  "catalog_revision": "2026-06-10-a",
+  "catalog_path": "/root/.dev/AgentOS/paper1/docs/config/model_tiers.default.json",
+  "historical_source": "data/runs/compare_14x5-0.jsonl",
+  "task_ids": [
+    "sympy__sympy-13480",
+    "sympy__sympy-14774",
+    "sympy__sympy-16988",
+    "sympy__sympy-20212",
+    "sympy__sympy-12419",
+    "sympy__sympy-19007",
+    "sympy__sympy-20154",
+    "sympy__sympy-20639",
+    "sympy__sympy-15011",
+    "sympy__sympy-16792",
+    "sympy__sympy-21055",
+    "sympy__sympy-23117",
+    "django__django-10924",
+    "django__django-12113",
+    "django__django-16046",
+    "django__django-15388"
+  ],
+  "projected_spend_by_strategy": {
+    "bare_t2_baseline": 0.485,
+    "bare_t3_baseline": 0.3994,
+    "enterprise_router_baseline": 0.4801,
+    "budgetflow_same_router": 0.3957,
+    "budgetflow_full": 0.412
+  },
+  "projected_utilization_by_strategy": {
+    "bare_t2_baseline": 0.1355,
+    "bare_t3_baseline": 0.1116,
+    "enterprise_router_baseline": 0.1341,
+    "budgetflow_same_router": 0.1105,
+    "budgetflow_full": 0.1151
+  },
+  "min_viable_budget": 0.485,
+  "loose_budget_threshold": 0.97,
+  "tight_budget_threshold": 0.485,
+  "decision": "PASS_WITH_DIAGNOSTIC_OVERRIDE",
+  "reasons": [
+    "max projected utilization 13.5% < 15% \u2014 hard_cap=$3.58 is loose, but budget intentionally bound to pre-registered frozen plan cap sum for enterprise_router/budgetflow_same_router symmetry",
+    "override: frozen_plan rule: cap sum drives hard_cap; low utilization is intentional for mechanism isolation across 2 repos"
+  ],
+  "override_reason": "frozen_plan rule: cap sum drives hard_cap; low utilization is intentional for mechanism isolation across 2 repos"
+}

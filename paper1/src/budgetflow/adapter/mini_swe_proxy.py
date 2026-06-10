@@ -36,7 +36,7 @@ from .errors import BudgetFlowBudgetError, BudgetFlowStagnationError, BudgetFlow
 from ..run_guards import is_fatal_billing_error, record_billing_halt, record_upstream_error
 from ..adapters import SwebenchProgressAdapter
 from .action_parsing import format_error_stop_after, parse_text_actions, parse_tool_actions
-from .stall_guard import check_post_patch_stop, check_stagnation, normalize_bash_command
+from .stall_guard import check_post_patch_stop, check_stagnation, normalize_bash_command, stall_guard_enabled
 from .message_utils import estimate_input_tokens, extract_bash_context
 from .protocol_adapter import ActionProtocolAdapter
 from .strategies import RoutingContext, choose_backend, stage_weight
@@ -124,6 +124,73 @@ class _ProviderTimeoutError(RuntimeError):
         super().__init__(str(original))
 
 
+# ── Protocol format retry ──────────────────────────────────────────────────
+
+_FORMAT_RETRY_PROMPT = (
+    "Your previous response had invalid action format. "
+    "Reply with exactly one fenced action block and no second action."
+)
+
+
+def _classify_format_reason(exc: Exception, response, text_mode: bool) -> str:
+    """Classify a FormatError into a stable reason code for observability."""
+    # Extract action count from FormatError payload
+    payload = exc.args[0] if getattr(exc, "args", None) else None
+    if payload is None:
+        messages = getattr(exc, "messages", None)
+        if messages:
+            try:
+                payload = messages[0]
+            except (IndexError, TypeError):
+                payload = None
+    if isinstance(payload, dict):
+        extra = payload.get("extra") or {}
+        if isinstance(extra, dict):
+            count = extra.get("n_actions")
+            if count is not None:
+                try:
+                    n = int(count)
+                    if n == 0:
+                        if text_mode:
+                            try:
+                                content = response.choices[0].message.content or ""
+                            except Exception:
+                                content = ""
+                            if not content.strip():
+                                return "empty_response"
+                        return "found_0_actions"
+                    if n >= 2:
+                        return "found_2_actions"
+                except (TypeError, ValueError):
+                    pass
+
+    # Fallback: inspect response content
+    if text_mode:
+        content = ""
+        try:
+            content = response.choices[0].message.content or ""
+        except Exception:
+            pass
+        if not content.strip():
+            return "empty_response"
+        return "found_0_actions"
+
+    # Tool mode fallback
+    tool_calls = []
+    try:
+        tool_calls = response.choices[0].message.tool_calls or []
+    except Exception:
+        pass
+    if not tool_calls:
+        return "found_0_actions"
+    return "found_2_actions"
+
+
+def _format_error_limit_for(exc: Exception, response, text_mode: bool, backend_tier: int | None = None) -> tuple[str, int]:
+    reason = _classify_format_reason(exc, response, text_mode)
+    return reason, format_error_stop_after(backend_tier, error_reason=reason)
+
+
 class BudgetFlowLitellmModel:
     """mini-SWE-agent Model: BudgetFlow governor + spark/flash/pro tier pool."""
 
@@ -192,6 +259,11 @@ class BudgetFlowLitellmModel:
         self._last_reservation_id: str | None = None
         self._last_reserve_out: int = 0
         self._format_error_streak: int = 0
+        self._protocol_retry_used: bool = False
+        self._protocol_retry_success: bool = False
+        self._protocol_retry_reason: str = ""
+        self._protocol_retry_attempts: int = 0
+        self._protocol_retry_limit: int = 4
         self._last_text_mode: bool = False
         self._unavailable_backends: set[str] = set()
         self._value_triggered_escalation_turns_remaining = 0
@@ -205,6 +277,11 @@ class BudgetFlowLitellmModel:
 
     def query(self, messages: list[dict[str, str]], **kwargs) -> dict:
         self.step_index += 1
+        turn_protocol_retry_used = False
+        turn_protocol_retry_success = False
+        turn_protocol_retry_reason = ""
+        turn_protocol_retry_attempts = 0
+        turn_protocol_retry_limit = self._protocol_retry_limit
         should_stop_patch, post_patch_reason = check_post_patch_stop(
             strategy=self.routing.strategy,
             patch_digest=self.agent_patch_digest,
@@ -271,11 +348,14 @@ class BudgetFlowLitellmModel:
         norm_cmd = normalize_bash_command(bash_command)
         if norm_cmd:
             self._recent_commands.append(norm_cmd)
-        should_stop, stall_reason, repeat_cmd = check_stagnation(
-            strategy=self.routing.strategy,
-            no_progress_streak=self._no_progress_streak,
-            recent_commands=self._recent_commands,
-        )
+        if stall_guard_enabled(self.routing.strategy):
+            should_stop, stall_reason, repeat_cmd = check_stagnation(
+                strategy=self.routing.strategy,
+                no_progress_streak=self._no_progress_streak,
+                recent_commands=self._recent_commands,
+            )
+        else:
+            should_stop, stall_reason, repeat_cmd = False, "", None
         if should_stop:
             if self._maybe_open_value_triggered_escalation(stall_reason):
                 should_stop = False
@@ -500,27 +580,230 @@ class BudgetFlowLitellmModel:
         self.governor.settle(reservation_id, actual_cost, WorkflowStatus.RUNNING)
         self._last_reservation_id = None
         self._last_reserve_out = 0
+        _parse_error: Exception | None = None
         try:
             actions = self._parse_actions(response, text_mode=text_mode, backend_tier=backend.tier)
+        except FormatError as _fe:
+            turn_protocol_retry_reason, turn_protocol_retry_limit = _format_error_limit_for(
+                _fe, response, text_mode, backend.tier
+            )
+            self._protocol_retry_reason = turn_protocol_retry_reason
+            self._protocol_retry_limit = turn_protocol_retry_limit
+            if turn_protocol_retry_used:
+                _parse_error = _fe
+            else:
+                # One bounded retry with format correction prompt
+                turn_protocol_retry_used = True
+                self._protocol_retry_used = True
+                # Write turn trace for the failed parse attempt
+                if self._enable_turn_trace:
+                    _content_head = safe_content_head(response)
+                    _parser_snippet = parser_input_snippet(response, text_mode)
+                    _parser_error_fields = parser_error_trace_fields(_fe)
+                    _parser_progress_signal = self._progress_adapter.signal_from_context(
+                        bash_command=bash_command,
+                        observation=observation,
+                        agent_phase=self.agent_phase,
+                        assistant_content_head=_content_head,
+                        parser_input_snippet=_parser_snippet,
+                    )
+                    self.turn_traces.append(build_turn_trace(
+                        step_index=self.step_index,
+                        agent_phase=self.agent_phase,
+                        stage=stage,
+                        workflow_segment=_parser_progress_signal.segment,
+                        bash_command=bash_command,
+                        touched_file_paths=_parser_progress_signal.touched_file_paths,
+                        input_tokens=input_tokens,
+                        expected_costs=expected_costs,
+                        base_pressure=base_pressure,
+                        effective_pressure=self.routing.budget_pressure,
+                        backend_chosen=backend_chosen,
+                        escalated_backend=escalated_backend,
+                        final_backend=backend.name,
+                        backend_tier=backend.tier,
+                        reserve_out=reserve_out,
+                        adaptive=self.routing.adaptive,
+                        no_progress_streak=self._no_progress_streak,
+                        no_progress_on_tier=self._no_progress_on_current_tier,
+                        turns_on_tier=self._turns_on_current_tier,
+                        has_progress=has_progress,
+                        progress_reason=progress_reason,
+                        action_has_progress=None,
+                        action_progress_reason=None,
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                        actual_cost=actual_cost,
+                        billable=billable,
+                        response_ok=True,
+                        error_type=type(_fe).__name__,
+                        **provider_trace_fields(backend.name),
+                        **cost_basis_trace_fields(backend.name, prompt_tokens),
+                        **protocol_trace_fields(backend.name, text_mode),
+                        **router_trace_fields(self.routing),
+                        **value_aware_trace_fields(self.routing),
+                        **self._gold_edit_guard_trace_fields(),
+                        protocol_retry_used=turn_protocol_retry_used,
+                        protocol_retry_success=False,
+                        protocol_retry_reason=turn_protocol_retry_reason,
+                        protocol_retry_attempts=0,
+                        protocol_retry_limit=turn_protocol_retry_limit,
+                        assistant_content_head=_content_head,
+                        tool_call_summary=tool_call_summary(response),
+                        parser_input_snippet=_parser_snippet,
+                        **_parser_error_fields,
+                        reservation_id=reservation_id,
+                        reserved_cost=round(actual_cost, 6),
+                        reservation_settled=True,
+                    ))
+                # Attempt retry
+                try:
+                    assistant_msg = message
+                    retry_user_msg = {"role": "user", "content": _FORMAT_RETRY_PROMPT}
+                    retry_messages = list(messages) + [assistant_msg, retry_user_msg]
+                    retry_input_tokens = estimate_input_tokens(retry_messages)
+                    # Reserve for retry call
+                    retry_estimate = self.governor.estimate_cost(
+                        backend,
+                        input_tokens=retry_input_tokens,
+                        expected_output_tokens=backend.mean_output_tokens,
+                        reserve_output_tokens=self.default_max_output_tokens,
+                    )
+                    retry_reservation = self.governor.reserve(self.workflow_id, backend, retry_estimate)
+                    if retry_reservation is None:
+                        raise BudgetFlowBudgetError(
+                            self.workflow_id,
+                            exit_reason="budget_exhausted",
+                            step_index=self.step_index,
+                            backend=backend.name,
+                        )
+                    self._last_reservation_id = retry_reservation.reservation_id
+                    retry_response = self._completion(
+                        retry_messages,
+                        backend_name=backend.name,
+                        model_name=model_name,
+                        model_kwargs=model_kwargs,
+                        text_mode=text_mode,
+                        **kwargs,
+                    )
+                    # Settle retry reservation
+                    retry_prompt_tokens = getattr(retry_response.usage, "prompt_tokens", None) or retry_input_tokens
+                    retry_completion_tokens = getattr(retry_response.usage, "completion_tokens", None) or backend.mean_output_tokens
+                    retry_actual_cost = estimate_token_cost(
+                        backend.name,
+                        input_tokens=retry_prompt_tokens,
+                        output_tokens=retry_completion_tokens,
+                    )
+                    self.governor.settle(retry_reservation.reservation_id, retry_actual_cost, WorkflowStatus.RUNNING)
+                    self._last_reservation_id = None
+                    self._last_reserve_out = 0
+                    # Parse retry response — must succeed this time
+                    actions = self._parse_actions(retry_response, text_mode=text_mode, backend_tier=backend.tier)
+                    turn_protocol_retry_success = True
+                    self._protocol_retry_success = True
+                    # Use retry response for the rest of this turn
+                    response = retry_response
+                    message = retry_response.choices[0].message.model_dump()
+                    self._total_prompt_tokens += retry_prompt_tokens
+                    self._total_completion_tokens += retry_completion_tokens
+                    prompt_tokens += retry_prompt_tokens
+                    completion_tokens += retry_completion_tokens
+                    actual_cost += retry_actual_cost
+                    billable += min(retry_actual_cost, max(0.0, snap["total_budget"] - snap["spent_budget"] - billable))
+                except Exception as _retry_exc:
+                    if self._last_reservation_id is not None:
+                        self._release_last_reservation()
+                    turn_protocol_retry_success = False
+                    self._protocol_retry_success = False
+                    _parse_error = _retry_exc
+                    if self._enable_turn_trace:
+                        _retry_content_head = safe_content_head(retry_response) if "retry_response" in locals() else ""
+                        _retry_parser_snippet = (
+                            parser_input_snippet(retry_response, text_mode) if "retry_response" in locals() else ""
+                        )
+                        _retry_parser_error_fields = parser_error_trace_fields(_retry_exc)
+                        _retry_progress_signal = self._progress_adapter.signal_from_context(
+                            bash_command=bash_command,
+                            observation=observation,
+                            agent_phase=self.agent_phase,
+                            assistant_content_head=_retry_content_head,
+                            parser_input_snippet=_retry_parser_snippet,
+                        )
+                        self.turn_traces.append(build_turn_trace(
+                            step_index=self.step_index,
+                            agent_phase=self.agent_phase,
+                            stage=stage,
+                            workflow_segment=_retry_progress_signal.segment,
+                            bash_command=bash_command,
+                            touched_file_paths=_retry_progress_signal.touched_file_paths,
+                            input_tokens=input_tokens,
+                            expected_costs=expected_costs,
+                            base_pressure=base_pressure,
+                            effective_pressure=self.routing.budget_pressure,
+                            backend_chosen=backend_chosen,
+                            escalated_backend=escalated_backend,
+                            final_backend=backend.name,
+                            backend_tier=backend.tier,
+                            reserve_out=reserve_out,
+                            adaptive=self.routing.adaptive,
+                            no_progress_streak=self._no_progress_streak,
+                            no_progress_on_tier=self._no_progress_on_current_tier,
+                            turns_on_tier=self._turns_on_current_tier,
+                            has_progress=has_progress,
+                            progress_reason=progress_reason,
+                            action_has_progress=None,
+                            action_progress_reason=None,
+                            prompt_tokens=prompt_tokens,
+                            completion_tokens=completion_tokens,
+                            actual_cost=actual_cost,
+                            billable=billable,
+                            response_ok=True,
+                            error_type=type(_retry_exc).__name__,
+                            **provider_trace_fields(backend.name),
+                            **cost_basis_trace_fields(backend.name, prompt_tokens),
+                            **protocol_trace_fields(backend.name, text_mode),
+                            **router_trace_fields(self.routing),
+                            **value_aware_trace_fields(self.routing),
+                            **self._gold_edit_guard_trace_fields(),
+                            protocol_retry_used=True,
+                            protocol_retry_success=False,
+                            protocol_retry_reason=turn_protocol_retry_reason,
+                            protocol_retry_attempts=1,
+                            protocol_retry_limit=turn_protocol_retry_limit,
+                            assistant_content_head=_retry_content_head,
+                            tool_call_summary=tool_call_summary(retry_response) if "retry_response" in locals() else None,
+                            parser_input_snippet=_retry_parser_snippet,
+                            **_retry_parser_error_fields,
+                            reservation_id=getattr(locals().get("retry_reservation"), "reservation_id", None),
+                            reserved_cost=round(actual_cost, 6),
+                            reservation_settled="retry_response" in locals(),
+                        ))
+                finally:
+                    turn_protocol_retry_attempts = 1
+                    self._protocol_retry_attempts += 1
         except Exception as exc:
-            if self._enable_turn_trace:
-                content_head = safe_content_head(response)
-                parser_snippet = parser_input_snippet(response, text_mode)
-                parser_error_fields = parser_error_trace_fields(exc)
-                parser_progress_signal = self._progress_adapter.signal_from_context(
+            _parse_error = exc
+
+        if _parse_error is not None:
+            if self._enable_turn_trace and not turn_protocol_retry_used:
+                # Write turn trace for non-retry parse errors (original path)
+                _content_head = safe_content_head(response)
+                _parser_snippet = parser_input_snippet(response, text_mode)
+                _parser_error_fields = parser_error_trace_fields(_parse_error)
+                _parser_progress_signal = self._progress_adapter.signal_from_context(
                     bash_command=bash_command,
                     observation=observation,
                     agent_phase=self.agent_phase,
-                    assistant_content_head=content_head,
-                    parser_input_snippet=parser_snippet,
+                    assistant_content_head=_content_head,
+                    parser_input_snippet=_parser_snippet,
                 )
                 self.turn_traces.append(build_turn_trace(
                     step_index=self.step_index,
                     agent_phase=self.agent_phase,
                     stage=stage,
-                    workflow_segment=parser_progress_signal.segment,
+                    workflow_segment=_parser_progress_signal.segment,
                     bash_command=bash_command,
-                    touched_file_paths=parser_progress_signal.touched_file_paths,
+                    touched_file_paths=_parser_progress_signal.touched_file_paths,
                     input_tokens=input_tokens,
                     expected_costs=expected_costs,
                     base_pressure=base_pressure,
@@ -543,22 +826,27 @@ class BudgetFlowLitellmModel:
                     actual_cost=actual_cost,
                     billable=billable,
                     response_ok=True,
-                    error_type=type(exc).__name__,
+                    error_type=type(_parse_error).__name__,
                     **provider_trace_fields(backend.name),
                     **cost_basis_trace_fields(backend.name, prompt_tokens),
                     **protocol_trace_fields(backend.name, text_mode),
                     **router_trace_fields(self.routing),
-                        **value_aware_trace_fields(self.routing),
+                    **value_aware_trace_fields(self.routing),
                     **self._gold_edit_guard_trace_fields(),
-                    assistant_content_head=content_head,
+                    protocol_retry_used=turn_protocol_retry_used,
+                    protocol_retry_success=turn_protocol_retry_success,
+                    protocol_retry_reason=turn_protocol_retry_reason,
+                    protocol_retry_attempts=turn_protocol_retry_attempts,
+                    protocol_retry_limit=turn_protocol_retry_limit,
+                    assistant_content_head=_content_head,
                     tool_call_summary=tool_call_summary(response),
-                    parser_input_snippet=parser_snippet,
-                    **parser_error_fields,
+                    parser_input_snippet=_parser_snippet,
+                    **_parser_error_fields,
                     reservation_id=reservation_id,
                     reserved_cost=round(actual_cost, 6),
                     reservation_settled=True,
                 ))
-            raise
+            raise _parse_error
         action_progress = self._progress_adapter.signal_from_actions(actions)
         action_has_progress = action_progress.has_progress
         action_progress_reason = action_progress.progress_reason
@@ -618,6 +906,11 @@ class BudgetFlowLitellmModel:
                 **router_trace_fields(self.routing),
                         **value_aware_trace_fields(self.routing),
                 **self._gold_edit_guard_trace_fields(),
+                protocol_retry_used=turn_protocol_retry_used,
+                protocol_retry_success=turn_protocol_retry_success,
+                protocol_retry_reason=turn_protocol_retry_reason,
+                protocol_retry_attempts=turn_protocol_retry_attempts,
+                protocol_retry_limit=turn_protocol_retry_limit,
                 assistant_content_head=content_head,
                 tool_call_summary=tool_call_summary(response),
                 parser_input_snippet=parser_snippet,
@@ -999,14 +1292,16 @@ class BudgetFlowLitellmModel:
         return decision.protocol == "text_regex"
 
     def _parse_actions(self, response, *, text_mode: bool = False, backend_tier: int | None = None) -> list[dict]:
-        stop_after = format_error_stop_after(backend_tier)
         if text_mode:
             content = response.choices[0].message.content or ""
             try:
                 actions = parse_text_actions(content, format_error_template=self.format_error_template)
                 self._format_error_streak = 0
                 return actions
-            except FormatError:
+            except FormatError as exc:
+                reason, stop_after = _format_error_limit_for(exc, response, text_mode, backend_tier)
+                self._protocol_retry_reason = reason
+                self._protocol_retry_limit = stop_after
                 self._format_error_streak += 1
                 if self._format_error_streak >= stop_after:
                     raise BudgetFlowStagnationError(
@@ -1022,6 +1317,12 @@ class BudgetFlowLitellmModel:
             self._format_error_streak = 0
         counted_format_error = False
         if not tool_calls:
+            class _NoToolCallsFormatError(Exception):
+                pass
+
+            reason, stop_after = _format_error_limit_for(_NoToolCallsFormatError(), response, text_mode, backend_tier)
+            self._protocol_retry_reason = reason
+            self._protocol_retry_limit = stop_after
             self._format_error_streak += 1
             counted_format_error = True
             if self._format_error_streak >= stop_after:
@@ -1033,8 +1334,11 @@ class BudgetFlowLitellmModel:
                 )
         try:
             return parse_tool_actions(tool_calls, format_error_template=self.format_error_template)
-        except FormatError:
+        except FormatError as exc:
             if not counted_format_error:
+                reason, stop_after = _format_error_limit_for(exc, response, text_mode, backend_tier)
+                self._protocol_retry_reason = reason
+                self._protocol_retry_limit = stop_after
                 self._format_error_streak += 1
             if self._format_error_streak >= stop_after:
                 raise BudgetFlowStagnationError(

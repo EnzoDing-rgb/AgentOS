@@ -96,6 +96,11 @@ def test_compare_runner_records_turns_value_and_task_features(monkeypatch) -> No
             completion_tokens_total=2,
             turn_trace_count=2,
             turn_traces=[],
+            protocol_retry_used=False,
+            protocol_retry_success=False,
+            protocol_retry_reason="",
+            protocol_retry_attempts=0,
+            protocol_retry_limit=4,
         )
 
     monkeypatch.setattr(runner, "run_mini_swe_task", fake_run_mini_swe_task)
@@ -155,6 +160,11 @@ def test_auto_budget_records_dynamic_task_cap_mode(monkeypatch) -> None:
             completion_tokens_total=2,
             turn_trace_count=1,
             turn_traces=[],
+            protocol_retry_used=False,
+            protocol_retry_success=False,
+            protocol_retry_reason="",
+            protocol_retry_attempts=0,
+            protocol_retry_limit=4,
         )
 
     monkeypatch.setattr(runner, "run_mini_swe_task", fake_run_mini_swe_task)

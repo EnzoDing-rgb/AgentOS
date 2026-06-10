@@ -17,6 +17,26 @@ _POST_PATCH_STOP_STRATEGIES = frozenset(
     }
 )
 
+# Strategies that enable the BudgetFlow stall guard (check_stagnation).
+# Bare baselines (all_tier2, bare_t3) and enterprise_router must NOT
+# be truncated by BudgetFlow-specific stop-loss — they should exhibit
+# vanilla mini-swe-agent behavior for clean evidence.
+_STALL_GUARD_STRATEGIES = frozenset(
+    {
+        "budgetflow_full",
+        "budgetflow_conservative",
+        "budgetflow_value_aware",
+        "budgetflow_equal_weight",
+        "stage_blind",
+        "budgetflow_same_router",
+    }
+)
+
+
+def stall_guard_enabled(strategy: str) -> bool:
+    """Return True when the BudgetFlow stall guard should fire for *strategy*."""
+    return strategy in _STALL_GUARD_STRATEGIES
+
 
 def normalize_bash_command(command: str | None) -> str:
     return " ".join((command or "").split())

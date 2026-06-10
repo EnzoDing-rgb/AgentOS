@@ -8,15 +8,29 @@ from minisweagent.models.utils.actions_text import parse_regex_actions
 from minisweagent.models.utils.actions_toolcall import parse_toolcall_actions
 
 
-FORMAT_ERROR_STOP_AFTER = 5
+# Per-reason format error stop thresholds (consecutive errors before abort).
+# Tighter for empty/found_0 (less likely to self-correct) vs found_2_actions.
+_FORMAT_ERROR_STOP = {
+    "found_2_actions": 4,
+    "found_0_actions": 3,
+    "empty_response": 3,
+}
+_FORMAT_ERROR_STOP_DEFAULT = 4
 
 # Canonical regex for text-mode bash command extraction.
 # Matches: ```mswea_bash_command, ```bash, ```sh
 TEXT_ACTION_REGEX = r"```(?:mswea_bash_command|bash|sh)\s*\n(.*?)\n```"
 
 
-def format_error_stop_after(backend_tier: int | None) -> int:  # noqa: ARG001
-    return FORMAT_ERROR_STOP_AFTER
+def format_error_stop_after(
+    backend_tier: int | None = None,  # noqa: ARG001
+    error_reason: str = "",
+) -> int:
+    if error_reason:
+        for key, limit in _FORMAT_ERROR_STOP.items():
+            if key in error_reason:
+                return limit
+    return _FORMAT_ERROR_STOP_DEFAULT
 
 
 def try_extract_json_command(content: str) -> str | None:

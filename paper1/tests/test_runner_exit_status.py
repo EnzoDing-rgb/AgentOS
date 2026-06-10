@@ -58,6 +58,11 @@ def _patch_runner_boundaries(monkeypatch, tmp_path: Path, *, harness_resolved: b
         _total_prompt_tokens=10,
         _total_completion_tokens=5,
         turn_traces=[],
+        _protocol_retry_used=False,
+        _protocol_retry_success=False,
+        _protocol_retry_reason="",
+        _protocol_retry_attempts=0,
+        _protocol_retry_limit=4,
     ))
     monkeypatch.setattr(runner, "LocalEnvironment", lambda *args, **kwargs: SimpleNamespace())
     monkeypatch.setattr(runner, "TracedDefaultAgent", _FakeAgent)

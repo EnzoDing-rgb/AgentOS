@@ -435,3 +435,61 @@ def test_readiness_allows_explicit_global_fallback_cap_diagnostic() -> None:
 
     assert report.ok
     assert any("dynamic task caps are all global_fallback" in warning for warning in report.warnings)
+
+
+def test_readiness_blocks_budget_plan_blck_decision(tmp_path) -> None:
+    """Budget plan decision=BLOCK → paid readiness NO-GO."""
+    bp = tmp_path / "budget_plan.json"
+    bp.write_text('{"hard_cap_usd":3.58,"source":"budget_binding_calibrator","decision":"BLOCK","reasons":["max utilization 13% < 15%"]}')
+    value_context = ValueEfficiencyContext()
+    value_context.init(value_profile="equal")
+
+    report = build_compare_readiness_report(
+        args=_args(),
+        tasks=[SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",))],
+        strategies=(CompareStrategy("budgetflow_full", "budgetflow_value_aware"),),
+        policy_jobs=1,
+        value_context=value_context,
+        catalog_issues=[],
+        runtime_root=Path("/tmp/budgetflow-runtime"),
+        auto_budget_enabled=False,
+        auto_budget_caps=None,
+        budget_plan_path=bp,
+    )
+
+    assert not report.ok
+    assert any("budget plan decision is BLOCK" in issue for issue in report.blocking)
+
+
+def test_readiness_accepts_pass_with_diagnostic_override_with_warning(tmp_path) -> None:
+    """PASS_WITH_DIAGNOSTIC_OVERRIDE + override_reason + cap_sum match → GO with warning."""
+    plan = tmp_path / "frozen_plan.json"
+    plan.write_text(
+        '{"meta":{"name":"unit_plan","hard_cap_usd":3.58},"plan":{"task-a":{"preferred_model":"tier2","base_cap":3.58,"priority":1}}}'
+    )
+    bp = tmp_path / "budget_plan.json"
+    bp.write_text(
+        '{"hard_cap_usd":3.58,"source":"budget_binding_calibrator",'
+        '"decision":"PASS_WITH_DIAGNOSTIC_OVERRIDE",'
+        '"override_reason":"intentionally bound to pre-registered frozen plan cap sum",'
+        '"reasons":["max projected utilization 13% < 15%"]}'
+    )
+    value_context = ValueEfficiencyContext()
+    value_context.init(value_profile="equal")
+
+    report = build_compare_readiness_report(
+        args=_args(frozen_plan=str(plan)),
+        tasks=[SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",))],
+        strategies=(CompareStrategy("budgetflow_same_router", "budgetflow_same_router"),),
+        policy_jobs=1,
+        value_context=value_context,
+        catalog_issues=[],
+        runtime_root=Path("/tmp/budgetflow-runtime"),
+        auto_budget_enabled=False,
+        auto_budget_caps=None,
+        budget_plan_path=bp,
+    )
+
+    assert report.ok
+    assert any("PASS_WITH_DIAGNOSTIC_OVERRIDE" in w for w in report.warnings)
+    assert any("budget_plan_override" in f for f in report.facts)

@@ -7,6 +7,7 @@ from ..adapters import SwebenchCostAdapter
 from .bash_stage import extract_trace_file_paths
 from ..model_tiers import MODEL_CATALOG, tier_confidence, token_cost_rates
 from .protocol_adapter import ActionProtocolAdapter
+from .stall_guard import stall_guard_enabled
 
 
 def progress_state(value: bool | None) -> str:
@@ -111,6 +112,12 @@ def build_turn_trace(
     max_tier_before_frontier: int | None = None,
     max_tier_after_frontier: int | None = None,
     max_tier_pressure_threshold: float | None = None,
+    stall_guard_enabled: bool = False,
+    protocol_retry_used: bool = False,
+    protocol_retry_success: bool = False,
+    protocol_retry_reason: str = "",
+    protocol_retry_attempts: int = 0,
+    protocol_retry_limit: int | None = None,
 ) -> dict:
     """Build the per-turn observability record persisted in compare JSONL."""
     trace: dict[str, Any] = {
@@ -207,6 +214,12 @@ def build_turn_trace(
         "max_tier_before_frontier": max_tier_before_frontier,
         "max_tier_after_frontier": max_tier_after_frontier,
         "max_tier_pressure_threshold": max_tier_pressure_threshold,
+        "stall_guard_enabled": stall_guard_enabled,
+        "protocol_retry_used": protocol_retry_used,
+        "protocol_retry_success": protocol_retry_success,
+        "protocol_retry_reason": protocol_retry_reason,
+        "protocol_retry_attempts": protocol_retry_attempts,
+        "protocol_retry_limit": protocol_retry_limit,
     }
     if adaptive is not None:
         trace["adaptive_ttl"] = getattr(adaptive, "ttl_steps_remaining", None)
@@ -268,6 +281,7 @@ def router_trace_fields(routing) -> dict[str, Any]:
     fields["max_tier_before_frontier"] = getattr(routing, "max_tier_before_frontier", None)
     fields["max_tier_after_frontier"] = getattr(routing, "max_tier", None)
     fields["max_tier_pressure_threshold"] = getattr(routing, "max_tier_pressure_threshold", None)
+    fields["stall_guard_enabled"] = stall_guard_enabled(str(getattr(routing, "strategy", "") or ""))
     return fields
 
 

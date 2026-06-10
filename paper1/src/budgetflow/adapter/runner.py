@@ -76,6 +76,11 @@ class MiniSweRunResult:
     submitted_patch_path: str | None = None
     turn_trace_count: int = 0
     turn_traces: list[dict] | None = None
+    protocol_retry_used: bool = False
+    protocol_retry_success: bool = False
+    protocol_retry_reason: str = ""
+    protocol_retry_attempts: int = 0
+    protocol_retry_limit: int = 4
 
 
 def _load_agent_config(*, step_limit: int = 250) -> dict:
@@ -304,4 +309,9 @@ def run_mini_swe_task(
         turn_trace_count=len(model.turn_traces),
         turn_traces=list(model.turn_traces) if model.turn_traces else None,
         submitted_patch_path=str(submitted_patch) if submitted_patch is not None else None,
+        protocol_retry_used=model._protocol_retry_used,
+        protocol_retry_success=model._protocol_retry_success,
+        protocol_retry_reason=model._protocol_retry_reason,
+        protocol_retry_attempts=model._protocol_retry_attempts,
+        protocol_retry_limit=model._protocol_retry_limit,
     )

@@ -161,11 +161,28 @@ def format_compact_audit(audit: dict) -> str:
         for owner, reasons in sorted(audit["stagnation_owners"].items()):
             detail = " | ".join(f"{r}={c}" for r, c in sorted(reasons.items()))
             lines.append(f"  stagnation[{owner}]: {detail}")
+    bc = audit.get("baseline_contamination") or {}
+    if bc.get("contaminated"):
+        lines.append(banner)
+        lines.append(f"!!! {bc['warn']}")
+        lines.append(
+            f"  agent_harness_stagnation_count={bc['agent_harness_stagnation_count']} "
+            f"baseline_budgetflow_stoploss_count={bc.get('baseline_budgetflow_stoploss_count', 0)} "
+            f"affected_strategies={bc['affected_strategies']}"
+        )
     if audit.get("stored_verdict_mismatches"):
         lines.append(
             f"STORED VERDICT MISMATCHES: {audit['stored_verdict_mismatches']} "
             "(compact audit uses recomputed classifier output)"
         )
+
+    # Parser/protocol abort breakdown
+    pab = audit.get("parser_abort_breakdown") or {}
+    if any(pab.values()):
+        lines.append(banner)
+        lines.append("PARSER/PROTOCOL ABORT BREAKDOWN: " + " | ".join(
+            f"{k}={v}" for k, v in sorted(pab.items()) if v
+        ))
 
     t3_productivity = audit.get("t3_productivity")
     if t3_productivity:

@@ -1,9 +1,9 @@
 {
   "hard_cap_usd": 3.14,
   "source": "budget_binding_calibrator",
-  "catalog_revision": "2026-06-10-t3x2",
-  "catalog_path": "/root/.dev/AgentOS/paper1/docs/config/model_tiers.t3x2.json",
-  "historical_source": "data/runs/mainline_4x12_paid_diagnostic.jsonl",
+  "catalog_revision": "2026-06-10-a",
+  "catalog_path": "/root/.dev/AgentOS/paper1/docs/config/model_tiers.default.json",
+  "historical_source": "bootstrap_estimate",
   "task_ids": [
     "sympy__sympy-13480",
     "sympy__sympy-14774",
@@ -22,17 +22,17 @@
   ],
   "projected_spend_by_strategy": {
     "bare_t2_baseline": 0.5555,
-    "bare_t3_baseline": 0.179,
-    "enterprise_router_baseline": 0.463,
-    "budgetflow_same_router": 0.303,
-    "budgetflow_full": 0.2636
+    "bare_t3_baseline": 0.5555,
+    "enterprise_router_baseline": 0.5555,
+    "budgetflow_same_router": 0.5555,
+    "budgetflow_full": 0.5555
   },
   "projected_utilization_by_strategy": {
     "bare_t2_baseline": 0.1769,
-    "bare_t3_baseline": 0.057,
-    "enterprise_router_baseline": 0.1475,
-    "budgetflow_same_router": 0.0965,
-    "budgetflow_full": 0.0839
+    "bare_t3_baseline": 0.1769,
+    "enterprise_router_baseline": 0.1769,
+    "budgetflow_same_router": 0.1769,
+    "budgetflow_full": 0.1769
   },
   "min_viable_budget": 0.5555,
   "loose_budget_threshold": 1.1109,

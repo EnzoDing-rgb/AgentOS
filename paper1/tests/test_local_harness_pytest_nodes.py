@@ -209,6 +209,38 @@ def test_django_adapter_returns_none_for_plain_test_names() -> None:
     assert adapter.map_test_name("test_simple") is None
 
 
+def test_django_adapter_conftest_generates_with_installed_apps(tmp_path: Path) -> None:
+    adapter = DjangoHAdapter()
+    changed = adapter.apply_compat(tmp_path)
+    assert changed == ["conftest.py (generated)"]
+    conftest = (tmp_path / "conftest.py").read_text()
+    assert "_default_apps = [" in conftest
+    assert "django.contrib.contenttypes" in conftest
+    assert "django.contrib.auth" in conftest
+    assert "settings.INSTALLED_APPS" in conftest
+    assert "django.setup()" in conftest
+
+
+def test_django_adapter_conftest_skips_when_already_has_installed_apps(tmp_path: Path) -> None:
+    conftest = tmp_path / "conftest.py"
+    conftest.write_text("_default_apps = ['django.contrib.auth']\ndjango.setup()\n")
+    adapter = DjangoHAdapter()
+    changed = adapter.apply_compat(tmp_path)
+    assert changed == []
+    assert "_default_apps = ['django.contrib.auth']" in conftest.read_text()
+
+
+def test_django_adapter_conftest_replaces_bare_old_conftest(tmp_path: Path) -> None:
+    conftest = tmp_path / "conftest.py"
+    conftest.write_text("import django\ndjango.setup()\n")
+    adapter = DjangoHAdapter()
+    changed = adapter.apply_compat(tmp_path)
+    assert "replaced" in changed[0]
+    content = conftest.read_text()
+    assert "_default_apps = [" in content
+    assert "django.contrib.contenttypes" in content
+
+
 def test_build_pytest_node_ids_with_django_adapter(tmp_path: Path) -> None:
     test_file = tmp_path / "tests" / "backends" / "sqlite" / "test_creation.py"
     test_file.parent.mkdir(parents=True)
@@ -352,3 +384,119 @@ def test_compat_not_in_model_patch(tmp_path: Path, monkeypatch) -> None:
     # modification that won't appear in any agent's git diff (agent uses separate worktree).
     # This test just verifies the file was modified correctly.
     assert 'str_real in ("+inf", "inf")' in patched
+
+
+# ── build_test_command tests ──────────────────────────────────────────────
+
+
+def test_base_adapter_build_test_command_returns_pytest() -> None:
+    from budgetflow.local_harness_adapters import DefaultHAdapter, harness_python
+
+    adapter = DefaultHAdapter()
+    cmd = adapter.build_test_command(Path("/tmp"), ["tests/test_x.py::test_one"])
+
+    assert harness_python() in cmd[0]
+    assert "-m" in cmd
+    assert "pytest" in cmd
+    assert "-x" in cmd
+    assert "tests/test_x.py::test_one" in cmd
+
+
+def test_django_pytest_node_to_label_standard() -> None:
+    label = DjangoHAdapter._pytest_node_to_django_label(
+        "tests/backends/sqlite/test_creation.py::TestDbSignatureTests::test_custom_test_name"
+    )
+    assert label == "backends.sqlite.test_creation.TestDbSignatureTests.test_custom_test_name"
+
+
+def test_django_pytest_node_to_label_sweb_swebench_format() -> None:
+    label = DjangoHAdapter._pytest_node_to_django_label(
+        "test_callable_path (model_fields.test_filepathfield.FilePathFieldTests)"
+    )
+    assert label == "model_fields.test_filepathfield.FilePathFieldTests.test_callable_path"
+
+
+def test_django_pytest_node_to_label_returns_none_for_plain() -> None:
+    assert DjangoHAdapter._pytest_node_to_django_label("tests/test_foo.py::test_bar") is None
+
+
+def test_django_build_test_command_uses_runtests(tmp_path: Path) -> None:
+    from budgetflow.local_harness_adapters import harness_python
+
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    runtests = tests_dir / "runtests.py"
+    runtests.write_text("# fake runtests")
+
+    adapter = DjangoHAdapter()
+    cmd = adapter.build_test_command(
+        tmp_path,
+        ["tests/backends/sqlite/test_creation.py::TestDbSignatureTests::test_custom_test_name"],
+    )
+
+    assert str(runtests) in cmd
+    assert "--verbosity=1" in cmd
+    assert "backends.sqlite.test_creation.TestDbSignatureTests.test_custom_test_name" in cmd
+
+
+def test_django_build_test_command_falls_back_to_pytest_when_no_label(tmp_path: Path) -> None:
+    from budgetflow.local_harness_adapters import harness_python
+
+    adapter = DjangoHAdapter()
+    cmd = adapter.build_test_command(
+        tmp_path,
+        ["tests/test_foo.py::test_bar"],
+    )
+
+    assert "pytest" in cmd
+    assert "-x" in cmd
+    assert "tests/test_foo.py::test_bar" in cmd
+
+
+def test_django_build_test_command_falls_back_when_runtests_missing(tmp_path: Path) -> None:
+    from budgetflow.local_harness_adapters import harness_python
+
+    adapter = DjangoHAdapter()
+    cmd = adapter.build_test_command(
+        tmp_path,
+        ["tests/backends/sqlite/test_creation.py::TestDbSignatureTests::test_custom_test_name"],
+    )
+
+    assert "pytest" in cmd
+
+
+def test_run_pytest_uses_adapter_build_test_command(tmp_path: Path, monkeypatch) -> None:
+    """When an adapter is passed, run_pytest calls adapter.build_test_command."""
+    from budgetflow import local_harness
+    from budgetflow.local_harness_adapters import harness_python
+
+    test_file = tmp_path / "tests" / "test_x.py"
+    test_file.parent.mkdir()
+    test_file.write_text("def test_regression():\n    pass\n")
+
+    captured_cmd: list = []
+
+    class Result:
+        returncode = 0
+        stdout = "ok"
+        stderr = ""
+
+    def fake_run(cmd, *, cwd, capture_output, text, env):
+        captured_cmd.append(cmd)
+        return Result()
+
+    monkeypatch.setattr("budgetflow.local_harness_adapters.subprocess.run", fake_run)
+
+    adapter = DjangoHAdapter()
+    ok, _ = local_harness.run_pytest(
+        tmp_path,
+        ("tests/test_x.py::test_regression",),
+        ["tests/test_x.py"],
+        adapter=adapter,
+    )
+
+    assert ok is True
+    assert len(captured_cmd) == 1
+    # Django adapter should produce a runtests.py command for parseable node IDs
+    # (but runtests.py doesn't exist in tmp_path, so it falls back to pytest)
+    assert "pytest" in captured_cmd[0]
