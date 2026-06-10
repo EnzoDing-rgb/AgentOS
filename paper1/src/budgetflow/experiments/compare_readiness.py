@@ -38,6 +38,7 @@ def build_compare_readiness_report(
     auto_budget_enabled: bool,
     auto_budget_caps: dict[str, float] | None,
     auto_budget_estimates: dict[str, object] | None = None,
+    budget_plan_path: Path | None = None,
 ) -> ReadinessReport:
     blocking: list[str] = []
     warnings: list[str] = []
@@ -115,8 +116,8 @@ def build_compare_readiness_report(
             blocking.append(
                 f"value matrix is missing {len(missing)} selected task values: {preview}{suffix}"
             )
-    has_value_aware_strategy = any(
-        strategy.routing in {"budgetflow_value_aware", "value_aware_task_level", "budgetflow_same_router"}
+    needs_task_values = any(
+        strategy.routing in {"budgetflow_value_aware", "value_aware_task_level"}
         for strategy in strategies
     )
     needs_frozen_plan = any(
@@ -133,22 +134,32 @@ def build_compare_readiness_report(
         except (OSError, ValueError, TypeError) as exc:
             blocking.append(f"cannot load frozen router plan: {exc}")
         else:
+            selected_sum = frozen_plan.selected_cap_sum(task_ids) if task_ids else 0.0
             facts.append(f"frozen_plan={frozen_plan.name}")
             facts.append(f"frozen_plan_entries={len(frozen_plan.plan)}")
             facts.append(f"frozen_plan_planned_cap={frozen_plan.planned_cap:.4f}")
+            facts.append(f"frozen_plan_selected_cap_sum={selected_sum:.4f}")
             if frozen_plan.hard_cap_usd is not None:
                 facts.append(f"frozen_plan_hard_cap={frozen_plan.hard_cap_usd:.4f}")
-                requested_budget = float(getattr(args, "budget", 0.0) or 0.0)
-                if requested_budget > 0 and abs(requested_budget - frozen_plan.hard_cap_usd) > 0.0001:
-                    blocking.append(
-                        f"--budget={requested_budget:.4f} does not match frozen plan "
-                        f"hard_cap_usd={frozen_plan.hard_cap_usd:.4f}; "
-                        "mechanism-isolation caps must be pre-registered and symmetric"
-                    )
                 if abs(frozen_plan.planned_cap - frozen_plan.hard_cap_usd) > 0.0001:
                     blocking.append(
                         f"frozen plan base caps sum to {frozen_plan.planned_cap:.4f}, "
                         f"but meta hard_cap_usd={frozen_plan.hard_cap_usd:.4f}"
+                    )
+            requested_budget = float(getattr(args, "budget", 0.0) or 0.0)
+            budget_source = "frozen_plan_cap_sum" if requested_budget == 0.0 and args.frozen_plan else "cli"
+            if requested_budget == 0.0:
+                budget_source = "frozen_plan_cap_sum"
+                facts.append(f"budget_source={budget_source}")
+                facts.append(f"budget={selected_sum:.4f}")
+            else:
+                facts.append(f"budget_source={budget_source}")
+                facts.append(f"budget={requested_budget:.4f}")
+                if abs(requested_budget - selected_sum) > 0.0001:
+                    blocking.append(
+                        f"--budget={requested_budget:.4f} does not match frozen plan "
+                        f"selected cap sum={selected_sum:.4f}; "
+                        "mechanism-isolation caps must be pre-registered and symmetric"
                     )
             missing_plan = [task_id for task_id in task_ids if frozen_plan.lookup(task_id) is None]
             if missing_plan:
@@ -164,11 +175,11 @@ def build_compare_readiness_report(
             "Yield numbers are T2 mechanism diagnostics, not T1 value evidence. "
             "Use a pre-registered manual value matrix for T1 claims."
         )
-    if has_value_aware_strategy and value_context.profile == "equal":
+    if needs_task_values and value_context.profile == "equal":
         warnings.append(
             "equal task values make value-aware strategies a T2 mechanism diagnostic, not T1 value evidence"
         )
-    if has_value_aware_strategy and not value_context.is_primary_value_evidence:
+    if needs_task_values and not value_context.is_primary_value_evidence:
         warnings.append(
             f"value_source_kind={value_context.source_class} is not primary T1 evidence; "
             "use --value-source-kind pre_registered_manual with a frozen matrix for main Yield claims"
@@ -200,6 +211,35 @@ def build_compare_readiness_report(
             warnings.append(f"dynamic cap estimates mostly low confidence ({low_conf_n}/{len(estimates)})")
     if not args.trace_turns:
         warnings.append("turn traces disabled; strongest-model productivity/source breakdown will be weak")
+
+    # ── Budget binding plan validation ───────────────────────────────────
+    if budget_plan_path is not None:
+        try:
+            import json as _json
+            with budget_plan_path.open() as _fh:
+                bp = _json.load(_fh)
+        except (OSError, ValueError, TypeError) as exc:
+            blocking.append(f"cannot load budget plan {budget_plan_path}: {exc}")
+        else:
+            facts.append(f"budget_plan={budget_plan_path}")
+            facts.append(f"budget_plan_source={bp.get('source', 'unknown')}")
+            facts.append(f"budget_plan_decision={bp.get('decision', 'UNKNOWN')}")
+            bp_hard_cap = float(bp.get("hard_cap_usd", 0.0) or 0.0)
+            facts.append(f"budget_plan_hard_cap={bp_hard_cap:.4f}")
+            bp_reasons = bp.get("reasons", [])
+            for reason in bp_reasons:
+                facts.append(f"budget_plan_reason: {reason}")
+            if bp.get("decision", "") == "BLOCK":
+                blocking.append(
+                    f"budget plan decision is BLOCK: {'; '.join(bp_reasons)}"
+                )
+            requested_budget = float(getattr(args, "budget", 0.0) or 0.0)
+            if requested_budget > 0 and abs(requested_budget - bp_hard_cap) > 0.0001:
+                blocking.append(
+                    f"--budget={requested_budget:.4f} does not match "
+                    f"budget_plan hard_cap={bp_hard_cap:.4f}; "
+                    f"use the budget plan value or omit --budget"
+                )
 
     return ReadinessReport(tuple(blocking), tuple(warnings), tuple(facts))
 

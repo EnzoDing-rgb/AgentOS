@@ -209,22 +209,19 @@ def _t3_source_breakdown(records: list[dict], t3_tier: int) -> dict[str, dict[st
     return by_strategy
 
 
-def _segment_control_delta(by_strategy: dict[str, dict]) -> dict:
+def _mechanism_isolation_delta(by_strategy: dict[str, dict]) -> dict:
     # Mechanism-first delta: BudgetFlow mechanism vs enterprise router baseline.
     # Both use the same frozen router plan; the only difference is the
     # execution mechanism (shared ledger, reservation/settlement, stop-loss).
+    # Only computed when all three mainline strategies are present.
     mechanism = by_strategy.get("budgetflow_same_router")
     baseline = by_strategy.get("enterprise_router_baseline")
-    bare = by_strategy.get("bare_strong_model")
-    if not mechanism or not baseline:
-        # Optional policy-ablation delta for non-default diagnostic runs.
-        mechanism = by_strategy.get("budgetflow_full")
-        baseline = by_strategy.get("task_level_control")
+    bare = by_strategy.get("bare_t3_baseline")
     if not mechanism or not baseline:
         return {}
     delta = {
-        "segment_aware_strategy": "BudgetFlow Same Router",
-        "task_level_control": "Enterprise Router Baseline",
+        "mechanism_strategy": "BudgetFlow Same Router",
+        "baseline_strategy": "Enterprise Router Baseline",
         "delta_pass": int(mechanism.get("pass", 0)) - int(baseline.get("pass", 0)),
         "delta_cost": float(mechanism.get("cost", 0.0)) - float(baseline.get("cost", 0.0)),
         "delta_yield": (
@@ -239,11 +236,15 @@ def _segment_control_delta(by_strategy: dict[str, dict]) -> dict:
             float(mechanism.get("yield_per_dollar", 0.0))
             - float(baseline.get("yield_per_dollar", 0.0))
         ),
+        "delta_yield_per_total_dollar": (
+            float(mechanism.get("yield_per_total_dollar", 0.0))
+            - float(baseline.get("yield_per_total_dollar", 0.0))
+        ),
     }
     if bare:
-        delta["bare_strong_pass"] = int(bare.get("pass", 0))
-        delta["bare_strong_cost"] = float(bare.get("cost", 0.0))
-        delta["bare_strong_yield"] = float(bare.get("yield_score", 0.0))
+        delta["bare_t3_pass"] = int(bare.get("pass", 0))
+        delta["bare_t3_cost"] = float(bare.get("cost", 0.0))
+        delta["bare_t3_yield"] = float(bare.get("yield_score", 0.0))
     return delta
 
 
@@ -317,7 +318,7 @@ _DECISION_ISSUE_AREA = {
 
 
 _STRATEGY_REPORT_ORDER = {
-    "bare_strong_model": 0,
+    "bare_t3_baseline": 0,
     "enterprise_router_baseline": 1,
     "budgetflow_same_router": 2,
     "budget_only_baseline": 10,
@@ -664,6 +665,7 @@ def build_compact_audit(records: list[dict]) -> dict:
     policy_memory_used = any(_routing_memory_used(r) for r in records)
     policy_memory_source = ""
     prior_records = 0
+    memory_filtering_summary: dict | None = None
     if policy_memory_used:
         for r in records:
             source = _routing_memory_source(r)
@@ -671,6 +673,12 @@ def build_compact_audit(records: list[dict]) -> dict:
                 policy_memory_source = source
                 break
         prior_records = round(max((_routing_prior_task_seen(r) for r in records), default=0.0) or 0.0, 2)
+        # Collect memory filtering summary from the first record that has it
+        for r in records:
+            mfs = r.get("memory_filtering")
+            if isinstance(mfs, dict):
+                memory_filtering_summary = mfs
+                break
 
     # StagnationExit PASS rate
     stag_pass = sum(
@@ -708,6 +716,8 @@ def build_compact_audit(records: list[dict]) -> dict:
         strat: {
             "total": s["total"], "pass": s["pass"], "fail": s["fail"],
             "cost": s["cost"], "abort_cost": s["abort_cost"],
+            "scoreable_cost": s["cost"],
+            "total_spend": s["cost"] + s["abort_cost"],
             "avg_turns": s["turns"] / max(s["total"], 1),
             "resolved_value": s["resolved_value"],
             "total_task_value": s["task_value"],
@@ -717,6 +727,13 @@ def build_compact_audit(records: list[dict]) -> dict:
             ),
             "yield_per_dollar": (
                 s["resolved_value"] / s["cost"] if s["cost"] > 0 else 0.0
+            ),
+            "yield_per_scoreable_dollar": (
+                s["resolved_value"] / s["cost"] if s["cost"] > 0 else 0.0
+            ),
+            "yield_per_total_dollar": (
+                s["resolved_value"] / (s["cost"] + s["abort_cost"])
+                if (s["cost"] + s["abort_cost"]) > 0 else 0.0
             ),
             "tier_turns": dict(sorted(s["tier_turns"].items())),
             "t1_turns": s["tier_turns"].get(1, 0),
@@ -748,7 +765,7 @@ def build_compact_audit(records: list[dict]) -> dict:
         "by_strategy": strategy_metrics,
         "common_task_count": len(common_tasks),
         "common_stats": common_stats,
-        "segment_control_delta": _segment_control_delta(strategy_metrics),
+        "mechanism_isolation_delta": _mechanism_isolation_delta(strategy_metrics),
         "fail_classes": dict(fail_classes.most_common()),
         "fail_exits": dict(fail_exits.most_common()),
         "fail_subtypes": dict(fail_subtypes.most_common()),
@@ -758,6 +775,7 @@ def build_compact_audit(records: list[dict]) -> dict:
         "policy_memory_used": policy_memory_used,
         "policy_memory_source": policy_memory_source,
         "prior_records": prior_records,
+        "memory_filtering": memory_filtering_summary,
         "verdict_owners": owner_counts,
         "verdict_axes": axis_counts,
         "harness_trust": trust_counts,

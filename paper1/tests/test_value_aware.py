@@ -28,7 +28,7 @@ class TestStrategyCatalog:
     def test_mechanism_strategies_in_default(self):
         from budgetflow.experiments.compare_config import DEFAULT_STRATEGIES, mechanism_strategy_names
         names = mechanism_strategy_names()
-        assert "bare_strong_model" in names
+        assert "bare_t3_baseline" in names
         assert "enterprise_router_baseline" in names
         assert "budgetflow_same_router" in names
         default_names = {s.name for s in DEFAULT_STRATEGIES}
@@ -52,10 +52,10 @@ class TestStrategyCatalog:
         assert control.routing == "value_aware_task_level"
         assert control.budgeted is True
 
-    def test_bare_strong_uses_shared_hard_budget(self):
+    def test_bare_t3_uses_shared_hard_budget(self):
         from budgetflow.experiments.compare_config import DEFAULT_STRATEGIES
-        strategy = next(s for s in DEFAULT_STRATEGIES if s.name == "bare_strong_model")
-        assert strategy.routing == "bare_strong"
+        strategy = next(s for s in DEFAULT_STRATEGIES if s.name == "bare_t3_baseline")
+        assert strategy.routing == "bare_t3"
         assert strategy.budgeted is True
 
     def test_enterprise_router_uses_shared_hard_budget(self):

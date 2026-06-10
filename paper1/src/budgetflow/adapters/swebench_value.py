@@ -1,7 +1,14 @@
-"""SWE-bench task-value helper.
+"""SWE-bench task-value helper (ValueSource).
 
-Task value is part of TaskAdapter output in the architecture. This module is a
-SWE-bench helper owned by that boundary; it is not a standalone adapter family.
+**Boundary: this is the pre-registered ValueSource for paper runs.**
+
+Task value comes from a value matrix JSON file created BEFORE the run.
+Profiles (equal, manual_value, bootstrap_difficulty) are fixed in the matrix.
+The matrix is the canonical value source — it is not inferred from run outcomes.
+
+TaskAdapter (``swebench_task.py``) calls ``SwebenchValueAdapter.estimate()`` to
+get a ``ValueEstimate``. TaskAdapter standardises tasks; ValueSource assigns
+values. These are separate concerns behind a single call site.
 """
 
 from __future__ import annotations

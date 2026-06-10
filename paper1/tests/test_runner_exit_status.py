@@ -82,8 +82,8 @@ def _run_fake_task() -> object:
         task,
         governor=governor,
         ledger=ledger,
-        strategy="bare_strong",
-        strategy_label="bare_strong_model",
+        strategy="bare_t3",
+        strategy_label="bare_t3_baseline",
         agent_heartbeat=False,
     )
 

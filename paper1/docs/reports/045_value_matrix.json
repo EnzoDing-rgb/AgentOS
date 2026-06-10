@@ -7,7 +7,7 @@
       "solve_rarity",
       "combined"
     ],
-    "note": "All profiles are ex-ante or cross-strategy. No BF-specific signals."
+    "note": "All profiles are pre-registered or cross-strategy. No BF-specific signals."
   },
   "tasks": {
     "django__django-10924": {

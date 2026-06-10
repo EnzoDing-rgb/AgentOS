@@ -122,7 +122,7 @@ class ValueEfficiencyContext:
         yield_per_dollar = resolved_value / scoreable_cost if scoreable_cost > 0 else 0.0
 
         routing = str(record.get("routing", ""))
-        va_active = routing in {"budgetflow_value_aware", "value_aware_task_level", "budgetflow_same_router"}
+        va_active = routing in {"budgetflow_value_aware", "value_aware_task_level"}
         record["value_objective"] = self.objective
         record["task_value_profile"] = self.profile
         record["task_value_source_class"] = self.source_class
@@ -298,7 +298,7 @@ def _infer_value_source_kind(
         return "pre_registered_manual"
     if normalized in {"learned_calibrated", "learned_value", "calibrated_value"}:
         return "learned_calibrated"
-    if normalized in {"bootstrap_heuristic", "bootstrap_ex_ante_metadata"} or profile.startswith("bootstrap_"):
+    if normalized in {"bootstrap_heuristic", "bootstrap_pre_registered_metadata"} or profile.startswith("bootstrap_"):
         return "bootstrap_heuristic"
     if lookup is not None:
         return "value_matrix_diagnostic"

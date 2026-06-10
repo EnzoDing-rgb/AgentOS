@@ -35,12 +35,13 @@ class CompareStrategy:
 
 
 # Mechanism-first default strategies: same hard budget, different execution
-# mechanism.  bare_strong_model and enterprise_router_baseline use the harness
+# mechanism.  bare_t3_baseline and enterprise_router_baseline use the harness
 # with a hard-kill budget adapter.  budgetflow_same_router consumes the same
 # frozen plan through BudgetFlow's shared ledger, reservation/settlement,
 # stop-loss, escalation, and audit path.
 DEFAULT_STRATEGIES: tuple[CompareStrategy, ...] = (
-    CompareStrategy("bare_strong_model", "bare_strong"),
+    CompareStrategy("bare_t2_baseline", "all_tier2"),
+    CompareStrategy("bare_t3_baseline", "bare_t3"),
     CompareStrategy("enterprise_router_baseline", "enterprise_router"),
     CompareStrategy("budgetflow_same_router", "budgetflow_same_router"),
 )
@@ -94,7 +95,7 @@ def required_backends_for_strategies(strategies: tuple[CompareStrategy, ...]) ->
             required.add(TIER1_BACKEND)
         elif cfg.routing in {"all_tier2"}:
             required.add(tier2_backend)
-        elif cfg.routing in {"all_pro", "all_t3", "bare_strong"}:
+        elif cfg.routing in {"all_pro", "all_t3", "bare_t3"}:
             required.add(TIER3_BACKEND)
         else:
             required.update({backend.name for backend in MODEL_CATALOG.backends()})
@@ -103,7 +104,7 @@ def required_backends_for_strategies(strategies: tuple[CompareStrategy, ...]) ->
 
 def w_i_profile_for_record(routing: str) -> str:
     """JSONL field: stage_blind forces w_i=1 at query time."""
-    if routing in {"bare_strong", "enterprise_router", "budgetflow_same_router"}:
+    if routing in {"bare_t3", "enterprise_router", "budgetflow_same_router"}:
         return "mechanism_isolation"
     if routing == "stage_blind":
         return "flat_forced"

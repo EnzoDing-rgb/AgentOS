@@ -56,6 +56,22 @@ def test_compact_audit_reports_value_metrics() -> None:
             "task_value_profile": "difficulty",
             "value_objective": "t1_value_efficiency",
         },
+        {
+            "instance_id": "repo__task-c",
+            "strategy": "budgetflow_full",
+            "harness_resolved": False,
+            "score_status": "abort",
+            "abort_reason": "extract_fail",
+            "harness_evidence": {"evidence_complete": False},
+            "total_cost": 0.30,
+            "llm_turns": 2,
+            "turn_trace_count": 2,
+            "backend_picks": ["tier3"],
+            "task_value": 0.5,
+            "resolved_value": 0.0,
+            "task_value_profile": "difficulty",
+            "value_objective": "t1_value_efficiency",
+        },
     ])
 
     stats = audit["by_strategy"]["budgetflow_full"]
@@ -64,7 +80,14 @@ def test_compact_audit_reports_value_metrics() -> None:
     assert stats["yield_score"] == 0.6
     assert stats["yield_coverage"] == 0.6
     assert stats["yield_per_dollar"] == pytest.approx(2.0)
+    assert stats["yield_per_scoreable_dollar"] == pytest.approx(2.0)
+    assert stats["yield_per_total_dollar"] == pytest.approx(1.0)
+    assert stats["total_spend"] == pytest.approx(0.6)
+    assert stats["scoreable_cost"] == pytest.approx(0.3)
+    assert stats["abort_cost"] == pytest.approx(0.3)
     assert "PAPER METRICS" in format_compact_audit(audit)
+    assert "Yield/total$" in format_compact_audit(audit)
+    assert "Yield/score$" in format_compact_audit(audit)
 
 
 def test_compact_audit_counts_actionable_decision_issues() -> None:
@@ -396,11 +419,11 @@ def test_compact_audit_treats_any_progress_channel_as_productive() -> None:
     assert stats["t3_no_progress_cost"] == 0.0
 
 
-def test_compact_audit_reports_t2_frontier_and_segment_control() -> None:
+def test_compact_audit_reports_mechanism_isolation_delta() -> None:
     records = [
         {
             "instance_id": "repo__task-a",
-            "strategy": "budgetflow_full",
+            "strategy": "budgetflow_same_router",
             "harness_resolved": True,
             "harness_evidence": {"evidence_complete": True},
             "total_cost": 0.30,
@@ -412,7 +435,7 @@ def test_compact_audit_reports_t2_frontier_and_segment_control() -> None:
         },
         {
             "instance_id": "repo__task-b",
-            "strategy": "budgetflow_full",
+            "strategy": "budgetflow_same_router",
             "harness_resolved": False,
             "harness_evidence": {"evidence_complete": True},
             "total_cost": 0.20,
@@ -424,7 +447,7 @@ def test_compact_audit_reports_t2_frontier_and_segment_control() -> None:
         },
         {
             "instance_id": "repo__task-a",
-            "strategy": "task_level_control",
+            "strategy": "enterprise_router_baseline",
             "harness_resolved": False,
             "harness_evidence": {"evidence_complete": True},
             "total_cost": 0.10,
@@ -436,7 +459,7 @@ def test_compact_audit_reports_t2_frontier_and_segment_control() -> None:
         },
         {
             "instance_id": "repo__task-b",
-            "strategy": "task_level_control",
+            "strategy": "enterprise_router_baseline",
             "harness_resolved": False,
             "harness_evidence": {"evidence_complete": True},
             "total_cost": 0.10,
@@ -449,7 +472,7 @@ def test_compact_audit_reports_t2_frontier_and_segment_control() -> None:
     ]
 
     audit = build_compact_audit(records)
-    delta = audit["segment_control_delta"]
+    delta = audit["mechanism_isolation_delta"]
     text = format_compact_audit(audit)
 
     assert audit["common_task_count"] == 2

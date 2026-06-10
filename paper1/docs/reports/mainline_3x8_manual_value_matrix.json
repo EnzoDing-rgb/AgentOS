@@ -1,0 +1,284 @@
+{
+  "meta": {
+    "name": "mainline_3x8_manual_value_matrix",
+    "created": "2026-06-09",
+    "task_count": 8,
+    "profiles": [
+      "equal",
+      "manual_value",
+      "bootstrap_difficulty"
+    ],
+    "value_source_kind": "pre_registered_manual",
+    "source_class": "human_pre_registered_plus_prior_calibration",
+    "outcome_free_for_this_run": true,
+    "note": "Manual values are fixed before the 3x8 paid mechanism run. The first four values preserve prior calibration; the four added tasks use only zero-history selection plus SWE-bench metadata, not outcomes.",
+    "new_task_selection": "four zero-occurrence SymPy SWE-bench Lite tasks with complete test_patch and FAIL_TO_PASS metadata",
+    "formula_reference": "bootstrap_difficulty = 1 + patch_lines + 2*f2p_count + log1p(p2p_count) + 0.01*problem_words + 1.5*gold_file_count; manual_value is compressed/human-preregistered, not equal to raw difficulty."
+  },
+  "tasks": {
+    "sympy__sympy-13480": {
+      "instance_id": "sympy__sympy-13480",
+      "repo": "sympy/sympy",
+      "features": {
+        "patch_lines": 12,
+        "f2p_count": 1,
+        "p2p_count": 43,
+        "problem_words": 56,
+        "gold_file_count": 1
+      },
+      "values": {
+        "equal": 1.0,
+        "manual_value": 1.0,
+        "bootstrap_difficulty": 20.8442
+      },
+      "rationale": "Prior calibrated SymPy task; retained as low-to-medium value anchor."
+    },
+    "sympy__sympy-14774": {
+      "instance_id": "sympy__sympy-14774",
+      "repo": "sympy/sympy",
+      "features": {
+        "patch_lines": 12,
+        "f2p_count": 1,
+        "p2p_count": 114,
+        "problem_words": 67,
+        "gold_file_count": 1
+      },
+      "values": {
+        "equal": 1.0,
+        "manual_value": 0.8,
+        "bootstrap_difficulty": 21.9149
+      },
+      "rationale": "Prior calibrated lower-value SymPy sanity task."
+    },
+    "sympy__sympy-16988": {
+      "instance_id": "sympy__sympy-16988",
+      "repo": "sympy/sympy",
+      "features": {
+        "patch_lines": 12,
+        "f2p_count": 2,
+        "p2p_count": 72,
+        "problem_words": 56,
+        "gold_file_count": 1
+      },
+      "values": {
+        "equal": 1.0,
+        "manual_value": 2.0,
+        "bootstrap_difficulty": 23.3505
+      },
+      "rationale": "Prior calibrated high-value hard SymPy task; retained as top-priority anchor."
+    },
+    "sympy__sympy-20212": {
+      "instance_id": "sympy__sympy-20212",
+      "repo": "sympy/sympy",
+      "features": {
+        "patch_lines": 12,
+        "f2p_count": 1,
+        "p2p_count": 32,
+        "problem_words": 79,
+        "gold_file_count": 1
+      },
+      "values": {
+        "equal": 1.0,
+        "manual_value": 1.3,
+        "bootstrap_difficulty": 20.7865
+      },
+      "rationale": "Prior calibrated delicate SymPy semantics task."
+    },
+    "sympy__sympy-12419": {
+      "instance_id": "sympy__sympy-12419",
+      "repo": "sympy/sympy",
+      "features": {
+        "patch_lines": 40,
+        "f2p_count": 1,
+        "p2p_count": 25,
+        "problem_words": 187,
+        "gold_file_count": 1
+      },
+      "values": {
+        "equal": 1.0,
+        "manual_value": 1.1,
+        "bootstrap_difficulty": 49.6281
+      },
+      "rationale": "New zero-history SymPy matrix-expression task; moderate patch/test surface and useful anti-overfit coverage."
+    },
+    "sympy__sympy-19007": {
+      "instance_id": "sympy__sympy-19007",
+      "repo": "sympy/sympy",
+      "features": {
+        "patch_lines": 41,
+        "f2p_count": 3,
+        "p2p_count": 26,
+        "problem_words": 82,
+        "gold_file_count": 1
+      },
+      "values": {
+        "equal": 1.0,
+        "manual_value": 1.4,
+        "bootstrap_difficulty": 53.6158
+      },
+      "rationale": "New zero-history SymPy block-matrix indexing task with three fail-to-pass tests; higher repair value."
+    },
+    "sympy__sympy-20154": {
+      "instance_id": "sympy__sympy-20154",
+      "repo": "sympy/sympy",
+      "features": {
+        "patch_lines": 49,
+        "f2p_count": 2,
+        "p2p_count": 40,
+        "problem_words": 88,
+        "gold_file_count": 1
+      },
+      "values": {
+        "equal": 1.0,
+        "manual_value": 1.5,
+        "bootstrap_difficulty": 60.0936
+      },
+      "rationale": "New zero-history SymPy iterables task with moderate patch surface and two fail-to-pass tests."
+    },
+    "sympy__sympy-20639": {
+      "instance_id": "sympy__sympy-20639",
+      "repo": "sympy/sympy",
+      "features": {
+        "patch_lines": 52,
+        "f2p_count": 2,
+        "p2p_count": 139,
+        "problem_words": 57,
+        "gold_file_count": 1
+      },
+      "values": {
+        "equal": 1.0,
+        "manual_value": 1.6,
+        "bootstrap_difficulty": 64.0116
+      },
+      "rationale": "New zero-history SymPy pretty-printer task with broad pass-to-pass validation surface; highest new-task value."
+    }
+  },
+  "rankings": {
+    "equal": [
+      {
+        "rank": 1,
+        "instance_id": "sympy__sympy-13480",
+        "value": 1.0
+      },
+      {
+        "rank": 2,
+        "instance_id": "sympy__sympy-14774",
+        "value": 1.0
+      },
+      {
+        "rank": 3,
+        "instance_id": "sympy__sympy-16988",
+        "value": 1.0
+      },
+      {
+        "rank": 4,
+        "instance_id": "sympy__sympy-20212",
+        "value": 1.0
+      },
+      {
+        "rank": 5,
+        "instance_id": "sympy__sympy-12419",
+        "value": 1.0
+      },
+      {
+        "rank": 6,
+        "instance_id": "sympy__sympy-19007",
+        "value": 1.0
+      },
+      {
+        "rank": 7,
+        "instance_id": "sympy__sympy-20154",
+        "value": 1.0
+      },
+      {
+        "rank": 8,
+        "instance_id": "sympy__sympy-20639",
+        "value": 1.0
+      }
+    ],
+    "manual_value": [
+      {
+        "rank": 1,
+        "instance_id": "sympy__sympy-16988",
+        "value": 2.0
+      },
+      {
+        "rank": 2,
+        "instance_id": "sympy__sympy-20639",
+        "value": 1.6
+      },
+      {
+        "rank": 3,
+        "instance_id": "sympy__sympy-20154",
+        "value": 1.5
+      },
+      {
+        "rank": 4,
+        "instance_id": "sympy__sympy-19007",
+        "value": 1.4
+      },
+      {
+        "rank": 5,
+        "instance_id": "sympy__sympy-20212",
+        "value": 1.3
+      },
+      {
+        "rank": 6,
+        "instance_id": "sympy__sympy-12419",
+        "value": 1.1
+      },
+      {
+        "rank": 7,
+        "instance_id": "sympy__sympy-13480",
+        "value": 1.0
+      },
+      {
+        "rank": 8,
+        "instance_id": "sympy__sympy-14774",
+        "value": 0.8
+      }
+    ],
+    "bootstrap_difficulty": [
+      {
+        "rank": 1,
+        "instance_id": "sympy__sympy-20639",
+        "value": 64.0116
+      },
+      {
+        "rank": 2,
+        "instance_id": "sympy__sympy-20154",
+        "value": 60.0936
+      },
+      {
+        "rank": 3,
+        "instance_id": "sympy__sympy-19007",
+        "value": 53.6158
+      },
+      {
+        "rank": 4,
+        "instance_id": "sympy__sympy-12419",
+        "value": 49.6281
+      },
+      {
+        "rank": 5,
+        "instance_id": "sympy__sympy-16988",
+        "value": 23.3505
+      },
+      {
+        "rank": 6,
+        "instance_id": "sympy__sympy-14774",
+        "value": 21.9149
+      },
+      {
+        "rank": 7,
+        "instance_id": "sympy__sympy-13480",
+        "value": 20.8442
+      },
+      {
+        "rank": 8,
+        "instance_id": "sympy__sympy-20212",
+        "value": 20.7865
+      }
+    ]
+  }
+}

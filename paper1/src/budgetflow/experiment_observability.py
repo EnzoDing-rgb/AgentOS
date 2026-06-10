@@ -41,7 +41,7 @@ def enrich_routing_observability(record: dict, *, policy_memory_source: str = ""
 def _policy_kind(routing: str) -> str:
     if routing in {"budgetflow_same_router"}:
         return "mechanism"
-    if routing in {"bare_strong", "enterprise_router"}:
+    if routing in {"bare_t3", "enterprise_router"}:
         return "bare_harness"
     if routing in {"budgetflow_full", "budgetflow_conservative", "budgetflow_value_aware", "budgetflow_equal_weight", "stage_blind"}:
         return "bootstrap"
@@ -52,7 +52,7 @@ def _policy_kind(routing: str) -> str:
 
 def _policy_role(routing: str) -> str:
     roles = {
-        "bare_strong": "bare_strongest_baseline",
+        "bare_t3": "bare_t3_baseline",
         "enterprise_router": "enterprise_router_baseline",
         "budgetflow_same_router": "mechanism_with_frozen_router",
         "budgetflow_value_aware": "value_aware_segment",

@@ -25,7 +25,7 @@ DIAGNOSTIC_3X3_IDS = (
     "sympy__sympy-16988",
 )
 DIAGNOSTIC_3X3_STRATEGIES = (
-    "bare_strong_model",
+    "bare_t3_baseline",
     "enterprise_router_baseline",
     "budgetflow_same_router",
 )
@@ -36,6 +36,7 @@ class CompareBudgetPlan:
     pressure_init: float
     pressure_max: float
     max_overrun: float
+    source: str = "pre_registered_experiment_budget"
 
 
 @dataclass(frozen=True)
@@ -61,19 +62,40 @@ def resolve_task_count(args: Namespace) -> int:
     return tasks_n
 
 
-def resolve_budget_plan(args: Namespace, *, tasks_n: int) -> CompareBudgetPlan:
+def _resolve_task_ids(args: Namespace) -> list[str] | None:
+    """Return instance IDs from --ids or known presets, or None."""
+    if args.ids:
+        return [s.strip() for s in args.ids.split(",") if s.strip()]
+    if args.preset == "3x3":
+        return list(DIAGNOSTIC_3X3_IDS)
+    return None
+
+
+def resolve_budget_plan(
+    args: Namespace, *, tasks_n: int,
+    frozen_plan_path: str | None = None,
+    task_ids: list[str] | None = None,
+) -> CompareBudgetPlan:
     constrained = args.budget
     pressure_init = args.pressure_init
     pressure_max = args.pressure_max
     pressure_init = BUDGET_PRESSURE_INIT if pressure_init is None else pressure_init
     pressure_max = PRESSURE_MAX if pressure_max is None else pressure_max
+    source = "cli" if constrained is not None else "pre_registered_experiment_budget"
     if args.budget_scale != 1.0:
         constrained = (constrained or 100.0) * args.budget_scale
+    # Auto-compute budget from frozen plan selected cap sum when --budget not passed.
+    if constrained is None and frozen_plan_path and task_ids:
+        from budgetflow.frozen_router import load_frozen_plan
+        plan = load_frozen_plan(frozen_plan_path)
+        constrained = plan.selected_cap_sum(task_ids)
+        source = "frozen_plan_cap_sum"
     return CompareBudgetPlan(
         constrained=100.0 if constrained is None else constrained,
         pressure_init=pressure_init,
         pressure_max=pressure_max,
         max_overrun=max(0.0, args.max_overrun),
+        source=source,
     )
 
 

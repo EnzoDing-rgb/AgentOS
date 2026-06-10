@@ -32,6 +32,15 @@ class FrozenRouterPlan:
     def planned_cap(self) -> float:
         return sum(entry.base_cap for entry in self.plan.values())
 
+    def selected_cap_sum(self, instance_ids: list[str]) -> float:
+        """Sum base_caps for the given task IDs, not all entries."""
+        total = 0.0
+        for iid in instance_ids:
+            entry = self.lookup(iid)
+            if entry is not None:
+                total += entry.base_cap
+        return total
+
     def as_jsonl_record(self, instance_id: str) -> dict:
         entry = self.lookup(instance_id)
         if entry is None:

@@ -1,8 +1,17 @@
 """SWE-bench task adapter.
 
-Task metadata such as fail-to-pass tests, pass-to-pass tests, patch text, and
-problem statement are SWE-bench details. BudgetFlow runtime records should
-consume normalized task features.
+**Boundary: TaskAdapter vs ValueSource**
+
+``TaskAdapter`` normalises raw SWE-bench tasks into ``TaskFeatures`` (patch_lines,
+f2p_count, p2p_count, problem_length). It answers "what is this task?"
+
+``ValueSource`` (see ``swebench_value.py``) maps those features to a task value
+via a pre-registered value matrix JSON. It answers "how much is this task worth?"
+
+The value matrix is the canonical value source for paper runs. TaskAdapter does
+not compute value — it delegates to ValueSource via ``value_estimate()``.
+This keeps the two concerns separate: task standardisation (adapter) and value
+assignment (pre-registered source).
 """
 
 from __future__ import annotations

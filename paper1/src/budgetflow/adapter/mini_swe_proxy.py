@@ -22,11 +22,11 @@ from ..defaults import (
     PRESSURE_MAX,
     STRONGEST_DOWNGRADE_TIER,
     TIER1_BACKEND,
-    TIER_ESCALATION_PATIENCE,
-    TIER_MAX_TURNS,
     VALUE_TRIGGERED_ESCALATION_DEFAULT_WINDOW_TURNS,
     VALUE_TRIGGERED_ESCALATION_MIN_HEADROOM_FRAC,
     VALUE_TRIGGERED_ESCALATION_MIN_MULTIPLIER,
+    tier_escalation_patience,
+    tier_max_turns,
 )
 from ..model_tiers import MODEL_CATALOG, TIER_CONFIGS, ModelCatalog, apply_provider_proxy, estimate_token_cost, load_env_file
 from ..console_log import backend_tier_label, bold, dim, routing_stage_label, tag
@@ -780,7 +780,7 @@ class BudgetFlowLitellmModel:
         next_backend = None
 
         # Check escalation (no-progress streak)
-        patience = TIER_ESCALATION_PATIENCE.get(backend.tier)
+        patience = tier_escalation_patience().get(backend.tier)
         if patience is not None and self._no_progress_on_current_tier >= patience:
             if backend.tier >= strongest.tier:
                 next_backend = _backend_by_configured_tier(ordered, STRONGEST_DOWNGRADE_TIER) or ModelCatalog.next_lower(ordered, backend)
@@ -792,7 +792,7 @@ class BudgetFlowLitellmModel:
 
         # Check turn cap
         if reason is None:
-            max_turns = TIER_MAX_TURNS.get(backend.tier)
+            max_turns = tier_max_turns().get(backend.tier)
             if max_turns is not None and self._turns_on_current_tier >= max_turns:
                 if backend.tier >= strongest.tier:
                     next_backend = _backend_by_configured_tier(ordered, STRONGEST_DOWNGRADE_TIER) or ModelCatalog.next_lower(ordered, backend)

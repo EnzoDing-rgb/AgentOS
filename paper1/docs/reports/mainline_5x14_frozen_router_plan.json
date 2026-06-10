@@ -1,0 +1,100 @@
+{
+  "meta": {
+    "name": "mainline_5x14_frozen_router_plan",
+    "created": "2026-06-10",
+    "extends": "mainline_4x12_frozen_router_plan",
+    "description": "Pre-registered static enterprise-router plan for the 5x14 mainline mechanism diagnostic. Extends 4x12 with two Django tasks for repo diversity. No learning, runtime progress, shared ledger state, or outcome feedback is used by this plan. Django caps are conservative zero-history estimates consistent with simple single-file patches.",
+    "source_class": "human_pre_registered_from_prior_calibration_and_pre_registered_task_metadata",
+    "budget_window": "policy_batch",
+    "hard_cap_usd": 3.14,
+    "task_order": [
+      "sympy__sympy-13480",
+      "sympy__sympy-14774",
+      "sympy__sympy-16988",
+      "sympy__sympy-20212",
+      "sympy__sympy-12419",
+      "sympy__sympy-19007",
+      "sympy__sympy-20154",
+      "sympy__sympy-20639",
+      "sympy__sympy-15011",
+      "sympy__sympy-16792",
+      "sympy__sympy-21055",
+      "sympy__sympy-23117",
+      "django__django-10924",
+      "django__django-12113"
+    ],
+    "note": "Caps preserve the calibrated twelve tasks from 4x12 and add conservative caps for two zero-history Django tasks. Sum of base caps equals hard_cap_usd. Preferred models are static metadata decisions, not learned priors. Django tasks default to tier2 (enterprise default); both are simple single-file patches with minimal test surface."
+  },
+  "plan": {
+    "sympy__sympy-13480": {
+      "preferred_model": "tier2",
+      "base_cap": 0.18,
+      "priority": 2
+    },
+    "sympy__sympy-14774": {
+      "preferred_model": "tier2",
+      "base_cap": 0.16,
+      "priority": 1
+    },
+    "sympy__sympy-16988": {
+      "preferred_model": "tier3",
+      "base_cap": 0.30,
+      "priority": 8
+    },
+    "sympy__sympy-20212": {
+      "preferred_model": "tier2",
+      "base_cap": 0.36,
+      "priority": 4
+    },
+    "sympy__sympy-12419": {
+      "preferred_model": "tier2",
+      "base_cap": 0.18,
+      "priority": 3
+    },
+    "sympy__sympy-19007": {
+      "preferred_model": "tier2",
+      "base_cap": 0.20,
+      "priority": 5
+    },
+    "sympy__sympy-20154": {
+      "preferred_model": "tier2",
+      "base_cap": 0.20,
+      "priority": 6
+    },
+    "sympy__sympy-20639": {
+      "preferred_model": "tier3",
+      "base_cap": 0.22,
+      "priority": 7
+    },
+    "sympy__sympy-15011": {
+      "preferred_model": "tier2",
+      "base_cap": 0.24,
+      "priority": 9
+    },
+    "sympy__sympy-16792": {
+      "preferred_model": "tier2",
+      "base_cap": 0.26,
+      "priority": 12
+    },
+    "sympy__sympy-21055": {
+      "preferred_model": "tier2",
+      "base_cap": 0.22,
+      "priority": 10
+    },
+    "sympy__sympy-23117": {
+      "preferred_model": "tier2",
+      "base_cap": 0.18,
+      "priority": 11
+    },
+    "django__django-10924": {
+      "preferred_model": "tier2",
+      "base_cap": 0.22,
+      "priority": 13
+    },
+    "django__django-12113": {
+      "preferred_model": "tier2",
+      "base_cap": 0.22,
+      "priority": 14
+    }
+  }
+}

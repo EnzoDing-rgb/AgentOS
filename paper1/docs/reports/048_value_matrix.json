@@ -8,7 +8,7 @@
       "unsolved_difficulty",
       "combined"
     ],
-    "note": "All profiles are ex-ante or cross-strategy. No BF-specific signals.",
+    "note": "All profiles are pre-registered or cross-strategy. No BF-specific signals.",
     "manifest": {
       "description": "Clean-run manifest for Value Matrix (Phase Q). Preserves 046 manifest entries. Only runs listed here are allowed into the task universe.",
       "created": "2026-06-05",

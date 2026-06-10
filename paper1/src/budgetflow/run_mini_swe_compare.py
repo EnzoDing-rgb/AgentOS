@@ -64,6 +64,7 @@ from budgetflow.experiments.compare_readiness import (  # noqa: E402
     format_readiness_report,
 )
 from budgetflow.experiments.compare_setup import (  # noqa: E402
+    _resolve_task_ids,
     build_batch_budget_modes,
     load_tasks_for_compare,
     resolve_budget_plan,
@@ -135,6 +136,18 @@ def main() -> None:
     def enrich_record_with_value(record: dict) -> dict:
         return value_context.enrich_record(record)
 
+    def enrich_record_final(record: dict) -> dict:
+        """Enrich record with value, memory filtering, catalog provenance, frontier, and budget binding."""
+        record = enrich_record_with_value(record)
+        if policy_memory is not None:
+            record["memory_filtering"] = policy_memory.memory_filtering_summary
+        record["catalog"] = _catalog_source_info()
+        if _frontier is not None:
+            record["tier_frontier"] = _frontier.to_dict()
+        if _budget_plan_data is not None:
+            record["budget_plan"] = _budget_plan_data
+        return record
+
     if value_context.lookup is None and args.value_profile != "equal":
         print(
             f"[value_observability] FATAL: profile '{args.value_profile}' not found "
@@ -175,7 +188,12 @@ def main() -> None:
         args.skip_completed = True
 
     tasks_n = resolve_task_count(args)
-    budget_plan = resolve_budget_plan(args, tasks_n=tasks_n)
+    task_ids_early = _resolve_task_ids(args)
+    budget_plan = resolve_budget_plan(
+        args, tasks_n=tasks_n,
+        frozen_plan_path=args.frozen_plan,
+        task_ids=task_ids_early,
+    )
     max_overrun = budget_plan.max_overrun
     trace_console: TraceConsoleLevel = trace_console_from_args(args)
     strategy_selection = select_strategies(args)
@@ -194,8 +212,25 @@ def main() -> None:
         window="policy_batch",
         shared=True,
         budget_scale=args.budget_scale,
+        source=budget_plan.source,
     )
     tasks = load_tasks_for_compare(args, tasks_n=tasks_n)
+
+    # ── Model catalog: init before any cost estimation ────────────────────
+    from budgetflow.model_tiers import init_catalog as _init_catalog, catalog_source_info as _catalog_source_info  # noqa: E402
+    from budgetflow.tier_frontier import TierFrontier  # noqa: E402
+
+    _frontier = TierFrontier.from_catalog()
+    _budget_plan_data: dict | None = None
+    budget_plan_path = Path(args.budget_plan) if getattr(args, "budget_plan", None) else None
+    if budget_plan_path is not None and budget_plan_path.exists():
+        import json as _json
+        _budget_plan_data = _json.loads(budget_plan_path.read_text())
+
+    if args.model_catalog:
+        _init_catalog(Path(args.model_catalog))
+        print(f"[catalog] loaded from {args.model_catalog}", flush=True)
+        _frontier = TierFrontier.from_catalog()
 
     catalog_issues = print_tier_catalog_preflight()
 
@@ -215,6 +250,7 @@ def main() -> None:
         auto_budget_enabled=bool(args.auto_budget or args.auto_budget_dry_run),
         auto_budget_caps=auto_budget_task_caps,
         auto_budget_estimates=auto_budget_estimates,
+        budget_plan_path=budget_plan_path,
     )
     print(format_readiness_report(readiness), flush=True)
     if args.paid_readiness_only:
@@ -403,7 +439,7 @@ def main() -> None:
             out_path,
             header_lines,
             normalize_strategy=_normalize_strategy,
-            enrich_value=enrich_record_with_value,
+            enrich_value=enrich_record_final,
         )
         print(f"{tag('resume', bold=False)} rebuilt state from jsonl runs={state.runs_done}", flush=True)
     else:
@@ -475,7 +511,7 @@ def main() -> None:
                 auto_budget_memory=auto_budget_memory,
                 no_auto_budget_learn=args.no_auto_budget_learn,
                 value_profile=value_context.profile,
-                enrich_value=enrich_record_with_value,
+                enrich_value=enrich_record_final,
             )
             heartbeat_writer.pulse(
                 rows_done=state.runs_done,

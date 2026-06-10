@@ -175,6 +175,65 @@ class StarterPrior:
         return self.budgetflow_starter_successes / max(self.budgetflow_starter_attempts, 1)
 
 
+# ── record acceptance for memory ────────────────────────────────────────────
+
+# Routings that are supported for memory learning.
+_MEMORY_ROUTINGS = frozenset({
+    "budgetflow_full", "budgetflow_conservative", "budgetflow_value_aware",
+    "value_aware_task_level", "budgetflow_equal_weight", "stage_blind",
+    "budget_only", "bare_t3_baseline", "enterprise_router_baseline",
+    "budgetflow_same_router",
+})
+
+# Harness trust values that are acceptable for memory.
+_MEMORY_HARNESS_TRUST = frozenset({"trusted", "trusted_fallback"})
+
+
+def _memory_skip_reason(record: dict) -> str:
+    """Return a non-empty reason string if *record* should NOT enter memory.
+
+    Returns "" if the record is acceptable.
+    """
+    # Schema version
+    if record.get("routing_decision_schema") != "v1":
+        return "old_schema"
+    # Score status: only pass and true_fail are scoreable
+    score = str(record.get("score_status") or "")
+    if score not in SCOREABLE_STATUSES:
+        if score == "abort":
+            return "abort_row"
+        return "unscoreable_status"
+    # Must have instance_id
+    if not record.get("instance_id"):
+        return "missing_instance_id"
+    # Routing must be in supported set
+    routing = str(record.get("routing") or "")
+    if routing not in _MEMORY_ROUTINGS:
+        return f"unsupported_routing:{routing}" if routing else "missing_routing"
+    # Harness trust: reject protocol/parser aborts
+    harness_trust = str(record.get("harness_trust") or "")
+    if harness_trust not in _MEMORY_HARNESS_TRUST:
+        if harness_trust == "incomplete":
+            return "harness_incomplete"
+        if harness_trust:
+            return f"harness_trust:{harness_trust}"
+        return "missing_harness_trust"
+    # Must have task_set_kind and policy_kind
+    if not record.get("task_set_kind"):
+        return "missing_task_set_kind"
+    if not record.get("policy_kind"):
+        return "missing_policy_kind"
+    # Must have learn_policy_input_views
+    views = record.get("learn_policy_input_views")
+    if not isinstance(views, list) or not views:
+        return "missing_learn_policy_views"
+    # Exclude host dependency contamination
+    detail = str(record.get("detail") or "")
+    if "has_host_dependency_contamination" in detail:
+        return "host_dependency_contamination"
+    return ""
+
+
 class PolicyMemory:
     """Built-in Routing/Escalation Memory rebuilt from JSONL outcomes.
 
@@ -198,6 +257,11 @@ class PolicyMemory:
         self._effective_record_weight: float = 0.0
         self._source_weight_summary: dict[str, float] = {}
         self._source_path: str = ""
+        # Memory filtering audit fields
+        self._records_seen: int = 0
+        self._records_accepted: int = 0
+        self._records_skipped: int = 0
+        self._skip_reasons: dict[str, int] = {}
 
     # ── rebuild ────────────────────────────────────────────────────────────
 
@@ -217,7 +281,11 @@ class PolicyMemory:
         self.rebuild_from_records(records)
 
     def rebuild_from_records(self, records: list[dict]) -> None:
-        """Rebuild all priors from a list of outcome records."""
+        """Rebuild all priors from a list of outcome records.
+
+        Only rows that pass the schema-aware acceptance filter contribute to
+        Cost/Routing/Escalation Memory. Skipped rows are tracked for audit.
+        """
         self._repo_priors.clear()
         self._task_priors.clear()
         self._policy_regrets.clear()
@@ -226,8 +294,23 @@ class PolicyMemory:
         self._repo_starters.clear()
         self._task_starters.clear()
         self._record_count = len(records)
+
+        accepted: list[dict] = []
+        skip_reasons: Counter[str] = Counter()
+        for record in records:
+            reason = _memory_skip_reason(record)
+            if reason:
+                skip_reasons[reason] += 1
+            else:
+                accepted.append(record)
+
+        self._records_seen = len(records)
+        self._records_accepted = len(accepted)
+        self._records_skipped = self._records_seen - self._records_accepted
+        self._skip_reasons = dict(skip_reasons)
+
         learnable_records = [
-            record for record in records
+            record for record in accepted
             if str(record.get("score_status") or "") in SCOREABLE_STATUSES
         ]
         self._effective_record_weight = round(sum(_record_weight(record) for record in learnable_records), 4)
@@ -694,12 +777,30 @@ class PolicyMemory:
 
     # ── summary ────────────────────────────────────────────────────────────
 
+    @property
+    def memory_filtering_summary(self) -> dict:
+        """Return audit summary of memory record acceptance."""
+        return {
+            "memory_source": self._source_path,
+            "schema_version": "v1",
+            "active_views": ["cost", "routing", "escalation"],
+            "records_seen": self._records_seen,
+            "records_accepted": self._records_accepted,
+            "records_skipped": self._records_skipped,
+            "skip_reasons": dict(self._skip_reasons),
+        }
+
     def summary_lines(self) -> list[str]:
         lines = ["policy_memory:"]
         lines.append(
             f"  records={self._record_count} effective_weight={self._effective_record_weight:.2f} "
             f"repos={len(self._repo_priors)} tasks={len(self._task_priors)}"
         )
+        if self._records_skipped:
+            lines.append(
+                f"  filtering: seen={self._records_seen} accepted={self._records_accepted} "
+                f"skipped={self._records_skipped} skip_reasons={dict(self._skip_reasons)}"
+            )
         for repo, prior in sorted(self._repo_priors.items()):
             lines.append(
                 f"  {repo}: tasks={prior.total_tasks} evidence_weight={prior.evidence_weight:.2f} "

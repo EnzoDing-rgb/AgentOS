@@ -102,6 +102,15 @@ def build_turn_trace(
     task_value: float | None = None,
     task_value_multiplier: float | None = None,
     value_aware_active: bool = False,
+    catalog_revision: str = "",
+    catalog_path: str = "",
+    tier_frontier_active: bool | None = None,
+    tier_frontier_reason: str | None = None,
+    strongest_vs_reference_cost_ratio: float | None = None,
+    strongest_progress_delta: dict[str, float] | None = None,
+    max_tier_before_frontier: int | None = None,
+    max_tier_after_frontier: int | None = None,
+    max_tier_pressure_threshold: float | None = None,
 ) -> dict:
     """Build the per-turn observability record persisted in compare JSONL."""
     trace: dict[str, Any] = {
@@ -189,6 +198,15 @@ def build_turn_trace(
         "task_value": task_value,
         "task_value_multiplier": task_value_multiplier,
         "value_aware_active": value_aware_active,
+        "catalog_revision": catalog_revision,
+        "catalog_path": catalog_path,
+        "tier_frontier_active": tier_frontier_active,
+        "tier_frontier_reason": tier_frontier_reason,
+        "strongest_vs_reference_cost_ratio": strongest_vs_reference_cost_ratio,
+        "strongest_progress_delta": strongest_progress_delta,
+        "max_tier_before_frontier": max_tier_before_frontier,
+        "max_tier_after_frontier": max_tier_after_frontier,
+        "max_tier_pressure_threshold": max_tier_pressure_threshold,
     }
     if adaptive is not None:
         trace["adaptive_ttl"] = getattr(adaptive, "ttl_steps_remaining", None)
@@ -237,6 +255,19 @@ def router_trace_fields(routing) -> dict[str, Any]:
             "memory_mode": memory_mode,
         },
     }
+    frontier = getattr(routing, "tier_frontier", None)
+    if frontier is not None:
+        fields["tier_frontier_active"] = frontier.early_allow_strongest
+        fields["tier_frontier_reason"] = frontier.reason
+        fields["strongest_vs_reference_cost_ratio"] = round(
+            max(frontier.strongest_input_ratio, frontier.strongest_output_ratio), 4
+        )
+        fields["strongest_progress_delta"] = {
+            k: round(v, 4) for k, v in frontier.strongest_progress_delta.items()
+        }
+    fields["max_tier_before_frontier"] = getattr(routing, "max_tier_before_frontier", None)
+    fields["max_tier_after_frontier"] = getattr(routing, "max_tier", None)
+    fields["max_tier_pressure_threshold"] = getattr(routing, "max_tier_pressure_threshold", None)
     return fields
 
 
@@ -274,9 +305,12 @@ def provider_trace_fields(backend_name: str) -> dict[str, Any]:
     if cfg is None:
         return {}
     confidence = tier_confidence(backend_name)
+    from ..model_tiers import catalog_revision as _catalog_revision, catalog_path as _catalog_path
     return {
         "provider": cfg.provider,
         "model": cfg.model,
+        "catalog_revision": _catalog_revision(),
+        "catalog_path": str(_catalog_path()) if _catalog_path() else "python_fallback",
         **confidence,
     }
 

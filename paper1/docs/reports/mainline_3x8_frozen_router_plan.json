@@ -1,0 +1,63 @@
+{
+  "meta": {
+    "name": "mainline_3x8_frozen_router_plan",
+    "created": "2026-06-09",
+    "description": "Pre-registered static enterprise-router plan for the next 3x8 mainline mechanism diagnostic. No learning, runtime progress, shared ledger state, or outcome feedback is used by this plan.",
+    "source_class": "human_pre_registered_from_prior_calibration_and_pre_registered_task_metadata",
+    "budget_window": "policy_batch",
+    "hard_cap_usd": 1.8,
+    "task_order": [
+      "sympy__sympy-13480",
+      "sympy__sympy-14774",
+      "sympy__sympy-16988",
+      "sympy__sympy-20212",
+      "sympy__sympy-12419",
+      "sympy__sympy-19007",
+      "sympy__sympy-20154",
+      "sympy__sympy-20639"
+    ],
+    "note": "Caps preserve the calibrated first four tasks and add moderate caps for four zero-history SymPy tasks. Sum of base caps equals hard_cap_usd. Preferred models are static metadata decisions, not learned priors."
+  },
+  "plan": {
+    "sympy__sympy-13480": {
+      "preferred_model": "tier2",
+      "base_cap": 0.18,
+      "priority": 2
+    },
+    "sympy__sympy-14774": {
+      "preferred_model": "tier2",
+      "base_cap": 0.16,
+      "priority": 1
+    },
+    "sympy__sympy-16988": {
+      "preferred_model": "tier3",
+      "base_cap": 0.3,
+      "priority": 8
+    },
+    "sympy__sympy-20212": {
+      "preferred_model": "tier2",
+      "base_cap": 0.36,
+      "priority": 4
+    },
+    "sympy__sympy-12419": {
+      "preferred_model": "tier2",
+      "base_cap": 0.18,
+      "priority": 3
+    },
+    "sympy__sympy-19007": {
+      "preferred_model": "tier2",
+      "base_cap": 0.2,
+      "priority": 5
+    },
+    "sympy__sympy-20154": {
+      "preferred_model": "tier2",
+      "base_cap": 0.2,
+      "priority": 6
+    },
+    "sympy__sympy-20639": {
+      "preferred_model": "tier3",
+      "base_cap": 0.22,
+      "priority": 7
+    }
+  }
+}

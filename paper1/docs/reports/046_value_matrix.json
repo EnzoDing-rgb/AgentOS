@@ -8,7 +8,7 @@
       "unsolved_difficulty",
       "combined"
     ],
-    "note": "All profiles are ex-ante or cross-strategy. No BF-specific signals.",
+    "note": "All profiles are pre-registered or cross-strategy. No BF-specific signals.",
     "manifest": {
       "description": "Clean-run manifest for Value Matrix. Only runs listed here are allowed into the task universe. Dirty/unlisted runs are skipped with a warning.",
       "created": "2026-06-05",

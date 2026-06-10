@@ -2,7 +2,30 @@
 
 > 单一入口：进度、跑法、历史结果。
 
-## 当前快照（2026-06-08）
+## 当前快照（2026-06-09）
+
+### Canonical run: mainline_3x8_v2_mechanism（089）
+
+- **mainline_3x8_v2_mechanism is the current canonical mechanism diagnostic.** 8 SymPy tasks × 3 mainline strategies (bare_strong_model, enterprise_router_baseline, budgetflow_same_router), hard budget $1.80, `--disable-policy-memory --no-auto-budget-learn`.
+- **Yield (manual_value):** budgetflow_same_router 6/8 pass Yield=7.70 Yield/total$=16.70, bare_strong_model 4/8 Yield=5.80 Yield/total$=9.29, enterprise_router_baseline 2/8 Yield=2.50 Yield/total$=8.15.
+- **Three-profile sensitivity — bf #1 on all:** equal (bf=6.00, bare=4.00, ent=2.00), bootstrap_difficulty (bf=196.62, bare=125.07, ent=80.94), manual_value (bf=7.70, bare=5.80, ent=2.50). Manual value is not the only headline.
+- **Compact audit now reports both Yield/total$ and Yield/score$.** Paper-facing metric is Yield/total$ (total model spend including abort cost). Yield/score$ is a diagnostic, not the primary claim.
+- **5 aborts (all extraction_protocol_fail):** bare_strong=2, enterprise=3, budgetflow=0. BudgetFlow mechanism (stop-loss + reservation) converts all 5 to pass.
+- **7 true_fails:** sympy-19007 and sympy-20639 fail for all 3 strategies (task ceiling). sympy-14774 enterprise only (loc_fail). Distribution: bare=2, ent=3, bf=2.
+- **Learning confirmed off:** policy_memory_enabled=False, auto_budget_enabled=None, budget_learning_update_written=False on all 24 rows.
+- **JSONL:** `data/runs/mainline_3x8_v2_mechanism.jsonl` (canonical). The older `mainline_3x8_plus_mechanism.jsonl` (pass=10, abort=7, bf=4/8) is forensic-only — produced before mechanism fixes.
+- **Limitations:** 8 tasks (diagnostic scale), FormatError/parser noise pervasive but uniform across strategies. Positive mechanism signal, not paper-scale evidence.
+
+### Forensic: 088 / Familiar 3x4 Plus calibrated mechanism diagnostic
+
+- **088_familiar_3x4_plus_calibrated — forensic/diagnostic only, superseded by 089.** 4 familiar SymPy tasks, budget $1.00, frozen plan + manual value matrix, T2 `openai/qwen3.7-plus`.
+- Result: bf 4/4 pass Yield=5.10, bare 3/4 Yield=3.80, enterprise 2/4 Yield=3.00. 3 aborts all extract_fail on bare_strong and enterprise_router_baseline; bf had 0 aborts.
+- **Stale metric note (resolved):** The checker once reported scoreable-only Yield/$ which excluded abort cost. This is now fixed — compact audit reports both Yield/total$ and Yield/score$. Yield/total$ is the paper-facing metric.
+- Abort-cost accounting was the main blocker for paper claims at this scale. 089 resolves this.
+
+### Old run: mainline_3x8_plus_mechanism — forensic only
+
+- **mainline_3x8_plus_mechanism.jsonl — forensic, do not use for current conclusions.** Produced before Phase 1 mechanism fixes (stale strategy fallback in audit.py, incorrect va_active inclusion). Results: pass=10, abort=7, bf=4/8 with 2 aborts. Superseded by 089 v2 re-run. No current delta/abort/interpretation claims reference this run.
 
 ### 088 / Bootstrap Policy, Learn Policy, Yield, and adapter boundary cleanup
 
@@ -373,7 +396,7 @@
 
 ### 045 后 Phase O 状态
 
-- **Phase O 完成：** Value Matrix + Progress Calibration 基础设施已建成。`src/budgetflow/value_matrix.py` 支持 4 种 ex-ante/cross-strategy value profile（equal, difficulty, solve_rarity, combined）+ sensitivity analysis + 自定义 profile。Progress calibration 从 639 turns 中提取 (stage, tier) 进度率，确认 selection-bias caveat。AutoResearch 回归 186 tests + goal-loop smoke exit 0。**结论与 Phase N 一致：暂不启动 paid run。** 详细报告：`docs/reports/045.md`。
+- **Phase O 完成：** Value Matrix + Progress Calibration 基础设施已建成。`src/budgetflow/value_matrix.py` 支持 4 种 pre-registered/cross-strategy value profile（equal, difficulty, solve_rarity, combined）+ sensitivity analysis + 自定义 profile。Progress calibration 从 639 turns 中提取 (stage, tier) 进度率，确认 selection-bias caveat。AutoResearch 回归 186 tests + goal-loop smoke exit 0。**结论与 Phase N 一致：暂不启动 paid run。** 详细报告：`docs/reports/045.md`。
 - **Value profiles 的 rank correlation：** difficulty 与 combined 高度相关 (ρ=0.94)，difficulty 与 solve_rarity 中度相关 (ρ=0.44)。不同 profile 对 task 排序不同，说明 value model 的选择会影响 allocation 决策。
 - **Progress calibration 关键发现：** LOCALIZATION progress signal 是死的（215 turns, 0% rate）。REPAIR T2=41% vs T3=24%，但这个负 delta 是 selection bias（T3 处理更难的情况），不能误读为"T3 更差"。
 - **Paid-run readiness 判断不变：** value matrix 框架就绪但 specific paper value model 未选定；progress table 已 calibrate 但有 selection-bias confound，不能直接插入 routing formula。仍需 de-bias 或 held-out calibration。
@@ -468,7 +491,7 @@
 - **Phase U (051)**：首次 3-policy value-stress experiment。5 tasks × 3 strategies (BO/SB/BF), 15/15 rows, $1.50。BF LOSES: 3/5 vs 4/5 PASS。BF 20% 更贵。First Claim 无独立证据。Second Claim 不支持。KV/cache downside 确认。详细报告：`paper1/docs/reports/051.md`。
 - **Phase T (050)**：P0 value matrix lookup fix (wrong schema: `matrix[profile]` vs `tasks[id].values[profile]`)。touched_file_paths text_regex 增强。049 smoke checker CLEAN。Expanded paid smoke 6/6 PASS ($0.66)。BF 36% 更便宜，56% 更高 Yield per Dollar。127 tests pass。详细报告：`paper1/docs/reports/050.md`。
 - **Phase S (049)**：Provider migration recovery + real preflight + paid smoke 4/4 PASS ($0.36)。Diagnose Phase R 401 as false blocker (missing `.env`)。Shell-sourcing keys for secure migration。BF 22% cheaper, 29% higher Yield per Dollar。详细报告：`paper1/docs/reports/049.md`。
-- **Phase O (045)**：Value Matrix + Progress Calibration 基础设施。4 种 ex-ante value profile（equal/difficulty/solve_rarity/combined）+ sensitivity analysis + 自定义 profile。Progress calibration 从 639 turns 确认 selection-bias caveat。LOCALIZATION progress signal 发现为死信号（0% rate）。AutoResearch 回归 186 + goal-loop smoke exit 0。272 tests pass。建议暂不启动 paid run。详细报告：`paper1/docs/reports/045.md`。
+- **Phase O (045)**：Value Matrix + Progress Calibration 基础设施。4 种 pre-registered value profile（equal/difficulty/solve_rarity/combined）+ sensitivity analysis + 自定义 profile。Progress calibration 从 639 turns 确认 selection-bias caveat。LOCALIZATION progress signal 发现为死信号（0% rate）。AutoResearch 回归 186 + goal-loop smoke exit 0。272 tests pass。建议暂不启动 paid run。详细报告：`paper1/docs/reports/045.md`。
 - **Phase N (044)**：Value-aware offline rescore。新增 `value_rescore.py`（equal/heuristic/custom profile）。030/031 re-score：BF 不赢 BO。Routing trace audit：second-claim evidence WEAK。建议暂不启动 paid run。32 tests pass。详细报告：`paper1/docs/reports/044.md`。
 - **Phase M (043)**：AutoResearch infra 验收 + paper doc 一致性审计。No-paid goal-loop smoke (2/2 PASS, exit 0)。186 tests pass。4 docs 审计无矛盾。takeaway.md 竞争定位段标注 pre-pivot 上下文。详细报告：`paper1/docs/reports/043.md`。
 - **Phase L (042)**：Real API goal-loop smoke。Dispatch wrapper (`<!-- WORKER:fake/worker:api -->`) + real API worker → goal-loop → deterministic review → all PASS。Push-path validated（secret scan / diff --check / test suite / commit / push）。总 API cost ~$0.002，远在 $0.05 cap 内。详细报告：`paper1/docs/reports/042.md`。

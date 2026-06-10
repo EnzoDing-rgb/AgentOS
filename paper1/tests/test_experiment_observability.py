@@ -67,7 +67,7 @@ def test_routing_observability_marks_equal_value_as_ablation() -> None:
     assert record["routing_policy_family"] == "bootstrap:value_aware_segment"
 
 
-def test_routing_observability_marks_ex_ante_value_as_diagnostic() -> None:
+def test_routing_observability_marks_pre_registered_value_as_diagnostic() -> None:
     record = {
         "routing": "budgetflow_value_aware",
         "task_value_profile": "bootstrap_difficulty",

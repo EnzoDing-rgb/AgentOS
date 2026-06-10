@@ -1,0 +1,93 @@
+{
+  "meta": {
+    "revision": "2026-06-10-t3x2",
+    "revision_note": "Diagnostic catalog: T3 input/output prices are 2x the calibrated transaction price. T1/T2 unchanged from default. This is NOT a real billing catalog — it normalizes the stronger-model price for mechanism-isolation sensitivity analysis. Use model_tiers.default.json for actual transaction prices.",
+    "schema_version": "v1"
+  },
+  "tiers": [
+    {
+      "tier": 1,
+      "backend": "tier1",
+      "model": "openai/qwen3-coder-flash",
+      "provider": "openai_compatible",
+      "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "api_key_env": "DASHSCOPE_API_KEY",
+      "display": "qwen3-coder-flash",
+      "cost_per_input_1m": 0.30,
+      "cost_per_output_1m": 1.50,
+      "token_cost_bands": [
+        {"max_input_tokens": 32000, "input_per_1m": 0.30, "output_per_1m": 1.50},
+        {"max_input_tokens": 128000, "input_per_1m": 0.50, "output_per_1m": 2.50},
+        {"max_input_tokens": 256000, "input_per_1m": 0.80, "output_per_1m": 4.00},
+        {"max_input_tokens": 1000000, "input_per_1m": 1.60, "output_per_1m": 9.60}
+      ],
+      "mean_output_tokens": 768,
+      "progress_score": 0.15,
+      "latency_ms": 500,
+      "progress_prior": {"localization": 0.50, "repair": 0.38, "validation": 0.45},
+      "escalation_patience": 4,
+      "max_turns": 20,
+      "protocol": "text_regex",
+      "cost_source": "Alibaba Cloud Model Studio pricing, qwen3-coder-flash series",
+      "cost_updated": "2026-06-07",
+      "cost_notes": "USD per 1M tokens, input-length tiered; cache discounts intentionally not assumed.",
+      "progress_source": "BudgetFlow heuristic prior, not yet empirically calibrated",
+      "progress_updated": "2026-06-07",
+      "progress_notes": "Must be sensitivity-checked before paper-scale paid runs."
+    },
+    {
+      "tier": 2,
+      "backend": "tier2",
+      "model": "openai/qwen3.7-plus",
+      "provider": "openai_compatible",
+      "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "api_key_env": "DASHSCOPE_API_KEY",
+      "display": "qwen3.7-plus",
+      "cost_per_input_1m": 0.28,
+      "cost_per_output_1m": 1.12,
+      "token_cost_bands": [
+        {"max_input_tokens": 256000, "input_per_1m": 0.28, "output_per_1m": 1.12},
+        {"max_input_tokens": 1000000, "input_per_1m": 0.84, "output_per_1m": 3.36}
+      ],
+      "mean_output_tokens": 1024,
+      "progress_score": 0.24,
+      "latency_ms": 1100,
+      "progress_prior": {"localization": 0.67, "repair": 0.65, "validation": 0.63},
+      "escalation_patience": 5,
+      "max_turns": 35,
+      "protocol": "text_regex",
+      "cost_source": "Alibaba Cloud Model Studio pricing, qwen3.7-plus",
+      "cost_updated": "2026-06-09",
+      "cost_notes": "Canonical USD estimate converted from public mainland/global CNY pricing: ¥2 input / ¥8 output per 1M tokens for <=256K input, ¥6 input / ¥24 output for 256K-1M, at ~7.14 CNY/USD; cache discounts and promotions intentionally not assumed.",
+      "progress_source": "BudgetFlow heuristic prior after catalog swap from qwen3.7-max to qwen3.7-plus; public benchmarks are close to Max but local BudgetFlow calibration is not yet established",
+      "progress_updated": "2026-06-09",
+      "progress_notes": "Treat first paid run after swap as a model-tier diagnostic; do not use as paper-scale evidence until sympy/mini-swe-agent behavior is inspected."
+    },
+    {
+      "tier": 3,
+      "backend": "tier3",
+      "model": "openai/gpt-5.4",
+      "provider": "openai_compatible",
+      "api_base": "https://api.aicode007.com/v1",
+      "api_key_env": "AICODE007_API_KEY",
+      "api_base_env": "AICODE007_BASE_URL",
+      "proxy_env": "AICODE007_HTTP_PROXY",
+      "display": "GPT-5.4",
+      "cost_per_input_1m": 0.588,
+      "cost_per_output_1m": 3.586,
+      "mean_output_tokens": 1024,
+      "progress_score": 0.25,
+      "latency_ms": 1200,
+      "progress_prior": {"localization": 0.68, "repair": 0.68, "validation": 0.66},
+      "escalation_patience": 5,
+      "max_turns": null,
+      "protocol": "text_regex",
+      "cost_source": "Normalized stronger-model diagnostic price (2× AICode007 GPT-5.4 transaction price). NOT a real billing price. Use model_tiers.default.json for actual transaction pricing.",
+      "cost_updated": "2026-06-10",
+      "cost_notes": "T3×2 diagnostic catalog for mechanism-isolation sensitivity analysis. Input=$0.588/1M, Output=$3.586/1M (2× calibrated ¥2.1/¥12.8 at ~7.14 CNY/USD). This is a normalized price, not a promotional or billing price. Real transaction price is in model_tiers.default.json.",
+      "progress_source": "BudgetFlow heuristic prior, not yet empirically calibrated",
+      "progress_updated": "2026-06-07",
+      "progress_notes": "Must be sensitivity-checked before paper-scale paid runs."
+    }
+  ]
+}

@@ -155,12 +155,12 @@ def load_policy_memory_context(
             resolved.append(path)
         sources = tuple(resolved)
         source_kind = "explicit"
-    elif resume and resume_path is not None and resume_path.is_file():
-        sources = (resume_path,)
-        source_kind = "resume"
     else:
-        sources = default_policy_memory_sources(runs_dir, exclude=exclude)
-        source_kind = "default_recent" if sources else ""
+        # PolicyMemory is opt-in. Must pass --policy-memory explicitly.
+        # Resume does NOT auto-enable PolicyMemory.
+        return PolicyMemoryContext(
+            None, LearnPolicyInputs.off("no_explicit_memory_path"), None, (), "", False, "no_explicit_memory_path"
+        )
 
     if not sources:
         return PolicyMemoryContext(
@@ -171,15 +171,10 @@ def load_policy_memory_context(
         return PolicyMemoryContext(
             None, LearnPolicyInputs.off("file_not_found"), missing[0], sources, source_kind, False, "file_not_found"
         )
-    unusable = [
-        path for path in sources
-        if not looks_like_policy_memory_source(path, require_current_schema=True)
-    ]
-    if unusable:
-        return PolicyMemoryContext(
-            None, LearnPolicyInputs.off("not_routing_run_jsonl"), unusable[0], sources, source_kind, False, "not_routing_run_jsonl"
-        )
 
+    # Explicit paths: always load and process every row. The source-level
+    # looks_like_policy_memory_source gate is for auto-detection (disabled).
+    # Per-row filtering is done by _memory_skip_reason in rebuild_from_records.
     memory = PolicyMemory(regret_threshold=regret_threshold)
     records: list[dict] = []
     for source_index, source in enumerate(sources):
@@ -191,8 +186,6 @@ def load_policy_memory_context(
                 record = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if not _record_has_current_memory_schema(record):
-                continue
             record["_policy_memory_schema"] = "current"
             record["_policy_memory_weight"] = weight
             record["_policy_memory_source"] = str(source)
@@ -200,6 +193,13 @@ def load_policy_memory_context(
             records.append(record)
     memory.rebuild_from_records(records)
     memory._source_path = ",".join(str(path) for path in sources)
+
+    if memory._records_accepted == 0:
+        return PolicyMemoryContext(
+            memory, LearnPolicyInputs.off("no_accepted_memory_records"),
+            sources[0], sources, source_kind, False, "no_accepted_memory_records"
+        )
+
     bundle = LearnPolicyInputs.built_in(
         routing=memory,
         escalation=memory,

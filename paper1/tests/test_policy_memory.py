@@ -31,6 +31,7 @@ def _record(**overrides) -> dict:
         "task_set_kind": "familiar",
         "policy_kind": "bootstrap",
         "learn_policy_input_views": ["routing", "escalation"],
+        "harness_trust": "trusted",
     }
     record.update(overrides)
     return record

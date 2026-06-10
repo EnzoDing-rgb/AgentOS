@@ -6,16 +6,17 @@ from ..adaptive_routing import AdaptiveRoutingState
 from ..defaults import (
     BUDGET_PRESSURE_INIT,
     ModelCatalog,
-    PROGRESS_TABLE,
-    TIER_ESCALATION_PATIENCE,
     W_I,
     active_w_i,
     active_w_i_profile_name,
+    progress_table,
+    tier_escalation_patience,
 )
 from ..frozen_router import FrozenRouterPlan
 from ..policies import BudgetOnlyStepRouter, BudgetOnlyT2Router, WorkflowLevelRouter
 from ..policy_backend import BootstrapPolicy, PolicyDecision
 from ..selector import BudgetFlowSelector, ConservativeSelector, RouterDecision, ValueAwareSelector
+from ..tier_frontier import TierFrontier
 from ..types import Backend, ProgressTable, Stage, TurnInfo
 
 
@@ -34,23 +35,28 @@ class RoutingContext:
     workflow_router: WorkflowLevelRouter | None = None
     bootstrap_policy: BootstrapPolicy | None = None
     frozen_plan: FrozenRouterPlan | None = None
+    tier_frontier: TierFrontier | None = None
     last_decision: RouterDecision | None = None
     last_policy_decision: PolicyDecision | None = None
     last_backend: Backend | None = None
+    max_tier: int | None = None
+    max_tier_before_frontier: int | None = None
+    max_tier_pressure_threshold: float | None = None
     task_value: float = 1.0
     median_task_value: float = 1.0
 
 
 def build_progress_table_from_defaults(backends: list[Backend]) -> ProgressTable:
-    table: ProgressTable = {stage: {} for stage in PROGRESS_TABLE}
+    pt = progress_table()
+    table: ProgressTable = {stage: {} for stage in pt}
     defaults_by_tier: dict[int, str] = {}
-    for stage, values in PROGRESS_TABLE.items():
+    for stage, values in pt.items():
         for default_backend in values:
             # The default backend names are stable tier ids ("tier1", ...).
             if default_backend.startswith("tier") and default_backend[4:].isdigit():
                 defaults_by_tier[int(default_backend[4:])] = default_backend
     for backend in sorted(backends, key=lambda backend: backend.tier):
-        for stage, values in PROGRESS_TABLE.items():
+        for stage, values in pt.items():
             canonical_name = backend.name if backend.name in values else defaults_by_tier.get(backend.tier)
             if canonical_name is None:
                 raise KeyError(f"no progress prior for backend={backend.name} tier={backend.tier}")
@@ -72,6 +78,7 @@ def build_routing_context(
     ordered = sorted(backends, key=lambda backend: backend.tier)
     pressure = BUDGET_PRESSURE_INIT if budget_pressure is None else budget_pressure
     selector = BudgetFlowSelector(build_progress_table_from_defaults(backends))
+    frontier = TierFrontier.from_catalog()
     ctx = RoutingContext(
         strategy=strategy,
         backends=ordered,
@@ -83,6 +90,7 @@ def build_routing_context(
         task_value=task_value,
         median_task_value=median_task_value,
         frozen_plan=frozen_plan,
+        tier_frontier=frontier,
     )
     if strategy == "workflow_level":
         ctx.workflow_router = WorkflowLevelRouter()
@@ -134,12 +142,13 @@ def _backend_by_tier(backends: list[Backend], tier: int) -> Backend:
 def _budgetflow_max_tier(ctx: RoutingContext) -> int:
     """Maximum tier for budgetflow_full / budgetflow_conservative on this step.
 
-    Default cap is the second available tier when present. Further escalation is
-    gated by _apply_progress_escalation (per-tier patience), not by the selector.
+    Default cap is the second available tier. When the tier frontier calibration
+    signals that the strongest tier is cheap and capable, the default cap is
+    lifted to the strongest tier — the selector still decides per-turn based on
+    cost/progress tradeoffs, but is not artificially capped at T2.
+
     If the previous step already used a higher tier, keep it to avoid ping-pong.
-    When budget pressure is elevated, lift the cap — the fixed selector formula
-    (pressure >= upgrade_threshold) already prefers T2 at low pressure and only
-    picks the strongest tier when the cost/progress tradeoff justifies it.
+    When budget pressure is elevated, lift the cap unconditionally.
     If adaptive routing recommends a higher starting tier, honour it.
 
     Conservative variant uses a lower pressure threshold (0.05 vs 0.15) because
@@ -148,19 +157,47 @@ def _budgetflow_max_tier(ctx: RoutingContext) -> int:
     """
     cheapest = ModelCatalog.cheapest(ctx.backends)
     strongest = ModelCatalog.strongest(ctx.backends)
-    default_cap = ModelCatalog.second_cheapest(ctx.backends).tier
+    second = ModelCatalog.second_cheapest(ctx.backends)
+    frontier = ctx.tier_frontier
+
+    # When tier frontier says early T3 access is warranted, default to
+    # strongest tier; otherwise stick with second-cheapest as the cap floor.
+    # Before-frontier baseline: what the old hardcoded rule would produce
+    # (default_cap = second.tier, pressure threshold = 0.15).
+    before_default = second.tier
+    max_tier_before = max(cheapest.tier, min(before_default, strongest.tier))
+    if ctx.budget_pressure >= 0.15:
+        max_tier_before = strongest.tier
+
+    if frontier is not None and frontier.early_allow_strongest:
+        default_cap = strongest.tier
+    else:
+        default_cap = second.tier
+
     max_tier: int = max(cheapest.tier, min(default_cap, strongest.tier))
+    ctx.max_tier_before_frontier = max_tier_before
     if ctx.last_backend is not None and ctx.last_backend.tier > max_tier:
         max_tier = ctx.last_backend.tier
-    # Conservative selector has its own restraint mechanism — let it access
-    # the strongest tier earlier to avoid double-penalizing escalation decisions.
-    strongest_threshold: float = 0.05 if ctx.strategy in ("budgetflow_conservative", "budgetflow_value_aware") else 0.15
+    # Pressure threshold: when budget_pressure crosses this value the
+    # strongest tier is unconditionally allowed.  Conservative and value-aware
+    # selectors have their own conservation mechanism, so they use a lower
+    # threshold (0.05) to avoid double-penalizing escalation.  When the
+    # frontier provides a threshold, use it; otherwise hardcode based on
+    # selector type.
+    if frontier is not None:
+        strongest_threshold = frontier.max_tier_pressure_threshold()
+    elif ctx.strategy in ("budgetflow_conservative", "budgetflow_value_aware"):
+        strongest_threshold = 0.05
+    else:
+        strongest_threshold = 0.15
+    ctx.max_tier_pressure_threshold = strongest_threshold
     if ctx.budget_pressure >= strongest_threshold:
         max_tier = strongest.tier
     if ctx.adaptive is not None:
         start_tier = ctx.adaptive.starting_tier()
         if start_tier > max_tier:
             max_tier = start_tier
+    ctx.max_tier = max_tier
     return max_tier
 
 
@@ -274,11 +311,11 @@ def choose_backend(ctx: RoutingContext, turn: TurnInfo, expected_costs: dict[str
         return chosen
 
     # ── Mechanism-first strategies ──────────────────────────────────────────
-    if ctx.strategy == "bare_strong":
+    if ctx.strategy == "bare_t3":
         backend = ModelCatalog.strongest(ctx.backends)
         ctx.last_decision = RouterDecision(
-            backend=backend, reason="bare_strong_fixed",
-            scores={}, pressure=ctx.budget_pressure, branch="bare_strong",
+            backend=backend, reason="bare_t3_fixed",
+            scores={}, pressure=ctx.budget_pressure, branch="bare_t3",
         )
         return backend
 

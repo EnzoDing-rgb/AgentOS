@@ -76,7 +76,7 @@ def test_3x3_selects_mechanism_isolation_strategies_and_parallel_jobs() -> None:
     names = {s.name for s in selection.strategies}
 
     assert names == {
-        "bare_strong_model",
+        "bare_t3_baseline",
         "enterprise_router_baseline",
         "budgetflow_same_router",
     }
@@ -116,7 +116,7 @@ def test_batch_budget_modes_frozen_router_caps_for_mechanism_strategies() -> Non
     strategies = (
         CompareStrategy("enterprise_router_baseline", "enterprise_router"),
         CompareStrategy("budgetflow_same_router", "budgetflow_same_router"),
-        CompareStrategy("bare_strong_model", "bare_strong"),
+        CompareStrategy("bare_t3_baseline", "bare_t3"),
     )
     frozen_caps = {"task-a": 0.25, "task-b": 0.50}
     modes = build_batch_budget_modes(
@@ -129,10 +129,10 @@ def test_batch_budget_modes_frozen_router_caps_for_mechanism_strategies() -> Non
 
     assert modes.budget_modes["enterprise_router_baseline"] == "frozen_router_caps"
     assert modes.budget_modes["budgetflow_same_router"] == "frozen_router_caps"
-    assert modes.budget_modes["bare_strong_model"] == "shared"
+    assert modes.budget_modes["bare_t3_baseline"] == "shared"
     assert modes.batch_caps["enterprise_router_baseline"] == pytest.approx(0.75)
     assert modes.batch_caps["budgetflow_same_router"] == pytest.approx(0.75)
-    assert modes.batch_caps["bare_strong_model"] == pytest.approx(1.0)
+    assert modes.batch_caps["bare_t3_baseline"] == pytest.approx(1.0)
 
 
 def test_batch_budget_modes_frozen_caps_override_dynamic_caps() -> None:

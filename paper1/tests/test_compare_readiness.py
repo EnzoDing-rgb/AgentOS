@@ -157,7 +157,7 @@ def test_readiness_blocks_skipping_provider_signature_check() -> None:
     report = build_compare_readiness_report(
         args=_args(no_provider_signature_check=True),
         tasks=[SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",))],
-        strategies=(CompareStrategy("bare_strong_model", "bare_strong"),),
+        strategies=(CompareStrategy("bare_t3_baseline", "bare_t3"),),
         policy_jobs=1,
         value_context=value_context,
         catalog_issues=[],
@@ -245,11 +245,13 @@ def test_readiness_accepts_frozen_plan_covering_selected_tasks(tmp_path) -> None
     assert "frozen_plan_planned_cap=0.2000" in report.facts
 
 
-def test_readiness_blocks_budget_mismatch_with_frozen_plan_hard_cap(tmp_path) -> None:
+def test_readiness_blocks_budget_mismatch_with_frozen_plan_selected_cap_sum(tmp_path) -> None:
+    """Explicit --budget that does not match selected cap sum blocks the run."""
     plan = tmp_path / "frozen_plan.json"
     plan.write_text(
-        '{"meta":{"name":"unit_plan","hard_cap_usd":0.2},'
-        '"plan":{"task-a":{"preferred_model":"tier2","base_cap":0.2,"priority":1}}}'
+        '{"meta":{"name":"unit_plan","hard_cap_usd":1.5},'
+        '"plan":{"task-a":{"preferred_model":"tier2","base_cap":0.2,"priority":1},'
+        '"task-b":{"preferred_model":"tier3","base_cap":0.5,"priority":2}}}'
     )
     value_context = ValueEfficiencyContext()
     value_context.init(value_profile="equal")
@@ -267,8 +269,72 @@ def test_readiness_blocks_budget_mismatch_with_frozen_plan_hard_cap(tmp_path) ->
     )
 
     assert not report.ok
-    assert "frozen_plan_hard_cap=0.2000" in report.facts
-    assert any("does not match frozen plan hard_cap_usd" in issue for issue in report.blocking)
+    assert "frozen_plan_selected_cap_sum=0.2000" in report.facts
+    assert any("does not match frozen plan selected cap sum" in issue for issue in report.blocking)
+
+
+def test_readiness_allows_budget_matching_selected_cap_sum(tmp_path) -> None:
+    """Explicit --budget that matches selected cap sum passes readiness."""
+    plan = tmp_path / "frozen_plan.json"
+    plan.write_text(
+        '{"meta":{"name":"unit_plan","hard_cap_usd":0.7},'
+        '"plan":{"task-a":{"preferred_model":"tier2","base_cap":0.2,"priority":1},'
+        '"task-b":{"preferred_model":"tier3","base_cap":0.5,"priority":2}}}'
+    )
+    value_context = ValueEfficiencyContext()
+    value_context.init(value_profile="equal")
+
+    report = build_compare_readiness_report(
+        args=_args(frozen_plan=str(plan), budget=0.7),
+        tasks=[
+            SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",)),
+            SimpleNamespace(instance_id="task-b", test_patch="diff", fail_to_pass=("test_b",)),
+        ],
+        strategies=(CompareStrategy("budgetflow_same_router", "budgetflow_same_router"),),
+        policy_jobs=1,
+        value_context=value_context,
+        catalog_issues=[],
+        runtime_root=Path("/tmp/budgetflow-runtime"),
+        auto_budget_enabled=False,
+        auto_budget_caps=None,
+    )
+
+    assert report.ok
+    assert "frozen_plan_selected_cap_sum=0.7000" in report.facts
+    assert "budget_source=cli" in report.facts
+    assert "budget=0.7000" in report.facts
+
+
+def test_readiness_auto_budget_when_no_explicit_budget(tmp_path) -> None:
+    """Without --budget, source is frozen_plan_cap_sum and value is selected cap sum."""
+    plan = tmp_path / "frozen_plan.json"
+    plan.write_text(
+        '{"meta":{"name":"unit_plan","hard_cap_usd":0.7},'
+        '"plan":{"task-a":{"preferred_model":"tier2","base_cap":0.2,"priority":1},'
+        '"task-b":{"preferred_model":"tier3","base_cap":0.5,"priority":2}}}'
+    )
+    value_context = ValueEfficiencyContext()
+    value_context.init(value_profile="equal")
+
+    report = build_compare_readiness_report(
+        args=_args(frozen_plan=str(plan)),
+        tasks=[
+            SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",)),
+            SimpleNamespace(instance_id="task-b", test_patch="diff", fail_to_pass=("test_b",)),
+        ],
+        strategies=(CompareStrategy("budgetflow_same_router", "budgetflow_same_router"),),
+        policy_jobs=1,
+        value_context=value_context,
+        catalog_issues=[],
+        runtime_root=Path("/tmp/budgetflow-runtime"),
+        auto_budget_enabled=False,
+        auto_budget_caps=None,
+    )
+
+    assert report.ok
+    assert "frozen_plan_selected_cap_sum=0.7000" in report.facts
+    assert "budget_source=frozen_plan_cap_sum" in report.facts
+    assert "budget=0.7000" in report.facts
 
 
 def test_readiness_blocks_tasks_without_verifiable_harness_metadata() -> None:
@@ -281,7 +347,7 @@ def test_readiness_blocks_tasks_without_verifiable_harness_metadata() -> None:
             SimpleNamespace(instance_id="missing-test-patch", test_patch="", fail_to_pass=("test_a",)),
             SimpleNamespace(instance_id="missing-f2p", test_patch="diff", fail_to_pass=()),
         ],
-        strategies=(CompareStrategy("bare_strong_model", "bare_strong"),),
+        strategies=(CompareStrategy("bare_t3_baseline", "bare_t3"),),
         policy_jobs=1,
         value_context=value_context,
         catalog_issues=[],

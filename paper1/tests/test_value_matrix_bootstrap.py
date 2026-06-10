@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from budgetflow.value_matrix import build_bootstrap_value_matrix
 
 
-def test_bootstrap_value_matrix_uses_only_ex_ante_task_features() -> None:
+def test_bootstrap_value_matrix_uses_only_pre_registered_task_features() -> None:
     task = SimpleNamespace(
         instance_id="repo__task",
         repo="repo/project",
@@ -20,7 +20,7 @@ def test_bootstrap_value_matrix_uses_only_ex_ante_task_features() -> None:
     entry = matrix["tasks"]["repo__task"]
 
     assert matrix["meta"]["profiles"] == ["equal", "bootstrap_difficulty"]
-    assert matrix["meta"]["source_class"] == "bootstrap_ex_ante_metadata"
+    assert matrix["meta"]["source_class"] == "bootstrap_pre_registered_metadata"
     assert matrix["meta"]["outcome_free"] is True
     assert entry["features"]["patch_lines"] == 2
     assert entry["values"]["equal"] == 1.0

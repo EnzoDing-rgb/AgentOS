@@ -38,6 +38,14 @@ def format_compact_audit(audit: dict) -> str:
     if audit.get("policy_memory_used"):
         lines.append(f"  policy_memory_source={audit.get('policy_memory_source', '?')}  "
                      f"prior_records={audit.get('prior_records', 0)}")
+        mf = audit.get("memory_filtering")
+        if mf:
+            lines.append(
+                f"  memory_filtering: seen={mf.get('records_seen', 0)} "
+                f"accepted={mf.get('records_accepted', 0)} "
+                f"skipped={mf.get('records_skipped', 0)} "
+                f"skip_reasons={mf.get('skip_reasons', {})}"
+            )
     if audit.get("value_profile"):
         lines.append(f"  value_profile={audit.get('value_profile')}  "
                      f"value_objective={audit.get('value_objective') or '-'}")
@@ -57,7 +65,10 @@ def format_compact_audit(audit: dict) -> str:
     if any("yield_score" in s for s in audit["by_strategy"].values()):
         lines.append(banner)
         lines.append("PAPER METRICS")
-        lines.append(f"{'strategy':<26} {'res_value':>9} {'task_value':>10} {'Yield':>7} {'coverage':>8} {'Yield/$':>9} {'abort$':>8}")
+        lines.append(
+            f"{'strategy':<26} {'res_value':>9} {'task_value':>10} {'Yield':>7} "
+            f"{'coverage':>8} {'Yield/total$':>13} {'Yield/score$':>13} {'abort$':>8}"
+        )
         lines.append("-" * 64)
         for strat in sorted(audit["by_strategy"]):
             s = audit["by_strategy"][strat]
@@ -66,14 +77,15 @@ def format_compact_audit(audit: dict) -> str:
                 f"{s.get('total_task_value', 0.0):>10.2f} "
                 f"{s.get('yield_score', 0.0):>7.2f} "
                 f"{s.get('yield_coverage', 0.0):>8.2f} "
-                f"{s.get('yield_per_dollar', 0.0):>9.2f} "
+                f"{s.get('yield_per_total_dollar', s.get('yield_per_dollar', 0.0)):>13.2f} "
+                f"{s.get('yield_per_scoreable_dollar', s.get('yield_per_dollar', 0.0)):>13.2f} "
                 f"${s.get('abort_cost', 0.0):>7.2f}"
             )
 
     if audit.get("task_set_metrics"):
         lines.append(banner)
         lines.append("TASK SET METRICS")
-        lines.append(f"{'kind':<10} {'task_set':<14} {'strategy':<26} {'rows':>5} {'P':>3} {'F':>3} {'A':>3} {'cost':>8} {'Yield':>7} {'Yield/$':>9}")
+        lines.append(f"{'kind':<10} {'task_set':<14} {'strategy':<26} {'rows':>5} {'P':>3} {'F':>3} {'A':>3} {'cost':>8} {'Yield':>7} {'Yield/score$':>10}")
         lines.append("-" * 104)
         for kind in sorted(audit["task_set_metrics"]):
             for task_set in sorted(audit["task_set_metrics"][kind]):
@@ -98,22 +110,23 @@ def format_compact_audit(audit: dict) -> str:
                 f"${cs['cost']:>7.2f} {_format_tier_turns(cs.get('tier_turns') or {}):>18}"
             )
 
-    control_delta = audit.get("segment_control_delta") or {}
+    control_delta = audit.get("mechanism_isolation_delta") or {}
     if control_delta:
         lines.append(banner)
         lines.append("MECHANISM ISOLATION DELTA")
         lines.append(
-            f"{control_delta['segment_aware_strategy']} - {control_delta['task_level_control']}: "
+            f"{control_delta['mechanism_strategy']} - {control_delta['baseline_strategy']}: "
             f"delta_pass={control_delta['delta_pass']} "
             f"delta_cost=${control_delta['delta_cost']:.4f} "
             f"delta_yield={control_delta['delta_yield']:.4f} "
-            f"delta_yield_per_dollar={control_delta['delta_yield_per_dollar']:.4f}"
+            f"delta_yield_per_dollar={control_delta['delta_yield_per_dollar']:.4f} "
+            f"delta_yield_per_total_dollar={control_delta.get('delta_yield_per_total_dollar', 0.0):.4f}"
         )
-        if "bare_strong_pass" in control_delta:
+        if "bare_t3_pass" in control_delta:
             lines.append(
-                f"  bare_strong_model: pass={control_delta['bare_strong_pass']} "
-                f"cost=${control_delta['bare_strong_cost']:.4f} "
-                f"yield={control_delta['bare_strong_yield']:.4f}"
+                f"  bare_t3_baseline: pass={control_delta['bare_t3_pass']} "
+                f"cost=${control_delta['bare_t3_cost']:.4f} "
+                f"yield={control_delta['bare_t3_yield']:.4f}"
             )
 
     # Failure axis

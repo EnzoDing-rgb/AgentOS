@@ -47,32 +47,43 @@ def active_w_i() -> dict[Stage, float]:
     return W_I_PROFILES.get(name, W_I)
 
 
-PROGRESS_TABLE: dict[Stage, dict[str, float]] = {
-    stage: {
-        config.backend: config.progress_prior[stage.value]
-        for config in MODEL_CATALOG.configs
-        if stage.value in config.progress_prior
-    }
-    for stage in Stage
-}
-
 # Scale factor for upgrade thresholds:
 # upgrade_threshold = delta_cost / (delta_progress * SCALE * w_i).
 PROGRESS_SCALE: float = 0.3
 
-# Per-tier routing controls. These are still policy parameters, but they are
-# keyed by tier number so a provider/model swap does not touch routing code.
-TIER_ESCALATION_PATIENCE: dict[int, int] = {
-    config.tier: config.escalation_patience
-    for config in MODEL_CATALOG.configs
-    if config.escalation_patience is not None
-}
 
-TIER_MAX_TURNS: dict[int, int] = {
-    config.tier: config.max_turns
-    for config in MODEL_CATALOG.configs
-    if config.max_turns is not None
-}
+def progress_table() -> dict[Stage, dict[str, float]]:
+    """Progress priors from the currently loaded MODEL_CATALOG.
+
+    Dynamic so that ``--model-catalog`` takes effect even when the catalog is
+    loaded after import time.
+    """
+    return {
+        stage: {
+            config.backend: config.progress_prior[stage.value]
+            for config in MODEL_CATALOG.configs
+            if stage.value in config.progress_prior
+        }
+        for stage in Stage
+    }
+
+
+def tier_escalation_patience() -> dict[int, int]:
+    """Per-tier escalation patience from the currently loaded catalog."""
+    return {
+        config.tier: config.escalation_patience
+        for config in MODEL_CATALOG.configs
+        if config.escalation_patience is not None
+    }
+
+
+def tier_max_turns() -> dict[int, int]:
+    """Per-tier turn caps from the currently loaded catalog."""
+    return {
+        config.tier: config.max_turns
+        for config in MODEL_CATALOG.configs
+        if config.max_turns is not None
+    }
 
 # After the strongest tier stalls, fall back to this tier when available.
 STRONGEST_DOWNGRADE_TIER = 2
@@ -111,18 +122,3 @@ UNCAPPED_BUDGET_THRESHOLD = 1_000_000.0
 
 # Convenience labels for banners and legacy diagnostic scripts. Runtime routing
 # must use MODEL_CATALOG / ModelCatalog instead of assuming exactly three tiers.
-TIER1_MODEL = TIER_CONFIGS[TIER1_BACKEND].model
-TIER2_MODEL = TIER_CONFIGS[TIER2_BACKEND].model
-TIER3_MODEL = TIER_CONFIGS[TIER3_BACKEND].model
-
-TIER1_DISPLAY = TIER_CONFIGS[TIER1_BACKEND].display
-TIER2_DISPLAY = TIER_CONFIGS[TIER2_BACKEND].display
-TIER3_DISPLAY = TIER_CONFIGS[TIER3_BACKEND].display
-
-TIER_DISPLAY_BY_BACKEND: dict[str, str] = {
-    backend: config.display for backend, config in TIER_CONFIGS.items()
-}
-
-TIER_MODEL_BY_BACKEND: dict[str, str] = {
-    backend: config.model for backend, config in TIER_CONFIGS.items()
-}

@@ -157,7 +157,7 @@ class TestMechanismStrategiesRegistered:
         from budgetflow.experiments.compare_config import strategy_catalog
 
         names = {s.name for s in strategy_catalog()}
-        assert "bare_strong_model" in names
+        assert "bare_t3_baseline" in names
         assert "enterprise_router_baseline" in names
         assert "budgetflow_same_router" in names
 
@@ -165,7 +165,7 @@ class TestMechanismStrategiesRegistered:
         from budgetflow.experiments.compare_config import mechanism_strategy_names
 
         names = mechanism_strategy_names()
-        assert names == {"bare_strong_model", "enterprise_router_baseline", "budgetflow_same_router"}
+        assert names == {"bare_t2_baseline", "bare_t3_baseline", "enterprise_router_baseline", "budgetflow_same_router"}
 
 
 class TestFrozenPlanRouting:
@@ -200,7 +200,7 @@ class TestFrozenPlanRouting:
         assert backend.tier == 3
         assert ctx.last_decision.branch == "enterprise_router"
 
-    def test_bare_strong_ignores_frozen_plan(self):
+    def test_bare_t3_ignores_frozen_plan(self):
         from budgetflow.adapter.strategies import build_routing_context, choose_backend
         from budgetflow.frozen_router import FrozenPlanEntry, FrozenRouterPlan
         from budgetflow.types import Stage, TurnInfo
@@ -210,7 +210,7 @@ class TestFrozenPlanRouting:
             plan={"test_task": FrozenPlanEntry("test_task", "tier2", 0.3, 1)},
         )
         ctx = build_routing_context(
-            "bare_strong",
+            "bare_t3",
             self._backends(),
             budget_pressure=0.1,
             frozen_plan=plan,
@@ -220,9 +220,9 @@ class TestFrozenPlanRouting:
             stage=Stage.REPAIR, w_i=1.0, context_len=1000,
         )
         backend = choose_backend(ctx, turn, {"tier2": 0.01, "tier3": 0.05})
-        # bare_strong always picks strongest
+        # bare_t3 always picks strongest
         assert backend.tier == 3
-        assert ctx.last_decision.branch == "bare_strong"
+        assert ctx.last_decision.branch == "bare_t3"
 
     def test_budgetflow_same_router_keeps_frozen_plan_model(self):
         from budgetflow.adapter.strategies import build_routing_context, choose_backend
@@ -275,10 +275,10 @@ class TestFrozenPlanRouting:
     def test_observability_policy_kind_for_new_strategies(self):
         from budgetflow.experiment_observability import enrich_routing_observability
 
-        record = {"routing": "bare_strong"}
+        record = {"routing": "bare_t3"}
         enrich_routing_observability(record)
         assert record["policy_kind"] == "bare_harness"
-        assert record["policy_role"] == "bare_strongest_baseline"
+        assert record["policy_role"] == "bare_t3_baseline"
 
         record = {"routing": "enterprise_router"}
         enrich_routing_observability(record)
@@ -289,3 +289,52 @@ class TestFrozenPlanRouting:
         enrich_routing_observability(record)
         assert record["policy_kind"] == "mechanism"
         assert record["policy_role"] == "mechanism_with_frozen_router"
+
+
+class TestSelectedCapSum:
+    """Frozen plan budget auto-compute from selected-task cap sum."""
+
+    @staticmethod
+    def _twelve_task_ids() -> list[str]:
+        return [
+            "sympy__sympy-13480", "sympy__sympy-14774", "sympy__sympy-16988",
+            "sympy__sympy-20212", "sympy__sympy-12419", "sympy__sympy-19007",
+            "sympy__sympy-20154", "sympy__sympy-20639", "sympy__sympy-15011",
+            "sympy__sympy-16792", "sympy__sympy-21055", "sympy__sympy-23117",
+        ]
+
+    def test_4x12_selected_cap_sum_is_2_70(self):
+        from budgetflow.frozen_router import load_frozen_plan
+
+        plan_path = Path(__file__).resolve().parents[1] / "docs/reports/mainline_4x12_frozen_router_plan.json"
+        plan = load_frozen_plan(plan_path)
+        task_ids = self._twelve_task_ids()
+        cap_sum = plan.selected_cap_sum(task_ids)
+        assert cap_sum == pytest.approx(2.70)
+
+    def test_subset_cap_sum_only_sums_selected(self):
+        from budgetflow.frozen_router import load_frozen_plan
+
+        plan_path = Path(__file__).resolve().parents[1] / "docs/reports/mainline_4x12_frozen_router_plan.json"
+        plan = load_frozen_plan(plan_path)
+        subset = ["sympy__sympy-13480", "sympy__sympy-16988"]
+        cap_sum = plan.selected_cap_sum(subset)
+        expected = plan.lookup("sympy__sympy-13480").base_cap + plan.lookup("sympy__sympy-16988").base_cap
+        assert cap_sum == pytest.approx(expected)
+        assert cap_sum == pytest.approx(0.48)  # 0.18 + 0.30
+
+    def test_selected_cap_sum_empty_list_returns_zero(self):
+        from budgetflow.frozen_router import FrozenPlanEntry, FrozenRouterPlan
+        plan = FrozenRouterPlan(
+            name="test",
+            plan={"task_a": FrozenPlanEntry("task_a", "tier2", 0.3, 1)},
+        )
+        assert plan.selected_cap_sum([]) == 0.0
+
+    def test_selected_cap_sum_unknown_id_skipped(self):
+        from budgetflow.frozen_router import FrozenPlanEntry, FrozenRouterPlan
+        plan = FrozenRouterPlan(
+            name="test",
+            plan={"task_a": FrozenPlanEntry("task_a", "tier2", 0.3, 1)},
+        )
+        assert plan.selected_cap_sum(["task_a", "unknown"]) == 0.3

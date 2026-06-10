@@ -32,6 +32,7 @@ TEST_FILE_PURPOSES = {
     "test_runner_exit_status.py": "runtime-adapter",
     "test_stall_guard.py": "stop-loss",
     "test_swebench_adapters.py": "swebench-adapter",
+    "test_tier_frontier.py": "tier-frontier-calibration",
     "test_trace_fields.py": "decision-observability",
     "test_test_inventory.py": "test-audit",
     "test_value_aware.py": "bootstrap-policy",

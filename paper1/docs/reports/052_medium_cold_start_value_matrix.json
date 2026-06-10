@@ -6,9 +6,9 @@
       "cold_start_difficulty"
     ],
     "source": "cold_start_task_set:medium:15",
-    "source_class": "cold_start_ex_ante_metadata",
+    "source_class": "cold_start_pre_registered_metadata",
     "outcome_free": true,
-    "note": "Cold-start task values use only ex-ante SWE-bench task metadata: patch lines, fail/pass test counts, problem words, and gold file count. No strategy outcome, cost, solve rarity, or BudgetFlow signal is used.",
+    "note": "Cold-start task values use only pre-registered SWE-bench task metadata: patch lines, fail/pass test counts, problem words, and gold file count. No strategy outcome, cost, solve rarity, or BudgetFlow signal is used.",
     "formula": "cold_start_difficulty = 1 + patch_lines + 2*f2p_count + log1p(p2p_count) + 0.01*problem_words + 1.5*gold_file_count"
   },
   "tasks": {

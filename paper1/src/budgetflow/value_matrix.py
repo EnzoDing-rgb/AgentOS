@@ -2,7 +2,7 @@
 
 Value Matrix:
   Generates a multi-profile value assignment for each task in the clean JSONL
-  universe. No BF-specific signals. All profiles are ex-ante or cross-strategy.
+  universe. No BF-specific signals. All profiles are pre-registered or cross-strategy.
 
   Profiles:
     equal              — 1.0 for every task (baseline)
@@ -100,7 +100,7 @@ def profile_difficulty(rec: TaskRecord) -> float:
     component to reflect that difficult-to-solve tasks are more valuable
     to solve correctly.
 
-    This is an ex-ante proxy — it uses only historical stats that exist
+    This is an pre-registered proxy — it uses only historical stats that exist
     before any single strategy is evaluated.
     """
     base = rec.avg_cost
@@ -191,7 +191,7 @@ PROFILES: dict[str, ValueFn] = {
 
 
 def bootstrap_task_features(task) -> dict[str, int]:
-    """Extract ex-ante task features used by the bootstrap value profile."""
+    """Extract pre-registered task features used by the bootstrap value profile."""
     return {
         "patch_lines": len(str(getattr(task, "patch", "") or "").splitlines()),
         "f2p_count": len(getattr(task, "fail_to_pass", ()) or ()),
@@ -227,10 +227,10 @@ def build_bootstrap_value_matrix(tasks: list, *, task_source: str) -> dict[str, 
             "task_count": len(tasks),
             "profiles": ["equal", "bootstrap_difficulty"],
             "source": task_source,
-            "source_class": "bootstrap_ex_ante_metadata",
+            "source_class": "bootstrap_pre_registered_metadata",
             "outcome_free": True,
             "note": (
-                "Bootstrap task values use only ex-ante SWE-bench task metadata: "
+                "Bootstrap task values use only pre-registered SWE-bench task metadata: "
                 "patch lines, fail/pass test counts, problem words, and gold file count. "
                 "No strategy outcome, cost, solve rarity, or BudgetFlow signal is used."
             ),
@@ -386,7 +386,7 @@ def build_value_matrix(
     meta: dict[str, Any] = {
         "task_count": len(records),
         "profiles": list(profiles.keys()),
-        "note": "All profiles are ex-ante or cross-strategy. No BF-specific signals.",
+        "note": "All profiles are pre-registered or cross-strategy. No BF-specific signals.",
     }
     if manifest_meta is not None:
         meta["manifest"] = manifest_meta.get("meta", {})
