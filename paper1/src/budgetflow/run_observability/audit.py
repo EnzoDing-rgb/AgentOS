@@ -7,6 +7,7 @@ from collections import Counter
 from budgetflow.failure_classification import (
     build_verdict,
     classify_failure,
+    compute_exit_owner,
     is_score_abort,
     is_score_pass,
     is_score_true_fail,
@@ -778,6 +779,8 @@ def build_compact_audit(records: list[dict]) -> dict:
         "memory_filtering": memory_filtering_summary,
         "verdict_owners": owner_counts,
         "verdict_axes": axis_counts,
+        "exit_owners": _exit_owner_counts(records),
+        "stagnation_owners": _stagnation_owner_counts(records),
         "harness_trust": trust_counts,
         "harness_owner": ht_owner_counts,
         "harness_severity": ht_severity_counts,
@@ -786,3 +789,28 @@ def build_compact_audit(records: list[dict]) -> dict:
         "task_set_metrics": _task_set_metrics(records),
         "per_task_comparison": _per_task_comparison(records, t3_tier),
     }
+
+
+def _exit_owner_counts(records: list[dict]) -> dict[str, int]:
+    """Count exit_owner across all non-pass records."""
+    counts: dict[str, int] = {}
+    for r in records:
+        if r.get("harness_resolved"):
+            continue
+        owner = compute_exit_owner(r)
+        counts[owner] = counts.get(owner, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _stagnation_owner_counts(records: list[dict]) -> dict[str, dict[str, int]]:
+    """Break down stagnation exits by exit_owner and exit_reason."""
+    by_owner: dict[str, dict[str, int]] = {}
+    for r in records:
+        reason = str(r.get("exit_reason") or "")
+        if not reason.startswith("stagnation_"):
+            continue
+        owner = compute_exit_owner(r)
+        if owner not in by_owner:
+            by_owner[owner] = {}
+        by_owner[owner][reason] = by_owner[owner].get(reason, 0) + 1
+    return by_owner

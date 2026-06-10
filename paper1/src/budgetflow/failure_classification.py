@@ -12,6 +12,29 @@ SCORE_TRUE_FAIL = "true_fail"
 SCORE_ABORT = "abort"
 SCOREABLE_STATUSES = frozenset({SCORE_PASS, SCORE_TRUE_FAIL})
 
+# ── Exit owner taxonomy ────────────────────────────────────────────────────
+
+EXIT_OWNER_BUDGETFLOW_STOPLOSS = "budgetflow_stoploss"
+EXIT_OWNER_AGENT_HARNESS = "agent_harness"
+EXIT_OWNER_PARSER_PROTOCOL = "parser_protocol"
+EXIT_OWNER_BUDGET_EXHAUSTED = "budget_exhausted"
+EXIT_OWNER_PROVIDER_ERROR = "provider_error"
+EXIT_OWNER_MODEL_CRASH = "model_crash"
+EXIT_OWNER_AGENT_EXIT = "agent_exit"
+EXIT_OWNER_UNKNOWN = "unknown"
+
+# Exit reasons that are exclusive to BudgetFlow mechanisms.
+_BUDGETFLOW_ONLY_STAGNATION = frozenset({
+    "post_patch_verified_stable",
+    "rescue_timeout_gold_edited",
+    "gold_edit_mid_tier_repair_limit",
+})
+
+# Strategies whose stagnation is attributed to agent_harness (NOT budgetflow).
+_BARE_OR_ENTERPRISE_ROUTINGS = frozenset({
+    "all_tier2", "bare_t3", "enterprise_router",
+})
+
 
 _INFRA_STATUSES = {
     "BadRequestError",
@@ -141,6 +164,70 @@ def is_scoreable(record: dict[str, Any]) -> bool:
     return score_status(record) in SCOREABLE_STATUSES
 
 
+def compute_exit_owner(record: dict[str, Any]) -> str:
+    """Infer which component owns an exit reason.
+
+    For existing JSONL rows that lack an explicit exit_owner field, this
+    reconstructs the most likely owner from strategy + exit_reason +
+    exit_status.  New runs should populate exit_owner at write time so this
+    fallback is only a post-hoc diagnostic.
+
+    Taxonomy:
+      budgetflow_stoploss — BudgetFlow-specific stop-loss/stagnation
+      agent_harness       — bare/enterprise strategies truncated by shared
+                            stagnation guard (BudgetFlowLitellmModel.check_stagnation)
+      parser_protocol     — format/parser errors (e.g. format_error_text_action)
+      budget_exhausted    — hard or soft budget exhausted
+      provider_error      — infra/provider failures
+      unknown             — cannot determine from available fields
+    """
+    # Explicit field takes precedence.
+    explicit = record.get("exit_owner")
+    if isinstance(explicit, str) and explicit:
+        return explicit
+
+    status = str(record.get("exit_status") or "")
+    reason = str(record.get("exit_reason") or "")
+    routing = str(record.get("routing") or "")
+
+    # Parser / protocol errors.
+    if reason.startswith("format_error_") or "format" in status.lower():
+        return EXIT_OWNER_PARSER_PROTOCOL
+
+    # Budget exhaustion.
+    if _is_budget_exit(status, reason):
+        return EXIT_OWNER_BUDGET_EXHAUSTED
+
+    # Provider / infra errors.
+    if _is_provider_unavailable(status, reason, _turn_error_types(record)):
+        return EXIT_OWNER_PROVIDER_ERROR
+    if _is_infra_exit(status):
+        return EXIT_OWNER_PROVIDER_ERROR
+
+    # Model-side crashes (NameError, etc.) — generated invalid code.
+    if status == "NameError":
+        return EXIT_OWNER_MODEL_CRASH
+
+    # Clean agent exits — agent finished, harness ran, task not resolved.
+    if status in ("HarnessFailed", "Submitted"):
+        return EXIT_OWNER_AGENT_EXIT
+
+    # Stagnation — the key distinction.
+    if reason.startswith("stagnation_") or reason in _BUDGETFLOW_ONLY_STAGNATION:
+        if reason in _BUDGETFLOW_ONLY_STAGNATION:
+            return EXIT_OWNER_BUDGETFLOW_STOPLOSS
+        # shared stagnation guard (check_stagnation) fires for ALL strategies.
+        # For bare baselines and enterprise_router, attribute to agent_harness.
+        if routing in _BARE_OR_ENTERPRISE_ROUTINGS:
+            return EXIT_OWNER_AGENT_HARNESS
+        # For budgetflow-* routing, attribute to budgetflow_stoploss.
+        if "budgetflow" in routing:
+            return EXIT_OWNER_BUDGETFLOW_STOPLOSS
+        return EXIT_OWNER_AGENT_HARNESS  # conservative default for unknown routing
+
+    return EXIT_OWNER_UNKNOWN
+
+
 def build_score_status(record: dict[str, Any]) -> dict[str, Any]:
     """Classify whether a row is scoreable evidence.
 
@@ -162,6 +249,8 @@ def build_score_status(record: dict[str, Any]) -> dict[str, Any]:
     trust_level = str(trust.get("harness_trust") or "")
     severity = str(trust.get("severity") or "")
 
+    exit_owner = compute_exit_owner(record)
+
     if resolved:
         if (
             axis == "pass"
@@ -176,6 +265,7 @@ def build_score_status(record: dict[str, Any]) -> dict[str, Any]:
                 "abort_owner": "",
                 "abort_stage": "",
                 "true_fail_reason": "",
+                "exit_owner": exit_owner,
             }
         return {
             "score_status": SCORE_ABORT,
@@ -184,6 +274,7 @@ def build_score_status(record: dict[str, Any]) -> dict[str, Any]:
             "abort_owner": owner if owner != "none" else str(trust.get("harness_owner") or "harness"),
             "abort_stage": stage if stage != "none" else "harness",
             "true_fail_reason": "",
+            "exit_owner": exit_owner,
         }
 
     abort_reason = ""
@@ -222,6 +313,7 @@ def build_score_status(record: dict[str, Any]) -> dict[str, Any]:
             "abort_owner": abort_owner or "infra",
             "abort_stage": abort_stage or "runtime",
             "true_fail_reason": "",
+            "exit_owner": exit_owner,
         }
 
     return {
@@ -231,6 +323,7 @@ def build_score_status(record: dict[str, Any]) -> dict[str, Any]:
         "abort_owner": "",
         "abort_stage": "",
         "true_fail_reason": axis or classify_failure(record),
+        "exit_owner": exit_owner,
     }
 
 

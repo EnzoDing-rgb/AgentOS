@@ -151,6 +151,16 @@ def format_compact_audit(audit: dict) -> str:
         lines.append("VERDICT AXES: " + " | ".join(
             f"{k}={v}" for k, v in sorted(audit["verdict_axes"].items())
         ))
+
+    # Exit owner breakdown
+    if audit.get("exit_owners"):
+        lines.append("EXIT OWNERS (non-pass): " + " | ".join(
+            f"{k}={v}" for k, v in sorted(audit["exit_owners"].items())
+        ))
+    if audit.get("stagnation_owners"):
+        for owner, reasons in sorted(audit["stagnation_owners"].items()):
+            detail = " | ".join(f"{r}={c}" for r, c in sorted(reasons.items()))
+            lines.append(f"  stagnation[{owner}]: {detail}")
     if audit.get("stored_verdict_mismatches"):
         lines.append(
             f"STORED VERDICT MISMATCHES: {audit['stored_verdict_mismatches']} "

@@ -6,6 +6,14 @@ from budgetflow.failure_classification import (
     build_score_status,
     build_verdict,
     classify_failure,
+    compute_exit_owner,
+    EXIT_OWNER_BUDGETFLOW_STOPLOSS,
+    EXIT_OWNER_AGENT_HARNESS,
+    EXIT_OWNER_PARSER_PROTOCOL,
+    EXIT_OWNER_BUDGET_EXHAUSTED,
+    EXIT_OWNER_PROVIDER_ERROR,
+    EXIT_OWNER_MODEL_CRASH,
+    EXIT_OWNER_AGENT_EXIT,
 )
 
 
@@ -435,3 +443,338 @@ def test_score_status_budget_exhaustion_with_trace_is_true_fail() -> None:
 
     assert score["score_status"] == "true_fail"
     assert score["true_fail_reason"] == "budget_fail"
+
+
+# ── Score status: model_fail/repair not aborted by harness trust ──────────
+
+def _model_fail_repair_nameerror_record(**overrides):
+    """NameError crash after extracting patch and editing gold file.
+
+    test_patch=ok + fail_before=fail ensures build_verdict routes to
+    model_fail (not harness_fail), matching real 5×14 NameError records.
+    """
+    return {
+        "harness_resolved": False,
+        "patch_extracted": True,
+        "patch_source": "submission",
+        "submitted_patch": "/tmp/patch.diff",
+        "agent_gold_edited": True,
+        "agent_gold_files": ["sympy/core/basic.py"],
+        "exit_status": "NameError",
+        "exit_reason": "NameError",
+        "detail": "compat=sympy/printing/latex.py; test_patch=ok; fail_before=fail; "
+                  "model_patch=Checking patch sympy/core/compatibility.py...; "
+                  "error: patch failed: sympy/core/compatibility.py:117",
+        "turn_trace_count": 5,
+        "turn_traces": [{"error_type": "NameError"}],
+        **overrides,
+    }
+
+
+def test_nameerror_model_fail_repair_is_true_fail_not_abort() -> None:
+    """NameError with model_fail axis and repair stage must be true_fail.
+
+    Regression: harness trust blocking/incomplete must not override a clear
+    model_fail at repair stage. The agent extracted a patch and edited the
+    gold file before crashing — the failure is the model's, not harness's.
+    """
+    rec = _model_fail_repair_nameerror_record()
+    verdict = build_verdict(rec)
+    assert verdict["verdict_axis"] == "model_fail"
+    assert verdict["failure_stage"] == "repair"
+    assert verdict["failure_owner"] == "model"
+
+    score = build_score_status(rec)
+    assert score["score_status"] == "true_fail", (
+        f"NameError + model_fail/repair must be true_fail, got {score['score_status']} "
+        f"abort_reason={score.get('abort_reason')}"
+    )
+    assert score["scoreable"] is True
+    assert classify_failure(rec) == "repair_fail"
+
+
+def test_nameerror_model_fail_repair_in_5x14_jsonl() -> None:
+    """Verify the fix against the exact 5×14 NameError records.
+
+    These 4 records are in data/runs/compare_14x5-0.jsonl. They all have:
+    - exit=NameError, patch_extracted=True, gold_edited=True
+    - verdict: axis=model_fail, stage=repair
+    - trust: incomplete, severity=blocking
+    They should be true_fail, not abort.
+    """
+    rec = _model_fail_repair_nameerror_record(
+        exit_status="NameError",
+        exit_reason="NameError",
+        turn_traces=[{"error_type": "NameError", "backend_tier": 3}],
+    )
+    score = build_score_status(rec)
+    assert score["score_status"] == "true_fail", (
+        f"Expected true_fail for 5×14 NameError record, got {score['score_status']}"
+    )
+    assert classify_failure(rec) == "repair_fail"
+
+
+def test_format_error_text_action_no_patch_is_abort() -> None:
+    """format_error_text_action with no patch extracted is protocol abort."""
+    rec = {
+        "harness_resolved": False,
+        "patch_extracted": False,
+        "agent_gold_edited": False,
+        "exit_status": "FormatError",
+        "exit_reason": "format_error_text_action",
+        "detail": "no model patch extracted",
+        "turn_trace_count": 1,
+    }
+    verdict = build_verdict(rec)
+    assert verdict["verdict_axis"] == "protocol_fail"
+    assert verdict["failure_stage"] == "extraction"
+
+    score = build_score_status(rec)
+    assert score["score_status"] == "abort"
+    assert score["abort_owner"] == "protocol"
+    assert classify_failure(rec) == "extract_fail"
+
+
+def test_harness_fail_blocking_incomplete_is_abort() -> None:
+    """Genuine harness_fail with blocking severity stays abort."""
+    rec = {
+        "harness_resolved": False,
+        "patch_extracted": True,
+        "patch_source": "submission",
+        "agent_gold_edited": True,
+        "agent_gold_files": ["sympy/core/basic.py"],
+        "exit_status": "StagnationExit",
+        "exit_reason": "stagnation_repeat_command",
+        "detail": "test_patch=fail; fail_before=unknown",
+        "turn_trace_count": 1,
+        "turn_traces": [{}],
+    }
+    verdict = build_verdict(rec)
+    assert verdict["verdict_axis"] == "harness_fail", (
+        f"Expected harness_fail axis, got {verdict['verdict_axis']}"
+    )
+
+    score = build_score_status(rec)
+    assert score["score_status"] == "abort", (
+        f"harness_fail + blocking must stay abort, got {score['score_status']}"
+    )
+    assert score["abort_reason"] == "untrusted_harness_evidence"
+
+
+def test_budget_exhausted_kept_as_abort_when_severity_blocking() -> None:
+    """budget_exhausted with blocking harness evidence stays abort.
+
+    The model exhausted budget before resolving — current design keeps this
+    as abort rather than true_fail. Ensure no regression from the model_fail
+    repair fix.
+    """
+    rec = _model_fail_repair_nameerror_record(
+        exit_status="BudgetFlowBudgetError",
+        exit_reason="budget_exhausted",
+        patch_extracted=True,
+        agent_gold_edited=False,
+        detail="test_patch=unknown; fail_before=unknown",
+    )
+    verdict = build_verdict(rec)
+    assert verdict["verdict_axis"] == "budget_fail"
+
+    score = build_score_status(rec)
+    # budget_exhausted with blocking severity + no gold_edit stays abort
+    assert score["score_status"] == "abort", (
+        f"budget_exhausted with blocking trust must stay abort, got {score['score_status']}"
+    )
+
+
+def test_model_fail_localization_stagnation_is_true_fail() -> None:
+    """model_fail at localization stage (no patch) is true_fail, not abort.
+
+    severity=warn for record with no patch extracted — not blocking enough
+    to abort. The model failed to localize, which is a real model failure.
+    """
+    rec = {
+        "harness_resolved": False,
+        "patch_extracted": False,
+        "agent_gold_edited": False,
+        "exit_status": "StagnationExit",
+        "exit_reason": "stagnation_no_progress",
+        "routing": "budgetflow_value_aware",
+        "turn_trace_count": 1,
+        "detail": "",
+        "turn_traces": [{}],
+    }
+    verdict = build_verdict(rec)
+    assert verdict["verdict_axis"] == "model_fail"
+    assert verdict["failure_stage"] == "localization"
+
+    score = build_score_status(rec)
+    assert score["score_status"] == "true_fail"
+    assert score["scoreable"] is True
+
+
+def test_all_5x14_aborts_match_expected_classification() -> None:
+    """End-to-end: the 10 aborts from 5×14 should split as 6+4 after fix.
+
+    Expected after fix:
+    - 6 abort (4 format_error_text_action + 1 budget_exhausted + 1
+      format_error_text_action/budgetflow_same_router)
+    - 4 true_fail (NameError + model_fail/repair)
+    """
+    import json
+    from pathlib import Path
+
+    jsonl = Path("paper1/data/runs/compare_14x5-0.jsonl")
+    if not jsonl.exists():
+        import pytest
+        pytest.skip("5×14 JSONL not available")
+
+    with jsonl.open() as f:
+        records = [json.loads(l) for l in f if l.strip()]
+
+    aborts = []
+    true_fails_from_abort = []
+    for r in records:
+        score = build_score_status(r)
+        stored = r.get("score_status")
+        if score["score_status"] == "abort":
+            aborts.append(r)
+        elif stored == "abort" and score["score_status"] == "true_fail":
+            true_fails_from_abort.append(r)
+
+    # 4 NameError records reclassified from abort → true_fail
+    assert len(true_fails_from_abort) == 4, (
+        f"Expected 4 reclassified NameError records, got {len(true_fails_from_abort)}"
+    )
+    for r in true_fails_from_abort:
+        assert r["agent_exit_reason"] == "NameError"
+        assert r["patch_extracted"] is True
+        assert r["agent_gold_edited"] is True
+
+    # 6 aborts remain
+    assert len(aborts) == 6, f"Expected 6 aborts after fix, got {len(aborts)}"
+    for r in aborts:
+        reason = r.get("agent_exit_reason", "")
+        assert reason in ("format_error_text_action", "budget_exhausted"), (
+            f"Unexpected abort exit reason: {reason} for {r['instance_id']}"
+        )
+
+
+# ── Exit owner classification tests ─────────────────────────────────────
+
+def test_exit_owner_bare_stagnation_is_agent_harness() -> None:
+    """bare_t2_baseline stagnation must be agent_harness, NOT budgetflow_stoploss."""
+    rec = {
+        "exit_reason": "stagnation_no_progress",
+        "exit_status": "StagnationExit",
+        "routing": "all_tier2",
+    }
+    assert compute_exit_owner(rec) == EXIT_OWNER_AGENT_HARNESS
+
+
+def test_exit_owner_enterprise_stagnation_is_agent_harness() -> None:
+    """enterprise_router stagnation must also be agent_harness."""
+    rec = {
+        "exit_reason": "stagnation_repeat_command",
+        "exit_status": "StagnationExit",
+        "routing": "enterprise_router",
+    }
+    assert compute_exit_owner(rec) == EXIT_OWNER_AGENT_HARNESS
+
+
+def test_exit_owner_budgetflow_stagnation_is_stoploss() -> None:
+    """budgetflow_full stagnation must be budgetflow_stoploss."""
+    rec = {
+        "exit_reason": "stagnation_no_progress",
+        "exit_status": "StagnationExit",
+        "routing": "budgetflow_value_aware",
+    }
+    assert compute_exit_owner(rec) == EXIT_OWNER_BUDGETFLOW_STOPLOSS
+
+
+def test_exit_owner_post_patch_verified_stable_is_stoploss() -> None:
+    """post_patch_verified_stable is exclusive to BudgetFlow."""
+    rec = {
+        "exit_reason": "post_patch_verified_stable",
+        "exit_status": "StagnationExit",
+        "routing": "budgetflow_value_aware",
+    }
+    assert compute_exit_owner(rec) == EXIT_OWNER_BUDGETFLOW_STOPLOSS
+
+
+def test_exit_owner_rescue_timeout_is_stoploss() -> None:
+    """rescue_timeout_gold_edited is exclusive to BudgetFlow."""
+    rec = {
+        "exit_reason": "rescue_timeout_gold_edited",
+        "exit_status": "StagnationExit",
+        "routing": "budgetflow_full",
+    }
+    assert compute_exit_owner(rec) == EXIT_OWNER_BUDGETFLOW_STOPLOSS
+
+
+def test_exit_owner_format_error_is_parser_protocol() -> None:
+    """format_error_text_action must be parser_protocol."""
+    rec = {
+        "exit_reason": "format_error_text_action",
+        "exit_status": "FormatError",
+        "routing": "all_tier2",
+    }
+    assert compute_exit_owner(rec) == EXIT_OWNER_PARSER_PROTOCOL
+
+
+def test_exit_owner_budget_exhausted() -> None:
+    rec = {
+        "exit_reason": "budget_exhausted",
+        "exit_status": "BudgetFlowBudgetError",
+        "routing": "enterprise_router",
+    }
+    assert compute_exit_owner(rec) == EXIT_OWNER_BUDGET_EXHAUSTED
+
+
+def test_exit_owner_provider_error() -> None:
+    rec = {
+        "exit_reason": "ServiceUnavailableError",
+        "exit_status": "ServiceUnavailableError",
+        "routing": "bare_t3",
+        "turn_traces": [{"error_type": "ServiceUnavailableError"}],
+    }
+    assert compute_exit_owner(rec) == EXIT_OWNER_PROVIDER_ERROR
+
+
+def test_exit_owner_nameerror_is_model_crash() -> None:
+    """NameError (model generated broken code) must be model_crash."""
+    rec = {
+        "exit_reason": "NameError",
+        "exit_status": "NameError",
+        "routing": "all_tier2",
+    }
+    assert compute_exit_owner(rec) == EXIT_OWNER_MODEL_CRASH
+
+
+def test_exit_owner_harness_failed_is_agent_exit() -> None:
+    """HarnessFailed (agent finished, tests didn't pass) must be agent_exit."""
+    rec = {
+        "exit_reason": "harness_failed",
+        "exit_status": "HarnessFailed",
+        "routing": "budgetflow_value_aware",
+    }
+    assert compute_exit_owner(rec) == EXIT_OWNER_AGENT_EXIT
+
+
+def test_exit_owner_explicit_field_takes_precedence() -> None:
+    """If record already has exit_owner, use it."""
+    rec = {
+        "exit_owner": "custom_owner",
+        "exit_reason": "stagnation_no_progress",
+        "exit_status": "StagnationExit",
+        "routing": "all_tier2",
+    }
+    assert compute_exit_owner(rec) == "custom_owner"
+
+
+def test_exit_owner_budgetflow_same_router_stagnation_is_stoploss() -> None:
+    """budgetflow_same_router uses budgetflow routing pattern."""
+    rec = {
+        "exit_reason": "stagnation_no_progress",
+        "exit_status": "StagnationExit",
+        "routing": "budgetflow_same_router",
+    }
+    assert compute_exit_owner(rec) == EXIT_OWNER_BUDGETFLOW_STOPLOSS
