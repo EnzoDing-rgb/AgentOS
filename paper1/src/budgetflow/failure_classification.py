@@ -201,7 +201,11 @@ def build_score_status(record: dict[str, Any]) -> dict[str, Any]:
         abort_reason = "protocol_or_parser_error"
         abort_owner = "protocol"
         abort_stage = "extraction"
-    elif axis == "harness_fail" or (severity == "blocking" and trust_level in {"invalid", "incomplete"}):
+    elif axis == "harness_fail" or (
+        severity == "blocking"
+        and trust_level in {"invalid", "incomplete"}
+        and not (axis == "model_fail" and stage == "repair")
+    ):
         abort_reason = "untrusted_harness_evidence"
         abort_owner = str(trust.get("harness_owner") or "harness")
         abort_stage = stage if stage else "harness"
