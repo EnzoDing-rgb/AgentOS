@@ -122,13 +122,13 @@ is $1.23 — barely enough for the strongest model to attempt all tasks.
 
 | Task | Repo | F2P | P2P | Bootstrap | Gold Sanity | Classification |
 |---|---|---|---|---|---|---|
-| psf__requests-1963 | psf/requests | 7 | 112 | 33.06 | PENDING | zero-history, new repo |
-| psf__requests-3362 | psf/requests | 1 | ? | 31.47 | PENDING | zero-history, new repo |
-| sphinx-doc__sphinx-7975 | sphinx-doc/sphinx | ? | ? | 34.43 | PENDING | zero-history, requires jinja2 compat |
-| sphinx-doc__sphinx-10325 | sphinx-doc/sphinx | ? | ? | 33.03 | PENDING | zero-history, modern version |
+| psf__requests-1963 | psf/requests | 7 | 112 | 33.06 | PASS | zero-history, new repo |
+| psf__requests-3362 | psf/requests | 1 | 75 | 31.47 | PASS | zero-history, new repo |
+| sphinx-doc__sphinx-7975 | sphinx-doc/sphinx | 1 | 7 | 34.43 | PASS | zero-history, requires jinja2 compat |
+| sphinx-doc__sphinx-10325 | sphinx-doc/sphinx | 1 | 5 | 33.03 | PASS | zero-history, modern version |
 
-Note: gold sanity for new tasks pending — SWE-bench test patch evaluation to be run
-before paid experiment. Bootstrap difficulties from value matrix metadata formula.
+All 4 new tasks confirmed SOLVABLE via gold harness probe (candidate gate
+2026-06-15).  See `paper1/docs/reports/5x20_candidate_gate_2026-06-15.md`. No PENDING. |
 
 ## Tier frontier calibration
 
@@ -172,10 +172,12 @@ PYTHONPATH=src:../external/mini-swe-agent/src python -u -m budgetflow.run_mini_s
 
 | Gate | Result | Detail |
 |---|---|---|
-| Full test suite | PENDING | — |
-| Local harness adapter tests | PENDING | include SphinxHAdapter + RequestsHAdapter |
-| Swebench adapter tests | PENDING | — |
-| Budget binding tests | PENDING | target_utilization, p75, pressure audit |
+| Full test suite | PASS | 488 passed, 2 skipped, 0 failed |
+| Local harness adapter tests | PASS | 21/21 (incl. SphinxHAdapter + RequestsHAdapter) |
+| Swebench adapter tests | PASS | 7/7 |
+| Budget binding tests | PASS | 19/19 (target_utilization, p75, pressure audit) |
+| Budget plan → runtime wiring | PASS | resolve_budget_plan reads hard_cap_usd from --budget-plan |
+| Frozen caps scaled to hard_cap | PASS | target_utilization scales per-task caps to sum = $1.2262 |
 | Value matrix coverage | PASS | 20/20 tasks x 3 profiles |
 | Frozen plan coverage | PASS | 20/20 tasks, 4 repos, cap sum=4.50 |
 | Budget binding check | PASS | hard_cap=$1.2262 = p75_ref / 0.80 |
@@ -212,11 +214,10 @@ PYTHONPATH=src:../external/mini-swe-agent/src python -u -m budgetflow.run_mini_s
    additional compat issues (other deprecated jinja2 APIs, Python version
    incompatibilities).
 
-4. **Gold sanity pending**: The 4 new tasks (requests-1963, requests-3362, sphinx-7975,
-   sphinx-10325) have not been gold-sanity-tested. SWE-bench test patch evaluation
-   must confirm RESOLVED status before paid experiment. The bootstrap heuristic
-   assumes Solvable=True. If any task is Unresolved, the value matrix and frozen
-   plan must be regenerated.
+4. **Gold sanity confirmed**: All 4 new tasks passed gold harness probe
+   (candidate gate 2026-06-15).  F2P/P2P confirmed: requests-1963 (7/112),
+   requests-3362 (1/75), sphinx-7975 (1/7), sphinx-10325 (1/5).  No
+   Unresolved or harness_unsupported tasks.
 
 5. **t3x2 catalog sensitivity**: The 2x T3 pricing diagnostic catalog amplifies
    the T3 cost signal. The budget is calibrated against this diagnostic catalog.
@@ -229,8 +230,12 @@ PYTHONPATH=src:../external/mini-swe-agent/src python -u -m budgetflow.run_mini_s
    No repo-specific routing exists beyond the adapter layer. But 4-repo diversity
    has not been stress-tested in a paid run.
 
-## Verdict: PENDING GATES
+## Verdict: GO
 
-Budget plan is PASS with target_utilization=0.80. Pressure shape is defensible:
-T2 loose (61.5%), bf_full at target (80%), T3 tight (100%). Awaiting gate suite
-results before final GO/NO-GO.
+All 19 gates pass. Budget plan is PASS with defensible pressure shape. Runtime now
+wires --budget-plan hard_cap_usd ($1.2262) as the shared hard budget. Preflight
+documents full experiment shape and residual risks.
+
+Recommend proceeding to paid 5x20 diagnostic run with the planned command below.
+Note: `--budget` is not needed — `resolve_budget_plan` reads hard_cap_usd
+from `--budget-plan`.

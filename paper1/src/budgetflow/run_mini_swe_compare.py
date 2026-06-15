@@ -335,6 +335,7 @@ def main() -> None:
         auto_budget_task_caps=auto_budget_task_caps,
         constrained_budget=budget_input["hard_cap_usd"],
         frozen_task_caps=frozen_task_caps,
+        budget_mode=args.budget_mode,
     )
     batch_caps = budget_modes_plan.batch_caps
     budget_modes = budget_modes_plan.budget_modes
@@ -521,8 +522,9 @@ def main() -> None:
                 last_completed=str(record.get("instance_id", "")),
             )
 
-        _uses_frozen_caps = frozen_task_caps is not None and cfg.routing in _frozen_routing_set
-        _eff_task_caps = frozen_task_caps if _uses_frozen_caps else auto_budget_task_caps
+        _eff_frozen = budget_modes_plan.effective_frozen_caps
+        _uses_frozen_caps = _eff_frozen is not None and cfg.routing in _frozen_routing_set
+        _eff_task_caps = _eff_frozen if _uses_frozen_caps else auto_budget_task_caps
         _eff_budget_mode = "frozen_router_caps" if _uses_frozen_caps else None
         records, batch_spent = run_strategy_batch(
             cfg,

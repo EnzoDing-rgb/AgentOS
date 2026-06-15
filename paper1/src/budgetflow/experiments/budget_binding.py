@@ -116,13 +116,13 @@ def calibrate_budget(
       pre-registered static router plan.
 
     * **target_utilization** (when set, e.g. 0.80):
-      ``hard_cap`` = max projected spend / *target_utilization*.
-      The most expensive strategy hits the target utilization rate;
-      cheaper strategies have more headroom.  Produces a tight-ish shared
-      budget whose pressure shape is: bare T2 relatively loose, bare T3
-      tight, mixed policies identifiable.  The budget is code-generated
-      from the 5-strategy projected spend distribution — not from any
-      single policy's spend.
+      ``hard_cap`` = p75(projected spend) / *target_utilization*.
+      The reference is the 75th percentile of the 5-strategy projected
+      spend distribution — not any single strategy's spend.  At
+      target_utilization=0.80, budgetflow_full (the p75 strategy) hits
+      80% utilization.  Cheaper strategies have more headroom; bare T3
+      may be at or above cap.  The pressure shape is an audit output,
+      never a generation rule.
     """
     if target_utilization is not None and not (0.0 < target_utilization <= 1.0):
         raise ValueError(f"target_utilization must be in (0, 1], got {target_utilization}")

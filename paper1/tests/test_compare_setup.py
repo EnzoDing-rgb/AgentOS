@@ -135,6 +135,58 @@ def test_batch_budget_modes_frozen_router_caps_for_mechanism_strategies() -> Non
     assert modes.batch_caps["bare_t3_baseline"] == pytest.approx(1.0)
 
 
+def test_resolve_budget_plan_from_budget_plan_json(tmp_path) -> None:
+    """When --budget-plan is provided and --budget is not set, use hard_cap_usd."""
+    import json
+    bp_path = tmp_path / "bp.json"
+    bp_path.write_text(json.dumps({
+        "hard_cap_usd": 1.2262,
+        "budget_mode": "target_utilization",
+        "decision": "PASS",
+    }))
+
+    plan = resolve_budget_plan(
+        _args(budget_plan=str(bp_path)),
+        tasks_n=20,
+    )
+    assert plan.constrained == 1.2262, f"expected 1.2262, got {plan.constrained}"
+    assert "budget_plan" in plan.source, f"source should mention budget_plan, got {plan.source}"
+
+
+def test_resolve_budget_plan_explicit_budget_overrides_budget_plan(tmp_path) -> None:
+    """--budget on CLI wins over --budget-plan hard_cap_usd."""
+    import json
+    bp_path = tmp_path / "bp.json"
+    bp_path.write_text(json.dumps({"hard_cap_usd": 1.2262}))
+
+    plan = resolve_budget_plan(
+        _args(budget=5.0, budget_plan=str(bp_path)),
+        tasks_n=20,
+    )
+    assert plan.constrained == 5.0
+    assert plan.source == "cli"
+
+
+def test_resolve_budget_plan_frozen_fallback_when_no_budget_plan(tmp_path) -> None:
+    """When --budget-plan is absent, frozen plan cap sum still works."""
+    import json
+    fp_path = tmp_path / "fp.json"
+    fp_path.write_text(json.dumps({
+        "plan": {
+            "task-a": {"base_cap": 1.5, "preferred_model": "tier2", "priority": 1},
+            "task-b": {"base_cap": 2.0, "preferred_model": "tier3", "priority": 2},
+        }
+    }))
+
+    plan = resolve_budget_plan(
+        _args(), tasks_n=2,
+        frozen_plan_path=str(fp_path),
+        task_ids=["task-a", "task-b"],
+    )
+    assert plan.constrained == 3.5
+    assert plan.source == "frozen_plan_cap_sum"
+
+
 def test_batch_budget_modes_frozen_caps_override_dynamic_caps() -> None:
     """frozen_task_caps take priority over auto_budget_task_caps for mechanism strategies."""
     strategies = (
@@ -155,3 +207,76 @@ def test_batch_budget_modes_frozen_caps_override_dynamic_caps() -> None:
     assert modes.budget_modes["budgetflow_full"] == "dynamic_task_caps"
     assert modes.batch_caps["enterprise_router_baseline"] == pytest.approx(0.25)
     assert modes.batch_caps["budgetflow_full"] == pytest.approx(0.99)
+
+
+def test_target_utilization_scales_frozen_caps_to_constrained_budget() -> None:
+    """In target_utilization mode, frozen per-task caps are scaled so sum = hard_cap."""
+    strategies = (
+        CompareStrategy("enterprise_router_baseline", "enterprise_router"),
+        CompareStrategy("budgetflow_same_router", "budgetflow_same_router"),
+        CompareStrategy("bare_t3_baseline", "bare_t3"),
+        CompareStrategy("budgetflow_full", "budgetflow_value_aware"),
+    )
+    frozen_caps = {"task-a": 2.0, "task-b": 3.0, "task-c": 5.0}  # sum = 10.0
+    modes = build_batch_budget_modes(
+        strategies=strategies,
+        per_task_cap=None,
+        auto_budget_task_caps=None,
+        constrained_budget=2.0,  # target_utilization hard_cap
+        frozen_task_caps=frozen_caps,
+        budget_mode="target_utilization",
+    )
+
+    # Scaled sum = 2.0 (not 10.0)
+    assert modes.batch_caps["enterprise_router_baseline"] == pytest.approx(2.0)
+    assert modes.batch_caps["budgetflow_same_router"] == pytest.approx(2.0)
+    # Non-frozen strategies still get constrained_budget
+    assert modes.batch_caps["bare_t3_baseline"] == pytest.approx(2.0)
+    assert modes.batch_caps["budgetflow_full"] == pytest.approx(2.0)
+
+    # effective_frozen_caps are scaled proportionally
+    eff = modes.effective_frozen_caps
+    assert eff is not None
+    assert eff["task-a"] == pytest.approx(0.4)   # 2.0 * (2/10)
+    assert eff["task-b"] == pytest.approx(0.6)   # 3.0 * (2/10)
+    assert eff["task-c"] == pytest.approx(1.0)   # 5.0 * (2/10)
+    assert sum(eff.values()) == pytest.approx(2.0)
+
+
+def test_target_utilization_no_scaling_when_sum_already_matches() -> None:
+    """When frozen cap sum already equals constrained_budget, no scaling needed."""
+    strategies = (
+        CompareStrategy("enterprise_router_baseline", "enterprise_router"),
+    )
+    frozen_caps = {"task-a": 1.0, "task-b": 1.0}  # sum = 2.0
+    modes = build_batch_budget_modes(
+        strategies=strategies,
+        per_task_cap=None,
+        auto_budget_task_caps=None,
+        constrained_budget=2.0,
+        frozen_task_caps=frozen_caps,
+        budget_mode="target_utilization",
+    )
+    # effective_frozen_caps is the original dict (no scaling)
+    assert modes.effective_frozen_caps is frozen_caps
+    assert modes.batch_caps["enterprise_router_baseline"] == pytest.approx(2.0)
+
+
+def test_legacy_mode_does_not_scale_frozen_caps() -> None:
+    """Without target_utilization, frozen caps keep their raw sum."""
+    strategies = (
+        CompareStrategy("enterprise_router_baseline", "enterprise_router"),
+    )
+    frozen_caps = {"task-a": 2.0, "task-b": 3.0}  # sum = 5.0
+    modes = build_batch_budget_modes(
+        strategies=strategies,
+        per_task_cap=None,
+        auto_budget_task_caps=None,
+        constrained_budget=1.0,
+        frozen_task_caps=frozen_caps,
+        # no budget_mode → legacy
+    )
+    # Legacy: frozen cap sum = 5.0, not constrained_budget 1.0
+    assert modes.batch_caps["enterprise_router_baseline"] == pytest.approx(5.0)
+    # effective_frozen_caps is the original unmodified dict
+    assert modes.effective_frozen_caps is frozen_caps

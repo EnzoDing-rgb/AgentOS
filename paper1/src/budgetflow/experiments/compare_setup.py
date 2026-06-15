@@ -53,6 +53,7 @@ class BatchBudgetModes:
     use_fixed_per_task_cap: bool
     use_dynamic_task_caps: bool
     planned_dynamic_cap: float | None
+    effective_frozen_caps: dict[str, float] | None = None
 
 
 def resolve_task_count(args: Namespace) -> int:
@@ -84,12 +85,24 @@ def resolve_budget_plan(
     source = "cli" if constrained is not None else "pre_registered_experiment_budget"
     if args.budget_scale != 1.0:
         constrained = (constrained or 100.0) * args.budget_scale
-    # Auto-compute budget from frozen plan selected cap sum when --budget not passed.
-    if constrained is None and frozen_plan_path and task_ids:
-        from budgetflow.frozen_router import load_frozen_plan
-        plan = load_frozen_plan(frozen_plan_path)
-        constrained = plan.selected_cap_sum(task_ids)
-        source = "frozen_plan_cap_sum"
+    # Priority when --budget is not explicitly set:
+    #   1. --budget-plan hard_cap_usd (code-generated from calibrate_budget)
+    #   2. --frozen-plan selected cap sum (legacy, only when budget plan absent)
+    if constrained is None:
+        budget_plan_path = getattr(args, "budget_plan", None)
+        if budget_plan_path:
+            import json as _json
+            from pathlib import Path
+            bp = _json.loads(Path(budget_plan_path).read_text())
+            bp_hard_cap = float(bp.get("hard_cap_usd", 0.0) or 0.0)
+            if bp_hard_cap > 0:
+                constrained = bp_hard_cap
+                source = f"budget_plan:{bp.get('budget_mode', 'unknown')}"
+        elif frozen_plan_path and task_ids:
+            from budgetflow.frozen_router import load_frozen_plan
+            plan = load_frozen_plan(frozen_plan_path)
+            constrained = plan.selected_cap_sum(task_ids)
+            source = "frozen_plan_cap_sum"
     return CompareBudgetPlan(
         constrained=100.0 if constrained is None else constrained,
         pressure_init=pressure_init,
@@ -154,13 +167,33 @@ def build_batch_budget_modes(
     auto_budget_task_caps: dict[str, float] | None,
     constrained_budget: float,
     frozen_task_caps: dict[str, float] | None = None,
+    budget_mode: str | None = None,
 ) -> BatchBudgetModes:
     _frozen_routings = frozenset({"enterprise_router", "budgetflow_same_router"})
     use_fixed_per_task_cap = per_task_cap is not None and per_task_cap > 0
     use_dynamic_task_caps = auto_budget_task_caps is not None
     use_frozen_caps = frozen_task_caps is not None
     planned_dynamic_cap = sum(auto_budget_task_caps.values()) if auto_budget_task_caps else None
-    planned_frozen_cap = sum(frozen_task_caps.values()) if frozen_task_caps else None
+    raw_frozen_sum = sum(frozen_task_caps.values()) if frozen_task_caps else 0.0
+
+    # In target_utilization mode, scale frozen per-task caps proportionally
+    # so their sum equals the shared hard budget.  The frozen plan continues
+    # to provide relative allocation and preferred_model; the budget_plan
+    # provides the binding hard cap.
+    effective_frozen_caps: dict[str, float] | None = None
+    if (budget_mode == "target_utilization"
+            and frozen_task_caps
+            and raw_frozen_sum > 0
+            and constrained_budget > 0
+            and abs(raw_frozen_sum - constrained_budget) > 0.0001):
+        scale = constrained_budget / raw_frozen_sum
+        effective_frozen_caps = {
+            tid: cap * scale for tid, cap in frozen_task_caps.items()
+        }
+    else:
+        effective_frozen_caps = frozen_task_caps
+
+    planned_frozen_cap = sum(effective_frozen_caps.values()) if effective_frozen_caps else None
 
     def _cap_for(s: CompareStrategy) -> float | None:
         if use_fixed_per_task_cap:
@@ -190,4 +223,5 @@ def build_batch_budget_modes(
         use_fixed_per_task_cap=use_fixed_per_task_cap,
         use_dynamic_task_caps=use_dynamic_task_caps,
         planned_dynamic_cap=planned_dynamic_cap,
+        effective_frozen_caps=effective_frozen_caps,
     )

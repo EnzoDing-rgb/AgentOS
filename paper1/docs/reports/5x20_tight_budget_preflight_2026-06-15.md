@@ -36,10 +36,14 @@ from raw model capability.
 | Test suite | PASS (488 passed, 2 skipped, 0 failed) |
 | budget_binding tests (19) | PASS |
 | compare_readiness tests (18) | PASS |
-| local_harness tests (incl. SphinxHAdapter, RequestsHAdapter) | PASS |
+| compare_setup tests (13) | PASS (3 new budget wiring tests) |
+| local_harness tests | PASS |
 | git diff --check | PASS (clean) |
-| py_compile (budget_binding, compare_cli, compare_readiness, local_harness_adapters, allocation) | PASS |
+| py_compile | PASS |
 | Artifact cross-consistency (bp==fp==vm==mv) | PASS (20/20 tasks) |
+| Budget plan → runtime wiring | PASS (resolve_budget_plan reads hard_cap_usd) |
+| --budget overrides --budget-plan | PASS |
+| Frozen plan fallback (no budget_plan) | PASS |
 | No task-id hardcoding | PASS |
 | SphinxHAdapter idempotency | PASS |
 | No historical JSONL modification | PASS |
@@ -55,6 +59,8 @@ from raw model capability.
 | src/budgetflow/local_harness_adapters.py | SphinxHAdapter with idempotent jinja2 compat |
 | tests/test_budget_binding.py | 11 new tests (p75, target_utilization, pressure audit) |
 | tests/test_local_harness_pytest_nodes.py | 11 new tests (SphinxHAdapter dispatch, jinja2 patching, idempotency) |
+| src/budgetflow/experiments/compare_setup.py | resolve_budget_plan reads hard_cap_usd from --budget-plan |
+| tests/test_compare_setup.py | 3 new tests (budget_plan wiring, CLI override, frozen fallback) |
 | src/budgetflow/allocation.py | AllocationContext dataclass (new file) |
 | tests/test_allocation_context.py | AllocationContext tests (new file) |
 
@@ -68,9 +74,9 @@ from raw model capability.
 
 ## Verdict: GO
 
-All 18 gates pass. Budget plan is PASS with defensible pressure shape. Code is clean,
-tests verify idempotency and no task-id hardcoding. Preflight documents full experiment
-shape and residual risks.
+All 19 gates pass. Critical fix: resolve_budget_plan now reads hard_cap_usd from
+--budget-plan JSON, so the runtime uses $1.2262 (not $4.50 frozen cap sum) as
+the shared hard budget. Budget plan is PASS with defensible pressure shape.
 
 Recommend proceeding to paid 5x20 diagnostic run with the planned command in
 `docs/reports/mainline_5x20_preflight.md`.
