@@ -45,13 +45,14 @@ class StrategyCheckpoint:
 
 
 class CompareCheckpointStore:
-    def __init__(self, path: Path, *, stem: str, total_runs: int) -> None:
+    def __init__(self, path: Path, *, stem: str, total_runs: int, completed_floor: int = 0) -> None:
         self.path = path
         self.stem = stem
-        self.total_runs = total_runs
+        self.total_runs = max(total_runs, completed_floor)
         self.strategies: dict[str, StrategyCheckpoint] = {}
         if path.is_file():
             self._load()
+            self.total_runs = max(self.total_runs, completed_floor)
 
     def _load(self) -> None:
         raw = json.loads(self.path.read_text())

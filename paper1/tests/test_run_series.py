@@ -1,20 +1,28 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from budgetflow.run_series import (
     allocate_series_stem,
+    completed_scoreable_keys,
     detect_sibling_stems,
     list_series_stems,
     release_run_identity,
     resolve_compare_stem,
+    series_run_complete,
     sibling_stems_exist,
 )
 from budgetflow.compare_checkpoint import CompareCheckpointStore
 
 
 def test_resume_explicit_stem_blocks_completed_run(tmp_path) -> None:
-    (tmp_path / "done.jsonl").write_text("{}\n{}\n")
+    rows = [
+        {"strategy": "bare_t2_baseline", "instance_id": "task-a", "score_status": "pass"},
+        {"strategy": "bare_t2_baseline", "instance_id": "task-b", "score_status": "true_fail"},
+    ]
+    (tmp_path / "done.jsonl").write_text("\n".join(json.dumps(row) for row in rows) + "\n")
 
     with pytest.raises(SystemExit, match="already complete"):
         resolve_compare_stem(
@@ -37,8 +45,21 @@ def test_resume_explicit_stem_requires_existing_jsonl(tmp_path) -> None:
         )
 
 
+def test_resume_without_prior_run_does_not_allocate_lock(tmp_path) -> None:
+    with pytest.raises(SystemExit, match="no prior runs"):
+        resolve_compare_stem(
+            tmp_path,
+            series="mainline",
+            resume=True,
+            total_runs=2,
+        )
+
+    assert list(tmp_path.glob("*.lock")) == []
+
+
 def test_resume_explicit_stem_allows_incomplete_run(tmp_path) -> None:
-    (tmp_path / "partial.jsonl").write_text("{}\n")
+    row = {"strategy": "bare_t2_baseline", "instance_id": "task-a", "score_status": "pass"}
+    (tmp_path / "partial.jsonl").write_text(json.dumps(row) + "\n")
 
     stem, mode = resolve_compare_stem(
         tmp_path,
@@ -50,6 +71,133 @@ def test_resume_explicit_stem_allows_incomplete_run(tmp_path) -> None:
 
     assert stem == "partial"
     assert mode == "resume"
+
+
+def test_series_run_complete_counts_unique_scoreable_pairs_only(tmp_path) -> None:
+    path = tmp_path / "mainline-0.jsonl"
+    rows = [
+        {"strategy": "bare_t2_baseline", "instance_id": "task-a", "score_status": "pass"},
+        {"strategy": "bare_t2_baseline", "instance_id": "task-a", "score_status": "pass"},
+        {"strategy": "bare_t2_baseline", "instance_id": "task-b", "score_status": "abort"},
+        {"strategy": "bare_t2_baseline", "instance_id": "task-c", "score_status": "true_fail"},
+    ]
+    path.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
+
+    assert completed_scoreable_keys(path) == {
+        ("bare_t2_baseline", "task-a"),
+        ("bare_t2_baseline", "task-c"),
+    }
+    assert series_run_complete(tmp_path, "mainline-0", total_runs=2)
+    assert not series_run_complete(tmp_path, "mainline-0", total_runs=3)
+
+
+def test_series_run_complete_uses_expected_pairs_not_count_only(tmp_path) -> None:
+    path = tmp_path / "mainline-0.jsonl"
+    rows = [
+        {"strategy": "bare_t2_baseline", "instance_id": "task-a", "score_status": "pass"},
+        {"strategy": "bare_t2_baseline", "instance_id": "task-b", "score_status": "true_fail"},
+    ]
+    path.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
+
+    assert not series_run_complete(
+        tmp_path,
+        "mainline-0",
+        total_runs=2,
+        expected_keys={
+            ("bare_t2_baseline", "task-a"),
+            ("bare_t2_baseline", "task-c"),
+        },
+    )
+
+
+def test_resume_explicit_stem_allows_same_count_but_different_expected_pairs(tmp_path) -> None:
+    path = tmp_path / "mainline-0.jsonl"
+    rows = [
+        {"strategy": "bare_t2_baseline", "instance_id": "task-a", "score_status": "pass"},
+        {"strategy": "bare_t2_baseline", "instance_id": "task-b", "score_status": "true_fail"},
+    ]
+    path.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
+
+    stem, mode = resolve_compare_stem(
+        tmp_path,
+        series="mainline",
+        resume=True,
+        total_runs=2,
+        explicit_stem="mainline-0",
+        expected_keys={
+            ("bare_t2_baseline", "task-a"),
+            ("bare_t2_baseline", "task-c"),
+        },
+    )
+
+    assert stem == "mainline-0"
+    assert mode == "resume"
+
+
+def test_staged_resume_expands_expected_pairs_without_false_completion(tmp_path) -> None:
+    strategies = [
+        "bare_t2_baseline",
+        "bare_t3_baseline",
+        "enterprise_router_baseline",
+        "budgetflow_same_enterprise_router",
+        "budgetflow_task_level",
+        "budgetflow_segment",
+    ]
+    tasks = [f"task-{index:02d}" for index in range(30)]
+
+    def keys(first_n: int) -> set[tuple[str, str]]:
+        return {(strategy, task) for strategy in strategies for task in tasks[:first_n]}
+
+    def append_completed(first_n: int) -> None:
+        rows = [
+            json.dumps({"strategy": strategy, "instance_id": task, "score_status": "pass"})
+            for strategy, task in sorted(keys(first_n))
+        ]
+        (tmp_path / "mainline_6x30_v1-0.jsonl").write_text("\n".join(rows) + "\n")
+
+    append_completed(10)
+
+    with pytest.raises(SystemExit, match="already complete"):
+        resolve_compare_stem(
+            tmp_path,
+            series="mainline_6x30_v1",
+            resume=True,
+            total_runs=60,
+            explicit_stem="mainline_6x30_v1-0",
+            expected_keys=keys(10),
+        )
+
+    stem, mode = resolve_compare_stem(
+        tmp_path,
+        series="mainline_6x30_v1",
+        resume=True,
+        total_runs=120,
+        explicit_stem="mainline_6x30_v1-0",
+        expected_keys=keys(20),
+    )
+    assert (stem, mode) == ("mainline_6x30_v1-0", "resume")
+
+    append_completed(20)
+    stem, mode = resolve_compare_stem(
+        tmp_path,
+        series="mainline_6x30_v1",
+        resume=True,
+        total_runs=180,
+        explicit_stem="mainline_6x30_v1-0",
+        expected_keys=keys(30),
+    )
+    assert (stem, mode) == ("mainline_6x30_v1-0", "resume")
+
+    append_completed(30)
+    with pytest.raises(SystemExit, match="already complete"):
+        resolve_compare_stem(
+            tmp_path,
+            series="mainline_6x30_v1",
+            resume=True,
+            total_runs=180,
+            explicit_stem="mainline_6x30_v1-0",
+            expected_keys=keys(30),
+        )
 
 
 # ── Sibling detection ──────────────────────────────────────────────────
@@ -154,3 +302,19 @@ def test_checkpoint_resume_updates_total_runs_when_task_set_expands(tmp_path) ->
 
     assert resumed.total_runs == 180
     assert '"total_runs": 180' in path.read_text()
+
+
+def test_checkpoint_total_runs_floors_to_completed_pair_count(tmp_path) -> None:
+    path = tmp_path / "mainline_6x30_v1-0.checkpoint.json"
+    path.write_text('{"stem":"mainline_6x30_v1-0","total_runs":1,"strategies":{}}\n')
+
+    resumed = CompareCheckpointStore(
+        path,
+        stem="mainline_6x30_v1-0",
+        total_runs=2,
+        completed_floor=5,
+    )
+    resumed.save()
+
+    assert resumed.total_runs == 5
+    assert '"total_runs": 5' in path.read_text()

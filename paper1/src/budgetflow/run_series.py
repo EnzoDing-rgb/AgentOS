@@ -9,12 +9,15 @@ unless the run is explicitly marked as a repair or shard.
 from __future__ import annotations
 
 import atexit
+import json
 import os
 import re
 from pathlib import Path
+from collections.abc import Callable, Iterable
 
 _SERIES_STEM_RE = re.compile(r"^(?P<base>.+)-(?P<idx>\d+)$")
 _LOCK_EXT = ".lock"
+ScoreableKey = tuple[str, str]
 
 
 def default_series_base(*, tasks_n: int, strategies_n: int, task_set: str = "easy") -> str:
@@ -130,18 +133,54 @@ def latest_series_stem(runs_dir: Path, series: str) -> str | None:
     return stems[-1] if stems else None
 
 
-def count_jsonl_records(jsonl_path: Path) -> int:
+def completed_scoreable_keys(
+    jsonl_path: Path,
+    *,
+    normalize_strategy: Callable[[str], str] | None = None,
+) -> set[ScoreableKey]:
+    """Unique completed policy-task pairs from scoreable JSONL rows.
+
+    Raw JSONL line count is not a run-completion contract: duplicate retries,
+    abort rows, and partial writes are paid evidence but not completed
+    scoreable pairs.  Resume idempotency is defined over pass/true_fail rows.
+    """
     if not jsonl_path.is_file():
-        return 0
-    count = 0
+        return set()
+    normalize = normalize_strategy or (lambda name: name)
+    done: set[ScoreableKey] = set()
     for line in jsonl_path.read_text().splitlines():
-        if line.strip():
-            count += 1
-    return count
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        score_status = str(record.get("score_status") or "")
+        if score_status not in {"pass", "true_fail"}:
+            continue
+        strategy = normalize(str(record.get("strategy") or ""))
+        instance_id = str(record.get("instance_id") or "")
+        if strategy and instance_id:
+            done.add((strategy, instance_id))
+    return done
 
 
-def series_run_complete(runs_dir: Path, stem: str, *, total_runs: int) -> bool:
-    return count_jsonl_records(runs_dir / f"{stem}.jsonl") >= total_runs
+def series_run_complete(
+    runs_dir: Path,
+    stem: str,
+    *,
+    total_runs: int,
+    expected_keys: Iterable[ScoreableKey] | None = None,
+    normalize_strategy: Callable[[str], str] | None = None,
+) -> bool:
+    completed = completed_scoreable_keys(
+        runs_dir / f"{stem}.jsonl",
+        normalize_strategy=normalize_strategy,
+    )
+    if expected_keys is not None:
+        expected = set(expected_keys)
+        return bool(expected) and expected.issubset(completed)
+    return len(completed) >= total_runs
 
 
 def resolve_compare_stem(
@@ -150,6 +189,8 @@ def resolve_compare_stem(
     series: str,
     resume: bool,
     total_runs: int,
+    expected_keys: Iterable[ScoreableKey] | None = None,
+    normalize_strategy: Callable[[str], str] | None = None,
     explicit_stem: str | None = None,
     repair: bool = False,
 ) -> tuple[str, str]:
@@ -177,7 +218,13 @@ def resolve_compare_stem(
                     f"--resume --out-stem={explicit_stem}: {jsonl} does not exist. "
                     "Start without --resume to create a new run."
                 )
-            if series_run_complete(runs_dir, explicit_stem, total_runs=total_runs):
+            if series_run_complete(
+                runs_dir,
+                explicit_stem,
+                total_runs=total_runs,
+                expected_keys=expected_keys,
+                normalize_strategy=normalize_strategy,
+            ):
                 raise SystemExit(
                     f"--resume --out-stem={explicit_stem}: run is already complete "
                     f"({total_runs}/{total_runs}). Use a new --out-stem for the next experiment."
@@ -198,9 +245,15 @@ def resolve_compare_stem(
         if latest is None:
             raise SystemExit(
                 f"--resume: no prior runs for series {series!r} under {runs_dir}. "
-                f"Start without --resume to create {allocate_series_stem(runs_dir, series)}"
+                "Start without --resume to create a new run."
             )
-        if series_run_complete(runs_dir, latest, total_runs=total_runs):
+        if series_run_complete(
+            runs_dir,
+            latest,
+            total_runs=total_runs,
+            expected_keys=expected_keys,
+            normalize_strategy=normalize_strategy,
+        ):
             nxt = allocate_series_stem(runs_dir, series)
             raise SystemExit(
                 f"--resume: latest {latest} is complete ({total_runs}/{total_runs}). "
@@ -221,6 +274,8 @@ def resolve_run_identity(
     task_set: str,
     resume: bool,
     total_runs: int,
+    expected_keys: Iterable[ScoreableKey] | None = None,
+    normalize_strategy: Callable[[str], str] | None = None,
     explicit_stem: str | None = None,
     explicit_series: str | None = None,
     repair: bool = False,
@@ -243,6 +298,8 @@ def resolve_run_identity(
         series=series_base,
         resume=resume,
         total_runs=total_runs,
+        expected_keys=expected_keys,
+        normalize_strategy=normalize_strategy,
         explicit_stem=explicit_stem,
         repair=repair,
     )

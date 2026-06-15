@@ -238,6 +238,20 @@ def test_completed_keys_excludes_abort_rows(tmp_path) -> None:
     assert ("budgetflow_segment", "task-abort") not in keys
 
 
+def test_completed_keys_keeps_success_after_bad_provider_retry(tmp_path) -> None:
+    path = tmp_path / "run.jsonl"
+    path.write_text(
+        json.dumps(_record(instance_id="task-a", score_status="abort", exit_status="BadRequestError", total_cost=0.0, llm_turns=0))
+        + "\n"
+        + json.dumps(_record(instance_id="task-a", score_status="pass", exit_status="Submitted", total_cost=0.2, llm_turns=3))
+        + "\n"
+    )
+
+    keys = completed_keys(path, normalize_strategy=lambda name: name, skip_bad=True)
+
+    assert keys == {("budgetflow_segment", "task-a")}
+
+
 def test_persisted_jsonl_contains_t1_t2_observability_and_learning_memory(tmp_path) -> None:
     out_path = tmp_path / "out.jsonl"
     memory_path = tmp_path / "learning.jsonl"

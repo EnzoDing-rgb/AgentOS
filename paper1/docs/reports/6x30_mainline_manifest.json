@@ -62,14 +62,5 @@
       "pending_sympy_gate": "data/runs/gold_harness_probe_6x30_pending_sympy.jsonl",
       "pending_sympy_gate_report": "docs/reports/6x30_pending_sympy_gold_gate_2026-06-15.md"
     }
-  },
-  "t3_solvability_summary": {
-    "probed_tasks": 15,
-    "solved": 7,
-    "harness_verified_model_fail": 5,
-    "infra_or_dependency_noise": 1,
-    "patch_apply_or_protocol_fail": 2,
-    "unprobed": 15,
-    "notes": "T3 probe is diagnostic only. It is not used for task values or frozen caps. Unprobed tasks remain harness-admissible but have unknown strongest-model solvability."
   }
 }

@@ -19,6 +19,7 @@ from budgetflow.experiments.compare_summary import (
     _write_summary_file,
 )
 from budgetflow.failure_classification import classify_failure
+from budgetflow.run_series import completed_scoreable_keys
 
 _PLANNED_CAP_MODES = frozenset({"per_task_cap", "dynamic_task_caps", "frozen_router_caps"})
 
@@ -211,10 +212,13 @@ def completed_keys(
     normalize_strategy: Callable[[str], str],
     skip_bad: bool = False,
 ) -> set[tuple[str, str]]:
+    # Resume idempotency is defined by unique scoreable policy-task pairs.
+    # Bad zero-cost provider rows and abort rows are intentionally retryable.
+    if not skip_bad:
+        return completed_scoreable_keys(jsonl_path, normalize_strategy=normalize_strategy)
     if not jsonl_path.is_file():
         return set()
     done: set[tuple[str, str]] = set()
-    bad_exits = frozenset({"BadRequestError"})
     for line in jsonl_path.read_text().splitlines():
         if not line.strip():
             continue
@@ -222,14 +226,16 @@ def completed_keys(
             record = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if skip_bad and record.get("exit_status") in bad_exits:
-            continue
-        if skip_bad and record.get("total_cost", 1) == 0 and record.get("llm_turns", 0) <= 1:
-            continue
         strategy = normalize_strategy(str(record.get("strategy") or ""))
         task = record.get("instance_id")
+        if not strategy or not task:
+            continue
+        if record.get("exit_status") == "BadRequestError":
+            continue
+        if record.get("total_cost", 1) == 0 and record.get("llm_turns", 0) <= 1:
+            continue
         score_status = str(record.get("score_status") or "")
-        if strategy and task and score_status in {"pass", "true_fail"}:
+        if score_status in {"pass", "true_fail"}:
             done.add((strategy, str(task)))
     return done
 

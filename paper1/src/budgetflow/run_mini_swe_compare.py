@@ -290,6 +290,11 @@ def main() -> None:
             )
 
     total_runs = len(tasks) * len(strategies)
+    expected_run_keys = {
+        (strategy.name, task.instance_id)
+        for strategy in strategies
+        for task in tasks
+    }
     task_set_kind = _task_set_kind(task_set=args.task_set, ids=args.ids)
     out_stem, stem_mode, series_base, run_series = resolve_run_identity(
         RUNS_DIR,
@@ -298,6 +303,8 @@ def main() -> None:
         task_set=args.task_set,
         resume=args.resume,
         total_runs=total_runs,
+        expected_keys=expected_run_keys,
+        normalize_strategy=_normalize_strategy,
         explicit_stem=args.out_stem,
         explicit_series=args.run_series,
         repair=args.repair,
@@ -306,13 +313,25 @@ def main() -> None:
     checkpoint_path = checkpoint_path_for(out_stem, RUNS_DIR)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     strategy_names = [s.name for s in strategies]
-    completed = (
+    completed_all = (
         _completed_keys(out_path, normalize_strategy=_normalize_strategy, skip_bad=args.skip_completed)
         if args.skip_completed else set()
     )
+    completed = completed_all & expected_run_keys
     if args.skip_completed and completed:
         print(f"{tag('resume', bold=False)} skip {len(completed)} completed (strategy,task) pairs", flush=True)
-    checkpoint = CompareCheckpointStore(checkpoint_path, stem=out_stem, total_runs=total_runs)
+    ignored_completed = len(completed_all - expected_run_keys)
+    if args.skip_completed and ignored_completed:
+        print(
+            f"{tag('resume', bold=False)} ignore {ignored_completed} completed pairs outside current task/strategy set",
+            flush=True,
+        )
+    checkpoint = CompareCheckpointStore(
+        checkpoint_path,
+        stem=out_stem,
+        total_runs=total_runs,
+        completed_floor=len(completed),
+    )
     # ── Frozen router plan for mechanism isolation ─────────────────────────
     frozen_plan = None
     frozen_task_caps: dict[str, float] | None = None
