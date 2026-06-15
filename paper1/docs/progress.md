@@ -2,6 +2,22 @@
 
 > 单一入口：进度、跑法、历史结果。
 
+## 2026-06-15 — Current Handoff: Three Blocking Paper Risks
+
+The current paper direction is Claim 1/Claim 2:
+
+- Claim 1: under one shared hard budget, maximize normalized verified resolved value (Yield).
+- Claim 2: explain Claim 1 through value-aware budget allocation, routing, escalation, stop, and learning mechanisms.
+- T1/T2/T3 now refer only to model tiers, not paper claims.
+
+Three issues now matter most:
+
+1. **Value proxy validity.** Manual value is pre-registered but still researcher-defined. Future paid-run analysis must report at least equal value, manual value, and an algorithmic proxy such as bootstrap difficulty. The paper should present sensitivity across these profiles and treat manual value as a threat to validity, not as unquestionable ground truth.
+2. **Frontier adaptation.** Recent diagnostics show pure T2 or pure T3 can be the best frontier for a given task distribution and model catalog. BudgetFlow should keep these baselines strong, diagnose what reusable principle they expose, and absorb that principle through value-aware frontier selection, routing, repair, escalation, or stop behavior.
+3. **Evidence trust.** Local harness, parser/protocol aborts, task sanity, value source, cost source, memory consumption, and checker output must be audited before drawing conclusions. A good-looking pass table is not enough for paper evidence.
+
+Next agent should not tune values or cherry-pick tasks to make BudgetFlow win. First decide whether the limiting layer is metric validity, harness/infra, learning-loop reality, or mechanism design.
+
 ## 当前快照（2026-06-09）
 
 ### Canonical run: mainline_3x8_v2_mechanism（089）
@@ -29,13 +45,13 @@
 
 ### 088 / Bootstrap Policy, Learn Policy, Yield, and adapter boundary cleanup
 
-- **North Star source of truth:** `paper1/docs/north_star.md` owns current terminology, T1/T2 claims, policy-backend architecture, workflow segments, evaluation discipline, and engineering direction. Active agent rules point to it.
+- **North Star source of truth:** `paper1/docs/north_star.md` owns current terminology, Claim 1/Claim 2 definitions, policy-backend architecture, workflow segments, evaluation discipline, and engineering direction. Active agent rules point to it.
 - **Documentation entrypoints:** active guidance is `AGENTS.md` for operating rules, `north_star.md` for research/system definition, and `progress.md` for timeline. `paper1/docs/CONTEXT.md` is deleted.
 - **Policy layer decision:** BudgetFlow core is budget governance, evidence, audit, replay, stop-loss primitives, and same-budget policy comparison. Routing, cap, escalation, and stop/continue decisions belong behind `PolicyBackend`.
 - **Policy families:** `BootstrapPolicy` is the customer-facing default explainable policy that runs without customer history or machine learning. `Learn Policy` can use built-in Memory or customer-owned machine learning behind the same interface. `Fixed Baseline Policy` is for experiments only.
 - **Memory boundary:** Cost Memory, Routing Memory, and Escalation Memory are Learn Policy inputs or audit evidence. They are not hidden BudgetFlow core behavior.
 - **Segment decision:** default workflow segments are **Context / Action / Verification**. Segment-Aware Routing means segment is a policy signal, not a forced model-switch boundary. Task-level or per-request controls remain required to measure cache/context-continuity costs.
-- **Yield decision:** the primary T1 metric is now **Yield**, meaning total resolved task value at fixed budget. **Yield per Dollar** is total resolved task value divided by model spend.
+- **Yield decision:** the primary Claim 1 metric is now **Yield**, meaning total resolved task value at fixed budget. **Yield per Dollar** is total resolved task value divided by model spend.
 - **Value/Cost source decision:** BudgetFlow core does not hard-code what value or cost means. ValueSource, CostSource, ValueAdapter, and CostAdapter provide bootstrap inputs, manual overrides, public price catalogs, enterprise imports, and learned calibration through a normalized estimate plus confidence.
 - **No-paid implementation status:** active runtime now routes BudgetFlow strategies through `BootstrapPolicy`, emits compact policy decision trace fields, reports Yield as total resolved task value, and exposes `yield_coverage` only as a compatibility diagnostic.
 - **Test/evidence audit status:** `test_policy_memory.py` is back in the normal no-paid suite, Learn Policy Inputs expose Cost/Routing/Escalation Memory slots, compact audit reports actionable decision issues, and `test_test_inventory.py` records the current purpose of every active test file. Passing tests remain a regression gate, not paper evidence.

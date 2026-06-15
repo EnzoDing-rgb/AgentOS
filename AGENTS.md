@@ -4,38 +4,38 @@ This file is the repo-level operating contract for Codex-style agents working in
 
 ## North Star
 
-- BudgetFlow's Tier 1 claim is the compass: under a shared hard budget, maximize Yield.
-- Tier 2 is a mechanism claim: policy/routing efficiency must not be weaker than dummy/static/shared-budget baselines, and must show whether model-tier decisions improve value and cost efficiency.
-- Tier 2 serves Tier 1. Do not optimize routing savings in a way that reduces value-weighted outcomes.
+- Use Claim 1 and Claim 2 for paper claims. Reserve T1/T2/T3 for model tiers only.
+- Claim 1 is the compass: under a shared hard budget, BudgetFlow maximizes normalized verified resolved value (Yield).
+- Claim 2 is the mechanism claim: BudgetFlow's value-aware budget allocation, routing, escalation, stop, and learning mechanisms explain how Claim 1 is achieved and must improve or preserve value/cost efficiency against strong diagnostic controls.
+- Claim 2 serves Claim 1. Do not optimize routing savings, model-tier switching, or stop-loss behavior in a way that reduces value-weighted outcomes.
 
 ## Experiment Gold Standard
 
 After every experiment, inspect artifacts before drawing conclusions:
 
-- Evaluation Validity: do the T1/T2 metrics really measure the claim?
-- Harness & Task Trust: did the harness, task, verifier, and task environment behave credibly?
+- Evaluation Validity: do the Claim 1 and Claim 2 metrics measure the claim? Confirm that the value proxy is frozen, reasonable, and not post-hoc fitted. Keep auxiliary metrics secondary.
+- Harness & Task Trust: did the local harness, task, verifier, and task environment behave credibly? Check for false positives, false negatives, unstable tasks, and tasks that are too easy or too hard for the current evidence question.
 - Infra Health: check runtime, worktrees, NFS, provider, parser, trace, checker, budget mode, and value source.
-- Learning Loop Reality: Cost Memory, Routing Memory, and Escalation Memory must actually affect the next decision, not only appear in logs.
+- Learning Loop Reality: Cost Memory, Routing Memory, and Escalation Memory must affect the next cap, route, stop/continue decision, or Strongest Model escalation, not only appear in logs.
 - Mechanism Diagnosis: explain whether outcomes came from model capability, task difficulty, routing, caps, Value-Triggered Escalation, evaluation, or observability.
-- Segment-Splitting Risk: workflow-segment-aware routing is a mechanism hypothesis, not an axiom. It may improve T2 by using tiers at the right work segment, but it may also add switching noise, cache loss, prompt drift, or brittle heuristics that hurt T1.
-- Segment-Aware Control: when evaluating the T2 mechanism, report segment-aware BudgetFlow against a task-level or per-request control. Explain pass/value delta, cost delta, model-tier use, and whether segment signals helped routing or merely added noise.
-- Strong Baseline Diagnosis: `budget_only_baseline` is a strong shared-budget baseline and diagnostic mirror, not the paper target. When a Bootstrap Policy loses to it, first diagnose which reusable mechanism principle the budget-only control exposed, such as early expensive-tier frontload, pressure gating, repair runway, or stop-loss behavior, then decide whether BudgetFlow should absorb that principle through its own value-aware, segment-aware, repair/escalation/stop mechanisms. Do not weaken the control, cherry-pick tasks, tune values after outcomes, or turn the story into "BudgetFlow copied the baseline."
+- Stage/Segment-Splitting Risk: workflow-stage or segment-aware routing is a mechanism hypothesis, not an axiom. It may improve Claim 2 by using model tiers at the right work segment, but it may also add switching noise, cache loss, prompt drift, or brittle heuristics that hurt Claim 1.
+- Stage/Segment-Aware Control: when evaluating the Claim 2 mechanism, report stage/segment-aware BudgetFlow against a task-level or per-request control. Explain pass/value delta, cost delta, Strongest Model productive-use delta, and whether stage signals helped routing or merely added noise.
+- Strong Baseline Diagnosis: pure-tier, budget-only, and static-router baselines are diagnostic mirrors, not paper targets. When BudgetFlow loses to one, first diagnose the reusable principle it exposed, such as all-T2/all-Strongest frontier posture, early expensive-tier frontload, pressure gating, repair runway, or stop-loss behavior. Then decide whether BudgetFlow should absorb that principle through value-aware frontier selection, routing, repair, escalation, or stop mechanisms. Keep the control strong, keep tasks fixed, keep values frozen, and avoid a "BudgetFlow copied the baseline" story.
 - Long-Term Iteration Value: before fixing a symptom, ask whether the fix improves future diagnosis, scale-up, or paper evidence. Do not overfit the current five familiar tasks.
 - Reflection Loop: after each experiment, audit whether the metric matrix, logs, checker output, and memory updates are sufficient to support the next learning/routing decision. Do not treat pass rate alone as an explanation.
 
-## Eight Gold Standards
+## Short Gold Standards
 
 These are the short-form checks every worker should keep in view:
 
-- T1 first: report Yield and Yield per Dollar before mechanism storytelling.
-- T2 frontier: compare verified resolution and cost under the same budget.
-- Model-tier diagnosis: report productive use, no-progress spend, and why expensive tiers were selected.
-- No-patch rate: distinguish no-patch exits, failed patches, verifier failures, and infra failures.
-- Segment control: compare Segment-Aware Routing against a task-level or per-request control.
-- Checker first: inspect JSONL, trace, checker, compact audit, and harness trust before drawing conclusions.
-- No-paid gates first: pass no-paid tests, dry-runs, value/cost confidence, and provider preflight before paid runs.
-- Historical evidence is immutable: do not patch historical JSONL or old reports to make a current story cleaner.
-- SWE-bench as testbed: SWE-bench is the current strongest pressure test for the abstraction, not the BudgetFlow Mechanism itself. If an interface makes SWE-bench adaptation awkward, it is probably over-abstracted or misplaced; if it only works for SWE-bench, benchmark detail has leaked into the mechanism.
+1. Claim 1 first: under a fixed shared hard budget, maximize normalized verified resolved value. Report Yield and Yield per Dollar before mechanism storytelling.
+2. Claim 2 explains Claim 1: compare verified resolution, cost efficiency, and Strongest Model productive use under the same budget. Routing savings are useful only when they protect or improve Claim 1.
+3. Strong baselines stay strong: when BudgetFlow loses to pure-tier, budget-only, or static-router controls, diagnose what the control exposed and absorb only the reusable principle. Keep tasks fixed and values frozen.
+4. Checker first: inspect JSONL, trace, checker, compact audit, harness trust, value source, cost source, and memory inputs before drawing conclusions.
+5. No-paid gates first: pass no-paid tests, dry-runs, value/cost confidence, provider preflight, parser checks, budget-mode checks, and worktree isolation before paid runs.
+6. Stage/segment control: compare stage-aware routing against task-level or per-request controls. Report pass/value/cost and Strongest Model productive-use deltas.
+7. Memory must be real: Cost Memory, Routing Memory, and Escalation Memory must consume fresh, schema-compatible, harness-trusted records and influence the next cap, route, stop/continue, or escalation decision.
+8. SWE-bench is a testbed: local harness adapters, compat patches, and repo-specific test runners are evaluation infra, not the BudgetFlow mechanism. Benchmark detail must not leak into Learn Policy Inputs, ValueSource, CostSource, routing, or paper metrics.
 
 ## Run Discipline
 
