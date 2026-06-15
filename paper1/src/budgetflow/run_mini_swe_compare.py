@@ -329,13 +329,17 @@ def main() -> None:
             flush=True,
         )
 
+    # CLI --budget-mode wins; fall back to budget_plan JSON's budget_mode
+    effective_budget_mode = args.budget_mode
+    if effective_budget_mode is None and _budget_plan_data is not None:
+        effective_budget_mode = str(_budget_plan_data.get("budget_mode", "") or "") or None
     budget_modes_plan = build_batch_budget_modes(
         strategies=strategies,
         per_task_cap=args.per_task_cap,
         auto_budget_task_caps=auto_budget_task_caps,
         constrained_budget=budget_input["hard_cap_usd"],
         frozen_task_caps=frozen_task_caps,
-        budget_mode=args.budget_mode,
+        budget_mode=effective_budget_mode,
     )
     batch_caps = budget_modes_plan.batch_caps
     budget_modes = budget_modes_plan.budget_modes

@@ -68,7 +68,7 @@ from raw model capability.
 
 1. Tight budget ($1.23): bare_t3 may time out — this is expected, confirms budget is binding
 2. Zero-history Requests/Sphinx tasks: bootstrap estimates only, first-paid-run variance expected
-3. Gold sanity pending for 4 new tasks
+3. Gold sanity confirmed for all 4 new tasks (candidate gate 2026-06-15)
 4. t3x2 catalog: tight-budget effect depends on diagnostic 2x pricing
 5. 4-repo generalization not stress-tested in paid run
 
