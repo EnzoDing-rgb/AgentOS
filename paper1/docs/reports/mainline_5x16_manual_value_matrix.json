@@ -4,17 +4,17 @@
     "created": "2026-06-10",
     "extends": "mainline_5x14_manual_value_matrix",
     "task_count": 16,
-    "profiles": [
+    "task_value_profiles": [
       "equal",
-      "manual_value",
-      "bootstrap_difficulty"
+      "manual_value"
     ],
+    "task_effort_source": "task_metadata_formula",
     "value_source_kind": "pre_registered_manual",
     "source_class": "human_pre_registered_plus_prior_calibration",
     "outcome_free_for_this_run": true,
     "note": "Extends 5x14 matrix with two additional Django tasks (django-16046 numberformat null IndexError, django-15388 devserver autoreload restart) for stronger 2-repo signal. Manual values are fixed before the 5x16 mechanism run. New Django tasks use zero-history SWE-bench metadata, not outcomes. Gold sanity confirmed PASS for both new candidates.",
     "new_task_selection": "Two additional Django SWE-bench Lite tasks selected for: (a) single-file simple patches, (b) gold sanity PASS under local harness, (c) no Django app/registry/settings noise, (d) low harness risk. django-11099 was the first-choice candidate but failed gold sanity (fail_after=fail).",
-    "formula_reference": "bootstrap_difficulty = 1 + patch_lines + 2*f2p_count + log1p(p2p_count) + 0.01*problem_words + 1.5*gold_file_count; manual_value is compressed/human-pre-registered, not equal to raw difficulty."
+    "schema_version": "v2_task_value_task_effort_model_fit"
   },
   "tasks": {
     "sympy__sympy-13480": {
@@ -27,11 +27,22 @@
         "problem_words": 56,
         "gold_file_count": 1
       },
-      "values": {
+      "task_value": {
         "equal": 1.0,
-        "manual_value": 1.0,
-        "bootstrap_difficulty": 20.8442
+        "manual_value": 1.0
       },
+      "task_effort": {
+        "bootstrap_heuristic": 20.8442,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 12,
+          "f2p_count": 1,
+          "p2p_count": 43,
+          "problem_words": 56,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
       "rationale": "Prior calibrated SymPy task; retained as low-to-medium value anchor."
     },
     "sympy__sympy-14774": {
@@ -44,11 +55,22 @@
         "problem_words": 67,
         "gold_file_count": 1
       },
-      "values": {
+      "task_value": {
         "equal": 1.0,
-        "manual_value": 0.8,
-        "bootstrap_difficulty": 21.9149
+        "manual_value": 0.8
       },
+      "task_effort": {
+        "bootstrap_heuristic": 21.9149,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 12,
+          "f2p_count": 1,
+          "p2p_count": 114,
+          "problem_words": 67,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
       "rationale": "Prior calibrated lower-value SymPy sanity task."
     },
     "sympy__sympy-16988": {
@@ -61,11 +83,22 @@
         "problem_words": 56,
         "gold_file_count": 1
       },
-      "values": {
+      "task_value": {
         "equal": 1.0,
-        "manual_value": 2.0,
-        "bootstrap_difficulty": 23.3505
+        "manual_value": 2.0
       },
+      "task_effort": {
+        "bootstrap_heuristic": 23.3505,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 12,
+          "f2p_count": 2,
+          "p2p_count": 72,
+          "problem_words": 56,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
       "rationale": "Prior calibrated high-value hard SymPy task; retained as top-priority anchor."
     },
     "sympy__sympy-20212": {
@@ -78,11 +111,22 @@
         "problem_words": 79,
         "gold_file_count": 1
       },
-      "values": {
+      "task_value": {
         "equal": 1.0,
-        "manual_value": 1.3,
-        "bootstrap_difficulty": 20.7865
+        "manual_value": 1.3
       },
+      "task_effort": {
+        "bootstrap_heuristic": 20.7865,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 12,
+          "f2p_count": 1,
+          "p2p_count": 32,
+          "problem_words": 79,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
       "rationale": "Prior calibrated delicate SymPy semantics task."
     },
     "sympy__sympy-12419": {
@@ -95,11 +139,22 @@
         "problem_words": 187,
         "gold_file_count": 1
       },
-      "values": {
+      "task_value": {
         "equal": 1.0,
-        "manual_value": 1.1,
-        "bootstrap_difficulty": 49.6281
+        "manual_value": 1.1
       },
+      "task_effort": {
+        "bootstrap_heuristic": 49.6281,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 40,
+          "f2p_count": 1,
+          "p2p_count": 25,
+          "problem_words": 187,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
       "rationale": "Zero-history SymPy matrix-expression task; moderate patch/test surface and useful anti-overfit coverage."
     },
     "sympy__sympy-19007": {
@@ -112,11 +167,22 @@
         "problem_words": 82,
         "gold_file_count": 1
       },
-      "values": {
+      "task_value": {
         "equal": 1.0,
-        "manual_value": 1.4,
-        "bootstrap_difficulty": 53.6158
+        "manual_value": 1.4
       },
+      "task_effort": {
+        "bootstrap_heuristic": 53.6158,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 41,
+          "f2p_count": 3,
+          "p2p_count": 26,
+          "problem_words": 82,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
       "rationale": "Zero-history SymPy block-matrix indexing task with three fail-to-pass tests; higher repair value."
     },
     "sympy__sympy-20154": {
@@ -129,11 +195,22 @@
         "problem_words": 88,
         "gold_file_count": 1
       },
-      "values": {
+      "task_value": {
         "equal": 1.0,
-        "manual_value": 1.5,
-        "bootstrap_difficulty": 60.0936
+        "manual_value": 1.5
       },
+      "task_effort": {
+        "bootstrap_heuristic": 60.0936,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 49,
+          "f2p_count": 2,
+          "p2p_count": 40,
+          "problem_words": 88,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
       "rationale": "Zero-history SymPy iterables task with moderate patch surface and two fail-to-pass tests."
     },
     "sympy__sympy-20639": {
@@ -146,11 +223,22 @@
         "problem_words": 57,
         "gold_file_count": 1
       },
-      "values": {
+      "task_value": {
         "equal": 1.0,
-        "manual_value": 1.6,
-        "bootstrap_difficulty": 64.0116
+        "manual_value": 1.6
       },
+      "task_effort": {
+        "bootstrap_heuristic": 64.0116,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 52,
+          "f2p_count": 2,
+          "p2p_count": 139,
+          "problem_words": 57,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
       "rationale": "Zero-history SymPy pretty-printer task with broad pass-to-pass validation surface; highest new-task value."
     },
     "sympy__sympy-15011": {
@@ -163,11 +251,22 @@
         "problem_words": 101,
         "gold_file_count": 1
       },
-      "values": {
+      "task_value": {
         "equal": 1.0,
-        "manual_value": 1.2,
-        "bootstrap_difficulty": 53.499
+        "manual_value": 1.2
       },
+      "task_effort": {
+        "bootstrap_heuristic": 53.499,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 44,
+          "f2p_count": 1,
+          "p2p_count": 53,
+          "problem_words": 101,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
       "rationale": "New zero-history SymPy task; moderate patch surface with broad pass-to-pass coverage."
     },
     "sympy__sympy-16792": {
@@ -180,11 +279,22 @@
         "problem_words": 285,
         "gold_file_count": 1
       },
-      "values": {
+      "task_value": {
         "equal": 1.0,
-        "manual_value": 1.3,
-        "bootstrap_difficulty": 52.3573
+        "manual_value": 1.3
       },
+      "task_effort": {
+        "bootstrap_heuristic": 52.3573,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 41,
+          "f2p_count": 1,
+          "p2p_count": 54,
+          "problem_words": 285,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
       "rationale": "New zero-history SymPy task; longest problem statement of the set with broad pass-to-pass coverage."
     },
     "sympy__sympy-23117": {
@@ -197,11 +307,22 @@
         "problem_words": 119,
         "gold_file_count": 1
       },
-      "values": {
+      "task_value": {
         "equal": 1.0,
-        "manual_value": 0.9,
-        "bootstrap_difficulty": 50.0763
+        "manual_value": 0.9
       },
+      "task_effort": {
+        "bootstrap_heuristic": 50.0763,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 43,
+          "f2p_count": 1,
+          "p2p_count": 3,
+          "problem_words": 119,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
       "rationale": "New zero-history SymPy task; narrow test scope (3 pass-to-pass) suggests focused fix with limited regression risk."
     },
     "sympy__sympy-21055": {
@@ -214,11 +335,22 @@
         "problem_words": 91,
         "gold_file_count": 1
       },
-      "values": {
+      "task_value": {
         "equal": 1.0,
-        "manual_value": 1.0,
-        "bootstrap_difficulty": 48.0491
+        "manual_value": 1.0
       },
+      "task_effort": {
+        "bootstrap_heuristic": 48.0491,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 40,
+          "f2p_count": 1,
+          "p2p_count": 13,
+          "problem_words": 91,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
       "rationale": "New zero-history SymPy task; lowest bootstrap difficulty of the four additions with moderate scope."
     },
     "django__django-10924": {
@@ -231,11 +363,22 @@
         "problem_words": 112,
         "gold_file_count": 1
       },
-      "values": {
+      "task_value": {
         "equal": 1.0,
-        "manual_value": 1.3,
-        "bootstrap_difficulty": 18.3131
+        "manual_value": 1.3
       },
+      "task_effort": {
+        "bootstrap_heuristic": 18.3131,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 12,
+          "f2p_count": 1,
+          "p2p_count": 1,
+          "problem_words": 112,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
       "rationale": "Zero-history Django task; FilePathField callable path fix. Simple single-file patch (12 lines), one fail-to-pass test. Medium-high manual value as repo-diversity anchor — first non-SymPy task in the batch, provides cross-repo generalisation signal without excessive harness risk."
     },
     "django__django-12113": {
@@ -248,46 +391,79 @@
         "problem_words": 442,
         "gold_file_count": 1
       },
-      "values": {
+      "task_value": {
         "equal": 1.0,
-        "manual_value": 1.0,
-        "bootstrap_difficulty": 18.92
+        "manual_value": 1.0
       },
+      "task_effort": {
+        "bootstrap_heuristic": 18.92,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 10,
+          "f2p_count": 1,
+          "p2p_count": 0,
+          "problem_words": 442,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
       "rationale": "Zero-history Django task; SQLite test db signature fix. Minimal patch (10 lines, 1 file), simple test surface (1 f2p, 0 p2p). Long problem statement due to verbose traceback. Medium manual value — useful Django signal but narrower scope than 10924."
     },
     "django__django-16046": {
       "instance_id": "django__django-16046",
       "repo": "django/django",
       "features": {
-        "patch_lines": 2,
+        "patch_lines": 12,
         "f2p_count": 1,
         "p2p_count": 6,
         "problem_words": 53,
         "gold_file_count": 1
       },
-      "values": {
+      "task_value": {
         "equal": 1.0,
-        "manual_value": 1.0,
-        "bootstrap_difficulty": 8.9759
+        "manual_value": 1.0
       },
-      "rationale": "Zero-history Django task; numberformat IndexError when null value formatted in admin list_display. Minimal patch (2 lines, 1 file: django/utils/numberformat.py), one fail-to-pass test. Gold sanity PASS confirmed under local harness (Django 4.2). Simple guard clause — low harness risk, clear issue. Manual value 1.0 as base Django signal."
+      "task_effort": {
+        "bootstrap_heuristic": 18.9759,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 12,
+          "f2p_count": 1,
+          "p2p_count": 6,
+          "problem_words": 53,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
+      "rationale": "Zero-history Django task; numberformat IndexError when null value formatted in admin list_display. Code fix is 2 lines in django/utils/numberformat.py; SWE-bench patch is 12 lines including test file modifications. One fail-to-pass test, six pass-to-pass tests. Gold sanity PASS confirmed under local harness (Django 4.2). Simple guard clause — low harness risk, clear issue. Manual value 1.0 as base Django signal."
     },
     "django__django-15388": {
       "instance_id": "django__django-15388",
       "repo": "django/django",
       "features": {
-        "patch_lines": 2,
+        "patch_lines": 12,
         "f2p_count": 1,
         "p2p_count": 9,
         "problem_words": 133,
         "gold_file_count": 1
       },
-      "values": {
+      "task_value": {
         "equal": 1.0,
-        "manual_value": 1.0,
-        "bootstrap_difficulty": 10.1326
+        "manual_value": 1.0
       },
-      "rationale": "Zero-history Django task; devserver autoreload fails to detect template changes when BASE_DIR added to TEMPLATES DIRS. Minimal patch (2 lines, 1 file: django/template/autoreload.py), one fail-to-pass test. Gold sanity PASS confirmed under local harness (Django 4.1). Resolved path resolution edge case — low harness risk. Manual value 1.0 as base Django signal."
+      "task_effort": {
+        "bootstrap_heuristic": 20.1326,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 12,
+          "f2p_count": 1,
+          "p2p_count": 9,
+          "problem_words": 133,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
+      "rationale": "Zero-history Django task; devserver autoreload fails to detect template changes when BASE_DIR added to TEMPLATES DIRS. Code fix is 2 lines in django/template/autoreload.py; SWE-bench patch is 12 lines including test file modifications. One fail-to-pass test, nine pass-to-pass tests. Gold sanity PASS confirmed under local harness (Django 4.1). Resolved path resolution edge case — low harness risk. Manual value 1.0 as base Django signal."
     }
   }
 }

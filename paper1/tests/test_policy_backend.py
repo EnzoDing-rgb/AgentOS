@@ -344,7 +344,7 @@ class TestSwebenchTaskValueHelper:
 
         matrix = {
             "tasks": {
-                "task-a": {"values": {"difficulty": 2.5}},
+                "task-a": {"task_value": {"difficulty": 2.5}},
             }
         }
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:

@@ -7,6 +7,7 @@ TEST_DIR = Path(__file__).resolve().parent
 
 TEST_FILE_PURPOSES = {
     "test_adaptive_routing.py": "learn-policy-memory",
+    "test_allocation_context.py": "allocation-context",
     "test_architecture_boundaries.py": "architecture-boundary",
     "test_auto_budget.py": "cost-memory",
     "test_bash_stage.py": "swebench-adapter",

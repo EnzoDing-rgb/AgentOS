@@ -15,14 +15,14 @@ After every experiment, inspect artifacts before drawing conclusions:
 
 - Evaluation Validity: do the Claim 1 and Claim 2 metrics measure the claim? Confirm that the value proxy is frozen, reasonable, and not post-hoc fitted. Keep auxiliary metrics secondary.
 - Harness & Task Trust: did the local harness, task, verifier, and task environment behave credibly? Check for false positives, false negatives, unstable tasks, and tasks that are too easy or too hard for the current evidence question.
-- Infra Health: check runtime, worktrees, NFS, provider, parser, trace, checker, budget mode, and value source.
+- Infrastructure Health: check runtime, worktrees, concurrency, NFS, provider, parser, trace, checker, budget mode, value source, and cost source.
 - Learning Loop Reality: Cost Memory, Routing Memory, and Escalation Memory must affect the next cap, route, stop/continue decision, or Strongest Model escalation, not only appear in logs.
 - Mechanism Diagnosis: explain whether outcomes came from model capability, task difficulty, routing, caps, Value-Triggered Escalation, evaluation, or observability.
 - Stage/Segment-Splitting Risk: workflow-stage or segment-aware routing is a mechanism hypothesis, not an axiom. It may improve Claim 2 by using model tiers at the right work segment, but it may also add switching noise, cache loss, prompt drift, or brittle heuristics that hurt Claim 1.
 - Stage/Segment-Aware Control: when evaluating the Claim 2 mechanism, report stage/segment-aware BudgetFlow against a task-level or per-request control. Explain pass/value delta, cost delta, Strongest Model productive-use delta, and whether stage signals helped routing or merely added noise.
 - Strong Baseline Diagnosis: pure-tier, budget-only, and static-router baselines are diagnostic mirrors, not paper targets. When BudgetFlow loses to one, first diagnose the reusable principle it exposed, such as all-T2/all-Strongest frontier posture, early expensive-tier frontload, pressure gating, repair runway, or stop-loss behavior. Then decide whether BudgetFlow should absorb that principle through value-aware frontier selection, routing, repair, escalation, or stop mechanisms. Keep the control strong, keep tasks fixed, keep values frozen, and avoid a "BudgetFlow copied the baseline" story.
 - Long-Term Iteration Value: before fixing a symptom, ask whether the fix improves future diagnosis, scale-up, or paper evidence. Do not overfit the current five familiar tasks.
-- Reflection Loop: after each experiment, audit whether the metric matrix, logs, checker output, and memory updates are sufficient to support the next learning/routing decision. Do not treat pass rate alone as an explanation.
+- Reflection Loop: after each experiment, audit whether the metric matrix, logs, checker output, and memory updates are sufficient to support the next learning/routing decision. Do not treat pass rate alone as an explanation. Each experiment should identify which layer limits paper value: claim, metric, harness, task, infrastructure, learning loop, or mechanism.
 
 ## Short Gold Standards
 
@@ -36,6 +36,7 @@ These are the short-form checks every worker should keep in view:
 6. Stage/segment control: compare stage-aware routing against task-level or per-request controls. Report pass/value/cost and Strongest Model productive-use deltas.
 7. Memory must be real: Cost Memory, Routing Memory, and Escalation Memory must consume fresh, schema-compatible, harness-trusted records and influence the next cap, route, stop/continue, or escalation decision.
 8. SWE-bench is a testbed: local harness adapters, compat patches, and repo-specific test runners are evaluation infra, not the BudgetFlow mechanism. Benchmark detail must not leak into Learn Policy Inputs, ValueSource, CostSource, routing, or paper metrics.
+9. Research code clarity beats compatibility: this is top-conference research code, not a stable public API. Prefer clean architecture, deletion, and auditable schemas over compatibility fallbacks or retired aliases. Keep historical artifacts immutable and keep paid-run safety gates; do not preserve stale runtime paths merely because old reports used them.
 
 ## Run Discipline
 
@@ -66,7 +67,7 @@ These are the short-form checks every worker should keep in view:
 - Use subagents for low-value, high-token scans, narrow code/test edits, artifact enumeration, or failure classification when it saves cost or wall time without outsourcing main-agent judgment. Main-agent judgment owns architecture, routing, evaluation, learning, and paper-claim decisions.
 - Use skills only when they materially improve the current work. Do not mechanically read or invoke generic system skills in a way that distracts from BudgetFlow's north star, experiment discipline, or the user's immediate instruction. In particular, do not force a Test-Driven Development workflow for documentation-only work, experiment judgment, review, or other changes where it is not actually needed.
 - Avoid broad, unbounded repo archaeology. Read the few files and artifacts needed to answer the current evidence question, then act or summarize the remaining uncertainty.
-- Do not keep historical compatibility in active runtime, tests, or current docs unless it protects a current paid-run safety boundary. Historical JSONL/reports are forensic evidence; old schemas and retired terms must not drive Learn Policy Inputs, ValueSource, CostSource, routing, or paper metrics.
+- Do not keep historical compatibility in active runtime, tests, or current docs unless it protects a current paid-run safety boundary. Delete retired aliases, fallback branches, and stale schemas instead of carrying them forward. Historical JSONL/reports are forensic evidence; old schemas and retired terms must not drive Learn Policy Inputs, ValueSource, CostSource, routing, or paper metrics.
 - Keep docs meaningful: update `paper1/docs/north_star.md` or `paper1/docs/progress.md` only when a real decision changes.
 - Commit and push stable slices after no-paid gates pass. Avoid noisy commits, but do not leave verified mechanism changes uncommitted.
 

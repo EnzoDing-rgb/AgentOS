@@ -30,8 +30,8 @@ def test_non_equal_profile_without_explicit_source_is_value_matrix_diagnostic(tm
     matrix = tmp_path / "value_matrix.json"
     matrix.write_text(json.dumps({
         "tasks": {
-            "low": {"values": {"difficulty": 0.1}},
-            "high": {"values": {"difficulty": 0.5}},
+            "low": {"task_value": {"difficulty": 0.1}},
+            "high": {"task_value": {"difficulty": 0.5}},
         }
     }))
     ctx = ValueEfficiencyContext()
@@ -58,8 +58,8 @@ def test_pre_registered_manual_value_source_is_primary_t1_evidence(tmp_path) -> 
     matrix = tmp_path / "value_matrix.json"
     matrix.write_text(json.dumps({
         "tasks": {
-            "low": {"values": {"difficulty": 0.1}},
-            "high": {"values": {"difficulty": 0.5}},
+            "low": {"task_value": {"difficulty": 0.1}},
+            "high": {"task_value": {"difficulty": 0.5}},
         }
     }))
     ctx = ValueEfficiencyContext()
@@ -83,29 +83,44 @@ def test_pre_registered_manual_value_source_is_primary_t1_evidence(tmp_path) -> 
     assert record["task_value_primary_t1"] is True
 
 
-def test_bootstrap_profile_is_separate_diagnostic(tmp_path) -> None:
+def test_bootstrap_effort_is_diagnostic_not_task_value(tmp_path) -> None:
+    """task_effort.bootstrap_heuristic is readable but never a task_value profile."""
     matrix = tmp_path / "value_matrix.json"
     matrix.write_text(json.dumps({
         "tasks": {
-            "task-a": {"values": {"bootstrap_difficulty": 4.0}},
-            "task-b": {"values": {"bootstrap_difficulty": 2.0}},
+            "task-a": {
+                "task_value": {"equal": 1.0},
+                "task_effort": {"bootstrap_heuristic": 4.0},
+            },
+            "task-b": {
+                "task_value": {"equal": 1.0},
+                "task_effort": {"bootstrap_heuristic": 2.0},
+            },
         }
     }))
     ctx = ValueEfficiencyContext()
-    ctx.init(value_profile="bootstrap_difficulty", value_matrix_path=str(matrix))
+    ctx.init(value_profile="equal", value_matrix_path=str(matrix))
 
+    assert ctx.profile == "equal"
+    assert ctx.effort_lookup is not None
+    assert ctx.effort_lookup["task-a"] == 4.0
+    assert ctx.effort_lookup["task-b"] == 2.0
+
+    effort, source = ctx.task_effort("task-a")
+    assert effort == 4.0
+    assert source == "bootstrap_heuristic"
+
+    # task_value stays equal-sanity, NOT polluted by effort heuristic.
     record = ctx.enrich_record({
-            "instance_id": "task-a",
-            "routing": "budgetflow_value_aware",
-            "harness_resolved": True,
-            "total_cost": 0.5,
+        "instance_id": "task-a",
+        "routing": "budgetflow_value_aware",
+        "harness_resolved": True,
+        "total_cost": 0.5,
     })
-
-    assert record["value_objective"] == "t2_value_source_diagnostic"
-    assert record["task_value_source_class"] == "bootstrap_heuristic"
-    assert record["task_value_evidence_role"] == "heuristic_bootstrap"
-    assert record["task_value_primary_t1"] is False
-    assert record["resolved_value"] == 4.0
+    assert record["task_value"] == 1.0
+    assert record["value_source"] == "value_matrix"
+    assert record["task_effort"] == 4.0
+    assert record["task_effort_source"] == "bootstrap_heuristic"
 
 
 def test_matrix_metadata_can_mark_pre_registered_manual_value_source(tmp_path) -> None:
@@ -113,7 +128,7 @@ def test_matrix_metadata_can_mark_pre_registered_manual_value_source(tmp_path) -
     matrix.write_text(json.dumps({
         "meta": {"value_source_kind": "pre_registered_manual"},
         "tasks": {
-            "task-a": {"values": {"difficulty": 3.0}},
+            "task-a": {"task_value": {"difficulty": 3.0}},
         }
     }))
     ctx = ValueEfficiencyContext()
@@ -174,7 +189,7 @@ def test_abort_rows_are_reported_but_excluded_from_paper_metrics() -> None:
 
 def test_missing_non_equal_task_fails_fast(tmp_path) -> None:
     matrix = tmp_path / "value_matrix.json"
-    matrix.write_text(json.dumps({"tasks": {"x": {"values": {"difficulty": 0.1}}}}))
+    matrix.write_text(json.dumps({"tasks": {"x": {"task_value": {"difficulty": 0.1}}}}))
     ctx = ValueEfficiencyContext()
     ctx.init(value_profile="difficulty", value_matrix_path=str(matrix))
 
@@ -189,7 +204,7 @@ def test_missing_non_equal_task_fails_fast(tmp_path) -> None:
 
 def test_value_matrix_coverage_lists_missing_tasks_before_provider_preflight(tmp_path) -> None:
     matrix = tmp_path / "value_matrix.json"
-    matrix.write_text(json.dumps({"tasks": {"covered": {"values": {"difficulty": 0.1}}}}))
+    matrix.write_text(json.dumps({"tasks": {"covered": {"task_value": {"difficulty": 0.1}}}}))
     ctx = ValueEfficiencyContext()
     ctx.init(value_profile="difficulty", value_matrix_path=str(matrix))
 

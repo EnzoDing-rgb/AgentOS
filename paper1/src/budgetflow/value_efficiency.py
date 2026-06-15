@@ -29,6 +29,7 @@ class ValueEfficiencyContext:
     profile: str = "equal"
     matrix_path: str | None = None
     lookup: dict[str, float] | None = None
+    effort_lookup: dict[str, float] | None = None
     median_task_value: float = 1.0
     source_info: ValueSourceInfo = ValueSourceInfo(
         kind="equal_sanity",
@@ -71,6 +72,7 @@ class ValueEfficiencyContext:
         self.profile = value_profile
         self.matrix_path = value_matrix_path
         self.lookup = None
+        self.effort_lookup = None
         self.median_task_value = 1.0
         artifact: dict | None = None
         if value_matrix_path:
@@ -84,6 +86,8 @@ class ValueEfficiencyContext:
                     f"in value matrix {value_matrix_path}",
                     flush=True,
                 )
+            # Load effort heuristic (diagnostic only, not Claim 1 value).
+            self.effort_lookup = _extract_effort_lookup(artifact)
         self.source_info = _resolve_value_source_info(
             profile=value_profile,
             value_matrix_path=value_matrix_path,
@@ -103,6 +107,12 @@ class ValueEfficiencyContext:
             f"Either add this task to the matrix or use --value-profile=equal."
         )
 
+    def task_effort(self, instance_id: str) -> tuple[float | None, str]:
+        """Return (effort_heuristic, effort_source) or (None, \"none\")."""
+        if self.effort_lookup is not None and instance_id in self.effort_lookup:
+            return float(self.effort_lookup[instance_id]), "bootstrap_heuristic"
+        return None, "none"
+
     def missing_task_values(self, instance_ids: list[str] | tuple[str, ...]) -> list[str]:
         """Return task IDs that would fail value lookup for the active profile."""
         if self.profile == "equal":
@@ -117,6 +127,7 @@ class ValueEfficiencyContext:
         scoreable = not is_score_abort(record)
         task_cost = float(record.get("total_cost") or 0)
         task_value, value_source = self.task_value(instance_id)
+        task_effort, effort_source = self.task_effort(instance_id)
         resolved_value = task_value if resolved else 0.0
         scoreable_cost = task_cost if scoreable else 0.0
         yield_per_dollar = resolved_value / scoreable_cost if scoreable_cost > 0 else 0.0
@@ -130,6 +141,8 @@ class ValueEfficiencyContext:
         record["task_value_confidence"] = self.confidence
         record["task_value_primary_t1"] = self.is_primary_value_evidence
         record["task_value"] = task_value
+        record["task_effort"] = task_effort
+        record["task_effort_source"] = effort_source
         record["resolved_value"] = resolved_value
         record["scoreable_cost"] = scoreable_cost
         record["value_source"] = value_source
@@ -188,12 +201,34 @@ def _extract_lookup(artifact: dict, profile: str) -> dict[str, float] | None:
         for instance_id, task_data in tasks.items():
             if not isinstance(task_data, dict):
                 continue
-            values = task_data.get("values")
-            if isinstance(values, dict) and profile in values:
-                lookup[instance_id] = float(values[profile])
+            tv = task_data.get("task_value")
+            if isinstance(tv, dict) and profile in tv:
+                lookup[instance_id] = float(tv[profile])
         if lookup:
             return lookup
 
+    return None
+
+
+def _extract_effort_lookup(artifact: dict) -> dict[str, float] | None:
+    """Extract per-task effort heuristic from value matrix.
+
+    Reads ``task_effort.bootstrap_heuristic`` (North Star schema).
+    Returns None when no effort data is present.
+    """
+    tasks = artifact.get("tasks")
+    if isinstance(tasks, dict) and tasks:
+        lookup: dict[str, float] = {}
+        for instance_id, task_data in tasks.items():
+            if not isinstance(task_data, dict):
+                continue
+            te = task_data.get("task_effort")
+            if isinstance(te, dict):
+                effort = te.get("bootstrap_heuristic")
+                if effort is not None:
+                    lookup[instance_id] = float(effort)
+        if lookup:
+            return lookup
     return None
 
 

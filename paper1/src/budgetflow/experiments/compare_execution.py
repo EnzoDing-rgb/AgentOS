@@ -14,6 +14,7 @@ from budgetflow.adapters import (
 )
 from budgetflow.adapter import runner as mini_swe_runner
 from budgetflow.adapter.stall_guard import stall_guard_enabled
+from budgetflow.allocation import AllocationContext
 from budgetflow.auto_budget import BudgetEstimate
 from budgetflow.frozen_router import FrozenRouterPlan
 from budgetflow.compare_checkpoint import CompareCheckpointStore, GlobalRunProgress, StrategyScoreboard
@@ -98,7 +99,31 @@ def run_task_record(
         adaptive.reset_task_runtime()
         adaptive.set_task_context(instance_id)
 
-    task_value, _ = value_context.task_value(instance_id)
+    task_value, value_source = value_context.task_value(instance_id)
+    task_effort, effort_source = value_context.task_effort(instance_id)
+
+    # AutoBudget memory provides a more informed effort estimate than the
+    # bootstrap heuristic.  When available, override the matrix-based effort.
+    if budget_estimate is not None and budget_estimate.source.startswith("memory_"):
+        task_effort = budget_estimate.estimated_cost
+        effort_source = f"auto_budget_{budget_estimate.source}"
+
+    model_fit: dict[str, float] | None = None
+    model_fit_source = "catalog_progress_prior"
+    if adaptive_registry is not None and adaptive_registry.policy_memory is not None:
+        repo_prior = adaptive_registry.policy_memory.repo_prior(instance_id)
+        if repo_prior.tier_success_rate:
+            model_fit = {f"tier{t}": v for t, v in repo_prior.tier_success_rate.items()}
+            model_fit_source = "policy_memory"
+
+    allocation = AllocationContext(
+        task_value=task_value,
+        task_effort=task_effort,
+        model_fit=model_fit,
+        value_source=value_source,
+        effort_source=effort_source,
+        model_fit_source=model_fit_source,
+    )
     result = mini_swe_runner.run_mini_swe_task(
         task,
         strategy=cfg.routing,
@@ -114,9 +139,9 @@ def run_task_record(
         pressure_max=pressure_max,
         adaptive=adaptive,
         enable_turn_trace=enable_turn_trace,
-        task_value=task_value,
         median_task_value=value_context.median_task_value,
         frozen_plan=frozen_plan,
+        allocation=allocation,
     )
     outcome = progress_adapter.outcome_from_result(result)
     batch_snapshot = governor.budget_snapshot()
@@ -173,6 +198,7 @@ def run_task_record(
         "row_finished_at": time.time(),
         "attempt_id": f"{run_series}_{cfg.name}_{instance_id}" if run_series else "",
     }
+    record["model_fit_source"] = model_fit_source
     record["exit_owner"] = compute_exit_owner(record)
     record["stall_guard_owner"] = "budgetflow" if stall_guard_enabled(cfg.routing) else "none"
     record["protocol_retry_used"] = result.protocol_retry_used

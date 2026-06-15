@@ -15,7 +15,12 @@ tiers only.
 | Claim 2 | BudgetFlow's value-aware budget allocation, routing, escalation, stop, and learning mechanisms explain how Claim 1 is achieved and must improve or preserve value/cost efficiency against strong diagnostic controls. |
 | Yield | Total resolved task value within a shared budget window. It is not raw task count. |
 | Yield per Dollar | Total resolved task value divided by model spend. It is the main efficiency diagnostic. |
-| Value-Driven Budget Allocation | Allocation of task caps and spend from task value, history, expected payoff, cost, and budget pressure. |
+| Value-Driven Budget Allocation | Allocation of task caps and spend from Task Value, Task Effort, Model Fit, expected payoff, cost, and budget pressure. |
+| Task Value | Estimated utility of a verified resolved outcome. It answers "what is this task worth if solved?" |
+| Task Effort | Estimated work, runway, or expected cost needed to resolve a task. It answers "how much budget should this task need?" |
+| Model Fit | Estimated suitability of each model tier for a task, repo, or workflow stage. It answers "which tier is likely to make verified progress here?" |
+| AllocationContext | Standard decision input that carries Task Value, Task Effort, Model Fit, budget state, cost source, and confidence into policy decisions. |
+| Tier Boundary Selection | Choosing whether a BudgetFlow policy should behave near the T2 boundary, near the T3 boundary, or use mixed model-tier routing for the current allocation context. |
 | ValueSource | Versioned input that defines or estimates task value for one run or deployment. |
 | CostSource | Versioned input that defines or estimates model cost for one run or deployment. |
 | TaskAdapter | Adapter that turns external work into standard BudgetFlow task inputs: identity, description, features, difficulty/value hints, and value-source metadata. |
@@ -43,20 +48,21 @@ as fail-to-pass tests, pass-to-pass tests, patch extraction, worktree diffs, and
 repo-specific runners belong behind adapters.
 
 The product goal is simple: every dollar of model spend should create more
-verified task value. BudgetFlow allocates spend by value, expected payoff,
-difficulty, progress, cost, model-price frontier, and budget pressure instead
-of by fixed per-task or per-person quotas.
+verified task value. BudgetFlow allocates spend from an AllocationContext:
+Task Value sets the utility target, Task Effort estimates required runway, and
+Model Fit estimates which model tier is likely to make verified progress. This
+keeps the system broader than a routing heuristic.
 
 ## Claims And Metrics
 
 | Claim | Main question | Primary evidence |
 |---|---|---|
 | Claim 1 | Under the same shared hard budget, does BudgetFlow resolve more normalized task value? | Yield and Yield per Dollar at fixed budget. |
-| Claim 2 | Why did that happen, and are the mechanisms reusable? | Resolution-cost frontier, Strongest Model productive use, stop-loss behavior, stage/task routing controls, memory effect, and failure attribution. |
+| Claim 2 | Why did that happen, and are the mechanisms reusable? | Resolution-cost frontier, Strongest Model productive use, Tier Boundary Selection, stop-loss behavior, stage/task routing controls, memory effect, and failure attribution. |
 
 Claim 1 is the objective. Claim 2 explains the mechanism. Routing savings,
-stage-aware routing, stop-loss, escalation, and memory are useful only when they
-protect or improve Claim 1.
+stage-aware routing, Tier Boundary Selection, stop-loss, escalation, and memory
+are useful only when they protect or improve Claim 1.
 
 Resolved task count, pass rate, Pass per Dollar, average turns, and no-patch
 rate are diagnostics. They must not replace Yield or Yield per Dollar as the
@@ -64,29 +70,35 @@ main claim metric.
 
 ## Value And Cost Discipline
 
-Value is a proxy, so every paid run must make the proxy auditable.
+Task Value is a proxy, so every paid run must make the proxy auditable.
 
 - Freeze the ValueSource before execution. Do not change task values after
   seeing outcomes.
-- Report at least equal value and the chosen value profile. When available,
-  also report an algorithmic difficulty/value proxy such as bootstrap
-  difficulty.
+- Manual value, when used, is a pre-registered researcher value proxy based on
+  task priority, expected user impact, scope, and benchmark diversity. Treat it
+  as a proxy, not ground truth.
+- Report at least equal value and the chosen Task Value profile. Task Effort
+  diagnostics can be reported separately, but they must not be presented as
+  Claim 1 value.
 - Explain whether the direction of the signal depends on the chosen value
   profile.
-- Do not treat "easy to solve" as "high value." Difficulty can inform a value
-  proxy, but it is not the same concept.
+- Do not treat "easy to solve" as "high value." Task Effort can inform budget
+  runway and cost estimates, but it is not Task Value.
 - In enterprise deployments, value may be supplied by customer priority,
   revenue, SLA, risk, or an external system. In SWE-bench experiments, value is
   a pre-registered research proxy and must be treated as a threat to validity.
 
-Cost follows the same rule.
+Task Effort and cost follow the same rule.
 
 - Use a versioned model-tier catalog for paid runs.
 - Record catalog path, revision, provider, and any price multipliers.
-- Treat pure T2 and pure T3 baselines as frontier diagnostics. If a pure tier is
-  best for a task distribution and price catalog, BudgetFlow should diagnose
-  and absorb the reusable principle through value-aware frontier selection, not
-  weaken the baseline.
+- Keep Task Effort separate from Task Value. Metadata heuristics, historical
+  cost, turns, test counts, patch size, and repo priors estimate runway or
+  expected cost; they do not define outcome utility.
+- Treat pure T2 and pure T3 baselines as boundary diagnostics. If a pure tier is
+  best for a task distribution and model catalog, BudgetFlow should diagnose
+  and absorb the reusable principle through Tier Boundary Selection, not weaken
+  the baseline.
 
 ## Mechanism Layers
 
@@ -94,8 +106,8 @@ Cost follows the same rule.
 |---|---|
 | BudgetFlow Mechanism | Shared hard-budget ledger, reservation, settlement, verifier-grounded outcome, stop-loss primitives, trace/audit/replay, and same-budget policy comparison. |
 | Domain Adapters | Task, workflow stage/segment, progress/outcome, repo runner, and cost mappings for one benchmark or enterprise workflow. |
-| Policy Backend | Cap recommendation, model-tier routing, escalation, de-escalation, stop/continue, and learned or heuristic priors. |
-| Learn Policy Inputs | Cost Memory, Routing Memory, and Escalation Memory. These are optional inputs for policy and audit, not hidden mechanism behavior. |
+| Policy Backend | Cap recommendation, Tier Boundary Selection, model-tier routing, escalation, de-escalation, stop/continue, and learned or heuristic priors. |
+| Learn Policy Inputs | Cost Memory, Routing Memory, and Escalation Memory. These are optional Claim 2 inputs for policy and audit, not hidden Claim 1 requirements. |
 | Observability | JSONL schema, turn traces, checker, compact audit, failure attribution, and reports. |
 
 Adapter boundaries should be useful but not ceremonial. If an interface makes
@@ -113,7 +125,7 @@ source, budget, model catalog, and harness fixed within one comparison.
 | Bare T3 | Pure strongest-tier boundary. Tests whether the current price frontier makes "use the strongest model" optimal. |
 | Static/Frozen Enterprise Router | Pre-registered non-learning router. Tests a realistic enterprise routing baseline without BudgetFlow's shared-budget adaptation. |
 | BudgetFlow Same Router | Same frozen router inside BudgetFlow. Isolates shared ledger, accounting, stop/escalation primitives, and observability from routing quality. |
-| BudgetFlow Full | Value-aware BudgetFlow policy with routing, escalation, stop, tier-frontier calibration, and learning inputs when enabled. |
+| BudgetFlow Full | Value-aware BudgetFlow policy with AllocationContext, Tier Boundary Selection, routing, escalation, stop, and learning inputs when enabled. |
 | Task-level or Per-request Control | Control for stage/segment-aware routing. Tests whether stage signals help or add switching noise. |
 
 Strong controls stay strong. Do not weaken pure-tier, budget-only, or static
@@ -133,10 +145,11 @@ Run this audit before writing conclusions:
    checker, budget mode, value source, and cost source.
 4. Learning Loop Reality: did Cost Memory, Routing Memory, and Escalation
    Memory actually affect the next cap, route, stop/continue, or escalation
-   decision?
+   decision? If memory is disabled for a clean Claim 1 run, say so explicitly.
 5. Mechanism Diagnosis: explain whether outcomes came from model capability,
-   task difficulty, routing, budget caps, Value-Triggered Escalation,
-   evaluation, observability, parser/harness failures, or price frontier.
+   Task Value, Task Effort, Model Fit, routing, budget caps,
+   Tier Boundary Selection, Value-Triggered Escalation, evaluation,
+   observability, parser/harness failures, or model-price boundary.
 
 The point of each experiment is not to "get a good result." The point is to
 identify which layer currently limits paper value: claim, metric, harness,

@@ -201,8 +201,13 @@ def bootstrap_task_features(task) -> dict[str, int]:
     }
 
 
-def bootstrap_task_values(task) -> dict[str, float]:
-    """No-outcome bootstrap values from task text/patch/test metadata only."""
+def bootstrap_task_effort(task) -> dict[str, float | str | dict[str, int]]:
+    """No-outcome bootstrap effort heuristic from task text/patch/test metadata.
+
+    This is a Task Effort diagnostic, NOT Task Value.  It estimates runway /
+    expected work based on patch lines, test counts, problem length, and gold
+    file count.  It must not be presented as Claim 1 value.
+    """
     features = bootstrap_task_features(task)
     import math
 
@@ -215,27 +220,42 @@ def bootstrap_task_values(task) -> dict[str, float]:
         + 1.5 * features["gold_file_count"]
     )
     return {
-        "equal": 1.0,
-        "bootstrap_difficulty": round(raw, 4),
+        "bootstrap_heuristic": round(raw, 4),
+        "source": "task_metadata_formula",
+        "features": features,
     }
 
 
 def build_bootstrap_value_matrix(tasks: list, *, task_source: str) -> dict[str, Any]:
-    """Build value matrix for a selected task set without historical outcomes."""
+    """Build value matrix for a selected task set without historical outcomes.
+
+    Schema (North Star aligned):
+      - ``task_value``: Claim 1 value profiles (equal, manual_value, ...).
+      - ``task_effort``: Task Effort diagnostic (bootstrap_heuristic).
+      - ``model_fit``: reserved, null for bootstrap matrices.
+
+    The ``bootstrap_heuristic`` is a metadata-based effort proxy.  It is NOT
+    a Task Value profile and must not be selected via --value-profile.
+    """
+    import math as _math
+
     matrix: dict[str, Any] = {
         "meta": {
             "task_count": len(tasks),
-            "profiles": ["equal", "bootstrap_difficulty"],
+            "task_value_profiles": ["equal"],
+            "task_effort_source": "task_metadata_formula",
             "source": task_source,
             "source_class": "bootstrap_pre_registered_metadata",
             "outcome_free": True,
             "note": (
-                "Bootstrap task values use only pre-registered SWE-bench task metadata: "
-                "patch lines, fail/pass test counts, problem words, and gold file count. "
+                "Task Value profiles use only 'equal' (1.0 per task). "
+                "Task Effort uses a bootstrap heuristic from pre-registered "
+                "SWE-bench task metadata: patch lines, fail/pass test counts, "
+                "problem words, and gold file count. "
                 "No strategy outcome, cost, solve rarity, or BudgetFlow signal is used."
             ),
-            "formula": (
-                "bootstrap_difficulty = 1 + patch_lines + 2*f2p_count + "
+            "effort_formula": (
+                "bootstrap_heuristic = 1 + patch_lines + 2*f2p_count + "
                 "log1p(p2p_count) + 0.01*problem_words + 1.5*gold_file_count"
             ),
         },
@@ -243,24 +263,39 @@ def build_bootstrap_value_matrix(tasks: list, *, task_source: str) -> dict[str, 
     }
     for task in tasks:
         features = bootstrap_task_features(task)
-        values = bootstrap_task_values(task)
+        effort = bootstrap_task_effort(task)
         matrix["tasks"][task.instance_id] = {
             "instance_id": task.instance_id,
             "repo": task.repo,
+            "task_value": {"equal": 1.0},
+            "task_effort": effort,
+            "model_fit": None,
             "features": features,
-            "values": values,
         }
     matrix["rankings"] = {}
-    for profile in ("equal", "bootstrap_difficulty"):
-        ranked = sorted(
-            matrix["tasks"].items(),
-            key=lambda item: item[1]["values"][profile],
-            reverse=True,
-        )
-        matrix["rankings"][profile] = [
-            {"rank": index + 1, "instance_id": iid, "value": entry["values"][profile]}
-            for index, (iid, entry) in enumerate(ranked)
-        ]
+    # Equal profile: every task has value 1.0, ranking is alphabetical.
+    ranked_equal = sorted(
+        matrix["tasks"].items(),
+        key=lambda item: item[0],
+    )
+    matrix["rankings"]["equal"] = [
+        {"rank": index + 1, "instance_id": iid, "value": 1.0}
+        for index, (iid, entry) in enumerate(ranked_equal)
+    ]
+    # Effort ranking: by bootstrap_heuristic (diagnostic only, not Claim 1).
+    ranked_effort = sorted(
+        matrix["tasks"].items(),
+        key=lambda item: item[1]["task_effort"]["bootstrap_heuristic"],
+        reverse=True,
+    )
+    matrix["rankings"]["bootstrap_heuristic"] = [
+        {
+            "rank": index + 1,
+            "instance_id": iid,
+            "effort": entry["task_effort"]["bootstrap_heuristic"],
+        }
+        for index, (iid, entry) in enumerate(ranked_effort)
+    ]
     return matrix
 
 

@@ -348,10 +348,25 @@ def _load_frozen_preferred_models(frozen_plan_path: Path) -> dict[str, str]:
 
 
 def _load_value_features(value_matrix_path: Path) -> dict[str, dict]:
-    """Extract per-task features from value matrix."""
+    """Extract per-task features from value matrix.
+
+    Reads ``task_effort.bootstrap_heuristic`` (North Star schema) and
+    normalises into a ``bootstrap_difficulty`` key on each entry.
+    """
     with value_matrix_path.open() as f:
         matrix = json.load(f)
-    return matrix.get("tasks", {})
+    tasks = matrix.get("tasks", {})
+    for tid, entry in tasks.items():
+        if not isinstance(entry, dict):
+            continue
+        if "bootstrap_difficulty" in entry:
+            continue
+        te = entry.get("task_effort")
+        if isinstance(te, dict):
+            heuristic = te.get("bootstrap_heuristic")
+            if heuristic is not None:
+                entry["bootstrap_difficulty"] = float(heuristic)
+    return tasks
 
 
 def _bootstrap_cost_estimate(
@@ -367,7 +382,7 @@ def _bootstrap_cost_estimate(
     """
     features = value_features.get(task_id, {})
     difficulty = (
-        features.get("values", {}).get("bootstrap_difficulty", 30.0)
+        features.get("bootstrap_difficulty", 30.0)
         if features else 30.0
     )
 
@@ -377,7 +392,7 @@ def _bootstrap_cost_estimate(
         hist_cost = historical.get(strategy, {}).get(hist_tid)
         if hist_cost is None or hist_cost <= 0:
             continue
-        hist_diff = hist_feat.get("values", {}).get("bootstrap_difficulty")
+        hist_diff = hist_feat.get("bootstrap_difficulty")
         if hist_diff is None or hist_diff <= 0:
             continue
         ratios.append(hist_cost / hist_diff)

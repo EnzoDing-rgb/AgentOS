@@ -1,0 +1,598 @@
+{
+  "meta": {
+    "task_count": 16,
+    "task_value_profiles": [
+      "equal"
+    ],
+    "task_effort_source": "task_metadata_formula",
+    "source": "bootstrap_ids:sympy__sympy-13480,sympy__sympy-14774,sympy__sympy-16988,sympy__sympy-20212,sympy__sympy-12419,sympy__sympy-19007,sympy__sympy-20154,sympy__sympy-20639,sympy__sympy-15011,sympy__sympy-16792,sympy__sympy-21055,sympy__sympy-23117,django__django-10924,django__django-12113,django__django-16046,django__django-15388",
+    "source_class": "bootstrap_pre_registered_metadata",
+    "outcome_free": true,
+    "note": "Task Value profiles use only 'equal' (1.0 per task). Task Effort uses a bootstrap heuristic from pre-registered SWE-bench task metadata: patch lines, fail/pass test counts, problem words, and gold file count. No strategy outcome, cost, solve rarity, or BudgetFlow signal is used.",
+    "effort_formula": "bootstrap_heuristic = 1 + patch_lines + 2*f2p_count + log1p(p2p_count) + 0.01*problem_words + 1.5*gold_file_count"
+  },
+  "tasks": {
+    "sympy__sympy-13480": {
+      "instance_id": "sympy__sympy-13480",
+      "repo": "sympy/sympy",
+      "task_value": {
+        "equal": 1.0
+      },
+      "task_effort": {
+        "bootstrap_heuristic": 20.8442,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 12,
+          "f2p_count": 1,
+          "p2p_count": 43,
+          "problem_words": 56,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
+      "features": {
+        "patch_lines": 12,
+        "f2p_count": 1,
+        "p2p_count": 43,
+        "problem_words": 56,
+        "gold_file_count": 1
+      }
+    },
+    "sympy__sympy-14774": {
+      "instance_id": "sympy__sympy-14774",
+      "repo": "sympy/sympy",
+      "task_value": {
+        "equal": 1.0
+      },
+      "task_effort": {
+        "bootstrap_heuristic": 21.9149,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 12,
+          "f2p_count": 1,
+          "p2p_count": 114,
+          "problem_words": 67,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
+      "features": {
+        "patch_lines": 12,
+        "f2p_count": 1,
+        "p2p_count": 114,
+        "problem_words": 67,
+        "gold_file_count": 1
+      }
+    },
+    "sympy__sympy-16988": {
+      "instance_id": "sympy__sympy-16988",
+      "repo": "sympy/sympy",
+      "task_value": {
+        "equal": 1.0
+      },
+      "task_effort": {
+        "bootstrap_heuristic": 23.3505,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 12,
+          "f2p_count": 2,
+          "p2p_count": 72,
+          "problem_words": 56,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
+      "features": {
+        "patch_lines": 12,
+        "f2p_count": 2,
+        "p2p_count": 72,
+        "problem_words": 56,
+        "gold_file_count": 1
+      }
+    },
+    "sympy__sympy-20212": {
+      "instance_id": "sympy__sympy-20212",
+      "repo": "sympy/sympy",
+      "task_value": {
+        "equal": 1.0
+      },
+      "task_effort": {
+        "bootstrap_heuristic": 20.7865,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 12,
+          "f2p_count": 1,
+          "p2p_count": 32,
+          "problem_words": 79,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
+      "features": {
+        "patch_lines": 12,
+        "f2p_count": 1,
+        "p2p_count": 32,
+        "problem_words": 79,
+        "gold_file_count": 1
+      }
+    },
+    "sympy__sympy-12419": {
+      "instance_id": "sympy__sympy-12419",
+      "repo": "sympy/sympy",
+      "task_value": {
+        "equal": 1.0
+      },
+      "task_effort": {
+        "bootstrap_heuristic": 49.6281,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 40,
+          "f2p_count": 1,
+          "p2p_count": 25,
+          "problem_words": 187,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
+      "features": {
+        "patch_lines": 40,
+        "f2p_count": 1,
+        "p2p_count": 25,
+        "problem_words": 187,
+        "gold_file_count": 1
+      }
+    },
+    "sympy__sympy-19007": {
+      "instance_id": "sympy__sympy-19007",
+      "repo": "sympy/sympy",
+      "task_value": {
+        "equal": 1.0
+      },
+      "task_effort": {
+        "bootstrap_heuristic": 53.6158,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 41,
+          "f2p_count": 3,
+          "p2p_count": 26,
+          "problem_words": 82,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
+      "features": {
+        "patch_lines": 41,
+        "f2p_count": 3,
+        "p2p_count": 26,
+        "problem_words": 82,
+        "gold_file_count": 1
+      }
+    },
+    "sympy__sympy-20154": {
+      "instance_id": "sympy__sympy-20154",
+      "repo": "sympy/sympy",
+      "task_value": {
+        "equal": 1.0
+      },
+      "task_effort": {
+        "bootstrap_heuristic": 60.0936,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 49,
+          "f2p_count": 2,
+          "p2p_count": 40,
+          "problem_words": 88,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
+      "features": {
+        "patch_lines": 49,
+        "f2p_count": 2,
+        "p2p_count": 40,
+        "problem_words": 88,
+        "gold_file_count": 1
+      }
+    },
+    "sympy__sympy-20639": {
+      "instance_id": "sympy__sympy-20639",
+      "repo": "sympy/sympy",
+      "task_value": {
+        "equal": 1.0
+      },
+      "task_effort": {
+        "bootstrap_heuristic": 64.0116,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 52,
+          "f2p_count": 2,
+          "p2p_count": 139,
+          "problem_words": 57,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
+      "features": {
+        "patch_lines": 52,
+        "f2p_count": 2,
+        "p2p_count": 139,
+        "problem_words": 57,
+        "gold_file_count": 1
+      }
+    },
+    "sympy__sympy-15011": {
+      "instance_id": "sympy__sympy-15011",
+      "repo": "sympy/sympy",
+      "task_value": {
+        "equal": 1.0
+      },
+      "task_effort": {
+        "bootstrap_heuristic": 53.499,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 44,
+          "f2p_count": 1,
+          "p2p_count": 53,
+          "problem_words": 101,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
+      "features": {
+        "patch_lines": 44,
+        "f2p_count": 1,
+        "p2p_count": 53,
+        "problem_words": 101,
+        "gold_file_count": 1
+      }
+    },
+    "sympy__sympy-16792": {
+      "instance_id": "sympy__sympy-16792",
+      "repo": "sympy/sympy",
+      "task_value": {
+        "equal": 1.0
+      },
+      "task_effort": {
+        "bootstrap_heuristic": 52.3573,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 41,
+          "f2p_count": 1,
+          "p2p_count": 54,
+          "problem_words": 285,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
+      "features": {
+        "patch_lines": 41,
+        "f2p_count": 1,
+        "p2p_count": 54,
+        "problem_words": 285,
+        "gold_file_count": 1
+      }
+    },
+    "sympy__sympy-21055": {
+      "instance_id": "sympy__sympy-21055",
+      "repo": "sympy/sympy",
+      "task_value": {
+        "equal": 1.0
+      },
+      "task_effort": {
+        "bootstrap_heuristic": 48.0491,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 40,
+          "f2p_count": 1,
+          "p2p_count": 13,
+          "problem_words": 91,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
+      "features": {
+        "patch_lines": 40,
+        "f2p_count": 1,
+        "p2p_count": 13,
+        "problem_words": 91,
+        "gold_file_count": 1
+      }
+    },
+    "sympy__sympy-23117": {
+      "instance_id": "sympy__sympy-23117",
+      "repo": "sympy/sympy",
+      "task_value": {
+        "equal": 1.0
+      },
+      "task_effort": {
+        "bootstrap_heuristic": 50.0763,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 43,
+          "f2p_count": 1,
+          "p2p_count": 3,
+          "problem_words": 119,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
+      "features": {
+        "patch_lines": 43,
+        "f2p_count": 1,
+        "p2p_count": 3,
+        "problem_words": 119,
+        "gold_file_count": 1
+      }
+    },
+    "django__django-10924": {
+      "instance_id": "django__django-10924",
+      "repo": "django/django",
+      "task_value": {
+        "equal": 1.0
+      },
+      "task_effort": {
+        "bootstrap_heuristic": 18.3131,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 12,
+          "f2p_count": 1,
+          "p2p_count": 1,
+          "problem_words": 112,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
+      "features": {
+        "patch_lines": 12,
+        "f2p_count": 1,
+        "p2p_count": 1,
+        "problem_words": 112,
+        "gold_file_count": 1
+      }
+    },
+    "django__django-12113": {
+      "instance_id": "django__django-12113",
+      "repo": "django/django",
+      "task_value": {
+        "equal": 1.0
+      },
+      "task_effort": {
+        "bootstrap_heuristic": 18.92,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 10,
+          "f2p_count": 1,
+          "p2p_count": 0,
+          "problem_words": 442,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
+      "features": {
+        "patch_lines": 10,
+        "f2p_count": 1,
+        "p2p_count": 0,
+        "problem_words": 442,
+        "gold_file_count": 1
+      }
+    },
+    "django__django-16046": {
+      "instance_id": "django__django-16046",
+      "repo": "django/django",
+      "task_value": {
+        "equal": 1.0
+      },
+      "task_effort": {
+        "bootstrap_heuristic": 18.9759,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 12,
+          "f2p_count": 1,
+          "p2p_count": 6,
+          "problem_words": 53,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
+      "features": {
+        "patch_lines": 12,
+        "f2p_count": 1,
+        "p2p_count": 6,
+        "problem_words": 53,
+        "gold_file_count": 1
+      }
+    },
+    "django__django-15388": {
+      "instance_id": "django__django-15388",
+      "repo": "django/django",
+      "task_value": {
+        "equal": 1.0
+      },
+      "task_effort": {
+        "bootstrap_heuristic": 20.1326,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 12,
+          "f2p_count": 1,
+          "p2p_count": 9,
+          "problem_words": 133,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
+      "features": {
+        "patch_lines": 12,
+        "f2p_count": 1,
+        "p2p_count": 9,
+        "problem_words": 133,
+        "gold_file_count": 1
+      }
+    }
+  },
+  "rankings": {
+    "equal": [
+      {
+        "rank": 1,
+        "instance_id": "django__django-10924",
+        "value": 1.0
+      },
+      {
+        "rank": 2,
+        "instance_id": "django__django-12113",
+        "value": 1.0
+      },
+      {
+        "rank": 3,
+        "instance_id": "django__django-15388",
+        "value": 1.0
+      },
+      {
+        "rank": 4,
+        "instance_id": "django__django-16046",
+        "value": 1.0
+      },
+      {
+        "rank": 5,
+        "instance_id": "sympy__sympy-12419",
+        "value": 1.0
+      },
+      {
+        "rank": 6,
+        "instance_id": "sympy__sympy-13480",
+        "value": 1.0
+      },
+      {
+        "rank": 7,
+        "instance_id": "sympy__sympy-14774",
+        "value": 1.0
+      },
+      {
+        "rank": 8,
+        "instance_id": "sympy__sympy-15011",
+        "value": 1.0
+      },
+      {
+        "rank": 9,
+        "instance_id": "sympy__sympy-16792",
+        "value": 1.0
+      },
+      {
+        "rank": 10,
+        "instance_id": "sympy__sympy-16988",
+        "value": 1.0
+      },
+      {
+        "rank": 11,
+        "instance_id": "sympy__sympy-19007",
+        "value": 1.0
+      },
+      {
+        "rank": 12,
+        "instance_id": "sympy__sympy-20154",
+        "value": 1.0
+      },
+      {
+        "rank": 13,
+        "instance_id": "sympy__sympy-20212",
+        "value": 1.0
+      },
+      {
+        "rank": 14,
+        "instance_id": "sympy__sympy-20639",
+        "value": 1.0
+      },
+      {
+        "rank": 15,
+        "instance_id": "sympy__sympy-21055",
+        "value": 1.0
+      },
+      {
+        "rank": 16,
+        "instance_id": "sympy__sympy-23117",
+        "value": 1.0
+      }
+    ],
+    "bootstrap_heuristic": [
+      {
+        "rank": 1,
+        "instance_id": "sympy__sympy-20639",
+        "effort": 64.0116
+      },
+      {
+        "rank": 2,
+        "instance_id": "sympy__sympy-20154",
+        "effort": 60.0936
+      },
+      {
+        "rank": 3,
+        "instance_id": "sympy__sympy-19007",
+        "effort": 53.6158
+      },
+      {
+        "rank": 4,
+        "instance_id": "sympy__sympy-15011",
+        "effort": 53.499
+      },
+      {
+        "rank": 5,
+        "instance_id": "sympy__sympy-16792",
+        "effort": 52.3573
+      },
+      {
+        "rank": 6,
+        "instance_id": "sympy__sympy-23117",
+        "effort": 50.0763
+      },
+      {
+        "rank": 7,
+        "instance_id": "sympy__sympy-12419",
+        "effort": 49.6281
+      },
+      {
+        "rank": 8,
+        "instance_id": "sympy__sympy-21055",
+        "effort": 48.0491
+      },
+      {
+        "rank": 9,
+        "instance_id": "sympy__sympy-16988",
+        "effort": 23.3505
+      },
+      {
+        "rank": 10,
+        "instance_id": "sympy__sympy-14774",
+        "effort": 21.9149
+      },
+      {
+        "rank": 11,
+        "instance_id": "sympy__sympy-13480",
+        "effort": 20.8442
+      },
+      {
+        "rank": 12,
+        "instance_id": "sympy__sympy-20212",
+        "effort": 20.7865
+      },
+      {
+        "rank": 13,
+        "instance_id": "django__django-15388",
+        "effort": 20.1326
+      },
+      {
+        "rank": 14,
+        "instance_id": "django__django-16046",
+        "effort": 18.9759
+      },
+      {
+        "rank": 15,
+        "instance_id": "django__django-12113",
+        "effort": 18.92
+      },
+      {
+        "rank": 16,
+        "instance_id": "django__django-10924",
+        "effort": 18.3131
+      }
+    ]
+  }
+}

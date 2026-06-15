@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ..adaptive_routing import AdaptiveRoutingState
+from ..allocation import AllocationContext
 from ..defaults import (
     BUDGET_PRESSURE_INIT,
     ModelCatalog,
@@ -44,8 +45,11 @@ class RoutingContext:
     max_tier_pressure_threshold: float | None = None
     task_value: float = 1.0
     median_task_value: float = 1.0
+    allocation: AllocationContext | None = None
 
-
+    def __post_init__(self) -> None:
+        if self.allocation is not None:
+            self.task_value = self.allocation.task_value
 def build_progress_table_from_defaults(backends: list[Backend]) -> ProgressTable:
     pt = progress_table()
     table: ProgressTable = {stage: {} for stage in pt}
@@ -74,6 +78,7 @@ def build_routing_context(
     task_value: float = 1.0,
     median_task_value: float = 1.0,
     frozen_plan: FrozenRouterPlan | None = None,
+    allocation: AllocationContext | None = None,
 ) -> RoutingContext:
     ordered = sorted(backends, key=lambda backend: backend.tier)
     pressure = BUDGET_PRESSURE_INIT if budget_pressure is None else budget_pressure
@@ -91,6 +96,7 @@ def build_routing_context(
         median_task_value=median_task_value,
         frozen_plan=frozen_plan,
         tier_frontier=frontier,
+        allocation=allocation,
     )
     if strategy == "workflow_level":
         ctx.workflow_router = WorkflowLevelRouter()

@@ -24,7 +24,7 @@ def _args(**overrides):
 
 def test_readiness_blocks_uncovered_non_equal_value_matrix(tmp_path) -> None:
     matrix = tmp_path / "value_matrix.json"
-    matrix.write_text('{"tasks":{"covered":{"values":{"difficulty":0.2}}}}')
+    matrix.write_text('{"tasks":{"covered":{"task_value":{"difficulty":0.2}}}}')
     value_context = ValueEfficiencyContext()
     value_context.init(value_profile="difficulty", value_matrix_path=str(matrix))
 
@@ -74,7 +74,7 @@ def test_readiness_warns_equal_value_is_not_t1_evidence() -> None:
 
 def test_readiness_warns_plain_matrix_is_not_primary_t1_evidence(tmp_path) -> None:
     matrix = tmp_path / "value_matrix.json"
-    matrix.write_text('{"tasks":{"task-a":{"values":{"difficulty":0.2}}}}')
+    matrix.write_text('{"tasks":{"task-a":{"task_value":{"difficulty":0.2}}}}')
     value_context = ValueEfficiencyContext()
     value_context.init(value_profile="difficulty", value_matrix_path=str(matrix))
 
@@ -99,7 +99,7 @@ def test_readiness_warns_plain_matrix_is_not_primary_t1_evidence(tmp_path) -> No
 
 def test_readiness_accepts_pre_registered_manual_as_primary_t1_evidence(tmp_path) -> None:
     matrix = tmp_path / "value_matrix.json"
-    matrix.write_text('{"tasks":{"task-a":{"values":{"difficulty":0.2}}}}')
+    matrix.write_text('{"tasks":{"task-a":{"task_value":{"difficulty":0.2}}}}')
     value_context = ValueEfficiencyContext()
     value_context.init(
         value_profile="difficulty",

@@ -83,7 +83,6 @@ def parse_compare_args(argv: list[str] | None = None) -> argparse.Namespace:
             "discriminative_rarity",
             "unsolved_difficulty",
             "combined",
-            "bootstrap_difficulty",
         ),
         default="equal",
         help="Value profile for task value assignment",

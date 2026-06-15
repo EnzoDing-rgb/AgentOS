@@ -40,7 +40,7 @@ def test_routing_observability_marks_conservative_as_mechanism_ablation() -> Non
 def test_routing_observability_exposes_repair_segment_learning() -> None:
     record = {
         "routing": "budgetflow_value_aware",
-        "task_value_profile": "bootstrap_difficulty",
+        "task_value_profile": "difficulty",
         "routing_prior_segment": "Context",
         "routing_prior_summary": {"learned_action": "default"},
         "routing_repair_prior_summary": {"learned_action": "early_rescue"},
@@ -70,7 +70,7 @@ def test_routing_observability_marks_equal_value_as_ablation() -> None:
 def test_routing_observability_marks_pre_registered_value_as_diagnostic() -> None:
     record = {
         "routing": "budgetflow_value_aware",
-        "task_value_profile": "bootstrap_difficulty",
+        "task_value_profile": "difficulty",
     }
 
     enrich_routing_observability(record)

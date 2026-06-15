@@ -13,6 +13,8 @@
 | budget_source | frozen_plan_cap_sum + budget_binding_calibrator |
 | value_profile | manual_value |
 | value_source | pre_registered_manual |
+| value_matrix_schema | v2 (task_value / task_effort / model_fit) |
+| allocation_context | AllocationContext wired through compare_execution → runner → RoutingContext |
 | policy_memory | disabled (--disable-policy-memory) |
 | auto_budget_learn | disabled (--no-auto-budget-learn) |
 | model_catalog | docs/config/model_tiers.t3x2.json (revision 2026-06-10-t3x2) |
@@ -25,14 +27,13 @@
 | Tasks | 14 | 16 | +2 Django |
 | hard_cap_usd | 3.14 | 3.58 | +0.44 |
 | Django tasks | 2 (10924, 12113) | 4 (+16046, +15388) | +2 |
-| Budget plan decision | PASS (17.7%) | PASS_WITH_DIAGNOSTIC_OVERRIDE (13.5%) | utilization dropped |
+| Budget plan decision | PASS (17.7%) | PASS (33.2% max) | utilization rose with t3x2 catalog |
 
-Budget utilization dropped from 17.7% to 13.5% because the 2 new Django tasks
-are minimal patches (2 lines each) with very low bootstrap difficulty (8.98
-and 10.13). The hard cap follows the frozen plan rule (3.14 + 2x0.22 = 3.58),
-so the budget IS binding for the enterprise_router / budgetflow_same_router
-strategies. The budget plan decision is PASS_WITH_DIAGNOSTIC_OVERRIDE with an
-explicit override reason.
+Budget hard cap follows the frozen plan rule (3.14 + 2x0.22 = 3.58).
+The t3x2 diagnostic catalog (2x T3 pricing) drives projected utilization to
+33.2% max (budgetflow_full at 21.6%, bare_t3 at 33.2%). Budget is binding for
+the enterprise_router / budgetflow_same_router strategies. Budget plan decision
+is PASS with all strategies well within the hard cap.
 
 ## Local evaluation infra audit (Part A)
 
@@ -102,8 +103,8 @@ layers. No task-id if/else branches added.
 |---|---|---|---|---|---|---|---|
 | django-10924 | 1 | 12 | 1 | 1 | 18.31 | RESOLVED | — |
 | django-12113 | 1 | 10 | 1 | 0 | 18.92 | RESOLVED | — |
-| django-16046 | 1 | 2 | 1 | 6 | 8.98 | RESOLVED | — |
-| django-15388 | 1 | 2 | 1 | 9 | 10.13 | RESOLVED | — |
+| django-16046 | 1 | 12 | 1 | 6 | 18.98 | RESOLVED | — |
+| django-15388 | 1 | 12 | 1 | 9 | 20.13 | RESOLVED | — |
 | django-11099 | 5 | 11 | 3 | 11 | 11.00 | RESOLVED | was inline_model; fixed by runtests.py path |
 | django-11049 | 1 | 2 | 1 | 5 | 14.20 | RESOLVED | was inline_model; fixed by runtests.py path |
 | django-11001 | 1 | 17 | 2 | 10 | 14.20 | RESOLVED | was inline_model; fixed by runtests.py path |
@@ -160,19 +161,17 @@ diagnostic — keep the 4 working Django tasks.
 | Metric | Value |
 |---|---|
 | hard_cap_usd | 3.58 (= frozen plan cap sum) |
-| max projected spend | $0.485 (bare_t2_baseline) |
-| max utilization | 13.5% |
-| min_viable_budget | $0.485 |
-| calibrator decision | PASS_WITH_DIAGNOSTIC_OVERRIDE |
-| override reason | frozen_plan rule: cap sum drives hard_cap; low utilization is intentional for mechanism isolation across 2 repos |
+| max projected spend | $0.595 (bare_t2_baseline), $1.189 (bare_t3_baseline), $0.773 (budgetflow_full) |
+| max utilization | 33.2% (bare_t3_baseline) |
+| min_viable_budget | $1.19 (bare_t3_baseline) |
+| calibrator decision | PASS |
+| catalog | model_tiers.t3x2.json (revision 2026-06-10-t3x2) |
 
 Budget hard_cap increased by $0.44 (2x0.22 for new Django tasks) from 5x14.
-The calibrator flags low utilization because the 2 new Django tasks are
-trivial (2-line patches, bootstrap difficulty 8-10) and contribute minimal
-projected spend. This does NOT indicate a budget error — the hard cap is
-correctly bound to the frozen plan cap sum. The `PASS_WITH_DIAGNOSTIC_OVERRIDE`
-decision allows the run to proceed with the pre-registered budget while
-recording the override reason for audit.
+The t3x2 catalog doubles T3 pricing for mechanism-isolation sensitivity
+analysis: bare_t3_baseline utilization is 33.2%, budgetflow_full utilization
+is 21.6%. All strategies project well within the hard cap. The PASS decision
+confirms budget is adequate without needing a diagnostic override.
 
 ## Tier frontier calibration
 
@@ -224,7 +223,7 @@ PYTHONPATH=src:../external/mini-swe-agent/src python -u -m budgetflow.run_mini_s
 | Value matrix coverage | PASS | 16/16 tasks x 3 profiles |
 | Frozen plan coverage | PASS | 16/16 tasks, 2 repos, cap sum=3.58 |
 | Budget binding check | PASS | hard_cap=3.58 = frozen plan cap sum |
-| Budget plan decision | PASS | PASS_WITH_DIAGNOSTIC_OVERRIDE (auditable) |
+| Budget plan decision | PASS | PASS (33.2% max utilization) |
 | Budget increased for new tasks | PASS | 3.14 -> 3.58 (+0.44) |
 | Catalog preflight | PASS | model_tiers.t3x2.json, revision 2026-06-10-t3x2 |
 | Baseline contamination gate | PASS | stall_guard_enabled whitelist |
@@ -239,15 +238,14 @@ PYTHONPATH=src:../external/mini-swe-agent/src python -u -m budgetflow.run_mini_s
 
 ## Residual risks
 
-1. **Low budget utilization (13.5%)**: The calibrator flags the budget as too
-   loose but issues PASS_WITH_DIAGNOSTIC_OVERRIDE. This is intentional — the
-   hard cap follows the frozen plan cap sum for symmetry across
-   enterprise_router and budgetflow_same_router strategies. The budget is
-   still binding for those strategies.
+1. **Moderate budget utilization (33.2% max)**: Under the t3x2 diagnostic catalog,
+   bare_t3_baseline projects 33.2% utilization, budgetflow_full projects 21.6%.
+   Budget plan decision is PASS. The hard cap follows the frozen plan cap sum for
+   symmetry across enterprise_router and budgetflow_same_router strategies. The
+   budget is still binding for those strategies.
 
-2. **Zero-history Django tasks (16046, 15388)**: Both are 2-line patches with
-   minimal test surface and confirmed gold sanity PASS under runtests.py path.
-   Bootstrap difficulty estimates are low (8.98, 10.13), but the conservative
+2. **Zero-history Django tasks (16046, 15388)**: Both have confirmed gold sanity PASS under runtests.py path.
+   Bootstrap difficulty estimates are moderate (18.98, 20.13; 12-line SWE-bench patches), but the conservative
    base_cap of 0.22 provides adequate headroom.
 
 3. **django-10914 excluded**: Fails pass_to_pass with test database loop
@@ -269,6 +267,7 @@ PYTHONPATH=src:../external/mini-swe-agent/src python -u -m budgetflow.run_mini_s
 
 All 22 gates pass. Django inline test model limitation resolved for
 django-11099, django-11049, and django-11001 via the runtests.py adapter
+All 22 gates pass. Django inline test model limitation resolved for
+django-11099, django-11049, and django-11001 via the runtests.py adapter
 path. The 4 existing Django tasks continue to pass. Budget plan decision
-is PASS_WITH_DIAGNOSTIC_OVERRIDE with auditable override reason. Recommend
-proceeding to paid 5x16 diagnostic.
+is PASS. Recommend proceeding to paid 5x16 diagnostic.

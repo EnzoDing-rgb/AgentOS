@@ -3,7 +3,7 @@
 **Boundary: this is the pre-registered ValueSource for paper runs.**
 
 Task value comes from a value matrix JSON file created BEFORE the run.
-Profiles (equal, manual_value, bootstrap_difficulty) are fixed in the matrix.
+Profiles (equal, manual_value) are fixed in the matrix.
 The matrix is the canonical value source — it is not inferred from run outcomes.
 
 TaskAdapter (``swebench_task.py``) calls ``SwebenchValueAdapter.estimate()`` to
@@ -86,9 +86,9 @@ class SwebenchValueAdapter:
             for instance_id, task_data in tasks.items():
                 if not isinstance(task_data, dict):
                     continue
-                values = task_data.get("values")
-                if isinstance(values, dict) and profile in values:
-                    lookup[instance_id] = float(values[profile])
+                tv = task_data.get("task_value")
+                if isinstance(tv, dict) and profile in tv:
+                    lookup[instance_id] = float(tv[profile])
             if lookup:
                 self._lookup = lookup
                 self._median = _median(lookup.values())
