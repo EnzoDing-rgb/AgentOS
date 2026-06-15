@@ -13,7 +13,7 @@ class ComparisonRunner:
         self.total_budget = total_budget
         self.default_max_output_tokens = default_max_output_tokens
 
-    def run_budgetflow_full(self, workflows: list[WorkflowSpec], budget_pressure: float) -> PolicyRunSummary:
+    def run_budgetflow_segment(self, workflows: list[WorkflowSpec], budget_pressure: float) -> PolicyRunSummary:
         ledger = WorkflowLedgerStore()
         governor = BudgetGovernor(
             GovernorConfig(total_budget=self.total_budget, default_max_output_tokens=self.default_max_output_tokens),
@@ -21,7 +21,7 @@ class ComparisonRunner:
         )
         loop = build_default_loop(self.backends, governor, ledger, budget_pressure=budget_pressure)
         results = [loop.run_workflow(workflow) for workflow in workflows]
-        return summarize_policy_run("budgetflow_full", results)
+        return summarize_policy_run("budgetflow_segment", results)
 
     def run_workflow_level_router(self, workflows: list[WorkflowSpec], budget_pressure: float) -> PolicyRunSummary:
         router = WorkflowLevelRouter()

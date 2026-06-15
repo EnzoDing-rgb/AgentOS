@@ -3,7 +3,7 @@ from budgetflow.experiment_observability import enrich_routing_observability
 
 def test_routing_observability_marks_value_aware_as_bootstrap_policy_role() -> None:
     record = {
-        "routing": "budgetflow_value_aware",
+        "routing": "segment_value_aware",
         "value_objective": "t1_value_efficiency",
         "routing_prior_summary": {
             "learned_action": "early_rescue",
@@ -39,7 +39,7 @@ def test_routing_observability_marks_conservative_as_mechanism_ablation() -> Non
 
 def test_routing_observability_exposes_repair_segment_learning() -> None:
     record = {
-        "routing": "budgetflow_value_aware",
+        "routing": "segment_value_aware",
         "task_value_profile": "difficulty",
         "routing_prior_segment": "Context",
         "routing_prior_summary": {"learned_action": "default"},
@@ -57,7 +57,7 @@ def test_routing_observability_exposes_repair_segment_learning() -> None:
 
 def test_routing_observability_marks_equal_value_as_ablation() -> None:
     record = {
-        "routing": "budgetflow_value_aware",
+        "routing": "segment_value_aware",
         "task_value_profile": "equal",
     }
 
@@ -69,7 +69,7 @@ def test_routing_observability_marks_equal_value_as_ablation() -> None:
 
 def test_routing_observability_marks_pre_registered_value_as_diagnostic() -> None:
     record = {
-        "routing": "budgetflow_value_aware",
+        "routing": "segment_value_aware",
         "task_value_profile": "difficulty",
     }
 

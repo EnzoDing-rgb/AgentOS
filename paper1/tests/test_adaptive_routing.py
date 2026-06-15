@@ -16,7 +16,7 @@ def _fail_record(**extra) -> dict:
 
 
 def test_runtime_state_resets_between_tasks() -> None:
-    state = AdaptiveRoutingState(strategy_name="budgetflow_full")
+    state = AdaptiveRoutingState(strategy_name="budgetflow_segment")
     state.rescue.evidence_turns = 10
     state.rescue.window_opened = True
     state.ttl_steps_remaining = 2
@@ -29,7 +29,7 @@ def test_runtime_state_resets_between_tasks() -> None:
 
 
 def test_starting_tier_can_skip_t1_but_never_starts_t3() -> None:
-    state = AdaptiveRoutingState(strategy_name="budgetflow_full")
+    state = AdaptiveRoutingState(strategy_name="budgetflow_segment")
     for _ in range(10):
         state.record_task(_fail_record())
 
@@ -106,7 +106,7 @@ def test_rescue_window_stop_loss_prevents_expensive_spinning() -> None:
 
 
 def test_value_aware_default_rescue_is_bounded() -> None:
-    rescue = rescue_state_for_strategy("budgetflow_value_aware")
+    rescue = rescue_state_for_strategy("segment_value_aware")
 
     assert rescue.trigger_turns <= 6
     assert rescue.window_turns <= 3

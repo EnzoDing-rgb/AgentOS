@@ -214,9 +214,11 @@ def test_django_adapter_returns_none_for_plain_test_names() -> None:
 
 
 def test_django_adapter_conftest_generates_with_installed_apps(tmp_path: Path) -> None:
+    """Django adapter creates tests/__init__.py AND conftest.py when both are missing."""
     adapter = DjangoHAdapter()
     changed = adapter.apply_compat(tmp_path)
-    assert changed == ["conftest.py (generated)"]
+    assert "tests/__init__.py (generated)" in changed
+    assert "conftest.py (generated)" in changed
     conftest = (tmp_path / "conftest.py").read_text()
     assert "_default_apps = [" in conftest
     assert "django.contrib.contenttypes" in conftest
@@ -226,20 +228,24 @@ def test_django_adapter_conftest_generates_with_installed_apps(tmp_path: Path) -
 
 
 def test_django_adapter_conftest_skips_when_already_has_installed_apps(tmp_path: Path) -> None:
+    """Django adapter creates tests/__init__.py but skips conftest when marker present."""
     conftest = tmp_path / "conftest.py"
     conftest.write_text("_default_apps = ['django.contrib.auth']\ndjango.setup()\n")
     adapter = DjangoHAdapter()
     changed = adapter.apply_compat(tmp_path)
-    assert changed == []
+    # tests/__init__.py created, but conftest already has marker → no conftest change
+    assert "conftest.py" not in [c for c in changed if "conftest" in c]
     assert "_default_apps = ['django.contrib.auth']" in conftest.read_text()
 
 
 def test_django_adapter_conftest_replaces_bare_old_conftest(tmp_path: Path) -> None:
+    """Django adapter creates tests/__init__.py and replaces bare conftest."""
     conftest = tmp_path / "conftest.py"
     conftest.write_text("import django\ndjango.setup()\n")
     adapter = DjangoHAdapter()
     changed = adapter.apply_compat(tmp_path)
-    assert "replaced" in changed[0]
+    replaced_items = [c for c in changed if "replaced" in c]
+    assert len(replaced_items) == 1, f"expected one 'replaced' item in {changed}"
     content = conftest.read_text()
     assert "_default_apps = [" in content
     assert "django.contrib.contenttypes" in content
@@ -610,3 +616,75 @@ def test_sphinx_adapter_noop_when_sphinx_dir_missing(tmp_path: Path) -> None:
     adapter = SphinxHAdapter()
     changed = adapter.apply_compat(tmp_path)
     assert changed == []
+
+
+# ── FlaskHAdapter tests ────────────────────────────────────────────────────
+
+from budgetflow.local_harness_adapters import FlaskHAdapter
+
+
+def test_flask_adapter_dispatch() -> None:
+    task = SimpleNamespace(repo="pallets/flask")
+    adapter = RepoHarnessAdapter.for_task(task)
+    assert isinstance(adapter, FlaskHAdapter)
+
+
+def test_flask_adapter_injects_notset_alias(tmp_path: Path) -> None:
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    conftest = tests_dir / "conftest.py"
+    conftest.write_text(
+        "from _pytest import monkeypatch\n"
+        "mp = monkeypatch.MonkeyPatch()\n"
+        "out = (os.environ, 'KEY', monkeypatch.notset)\n"
+    )
+
+    adapter = FlaskHAdapter()
+    changed = adapter.apply_compat(tmp_path)
+
+    assert "tests/conftest.py" in changed
+    content = conftest.read_text()
+    assert "import pytest" in content
+    assert "_pytest.monkeypatch.notset = _pytest.monkeypatch.NOTSET" in content
+    # Original content preserved
+    assert "from _pytest import monkeypatch" in content
+    assert "monkeypatch.notset" in content
+
+
+def test_flask_adapter_noop_when_no_notset_ref(tmp_path: Path) -> None:
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    conftest = tests_dir / "conftest.py"
+    conftest.write_text("import pytest\n")
+
+    adapter = FlaskHAdapter()
+    changed = adapter.apply_compat(tmp_path)
+
+    assert "tests/conftest.py" not in changed
+
+
+def test_flask_adapter_noop_when_no_conftest(tmp_path: Path) -> None:
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+
+    adapter = FlaskHAdapter()
+    changed = adapter.apply_compat(tmp_path)
+
+    assert changed == []
+
+
+def test_flask_adapter_idempotent(tmp_path: Path) -> None:
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    conftest = tests_dir / "conftest.py"
+    conftest.write_text(
+        "from _pytest import monkeypatch\n"
+        "out = (os.environ, 'KEY', monkeypatch.notset)\n"
+    )
+
+    adapter = FlaskHAdapter()
+    changed1 = adapter.apply_compat(tmp_path)
+    changed2 = adapter.apply_compat(tmp_path)
+
+    assert len(changed1) == 1
+    assert changed2 == []  # second pass no-op

@@ -49,6 +49,8 @@ class RepoHarnessAdapter:
             return RequestsHAdapter()
         if slug == "sphinx-doc__sphinx":
             return SphinxHAdapter()
+        if slug == "pallets__flask":
+            return FlaskHAdapter()
         return DefaultHAdapter()
 
 
@@ -156,16 +158,28 @@ class DjangoHAdapter(RepoHarnessAdapter):
     repo_slug = "django__django"
 
     def apply_compat(self, repo_dir: Path) -> list[str]:
+        changed: list[str] = []
+
+        # Ensure tests/ is a package so Django's runtests.py can import
+        # test settings modules (e.g. tests.test_sqlite) on Django versions
+        # that don't ship tests/__init__.py.
+        tests_init = repo_dir / "tests" / "__init__.py"
+        if not tests_init.exists():
+            tests_init.parent.mkdir(parents=True, exist_ok=True)
+            tests_init.write_text("# BudgetFlow compat: make tests a Python package\n")
+            changed.append("tests/__init__.py (generated)")
+
         conftest = repo_dir / "conftest.py"
         if not conftest.is_file():
             conftest.write_text(_DJANGO_CONFTEST_INSTALLED_APPS)
-            return ["conftest.py (generated)"]
+            changed.append("conftest.py (generated)")
+            return changed
         original = conftest.read_text(encoding="utf-8", errors="ignore")
         if _DJANGO_CONFTEST_MARKER in original:
-            return []
-        # Existing conftest is missing INSTALLED_APPS bootstrap — replace wholesale.
+            return changed
         conftest.write_text(_DJANGO_CONFTEST_INSTALLED_APPS)
-        return ["conftest.py (replaced: added INSTALLED_APPS)"]
+        changed.append("conftest.py (replaced: added INSTALLED_APPS)")
+        return changed
 
     def pytest_env(self) -> dict[str, str]:
         return {"DJANGO_SETTINGS_MODULE": "tests.test_sqlite"}
@@ -264,6 +278,47 @@ class SphinxHAdapter(RepoHarnessAdapter):
                 if patched != original:
                     py_file.write_text(patched)
                     changed.append(str(py_file.relative_to(repo_dir)))
+        return changed
+
+
+class FlaskHAdapter(RepoHarnessAdapter):
+    repo_slug = "pallets__flask"
+
+    def apply_compat(self, repo_dir: Path) -> list[str]:
+        """Patch Flask tests for pytest >= 7.2 compatibility.
+
+        pytest 7.2 removed ``monkeypatch.notset`` and ``_pytest.monkeypatch.notset``.
+        Older Flask test suites import these directly. We inject a compat sentinel
+        so conftest fixtures and test modules import correctly.
+        """
+        changed: list[str] = []
+
+        # Patch conftest.py: replace ``monkeypatch.notset`` with ``_NOTSET`` sentinel
+        conftest = repo_dir / "tests" / "conftest.py"
+        if conftest.is_file():
+            original = conftest.read_text(encoding="utf-8", errors="ignore")
+            if "monkeypatch.notset" in original and "_pytest.monkeypatch.notset = _pytest.monkeypatch.NOTSET" not in original:
+                patched = (
+                    "import pytest\n"
+                    "import _pytest.monkeypatch\n"
+                    "if not hasattr(_pytest.monkeypatch, 'notset'):\n"
+                    "    _pytest.monkeypatch.notset = _pytest.monkeypatch.NOTSET\n"
+                    + original
+                )
+                conftest.write_text(patched)
+                changed.append("tests/conftest.py")
+
+        # Patch test files that import notset directly
+        for py_file in sorted((repo_dir / "tests").rglob("*.py")):
+            original = py_file.read_text(encoding="utf-8", errors="ignore")
+            if "from _pytest.monkeypatch import notset" in original and "except ImportError:\n    notset = object()" not in original:
+                patched = original.replace(
+                    "from _pytest.monkeypatch import notset",
+                    "try:\n    from _pytest.monkeypatch import notset\nexcept ImportError:\n    notset = object()",
+                )
+                py_file.write_text(patched)
+                changed.append(str(py_file.relative_to(repo_dir)))
+
         return changed
 
 

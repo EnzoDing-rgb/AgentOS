@@ -17,7 +17,7 @@ def parse_compare_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--preset",
         choices=sorted(PRESET_TASKS),
         default="3x3",
-        help="3x3=mechanism isolation (bare_t3, enterprise_router, budgetflow_same_router)",
+        help="3x3=mechanism isolation (bare_t3, enterprise_router, budgetflow_same_enterprise_router)",
     )
     parser.add_argument("--limit", type=int, default=None, help="task count (default from --preset)")
     parser.add_argument("--budget", type=float, default=None, help="shared hard budget per policy")
@@ -42,9 +42,20 @@ def parse_compare_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help="comma-separated strategy names subset",
     )
+    parser.add_argument(
+        "--strategy-set",
+        type=str,
+        default=None,
+        help="path to a JSON strategy set; default custom/mainline runs use docs/config/paper_mainline_strategies.v1.json",
+    )
     parser.add_argument("--append", action="store_true", help="append to existing jsonl instead of overwriting")
     parser.add_argument("--skip-completed", action="store_true", help="with --append, skip completed pairs")
     parser.add_argument("--resume", action="store_true", help="continue run from JSONL/checkpoint state")
+    parser.add_argument(
+        "--repair",
+        action="store_true",
+        help="acknowledge sibling-fragmented series and target latest stem for repair",
+    )
     parser.add_argument(
         "--task-set",
         choices=("easy", "medium"),

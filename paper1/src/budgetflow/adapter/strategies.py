@@ -106,12 +106,12 @@ def build_routing_context(
         ctx.budget_only_router = BudgetOnlyStepRouter()
     if strategy == "budget_only_t2":
         ctx.budget_only_router = BudgetOnlyT2Router()
-    if strategy == "budgetflow_full":
+    if strategy == "budgetflow_segment":
         ctx.bootstrap_policy = BootstrapPolicy(ctx.selector, name=strategy)
     if strategy == "budgetflow_conservative":
         ctx.selector = ConservativeSelector(build_progress_table_from_defaults(backends))
         ctx.bootstrap_policy = BootstrapPolicy(ctx.selector, name=strategy)
-    if strategy == "budgetflow_value_aware":
+    if strategy == "segment_value_aware":
         ctx.selector = ValueAwareSelector(build_progress_table_from_defaults(backends), median_task_value=median_task_value)
         ctx.bootstrap_policy = BootstrapPolicy(ctx.selector, name=strategy)
     if strategy == "value_aware_task_level":
@@ -146,7 +146,7 @@ def _backend_by_tier(backends: list[Backend], tier: int) -> Backend:
 
 
 def _budgetflow_max_tier(ctx: RoutingContext) -> int:
-    """Maximum tier for budgetflow_full / budgetflow_conservative on this step.
+    """Maximum tier for budgetflow_segment / budgetflow_conservative on this step.
 
     Default cap is the second available tier. When the tier frontier calibration
     signals that the strongest tier is cheap and capable, the default cap is
@@ -192,7 +192,7 @@ def _budgetflow_max_tier(ctx: RoutingContext) -> int:
     # selector type.
     if frontier is not None:
         strongest_threshold = frontier.max_tier_pressure_threshold()
-    elif ctx.strategy in ("budgetflow_conservative", "budgetflow_value_aware"):
+    elif ctx.strategy in ("budgetflow_conservative", "segment_value_aware"):
         strongest_threshold = 0.05
     else:
         strongest_threshold = 0.15
@@ -268,7 +268,7 @@ def choose_backend(ctx: RoutingContext, turn: TurnInfo, expected_costs: dict[str
         decision = ctx.budget_only_router.choose_backend(turn, ctx.backends, ctx.budget_pressure)
         ctx.last_decision = decision
         return decision.backend
-    if ctx.strategy in {"budgetflow_full", "budgetflow_conservative", "budgetflow_value_aware"}:
+    if ctx.strategy in {"budgetflow_segment", "budgetflow_conservative", "segment_value_aware"}:
         max_tier = _budgetflow_max_tier(ctx)
         policy = ctx.bootstrap_policy
         if policy is None:
@@ -280,7 +280,7 @@ def choose_backend(ctx: RoutingContext, turn: TurnInfo, expected_costs: dict[str
             expected_costs=expected_costs,
             segment=turn.segment,
         )
-        if ctx.strategy == "budgetflow_value_aware":
+        if ctx.strategy == "segment_value_aware":
             policy_kwargs["task_value"] = ctx.task_value
         policy_decision = policy.choose_backend(**policy_kwargs)
         ctx.last_policy_decision = policy_decision
@@ -297,15 +297,15 @@ def choose_backend(ctx: RoutingContext, turn: TurnInfo, expected_costs: dict[str
             )
         branch_map = {
             "budgetflow_conservative": "budgetflow_conservative",
-            "budgetflow_value_aware": "budgetflow_value_aware",
-            "budgetflow_full": "budgetflow_full",
+            "segment_value_aware": "segment_value_aware",
+            "budgetflow_segment": "budgetflow_segment",
         }
         reason_map = {
             "budgetflow_conservative": "bf_cons",
-            "budgetflow_value_aware": "bf_va",
-            "budgetflow_full": "bf_full",
+            "segment_value_aware": "bf_va",
+            "budgetflow_segment": "bf_full",
         }
-        branch = branch_map.get(ctx.strategy, "budgetflow_full")
+        branch = branch_map.get(ctx.strategy, "budgetflow_segment")
         reason_prefix = reason_map.get(ctx.strategy, "bf_full")
         ctx.last_decision = RouterDecision(
             backend=chosen,

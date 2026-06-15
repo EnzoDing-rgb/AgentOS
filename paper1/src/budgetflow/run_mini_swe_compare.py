@@ -5,13 +5,13 @@ Different policies may run in parallel (--jobs) using git worktrees for repo iso
 
 Usage (from paper1/):
   # fast smoke (default 3 tasks)
-  PYTHONPATH=src:../external/mini-swe-agent/src python -u -m budgetflow.run_mini_swe_compare --preset 3x5 --jobs 5
-  # full 5-task compare
-  PYTHONPATH=src:../external/mini-swe-agent/src python -u -m budgetflow.run_mini_swe_compare --preset 5x5 --jobs 5
+  PYTHONPATH=src:../external/mini-swe-agent/src python -u -m budgetflow.run_mini_swe_compare --preset 3x3 --jobs 3
+  # paper mainline compare uses docs/config/paper_mainline_strategies.v1.json
+  PYTHONPATH=src:../external/mini-swe-agent/src python -u -m budgetflow.run_mini_swe_compare --ids <ids> --jobs 6
 
 Outputs:
-  data/runs/compare_3x5.jsonl  (or compare_5x5.jsonl)
-  data/runs/compare_3x5.summary.log
+  data/runs/<run_series>-N.jsonl
+  data/runs/<run_series>-N.summary.log
 """
 
 from __future__ import annotations
@@ -93,7 +93,7 @@ from budgetflow.learn_policy import combine_learn_policy_inputs  # noqa: E402
 from budgetflow.local_harness import set_worktree_root  # noqa: E402
 from budgetflow.adaptive_routing import AdaptiveRoutingRegistry  # noqa: E402
 from budgetflow.run_guards import CompareRunGuards, set_active_guard  # noqa: E402
-from budgetflow.run_series import resolve_run_identity  # noqa: E402
+from budgetflow.run_series import release_run_identity, resolve_run_identity  # noqa: E402
 from budgetflow.run_trace import TraceConsoleLevel  # noqa: E402
 from budgetflow.runtime import check_cwd, is_nfs_or_banned, print_runtime_info, resolve_runtime_root, set_runtime_root  # noqa: E402
 from budgetflow.value_efficiency import ValueEfficiencyContext  # noqa: E402
@@ -300,6 +300,7 @@ def main() -> None:
         total_runs=total_runs,
         explicit_stem=args.out_stem,
         explicit_series=args.run_series,
+        repair=args.repair,
     )
     out_path, summary_path = _compare_paths(len(tasks), len(strategies), stem=out_stem)
     checkpoint_path = checkpoint_path_for(out_stem, RUNS_DIR)
@@ -432,7 +433,7 @@ def main() -> None:
         f"policy_jobs={policy_jobs} hard_cap=settle_clamp",
         f"tasks={[t.instance_id for t in tasks]}",
         f"task_order={[_task_descriptor(t) for t in tasks]}",
-        "adaptive_routing=always_on_for_budgetflow_full",
+        "adaptive_routing=always_on_for_budgetflow_segment",
         "",
     ]
     adapt_summary = adaptive_registry.summary_lines()
@@ -621,6 +622,7 @@ def main() -> None:
                         )
     finally:
         set_active_guard(None)
+        release_run_identity(out_stem, RUNS_DIR)
 
     if run_guards is not None and run_guards.is_aborted():
         print(f"\n{tag('guard', bold=False)} run stopped early: {run_guards.abort_reason()}", flush=True)

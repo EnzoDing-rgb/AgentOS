@@ -11,8 +11,10 @@ from budgetflow.experiments.compare_cli import PRESET_TASKS
 from budgetflow.experiments.compare_config import (
     CompareStrategy,
     effective_policy_jobs,
+    load_strategy_set,
     normalize_strategy,
     order_tasks_easy_first,
+    paper_mainline_strategies,
     strategy_catalog,
 )
 from budgetflow.lite_tasks import load_compare_easy_tasks, load_compare_medium_tasks, load_swebench_lite_tasks
@@ -27,7 +29,7 @@ DIAGNOSTIC_3X3_IDS = (
 DIAGNOSTIC_3X3_STRATEGIES = (
     "bare_t3_baseline",
     "enterprise_router_baseline",
-    "budgetflow_same_router",
+    "budgetflow_same_enterprise_router",
 )
 
 @dataclass(frozen=True)
@@ -124,10 +126,32 @@ def select_strategies(args: Namespace) -> StrategySelection:
     all_strategies = strategy_catalog()
     if args.strategies:
         wanted_raw = {s.strip() for s in args.strategies.split(",") if s.strip()}
+    elif getattr(args, "strategy_set", None):
+        strategies = load_strategy_set(args.strategy_set)
+        policy_jobs = effective_policy_jobs(args.jobs, len(strategies))
+        return StrategySelection(
+            strategies=strategies,
+            policy_jobs=policy_jobs,
+            jobs_upgraded=bool(args.jobs is not None and len(strategies) > 1 and args.jobs < len(strategies)),
+        )
+    elif args.ids:
+        strategies = paper_mainline_strategies()
+        policy_jobs = effective_policy_jobs(args.jobs, len(strategies))
+        return StrategySelection(
+            strategies=strategies,
+            policy_jobs=policy_jobs,
+            jobs_upgraded=bool(args.jobs is not None and len(strategies) > 1 and args.jobs < len(strategies)),
+        )
     elif args.preset == "3x3":
         wanted_raw = set(DIAGNOSTIC_3X3_STRATEGIES)
     else:
-        wanted_raw = set()
+        strategies = paper_mainline_strategies()
+        policy_jobs = effective_policy_jobs(args.jobs, len(strategies))
+        return StrategySelection(
+            strategies=strategies,
+            policy_jobs=policy_jobs,
+            jobs_upgraded=bool(args.jobs is not None and len(strategies) > 1 and args.jobs < len(strategies)),
+        )
     if wanted_raw:
         wanted = {normalize_strategy(name) for name in wanted_raw}
         catalog_names = {s.name for s in all_strategies}

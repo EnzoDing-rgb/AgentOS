@@ -1,7 +1,7 @@
 from budgetflow.run_observability.audit import build_compact_audit
 from budgetflow.run_observability.checker import check_jsonl
 from budgetflow.observability import build_harness_trust
-from budgetflow.run_observability.checks import _check_value_profile_fallback
+from budgetflow.run_observability.checks import _check_cost_accounting, _check_value_profile_fallback
 from budgetflow.run_observability.report import format_compact_audit
 import pytest
 
@@ -10,7 +10,7 @@ def test_compact_audit_preserves_generic_tier_counts() -> None:
     audit = build_compact_audit([
         {
             "instance_id": "repo__task",
-            "strategy": "budgetflow_full",
+            "strategy": "budgetflow_segment",
             "harness_resolved": True,
             "harness_evidence": {"evidence_complete": True},
             "total_cost": 0.25,
@@ -20,7 +20,7 @@ def test_compact_audit_preserves_generic_tier_counts() -> None:
         }
     ])
 
-    stats = audit["by_strategy"]["budgetflow_full"]
+    stats = audit["by_strategy"]["budgetflow_segment"]
 
     assert stats["tier_turns"] == {2: 1, 4: 1, 5: 2}
     assert stats["t3_turns"] == 0
@@ -30,7 +30,7 @@ def test_compact_audit_reports_value_metrics() -> None:
     audit = build_compact_audit([
         {
             "instance_id": "repo__task-a",
-            "strategy": "budgetflow_full",
+            "strategy": "budgetflow_segment",
             "harness_resolved": True,
             "harness_evidence": {"evidence_complete": True},
             "total_cost": 0.20,
@@ -44,7 +44,7 @@ def test_compact_audit_reports_value_metrics() -> None:
         },
         {
             "instance_id": "repo__task-b",
-            "strategy": "budgetflow_full",
+            "strategy": "budgetflow_segment",
             "harness_resolved": False,
             "harness_evidence": {"evidence_complete": True},
             "total_cost": 0.10,
@@ -58,7 +58,7 @@ def test_compact_audit_reports_value_metrics() -> None:
         },
         {
             "instance_id": "repo__task-c",
-            "strategy": "budgetflow_full",
+            "strategy": "budgetflow_segment",
             "harness_resolved": False,
             "score_status": "abort",
             "abort_reason": "extract_fail",
@@ -74,7 +74,7 @@ def test_compact_audit_reports_value_metrics() -> None:
         },
     ])
 
-    stats = audit["by_strategy"]["budgetflow_full"]
+    stats = audit["by_strategy"]["budgetflow_segment"]
 
     assert audit["value_profile"] == "difficulty"
     assert stats["yield_score"] == 0.6
@@ -94,7 +94,7 @@ def test_compact_audit_counts_actionable_decision_issues() -> None:
     audit = build_compact_audit([
         {
             "instance_id": "repo__task-a",
-            "strategy": "budgetflow_full",
+            "strategy": "budgetflow_segment",
             "harness_resolved": True,
             "harness_evidence": {"evidence_complete": False},
             "patch_extracted": True,
@@ -131,7 +131,7 @@ def test_compact_audit_accepts_trace_cost_confidence() -> None:
     audit = build_compact_audit([
         {
             "instance_id": "repo__task-a",
-            "strategy": "budgetflow_full",
+            "strategy": "budgetflow_segment",
             "harness_resolved": False,
             "harness_evidence": {"evidence_complete": True},
             "task_value": 1.0,
@@ -156,7 +156,7 @@ def test_compact_audit_reports_repo_memory_evidence_for_new_tasks() -> None:
     audit = build_compact_audit([
         {
             "instance_id": "repo__new-task",
-            "strategy": "budgetflow_full",
+            "strategy": "budgetflow_segment",
             "harness_resolved": False,
             "harness_evidence": {"evidence_complete": True},
             "total_cost": 0.10,
@@ -235,7 +235,7 @@ def test_compact_audit_uses_current_action_progress_for_t3_productivity() -> Non
     audit = build_compact_audit([
         {
             "instance_id": "repo__task",
-            "strategy": "budgetflow_full",
+            "strategy": "budgetflow_segment",
             "harness_resolved": False,
             "harness_evidence": {"evidence_complete": True},
             "total_cost": 0.07,
@@ -258,7 +258,7 @@ def test_compact_audit_uses_current_action_progress_for_t3_productivity() -> Non
         }
     ])
 
-    stats = audit["t3_productivity"]["budgetflow_full"]
+    stats = audit["t3_productivity"]["budgetflow_segment"]
 
     assert stats["t3_productive_turns"] == 1
     assert stats["t3_no_progress_turns"] == 0
@@ -269,7 +269,7 @@ def test_compact_audit_uses_backend_tier_before_final_backend_for_t3_productivit
     audit = build_compact_audit([
         {
             "instance_id": "repo__task",
-            "strategy": "budgetflow_full",
+            "strategy": "budgetflow_segment",
             "harness_resolved": False,
             "harness_evidence": {"evidence_complete": True},
             "total_cost": 0.07,
@@ -293,7 +293,7 @@ def test_compact_audit_uses_backend_tier_before_final_backend_for_t3_productivit
         }
     ])
 
-    stats = audit["t3_productivity"]["budgetflow_full"]
+    stats = audit["t3_productivity"]["budgetflow_segment"]
 
     assert stats["t3_turns"] == 1
     assert stats["t3_productive_turns"] == 1
@@ -347,7 +347,7 @@ def test_compact_audit_does_not_count_unknown_progress_as_no_progress() -> None:
     audit = build_compact_audit([
         {
             "instance_id": "repo__task",
-            "strategy": "budgetflow_full",
+            "strategy": "budgetflow_segment",
             "harness_resolved": False,
             "harness_evidence": {"evidence_complete": True},
             "total_cost": 0.07,
@@ -373,7 +373,7 @@ def test_compact_audit_does_not_count_unknown_progress_as_no_progress() -> None:
         }
     ])
 
-    stats = audit["t3_productivity"]["budgetflow_full"]
+    stats = audit["t3_productivity"]["budgetflow_segment"]
     row = audit["per_task_comparison"][0]
 
     assert stats["t3_turns"] == 2
@@ -392,7 +392,7 @@ def test_compact_audit_treats_any_progress_channel_as_productive() -> None:
     audit = build_compact_audit([
         {
             "instance_id": "repo__task",
-            "strategy": "budgetflow_full",
+            "strategy": "budgetflow_segment",
             "harness_resolved": False,
             "harness_evidence": {"evidence_complete": True},
             "total_cost": 0.05,
@@ -411,7 +411,7 @@ def test_compact_audit_treats_any_progress_channel_as_productive() -> None:
         }
     ])
 
-    stats = audit["t3_productivity"]["budgetflow_full"]
+    stats = audit["t3_productivity"]["budgetflow_segment"]
 
     assert stats["t3_turns"] == 1
     assert stats["t3_productive_turns"] == 1
@@ -423,7 +423,7 @@ def test_compact_audit_reports_mechanism_isolation_delta() -> None:
     records = [
         {
             "instance_id": "repo__task-a",
-            "strategy": "budgetflow_same_router",
+            "strategy": "budgetflow_same_enterprise_router",
             "harness_resolved": True,
             "harness_evidence": {"evidence_complete": True},
             "total_cost": 0.30,
@@ -435,7 +435,7 @@ def test_compact_audit_reports_mechanism_isolation_delta() -> None:
         },
         {
             "instance_id": "repo__task-b",
-            "strategy": "budgetflow_same_router",
+            "strategy": "budgetflow_same_enterprise_router",
             "harness_resolved": False,
             "harness_evidence": {"evidence_complete": True},
             "total_cost": 0.20,
@@ -487,7 +487,7 @@ def test_compact_audit_reports_task_set_metrics() -> None:
     audit = build_compact_audit([
         {
             "instance_id": "repo__task-a",
-            "strategy": "budgetflow_full",
+            "strategy": "budgetflow_segment",
             "harness_resolved": True,
             "harness_evidence": {"evidence_complete": True},
             "total_cost": 0.50,
@@ -501,7 +501,7 @@ def test_compact_audit_reports_task_set_metrics() -> None:
         },
         {
             "instance_id": "repo__task-b",
-            "strategy": "budgetflow_full",
+            "strategy": "budgetflow_segment",
             "harness_resolved": False,
             "harness_evidence": {"evidence_complete": True},
             "total_cost": 0.25,
@@ -515,8 +515,8 @@ def test_compact_audit_reports_task_set_metrics() -> None:
         },
     ])
 
-    familiar = audit["task_set_metrics"]["familiar"]["easy"]["budgetflow_full"]
-    unseen = audit["task_set_metrics"]["unseen"]["medium"]["budgetflow_full"]
+    familiar = audit["task_set_metrics"]["familiar"]["easy"]["budgetflow_segment"]
+    unseen = audit["task_set_metrics"]["unseen"]["medium"]["budgetflow_segment"]
 
     assert familiar["yield_score"] == pytest.approx(3.0)
     assert familiar["yield_per_dollar"] == pytest.approx(6.0)
@@ -606,12 +606,12 @@ def test_harness_trust_blocks_host_dependency_contamination() -> None:
 def test_checker_counts_invalid_harness_as_error(tmp_path) -> None:
     path = tmp_path / "run.jsonl"
     path.write_text(
-        '{"instance_id":"sympy__sympy-1","strategy":"budgetflow_full",'
-        '"routing":"budgetflow_value_aware","harness_resolved":false,'
+        '{"instance_id":"sympy__sympy-1","strategy":"budgetflow_segment",'
+        '"routing":"segment_value_aware","harness_resolved":false,'
         '"patch_extracted":true,"patch_source":"submission","submitted_patch":"/tmp/p.patch",'
         '"exit_status":"Submitted","exit_reason":"submitted","total_cost":0.1,'
         '"llm_turns":1,"turns":1,"elapsed_s":1,"turn_trace_count":1,'
-        '"run_series":"unit","policy_lane":"budgetflow_full",'
+        '"run_series":"unit","policy_lane":"budgetflow_segment",'
         '"task_order_index":1,"row_started_at":1,"row_finished_at":2,'
         '"harness_evidence":{"evidence_complete":false},'
         '"observability_status":{"trace_available":true},'
@@ -679,10 +679,10 @@ def test_per_task_comparison_includes_cross_policy_rows() -> None:
                     "workflow_segment": "Action",
                     "backend_tier": 2,
                     "has_progress": False,
-                    "router_branch": "budgetflow_value_aware",
+                    "router_branch": "segment_value_aware",
                     "router_reason": "bootstrap:budget_pressure",
                     "policy_type": "bootstrap",
-                    "policy_name": "budgetflow_full",
+                    "policy_name": "budgetflow_segment",
                     "memory_mode": "built_in",
                     "policy_decision": {
                         "backend": "tier2",
@@ -727,7 +727,7 @@ def test_per_task_comparison_includes_cross_policy_rows() -> None:
     assert bf_row["failure_class"] == "repair_fail"
     assert bf_row["harness_trust"] == "incomplete"
     assert bf_row["harness_evidence_complete"] is True
-    assert bf_row["policy_name"] == "budgetflow_full"
+    assert bf_row["policy_name"] == "budgetflow_segment"
     assert bf_row["memory_mode"] == "built_in"
     assert bf_row["cost_estimate_source"] == "tier_catalog:test"
     assert bf_row["frozen_plan_name"] == "unit_plan"
@@ -746,3 +746,41 @@ def test_per_task_comparison_includes_cross_policy_rows() -> None:
     assert "frozen=unit_plan/tier3/2" in text
     assert "memory=built_in" in text
     assert "cost=tier_catalog:test" in text
+
+
+# ── Cost accounting ─────────────────────────────────────────────────────
+
+
+def test_cost_accounting_no_duplicates() -> None:
+    records = [
+        {"instance_id": "task-a", "strategy": "bare_t2_baseline", "total_cost": 0.5, "score_status": "pass"},
+        {"instance_id": "task-b", "strategy": "bare_t2_baseline", "total_cost": 0.3, "score_status": "true_fail"},
+    ]
+    issues = _check_cost_accounting(records)
+    assert any("raw_paid_cost=$0.8000" in i for i in issues)
+    assert any("dedup_scored_cost=$0.8000" in i for i in issues)
+    assert any("duplicate_retry_overhead=$0.0000" in i for i in issues)
+
+
+def test_cost_accounting_detects_duplicate_overhead() -> None:
+    records = [
+        {"instance_id": "task-a", "strategy": "bare_t2_baseline", "total_cost": 0.5, "score_status": "pass", "row_finished_at": 100},
+        {"instance_id": "task-a", "strategy": "bare_t2_baseline", "total_cost": 0.3, "score_status": "pass", "row_finished_at": 200},
+        {"instance_id": "task-b", "strategy": "bare_t2_baseline", "total_cost": 0.4, "score_status": "true_fail", "row_finished_at": 300},
+    ]
+    issues = _check_cost_accounting(records)
+    assert any("raw_paid_cost=$1.2000" in i for i in issues)
+    assert any("duplicate_retry_overhead=$0.5000" in i for i in issues)
+    assert any("dedup_scored_cost=$0.7000" in i for i in issues)
+    assert any("1 duplicate rows" in i for i in issues)
+
+
+def test_cost_accounting_handles_abort_rows() -> None:
+    records = [
+        {"instance_id": "task-a", "strategy": "budgetflow_segment", "total_cost": 0.1, "score_status": "abort", "abort_reason": "provider_error"},
+        {"instance_id": "task-a", "strategy": "budgetflow_segment", "total_cost": 0.5, "score_status": "pass", "row_finished_at": 200},
+    ]
+    issues = _check_cost_accounting(records)
+    # raw = 0.6, dedup = 0.5 (abort row excluded from scored set, pass row kept)
+    assert any("raw_paid_cost=$0.6000" in i for i in issues)
+    assert any("duplicate_retry_overhead=$0.1000" in i for i in issues)

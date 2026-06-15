@@ -17,9 +17,11 @@ venv/
 .cursor/
 .claude/
 
-# External deps (clone separately; see external/PINNED_COMMIT)
+# External deps / localized runtime dependencies.
+# Keep these local for speed; resolvers fail fast if they are missing.
 external/mini-swe-agent/
 external/mini-swe-agent
+external/SWE-agent/
 
 # Local data & experiment artifacts
 paper1/data/
@@ -35,6 +37,11 @@ paper1/data/swebench_lite_export/
 # Generated outputs
 *.jsonl
 *.log
+
+# Local paper/reference PDFs. Summaries and matrices belong in docs/; raw PDFs
+# stay local unless explicitly requested.
+paper1/misc/*.pdf
+paper1/misc/**/*.pdf
 
 # Node / slide decks
 node_modules/

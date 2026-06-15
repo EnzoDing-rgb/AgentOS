@@ -9,9 +9,9 @@ from ..defaults import STAGNATION_NO_PROGRESS_STEPS, STAGNATION_REPEAT_CMD_LIMIT
 POST_PATCH_STABLE_PASS_STEPS = 4
 _POST_PATCH_STOP_STRATEGIES = frozenset(
     {
-        "budgetflow_full",
+        "budgetflow_segment",
         "budgetflow_conservative",
-        "budgetflow_value_aware",
+        "segment_value_aware",
         "budgetflow_equal_weight",
         "stage_blind",
     }
@@ -23,9 +23,9 @@ _POST_PATCH_STOP_STRATEGIES = frozenset(
 # vanilla mini-swe-agent behavior for clean evidence.
 _STALL_GUARD_STRATEGIES = frozenset(
     {
-        "budgetflow_full",
+        "budgetflow_segment",
         "budgetflow_conservative",
-        "budgetflow_value_aware",
+        "segment_value_aware",
         "budgetflow_equal_weight",
         "stage_blind",
         "budgetflow_same_router",

@@ -17,8 +17,8 @@ ROOT = Path(__file__).resolve().parents[1]
 def _record(**overrides) -> dict:
     record = {
         "instance_id": "sympy__sympy-10001",
-        "strategy": "budgetflow_full",
-        "routing": "budgetflow_value_aware",
+        "strategy": "budgetflow_segment",
+        "routing": "segment_value_aware",
         "harness_resolved": False,
         "score_status": "true_fail",
         "failure_class": "repair_fail",
@@ -169,9 +169,9 @@ def test_policy_memory_learns_t1_t2_actions_from_prior_runs() -> None:
         _record(instance_id="repair__task-a", backend_picks=["tier2"]),
         _record(instance_id="repair__task-b", backend_picks=["tier2"]),
         _record(instance_id="repair__task-c", backend_picks=["tier2"]),
-        _record(instance_id="cost__task-a", routing="budgetflow_value_aware", total_cost=0.35),
+        _record(instance_id="cost__task-a", routing="segment_value_aware", total_cost=0.35),
         _record(instance_id="cost__task-a", routing="budget_only", strategy="budget_only_baseline", total_cost=0.05),
-        _record(instance_id="cost__task-b", routing="budgetflow_value_aware", total_cost=0.30),
+        _record(instance_id="cost__task-b", routing="segment_value_aware", total_cost=0.30),
         _record(instance_id="cost__task-b", routing="budget_only", strategy="budget_only_baseline", total_cost=0.06),
     ]
     memory = PolicyMemory()
@@ -283,8 +283,8 @@ def test_policy_memory_changes_runtime_rescue_and_starting_tier() -> None:
         _pass_record(instance_id="repo__loc-b"),
     ])
 
-    rescue = rescue_state_for_strategy("budgetflow_value_aware", memory, "repo__repair-a")
-    state = AdaptiveRoutingState(strategy_name="budgetflow_full", policy_memory=memory)
+    rescue = rescue_state_for_strategy("segment_value_aware", memory, "repo__repair-a")
+    state = AdaptiveRoutingState(strategy_name="budgetflow_segment", policy_memory=memory)
     state.set_task_context("repo__loc-a")
 
     assert rescue.trigger_turns < 6
@@ -309,14 +309,14 @@ def test_policy_memory_can_imitate_budget_only_strongest_starter_window() -> Non
         ),
         _record(
             instance_id="django__task-a",
-            routing="budgetflow_value_aware",
-            strategy="budgetflow_full",
+            routing="segment_value_aware",
+            strategy="budgetflow_segment",
             turn_traces=[{"workflow_segment": "Action", "backend_tier": 2}],
         ),
     ])
 
     summary = memory.routing_prior_summary("django__new-task", WorkflowSegment.CONTEXT)
-    state = AdaptiveRoutingState(strategy_name="budgetflow_full", policy_memory=memory)
+    state = AdaptiveRoutingState(strategy_name="budgetflow_segment", policy_memory=memory)
     state.set_task_context("django__new-task")
 
     assert summary["starter_memory_source"] == "repo"
@@ -343,8 +343,8 @@ def test_low_weight_budget_only_starter_evidence_does_not_frontload_strongest() 
         ),
         _record(
             instance_id="django__task-a",
-            routing="budgetflow_value_aware",
-            strategy="budgetflow_full",
+            routing="segment_value_aware",
+            strategy="budgetflow_segment",
             _policy_memory_weight=0.4,
             turn_traces=[{"workflow_segment": "Action", "backend_tier": 2}],
         ),
@@ -372,8 +372,8 @@ def test_weak_task_starter_prior_does_not_override_repo_frontload() -> None:
         ),
         _record(
             instance_id="sympy__repo-a",
-            routing="budgetflow_value_aware",
-            strategy="budgetflow_full",
+            routing="segment_value_aware",
+            strategy="budgetflow_segment",
             harness_resolved=False,
             turn_traces=[{"workflow_segment": "Action", "backend_tier": 2, "final_backend": "tier2"}],
         ),
@@ -390,8 +390,8 @@ def test_weak_task_starter_prior_does_not_override_repo_frontload() -> None:
         ),
         _record(
             instance_id="sympy__repo-b",
-            routing="budgetflow_value_aware",
-            strategy="budgetflow_full",
+            routing="segment_value_aware",
+            strategy="budgetflow_segment",
             harness_resolved=False,
             turn_traces=[{"workflow_segment": "Action", "backend_tier": 2, "final_backend": "tier2"}],
         ),
@@ -406,8 +406,8 @@ def test_weak_task_starter_prior_does_not_override_repo_frontload() -> None:
         ),
         _record(
             instance_id="sympy__weak-task",
-            routing="budgetflow_value_aware",
-            strategy="budgetflow_full",
+            routing="segment_value_aware",
+            strategy="budgetflow_segment",
             harness_resolved=False,
             _policy_memory_weight=0.35,
             turn_traces=[{"workflow_segment": "Action", "backend_tier": 2, "final_backend": "tier2"}],
@@ -438,8 +438,8 @@ def test_low_budget_only_frontload_rate_does_not_create_starter_action() -> None
         ),
         _record(
             instance_id="sympy__task-a",
-            routing="budgetflow_value_aware",
-            strategy="budgetflow_full",
+            routing="segment_value_aware",
+            strategy="budgetflow_segment",
             harness_resolved=False,
             turn_traces=[{"workflow_segment": "Action", "backend_tier": 2, "final_backend": "tier2"}],
         ),
@@ -470,8 +470,8 @@ def test_budget_only_cheaper_success_extends_strongest_starter_window() -> None:
         ),
         _record(
             instance_id="sympy__task-a",
-            routing="budgetflow_value_aware",
-            strategy="budgetflow_full",
+            routing="segment_value_aware",
+            strategy="budgetflow_segment",
             harness_resolved=True,
             failure_class="pass",
             total_cost=0.90,
@@ -507,8 +507,8 @@ def test_unproductive_budgetflow_starter_shortens_frontload_window() -> None:
         ),
         _record(
             instance_id="sympy__task-a",
-            routing="budgetflow_value_aware",
-            strategy="budgetflow_full",
+            routing="segment_value_aware",
+            strategy="budgetflow_segment",
             harness_resolved=False,
             turn_traces=[
                 {
@@ -553,8 +553,8 @@ def test_repeated_unproductive_budgetflow_starter_disables_frontload() -> None:
     ] + [
         _record(
             instance_id=f"sympy__task-{i}",
-            routing="budgetflow_value_aware",
-            strategy="budgetflow_full",
+            routing="segment_value_aware",
+            strategy="budgetflow_segment",
             harness_resolved=False,
             turn_traces=[
                 {
@@ -597,8 +597,8 @@ def test_verified_starter_success_prevents_turn_level_no_progress_from_disabling
         ))
         records.append(_record(
             instance_id=f"sympy__task-{i}",
-            routing="budgetflow_value_aware",
-            strategy="budgetflow_full",
+            routing="segment_value_aware",
+            strategy="budgetflow_segment",
             harness_resolved=resolved,
             failure_class="pass" if resolved else "repair_fail",
             turn_traces=[
@@ -639,8 +639,8 @@ def test_budget_only_equal_cost_success_does_not_create_starter_evidence() -> No
         ),
         _record(
             instance_id="sympy__task-a",
-            routing="budgetflow_value_aware",
-            strategy="budgetflow_full",
+            routing="segment_value_aware",
+            strategy="budgetflow_segment",
             harness_resolved=True,
             failure_class="pass",
             total_cost=0.25,
@@ -668,12 +668,12 @@ def test_policy_memory_learns_value_triggered_escalation_policy() -> None:
     memory.rebuild_from_records([
         _record(
             instance_id="django__django-1",
-            routing="budgetflow_value_aware",
+            routing="segment_value_aware",
             turn_traces=[bad_t3_trace],
         ),
         _record(
             instance_id="django__django-2",
-            routing="budgetflow_value_aware",
+            routing="segment_value_aware",
             turn_traces=[bad_t3_trace],
         ),
     ])
@@ -702,13 +702,13 @@ def test_low_weight_value_triggered_escalation_does_not_disable_policy() -> None
     memory.rebuild_from_records([
         _record(
             instance_id="django__django-1",
-            routing="budgetflow_value_aware",
+            routing="segment_value_aware",
             turn_traces=[bad_t3_trace],
             _policy_memory_weight=0.4,
         ),
         _record(
             instance_id="django__django-2",
-            routing="budgetflow_value_aware",
+            routing="segment_value_aware",
             turn_traces=[bad_t3_trace],
             _policy_memory_weight=0.4,
         ),
@@ -726,7 +726,7 @@ def test_policy_memory_shortens_after_one_costly_unproductive_escalation() -> No
     memory.rebuild_from_records([
         _record(
             instance_id="django__django-1",
-            routing="budgetflow_value_aware",
+            routing="segment_value_aware",
             turn_traces=[
                 {
                     "workflow_segment": "Action",
@@ -754,7 +754,7 @@ def test_policy_memory_uses_current_action_progress_for_t3_productivity() -> Non
     memory.rebuild_from_records([
         _record(
             instance_id="django__django-1",
-            routing="budgetflow_value_aware",
+            routing="segment_value_aware",
             harness_resolved=True,
             failure_class="pass",
             turn_traces=[
@@ -784,7 +784,7 @@ def test_policy_memory_does_not_treat_unknown_progress_as_negative_evidence() ->
     memory.rebuild_from_records([
         _record(
             instance_id="django__django-1",
-            routing="budgetflow_value_aware",
+            routing="segment_value_aware",
             turn_traces=[
                 {
                     "workflow_segment": "Action",
@@ -811,7 +811,7 @@ def test_policy_memory_treats_any_progress_channel_as_productive() -> None:
     memory.rebuild_from_records([
         _record(
             instance_id="django__django-1",
-            routing="budgetflow_value_aware",
+            routing="segment_value_aware",
             turn_traces=[
                 {
                     "workflow_segment": "Action",
@@ -850,7 +850,7 @@ def test_auto_budget_dry_run_exposes_escalation_memory_decision(tmp_path: Path) 
     policy_memory = tmp_path / "routing_memory.jsonl"
     policy_memory.write_text(json.dumps(_record(
         instance_id="sympy__sympy-14774",
-        routing="budgetflow_value_aware",
+        routing="segment_value_aware",
         turn_traces=[
             {
                 "workflow_segment": "Action",
@@ -876,7 +876,7 @@ def test_auto_budget_dry_run_exposes_escalation_memory_decision(tmp_path: Path) 
             "--ids",
             "sympy__sympy-14774",
             "--strategies",
-            "budgetflow_full",
+            "budgetflow_segment",
             "--auto-budget",
             "--auto-budget-dry-run",
             "--auto-budget-memory",
@@ -898,8 +898,8 @@ def test_auto_budget_dry_run_exposes_escalation_memory_decision(tmp_path: Path) 
     assert "/w=1" in result.stdout
 
 
-def test_budgetflow_full_routing_contributes_to_starter_prior() -> None:
-    """budgetflow_full must learn from budget_only frontload evidence same as other budgetflow strategies."""
+def test_budgetflow_segment_routing_contributes_to_starter_prior() -> None:
+    """budgetflow_segment must learn from budget_only frontload evidence same as other budgetflow strategies."""
     bo_t3_frontload = [
         {"workflow_segment": "Context", "backend_tier": 3, "final_backend": "tier3"},
         {"workflow_segment": "Action", "backend_tier": 3, "final_backend": "tier3"},
@@ -918,8 +918,8 @@ def test_budgetflow_full_routing_contributes_to_starter_prior() -> None:
         ),
         _record(
             instance_id="django__task-bf-full",
-            routing="budgetflow_full",
-            strategy="budgetflow_mechanism_diagnostic",
+            routing="segment_value_aware",
+            strategy="budgetflow_segment",
             harness_resolved=False,
             total_cost=0.60,
             turn_traces=[{"workflow_segment": "Action", "backend_tier": 2, "final_backend": "tier2"}],

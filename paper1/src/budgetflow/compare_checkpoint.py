@@ -97,13 +97,13 @@ class CompareCheckpointStore:
 _STRATEGY_ABBREV: dict[str, str] = {
     "all_t1_baseline": "t1",
     "budget_only_baseline": "budget-only",
-    "budgetflow_mechanism_diagnostic": "bf-mech",
     "all_pro": "apro",
     "all_strongest_model": "strongest",
     "budget_only_t2_baseline": "budget-only-t2",
     "bootstrap_conservative_diagnostic": "bootstrap-conservative",
-    "budgetflow_full": "budgetflow-full",
-    "task_level_control": "task-level",
+    "budgetflow_segment": "bf-segment",
+    "budgetflow_task_level": "bf-task",
+    "budgetflow_same_enterprise_router": "bf-same-er",
 }
 
 

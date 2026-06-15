@@ -4,7 +4,7 @@
 
 | Parameter | Value |
 |---|---|
-| strategies | 5 (bare_t2_baseline, bare_t3_baseline, enterprise_router_baseline, budgetflow_same_router, budgetflow_full) |
+| strategies | 5 (bare_t2_baseline, bare_t3_baseline, enterprise_router_baseline, budgetflow_same_enterprise_router, budgetflow_segment) |
 | tasks | 20 (12 SymPy + 4 Django + 2 Requests + 2 Sphinx) |
 | repos | 4 (sympy/sympy, django/django, psf/requests, sphinx-doc/sphinx) |
 | task_set_kind | mixed (4 canonical SymPy + 8 zero-history SymPy + 2 zero-history Django + 2 additional zero-history Django + 2 zero-history Requests + 2 zero-history Sphinx) |
@@ -44,8 +44,8 @@ budget designed to create measurable pressure on expensive strategies.
 | 1 | bare_t2_baseline | all_tier2 | shared batch | Bare T2 | Cost floor: pure T2, no routing |
 | 2 | bare_t3_baseline | bare_t3 | shared batch | Bare T3 | Capability ceiling: pure T3 |
 | 3 | enterprise_router_baseline | enterprise_router | frozen per-task caps | Enterprise Router | Static plan, no ledger |
-| 4 | budgetflow_same_router | budgetflow_same_router | frozen per-task caps | BudgetFlow Same Router | +shared ledger over same plan |
-| 5 | budgetflow_full | budgetflow_value_aware | shared batch | BudgetFlow Full | +value-aware routing + tier frontier |
+| 4 | budgetflow_same_enterprise_router | budgetflow_same_router | frozen per-task caps | BudgetFlow Same Enterprise Router | +shared ledger over same plan |
+| 5 | budgetflow_segment | segment_value_aware | shared batch | BudgetFlow Segment | +value-aware segment routing + tier frontier |
 
 ## Frozen plan cap breakdown
 
@@ -80,22 +80,22 @@ budget designed to create measurable pressure on expensive strategies.
 | budget_mode | target_utilization |
 | target_projected_utilization | 0.80 |
 | reference_rule | strategy_set_p75_projected_spend |
-| p75_reference | $0.9809 (budgetflow_full) |
+| p75_reference | $0.9809 (budgetflow_segment) |
 | hard_cap_usd | $1.2262 (= p75_ref / 0.80) |
-| projected spending | T2=$0.7546, T3=$1.5091, enterprise=$0.7546, bf_same=$0.7546, bf_full=$0.9809 |
-| utilization | T2=61.5%, T3=100.0%, enterprise=61.5%, bf_same=61.5%, bf_full=80.0% |
+| projected spending | T2=$0.7546, T3=$1.5091, enterprise=$0.7546, budgetflow_same_enterprise_router=$0.7546, budgetflow_segment=$0.9809 |
+| utilization | T2=61.5%, T3=100.0%, enterprise=61.5%, budgetflow_same_enterprise_router=61.5%, budgetflow_segment=80.0% |
 | min_viable_budget | $1.5091 (bare_t3_baseline) |
 | calibrator decision | PASS |
 | catalog | model_tiers.t3x2.json (revision 2026-06-10-t3x2) |
 
-The p75 reference ($0.9809 = budgetflow_full projected spend) is a distribution statistic
+The p75 reference ($0.9809 = budgetflow_segment projected spend) is a distribution statistic
 across all 5 strategies — not keyed to any single policy. hard_cap = p75_ref / 0.80 =
-$1.2262, creating budget pressure where T3 projects at 100% utilization and budgetflow_full
+$1.2262, creating budget pressure where T3 projects at 100% utilization and budgetflow_segment
 at exactly 80%.
 
 Pressure shape (audit output, never a generation rule):
-- T2/enterprise/bf_same at 61.5%: comfortable headroom
-- budgetflow_full at 80%: at target utilization
+- T2/enterprise/budgetflow_same_enterprise_router at 61.5%: comfortable headroom
+- budgetflow_segment at 80%: at target utilization
 - bare_t3 at 100%: exactly at hard_cap, may not complete (tight_budget_warning)
 
 This is the expected tight-budget signature: cheapest strategies have room, the value-aware
@@ -127,8 +127,12 @@ is $1.23 — barely enough for the strongest model to attempt all tasks.
 | sphinx-doc__sphinx-7975 | sphinx-doc/sphinx | 1 | 7 | 34.43 | PASS | zero-history, requires jinja2 compat |
 | sphinx-doc__sphinx-10325 | sphinx-doc/sphinx | 1 | 5 | 33.03 | PASS | zero-history, modern version |
 
-All 4 new tasks confirmed SOLVABLE via gold harness probe (candidate gate
-2026-06-15).  See `paper1/docs/reports/5x20_candidate_gate_2026-06-15.md`. No PENDING. |
+All 4 new tasks passed the gold-harness admissibility gate (candidate gate
+2026-06-15). This proves the local harness can verify the human gold patch; it
+does **not** prove current agents can solve the task. Post-run diagnosis found
+only `sphinx-doc__sphinx-7975` had agent-solvability evidence in the 5x20 run.
+Future task expansion must add an explicit strongest-model solvability gate
+before promoting new tasks into paper-main evidence.
 
 ## Tier frontier calibration
 
@@ -153,7 +157,7 @@ All 5x16 fixes carry forward:
 
 ```bash
 PYTHONPATH=src:../external/mini-swe-agent/src python -u -m budgetflow.run_mini_swe_compare \
-  --strategies "bare_t2_baseline,bare_t3_baseline,enterprise_router_baseline,budgetflow_same_router,budgetflow_full" \
+  --strategies "bare_t2_baseline,bare_t3_baseline,enterprise_router_baseline,budgetflow_same_enterprise_router,budgetflow_segment" \
   --ids "sympy__sympy-13480,sympy__sympy-14774,sympy__sympy-16988,sympy__sympy-20212,sympy__sympy-12419,sympy__sympy-19007,sympy__sympy-20154,sympy__sympy-20639,sympy__sympy-15011,sympy__sympy-16792,sympy__sympy-21055,sympy__sympy-23117,django__django-10924,django__django-12113,django__django-16046,django__django-15388,psf__requests-1963,psf__requests-3362,sphinx-doc__sphinx-7975,sphinx-doc__sphinx-10325" \
   --value-profile manual_value \
   --value-matrix docs/reports/mainline_5x20_manual_value_matrix.json \

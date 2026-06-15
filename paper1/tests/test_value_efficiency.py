@@ -39,7 +39,7 @@ def test_non_equal_profile_without_explicit_source_is_value_matrix_diagnostic(tm
 
     record = ctx.enrich_record({
             "instance_id": "high",
-            "routing": "budgetflow_value_aware",
+            "routing": "segment_value_aware",
             "harness_resolved": True,
             "total_cost": 0.25,
     })
@@ -71,7 +71,7 @@ def test_pre_registered_manual_value_source_is_primary_t1_evidence(tmp_path) -> 
 
     record = ctx.enrich_record({
             "instance_id": "high",
-            "routing": "budgetflow_value_aware",
+            "routing": "segment_value_aware",
             "harness_resolved": True,
             "total_cost": 0.25,
     })
@@ -113,7 +113,7 @@ def test_bootstrap_effort_is_diagnostic_not_task_value(tmp_path) -> None:
     # task_value stays equal-sanity, NOT polluted by effort heuristic.
     record = ctx.enrich_record({
         "instance_id": "task-a",
-        "routing": "budgetflow_value_aware",
+        "routing": "segment_value_aware",
         "harness_resolved": True,
         "total_cost": 0.5,
     })
@@ -196,7 +196,7 @@ def test_missing_non_equal_task_fails_fast(tmp_path) -> None:
     with pytest.raises(SystemExit, match="FATAL"):
         ctx.enrich_record({
             "instance_id": "missing",
-            "routing": "budgetflow_value_aware",
+            "routing": "segment_value_aware",
             "harness_resolved": True,
             "total_cost": 0.1,
         })

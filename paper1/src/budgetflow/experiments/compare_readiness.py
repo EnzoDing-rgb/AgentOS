@@ -117,7 +117,7 @@ def build_compare_readiness_report(
                 f"value matrix is missing {len(missing)} selected task values: {preview}{suffix}"
             )
     needs_task_values = any(
-        strategy.routing in {"budgetflow_value_aware", "value_aware_task_level"}
+        strategy.routing in {"segment_value_aware", "value_aware_task_level"}
         for strategy in strategies
     )
     needs_frozen_plan = any(
@@ -126,7 +126,7 @@ def build_compare_readiness_report(
     )
     if needs_frozen_plan and not args.frozen_plan:
         blocking.append(
-            "enterprise_router_baseline and budgetflow_same_router require --frozen-plan"
+            "enterprise_router_baseline and budgetflow_same_enterprise_router require --frozen-plan"
         )
     elif needs_frozen_plan and args.frozen_plan:
         try:

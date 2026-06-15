@@ -95,7 +95,7 @@ def test_provider_all_unavailable_releases_every_reservation(monkeypatch) -> Non
     monkeypatch.setattr("budgetflow.adapter.mini_swe_proxy.load_env_file", lambda: None)
     monkeypatch.setenv("DASHSCOPE_API_KEY", "test")
     monkeypatch.setenv("AICODE007_API_KEY", "test")
-    model, governor = _model("budgetflow_full")
+    model, governor = _model("budgetflow_segment")
     attempts: list[str] = []
 
     def fake_completion(messages, *, backend_name, **kwargs):

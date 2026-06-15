@@ -58,7 +58,7 @@ def test_learn_policy_inputs_reaches_adaptive_routing_state() -> None:
     )
     registry = AdaptiveRoutingRegistry(learn_policy_inputs=bundle)
 
-    state = registry.for_strategy("bootstrap_value", "budgetflow_value_aware")
+    state = registry.for_strategy("bootstrap_value", "segment_value_aware")
 
     assert state is not None
     assert registry.learn_policy_inputs is bundle
@@ -72,7 +72,7 @@ def test_cost_only_memory_does_not_enable_routing_memory_mode() -> None:
 
     bundle = combine_learn_policy_inputs(cost=FakeCostMemory(), routing_inputs=LearnPolicyInputs.off("no-routing"))
     registry = AdaptiveRoutingRegistry(learn_policy_inputs=bundle)
-    state = registry.for_strategy("bootstrap_value", "budgetflow_value_aware")
+    state = registry.for_strategy("bootstrap_value", "segment_value_aware")
 
     assert bundle.active_views == ("cost",)
     assert registry.memory_mode == "off"

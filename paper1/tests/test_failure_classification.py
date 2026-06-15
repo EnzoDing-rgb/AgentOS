@@ -260,7 +260,7 @@ def test_conservation_lockout_not_triggered_for_pass() -> None:
 
 
 def test_conservation_lockout_detected_for_value_aware() -> None:
-    rec = _conservative_lockout_record(routing="budgetflow_value_aware")
+    rec = _conservative_lockout_record(routing="segment_value_aware")
     assert _is_conservation_lockout(rec) is True
     assert classify_failure(rec) == "budget_fail"
 
@@ -318,7 +318,7 @@ def test_stagnation_without_patch_is_localization_fail_not_extract_fail() -> Non
         "harness_resolved": False,
         "exit_reason": "stagnation_no_progress",
         "exit_status": "StagnationExit",
-        "routing": "budgetflow_value_aware",
+        "routing": "segment_value_aware",
         "patch_extracted": False,
         "agent_gold_edited": False,
         "turn_traces": [{"backend_tier": 3, "final_backend": "tier3"}],
@@ -332,7 +332,7 @@ def test_post_patch_verified_stable_is_model_validation_not_budget_or_infra() ->
         "harness_resolved": False,
         "exit_status": "StagnationExit",
         "exit_reason": "post_patch_verified_stable",
-        "routing": "budgetflow_value_aware",
+        "routing": "segment_value_aware",
         "patch_extracted": True,
         "agent_gold_edited": True,
         "agent_attempted_submit": False,
@@ -597,7 +597,7 @@ def test_model_fail_localization_stagnation_is_true_fail() -> None:
         "agent_gold_edited": False,
         "exit_status": "StagnationExit",
         "exit_reason": "stagnation_no_progress",
-        "routing": "budgetflow_value_aware",
+        "routing": "segment_value_aware",
         "turn_trace_count": 1,
         "detail": "",
         "turn_traces": [{}],
@@ -681,11 +681,11 @@ def test_exit_owner_enterprise_stagnation_is_agent_harness() -> None:
 
 
 def test_exit_owner_budgetflow_stagnation_is_stoploss() -> None:
-    """budgetflow_full stagnation must be budgetflow_stoploss."""
+    """budgetflow_segment stagnation must be budgetflow_stoploss."""
     rec = {
         "exit_reason": "stagnation_no_progress",
         "exit_status": "StagnationExit",
-        "routing": "budgetflow_value_aware",
+        "routing": "segment_value_aware",
     }
     assert compute_exit_owner(rec) == EXIT_OWNER_BUDGETFLOW_STOPLOSS
 
@@ -695,7 +695,7 @@ def test_exit_owner_post_patch_verified_stable_is_stoploss() -> None:
     rec = {
         "exit_reason": "post_patch_verified_stable",
         "exit_status": "StagnationExit",
-        "routing": "budgetflow_value_aware",
+        "routing": "segment_value_aware",
     }
     assert compute_exit_owner(rec) == EXIT_OWNER_BUDGETFLOW_STOPLOSS
 
@@ -705,7 +705,7 @@ def test_exit_owner_rescue_timeout_is_stoploss() -> None:
     rec = {
         "exit_reason": "rescue_timeout_gold_edited",
         "exit_status": "StagnationExit",
-        "routing": "budgetflow_full",
+        "routing": "budgetflow_segment",
     }
     assert compute_exit_owner(rec) == EXIT_OWNER_BUDGETFLOW_STOPLOSS
 
@@ -754,7 +754,7 @@ def test_exit_owner_harness_failed_is_agent_exit() -> None:
     rec = {
         "exit_reason": "harness_failed",
         "exit_status": "HarnessFailed",
-        "routing": "budgetflow_value_aware",
+        "routing": "segment_value_aware",
     }
     assert compute_exit_owner(rec) == EXIT_OWNER_AGENT_EXIT
 
@@ -771,7 +771,7 @@ def test_exit_owner_explicit_field_takes_precedence() -> None:
 
 
 def test_exit_owner_budgetflow_same_router_stagnation_is_stoploss() -> None:
-    """budgetflow_same_router uses budgetflow routing pattern."""
+    """budgetflow_same_enterprise_router uses budgetflow routing pattern."""
     rec = {
         "exit_reason": "stagnation_no_progress",
         "exit_status": "StagnationExit",

@@ -146,11 +146,12 @@ def get_paper1_root() -> Path:
 def resolve_mini_swe_src() -> Path:
     """Find mini-swe-agent source dir.
 
-    Priority: MINI_SWE_SRC env > repo external/ > old archive fallback.
+    Priority: MINI_SWE_SRC env > repo external/.
     """
     env_val = os.environ.get("MINI_SWE_SRC")
     if env_val:
         p = Path(env_val)
+        _check_not_banned(p, "MINI_SWE_SRC env")
         if (p / "src" / "minisweagent").is_dir():
             return p / "src"
         if (p / "minisweagent").is_dir():
@@ -164,11 +165,6 @@ def resolve_mini_swe_src() -> Path:
     if (repo_candidate / "minisweagent").is_dir():
         return repo_candidate
 
-    # Old archive fallback (read-only)
-    old = Path("/Lishun/_archive/.local_env_bak/research/AgentOS/external/mini-swe-agent/src")
-    if old.is_dir():
-        return old
-
     raise SystemExit(
         "Cannot find mini-swe-agent. Set MINI_SWE_SRC env var to its src/ directory,\n"
         "  or ensure external/mini-swe-agent/src/minisweagent/ exists."
@@ -178,22 +174,19 @@ def resolve_mini_swe_src() -> Path:
 def resolve_swebench_export_dir() -> Path | None:
     """Find SWE-bench lite export (test.jsonl, test.parquet).
 
-    Priority: SWEBENCH_EXPORT_DIR env > paper1/data/swebench_lite_export/ > old archive.
+    Priority: SWEBENCH_EXPORT_DIR env > paper1/data/swebench_lite_export/.
     Returns None if not found (caller falls back to HF download).
     """
     env_val = os.environ.get("SWEBENCH_EXPORT_DIR")
     if env_val:
         p = Path(env_val)
+        _check_not_banned(p, "SWEBENCH_EXPORT_DIR env")
         if p.is_dir():
             return p
 
     local = get_paper1_root() / "data" / "swebench_lite_export"
     if local.is_dir():
         return local
-
-    old = Path("/Lishun/_archive/.local_env_bak/research/AgentOS/paper1/data/swebench_lite_export")
-    if old.is_dir():
-        return old
 
     return None
 

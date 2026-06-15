@@ -179,7 +179,7 @@ class StarterPrior:
 
 # Routings that are supported for memory learning.
 _MEMORY_ROUTINGS = frozenset({
-    "budgetflow_full", "budgetflow_conservative", "budgetflow_value_aware",
+    "budgetflow_segment", "budgetflow_conservative", "segment_value_aware",
     "value_aware_task_level", "budgetflow_equal_weight", "stage_blind",
     "budget_only", "bare_t3_baseline", "enterprise_router_baseline",
     "budgetflow_same_router",
@@ -444,7 +444,7 @@ class PolicyMemory:
         for r in records:
             iid = str(r.get("instance_id") or "")
             routing = str(r.get("routing") or "")
-            if routing in ("budgetflow_full", "budgetflow_conservative", "budgetflow_value_aware", "value_aware_task_level") or "budgetflow_full" in routing:
+            if routing in ("budgetflow_segment", "budgetflow_conservative", "segment_value_aware", "value_aware_task_level") or "budgetflow_segment" in routing:
                 by_task[iid]["full"].append(r)
             elif "budget_only" in routing:
                 by_task[iid]["baseline"].append(r)
@@ -475,7 +475,7 @@ class PolicyMemory:
     def _build_escalation_prior(self, records: list[dict]) -> EscalationPrior:
         prior = EscalationPrior()
         for record in records:
-            if str(record.get("routing") or "") != "budgetflow_value_aware":
+            if str(record.get("routing") or "") != "segment_value_aware":
                 continue
             traces = record.get("turn_traces") or []
             if not isinstance(traces, list):
@@ -518,7 +518,7 @@ class PolicyMemory:
             ]
             budgetflow = [
                 record for record in task_records
-                if str(record.get("routing") or "") in {"budgetflow_conservative", "budgetflow_value_aware", "budgetflow_full"}
+                if str(record.get("routing") or "") in {"budgetflow_conservative", "segment_value_aware", "budgetflow_segment"}
             ]
             for record in budgetflow:
                 traces = [trace for trace in (record.get("turn_traces") or []) if isinstance(trace, dict)]

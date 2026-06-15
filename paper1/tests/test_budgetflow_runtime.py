@@ -152,7 +152,7 @@ def test_policy_comparison_runs_small_scale() -> None:
     runner = ComparisonRunner(build_backends(), total_budget=40.0, default_max_output_tokens=100)
     workflows = build_workflows()
 
-    full = runner.run_budgetflow_full(workflows, budget_pressure=0.55)
+    full = runner.run_budgetflow_segment(workflows, budget_pressure=0.55)
     workflow_level = runner.run_workflow_level_router(workflows, budget_pressure=0.55)
     budget_only = runner.run_budget_only_step_router(workflows, budget_pressure=0.55)
 
@@ -161,7 +161,7 @@ def test_policy_comparison_runs_small_scale() -> None:
     assert full.total_cost > 0
     assert workflow_level.total_cost > 0
     assert budget_only.total_cost > 0
-    assert full.policy_name == "budgetflow_full"
+    assert full.policy_name == "budgetflow_segment"
 
 
 def test_load_swebench_lite_tasks_builds_real_workflows() -> None:

@@ -133,7 +133,7 @@ class ValueEfficiencyContext:
         yield_per_dollar = resolved_value / scoreable_cost if scoreable_cost > 0 else 0.0
 
         routing = str(record.get("routing", ""))
-        va_active = routing in {"budgetflow_value_aware", "value_aware_task_level"}
+        va_active = routing in {"segment_value_aware", "value_aware_task_level"}
         record["value_objective"] = self.objective
         record["task_value_profile"] = self.profile
         record["task_value_source_class"] = self.source_class

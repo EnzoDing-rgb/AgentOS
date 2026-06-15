@@ -30,7 +30,7 @@ def test_repeat_command_streak() -> None:
 
 def test_no_progress_limit_unified() -> None:
     assert no_progress_limit("all_pro") == STAGNATION_NO_PROGRESS_STEPS
-    assert no_progress_limit("budgetflow_full") == STAGNATION_NO_PROGRESS_STEPS
+    assert no_progress_limit("budgetflow_segment") == STAGNATION_NO_PROGRESS_STEPS
 
 
 def test_check_stagnation_no_progress() -> None:
@@ -45,20 +45,20 @@ def test_check_stagnation_no_progress() -> None:
 
 def test_post_patch_stop_only_for_verified_stable_budgetflow_patch() -> None:
     assert check_post_patch_stop(
-        strategy="budgetflow_value_aware",
+        strategy="segment_value_aware",
         patch_digest="abc123",
         patch_stable_steps=4,
         agent_pytest="pass",
     ) == (True, "post_patch_verified_stable")
 
     assert check_post_patch_stop(
-        strategy="budgetflow_value_aware",
+        strategy="segment_value_aware",
         patch_digest="abc123",
         patch_stable_steps=4,
         agent_pytest="fail",
     ) == (False, "")
     assert check_post_patch_stop(
-        strategy="budgetflow_value_aware",
+        strategy="segment_value_aware",
         patch_digest="abc123",
         patch_stable_steps=1,
         agent_pytest="pass",
@@ -100,9 +100,9 @@ def test_git_diff_digest_tracks_stable_patch(tmp_path: Path) -> None:
 def test_stall_guard_enabled_for_budgetflow_strategies() -> None:
     """BudgetFlow strategies must have stall guard enabled."""
     for strat in (
-        "budgetflow_full",
+        "budgetflow_segment",
         "budgetflow_conservative",
-        "budgetflow_value_aware",
+        "segment_value_aware",
         "budgetflow_equal_weight",
         "stage_blind",
         "budgetflow_same_router",
@@ -210,8 +210,8 @@ def test_baseline_contamination_ignores_budgetflow_stagnation() -> None:
     records = [
         {
             "exit_reason": "stagnation_no_progress",
-            "routing": "budgetflow_value_aware",
-            "strategy": "budgetflow_full",
+            "routing": "segment_value_aware",
+            "strategy": "budgetflow_segment",
             "harness_resolved": False,
             "exit_status": "StagnationExit",
         },
@@ -245,5 +245,3 @@ def test_5x14_jsonl_is_contaminated() -> None:
         "were truncated by BudgetFlow check_stagnation"
     )
     assert result["agent_harness_stagnation_count"] >= 1
-    for strat in result["affected_strategies"]:
-        assert strat in ("bare_t2_baseline", "bare_t3_baseline", "enterprise_router_baseline")

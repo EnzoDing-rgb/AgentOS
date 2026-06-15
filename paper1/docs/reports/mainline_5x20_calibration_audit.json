@@ -1,0 +1,60 @@
+{
+  "strategy_errors": {
+    "bare_t2_baseline": {
+      "projected": 0.7546,
+      "actual": 0.5726,
+      "error_pct": 0.2411,
+      "projected_utilization": 0.6154,
+      "actual_utilization": 0.4669975664655032,
+      "task_count": 20
+    },
+    "bare_t3_baseline": {
+      "projected": 1.5091,
+      "actual": 0.4049,
+      "error_pct": 0.7317,
+      "projected_utilization": 1.0,
+      "actual_utilization": 0.3301681177621922,
+      "task_count": 20
+    },
+    "enterprise_router_baseline": {
+      "projected": 0.7546,
+      "actual": 0.3697,
+      "error_pct": 0.51,
+      "projected_utilization": 0.6154,
+      "actual_utilization": 0.30153373602276223,
+      "task_count": 20
+    },
+    "budgetflow_same_enterprise_router": {
+      "projected": 0.7546,
+      "actual": 0.2655,
+      "error_pct": 0.6482,
+      "projected_utilization": 0.6154,
+      "actual_utilization": 0.21652018068468076,
+      "task_count": 20
+    },
+    "budgetflow_segment": {
+      "projected": 0.9809,
+      "actual": 0.4489,
+      "error_pct": 0.5423,
+      "projected_utilization": 0.8,
+      "actual_utilization": 0.36610055945196546,
+      "task_count": 20
+    }
+  },
+  "overall_mape": 0.5347,
+  "max_error_strategy": "bare_t3_baseline",
+  "max_error_pct": 0.7317,
+  "projection_confidence": "low",
+  "recommendations": [
+    "WARNING: projection error MAPE=53.5%. Consider using frozen_plan_cap_sum mode or a larger safety margin."
+  ],
+  "budget_mode": "target_utilization",
+  "target_utilization": 0.8,
+  "actual_utilization_by_strategy": {
+    "bare_t3_baseline": 0.3302,
+    "budgetflow_same_enterprise_router": 0.2165,
+    "bare_t2_baseline": 0.467,
+    "budgetflow_segment": 0.3661,
+    "enterprise_router_baseline": 0.3015
+  }
+}

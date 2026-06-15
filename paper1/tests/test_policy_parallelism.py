@@ -45,7 +45,7 @@ def test_run_strategy_batch_executes_tasks_serially_within_one_policy(monkeypatc
     value_context.init(value_profile="equal")
 
     records, _spent = run_strategy_batch(
-        CompareStrategy("policy-a", "budgetflow_value_aware"),
+        CompareStrategy("policy-a", "segment_value_aware"),
         [
             SimpleNamespace(instance_id="task-1"),
             SimpleNamespace(instance_id="task-2"),

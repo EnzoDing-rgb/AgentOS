@@ -35,6 +35,12 @@ _BARE_OR_ENTERPRISE_ROUTINGS = frozenset({
     "all_tier2", "bare_t3", "enterprise_router",
 })
 
+_BUDGETFLOW_FAMILY_ROUTINGS = frozenset({
+    "budgetflow_conservative", "budgetflow_equal_weight",
+    "budgetflow_same_router", "budgetflow_segment",
+    "segment_value_aware", "stage_blind", "value_aware_task_level",
+})
+
 
 _INFRA_STATUSES = {
     "BadRequestError",
@@ -220,8 +226,8 @@ def compute_exit_owner(record: dict[str, Any]) -> str:
         # For bare baselines and enterprise_router, attribute to agent_harness.
         if routing in _BARE_OR_ENTERPRISE_ROUTINGS:
             return EXIT_OWNER_AGENT_HARNESS
-        # For budgetflow-* routing, attribute to budgetflow_stoploss.
-        if "budgetflow" in routing:
+        # For budgetflow-family routing, attribute to budgetflow_stoploss.
+        if routing in _BUDGETFLOW_FAMILY_ROUTINGS:
             return EXIT_OWNER_BUDGETFLOW_STOPLOSS
         return EXIT_OWNER_AGENT_HARNESS  # conservative default for unknown routing
 

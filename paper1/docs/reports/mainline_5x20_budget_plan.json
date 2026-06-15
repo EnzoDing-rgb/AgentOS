@@ -31,15 +31,15 @@
     "bare_t2_baseline": 0.7546,
     "bare_t3_baseline": 1.5091,
     "enterprise_router_baseline": 0.7546,
-    "budgetflow_same_router": 0.7546,
-    "budgetflow_full": 0.9809
+    "budgetflow_same_enterprise_router": 0.7546,
+    "budgetflow_segment": 0.9809
   },
   "projected_utilization_by_strategy": {
     "bare_t2_baseline": 0.6154,
     "bare_t3_baseline": 1.0,
     "enterprise_router_baseline": 0.6154,
-    "budgetflow_same_router": 0.6154,
-    "budgetflow_full": 0.8
+    "budgetflow_same_enterprise_router": 0.6154,
+    "budgetflow_segment": 0.8
   },
   "min_viable_budget": 1.5091,
   "loose_budget_threshold": 3.0182,
@@ -48,7 +48,7 @@
   "reasons": [
     "reference_rule: strategy_set_p75_projected_spend = $0.9809",
     "hard_cap = p75_ref($0.9809) / target_utilization(0.8) = $1.2262",
-    "pressure_audit: T2=61.5% T3=100.0% enterprise=61.5% bf_full=80.0%",
+    "pressure_audit: T2=61.5% T3=100.0% enterprise=61.5% budgetflow_segment=80.0%",
     "tight_budget_warning: bare_t3_baseline projected spend $1.51 > hard_cap $1.23 (123.1% utilization) \u2014 strategy may not complete within shared budget",
     "decision=PASS: hard_cap=$1.23 from p75_ref / 0.8, max projected utilization 100.0%"
   ],

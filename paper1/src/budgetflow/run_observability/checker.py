@@ -10,6 +10,7 @@ from budgetflow.failure_classification import is_score_abort, is_score_pass, is_
 
 from .audit import build_compact_audit
 from .checks import (
+    _check_cost_accounting,
     _check_cross_series_duplicates,
     _check_partial_run,
     _check_policy_parallel,
@@ -81,6 +82,7 @@ def check_jsonl(jsonl_path: Path, heartbeat_stale_s: float = 600.0) -> dict:
     all_issues.extend(_check_shared_cap_starvation(records))
     all_issues.extend(_check_value_profile_fallback(records))
     all_issues.extend(_check_policy_parallel(records))
+    all_issues.extend(_check_cost_accounting(records))
 
     resolved = sum(1 for r in records if is_score_pass(r))
     true_fail = sum(1 for r in records if is_score_true_fail(r))

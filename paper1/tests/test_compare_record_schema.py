@@ -42,8 +42,8 @@ def _value_context() -> ValueEfficiencyContext:
 def _record(**overrides) -> dict:
     record = {
         "instance_id": "sympy__sympy-14774",
-        "strategy": "budgetflow_full",
-        "routing": "budgetflow_value_aware",
+        "strategy": "budgetflow_segment",
+        "routing": "segment_value_aware",
         "harness_resolved": True,
         "score_status": "pass",
         "abort_reason": "",
@@ -63,7 +63,7 @@ def _record(**overrides) -> dict:
             "policy_memory_source": "data/runs/066_postfix_3x3.jsonl",
         },
         "run_series": "schema_contract",
-        "attempt_id": "schema_contract_budgetflow_full_sympy__sympy-14774",
+        "attempt_id": "schema_contract_budgetflow_segment_sympy__sympy-14774",
     }
     record.update(overrides)
     return record
@@ -184,7 +184,7 @@ def test_auto_budget_records_dynamic_task_cap_mode(monkeypatch) -> None:
     )
 
     records, _ = run_strategy_batch(
-        CompareStrategy("budgetflow_full", "budgetflow_value_aware"),
+        CompareStrategy("budgetflow_segment", "segment_value_aware"),
         [task],
         batch_budget_cap=0.12,
         value_context=_value_context(),
@@ -222,7 +222,7 @@ def test_rebuild_state_ignores_current_schema_missing_score_status(tmp_path) -> 
     )
 
     assert state.runs_done == 1
-    assert state.score_status_by_strategy["budgetflow_full"] == ["pass"]
+    assert state.score_status_by_strategy["budgetflow_segment"] == ["pass"]
 
 
 def test_completed_keys_excludes_abort_rows(tmp_path) -> None:
@@ -234,8 +234,8 @@ def test_completed_keys_excludes_abort_rows(tmp_path) -> None:
 
     keys = completed_keys(path, normalize_strategy=lambda name: name)
 
-    assert ("budgetflow_full", "task-pass") in keys
-    assert ("budgetflow_full", "task-abort") not in keys
+    assert ("budgetflow_segment", "task-pass") in keys
+    assert ("budgetflow_segment", "task-abort") not in keys
 
 
 def test_persisted_jsonl_contains_t1_t2_observability_and_learning_memory(tmp_path) -> None:
@@ -256,9 +256,9 @@ def test_persisted_jsonl_contains_t1_t2_observability_and_learning_memory(tmp_pa
             global_progress=GlobalRunProgress(1),
             scoreboard=None,
             summary_path=tmp_path / "summary.log",
-            strategy_names=["budgetflow_full"],
-            batch_caps={"budgetflow_full": 0.5},
-            budget_modes={"budgetflow_full": "per_task_cap"},
+            strategy_names=["budgetflow_segment"],
+            batch_caps={"budgetflow_segment": 0.5},
+            budget_modes={"budgetflow_segment": "per_task_cap"},
             started=0.0,
             out_path=out_path,
             value_profile="equal",
@@ -280,7 +280,7 @@ def test_persisted_jsonl_contains_t1_t2_observability_and_learning_memory(tmp_pa
     assert persisted["routing_learned_action"] == "early_rescue"
     assert persisted["routing_policy_memory_source"].endswith("066_postfix_3x3.jsonl")
     assert record["budget_learning_update_written"] is True
-    assert learned[0]["run_id"] == "schema_contract_budgetflow_full_sympy__sympy-14774"
+    assert learned[0]["run_id"] == "schema_contract_budgetflow_segment_sympy__sympy-14774"
 
 
 def test_abort_records_skip_auto_budget_memory(tmp_path) -> None:
@@ -301,9 +301,9 @@ def test_abort_records_skip_auto_budget_memory(tmp_path) -> None:
             global_progress=GlobalRunProgress(1),
             scoreboard=None,
             summary_path=tmp_path / "summary.log",
-            strategy_names=["budgetflow_full"],
-            batch_caps={"budgetflow_full": 0.5},
-            budget_modes={"budgetflow_full": "per_task_cap"},
+            strategy_names=["budgetflow_segment"],
+            batch_caps={"budgetflow_segment": 0.5},
+            budget_modes={"budgetflow_segment": "per_task_cap"},
             started=0.0,
             out_path=out_path,
             value_profile="equal",
@@ -322,16 +322,16 @@ def test_abort_records_skip_auto_budget_memory(tmp_path) -> None:
 
 def test_budget_summary_reports_planned_cap_not_provider_runtime_balance() -> None:
     lines = _format_strategy_totals(
-        strategy_names=["budgetflow_full"],
-        resolved_by_strategy={"budgetflow_full": [True, False]},
-        score_status_by_strategy={"budgetflow_full": ["pass", "true_fail"]},
-        task_cost_by_strategy={"budgetflow_full": [0.2, 0.3]},
-        batch_spent_by_strategy={"budgetflow_full": 0.5},
-        turns_by_strategy={"budgetflow_full": [3, 7]},
-        tier_mix_by_strategy={"budgetflow_full": [{2: 0.5, 5: 0.5}, {5: 1.0}]},
-        failure_by_strategy={"budgetflow_full": {"pass": 1, "repair_fail": 1}},
-        batch_caps={"budgetflow_full": 1.5},
-        budget_modes={"budgetflow_full": "dynamic_task_caps"},
+        strategy_names=["budgetflow_segment"],
+        resolved_by_strategy={"budgetflow_segment": [True, False]},
+        score_status_by_strategy={"budgetflow_segment": ["pass", "true_fail"]},
+        task_cost_by_strategy={"budgetflow_segment": [0.2, 0.3]},
+        batch_spent_by_strategy={"budgetflow_segment": 0.5},
+        turns_by_strategy={"budgetflow_segment": [3, 7]},
+        tier_mix_by_strategy={"budgetflow_segment": [{2: 0.5, 5: 0.5}, {5: 1.0}]},
+        failure_by_strategy={"budgetflow_segment": {"pass": 1, "repair_fail": 1}},
+        batch_caps={"budgetflow_segment": 1.5},
+        budget_modes={"budgetflow_segment": "dynamic_task_caps"},
     )
 
     text = "\n".join(lines)
@@ -343,16 +343,16 @@ def test_budget_summary_reports_planned_cap_not_provider_runtime_balance() -> No
 
 def test_budget_summary_treats_frozen_router_caps_as_planned_cap() -> None:
     lines = _format_strategy_totals(
-        strategy_names=["budgetflow_same_router"],
-        resolved_by_strategy={"budgetflow_same_router": [True, False]},
-        score_status_by_strategy={"budgetflow_same_router": ["pass", "true_fail"]},
-        task_cost_by_strategy={"budgetflow_same_router": [0.2, 0.3]},
-        batch_spent_by_strategy={"budgetflow_same_router": 0.5},
-        turns_by_strategy={"budgetflow_same_router": [3, 7]},
-        tier_mix_by_strategy={"budgetflow_same_router": [{2: 1.0}, {3: 1.0}]},
-        failure_by_strategy={"budgetflow_same_router": {"pass": 1, "budget_fail": 1}},
-        batch_caps={"budgetflow_same_router": 0.75},
-        budget_modes={"budgetflow_same_router": "frozen_router_caps"},
+        strategy_names=["budgetflow_same_enterprise_router"],
+        resolved_by_strategy={"budgetflow_same_enterprise_router": [True, False]},
+        score_status_by_strategy={"budgetflow_same_enterprise_router": ["pass", "true_fail"]},
+        task_cost_by_strategy={"budgetflow_same_enterprise_router": [0.2, 0.3]},
+        batch_spent_by_strategy={"budgetflow_same_enterprise_router": 0.5},
+        turns_by_strategy={"budgetflow_same_enterprise_router": [3, 7]},
+        tier_mix_by_strategy={"budgetflow_same_enterprise_router": [{2: 1.0}, {3: 1.0}]},
+        failure_by_strategy={"budgetflow_same_enterprise_router": {"pass": 1, "budget_fail": 1}},
+        batch_caps={"budgetflow_same_enterprise_router": 0.75},
+        budget_modes={"budgetflow_same_enterprise_router": "frozen_router_caps"},
     )
 
     text = "\n".join(lines)
@@ -363,67 +363,67 @@ def test_budget_summary_treats_frozen_router_caps_as_planned_cap() -> None:
 
 def test_live_snapshot_uses_score_status_for_value_pass_count(tmp_path) -> None:
     lines = _format_live_snapshot(
-        strategy_names=["budgetflow_full"],
-        resolved_by_strategy={"budgetflow_full": [True, True]},
-        score_status_by_strategy={"budgetflow_full": ["pass", "abort"]},
-        task_cost_by_strategy={"budgetflow_full": [0.2, 0.1]},
-        turns_by_strategy={"budgetflow_full": [4, 3]},
-        tier_mix_by_strategy={"budgetflow_full": [{2: 1.0}, {5: 1.0}]},
-        batch_spent_by_strategy={"budgetflow_full": 0.3},
-        batch_caps={"budgetflow_full": 0.5},
-        budget_modes={"budgetflow_full": "frozen_router_caps"},
+        strategy_names=["budgetflow_segment"],
+        resolved_by_strategy={"budgetflow_segment": [True, True]},
+        score_status_by_strategy={"budgetflow_segment": ["pass", "abort"]},
+        task_cost_by_strategy={"budgetflow_segment": [0.2, 0.1]},
+        turns_by_strategy={"budgetflow_segment": [4, 3]},
+        tier_mix_by_strategy={"budgetflow_segment": [{2: 1.0}, {5: 1.0}]},
+        batch_spent_by_strategy={"budgetflow_segment": 0.3},
+        batch_caps={"budgetflow_segment": 0.5},
+        budget_modes={"budgetflow_segment": "frozen_router_caps"},
         runs_done=2,
         total_runs=2,
         tasks_per_strategy=2,
         started=0.0,
         out_path=tmp_path / "run.jsonl",
-        resolved_value_by_strategy={"budgetflow_full": [0.6, 0.0]},
-        task_value_by_strategy={"budgetflow_full": [0.6, 0.4]},
+        resolved_value_by_strategy={"budgetflow_segment": [0.6, 0.0]},
+        task_value_by_strategy={"budgetflow_segment": [0.6, 0.4]},
         value_profile="difficulty",
     )
 
     text = "\n".join(lines)
     assert "pass=1 true_fail=0 abort=1" in text
-    assert any(line.startswith("budgetflow_full") and " 1 " in line for line in lines)
+    assert any(line.startswith("budgetflow_segment") and " 1 " in line for line in lines)
     assert "planned_cap" in text
 
 
 def test_scoreboard_records_abort_by_score_status_not_raw_harness_resolved() -> None:
-    scoreboard = StrategyScoreboard(["budgetflow_full"])
-    scoreboard.record("budgetflow_full", resolved=True, score_status="abort")
-    scoreboard.record("budgetflow_full", resolved=True, score_status="pass")
+    scoreboard = StrategyScoreboard(["budgetflow_segment"])
+    scoreboard.record("budgetflow_segment", resolved=True, score_status="abort")
+    scoreboard.record("budgetflow_segment", resolved=True, score_status="pass")
 
-    assert "budgetflow-full 1/2" in scoreboard.format_line()
+    assert "bf-segment 1/2" in scoreboard.format_line()
 
 
 def test_scoreboard_resume_seed_uses_score_status() -> None:
-    scoreboard = StrategyScoreboard(["budgetflow_full"])
+    scoreboard = StrategyScoreboard(["budgetflow_segment"])
     scoreboard.seed_from_resolved(
-        {"budgetflow_full": [True, True, False]},
-        {"budgetflow_full": ["pass", "abort", "true_fail"]},
+        {"budgetflow_segment": [True, True, False]},
+        {"budgetflow_segment": ["pass", "abort", "true_fail"]},
     )
 
-    assert "budgetflow-full 1/3" in scoreboard.format_line()
+    assert "bf-segment 1/3" in scoreboard.format_line()
 
 
 def test_value_summary_reports_primary_normalized_value_metric(tmp_path) -> None:
     lines = _format_live_snapshot(
-        strategy_names=["budgetflow_full"],
-        resolved_by_strategy={"budgetflow_full": [True, False]},
-        score_status_by_strategy={"budgetflow_full": ["pass", "abort"]},
-        task_cost_by_strategy={"budgetflow_full": [0.2, 0.1]},
-        turns_by_strategy={"budgetflow_full": [4, 3]},
-        tier_mix_by_strategy={"budgetflow_full": [{2: 1.0}, {5: 1.0}]},
-        batch_spent_by_strategy={"budgetflow_full": 0.3},
-        batch_caps={"budgetflow_full": 0.5},
-        budget_modes={"budgetflow_full": "dynamic_task_caps"},
+        strategy_names=["budgetflow_segment"],
+        resolved_by_strategy={"budgetflow_segment": [True, False]},
+        score_status_by_strategy={"budgetflow_segment": ["pass", "abort"]},
+        task_cost_by_strategy={"budgetflow_segment": [0.2, 0.1]},
+        turns_by_strategy={"budgetflow_segment": [4, 3]},
+        tier_mix_by_strategy={"budgetflow_segment": [{2: 1.0}, {5: 1.0}]},
+        batch_spent_by_strategy={"budgetflow_segment": 0.3},
+        batch_caps={"budgetflow_segment": 0.5},
+        budget_modes={"budgetflow_segment": "dynamic_task_caps"},
         runs_done=2,
         total_runs=2,
         tasks_per_strategy=2,
         started=0.0,
         out_path=tmp_path / "run.jsonl",
-        resolved_value_by_strategy={"budgetflow_full": [0.6, 0.0]},
-        task_value_by_strategy={"budgetflow_full": [0.6, 0.4]},
+        resolved_value_by_strategy={"budgetflow_segment": [0.6, 0.0]},
+        task_value_by_strategy={"budgetflow_segment": [0.6, 0.4]},
         value_profile="difficulty",
     )
 

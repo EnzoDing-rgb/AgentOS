@@ -66,7 +66,7 @@ def test_turn_trace_has_fields_needed_to_debug_value_routing_and_provider_failur
         parser="parse_regex_actions",
         provider_status_code=503,
         router_reason="value_triggered_escalation",
-        router_branch="budgetflow_value_aware",
+        router_branch="segment_value_aware",
         task_value=2.0,
         task_value_multiplier=1.5,
         value_aware_active=True,
@@ -91,7 +91,7 @@ def test_turn_trace_has_fields_needed_to_debug_value_routing_and_provider_failur
     assert trace["cost_estimate_confidence"]["backend"] == "tier3"
     assert trace["protocol"] == "text_regex"
     assert trace["provider_status_code"] == 503
-    assert trace["router_branch"] == "budgetflow_value_aware"
+    assert trace["router_branch"] == "segment_value_aware"
     assert trace["task_value_multiplier"] == 1.5
     assert trace["value_triggered_escalation_active"] is True
     assert trace["value_triggered_escalation_turns_remaining"] == 2
@@ -207,8 +207,8 @@ def test_parser_error_trace_fields_extracts_format_error_action_count() -> None:
 @pytest.mark.parametrize(
     ("task_value", "strategy", "opens"),
     [
-        (2.0, "budgetflow_value_aware", True),
-        (0.5, "budgetflow_value_aware", False),
+        (2.0, "segment_value_aware", True),
+        (0.5, "segment_value_aware", False),
         (2.0, "budgetflow_conservative", False),
     ],
 )
@@ -305,7 +305,7 @@ def test_value_triggered_escalation_honors_memory_disable_window() -> None:
 
     model = object.__new__(BudgetFlowLitellmModel)
     model.routing = build_routing_context(
-        "budgetflow_value_aware",
+        "segment_value_aware",
         [t2, t3],
         budget_pressure=0.01,
         adaptive=Adaptive(),

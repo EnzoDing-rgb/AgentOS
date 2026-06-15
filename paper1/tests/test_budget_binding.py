@@ -9,7 +9,8 @@ from budgetflow.experiments.budget_binding import (
     _load_frozen_preferred_models,
     _load_frozen_caps,
     _distribution_p75,
-    _audit_pressure_shape,
+    _build_pressure_contract,
+    audit_calibration,
     BudgetBindingPlan,
     calibrate_budget,
 )
@@ -61,7 +62,7 @@ def test_t3_share_reads_preferred_model_not_task_id() -> None:
 def test_t3_share_tier2_task_returns_zero() -> None:
     preferred = {"completely__different-task": "tier2"}
     share = _estimate_t3_cost_share(
-        "budgetflow_same_router",
+        "budgetflow_same_enterprise_router",
         "completely__different-task",
         {},
         preferred_models=preferred,
@@ -181,7 +182,7 @@ def test_calibrate_target_utilization_hard_cap_not_frozen_cap_sum(tmp_path: Path
 
 
 def test_calibrate_target_utilization_reference_is_not_budgetflow_specific(tmp_path: Path) -> None:
-    """Reference rule is p75 of all 5 strategies — not budgetflow_full alone."""
+    """Reference rule is p75 of configured strategies — not BudgetFlow-specific."""
     vm = tmp_path / "vm.json"
     vm.write_text(json.dumps({"tasks": {}}))
     plan = calibrate_budget(
@@ -192,8 +193,29 @@ def test_calibrate_target_utilization_reference_is_not_budgetflow_specific(tmp_p
     )
     all_reasons = " ".join(plan.reasons)
     assert "strategy_set_p75" in all_reasons
-    assert "budgetflow_full_projected" not in all_reasons
+    assert "budgetflow_segment_projected" not in all_reasons
+    assert "budgetflow_task_level_projected" not in all_reasons
     assert "max_projected" not in all_reasons
+
+
+def test_calibrate_defaults_to_paper_mainline_six_policy_set(tmp_path: Path) -> None:
+    vm = tmp_path / "vm.json"
+    vm.write_text(json.dumps({"tasks": {}}))
+    plan = calibrate_budget(
+        ["task-a"],
+        value_matrix_path=vm,
+        target_utilization=0.80,
+        output_path=tmp_path / "bp.json",
+    )
+
+    assert list(plan.projected_spend_by_strategy) == [
+        "bare_t2_baseline",
+        "bare_t3_baseline",
+        "enterprise_router_baseline",
+        "budgetflow_same_enterprise_router",
+        "budgetflow_task_level",
+        "budgetflow_segment",
+    ]
 
 
 def test_target_utilization_below_zero_raises() -> None:
@@ -211,8 +233,8 @@ def test_target_utilization_above_one_raises() -> None:
 # ── pressure-shape audit ────────────────────────────────────────────────
 
 
-def test_pressure_audit_is_passive_only() -> None:
-    """Pressure audit writes into plan.reasons but never changes plan.decision."""
+def test_pressure_contract_is_passive_only() -> None:
+    """Pressure contract writes into plan but never changes plan.decision."""
     plan = BudgetBindingPlan(
         hard_cap_usd=10.0,
         budget_mode="target_utilization",
@@ -222,17 +244,19 @@ def test_pressure_audit_is_passive_only() -> None:
         "bare_t2_baseline": 0.30,
         "bare_t3_baseline": 0.20,
         "enterprise_router_baseline": 0.30,
-        "budgetflow_same_router": 0.30,
-        "budgetflow_full": 0.40,
+        "budgetflow_same_enterprise_router": 0.30,
+        "budgetflow_task_level": 0.42,
+        "budgetflow_segment": 0.40,
     }
     original_decision = plan.decision
-    _audit_pressure_shape(plan, ("bare_t2_baseline", "bare_t3_baseline"))
+    _build_pressure_contract(plan, ("bare_t2_baseline", "bare_t3_baseline", "budgetflow_segment"))
     assert plan.decision == original_decision
-    assert any("WARNING" in r for r in plan.reasons)  # T3 < T2 → warning
+    assert plan.pressure_contract["grade"] == "fail"  # T3 < T2 → inverted pressure = fail
+    assert any("inverted" in v for v in plan.pressure_contract["violations"])
 
 
-def test_pressure_audit_healthy_shape_no_warning() -> None:
-    """T3 > T2 = expected shape, no warning."""
+def test_pressure_contract_healthy_shape_grade_pass() -> None:
+    """T3 tight > T2 loose = expected shape, grade pass."""
     plan = BudgetBindingPlan(
         hard_cap_usd=5.0,
         budget_mode="target_utilization",
@@ -242,11 +266,15 @@ def test_pressure_audit_healthy_shape_no_warning() -> None:
         "bare_t2_baseline": 0.30,
         "bare_t3_baseline": 0.85,
         "enterprise_router_baseline": 0.50,
-        "budgetflow_full": 0.60,
+        "budgetflow_task_level": 0.75,
+        "budgetflow_segment": 0.70,
     }
-    _audit_pressure_shape(plan, ())
-    warnings = [r for r in plan.reasons if "WARNING" in r]
-    assert len(warnings) == 0
+    _build_pressure_contract(plan, ("bare_t2_baseline", "bare_t3_baseline", "budgetflow_segment"))
+    assert plan.pressure_contract["grade"] == "pass"
+    assert len(plan.pressure_contract["violations"]) == 0
+    assert any("t2_loose" in a for a in plan.pressure_contract["assertions"])
+    assert any("t3_tight" in a for a in plan.pressure_contract["assertions"])
+    assert any("budgetflow_task_level" in a for a in plan.pressure_contract["assertions"])
 
 
 def test_calibrate_without_target_uses_frozen_cap_sum(tmp_path: Path) -> None:
@@ -263,3 +291,42 @@ def test_calibrate_without_target_uses_frozen_cap_sum(tmp_path: Path) -> None:
     )
     assert plan.budget_mode == "frozen_plan_cap_sum"
     assert plan.hard_cap_usd == 3.5
+
+
+def test_audit_calibration_dedup_keeps_last_row(tmp_path: Path) -> None:
+    jsonl = tmp_path / "run.jsonl"
+    jsonl.write_text(
+        "\n".join(
+            [
+                json.dumps({
+                    "strategy": "bare_t3_baseline",
+                    "instance_id": "task-a",
+                    "total_cost": 0.10,
+                    "row_finished_at": 1,
+                }),
+                json.dumps({
+                    "strategy": "bare_t3_baseline",
+                    "instance_id": "task-a",
+                    "total_cost": 0.40,
+                    "row_finished_at": 2,
+                }),
+                json.dumps({
+                    "strategy": "budgetflow_task_level",
+                    "instance_id": "task-a",
+                    "total_cost": 0.20,
+                    "row_finished_at": 1,
+                }),
+            ]
+        )
+        + "\n"
+    )
+    plan = BudgetBindingPlan(hard_cap_usd=1.0)
+    plan.projected_spend_by_strategy = {
+        "bare_t3_baseline": 0.50,
+        "budgetflow_task_level": 0.25,
+    }
+
+    audit = audit_calibration(jsonl, plan)
+
+    assert audit.strategy_errors["bare_t3_baseline"]["actual"] == 0.40
+    assert audit.strategy_errors["bare_t3_baseline"]["task_count"] == 1

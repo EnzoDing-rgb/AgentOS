@@ -25,9 +25,9 @@ POLICY_MEMORY_MIN_WEIGHT = 0.05
 
 ROUTING_MEMORY_ROUTINGS = frozenset(
     {
-        "budgetflow_full",
+        "budgetflow_segment",
         "budgetflow_conservative",
-        "budgetflow_value_aware",
+        "segment_value_aware",
         "value_aware_task_level",
         "budgetflow_equal_weight",
         "stage_blind",

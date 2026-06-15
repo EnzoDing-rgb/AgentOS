@@ -34,7 +34,7 @@ def test_readiness_blocks_uncovered_non_equal_value_matrix(tmp_path) -> None:
             SimpleNamespace(instance_id="covered", test_patch="diff", fail_to_pass=("test_a",)),
             SimpleNamespace(instance_id="missing", test_patch="diff", fail_to_pass=("test_b",)),
         ],
-        strategies=(CompareStrategy("budgetflow_full", "budgetflow_value_aware"),),
+        strategies=(CompareStrategy("budgetflow_segment", "segment_value_aware"),),
         policy_jobs=1,
         value_context=value_context,
         catalog_issues=[],
@@ -56,7 +56,7 @@ def test_readiness_warns_equal_value_is_not_t1_evidence() -> None:
     report = build_compare_readiness_report(
         args=_args(),
         tasks=[SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",))],
-        strategies=(CompareStrategy("budgetflow_full", "budgetflow_value_aware"),),
+        strategies=(CompareStrategy("budgetflow_segment", "segment_value_aware"),),
         policy_jobs=1,
         value_context=value_context,
         catalog_issues=[],
@@ -81,7 +81,7 @@ def test_readiness_warns_plain_matrix_is_not_primary_t1_evidence(tmp_path) -> No
     report = build_compare_readiness_report(
         args=_args(),
         tasks=[SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",))],
-        strategies=(CompareStrategy("budgetflow_full", "budgetflow_value_aware"),),
+        strategies=(CompareStrategy("budgetflow_segment", "segment_value_aware"),),
         policy_jobs=1,
         value_context=value_context,
         catalog_issues=[],
@@ -110,7 +110,7 @@ def test_readiness_accepts_pre_registered_manual_as_primary_t1_evidence(tmp_path
     report = build_compare_readiness_report(
         args=_args(),
         tasks=[SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",))],
-        strategies=(CompareStrategy("budgetflow_full", "budgetflow_value_aware"),),
+        strategies=(CompareStrategy("budgetflow_segment", "segment_value_aware"),),
         policy_jobs=1,
         value_context=value_context,
         catalog_issues=[],
@@ -136,7 +136,7 @@ def test_readiness_blocks_underparallel_policy_jobs() -> None:
         tasks=[SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",))],
         strategies=(
             CompareStrategy("budget_only_baseline", "budget_only"),
-            CompareStrategy("budgetflow_full", "budgetflow_value_aware"),
+            CompareStrategy("budgetflow_segment", "segment_value_aware"),
         ),
         policy_jobs=1,
         value_context=value_context,
@@ -177,7 +177,7 @@ def test_readiness_blocks_missing_frozen_plan_for_mechanism_router() -> None:
     report = build_compare_readiness_report(
         args=_args(frozen_plan=None),
         tasks=[SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",))],
-        strategies=(CompareStrategy("budgetflow_same_router", "budgetflow_same_router"),),
+        strategies=(CompareStrategy("budgetflow_same_enterprise_router", "budgetflow_same_router"),),
         policy_jobs=1,
         value_context=value_context,
         catalog_issues=[],
@@ -230,7 +230,7 @@ def test_readiness_accepts_frozen_plan_covering_selected_tasks(tmp_path) -> None
     report = build_compare_readiness_report(
         args=_args(frozen_plan=str(plan)),
         tasks=[SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",))],
-        strategies=(CompareStrategy("budgetflow_same_router", "budgetflow_same_router"),),
+        strategies=(CompareStrategy("budgetflow_same_enterprise_router", "budgetflow_same_router"),),
         policy_jobs=1,
         value_context=value_context,
         catalog_issues=[],
@@ -259,7 +259,7 @@ def test_readiness_blocks_budget_mismatch_with_frozen_plan_selected_cap_sum(tmp_
     report = build_compare_readiness_report(
         args=_args(frozen_plan=str(plan), budget=1.0),
         tasks=[SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",))],
-        strategies=(CompareStrategy("budgetflow_same_router", "budgetflow_same_router"),),
+        strategies=(CompareStrategy("budgetflow_same_enterprise_router", "budgetflow_same_router"),),
         policy_jobs=1,
         value_context=value_context,
         catalog_issues=[],
@@ -290,7 +290,7 @@ def test_readiness_allows_budget_matching_selected_cap_sum(tmp_path) -> None:
             SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",)),
             SimpleNamespace(instance_id="task-b", test_patch="diff", fail_to_pass=("test_b",)),
         ],
-        strategies=(CompareStrategy("budgetflow_same_router", "budgetflow_same_router"),),
+        strategies=(CompareStrategy("budgetflow_same_enterprise_router", "budgetflow_same_router"),),
         policy_jobs=1,
         value_context=value_context,
         catalog_issues=[],
@@ -322,7 +322,7 @@ def test_readiness_auto_budget_when_no_explicit_budget(tmp_path) -> None:
             SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",)),
             SimpleNamespace(instance_id="task-b", test_patch="diff", fail_to_pass=("test_b",)),
         ],
-        strategies=(CompareStrategy("budgetflow_same_router", "budgetflow_same_router"),),
+        strategies=(CompareStrategy("budgetflow_same_enterprise_router", "budgetflow_same_router"),),
         policy_jobs=1,
         value_context=value_context,
         catalog_issues=[],
@@ -447,7 +447,7 @@ def test_readiness_blocks_budget_plan_blck_decision(tmp_path) -> None:
     report = build_compare_readiness_report(
         args=_args(),
         tasks=[SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",))],
-        strategies=(CompareStrategy("budgetflow_full", "budgetflow_value_aware"),),
+        strategies=(CompareStrategy("budgetflow_segment", "segment_value_aware"),),
         policy_jobs=1,
         value_context=value_context,
         catalog_issues=[],
@@ -480,7 +480,7 @@ def test_readiness_accepts_pass_with_diagnostic_override_with_warning(tmp_path) 
     report = build_compare_readiness_report(
         args=_args(frozen_plan=str(plan)),
         tasks=[SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",))],
-        strategies=(CompareStrategy("budgetflow_same_router", "budgetflow_same_router"),),
+        strategies=(CompareStrategy("budgetflow_same_enterprise_router", "budgetflow_same_router"),),
         policy_jobs=1,
         value_context=value_context,
         catalog_issues=[],

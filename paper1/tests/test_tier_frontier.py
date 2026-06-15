@@ -241,7 +241,7 @@ class TestMaxTierWithFrontier:
         from budgetflow.adapter.strategies import build_routing_context, choose_backend
         from budgetflow.types import Stage, TurnInfo
 
-        ctx = build_routing_context("budgetflow_full", _backends())
+        ctx = build_routing_context("budgetflow_segment", _backends())
         turn = TurnInfo(
             workflow_id="test", step_index=0,
             stage=Stage.LOCALIZATION, w_i=0.4, context_len=1000,
@@ -258,7 +258,7 @@ class TestMaxTierWithFrontier:
         from budgetflow.adapter.turn_trace import router_trace_fields
         from budgetflow.types import Stage, TurnInfo
 
-        ctx = build_routing_context("budgetflow_full", _backends())
+        ctx = build_routing_context("budgetflow_segment", _backends())
         turn = TurnInfo(
             workflow_id="test", step_index=0,
             stage=Stage.LOCALIZATION, w_i=0.4, context_len=1000,
@@ -297,7 +297,7 @@ class TestMaxTierWithFrontier:
         from budgetflow.adapter.turn_trace import router_trace_fields
         from budgetflow.types import Stage, TurnInfo
 
-        ctx = build_routing_context("budgetflow_full", _backends())
+        ctx = build_routing_context("budgetflow_segment", _backends())
         turn = TurnInfo(
             workflow_id="test", step_index=0,
             stage=Stage.LOCALIZATION, w_i=0.4, context_len=1000,
@@ -315,7 +315,7 @@ class TestMaxTierWithFrontier:
         from budgetflow.adapter.strategies import build_routing_context, choose_backend
         from budgetflow.types import Stage, TurnInfo
 
-        ctx = build_routing_context("budgetflow_full", _backends())
+        ctx = build_routing_context("budgetflow_segment", _backends())
         turn = TurnInfo(
             workflow_id="test", step_index=0,
             stage=Stage.LOCALIZATION, w_i=0.4, context_len=1000,

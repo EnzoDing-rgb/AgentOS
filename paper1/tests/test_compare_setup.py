@@ -28,6 +28,7 @@ def _args(**overrides):
         trace_verbose=False,
         trace_quiet=False,
         strategies=None,
+        strategy_set=None,
         jobs=None,
         ids=None,
     )
@@ -78,10 +79,59 @@ def test_3x3_selects_mechanism_isolation_strategies_and_parallel_jobs() -> None:
     assert names == {
         "bare_t3_baseline",
         "enterprise_router_baseline",
-        "budgetflow_same_router",
+        "budgetflow_same_enterprise_router",
     }
     assert selection.policy_jobs == 3
     assert selection.jobs_upgraded is True
+
+
+def test_custom_ids_default_to_paper_mainline_six_policy_set() -> None:
+    selection = select_strategies(_args(ids="sympy__sympy-22714", jobs=1))
+    names = [s.name for s in selection.strategies]
+
+    assert names == [
+        "bare_t2_baseline",
+        "bare_t3_baseline",
+        "enterprise_router_baseline",
+        "budgetflow_same_enterprise_router",
+        "budgetflow_task_level",
+        "budgetflow_segment",
+    ]
+    assert selection.policy_jobs == 6
+    assert selection.jobs_upgraded is True
+
+
+def test_non_3x3_preset_defaults_to_paper_mainline_not_full_catalog() -> None:
+    selection = select_strategies(_args(preset="5x5", jobs=6))
+    names = [s.name for s in selection.strategies]
+
+    assert names == [
+        "bare_t2_baseline",
+        "bare_t3_baseline",
+        "enterprise_router_baseline",
+        "budgetflow_same_enterprise_router",
+        "budgetflow_task_level",
+        "budgetflow_segment",
+    ]
+
+
+def test_explicit_strategy_set_file_controls_order(tmp_path) -> None:
+    import json
+    strategy_set = tmp_path / "strategies.json"
+    strategy_set.write_text(json.dumps({
+        "strategies": [
+            {"name": "budgetflow_task_level"},
+            {"name": "bare_t2_baseline"},
+        ]
+    }))
+
+    selection = select_strategies(_args(strategy_set=str(strategy_set), jobs=1))
+
+    assert [s.name for s in selection.strategies] == [
+        "budgetflow_task_level",
+        "bare_t2_baseline",
+    ]
+    assert selection.policy_jobs == 2
 
 
 def test_unknown_strategy_name_fails_fast() -> None:
@@ -95,7 +145,7 @@ def test_unknown_strategy_name_fails_fast() -> None:
 
 def test_batch_budget_modes_distinguish_dynamic_caps() -> None:
     strategies = (
-        CompareStrategy("budgetflow_full", "budgetflow_value_aware"),
+        CompareStrategy("budgetflow_segment", "segment_value_aware"),
         CompareStrategy("all_pro", "all_pro", budgeted=False),
     )
     modes = build_batch_budget_modes(
@@ -105,17 +155,17 @@ def test_batch_budget_modes_distinguish_dynamic_caps() -> None:
         constrained_budget=1.0,
     )
 
-    assert modes.batch_caps["budgetflow_full"] == pytest.approx(0.3)
-    assert modes.budget_modes["budgetflow_full"] == "dynamic_task_caps"
+    assert modes.batch_caps["budgetflow_segment"] == pytest.approx(0.3)
+    assert modes.budget_modes["budgetflow_segment"] == "dynamic_task_caps"
     assert modes.batch_caps["all_pro"] is None
     assert modes.budget_modes["all_pro"] == "shared"
 
 
 def test_batch_budget_modes_frozen_router_caps_for_mechanism_strategies() -> None:
-    """enterprise_router and budgetflow_same_router get frozen_router_caps mode."""
+    """enterprise_router and budgetflow_same_enterprise_router get frozen_router_caps mode."""
     strategies = (
         CompareStrategy("enterprise_router_baseline", "enterprise_router"),
-        CompareStrategy("budgetflow_same_router", "budgetflow_same_router"),
+        CompareStrategy("budgetflow_same_enterprise_router", "budgetflow_same_router"),
         CompareStrategy("bare_t3_baseline", "bare_t3"),
     )
     frozen_caps = {"task-a": 0.25, "task-b": 0.50}
@@ -128,10 +178,10 @@ def test_batch_budget_modes_frozen_router_caps_for_mechanism_strategies() -> Non
     )
 
     assert modes.budget_modes["enterprise_router_baseline"] == "frozen_router_caps"
-    assert modes.budget_modes["budgetflow_same_router"] == "frozen_router_caps"
+    assert modes.budget_modes["budgetflow_same_enterprise_router"] == "frozen_router_caps"
     assert modes.budget_modes["bare_t3_baseline"] == "shared"
     assert modes.batch_caps["enterprise_router_baseline"] == pytest.approx(0.75)
-    assert modes.batch_caps["budgetflow_same_router"] == pytest.approx(0.75)
+    assert modes.batch_caps["budgetflow_same_enterprise_router"] == pytest.approx(0.75)
     assert modes.batch_caps["bare_t3_baseline"] == pytest.approx(1.0)
 
 
@@ -191,7 +241,7 @@ def test_batch_budget_modes_frozen_caps_override_dynamic_caps() -> None:
     """frozen_task_caps take priority over auto_budget_task_caps for mechanism strategies."""
     strategies = (
         CompareStrategy("enterprise_router_baseline", "enterprise_router"),
-        CompareStrategy("budgetflow_full", "budgetflow_value_aware"),
+        CompareStrategy("budgetflow_segment", "segment_value_aware"),
     )
     frozen_caps = {"task-a": 0.25}
     auto_caps = {"task-a": 0.99}
@@ -204,18 +254,18 @@ def test_batch_budget_modes_frozen_caps_override_dynamic_caps() -> None:
     )
 
     assert modes.budget_modes["enterprise_router_baseline"] == "frozen_router_caps"
-    assert modes.budget_modes["budgetflow_full"] == "dynamic_task_caps"
+    assert modes.budget_modes["budgetflow_segment"] == "dynamic_task_caps"
     assert modes.batch_caps["enterprise_router_baseline"] == pytest.approx(0.25)
-    assert modes.batch_caps["budgetflow_full"] == pytest.approx(0.99)
+    assert modes.batch_caps["budgetflow_segment"] == pytest.approx(0.99)
 
 
 def test_target_utilization_scales_frozen_caps_to_constrained_budget() -> None:
     """In target_utilization mode, frozen per-task caps are scaled so sum = hard_cap."""
     strategies = (
         CompareStrategy("enterprise_router_baseline", "enterprise_router"),
-        CompareStrategy("budgetflow_same_router", "budgetflow_same_router"),
+        CompareStrategy("budgetflow_same_enterprise_router", "budgetflow_same_router"),
         CompareStrategy("bare_t3_baseline", "bare_t3"),
-        CompareStrategy("budgetflow_full", "budgetflow_value_aware"),
+        CompareStrategy("budgetflow_segment", "segment_value_aware"),
     )
     frozen_caps = {"task-a": 2.0, "task-b": 3.0, "task-c": 5.0}  # sum = 10.0
     modes = build_batch_budget_modes(
@@ -229,10 +279,10 @@ def test_target_utilization_scales_frozen_caps_to_constrained_budget() -> None:
 
     # Scaled sum = 2.0 (not 10.0)
     assert modes.batch_caps["enterprise_router_baseline"] == pytest.approx(2.0)
-    assert modes.batch_caps["budgetflow_same_router"] == pytest.approx(2.0)
+    assert modes.batch_caps["budgetflow_same_enterprise_router"] == pytest.approx(2.0)
     # Non-frozen strategies still get constrained_budget
     assert modes.batch_caps["bare_t3_baseline"] == pytest.approx(2.0)
-    assert modes.batch_caps["budgetflow_full"] == pytest.approx(2.0)
+    assert modes.batch_caps["budgetflow_segment"] == pytest.approx(2.0)
 
     # effective_frozen_caps are scaled proportionally
     eff = modes.effective_frozen_caps

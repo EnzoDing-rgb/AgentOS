@@ -215,7 +215,7 @@ def _mechanism_isolation_delta(by_strategy: dict[str, dict]) -> dict:
     # Both use the same frozen router plan; the only difference is the
     # execution mechanism (shared ledger, reservation/settlement, stop-loss).
     # Only computed when all three mainline strategies are present.
-    mechanism = by_strategy.get("budgetflow_same_router")
+    mechanism = by_strategy.get("budgetflow_same_enterprise_router")
     baseline = by_strategy.get("enterprise_router_baseline")
     bare = by_strategy.get("bare_t3_baseline")
     if not mechanism or not baseline:
@@ -321,10 +321,10 @@ _DECISION_ISSUE_AREA = {
 _STRATEGY_REPORT_ORDER = {
     "bare_t3_baseline": 0,
     "enterprise_router_baseline": 1,
-    "budgetflow_same_router": 2,
+    "budgetflow_same_enterprise_router": 2,
     "budget_only_baseline": 10,
-    "task_level_control": 11,
-    "budgetflow_full": 12,
+    "budgetflow_task_level": 11,
+    "budgetflow_segment": 12,
 }
 
 

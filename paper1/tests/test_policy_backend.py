@@ -151,12 +151,12 @@ class TestBootstrapPolicyWiredIntoRouting:
     """Prove that build_routing_context wires BootstrapPolicy for budgetflow
     strategies and that choose_backend routes through it."""
 
-    def test_budgetflow_full_has_bootstrap_policy(self):
+    def test_budgetflow_segment_has_bootstrap_policy(self):
         from budgetflow.adapter.strategies import build_routing_context
         from budgetflow.policy_backend import BootstrapPolicy
 
         backends = _backends()
-        ctx = build_routing_context("budgetflow_full", backends)
+        ctx = build_routing_context("budgetflow_segment", backends)
         assert ctx.bootstrap_policy is not None
         assert isinstance(ctx.bootstrap_policy, BootstrapPolicy)
 
@@ -169,12 +169,12 @@ class TestBootstrapPolicyWiredIntoRouting:
         assert ctx.bootstrap_policy is not None
         assert isinstance(ctx.bootstrap_policy, BootstrapPolicy)
 
-    def test_budgetflow_value_aware_has_bootstrap_policy(self):
+    def test_segment_value_aware_has_bootstrap_policy(self):
         from budgetflow.adapter.strategies import build_routing_context
         from budgetflow.policy_backend import BootstrapPolicy
 
         backends = _backends()
-        ctx = build_routing_context("budgetflow_value_aware", backends, task_value=2.0)
+        ctx = build_routing_context("segment_value_aware", backends, task_value=2.0)
         assert ctx.bootstrap_policy is not None
         assert isinstance(ctx.bootstrap_policy, BootstrapPolicy)
 
@@ -215,14 +215,14 @@ class TestBootstrapPolicyWiredIntoRouting:
         from budgetflow.types import Stage, TurnInfo
 
         backends = _backends()
-        ctx = build_routing_context("budgetflow_full", backends)
+        ctx = build_routing_context("budgetflow_segment", backends)
         turn = TurnInfo(workflow_id="t", step_index=1, stage=Stage.LOCALIZATION, w_i=0.4, context_len=1000)
         backend = choose_backend(ctx, turn, {b.name: 0.01 for b in backends})
         assert backend is not None
         rd = ctx.last_decision
         assert isinstance(rd, RouterDecision)
         assert rd.backend == backend
-        assert rd.branch in ("budgetflow_full", "budgetflow_conservative", "budgetflow_value_aware")
+        assert rd.branch in ("budgetflow_segment", "budgetflow_conservative", "segment_value_aware")
         assert rd.pressure is not None
         assert rd.reason != ""
 
@@ -231,7 +231,7 @@ class TestBootstrapPolicyWiredIntoRouting:
         from budgetflow.types import Stage, TurnInfo
 
         backends = _backends()
-        ctx = build_routing_context("budgetflow_value_aware", backends, task_value=4.0, median_task_value=2.0)
+        ctx = build_routing_context("segment_value_aware", backends, task_value=4.0, median_task_value=2.0)
         turn = TurnInfo(workflow_id="t", step_index=1, stage=Stage.LOCALIZATION, w_i=0.4, context_len=1000)
         backend = choose_backend(ctx, turn, {b.name: 0.01 for b in backends})
         # Value-aware selector must apply multiplier > 1.0 for high-value task

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from pathlib import Path
 
 from budgetflow.defaults import (
     MODEL_CATALOG,
@@ -34,35 +36,79 @@ class CompareStrategy:
     budgeted: bool = True
 
 
-# Mechanism-first default strategies: same hard budget, different execution
-# mechanism.  bare_t3_baseline and enterprise_router_baseline use the harness
-# with a hard-kill budget adapter.  budgetflow_same_router consumes the same
-# frozen plan through BudgetFlow's shared ledger, reservation/settlement,
-# stop-loss, escalation, and audit path.
-DEFAULT_STRATEGIES: tuple[CompareStrategy, ...] = (
+PAPER1_ROOT = Path(__file__).resolve().parents[3]
+PAPER_MAINLINE_STRATEGY_SET_PATH = PAPER1_ROOT / "docs" / "config" / "paper_mainline_strategies.v1.json"
+
+
+# Registry of canonical strategy implementations.  Paper membership and order
+# live in docs/config/paper_mainline_strategies.v1.json so launch, budget, and
+# readiness code cannot drift into different policy sets.
+CORE_STRATEGIES: tuple[CompareStrategy, ...] = (
     CompareStrategy("bare_t2_baseline", "all_tier2"),
     CompareStrategy("bare_t3_baseline", "bare_t3"),
     CompareStrategy("enterprise_router_baseline", "enterprise_router"),
-    CompareStrategy("budgetflow_same_router", "budgetflow_same_router"),
-)
-
-# Current diagnostic controls. They are not the default mechanism-isolation
-# comparison, but remain useful for targeted policy ablations.
-CONTROL_STRATEGIES: tuple[CompareStrategy, ...] = (
-    CompareStrategy("budget_only_baseline", "budget_only"),
-    CompareStrategy("task_level_control", "value_aware_task_level"),
-    CompareStrategy("budgetflow_full", "budgetflow_value_aware"),
+    CompareStrategy("budgetflow_same_enterprise_router", "budgetflow_same_router"),
+    CompareStrategy("budgetflow_task_level", "value_aware_task_level"),
+    CompareStrategy("budgetflow_segment", "segment_value_aware"),
 )
 
 DIAGNOSTIC_STRATEGIES: tuple[CompareStrategy, ...] = (
+    CompareStrategy("budget_only_baseline", "budget_only"),
     CompareStrategy("all_strongest_model", "all_t3", budgeted=False),
     CompareStrategy("all_t1_baseline", "all_flash"),
     CompareStrategy("budget_only_t2_baseline", "budget_only_t2"),
     CompareStrategy("bootstrap_conservative_diagnostic", "budgetflow_conservative"),
-    CompareStrategy("budgetflow_mechanism_diagnostic", "budgetflow_full"),
     CompareStrategy("segment_blind_control", "stage_blind"),
     CompareStrategy("equal_weight_control", "budgetflow_equal_weight"),
 )
+
+
+def registered_strategy_catalog() -> tuple[CompareStrategy, ...]:
+    return CORE_STRATEGIES + DIAGNOSTIC_STRATEGIES
+
+
+def _strategy_registry() -> dict[str, CompareStrategy]:
+    return {strategy.name: strategy for strategy in registered_strategy_catalog()}
+
+
+def load_strategy_set(path: Path | str | None = None) -> tuple[CompareStrategy, ...]:
+    """Load a versioned strategy set by canonical strategy name.
+
+    The config file is membership only. Routing semantics stay in the code
+    registry above, which keeps paper-run configuration orthogonal to mechanism
+    implementation.
+    """
+    strategy_set_path = Path(path) if path is not None else PAPER_MAINLINE_STRATEGY_SET_PATH
+    data = json.loads(strategy_set_path.read_text())
+    names = [str(item.get("name", "")).strip() for item in data.get("strategies", [])]
+    if not names:
+        raise ValueError(f"strategy set {strategy_set_path} has no strategies")
+    duplicates = sorted({name for name in names if names.count(name) > 1})
+    if duplicates:
+        raise ValueError(f"strategy set {strategy_set_path} has duplicate strategies: {duplicates}")
+    registry = _strategy_registry()
+    missing = [name for name in names if name not in registry]
+    if missing:
+        raise ValueError(f"strategy set {strategy_set_path} references unknown strategies: {missing}")
+    return tuple(registry[name] for name in names)
+
+
+def paper_mainline_strategies() -> tuple[CompareStrategy, ...]:
+    return load_strategy_set(PAPER_MAINLINE_STRATEGY_SET_PATH)
+
+
+def paper_mainline_strategy_names() -> tuple[str, ...]:
+    return tuple(strategy.name for strategy in paper_mainline_strategies())
+
+
+# Default paid comparison: Claim 1 task-level BudgetFlow plus Claim 2 segment
+# enhancement and the diagnostic mirrors, all under the same hard budget.
+DEFAULT_STRATEGIES: tuple[CompareStrategy, ...] = paper_mainline_strategies()
+
+
+# Backward-facing import name for tests/tools that ask for non-mainline
+# diagnostics.  It intentionally excludes paper-mainline strategies.
+CONTROL_STRATEGIES: tuple[CompareStrategy, ...] = DIAGNOSTIC_STRATEGIES
 
 
 def normalize_strategy(name: str) -> str:
@@ -71,7 +117,7 @@ def normalize_strategy(name: str) -> str:
 
 
 def strategy_catalog() -> tuple[CompareStrategy, ...]:
-    return DEFAULT_STRATEGIES + CONTROL_STRATEGIES + DIAGNOSTIC_STRATEGIES
+    return registered_strategy_catalog()
 
 
 def mechanism_strategy_names() -> frozenset[str]:

@@ -93,7 +93,7 @@ STRONGEST_DOWNGRADE_TIER = 2
 # force a stronger tier when one exists.
 GOLD_EDIT_MID_TIER_REPAIR_TURN_LIMIT = 12
 
-# Adaptive routing (budgetflow_full only): rolling task feedback + in-run recovery.
+# Adaptive routing (budgetflow_segment only): rolling task feedback + in-run recovery.
 ADAPTIVE_WINDOW = 5
 ADAPTIVE_MIN_SAMPLES = 2
 ADAPTIVE_WEAK_RESOLVE_MAX = 0.25
@@ -113,7 +113,7 @@ VALUE_TRIGGERED_ESCALATION_DEFAULT_WINDOW_TURNS = 3
 VALUE_TRIGGERED_ESCALATION_MIN_HEADROOM_FRAC = 0.12
 
 # PolicyMemory regret threshold: when full_vs_baseline_regret exceeds this,
-# budgetflow_full receives stronger budget-pressure correction.
+# budgetflow_segment receives stronger budget-pressure correction.
 POLICY_REGRET_THRESHOLD = 0.15
 
 BUDGET_PRESSURE_INIT = 0.01

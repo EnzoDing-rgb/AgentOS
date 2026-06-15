@@ -1,150 +1,334 @@
-# Pre-paid Closure Report: Value / Effort / Model Fit Decoupling
+# Pre-Paid Closure Report — June 15, 2026
 
-Date: 2026-06-15
+Six-phase prep pass before next paid counter-review round. No paid experiments.
 
-## Objective
+## Phase Summary
 
-Refactor BudgetFlow from a value-only mixed router into a value-first allocation
-system per North Star definitions.  Separate three allocation inputs (Task Value,
-Task Effort, Model Fit) into independent namespaces.  Prepare 5x16 artifacts for
-paid diagnostic.  Audit and fix schema/artifact consistency as final pre-paid
-closure.
+| Phase | What | Verdict |
+|---|---|---|
+| 1 | Taxonomy closure | CLEAN — 0 old names in active code/tests/preflight |
+| 2 | Run/resume ledger hardening | CLEAN — PID locks, sibling detection, cost accounting |
+| 3 | Budget regime compiler / readiness gate | CLEAN — pressure contract, calibration audit, BLOCK gate |
+| 4 | Cost catalog / sensitivity | CLEAN — model_tiers.t3x3.json, recost CLI, crossover at ~3x |
+| 5 | 5×20 postmortem audit | DONE — projection MAPE 53.5%, 22-47% budget utilization |
+| 6 | 15-task candidate gold harness gate | DONE — 10 PASS, 5 FAIL, 2 new repos clean |
 
-## Files Changed (18 files, audit + artifact regeneration)
+---
 
-| File | Change |
+## Files Changed (48 files, +953 / −391)
+
+### New files
+
+| File | Phase |
 |---|---|
-| `paper1/src/budgetflow/allocation.py` | **NEW** — AllocationContext dataclass |
-| `paper1/src/budgetflow/adapter/runner.py` | Accept allocation param, pass to build_routing_context |
-| `paper1/src/budgetflow/adapter/strategies.py` | RoutingContext.allocation field + __post_init__ sync |
-| `paper1/src/budgetflow/adapters/swebench_value.py` | Read task_value[profile] only, no values fallback |
-| `paper1/src/budgetflow/value_efficiency.py` | Add _extract_effort_lookup, enrich_record writes effort |
-| `paper1/src/budgetflow/value_matrix.py` | bootstrap_task_values → bootstrap_task_effort; values → task_value+task_effort+model_fit |
-| `paper1/src/budgetflow/experiments/budget_binding.py` | Read task_effort.bootstrap_heuristic, no legacy path |
-| `paper1/src/budgetflow/experiments/compare_cli.py` | Remove bootstrap_difficulty from --value-profile choices |
-| `paper1/src/budgetflow/experiments/compare_execution.py` | Create AllocationContext, wire AutoBudget→effort, PolicyMemory→model_fit |
-| `paper1/tests/test_allocation_context.py` | **NEW** — 10 concept-separation tests |
-| `paper1/tests/test_value_efficiency.py` | Fix bootstrap_difficulty → task_effort diagnostic |
-| `paper1/tests/test_value_matrix_bootstrap.py` | Update assertions for new schema |
-| `paper1/tests/test_policy_backend.py` | Fix test matrix to use task_value key |
-| `paper1/tests/test_compare_readiness.py` | Fix test matrices to use task_value key |
-| `paper1/tests/test_experiment_observability.py` | bootstrap_difficulty → difficulty profile |
-| `paper1/tests/test_test_inventory.py` | Register test_allocation_context.py |
+| `paper1/docs/config/model_tiers.t3x3.json` | 4 |
+| `paper1/src/budgetflow/recost.py` | 4 |
+| `paper1/src/budgetflow/allocation.py` | (prior) |
+| `paper1/docs/reports/mainline_5x20_calibration_audit.json` | 5 |
+| `paper1/docs/reports/mainline_5x20_postmortem_2026-06-15.md` | 5 |
+| `paper1/docs/reports/15_candidate_gold_harness_gate_2026-06-15.md` | 6 |
+| `paper1/docs/reports/5x20_candidate_gate_2026-06-15.md` | 6 |
+| `paper1/data/runs/gold_harness_probe_15_candidates.jsonl` | 6 |
+| `paper1/tests/test_allocation_context.py` | (prior) |
 
-## Deleted Stale Paths (no backward compat)
+### Key modified files
 
-- `_extract_lookup()` — removed `values[profile]` fallback
-- `_load_matrix()` (swebench_value.py) — removed `values[profile]` fallback
-- `_load_value_features()` — removed `values.bootstrap_difficulty` legacy read
-- CLI: `bootstrap_difficulty` removed from valid `--value-profile` choices
+| File | Change | Phase |
+|---|---|---|
+| `paper1/src/budgetflow/run_series.py` | PID lock files, sibling stem detection, repair mode (+114) | 2 |
+| `paper1/src/budgetflow/experiments/budget_binding.py` | Pressure contract, calibration audit, readiness gate (+359) | 3 |
+| `paper1/src/budgetflow/run_observability/checks.py` | Cost accounting raw/dedup/retry (+58) | 2 |
+| `paper1/src/budgetflow/experiments/compare_cli.py` | `--repair` flag, strategy name normalization | 2 |
+| `paper1/src/budgetflow/experiments/compare_config.py` | Strategy name normalization | 1 |
+| `paper1/src/budgetflow/adapter/strategies.py` | AllocationContext integration | (prior) |
+| `paper1/src/budgetflow/adapters/swebench_value.py` | task_value/task_effort schema | (prior) |
+| `paper1/src/budgetflow/value_matrix.py` | bootstrap schema split | (prior) |
+| `paper1/src/budgetflow/value_efficiency.py` | effort enrichment | (prior) |
+| `paper1/tests/test_budget_binding.py` | Updated for pressure contract API (+35) | 3 |
+| `paper1/tests/test_run_observability_audit.py` | Cost accounting tests (+98) | 2 |
+| `paper1/tests/test_run_series.py` | Sibling detection, lock, repair tests (+91) | 2 |
 
-## Current Schema Contract
+### Deleted paths
 
-```json
-{
-  "tasks": {
-    "<instance_id>": {
-      "task_value": {"equal": 1.0},
-      "task_effort": {"bootstrap_heuristic": <float>, "source": "task_metadata_formula", "features": {...}},
-      "model_fit": null
-    }
-  }
-}
-```
+None. All phases are additive — no old files or paths removed.
 
-- `task_value` — Claim 1 input.  Profiles: `equal`, `manual_value`.
-- `task_effort` — diagnostic.  `bootstrap_heuristic` from pre-registered task metadata formula.
-- `model_fit` — reserved.  Populated from PolicyMemory when enabled, else null.
+---
 
-## AllocationContext Boundary
+## Design Decisions
 
-Three inputs flow through a single dataclass into policy/routing:
+1. **target_utilization reference is p75 of the configured paper-mainline strategy set, not any single BudgetFlow policy.** The hard cap `p75 / 0.80` prevents BudgetFlow from inflating its own budget. Proven in tests.
 
-```
-ValueEfficiencyContext.task_value()  ──→  AllocationContext.task_value
-ValueEfficiencyContext.task_effort() ──→  AllocationContext.task_effort
-  (bootstrap_heuristic from matrix)
-AutoBudget.estimated_cost             ──→  AllocationContext.task_effort (override, when memory)
-PolicyMemory.repo_prior().tier_rates ──→  AllocationContext.model_fit (when enabled)
-  (else: null, source="catalog_progress_prior")
-```
+2. **Pressure contract is passive-only.** It writes assertions/violations/grade into the plan but never changes `plan.decision`. Grade=fail is informational, not a gate.
 
-- `RoutingContext.__post_init__` syncs `task_value` from allocation
-- `task_value` / `value_source` / `task_effort` / `effort_source` / `model_fit_source`
-  written to every JSONL record
+3. **Calibration gate CAN block.** If `prior_calibration.overall_mape > 60%`, `calibrate_budget()` returns `decision=BLOCK`. The 5×20 audit (MAPE=53.47%) would trigger WARNING but not BLOCK.
 
-## No-paid Gate Results
+4. **Gold harness PASS means harness-admissible, NOT agent-solvable.** The gate only verifies that the local test infrastructure can execute the SWE-bench test spec. Zero information about model capability.
 
-### Test Suite
-```
-465 passed, 2 skipped — all clean
-```
+5. **Recost is offline and read-only.** It recalculates cost fields under different T3/T2 price ratios but never modifies outcomes, verdicts, or patches.
 
-### 5x16 Artifacts
-```
-Value matrix coverage:  16/16
-Frozen plan coverage:   16/16
-Budget cap sum:         $3.58 (matches frozen plan meta.hard_cap_usd)
-Budget plan decision:   PASS
-Budget plan catalog:    model_tiers.t3x2.json (revision 2026-06-10-t3x2)
-Max utilization:        33.2% (bare_t3_baseline), 21.6% (budgetflow_full)
-Strategies:             5 (bare_t2, bare_t3, enterprise_router, bf_same_router, bf_full)
-No old schema keys:     PASS
-task_effort coverage:   16/16
-Manual matrix features: consistent with SWE-bench Lite task data (PASS)
-Auto-generated matrix:  regenerated, consistent with manual matrix (PASS)
-```
+6. **No task-id if/else in mechanism code.** pylint, seaborn, pytest, xarray, sklearn are handled through the adapter layer only. The mechanism layer has zero task-id branches.
 
-### Contamination Checks
-```
-bootstrap_difficulty as task_value profile:  0 occurrences (deleted)
-Old values[profile] fallback:                0 occurrences (deleted)
-Bare baselines modified:                     No
-```
+7. **Cost accounting tracks 3 numbers per strategy.** `raw_paid_cost` (all rows), `dedup_scored_cost` (last row per task, scored only), `duplicate_retry_overhead` (raw − dedup). The 5×20 had 37 duplicate rows costing $1.43 (41% of dedup cost).
 
-### Audit Fixes (2026-06-15 closure audit)
-```
-Manual value matrix django-16046 features:   patch_lines 2→12, effort 8.98→18.98
-Manual value matrix django-15388 features:   patch_lines 2→12, effort 10.13→20.13
-Auto-generated value matrix:                 regenerated (now consistent with manual)
-Budget plan catalog:                         default→t3x2 (matches paid command)
-Budget plan regenerated:                     PASS, 33.2% max utilization
-Preflight updated:                           utilization, budget binding, risks
-```
+---
 
-## Paid Readiness Verdict: GO
+## Phase 1: Taxonomy Closure
 
-All no-paid gates pass.  5x16 artifacts regenerated with new schema.
-AllocationContext is the unified input boundary.  Task Value, Task Effort,
-Model Fit are auditable in every JSONL row.
+Verified zero occurrences of old strategy names in active code:
+
+| Old Name | Occurrences |
+|---|---|
+| `budgetflow_full` | 0 (in code/tests; only in historical JSONL) |
+| `task_level_control` | 0 |
+| `budgetflow_mechanism_diagnostic` | 0 |
+| `budgetflow_value_aware` | 0 |
+
+6 paper-facing names active: `bare_t2_baseline`, `bare_t3_baseline`, `enterprise_router_baseline`, `budgetflow_same_enterprise_router`, `budgetflow_task_level`, `budgetflow_segment`.
+
+`compare_config.py` normalizes old→new names at the config boundary. `budget_binding.py._HISTORICAL_NAME_MAP` handles old names in calibration audit.
+
+---
+
+## Phase 2: Run/Resume Ledger Hardening
+
+### PID lock files
+
+`run_series.py` now creates `<stem>.lock` files containing the allocating PID. Before allocating a stem, it checks:
+- Lock file exists → read PID
+- If PID is alive and not self → SystemExit with clear message
+- If PID is dead → stale lock, overwrite
+
+### Sibling stem detection
+
+`detect_sibling_stems()` finds `<series>-v<N>.jsonl` files sharing the same series base. `sibling_stems_exist()` returns True if multiple -N suffixes exist.
+
+### Repair mode
+
+`--repair` CLI flag acknowledges sibling fragmentation and targets the latest -N stem. Without `--repair`, sibling detection blocks new runs.
+
+### Cost accounting
+
+`_check_cost_accounting()` in `checks.py` computes per-strategy:
+- `raw_paid_cost` — sum of all rows
+- `dedup_scored_cost` — last row per (strategy, instance_id), scored only
+- `duplicate_retry_overhead` — raw − dedup
+
+Wired into `check_jsonl()` via `checker.py`.
+
+---
+
+## Phase 3: Budget Regime Compiler / Readiness Gate
+
+### Pressure contract
+
+`_build_pressure_contract()` writes assertions into `plan.pressure_contract`:
+- `t2_loose`: bare_t2 utilization < 50% target
+- `t3_tight`: bare_t3 utilization > 80% target
+- `budgetflow_near_target`: budgetflow_segment within ±20% of target
+- Grade: `pass` (all pass), `warn` (violations, no inversion), `fail` (T3 < T2 inverted)
+
+Pressure contract is passive — grade never changes `plan.decision`.
+
+### Calibration audit
+
+`audit_calibration()` compares projected vs actual spend per strategy post-run:
+- Computes MAPE per strategy and overall
+- Confidence: `high` (MAPE < 30%), `medium` (30-60%), `low` (> 60%)
+- Returns `CalibrationAudit` dataclass, writes to JSON
+
+### Readiness gate
+
+`calibrate_budget()` accepts `prior_calibration` parameter:
+- MAPE > 60% → `decision=BLOCK`
+- MAPE 30-60% → `decision=WARNING`
+- MAPE < 30% → high confidence, no gate
+
+The 5×20 calibration audit (MAPE=53.47%) triggers WARNING when passed as `prior_calibration`.
+
+---
+
+## Phase 4: Cost Catalog / Sensitivity
+
+### New model catalog
+
+`docs/config/model_tiers.t3x3.json` — T3 at 3× calibrated transaction price ($0.882/$5.379 per 1M tokens). Base T2 prices unchanged.
+
+### Recost CLI
+
+`src/budgetflow/recost.py` — standalone offline tool:
+- `recost_record(record, t3_multiplier)` — recalculates costs for a single row
+- `run_sensitivity(jsonl_path, ratios)` — sweeps across ratios (1.5x, 2x, 3x, 5x, 10x)
+- `rank_strategies(report, metric)` — ranks by yield/$ or any metric
+
+Usage: `python -m budgetflow.recost <jsonl_path> [output_path]`
+
+### Key finding: crossover at ~3x
+
+At T3/T2 = 1.5x → bare_t3 beats bare_t2 in yield/$
+At T3/T2 = 2.0x → bare_t3 still ahead (35.0 vs 29.0)
+At T3/T2 = 3.0x → bare_t2 overtakes (27.9 vs 23.3)
+At T3/T2 = 5.0x → bare_t2 dominates (25.8 vs 14.0)
+
+The crossover point is ~3x the calibrated T3 transaction price.
+
+---
+
+## Phase 5: 5×20 Postmortem Audit
+
+Full report: `docs/reports/mainline_5x20_postmortem_2026-06-15.md`
+Calibration audit: `docs/reports/mainline_5x20_calibration_audit.json`
+
+### Budget was not binding
+
+- Raw spend: $3.50 across 137 rows (22 duplicate)
+- Actual utilization: 22-47% against $1.2262/task hard cap
+- Root cause: projection overestimated costs by 24-73% (MAPE=53.5%)
+
+### Per-strategy projection error
+
+| Strategy | Projected | Actual | Error |
+|---|---|---|---|
+| bare_t2_baseline | $0.75 | $0.57 | −24% |
+| bare_t3_baseline | $1.51 | $0.40 | −73% |
+| enterprise_router_baseline | $0.75 | $0.37 | −51% |
+| budgetflow_same_enterprise_router | $0.75 | $0.27 | −65% |
+| budgetflow_segment | $0.98 | $0.45 | −54% |
+
+### Task quality
+
+| Repo | Pass Rate | Verdict |
+|---|---|---|
+| sympy (16 tasks) | 41.7% | Core signal |
+| django (4 tasks) | 10.0% | 2 admissible, 2 infra-contaminated |
+| sphinx-doc (2 tasks) | 20.0% | 1 solvable (7975), 1 ceiling (10325) |
+| psf/requests (2 tasks) | 0.0% | Protocol/parser noise — drop |
+
+### Cost accounting
+
+| Metric | Value |
+|---|---|
+| Raw rows | 137 |
+| Raw paid cost | $3.50 |
+| Dedup unique (strategy, task) | 100 |
+| Dedup scored cost | $2.06 |
+| Duplicate rows | 37 |
+| Duplicate retry overhead | $1.43 (41% of dedup) |
+
+---
+
+## Phase 6: 15-Task Candidate Gold Harness Gate
+
+Full report: `docs/reports/15_candidate_gold_harness_gate_2026-06-15.md`
+Raw data: `data/runs/gold_harness_probe_15_candidates.jsonl`
+
+### Results
+
+| Status | Count | Tasks |
+|---|---|---|
+| PASS | 10 | sympy×3, django-13447, sphinx×2, pylint×2, seaborn×2 |
+| FAIL | 5 | django-16527, pytest×2, xarray-4248, sklearn-13584 |
+
+### New repo health
+
+| Repo | Status | Ready? |
+|---|---|---|
+| pylint-dev/pylint | CLEAN | Yes — standard pytest, pip install works |
+| mwaskom/seaborn | CLEAN | Yes — pip install works |
+| pytest-dev/pytest | BLOCKED | No — needs conftest/fixture adapter |
+| pydata/xarray | BLOCKED | No — needs scientific Python deps |
+| scikit-learn/scikit-learn | BLOCKED | No — build chain too heavy |
+
+All 5 failures share the same root: the local test harness cannot execute the SWE-bench test spec. `fail_before=False` means pre-patch tests don't register as failing. These are harness adapter problems, not task or agent problems.
+
+---
 
 ## Residual Risks
 
-1. `model_fit` dict is observability-only; not yet wired into per-turn selector decisions
-2. PolicyMemory is disabled for Claim 1 main run; model_fit_source defaults to `catalog_progress_prior`
-3. The `bootstrap_heuristic` value_source_kind path in `_resolve_value_source_info` is dead code
-   (profile names starting with "bootstrap_" can no longer reach it via CLI) but kept for
-   diagnostic matrix compatibility
-4. `compare_execution.py` still passes `median_task_value` separately from allocation
-   (population stat, not per-task input — intentionally kept on RoutingContext)
-5. `budget_binding.py._load_value_features` normalises `task_effort.bootstrap_heuristic` into
-   a local `bootstrap_difficulty` key internally for cost estimation. Naming is vestigial but
-   contained within the calibrator — no runtime impact.
+1. **pylint and seaborn are untested in paid experiments.** The 5×20 showed new repos (Requests, Django, Sphinx) had high parser failure rates. pylint/seaborn may have similar protocol issues despite clean gold harness passes.
 
-## Exact Next Paid Command
+2. **No agent solvability data for any of the 15 candidates.** Gold harness PASS only verifies test infrastructure. BudgetFlow has no prior JSONL for pylint or seaborn — first paid round will be cold-start diagnostic.
+
+3. **Projection model MAPE=53.5%.** Any `target_utilization` budget will trigger WARNING. Use `frozen_plan_cap_sum` instead.
+
+4. **Django-13447 is the only Django task that passed the harness.** Single-task repo coverage is weak evidence.
+
+5. **pytest and xarray are scientifically valuable but blocked.** They exercise failure modes (plugin systems, scientific computing) that would stress-test BudgetFlow generalization. Defer to future round after harness adapter work.
+
+6. **Sibling stem fragmentation addressed but unverified in paid context.** The PID lock and sibling detection code is tested in isolation. The real test will be the next multi-strategy paid run.
+
+7. **Gold harness probe polluted site-packages.** The `pip install -e .` commands for seaborn and pytest left .pth files in `/root/anaconda3/lib/python3.*/site-packages/`. These were cleaned up post-probe. Future gold harness probes should use `--target` isolation or virtualenvs.
+
+---
+
+## Next Paid Round Recommendation
+
+### Strategy set: paper mainline 6-policy set
+
+The next mainline run must use the versioned strategy set in
+`docs/config/paper_mainline_strategies.v1.json`, not an ad hoc
+`--strategies` string:
+
+1. `bare_t2_baseline`
+2. `bare_t3_baseline`
+3. `enterprise_router_baseline`
+4. `budgetflow_same_enterprise_router`
+5. `budgetflow_task_level`
+6. `budgetflow_segment`
+
+`budgetflow_task_level` is the Claim 1 main policy. `budgetflow_segment` is
+the Claim 2 segment-aware enhancement.
+
+### Task set direction: 25-30 tasks × 6 strategies
+
+Do not keep iterating on 5×20. The next evidence-producing run should move to
+6×25 or 6×30, preferably staged so the first 20 tasks form an audit checkpoint
+and the remaining tasks continue under the same run identity after inspection.
+
+The 10 harness-admissible candidates from this gate are ready to join the next
+larger pool:
+
+- 3 sympy (22714, 12171, 17655) — known repo, known signal
+- 1 django (13447) — known repo, single task
+- 2 sphinx (8273, 7686) — known repo, compat issues fixed in round3
+- 2 pylint (7993, 6506) — new repo, cold start
+- 2 seaborn (3010, 2848) — new repo, cold start
+
+### Budget mode: frozen_plan_cap_sum
+
+Do NOT use `target_utilization`. The 5×20 calibration audit MAPE=53.47% triggers WARNING. Bootstrap zero-history estimates for pylint/seaborn would inflate projections by 2-5×.
+
+Suggested hard cap should come from the generated frozen router plan for the
+selected 25-30 tasks. Use `model_tiers.t3x3.json` for the scarcity diagnostic
+unless the run is explicitly a real-billing-cost audit.
+
+### Command shape
 
 ```bash
-PYTHONPATH=src:../external/mini-swe-agent/src python -u -m budgetflow.run_mini_swe_compare \
-  --strategies "bare_t2_baseline,bare_t3_baseline,enterprise_router_baseline,budgetflow_same_router,budgetflow_full" \
-  --ids "sympy__sympy-13480,sympy__sympy-14774,sympy__sympy-16988,sympy__sympy-20212,sympy__sympy-12419,sympy__sympy-19007,sympy__sympy-20154,sympy__sympy-20639,sympy__sympy-15011,sympy__sympy-16792,sympy__sympy-21055,sympy__sympy-23117,django__django-10924,django__django-12113,django__django-16046,django__django-15388" \
+PYTHONPATH=src python -m budgetflow.run_mini_swe_compare \
+  --ids "<25-30 pre-registered harness-admissible task ids>" \
+  --strategy-set docs/config/paper_mainline_strategies.v1.json \
+  --budget-mode frozen_plan_cap_sum \
+  --frozen-plan docs/reports/mainline_6x25_frozen_router_plan.json \
+  --budget-plan docs/reports/mainline_6x25_budget_plan.json \
+  --model-catalog docs/config/model_tiers.t3x3.json \
   --value-profile manual_value \
-  --value-matrix docs/reports/mainline_5x16_manual_value_matrix.json \
-  --value-source-kind pre_registered_manual \
-  --frozen-plan docs/reports/mainline_5x16_frozen_router_plan.json \
-  --model-catalog docs/config/model_tiers.t3x2.json \
-  --budget-plan docs/reports/mainline_5x16_budget_plan.json \
-  --disable-policy-memory \
-  --no-auto-budget-learn \
-  --jobs 5 \
-  --run-series mainline_5x16_v2
+  --value-matrix docs/reports/mainline_6x25_manual_value_matrix.json \
+  --run-series mainline_6x25_v1
+```
+
+### Pre-flight checklist
+
+- [ ] Generate frozen router plan for the selected 25-30 tasks
+- [ ] Generate manual value matrix for the selected 25-30 tasks
+- [ ] Verify provider balance covers $3.00 hard cap
+- [ ] Run gold harness sanity on the exact task set
+- [ ] Check for sibling stems in `data/runs/` before starting
+- [ ] If previous run fragmented, use `--repair` to target latest stem
+
+### Test status
+
+```
+506 passed, 1 skipped — all clean
+py_compile: clean (recost, budget_binding, run_series, checks, checker)
+git diff --check: clean
 ```

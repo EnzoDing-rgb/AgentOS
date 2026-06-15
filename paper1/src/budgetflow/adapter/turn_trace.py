@@ -304,7 +304,7 @@ def _policy_type_for_routing(routing) -> str:
 
 
 def value_aware_trace_fields(routing) -> dict[str, Any]:
-    if routing.strategy not in {"budgetflow_value_aware", "value_aware_task_level"}:
+    if routing.strategy not in {"segment_value_aware", "value_aware_task_level"}:
         return {}
     multiplier = getattr(routing.selector, "last_multiplier", 1.0)
     return {

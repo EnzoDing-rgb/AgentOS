@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 from pathlib import Path
 
 from budgetflow.observability import load_heartbeat
@@ -226,4 +227,61 @@ def _check_policy_parallel(records: list[dict]) -> list[str]:
                 seen.add(key)
                 deduped.append(issue)
         issues = deduped
+    return issues
+
+
+def _check_cost_accounting(records: list[dict]) -> list[str]:
+    """(f) Compute raw_paid_cost vs dedup_scored_cost vs duplicate_retry_overhead.
+
+    Every row in the JSONL represents paid provider calls.  When rows are
+    duplicated (same instance_id + strategy) the extra rows are real spend
+    that should be tracked separately from the deduplicated scored cost.
+
+    Returns one summary line per strategy with the three cost buckets.
+    """
+    issues: list[str] = []
+    by_strategy: dict[str, list[dict]] = defaultdict(list)
+    for rec in records:
+        strat = str(rec.get("strategy", ""))
+        if not strat:
+            continue
+        by_strategy[strat].append(rec)
+
+    for strat in sorted(by_strategy):
+        rows = by_strategy[strat]
+        raw_paid_cost = sum(float(r.get("total_cost") or 0) for r in rows)
+
+        # Dedup: keep the last row for each (strategy, instance_id) by row_finished_at
+        seen_tasks: dict[str, dict] = {}
+        for r in rows:
+            iid = str(r.get("instance_id", ""))
+            key = iid
+            if key not in seen_tasks or float(r.get("row_finished_at", 0) or 0) >= float(
+                seen_tasks[key].get("row_finished_at", 0) or 0
+            ):
+                seen_tasks[key] = r
+        dedup_scored_cost = sum(
+            float(r.get("total_cost") or 0) for r in seen_tasks.values()
+            if str(r.get("score_status") or "") in {"pass", "true_fail", "abort"}
+        )
+
+        duplicate_retry_overhead = raw_paid_cost - dedup_scored_cost
+        raw_count = len(rows)
+        dedup_count = len(seen_tasks)
+
+        if raw_count > dedup_count:
+            issues.append(
+                f"COST_DUPLICATE {strat}: raw_paid_cost=${raw_paid_cost:.4f} "
+                f"({raw_count} rows) vs dedup_scored_cost=${dedup_scored_cost:.4f} "
+                f"({dedup_count} unique tasks) — "
+                f"duplicate_retry_overhead=${duplicate_retry_overhead:.4f} "
+                f"({raw_count - dedup_count} duplicate rows)"
+            )
+        else:
+            issues.append(
+                f"COST_ACCOUNTING {strat}: raw_paid_cost=${raw_paid_cost:.4f} "
+                f"dedup_scored_cost=${dedup_scored_cost:.4f} "
+                f"duplicate_retry_overhead=${duplicate_retry_overhead:.4f} "
+                f"rows={raw_count}"
+            )
     return issues

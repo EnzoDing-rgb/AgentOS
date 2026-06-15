@@ -12,8 +12,8 @@ from budgetflow.learning_context import (
 def _run_record(**kw) -> dict:
     record = {
         "instance_id": "r__t-a",
-        "strategy": "budgetflow_full",
-        "routing": "budgetflow_value_aware",
+        "strategy": "budgetflow_segment",
+        "routing": "segment_value_aware",
         "harness_resolved": True,
         "score_status": "pass",
         "total_cost": 0.1,
@@ -59,7 +59,7 @@ def test_looks_like_policy_memory_source_requires_routing_evidence(tmp_path) -> 
     cap_memory = tmp_path / "auto_budget_memory.jsonl"
     _write_jsonl(cap_memory, [_run_record()])
     no_routing = tmp_path / "run.jsonl"
-    _write_jsonl(no_routing, [{"instance_id": "r__t-a", "routing": "budgetflow_value_aware"}])
+    _write_jsonl(no_routing, [{"instance_id": "r__t-a", "routing": "segment_value_aware"}])
     with_routing = tmp_path / "run2.jsonl"
     _write_jsonl(with_routing, [_run_record()])
 

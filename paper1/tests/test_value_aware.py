@@ -25,30 +25,29 @@ def _turn(stage=None, w_i=0.4):
 
 
 class TestStrategyCatalog:
-    def test_mechanism_strategies_in_default(self):
+    def test_paper_mainline_strategies_in_default_order(self):
         from budgetflow.experiments.compare_config import DEFAULT_STRATEGIES, mechanism_strategy_names
         names = mechanism_strategy_names()
-        assert "bare_t3_baseline" in names
-        assert "enterprise_router_baseline" in names
-        assert "budgetflow_same_router" in names
-        default_names = {s.name for s in DEFAULT_STRATEGIES}
-        assert default_names == names
+        ordered = [s.name for s in DEFAULT_STRATEGIES]
+        assert ordered == [
+            "bare_t2_baseline",
+            "bare_t3_baseline",
+            "enterprise_router_baseline",
+            "budgetflow_same_enterprise_router",
+            "budgetflow_task_level",
+            "budgetflow_segment",
+        ]
+        assert set(ordered) == names
 
-    def test_diagnostic_control_strategies_retained(self):
-        from budgetflow.experiments.compare_config import CONTROL_STRATEGIES
-        names = {s.name for s in CONTROL_STRATEGIES}
-        assert "budgetflow_full" in names
-        assert "task_level_control" in names
-
-    def test_budgetflow_full_routing_is_value_aware(self):
-        from budgetflow.experiments.compare_config import CONTROL_STRATEGIES
-        strategy = next(s for s in CONTROL_STRATEGIES if s.name == "budgetflow_full")
-        assert strategy.routing == "budgetflow_value_aware"
+    def test_budgetflow_segment_routing_is_value_aware(self):
+        from budgetflow.experiments.compare_config import DEFAULT_STRATEGIES
+        strategy = next(s for s in DEFAULT_STRATEGIES if s.name == "budgetflow_segment")
+        assert strategy.routing == "segment_value_aware"
         assert strategy.budgeted is True
 
-    def test_task_level_value_control_registered(self):
-        from budgetflow.experiments.compare_config import CONTROL_STRATEGIES
-        control = next(s for s in CONTROL_STRATEGIES if s.name == "task_level_control")
+    def test_task_level_value_policy_registered(self):
+        from budgetflow.experiments.compare_config import DEFAULT_STRATEGIES
+        control = next(s for s in DEFAULT_STRATEGIES if s.name == "budgetflow_task_level")
         assert control.routing == "value_aware_task_level"
         assert control.budgeted is True
 
@@ -64,9 +63,9 @@ class TestStrategyCatalog:
         assert strategy.routing == "enterprise_router"
         assert strategy.budgeted is True
 
-    def test_budgetflow_same_router_budgeted(self):
+    def test_budgetflow_same_enterprise_router_budgeted(self):
         from budgetflow.experiments.compare_config import DEFAULT_STRATEGIES
-        strategy = next(s for s in DEFAULT_STRATEGIES if s.name == "budgetflow_same_router")
+        strategy = next(s for s in DEFAULT_STRATEGIES if s.name == "budgetflow_same_enterprise_router")
         assert strategy.routing == "budgetflow_same_router"
         assert strategy.budgeted is True
 
@@ -165,7 +164,7 @@ class TestBuildRoutingContext:
         from budgetflow.selector import ValueAwareSelector
         backends = _backends()
         ctx = build_routing_context(
-            "budgetflow_value_aware", backends,
+            "segment_value_aware", backends,
             task_value=2.0, median_task_value=1.0,
         )
         assert isinstance(ctx.selector, ValueAwareSelector)
@@ -176,7 +175,7 @@ class TestBuildRoutingContext:
         from budgetflow.adapter.strategies import build_routing_context
         backends = _backends()
         ctx = build_routing_context(
-            "budgetflow_value_aware", backends,
+            "segment_value_aware", backends,
             task_value=0.5, median_task_value=2.0,
         )
         assert ctx.task_value == 0.5
@@ -210,7 +209,7 @@ class TestValueAwareTraceFields:
         from budgetflow.adapter.turn_trace import value_aware_trace_fields
         backends = _backends()
         ctx = build_routing_context(
-            "budgetflow_value_aware", backends,
+            "segment_value_aware", backends,
             task_value=2.0, median_task_value=1.0,
         )
         # Simulate a selection to populate last_multiplier

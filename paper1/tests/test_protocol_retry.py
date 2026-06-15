@@ -94,7 +94,7 @@ def test_stall_guard_disabled_means_no_stagnation_on_bare():
 
 def test_stall_guard_enabled_means_stagnation_possible():
     """BudgetFlow strategies still get stall guard."""
-    assert stall_guard_enabled("budgetflow_full")
+    assert stall_guard_enabled("budgetflow_segment")
     assert stall_guard_enabled("budgetflow_same_router")
 
 

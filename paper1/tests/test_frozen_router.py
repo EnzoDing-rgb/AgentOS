@@ -159,13 +159,20 @@ class TestMechanismStrategiesRegistered:
         names = {s.name for s in strategy_catalog()}
         assert "bare_t3_baseline" in names
         assert "enterprise_router_baseline" in names
-        assert "budgetflow_same_router" in names
+        assert "budgetflow_same_enterprise_router" in names
 
     def test_mechanism_names_helper(self):
         from budgetflow.experiments.compare_config import mechanism_strategy_names
 
         names = mechanism_strategy_names()
-        assert names == {"bare_t2_baseline", "bare_t3_baseline", "enterprise_router_baseline", "budgetflow_same_router"}
+        assert names == {
+            "bare_t2_baseline",
+            "bare_t3_baseline",
+            "enterprise_router_baseline",
+            "budgetflow_same_enterprise_router",
+            "budgetflow_task_level",
+            "budgetflow_segment",
+        }
 
 
 class TestFrozenPlanRouting:
@@ -224,7 +231,7 @@ class TestFrozenPlanRouting:
         assert backend.tier == 3
         assert ctx.last_decision.branch == "bare_t3"
 
-    def test_budgetflow_same_router_keeps_frozen_plan_model(self):
+    def test_budgetflow_same_enterprise_router_keeps_frozen_plan_model(self):
         from budgetflow.adapter.strategies import build_routing_context, choose_backend
         from budgetflow.frozen_router import FrozenPlanEntry, FrozenRouterPlan
         from budgetflow.types import Backend, Stage, TurnInfo
