@@ -269,4 +269,3 @@ def test_parse_actions_found_2_actions_uses_current_reason_limit():
     assert model._protocol_retry_reason == "found_2_actions"
     assert model._protocol_retry_limit == 4
     assert model._format_error_streak == 3
-z

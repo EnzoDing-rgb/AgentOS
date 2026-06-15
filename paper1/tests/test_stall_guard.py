@@ -219,4 +219,3 @@ def test_baseline_contamination_ignores_budgetflow_stagnation() -> None:
     result = _baseline_contamination_check(records)
     assert result["contaminated"] is False
     assert result["agent_harness_stagnation_count"] == 0
-z

@@ -12,8 +12,6 @@ from collections import deque
 from pathlib import Path
 from typing import Literal
 
-from minisweagent.agents.default import DefaultAgent
-
 from .console_log import (
     backend_tier_label,
     bold,
@@ -31,6 +29,18 @@ from .console_log import (
 )
 
 TraceConsoleLevel = Literal["quiet", "milestones", "verbose"]
+
+try:
+    from minisweagent.agents.default import DefaultAgent
+except ModuleNotFoundError:
+    class DefaultAgent:  # type: ignore[no-redef]
+        """Import placeholder for pure trace helpers when mini-swe-agent is absent."""
+
+        def __init__(self, *args, **kwargs):
+            raise ModuleNotFoundError(
+                "minisweagent is required to instantiate TracedDefaultAgent; "
+                "set MINI_SWE_SRC or install mini-swe-agent."
+            )
 
 # mini-SWE local env treats stdout first line == this marker as task submit.
 SUBMIT_MARKER = "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"
