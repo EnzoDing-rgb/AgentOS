@@ -47,6 +47,8 @@ class RepoHarnessAdapter:
             return DjangoHAdapter()
         if slug == "psf__requests":
             return RequestsHAdapter()
+        if slug == "sphinx-doc__sphinx":
+            return SphinxHAdapter()
         return DefaultHAdapter()
 
 
@@ -218,6 +220,51 @@ class DjangoHAdapter(RepoHarnessAdapter):
 
 class RequestsHAdapter(RepoHarnessAdapter):
     repo_slug = "psf__requests"
+
+
+# Jinja2 >= 3.1 removed environmentfilter/contextfunction/contextfilter/
+# evalcontextfilter/evalcontextfunction.  Older Sphinx versions import
+# these by name.  We replace them with the new names via ``as`` aliases
+# so the rest of the module's usage stays valid.
+_JINJA2_RENAMES = {
+    "environmentfilter": "pass_environment",
+    "contextfunction": "pass_context",
+    "contextfilter": "pass_context",
+    "evalcontextfilter": "pass_eval_context",
+    "evalcontextfunction": "pass_eval_context",
+}
+
+
+def _patch_jinja2_imports(text: str) -> str:
+    """Replace removed Jinja2 names with their 3.1+ equivalents.
+
+    Idempotent: the negative lookbehind skips names that already appear
+    after ``as`` (i.e. already-patched aliases).
+    """
+    import re
+    for old_name, new_name in _JINJA2_RENAMES.items():
+        text = re.sub(
+            rf"(from\s+jinja2\s+import\s+.*?)(?<!\bas\s)\b{old_name}\b(.*)",
+            rf"\1{new_name} as {old_name}\2",
+            text,
+        )
+    return text
+
+
+class SphinxHAdapter(RepoHarnessAdapter):
+    repo_slug = "sphinx-doc__sphinx"
+
+    def apply_compat(self, repo_dir: Path) -> list[str]:
+        changed: list[str] = []
+        sphinx_pkg = repo_dir / "sphinx"
+        if sphinx_pkg.is_dir():
+            for py_file in sphinx_pkg.rglob("*.py"):
+                original = py_file.read_text(encoding="utf-8", errors="ignore")
+                patched = _patch_jinja2_imports(original)
+                if patched != original:
+                    py_file.write_text(patched)
+                    changed.append(str(py_file.relative_to(repo_dir)))
+        return changed
 
 
 class DefaultHAdapter(RepoHarnessAdapter):

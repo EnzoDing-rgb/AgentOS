@@ -13,6 +13,10 @@ from budgetflow.local_harness import (
     RequestsHAdapter,
     DefaultHAdapter,
 )
+from budgetflow.local_harness_adapters import (
+    SphinxHAdapter,
+    _patch_jinja2_imports,
+)
 
 
 def test_build_pytest_node_ids_from_plain_test_names(tmp_path: Path) -> None:
@@ -500,3 +504,109 @@ def test_run_pytest_uses_adapter_build_test_command(tmp_path: Path, monkeypatch)
     # Django adapter should produce a runtests.py command for parseable node IDs
     # (but runtests.py doesn't exist in tmp_path, so it falls back to pytest)
     assert "pytest" in captured_cmd[0]
+
+
+# ── SphinxHAdapter tests ──────────────────────────────────────────────────
+
+
+def test_adapter_dispatch_sphinx() -> None:
+    task = SimpleNamespace(repo="sphinx-doc/sphinx")
+    adapter = RepoHarnessAdapter.for_task(task)
+    assert isinstance(adapter, SphinxHAdapter)
+
+
+def test_patch_jinja2_imports_solo_name() -> None:
+    assert _patch_jinja2_imports("from jinja2 import environmentfilter") == (
+        "from jinja2 import pass_environment as environmentfilter"
+    )
+
+
+def test_patch_jinja2_imports_comma_list() -> None:
+    result = _patch_jinja2_imports(
+        "from jinja2 import FileSystemLoader, BaseLoader, TemplateNotFound, contextfunction"
+    )
+    assert "pass_context as contextfunction" in result
+    assert "FileSystemLoader" in result
+    assert "BaseLoader" in result
+
+
+def test_patch_jinja2_imports_two_old_names() -> None:
+    result = _patch_jinja2_imports(
+        "from jinja2 import contextfilter, environmentfilter"
+    )
+    assert "pass_context as contextfilter" in result
+    assert "pass_environment as environmentfilter" in result
+
+
+def test_patch_jinja2_imports_idempotent() -> None:
+    """Repeated application must not double-wrap aliases."""
+    original = "from jinja2 import environmentfilter"
+    pass1 = _patch_jinja2_imports(original)
+    pass2 = _patch_jinja2_imports(pass1)
+    pass3 = _patch_jinja2_imports(pass2)
+    assert pass1 == pass2 == pass3
+    assert pass1 == "from jinja2 import pass_environment as environmentfilter"
+
+
+def test_patch_jinja2_imports_idempotent_comma_list() -> None:
+    original = (
+        "from jinja2 import FileSystemLoader, BaseLoader, TemplateNotFound, contextfunction"
+    )
+    pass1 = _patch_jinja2_imports(original)
+    pass2 = _patch_jinja2_imports(pass1)
+    pass3 = _patch_jinja2_imports(pass2)
+    assert pass1 == pass2 == pass3
+    assert "pass_context as contextfunction" in pass1
+    assert "pass_context as pass_context" not in pass1
+
+
+def test_patch_jinja2_imports_noop_when_no_jinja2() -> None:
+    text = "import os\nfrom collections import defaultdict\n"
+    assert _patch_jinja2_imports(text) == text
+
+
+def test_patch_jinja2_imports_noop_when_already_modern() -> None:
+    text = "from jinja2 import pass_environment, pass_context\n"
+    assert _patch_jinja2_imports(text) == text
+
+
+def test_sphinx_adapter_patches_rst_and_jinja2glue(tmp_path: Path) -> None:
+    sphinx_dir = tmp_path / "sphinx" / "util"
+    sphinx_dir.mkdir(parents=True)
+    rst_py = sphinx_dir / "rst.py"
+    rst_py.write_text("from jinja2 import environmentfilter\n")
+    glue_dir = tmp_path / "sphinx"
+    glue_py = glue_dir / "jinja2glue.py"
+    glue_py.write_text(
+        "from jinja2 import FileSystemLoader, BaseLoader, TemplateNotFound, contextfunction\n"
+    )
+
+    adapter = SphinxHAdapter()
+    changed = adapter.apply_compat(tmp_path)
+
+    assert len(changed) == 2
+    assert "pass_environment as environmentfilter" in rst_py.read_text()
+    assert "pass_context as contextfunction" in glue_py.read_text()
+
+
+def test_sphinx_adapter_idempotent_apply_compat(tmp_path: Path) -> None:
+    sphinx_dir = tmp_path / "sphinx" / "util"
+    sphinx_dir.mkdir(parents=True)
+    rst_py = sphinx_dir / "rst.py"
+    rst_py.write_text("from jinja2 import Environment, environmentfilter\n")
+
+    adapter = SphinxHAdapter()
+    changed1 = adapter.apply_compat(tmp_path)
+    changed2 = adapter.apply_compat(tmp_path)
+
+    assert len(changed1) == 1
+    assert changed2 == []  # second pass is no-op
+    content = rst_py.read_text()
+    assert content.count("pass_environment as") == 1
+    assert "pass_environment as pass_environment" not in content
+
+
+def test_sphinx_adapter_noop_when_sphinx_dir_missing(tmp_path: Path) -> None:
+    adapter = SphinxHAdapter()
+    changed = adapter.apply_compat(tmp_path)
+    assert changed == []

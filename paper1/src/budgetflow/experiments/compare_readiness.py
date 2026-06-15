@@ -147,13 +147,16 @@ def build_compare_readiness_report(
                         f"but meta hard_cap_usd={frozen_plan.hard_cap_usd:.4f}"
                     )
             requested_budget = float(getattr(args, "budget", 0.0) or 0.0)
-            budget_source = "frozen_plan_cap_sum" if requested_budget == 0.0 and args.frozen_plan else "cli"
-            if requested_budget == 0.0:
-                budget_source = "frozen_plan_cap_sum"
-                facts.append(f"budget_source={budget_source}")
+            # When budget_plan provides the hard_cap (e.g. target_utilization mode),
+            # the frozen cap sum is NOT the binding budget source.
+            budget_is_from_plan = bool(requested_budget == 0.0 and getattr(args, "budget_plan", None))
+            if budget_is_from_plan:
+                facts.append("budget_source=budget_plan")
+            elif requested_budget == 0.0:
+                facts.append("budget_source=frozen_plan_cap_sum")
                 facts.append(f"budget={selected_sum:.4f}")
             else:
-                facts.append(f"budget_source={budget_source}")
+                facts.append(f"budget_source=cli")
                 facts.append(f"budget={requested_budget:.4f}")
                 if abs(requested_budget - selected_sum) > 0.0001:
                     blocking.append(

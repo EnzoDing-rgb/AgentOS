@@ -1,0 +1,56 @@
+{
+  "hard_cap_usd": 1.2262,
+  "source": "budget_binding_calibrator",
+  "budget_mode": "target_utilization",
+  "catalog_revision": "2026-06-10-t3x2",
+  "catalog_path": "/root/.dev/AgentOS/paper1/docs/config/model_tiers.t3x2.json",
+  "historical_source": "bootstrap_estimate",
+  "task_ids": [
+    "sympy__sympy-13480",
+    "sympy__sympy-14774",
+    "sympy__sympy-16988",
+    "sympy__sympy-20212",
+    "sympy__sympy-12419",
+    "sympy__sympy-19007",
+    "sympy__sympy-20154",
+    "sympy__sympy-20639",
+    "sympy__sympy-15011",
+    "sympy__sympy-16792",
+    "sympy__sympy-21055",
+    "sympy__sympy-23117",
+    "django__django-10924",
+    "django__django-12113",
+    "django__django-16046",
+    "django__django-15388",
+    "psf__requests-1963",
+    "psf__requests-3362",
+    "sphinx-doc__sphinx-7975",
+    "sphinx-doc__sphinx-10325"
+  ],
+  "projected_spend_by_strategy": {
+    "bare_t2_baseline": 0.7546,
+    "bare_t3_baseline": 1.5091,
+    "enterprise_router_baseline": 0.7546,
+    "budgetflow_same_router": 0.7546,
+    "budgetflow_full": 0.9809
+  },
+  "projected_utilization_by_strategy": {
+    "bare_t2_baseline": 0.6154,
+    "bare_t3_baseline": 1.0,
+    "enterprise_router_baseline": 0.6154,
+    "budgetflow_same_router": 0.6154,
+    "budgetflow_full": 0.8
+  },
+  "min_viable_budget": 1.5091,
+  "loose_budget_threshold": 3.0182,
+  "tight_budget_threshold": 1.5091,
+  "decision": "PASS",
+  "reasons": [
+    "reference_rule: strategy_set_p75_projected_spend = $0.9809",
+    "hard_cap = p75_ref($0.9809) / target_utilization(0.8) = $1.2262",
+    "pressure_audit: T2=61.5% T3=100.0% enterprise=61.5% bf_full=80.0%",
+    "tight_budget_warning: bare_t3_baseline projected spend $1.51 > hard_cap $1.23 (123.1% utilization) \u2014 strategy may not complete within shared budget",
+    "decision=PASS: hard_cap=$1.23 from p75_ref / 0.8, max projected utilization 100.0%"
+  ],
+  "target_projected_utilization": 0.8
+}

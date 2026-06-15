@@ -1,0 +1,148 @@
+{
+  "meta": {
+    "name": "mainline_5x20_frozen_router_plan",
+    "created": "2026-06-15",
+    "extends": "mainline_5x16_frozen_router_plan",
+    "description": "Extends 5x16 with 4 zero-history tasks from psf/requests and sphinx-doc/sphinx.",
+    "source_class": "human_pre_registered_from_prior_calibration_and_pre_registered_task_metadata",
+    "budget_window": "policy_batch",
+    "hard_cap_usd": 4.5,
+    "task_order": [
+      "sympy__sympy-13480",
+      "sympy__sympy-14774",
+      "sympy__sympy-16988",
+      "sympy__sympy-20212",
+      "sympy__sympy-12419",
+      "sympy__sympy-19007",
+      "sympy__sympy-20154",
+      "sympy__sympy-20639",
+      "sympy__sympy-15011",
+      "sympy__sympy-16792",
+      "sympy__sympy-21055",
+      "sympy__sympy-23117",
+      "django__django-10924",
+      "django__django-12113",
+      "django__django-16046",
+      "django__django-15388",
+      "psf__requests-1963",
+      "psf__requests-3362",
+      "sphinx-doc__sphinx-7975",
+      "sphinx-doc__sphinx-10325"
+    ],
+    "note": "Cap sum: 3.58 + 0.9199999999999999 = 4.5. All new tasks tier2 baseline. Frozen plan provides per-task caps for static router only; shared hard budget is code-generated via budget_binding target_utilization=0.80."
+  },
+  "plan": {
+    "sympy__sympy-13480": {
+      "preferred_model": "tier2",
+      "base_cap": 0.18,
+      "priority": 2
+    },
+    "sympy__sympy-14774": {
+      "preferred_model": "tier2",
+      "base_cap": 0.16,
+      "priority": 1
+    },
+    "sympy__sympy-16988": {
+      "preferred_model": "tier3",
+      "base_cap": 0.3,
+      "priority": 8
+    },
+    "sympy__sympy-20212": {
+      "preferred_model": "tier2",
+      "base_cap": 0.36,
+      "priority": 4
+    },
+    "sympy__sympy-12419": {
+      "preferred_model": "tier2",
+      "base_cap": 0.18,
+      "priority": 3
+    },
+    "sympy__sympy-19007": {
+      "preferred_model": "tier2",
+      "base_cap": 0.2,
+      "priority": 5
+    },
+    "sympy__sympy-20154": {
+      "preferred_model": "tier2",
+      "base_cap": 0.2,
+      "priority": 6
+    },
+    "sympy__sympy-20639": {
+      "preferred_model": "tier3",
+      "base_cap": 0.22,
+      "priority": 7
+    },
+    "sympy__sympy-15011": {
+      "preferred_model": "tier2",
+      "base_cap": 0.24,
+      "priority": 9
+    },
+    "sympy__sympy-16792": {
+      "preferred_model": "tier2",
+      "base_cap": 0.26,
+      "priority": 12
+    },
+    "sympy__sympy-21055": {
+      "preferred_model": "tier2",
+      "base_cap": 0.22,
+      "priority": 10
+    },
+    "sympy__sympy-23117": {
+      "preferred_model": "tier2",
+      "base_cap": 0.18,
+      "priority": 11
+    },
+    "django__django-10924": {
+      "preferred_model": "tier2",
+      "base_cap": 0.22,
+      "priority": 13
+    },
+    "django__django-12113": {
+      "preferred_model": "tier2",
+      "base_cap": 0.22,
+      "priority": 14
+    },
+    "django__django-16046": {
+      "preferred_model": "tier2",
+      "base_cap": 0.22,
+      "priority": 15
+    },
+    "django__django-15388": {
+      "preferred_model": "tier2",
+      "base_cap": 0.22,
+      "priority": 16
+    },
+    "psf__requests-1963": {
+      "repo": "psf/requests",
+      "base_cap": 0.24,
+      "preferred_model": "tier2",
+      "priority": 1.2,
+      "strategy": "pending_baseline",
+      "note": "Zero-history Requests task. Moderate complexity (7 f2p, 112 p2p, bootstrap ~33)."
+    },
+    "psf__requests-3362": {
+      "repo": "psf/requests",
+      "base_cap": 0.22,
+      "preferred_model": "tier2",
+      "priority": 1.0,
+      "strategy": "pending_baseline",
+      "note": "Zero-history Requests task. Simple (1 f2p, bootstrap ~31)."
+    },
+    "sphinx-doc__sphinx-7975": {
+      "repo": "sphinx-doc/sphinx",
+      "base_cap": 0.24,
+      "preferred_model": "tier2",
+      "priority": 1.0,
+      "strategy": "pending_baseline",
+      "note": "Zero-history Sphinx task. Bootstrap ~34. Requires jinja2 compat adapter."
+    },
+    "sphinx-doc__sphinx-10325": {
+      "repo": "sphinx-doc/sphinx",
+      "base_cap": 0.22,
+      "preferred_model": "tier2",
+      "priority": 1.0,
+      "strategy": "pending_baseline",
+      "note": "Zero-history Sphinx task. Bootstrap ~33, modern version."
+    }
+  }
+}

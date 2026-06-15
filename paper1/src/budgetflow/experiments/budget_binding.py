@@ -25,6 +25,8 @@ class BudgetBindingPlan:
 
     hard_cap_usd: float
     source: str = "budget_binding_calibrator"
+    budget_mode: str = "frozen_plan_cap_sum"
+    target_projected_utilization: float | None = None
     catalog_revision: str = ""
     catalog_path: str = ""
     historical_source: str = ""
@@ -42,6 +44,7 @@ class BudgetBindingPlan:
         d: dict = {
             "hard_cap_usd": round(self.hard_cap_usd, 4),
             "source": self.source,
+            "budget_mode": self.budget_mode,
             "catalog_revision": self.catalog_revision,
             "catalog_path": self.catalog_path,
             "historical_source": self.historical_source,
@@ -58,6 +61,8 @@ class BudgetBindingPlan:
             "decision": self.decision,
             "reasons": self.reasons,
         }
+        if self.target_projected_utilization is not None:
+            d["target_projected_utilization"] = round(self.target_projected_utilization, 4)
         if self.override_reason:
             d["override_reason"] = self.override_reason
         return d
@@ -67,6 +72,8 @@ class BudgetBindingPlan:
         return cls(
             hard_cap_usd=d["hard_cap_usd"],
             source=d.get("source", "budget_binding_calibrator"),
+            budget_mode=d.get("budget_mode", "frozen_plan_cap_sum"),
+            target_projected_utilization=d.get("target_projected_utilization"),
             catalog_revision=d.get("catalog_revision", ""),
             catalog_path=d.get("catalog_path", ""),
             historical_source=d.get("historical_source", ""),
@@ -97,19 +104,35 @@ def calibrate_budget(
     ),
     output_path: Path | None = None,
     override_reason: str = "",
+    target_utilization: float | None = None,
 ) -> BudgetBindingPlan:
     """Generate a budget binding plan from historical data and current catalog.
 
-    If no historical JSONL is provided, falls back to bootstrap estimates from
-    the value matrix and frozen plan.
+    Two modes:
 
-    When *override_reason* is set and the frozen cap sum drives the hard cap,
-    low projected utilization emits ``PASS_WITH_DIAGNOSTIC_OVERRIDE`` instead
-    of ``BLOCK``.  This lets mechanism-diagnostic runs acknowledge the loose
-    budget while still being gated by a pre-registered frozen plan.
+    * **frozen_plan_cap_sum** (default when *target_utilization* is None):
+      ``hard_cap`` = sum of frozen plan per-task ``base_cap`` values.
+      Suitable for mechanism-diagnostic runs whose budget is bound to a
+      pre-registered static router plan.
+
+    * **target_utilization** (when set, e.g. 0.80):
+      ``hard_cap`` = max projected spend / *target_utilization*.
+      The most expensive strategy hits the target utilization rate;
+      cheaper strategies have more headroom.  Produces a tight-ish shared
+      budget whose pressure shape is: bare T2 relatively loose, bare T3
+      tight, mixed policies identifiable.  The budget is code-generated
+      from the 5-strategy projected spend distribution — not from any
+      single policy's spend.
     """
+    if target_utilization is not None and not (0.0 < target_utilization <= 1.0):
+        raise ValueError(f"target_utilization must be in (0, 1], got {target_utilization}")
+
+    budget_mode = "target_utilization" if target_utilization is not None else "frozen_plan_cap_sum"
+
     plan = BudgetBindingPlan(
         hard_cap_usd=0.0,
+        budget_mode=budget_mode,
+        target_projected_utilization=target_utilization,
         catalog_revision=catalog_revision(),
         catalog_path=str(catalog_path()) if catalog_path() else "python_fallback",
         historical_source=str(historical_jsonl) if historical_jsonl else "bootstrap_estimate",
@@ -156,83 +179,119 @@ def calibrate_budget(
 
     plan.projected_spend_by_strategy = projected
 
-    # ── Compute thresholds ──────────────────────────────────────────────
-    # The budget binds to the frozen-plan strategies (enterprise_router,
-    # budgetflow_same_router).  The shared-batch strategies (bare_t2, bare_t3,
-    # budgetflow_full) share a common pool.
-
-    # Min viable: enough for the most expensive single strategy to complete
     plan.min_viable_budget = max(projected.values()) if projected else 0.0
-
-    # Frozen cap sum from the plan (pre-registered caps)
     frozen_cap_sum = sum(frozen_caps.get(tid, 0.0) for tid in task_ids)
 
-    # Loose threshold: 2× the max projected spend (budget not binding)
     plan.loose_budget_threshold = plan.min_viable_budget * 2.0
-
-    # Tight threshold: the max projected spend (at edge of viability)
     plan.tight_budget_threshold = plan.min_viable_budget
 
     # ── Decision logic ──────────────────────────────────────────────────
-    # Recommended hard cap: use the frozen cap sum as the binding budget.
-    # This keeps symmetry with the enterprise_router / budgetflow_same_router
-    # strategies which use per-task frozen caps.
-    plan.hard_cap_usd = frozen_cap_sum if frozen_cap_sum > 0 else plan.min_viable_budget
 
-    # Compute utilization at recommended cap
-    for strategy in strategies:
-        spend = projected.get(strategy, 0.0)
-        plan.projected_utilization_by_strategy[strategy] = (
-            min(spend / plan.hard_cap_usd, 1.0) if plan.hard_cap_usd > 0 else 0.0
+    if target_utilization is not None:
+        # ── target_utilization mode ──────────────────────────────────
+        # Reference: p75 of the 5-strategy projected spend distribution.
+        # Distribution-level statistic, not keyed to any single policy.
+        ref_spend = _distribution_p75(list(projected.values()))
+        plan.reasons.append(
+            f"reference_rule: strategy_set_p75_projected_spend = ${ref_spend:.4f}"
         )
 
-    # Check: budget too loose?
-    max_util = max(plan.projected_utilization_by_strategy.values()) if plan.projected_utilization_by_strategy else 0.0
-    budget_loose = max_util < 0.15
-    if budget_loose and override_reason and frozen_cap_sum > 0:
-        plan.decision = "PASS_WITH_DIAGNOSTIC_OVERRIDE"
-        plan.override_reason = override_reason
-        plan.reasons.append(
-            f"max projected utilization {max_util:.1%} < 15% — "
-            f"hard_cap=${plan.hard_cap_usd:.2f} is loose, but budget intentionally "
-            f"bound to pre-registered frozen plan cap sum for "
-            f"enterprise_router/budgetflow_same_router symmetry"
-        )
-        plan.reasons.append(f"override: {override_reason}")
-    elif max_util < 0.15:
-        plan.decision = "BLOCK"
-        plan.reasons.append(
-            f"max projected utilization {max_util:.1%} < 15% — "
-            f"hard_cap=${plan.hard_cap_usd:.2f} is too loose, budget not binding"
-        )
-    elif max_util < 0.30:
-        plan.reasons.append(
-            f"max projected utilization {max_util:.1%} is low (< 30%) — "
-            f"consider tightening hard_cap"
-        )
-
-    # Check: budget too tight?
-    for strategy in strategies:
-        spend = projected.get(strategy, 0.0)
-        if spend > plan.hard_cap_usd * 1.1:
+        if ref_spend <= 0:
+            plan.hard_cap_usd = frozen_cap_sum if frozen_cap_sum > 0 else 1.0
             plan.decision = "BLOCK"
+            plan.reasons.append("no projected spend data; cannot compute p75 reference")
+        else:
+            plan.hard_cap_usd = ref_spend / target_utilization
             plan.reasons.append(
-                f"{strategy} projected spend ${spend:.2f} > "
-                f"hard_cap ${plan.hard_cap_usd:.2f} — budget too tight"
+                f"hard_cap = p75_ref(${ref_spend:.4f}) / "
+                f"target_utilization({target_utilization}) = ${plan.hard_cap_usd:.4f}"
             )
 
-    # Check: frozen plan consistency
-    if frozen_cap_sum > 0 and plan.hard_cap_usd != frozen_cap_sum:
-        plan.decision = "BLOCK"
-        plan.reasons.append(
-            f"hard_cap ${plan.hard_cap_usd:.2f} != frozen cap sum ${frozen_cap_sum:.2f}"
-        )
+        for strategy in strategies:
+            spend = projected.get(strategy, 0.0)
+            plan.projected_utilization_by_strategy[strategy] = (
+                min(spend / plan.hard_cap_usd, 1.0) if plan.hard_cap_usd > 0 else 0.0
+            )
 
-    if not plan.reasons:
-        plan.reasons.append(
-            f"all strategies projected within hard_cap=${plan.hard_cap_usd:.2f}, "
-            f"max utilization {max_util:.1%}"
-        )
+        # ── Passive pressure-shape audit (does not drive generation) ──
+        _audit_pressure_shape(plan, strategies)
+
+        # In target_utilization mode the budget is derived from a distribution
+        # reference (p75).  The most expensive strategy may legitimately exceed
+        # it — this is the expected tight-budget pressure, not a generation error.
+        # We warn but do not BLOCK.
+        for strategy in strategies:
+            spend = projected.get(strategy, 0.0)
+            if spend > plan.hard_cap_usd * 1.05:
+                plan.reasons.append(
+                    f"tight_budget_warning: {strategy} projected spend "
+                    f"${spend:.2f} > hard_cap ${plan.hard_cap_usd:.2f} "
+                    f"({spend / plan.hard_cap_usd:.1%} utilization) — "
+                    f"strategy may not complete within shared budget"
+                )
+
+        if plan.decision != "BLOCK":
+            max_util = max(plan.projected_utilization_by_strategy.values()) if plan.projected_utilization_by_strategy else 0.0
+            plan.reasons.append(
+                f"decision=PASS: hard_cap=${plan.hard_cap_usd:.2f} from "
+                f"p75_ref / {target_utilization}, max projected utilization "
+                f"{max_util:.1%}"
+            )
+
+    else:
+        # ── frozen_plan_cap_sum mode (legacy) ─────────────────────────
+        plan.hard_cap_usd = frozen_cap_sum if frozen_cap_sum > 0 else plan.min_viable_budget
+
+        for strategy in strategies:
+            spend = projected.get(strategy, 0.0)
+            plan.projected_utilization_by_strategy[strategy] = (
+                min(spend / plan.hard_cap_usd, 1.0) if plan.hard_cap_usd > 0 else 0.0
+            )
+
+        max_util = max(plan.projected_utilization_by_strategy.values()) if plan.projected_utilization_by_strategy else 0.0
+        budget_loose = max_util < 0.15
+        if budget_loose and override_reason and frozen_cap_sum > 0:
+            plan.decision = "PASS_WITH_DIAGNOSTIC_OVERRIDE"
+            plan.override_reason = override_reason
+            plan.reasons.append(
+                f"max projected utilization {max_util:.1%} < 15% — "
+                f"hard_cap=${plan.hard_cap_usd:.2f} is loose, but budget intentionally "
+                f"bound to pre-registered frozen plan cap sum for "
+                f"enterprise_router/budgetflow_same_router symmetry"
+            )
+            plan.reasons.append(f"override: {override_reason}")
+        elif max_util < 0.15:
+            plan.decision = "BLOCK"
+            plan.reasons.append(
+                f"max projected utilization {max_util:.1%} < 15% — "
+                f"hard_cap=${plan.hard_cap_usd:.2f} is too loose, budget not binding"
+            )
+        elif max_util < 0.30:
+            plan.reasons.append(
+                f"max projected utilization {max_util:.1%} is low (< 30%) — "
+                f"consider tightening hard_cap"
+            )
+
+        for strategy in strategies:
+            spend = projected.get(strategy, 0.0)
+            if spend > plan.hard_cap_usd * 1.1:
+                plan.decision = "BLOCK"
+                plan.reasons.append(
+                    f"{strategy} projected spend ${spend:.2f} > "
+                    f"hard_cap ${plan.hard_cap_usd:.2f} — budget too tight"
+                )
+
+        if frozen_cap_sum > 0 and plan.hard_cap_usd != frozen_cap_sum:
+            plan.decision = "BLOCK"
+            plan.reasons.append(
+                f"hard_cap ${plan.hard_cap_usd:.2f} != frozen cap sum ${frozen_cap_sum:.2f}"
+            )
+
+        if not plan.reasons:
+            plan.reasons.append(
+                f"all strategies projected within hard_cap=${plan.hard_cap_usd:.2f}, "
+                f"max utilization {max_util:.1%}"
+            )
 
     if output_path:
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -245,6 +304,70 @@ def calibrate_budget(
 _HISTORICAL_NAME_MAP: dict[str, str] = {
     "bare_strong_model": "bare_t3_baseline",
 }
+
+
+def _distribution_p75(values: list[float]) -> float:
+    """75th percentile of *values* via nearest-rank method.
+
+    Returns 0.0 when *values* is empty.  Used as the reference point for
+    target-utilization budget generation: the budget is set so that p75
+    of the comparison strategy set fits within the target utilization,
+    while the most expensive strategy faces genuine pressure.
+    """
+    if not values:
+        return 0.0
+    sorted_v = sorted(values)
+    n = len(sorted_v)
+    idx = min(int(math.ceil(0.75 * n)) - 1, n - 1)
+    return sorted_v[max(idx, 0)]
+
+
+def _audit_pressure_shape(
+    plan: BudgetBindingPlan,
+    strategies: tuple[str, ...],
+) -> None:
+    """Passive audit of projected utilization shape.
+
+    Records whether the utilization distribution matches the expected
+    tight-budget pattern (cheaper strategies loose, expensive strategies
+    tight).  This is an audit output — it never drives generation rules.
+    """
+    utils = plan.projected_utilization_by_strategy
+    t2_util = utils.get("bare_t2_baseline", 0.0)
+    t3_util = utils.get("bare_t3_baseline", 0.0)
+    er_util = utils.get("enterprise_router_baseline", 0.0)
+    bf_util = utils.get("budgetflow_full", 0.0)
+
+    if t3_util <= 0 or t2_util <= 0:
+        plan.reasons.append("pressure_audit: cannot assess (missing T2 or T3 data)")
+        return
+
+    parts: list[str] = [f"T2={t2_util:.1%}", f"T3={t3_util:.1%}"]
+    if er_util > 0:
+        parts.append(f"enterprise={er_util:.1%}")
+    if bf_util > 0:
+        parts.append(f"bf_full={bf_util:.1%}")
+    plan.reasons.append(f"pressure_audit: {' '.join(parts)}")
+
+    if t3_util < t2_util:
+        plan.reasons.append(
+            f"pressure_audit WARNING: T3 utilization ({t3_util:.1%}) < "
+            f"T2 utilization ({t2_util:.1%}) — strongest tier has more "
+            f"headroom than middle tier; pressure direction is inverted"
+        )
+    elif t3_util < 0.50:
+        plan.reasons.append(
+            f"pressure_audit: T3 utilization {t3_util:.1%} < 50% — "
+            f"strongest tier may not be budget-constrained"
+        )
+
+    # Differential: mixed policies between T2 and T3
+    if er_util > 0 and bf_util > 0:
+        if max(er_util, bf_util) >= t3_util:
+            plan.reasons.append(
+                "pressure_audit WARNING: mixed-policy utilization at or "
+                "above bare T3 — budget may be too tight to isolate routing value"
+            )
 
 
 def _load_historical_costs(jsonl_path: Path) -> dict[str, dict[str, float]]:
