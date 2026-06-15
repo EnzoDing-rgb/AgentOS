@@ -12,6 +12,7 @@ from budgetflow.run_series import (
     list_series_stems,
     release_run_identity,
     resolve_compare_stem,
+    resolve_run_identity,
     series_run_complete,
     sibling_stems_exist,
     validate_resume_contract,
@@ -73,6 +74,35 @@ def test_resume_explicit_stem_allows_incomplete_run(tmp_path) -> None:
 
     assert stem == "partial"
     assert mode == "resume"
+
+
+def test_retired_series_blocks_new_run(tmp_path) -> None:
+    with pytest.raises(SystemExit, match="refusing retired run series"):
+        resolve_run_identity(
+            tmp_path,
+            tasks_n=30,
+            strategies_n=6,
+            task_set="easy",
+            resume=False,
+            total_runs=180,
+            explicit_series="mainline_6x30_v1",
+        )
+
+
+def test_retired_series_blocks_explicit_stem_resume(tmp_path) -> None:
+    (tmp_path / "mainline_6x30_v1-0.jsonl").write_text("")
+
+    with pytest.raises(SystemExit, match="forensic-only"):
+        resolve_run_identity(
+            tmp_path,
+            tasks_n=30,
+            strategies_n=6,
+            task_set="easy",
+            resume=True,
+            total_runs=180,
+            explicit_series="mainline_6x30_v1",
+            explicit_stem="mainline_6x30_v1-0",
+        )
 
 
 def test_series_run_complete_counts_unique_scoreable_pairs_only(tmp_path) -> None:

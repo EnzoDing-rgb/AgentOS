@@ -213,6 +213,26 @@ def test_readiness_blocks_paper_mainline_without_budget_plan() -> None:
     assert any("Budget Regime Compiler" in issue for issue in report.blocking)
 
 
+def test_readiness_blocks_retired_run_series() -> None:
+    value_context = ValueEfficiencyContext()
+    value_context.init(value_profile="equal")
+
+    report = build_compare_readiness_report(
+        args=_args(run_series="mainline_6x30_v1"),
+        tasks=[SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",))],
+        strategies=(CompareStrategy("bare_t3_baseline", "bare_t3"),),
+        policy_jobs=1,
+        value_context=value_context,
+        catalog_issues=[],
+        runtime_root=Path("/tmp/budgetflow-runtime"),
+        auto_budget_enabled=False,
+        auto_budget_caps=None,
+    )
+
+    assert not report.ok
+    assert any("retired run series" in issue for issue in report.blocking)
+
+
 def test_readiness_blocks_paper_mainline_without_primary_value_source(tmp_path) -> None:
     bp = tmp_path / "budget_plan.json"
     bp.write_text(

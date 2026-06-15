@@ -19,6 +19,13 @@ _SERIES_STEM_RE = re.compile(r"^(?P<base>.+)-(?P<idx>\d+)$")
 _LOCK_EXT = ".lock"
 ScoreableKey = tuple[str, str]
 RunContract = dict[str, object]
+RETIRED_RUN_SERIES: dict[str, str] = {
+    "mainline_6x30_v1": (
+        "forensic-only: generated before the paid-run budget contract hardening; "
+        "start the fresh shared-budget diagnostic with "
+        "mainline_6x30_shared_budget_t3x3_20260615"
+    ),
+}
 
 
 def default_series_base(*, tasks_n: int, strategies_n: int, task_set: str = "easy") -> str:
@@ -71,6 +78,21 @@ def _release_stem_lock(stem: str, runs_dir: Path) -> None:
         lock.unlink(missing_ok=True)
     except (OSError, ValueError):
         pass
+
+
+def _series_base_from_stem(stem: str) -> str | None:
+    match = _SERIES_STEM_RE.match(stem)
+    return match.group("base") if match else None
+
+
+def retired_series_reason(*, series: str, explicit_stem: str | None = None) -> str | None:
+    if series in RETIRED_RUN_SERIES:
+        return f"{series}: {RETIRED_RUN_SERIES[series]}"
+    if explicit_stem:
+        stem_base = _series_base_from_stem(explicit_stem)
+        if stem_base in RETIRED_RUN_SERIES:
+            return f"{stem_base}: {RETIRED_RUN_SERIES[stem_base]}"
+    return None
 
 
 def release_run_identity(stem: str, runs_dir: Path) -> None:
@@ -358,6 +380,12 @@ def resolve_run_identity(
         strategies_n=strategies_n,
         task_set=task_set,
     )
+    retired_reason = retired_series_reason(series=series_base, explicit_stem=explicit_stem)
+    if retired_reason:
+        raise SystemExit(
+            f"refusing retired run series: {retired_reason}. "
+            "Historical artifacts remain immutable evidence; do not resume or append to them."
+        )
     out_stem, stem_mode = resolve_compare_stem(
         runs_dir,
         series=series_base,

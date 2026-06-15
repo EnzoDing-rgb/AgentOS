@@ -48,4 +48,4 @@ Close the remaining ambiguity between the Budget Regime Compiler and the paid-ru
 
 ## Next Recommended Slice
 
-Start a fresh 6x30 staged run identity, e.g. `mainline_6x30_v2`, using the updated preflight commands. After the first 6x10 paid stage, audit per-policy utilization, duplicate/retry overhead, scoreable pairs, and whether `budgetflow_task_level`/`budgetflow_segment` are actually using stronger-tier budget productively before resuming to 6x20.
+Start a fresh 6x30 staged run identity, e.g. `mainline_6x30_shared_budget_t3x3_20260615`, using the updated preflight commands. After the first 6x10 paid stage, audit per-policy utilization, duplicate/retry overhead, scoreable pairs, and whether `budgetflow_task_level`/`budgetflow_segment` are actually using stronger-tier budget productively before resuming to 6x20.

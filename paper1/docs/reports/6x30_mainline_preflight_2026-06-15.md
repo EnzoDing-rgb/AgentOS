@@ -82,7 +82,7 @@ PYTHONPATH=src python -m budgetflow.run_mini_swe_compare \
   --value-profile manual_value \
   --value-source-kind pre_registered_manual \
   --value-matrix docs/reports/mainline_6x30_manual_value_matrix.json \
-  --run-series mainline_6x30_v1 \
+  --run-series mainline_6x30_shared_budget_t3x3_20260615 \
   --runtime-root /tmp/budgetflow-runtime \
   --step-limit 150 \
   --jobs 6 \
@@ -103,7 +103,7 @@ PYTHONPATH=src python -m budgetflow.run_mini_swe_compare \
   --value-profile manual_value \
   --value-source-kind pre_registered_manual \
   --value-matrix docs/reports/mainline_6x30_manual_value_matrix.json \
-  --run-series mainline_6x30_v1 \
+  --run-series mainline_6x30_shared_budget_t3x3_20260615 \
   --runtime-root /tmp/budgetflow-runtime \
   --step-limit 150 \
   --jobs 6
@@ -127,7 +127,7 @@ PYTHONPATH=src python -m budgetflow.run_mini_swe_compare \
   --value-profile manual_value \
   --value-source-kind pre_registered_manual \
   --value-matrix docs/reports/mainline_6x30_manual_value_matrix.json \
-  --run-series mainline_6x30_v1 \
+  --run-series mainline_6x30_shared_budget_t3x3_20260615 \
   --runtime-root /tmp/budgetflow-runtime \
   --step-limit 150 \
   --jobs 6 \
@@ -152,7 +152,7 @@ PYTHONPATH=src python -m budgetflow.run_mini_swe_compare \
   --value-profile manual_value \
   --value-source-kind pre_registered_manual \
   --value-matrix docs/reports/mainline_6x30_manual_value_matrix.json \
-  --run-series mainline_6x30_v1 \
+  --run-series mainline_6x30_shared_budget_t3x3_20260615 \
   --runtime-root /tmp/budgetflow-runtime \
   --step-limit 150 \
   --jobs 6 \
@@ -164,7 +164,7 @@ PYTHONPATH=src python -m budgetflow.run_mini_swe_compare \
 1. Provider auth/model access failure: stop immediately.
 2. More than 3 consecutive provider/model crashes: pause and inspect provider health.
 3. Any strategy shows repeated harness adapter errors on the same repo: pause and classify as infra, not model evidence.
-4. Sibling stems detected for `mainline_6x30_v1`: do not merge by hand during the run; use explicit repair only after audit.
+4. Sibling stems detected for `mainline_6x30_shared_budget_t3x3_20260615`: do not merge by hand during the run; use explicit repair only after audit.
 5. Stage 2 6x10 shows budget utilization still far below the intended scarcity regime: stop before +10 and audit cost/catalog/governor behavior.
 
 ## Residual Risks

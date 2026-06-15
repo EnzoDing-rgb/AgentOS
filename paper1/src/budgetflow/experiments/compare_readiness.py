@@ -13,6 +13,7 @@ from pathlib import Path
 from budgetflow.experiments.compare_config import CompareStrategy, paper_mainline_strategy_names
 from budgetflow.frozen_router import load_frozen_plan
 from budgetflow.model_tiers import DEFAULT_CATALOG_PATH, catalog_path, catalog_revision
+from budgetflow.run_series import retired_series_reason
 from budgetflow.value_efficiency import ValueEfficiencyContext
 
 
@@ -82,6 +83,14 @@ def build_compare_readiness_report(
 
     if not task_ids:
         blocking.append("no tasks selected")
+    run_series = getattr(args, "run_series", None)
+    out_stem = getattr(args, "out_stem", None)
+    if run_series:
+        retired_reason = retired_series_reason(series=str(run_series), explicit_stem=out_stem)
+        if retired_reason:
+            blocking.append(
+                f"retired run series cannot be used for paid readiness: {retired_reason}"
+            )
     missing_test_patch = [task_id for task_id, task in zip(task_ids, tasks) if not getattr(task, "test_patch", None)]
     missing_fail_to_pass = [task_id for task_id, task in zip(task_ids, tasks) if not getattr(task, "fail_to_pass", ())]
     if missing_test_patch:
