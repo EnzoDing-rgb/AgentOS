@@ -390,7 +390,6 @@ def audit_calibration(
             instance_id = rec.get("instance_id", "")
             if not strategy or not instance_id:
                 continue
-            strategy = _HISTORICAL_NAME_MAP.get(strategy, strategy)
             # Dedup: keep last occurrence of each (strategy, instance_id)
             key = (strategy, instance_id)
             finished_at = float(rec.get("row_finished_at", 0) or 0)
@@ -485,17 +484,6 @@ def audit_calibration(
         output_path.write_text(json.dumps(audit.to_dict(), indent=2) + "\n")
 
     return audit
-
-
-# ── Internal helpers ──────────────────────────────────────────────────────
-
-_HISTORICAL_NAME_MAP: dict[str, str] = {
-    "bare_strong_model": "bare_t3_baseline",
-    # Pre-rename strategy names (2026-06 taxonomy cleanup)
-    "budgetflow_full": "budgetflow_segment",
-    "task_level_control": "budgetflow_task_level",
-    "budgetflow_same_router": "budgetflow_same_enterprise_router",
-}
 
 
 def _distribution_p75(values: list[float]) -> float:
@@ -642,9 +630,6 @@ def _apply_calibration_gate(
 
 def _load_historical_costs(jsonl_path: Path) -> dict[str, dict[str, float]]:
     """Extract per-strategy per-task total_cost from historical JSONL.
-
-    Historical strategy names are mapped to canonical names via
-    _HISTORICAL_NAME_MAP so pre-rename diagnostic data remains usable.
     """
     costs: dict[str, dict[str, float]] = {}
     with jsonl_path.open() as f:
@@ -660,7 +645,6 @@ def _load_historical_costs(jsonl_path: Path) -> dict[str, dict[str, float]]:
             instance_id = d.get("instance_id", "")
             if not strategy or not instance_id:
                 continue
-            strategy = _HISTORICAL_NAME_MAP.get(strategy, strategy)
             total_cost = d.get("total_cost") or d.get("scoreable_cost") or 0.0
             costs.setdefault(strategy, {})[instance_id] = float(total_cost)
     return costs

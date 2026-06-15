@@ -59,7 +59,7 @@ def load_frozen_plan(path: str | Path) -> FrozenRouterPlan:
     name = str(meta.get("name", Path(path).stem))
     hard_cap_raw = meta.get("hard_cap_usd")
     hard_cap_usd = float(hard_cap_raw) if hard_cap_raw is not None else None
-    plan_data = raw.get("plan", raw.get("tasks", {}))
+    plan_data = raw.get("plan")
     if not isinstance(plan_data, dict) or not plan_data:
         raise ValueError("frozen router plan must contain a non-empty 'plan' object")
     plan: dict[str, FrozenPlanEntry] = {}

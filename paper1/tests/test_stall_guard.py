@@ -219,29 +219,4 @@ def test_baseline_contamination_ignores_budgetflow_stagnation() -> None:
     result = _baseline_contamination_check(records)
     assert result["contaminated"] is False
     assert result["agent_harness_stagnation_count"] == 0
-
-
-def test_5x14_jsonl_is_contaminated() -> None:
-    """The 5x14 diagnostic JSONL was recorded before the stall guard fix."""
-    import json
-    from pathlib import Path
-
-    jsonl = Path("data/runs/compare_14x5-0.jsonl")
-    if not jsonl.exists():
-        import pytest
-        pytest.skip("5x14 JSONL not available")
-
-    records = []
-    with open(jsonl) as fh:
-        for line in fh:
-            line = line.strip()
-            if line:
-                records.append(json.loads(line))
-
-    from budgetflow.run_observability.audit import _baseline_contamination_check
-    result = _baseline_contamination_check(records)
-    assert result["contaminated"] is True, (
-        "5×14 was recorded before stall guard fix — bare/enterprise baselines "
-        "were truncated by BudgetFlow check_stagnation"
-    )
-    assert result["agent_harness_stagnation_count"] >= 1
+z

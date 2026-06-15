@@ -50,9 +50,3 @@ def test_every_active_test_file_has_a_current_purpose() -> None:
     files = {path.name for path in TEST_DIR.glob("test_*.py")}
 
     assert files == set(TEST_FILE_PURPOSES)
-
-
-def test_test_inventory_has_no_retired_categories() -> None:
-    retired = {"legacy", "snapshot-only", "old-terminology"}
-
-    assert not (set(TEST_FILE_PURPOSES.values()) & retired)

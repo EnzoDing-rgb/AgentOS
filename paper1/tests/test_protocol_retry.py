@@ -98,44 +98,6 @@ def test_stall_guard_enabled_means_stagnation_possible():
     assert stall_guard_enabled("budgetflow_same_router")
 
 
-# ── Parser abort breakdown (audit) ───────────────────────────────────────────
-
-
-def test_parser_abort_breakdown_historical_inference():
-    """Historical JSONL without retry fields: infer from traces."""
-    from budgetflow.run_observability.audit import _parser_abort_breakdown
-
-    records = [
-        {
-            "exit_status": "FormatError",
-            "exit_reason": "format_error_text_action",
-            "turn_traces": [
-                {"parser_error_action_count": 2, "assistant_content_head": "```bash\nx\n```\n```bash\ny\n```"},
-            ],
-        },
-        {
-            "exit_status": "FormatError",
-            "exit_reason": "format_error_text_action",
-            "turn_traces": [
-                {"parser_error_action_count": 0, "assistant_content_head": ""},
-            ],
-        },
-        {
-            "exit_status": "FormatError",
-            "exit_reason": "format_error_text_action",
-            "turn_traces": [
-                {"parser_error_action_count": 0, "assistant_content_head": "some content"},
-            ],
-        },
-    ]
-    result = _parser_abort_breakdown(records)
-    assert result["found_2_actions"] == 1
-    assert result["empty_response"] == 1
-    assert result["found_0_actions"] == 1
-    assert result["retry_success"] == 0
-    assert result["retry_failed"] == 0
-
-
 def test_parser_abort_breakdown_with_retry_fields():
     """New runs with explicit protocol_retry fields."""
     from budgetflow.run_observability.audit import _parser_abort_breakdown
@@ -307,29 +269,4 @@ def test_parse_actions_found_2_actions_uses_current_reason_limit():
     assert model._protocol_retry_reason == "found_2_actions"
     assert model._protocol_retry_limit == 4
     assert model._format_error_streak == 3
-
-
-def test_5x14_parser_abort_breakdown_counts():
-    """Verify 5x14 JSONL parser abort breakdown is non-zero."""
-    import json
-    from pathlib import Path
-
-    jsonl = Path("data/runs/compare_14x5-0.jsonl")
-    if not jsonl.exists():
-        import pytest
-        pytest.skip("5x14 JSONL not available")
-
-    records = []
-    with open(jsonl) as fh:
-        for line in fh:
-            line = line.strip()
-            if line:
-                records.append(json.loads(line))
-
-    from budgetflow.run_observability.audit import _parser_abort_breakdown
-    result = _parser_abort_breakdown(records)
-    total = sum(result.values())
-    assert total >= 3, f"Expected at least 3 parser/protocol aborts, got {total} ({result})"
-    # All should be historical inference (no retry fields)
-    assert result["retry_success"] == 0
-    assert result["retry_failed"] == 0
+z

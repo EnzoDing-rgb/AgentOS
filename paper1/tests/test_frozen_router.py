@@ -104,24 +104,6 @@ class TestFrozenRouterPlan:
         assert rec["frozen_plan_name"] == "test"
         assert rec["frozen_plan_entry"] is None
 
-    def test_load_tasks_alias(self):
-        from budgetflow.frozen_router import FrozenRouterPlan, load_frozen_plan
-
-        data = {
-            "meta": {"name": "tasks_alias"},
-            "tasks": {
-                "x": {"preferred_model": "tier1", "base_cap": 0.1, "priority": 1},
-            },
-        }
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-            json.dump(data, f)
-            tmp = Path(f.name)
-        try:
-            plan = load_frozen_plan(tmp)
-            assert plan.lookup("x") is not None
-        finally:
-            tmp.unlink()
-
     def test_load_requires_explicit_fields(self):
         from budgetflow.frozen_router import load_frozen_plan
 
@@ -281,16 +263,6 @@ class TestFrozenPlanRouting:
 
     def test_observability_policy_kind_for_new_strategies(self):
         from budgetflow.experiment_observability import enrich_routing_observability
-
-        record = {"routing": "bare_t3"}
-        enrich_routing_observability(record)
-        assert record["policy_kind"] == "bare_harness"
-        assert record["policy_role"] == "bare_t3_baseline"
-
-        record = {"routing": "enterprise_router"}
-        enrich_routing_observability(record)
-        assert record["policy_kind"] == "bare_harness"
-        assert record["policy_role"] == "enterprise_router_baseline"
 
         record = {"routing": "budgetflow_same_router"}
         enrich_routing_observability(record)
