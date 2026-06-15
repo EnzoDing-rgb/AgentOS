@@ -4,6 +4,7 @@ from argparse import Namespace
 
 import pytest
 
+from budgetflow.experiments.compare_cli import parse_compare_args
 from budgetflow.experiments.compare_config import CompareStrategy, task_set_kind
 from budgetflow.experiments.compare_setup import (
     build_batch_budget_modes,
@@ -12,6 +13,7 @@ from budgetflow.experiments.compare_setup import (
     resolve_task_count,
     select_strategies,
     trace_console_from_args,
+    validate_paper_mainline_budget_contract,
 )
 
 
@@ -191,7 +193,7 @@ def test_resolve_budget_plan_from_budget_plan_json(tmp_path) -> None:
     bp_path = tmp_path / "bp.json"
     bp_path.write_text(json.dumps({
         "hard_cap_usd": 1.2262,
-        "budget_mode": "target_utilization",
+        "generation_mode": "target_utilization",
         "decision": "PASS",
     }))
 
@@ -277,7 +279,6 @@ def test_frozen_caps_are_priors_not_separate_batch_caps() -> None:
         auto_budget_task_caps=None,
         constrained_budget=2.0,
         frozen_task_caps=frozen_caps,
-        budget_mode="target_utilization",
     )
 
     # All strategies get the same constrained_budget; frozen caps are priors
@@ -303,3 +304,43 @@ def test_unbudgeted_strategy_gets_no_cap() -> None:
     )
     assert modes.batch_caps["all_pro"] is None
     assert modes.budget_modes["all_pro"] == "unconstrained"
+
+
+def test_paper_mainline_budget_contract_blocks_mixed_cap_modes() -> None:
+    selection = select_strategies(_args(ids="sympy__sympy-22714"))
+    batch_caps = {strategy.name: 1.0 for strategy in selection.strategies}
+    budget_modes = {strategy.name: "shared_batch_hard_budget" for strategy in selection.strategies}
+    budget_modes["enterprise_router_baseline"] = "dynamic_task_caps"
+
+    with pytest.raises(SystemExit, match="paper mainline requires shared_batch_hard_budget"):
+        validate_paper_mainline_budget_contract(
+            strategies=selection.strategies,
+            batch_caps=batch_caps,
+            budget_modes=budget_modes,
+        )
+
+
+def test_paper_mainline_budget_contract_blocks_unequal_caps() -> None:
+    selection = select_strategies(_args(ids="sympy__sympy-22714"))
+    batch_caps = {strategy.name: 1.0 for strategy in selection.strategies}
+    batch_caps["budgetflow_same_enterprise_router"] = 0.1
+    budget_modes = {strategy.name: "shared_batch_hard_budget" for strategy in selection.strategies}
+
+    with pytest.raises(SystemExit, match="paper mainline requires equal shared batch caps"):
+        validate_paper_mainline_budget_contract(
+            strategies=selection.strategies,
+            batch_caps=batch_caps,
+            budget_modes=budget_modes,
+        )
+
+
+def test_retired_auto_budget_cli_flags_are_not_exposed() -> None:
+    with pytest.raises(SystemExit):
+        parse_compare_args(["--auto-budget"])
+    with pytest.raises(SystemExit):
+        parse_compare_args(["--budget-mode", "frozen_plan_cap_sum"])
+    with pytest.raises(SystemExit):
+        parse_compare_args(["--target-utilization", "0.9"])
+    args = parse_compare_args([])
+    assert args.auto_budget is False
+    assert args.auto_budget_dry_run is False

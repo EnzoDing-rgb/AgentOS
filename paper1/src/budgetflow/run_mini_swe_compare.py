@@ -71,6 +71,7 @@ from budgetflow.experiments.compare_setup import (  # noqa: E402
     resolve_task_count,
     select_strategies,
     trace_console_from_args,
+    validate_paper_mainline_budget_contract,
 )
 from budgetflow.experiments.compare_persistence import (  # noqa: E402
     CompareRunState,
@@ -94,6 +95,7 @@ from budgetflow.local_harness import set_worktree_root  # noqa: E402
 from budgetflow.adaptive_routing import AdaptiveRoutingRegistry  # noqa: E402
 from budgetflow.run_guards import CompareRunGuards, set_active_guard  # noqa: E402
 from budgetflow.run_series import release_run_identity, resolve_run_identity  # noqa: E402
+from budgetflow.run_series import validate_resume_contract  # noqa: E402
 from budgetflow.run_trace import TraceConsoleLevel  # noqa: E402
 from budgetflow.runtime import check_cwd, is_nfs_or_banned, print_runtime_info, resolve_runtime_root, set_runtime_root  # noqa: E402
 from budgetflow.value_efficiency import ValueEfficiencyContext  # noqa: E402
@@ -231,6 +233,7 @@ def main() -> None:
         _init_catalog(Path(args.model_catalog))
         print(f"[catalog] loaded from {args.model_catalog}", flush=True)
         _frontier = TierFrontier.from_catalog()
+    catalog_info = _catalog_source_info()
 
     catalog_issues = print_tier_catalog_preflight()
 
@@ -350,20 +353,37 @@ def main() -> None:
             flush=True,
         )
 
-    # CLI --budget-mode wins; fall back to budget_plan JSON's budget_mode
-    effective_budget_mode = args.budget_mode
-    if effective_budget_mode is None and _budget_plan_data is not None:
-        effective_budget_mode = str(_budget_plan_data.get("budget_mode", "") or "") or None
     budget_modes_plan = build_batch_budget_modes(
         strategies=strategies,
         per_task_cap=args.per_task_cap,
         auto_budget_task_caps=auto_budget_task_caps,
         constrained_budget=budget_input["hard_cap_usd"],
         frozen_task_caps=frozen_task_caps,
-        budget_mode=effective_budget_mode,
     )
     batch_caps = budget_modes_plan.batch_caps
     budget_modes = budget_modes_plan.budget_modes
+    validate_paper_mainline_budget_contract(
+        strategies=strategies,
+        batch_caps=batch_caps,
+        budget_modes=budget_modes,
+    )
+    if args.resume:
+        bp_task_ids = tuple(str(task_id) for task_id in ((_budget_plan_data or {}).get("task_ids") or ()))
+        bp_strategy_names = tuple(str(name) for name in ((_budget_plan_data or {}).get("strategy_names") or ()))
+        expected_contract = {
+            "budget_mode": "shared_batch_hard_budget",
+            "batch_budget_cap": budget_input["hard_cap_usd"],
+            "budget_plan_hard_cap_usd": (_budget_plan_data or {}).get("hard_cap_usd"),
+            "budget_plan_generation_mode": (_budget_plan_data or {}).get("generation_mode"),
+            "budget_plan_task_ids": bp_task_ids,
+            "budget_plan_strategy_names": bp_strategy_names,
+            "catalog_revision": catalog_info.get("catalog_revision"),
+            "catalog_path": catalog_info.get("catalog_path"),
+            "value_profile": value_context.profile,
+            "value_source_class": value_context.source_class,
+            "value_matrix_artifact": value_context.matrix_path,
+        }
+        validate_resume_contract(out_path, expected_contract=expected_contract)
 
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
     print_runtime_info(runtime_root, RUNS_DIR, out_stem, policy_jobs)

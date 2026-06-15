@@ -11,6 +11,7 @@ No ML, no hardcoded model names.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -121,10 +122,10 @@ class TierFrontier:
 
         value_gain = max(delta, 0.0) * task_value
         if value_gain <= 0:
-            return cost_ratio * (1.0 + budget_pressure)
+            return _finite_score(cost_ratio * (1.0 + budget_pressure), cost_ratio, budget_pressure)
 
         effective_cost_ratio = cost_ratio * (1.0 + budget_pressure * 0.5)
-        return effective_cost_ratio / value_gain
+        return _finite_score(effective_cost_ratio / value_gain, cost_ratio, budget_pressure)
 
     def max_tier_pressure_threshold(self) -> float:
         """Budget pressure at which strongest tier is unconditionally allowed.
@@ -157,3 +158,13 @@ def _safe_ratio(numerator: float, denominator: float) -> float:
     if denominator <= 0:
         return float("inf")
     return numerator / denominator
+
+
+def _finite_score(score: float, cost_ratio: float, budget_pressure: float) -> float:
+    """Keep bad catalog edits from leaking NaN/inf into traces."""
+    if math.isfinite(score):
+        return score
+    fallback = cost_ratio * (1.0 + budget_pressure)
+    if math.isfinite(fallback):
+        return fallback
+    return 1_000_000.0

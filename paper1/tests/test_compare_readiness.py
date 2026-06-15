@@ -4,8 +4,9 @@ from argparse import Namespace
 from pathlib import Path
 from types import SimpleNamespace
 
-from budgetflow.experiments.compare_config import CompareStrategy
+from budgetflow.experiments.compare_config import CompareStrategy, paper_mainline_strategies
 from budgetflow.experiments.compare_readiness import build_compare_readiness_report
+from budgetflow.model_tiers import DEFAULT_CATALOG_PATH, init_catalog
 from budgetflow.value_efficiency import ValueEfficiencyContext
 
 
@@ -17,6 +18,8 @@ def _args(**overrides):
         trace_turns=True,
         auto_budget_dry_run=False,
         allow_global_fallback_auto_budget=False,
+        diagnostic_catalog=False,
+        frozen_plan=None,
     )
     base.update(overrides)
     return Namespace(**base)
@@ -188,6 +191,60 @@ def test_readiness_blocks_missing_frozen_plan_for_mechanism_router() -> None:
 
     assert not report.ok
     assert any("require --frozen-plan" in issue for issue in report.blocking)
+
+
+def test_readiness_blocks_paper_mainline_without_budget_plan() -> None:
+    value_context = ValueEfficiencyContext()
+    value_context.init(value_profile="equal")
+
+    report = build_compare_readiness_report(
+        args=_args(),
+        tasks=[SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",))],
+        strategies=paper_mainline_strategies(),
+        policy_jobs=6,
+        value_context=value_context,
+        catalog_issues=[],
+        runtime_root=Path("/tmp/budgetflow-runtime"),
+        auto_budget_enabled=False,
+        auto_budget_caps=None,
+    )
+
+    assert not report.ok
+    assert any("Budget Regime Compiler" in issue for issue in report.blocking)
+
+
+def test_readiness_blocks_paper_mainline_without_primary_value_source(tmp_path) -> None:
+    bp = tmp_path / "budget_plan.json"
+    bp.write_text(
+        '{"hard_cap_usd":1.0,"source":"budget_binding_calibrator","decision":"PASS",'
+        '"task_ids":["task-a"],'
+        '"strategy_names":["bare_t2_baseline","bare_t3_baseline","enterprise_router_baseline",'
+        '"budgetflow_same_enterprise_router","budgetflow_task_level","budgetflow_segment"]}'
+    )
+    frozen_plan = tmp_path / "frozen_plan.json"
+    frozen_plan.write_text(
+        '{"meta":{"name":"unit_plan"},'
+        '"plan":{"task-a":{"preferred_model":"tier2","base_cap":0.2,"priority":1}}}'
+    )
+    value_context = ValueEfficiencyContext()
+    value_context.init(value_profile="equal")
+
+    report = build_compare_readiness_report(
+        args=_args(frozen_plan=str(frozen_plan), budget_plan=str(bp)),
+        tasks=[SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",))],
+        strategies=paper_mainline_strategies(),
+        policy_jobs=6,
+        value_context=value_context,
+        catalog_issues=[],
+        runtime_root=Path("/tmp/budgetflow-runtime"),
+        auto_budget_enabled=False,
+        auto_budget_caps=None,
+        budget_plan_path=bp,
+    )
+
+    assert not report.ok
+    assert any("primary value evidence" in issue for issue in report.blocking)
+    assert any("generation_mode" in issue for issue in report.blocking)
 
 
 def test_readiness_blocks_frozen_plan_without_selected_task(tmp_path) -> None:
@@ -440,7 +497,11 @@ def test_readiness_allows_explicit_global_fallback_cap_diagnostic() -> None:
 def test_readiness_blocks_budget_plan_blck_decision(tmp_path) -> None:
     """Budget plan decision=BLOCK → paid readiness NO-GO."""
     bp = tmp_path / "budget_plan.json"
-    bp.write_text('{"hard_cap_usd":3.58,"source":"budget_binding_calibrator","decision":"BLOCK","reasons":["max utilization 13% < 15%"]}')
+    bp.write_text(
+        '{"hard_cap_usd":3.58,"source":"budget_binding_calibrator",'
+        '"generation_mode":"frozen_plan_cap_sum",'
+        '"decision":"BLOCK","reasons":["max utilization 13% < 15%"]}'
+    )
     value_context = ValueEfficiencyContext()
     value_context.init(value_profile="equal")
 
@@ -470,6 +531,7 @@ def test_readiness_accepts_pass_with_diagnostic_override_with_warning(tmp_path) 
     bp = tmp_path / "budget_plan.json"
     bp.write_text(
         '{"hard_cap_usd":3.58,"source":"budget_binding_calibrator",'
+        '"generation_mode":"frozen_plan_cap_sum",'
         '"decision":"PASS_WITH_DIAGNOSTIC_OVERRIDE",'
         '"override_reason":"intentionally bound to pre-registered frozen plan cap sum",'
         '"reasons":["max projected utilization 13% < 15%"]}'
@@ -499,7 +561,8 @@ def test_readiness_blocks_budget_plan_missing_selected_tasks(tmp_path) -> None:
     """Budget plans may cover a staged superset, but must cover every selected task."""
     bp = tmp_path / "budget_plan.json"
     bp.write_text(
-        '{"hard_cap_usd":1.0,"source":"frozen_plan_cap_sum","decision":"PASS",'
+        '{"hard_cap_usd":1.0,"source":"budget_binding_calibrator",'
+        '"generation_mode":"frozen_plan_cap_sum","decision":"PASS",'
         '"task_ids":["task-a"]}'
     )
     value_context = ValueEfficiencyContext()
@@ -525,10 +588,69 @@ def test_readiness_blocks_budget_plan_missing_selected_tasks(tmp_path) -> None:
     assert any("budget plan is missing 1 selected tasks" in issue for issue in report.blocking)
 
 
+def test_readiness_blocks_budget_plan_strategy_set_drift(tmp_path) -> None:
+    bp = tmp_path / "budget_plan.json"
+    bp.write_text(
+        '{"hard_cap_usd":1.0,"source":"budget_binding_calibrator","decision":"PASS",'
+        '"generation_mode":"frozen_plan_cap_sum",'
+        '"task_ids":["task-a"],'
+        '"strategy_names":["budgetflow_task_level","bare_t2_baseline"]}'
+    )
+    value_context = ValueEfficiencyContext()
+    value_context.init(value_profile="equal")
+
+    report = build_compare_readiness_report(
+        args=_args(),
+        tasks=[SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",))],
+        strategies=(
+            CompareStrategy("bare_t2_baseline", "all_tier2"),
+            CompareStrategy("budgetflow_task_level", "value_aware_task_level"),
+        ),
+        policy_jobs=2,
+        value_context=value_context,
+        catalog_issues=[],
+        runtime_root=Path("/tmp/budgetflow-runtime"),
+        auto_budget_enabled=False,
+        auto_budget_caps=None,
+        budget_plan_path=bp,
+    )
+
+    assert not report.ok
+    assert any("strategy set/order" in issue for issue in report.blocking)
+
+
+def test_readiness_blocks_budget_plan_with_retired_dynamic_caps(tmp_path) -> None:
+    bp = tmp_path / "budget_plan.json"
+    bp.write_text(
+        '{"hard_cap_usd":1.0,"source":"budget_binding_calibrator","decision":"PASS",'
+        '"generation_mode":"frozen_plan_cap_sum",'
+        '"task_ids":["task-a"],"strategy_names":["budgetflow_segment"]}'
+    )
+    value_context = ValueEfficiencyContext()
+    value_context.init(value_profile="equal")
+
+    report = build_compare_readiness_report(
+        args=_args(),
+        tasks=[SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",))],
+        strategies=(CompareStrategy("budgetflow_segment", "segment_value_aware"),),
+        policy_jobs=1,
+        value_context=value_context,
+        catalog_issues=[],
+        runtime_root=Path("/tmp/budgetflow-runtime"),
+        auto_budget_enabled=True,
+        auto_budget_caps={"task-a": 0.10},
+        budget_plan_path=bp,
+    )
+
+    assert not report.ok
+    assert any("retired dynamic per-task caps" in issue for issue in report.blocking)
+
+
 def test_readiness_accepts_budget_plan_superset_for_staged_resume(tmp_path) -> None:
     bp = tmp_path / "budget_plan.json"
     bp.write_text(
-        '{"hard_cap_usd":1.0,"source":"frozen_plan_cap_sum","decision":"PASS",'
+        '{"hard_cap_usd":1.0,"source":"budget_binding_calibrator",'
+        '"generation_mode":"frozen_plan_cap_sum","decision":"PASS",'
         '"task_ids":["task-a","task-b","task-c"]}'
     )
     value_context = ValueEfficiencyContext()
@@ -552,3 +674,57 @@ def test_readiness_accepts_budget_plan_superset_for_staged_resume(tmp_path) -> N
 
     assert report.ok
     assert "budget_plan_task_ids=3" in report.facts
+
+
+def test_readiness_blocks_diagnostic_catalog_without_explicit_opt_in(tmp_path) -> None:
+    t3x3_path = Path(__file__).resolve().parents[1] / "docs/config/model_tiers.t3x3.json"
+    if not t3x3_path.exists():
+        return
+    init_catalog(t3x3_path)
+    try:
+        value_context = ValueEfficiencyContext()
+        value_context.init(value_profile="equal")
+
+        report = build_compare_readiness_report(
+            args=_args(),
+            tasks=[SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",))],
+            strategies=(CompareStrategy("budgetflow_segment", "segment_value_aware"),),
+            policy_jobs=1,
+            value_context=value_context,
+            catalog_issues=[],
+            runtime_root=Path("/tmp/budgetflow-runtime"),
+            auto_budget_enabled=False,
+            auto_budget_caps=None,
+        )
+
+        assert not report.ok
+        assert any("--diagnostic-catalog" in issue for issue in report.blocking)
+    finally:
+        init_catalog(DEFAULT_CATALOG_PATH)
+
+
+def test_readiness_accepts_diagnostic_catalog_with_explicit_opt_in(tmp_path) -> None:
+    t3x3_path = Path(__file__).resolve().parents[1] / "docs/config/model_tiers.t3x3.json"
+    if not t3x3_path.exists():
+        return
+    init_catalog(t3x3_path)
+    try:
+        value_context = ValueEfficiencyContext()
+        value_context.init(value_profile="equal")
+
+        report = build_compare_readiness_report(
+            args=_args(diagnostic_catalog=True),
+            tasks=[SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",))],
+            strategies=(CompareStrategy("budgetflow_segment", "segment_value_aware"),),
+            policy_jobs=1,
+            value_context=value_context,
+            catalog_issues=[],
+            runtime_root=Path("/tmp/budgetflow-runtime"),
+            auto_budget_enabled=False,
+            auto_budget_caps=None,
+        )
+
+        assert report.ok
+        assert any("catalog_role=diagnostic" in fact for fact in report.facts)
+    finally:
+        init_catalog(DEFAULT_CATALOG_PATH)

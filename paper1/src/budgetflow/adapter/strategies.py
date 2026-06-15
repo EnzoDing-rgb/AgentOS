@@ -167,7 +167,10 @@ def _budgetflow_max_tier(ctx: RoutingContext, stage: Stage) -> int:
 
     if frontier is not None:
         strongest_threshold = frontier.max_tier_pressure_threshold()
-    elif ctx.strategy in ("budgetflow_conservative", "segment_value_aware"):
+    elif ctx.strategy == "budgetflow_conservative":
+        # ConservativeSelector has its own conservation factor that already
+        # makes T3 escalation harder, so use a lower pressure threshold to
+        # avoid double-penalizing.  Other strategies use the standard 0.15.
         strongest_threshold = 0.05
     else:
         strongest_threshold = 0.15

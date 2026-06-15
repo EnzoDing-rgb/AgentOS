@@ -14,6 +14,7 @@ from budgetflow.experiments.compare_config import (
     load_strategy_set,
     normalize_strategy,
     order_tasks_easy_first,
+    paper_mainline_strategy_names,
     paper_mainline_strategies,
     strategy_catalog,
 )
@@ -99,7 +100,7 @@ def resolve_budget_plan(
             bp_hard_cap = float(bp.get("hard_cap_usd", 0.0) or 0.0)
             if bp_hard_cap > 0:
                 constrained = bp_hard_cap
-                source = f"budget_plan:{bp.get('budget_mode', 'unknown')}"
+            source = f"budget_plan:{bp.get('generation_mode', 'unknown')}"
         elif frozen_plan_path and task_ids:
             from budgetflow.frozen_router import load_frozen_plan
             plan = load_frozen_plan(frozen_plan_path)
@@ -191,7 +192,6 @@ def build_batch_budget_modes(
     auto_budget_task_caps: dict[str, float] | None,
     constrained_budget: float,
     frozen_task_caps: dict[str, float] | None = None,
-    budget_mode: str | None = None,
 ) -> BatchBudgetModes:
     """Assign equal shared batch caps to all paper mainline strategies.
 
@@ -242,3 +242,28 @@ def build_batch_budget_modes(
         planned_dynamic_cap=planned_dynamic_cap,
         effective_frozen_caps=effective_frozen_caps,
     )
+
+
+def validate_paper_mainline_budget_contract(
+    *,
+    strategies: tuple[CompareStrategy, ...],
+    batch_caps: dict[str, float | None],
+    budget_modes: dict[str, str],
+) -> None:
+    """Fail fast if the paper-mainline strategy set drifts from one cap mode."""
+    strategy_names = [strategy.name for strategy in strategies]
+    mainline_names = list(paper_mainline_strategy_names())
+    if strategy_names != mainline_names:
+        return
+    modes = [budget_modes.get(name) for name in mainline_names]
+    if any(mode != "shared_batch_hard_budget" for mode in modes):
+        raise SystemExit(
+            "paper mainline requires shared_batch_hard_budget for all strategies; "
+            f"got {dict(zip(mainline_names, modes))}"
+        )
+    caps = [batch_caps.get(name) for name in mainline_names]
+    if any(cap is None for cap in caps) or len({round(float(cap), 8) for cap in caps if cap is not None}) != 1:
+        raise SystemExit(
+            "paper mainline requires equal shared batch caps for all strategies; "
+            f"got {dict(zip(mainline_names, caps))}"
+        )

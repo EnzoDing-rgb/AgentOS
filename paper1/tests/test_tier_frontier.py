@@ -8,6 +8,7 @@ Score < 1.0: T3 justified; 1.0-2.0: marginal; > 2.0: T3 cost not justified.
 """
 
 import sys
+import math
 
 import pytest
 
@@ -118,6 +119,23 @@ class TestTierFrontierCalibration:
         # T3 26x more expensive → score >= 2.0
         score = frontier.frontier_score("repair")
         assert score >= 2.0, f"expected high frontier score, got {score}"
+
+    def test_frontier_score_never_returns_nonfinite_for_bad_catalog_values(self):
+        """Bad hand-edited catalog ratios should not poison downstream traces."""
+        from budgetflow.tier_frontier import TierFrontier
+
+        frontier = TierFrontier(
+            reference_tier=2,
+            strongest_tier=3,
+            reference_display="T2",
+            strongest_display="T3",
+            strongest_input_ratio=float("inf"),
+            strongest_output_ratio=float("inf"),
+            strongest_progress_delta={"repair": 0.0},
+            reason="bad catalog",
+        )
+
+        assert math.isfinite(frontier.frontier_score("repair"))
 
     def test_expensive_t3_conservative(self):
         """When T3 is expensive vs reference, frontier score >= 2.0."""

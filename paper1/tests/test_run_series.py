@@ -8,11 +8,13 @@ from budgetflow.run_series import (
     allocate_series_stem,
     completed_scoreable_keys,
     detect_sibling_stems,
+    latest_run_contract,
     list_series_stems,
     release_run_identity,
     resolve_compare_stem,
     series_run_complete,
     sibling_stems_exist,
+    validate_resume_contract,
 )
 from budgetflow.compare_checkpoint import CompareCheckpointStore
 
@@ -197,6 +199,67 @@ def test_staged_resume_expands_expected_pairs_without_false_completion(tmp_path)
             total_runs=180,
             explicit_stem="mainline_6x30_v1-0",
             expected_keys=keys(30),
+        )
+
+
+def test_resume_contract_allows_same_budget_catalog_and_value_provenance(tmp_path) -> None:
+    path = tmp_path / "mainline_6x30_v1-0.jsonl"
+    contract = {
+        "budget_mode": "shared_batch_hard_budget",
+        "batch_budget_cap": 2.999,
+        "budget_plan_hard_cap_usd": 2.999,
+        "budget_plan_generation_mode": "frozen_plan_cap_sum",
+        "budget_plan_task_ids": ("task-a", "task-b"),
+        "budget_plan_strategy_names": ("bare_t2_baseline", "budgetflow_segment"),
+        "catalog_revision": "default-2026-06-10",
+        "catalog_path": "/repo/docs/config/model_tiers.default.json",
+        "value_profile": "manual_value",
+        "value_source_class": "pre_registered_manual",
+        "value_matrix_artifact": "docs/reports/value_matrix.json",
+    }
+    row = {
+        "strategy": "budgetflow_segment",
+        "instance_id": "task-a",
+        "score_status": "pass",
+        "budget_mode": contract["budget_mode"],
+        "batch_budget_cap": contract["batch_budget_cap"],
+        "budget_plan": {
+            "hard_cap_usd": contract["budget_plan_hard_cap_usd"],
+            "generation_mode": contract["budget_plan_generation_mode"],
+            "task_ids": list(contract["budget_plan_task_ids"]),
+            "strategy_names": list(contract["budget_plan_strategy_names"]),
+        },
+        "catalog": {
+            "catalog_revision": contract["catalog_revision"],
+            "catalog_path": contract["catalog_path"],
+        },
+        "task_value_profile": contract["value_profile"],
+        "task_value_source_class": contract["value_source_class"],
+        "value_matrix_artifact": contract["value_matrix_artifact"],
+    }
+    path.write_text(json.dumps(row) + "\n")
+
+    assert latest_run_contract(path) == contract
+    validate_resume_contract(path, expected_contract=contract)
+
+
+def test_resume_contract_blocks_missing_or_mismatched_provenance(tmp_path) -> None:
+    path = tmp_path / "mainline_6x30_v1-0.jsonl"
+    path.write_text(json.dumps({
+        "strategy": "budgetflow_segment",
+        "instance_id": "task-a",
+        "score_status": "pass",
+        "budget_mode": "shared_batch_hard_budget",
+    }) + "\n")
+
+    with pytest.raises(SystemExit, match="resume contract mismatch"):
+        validate_resume_contract(
+            path,
+            expected_contract={
+                "budget_mode": "shared_batch_hard_budget",
+                "catalog_revision": "default-2026-06-10",
+                "value_source_class": "pre_registered_manual",
+            },
         )
 
 

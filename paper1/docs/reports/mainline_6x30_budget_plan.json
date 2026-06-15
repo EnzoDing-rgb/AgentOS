@@ -1,10 +1,10 @@
 {
   "hard_cap_usd": 2.999,
-  "source": "frozen_plan_cap_sum",
-  "budget_mode": "frozen_plan_cap_sum",
+  "source": "budget_binding_calibrator",
+  "generation_mode": "frozen_plan_cap_sum",
   "catalog_revision": "2026-06-15-t3x3",
   "catalog_path": "/root/.dev/AgentOS/paper1/docs/config/model_tiers.t3x3.json",
-  "historical_source": "metadata_cap_formula; 5x20 calibration MAPE=53.5% used only as warning against target_utilization mode",
+  "historical_source": "frozen_cap_prior:docs/reports/mainline_6x30_frozen_router_plan.json",
   "task_ids": [
     "sympy__sympy-22714",
     "sympy__sympy-12171",
@@ -37,6 +37,14 @@
     "django__django-15851",
     "matplotlib__matplotlib-25433"
   ],
+  "strategy_names": [
+    "bare_t2_baseline",
+    "bare_t3_baseline",
+    "enterprise_router_baseline",
+    "budgetflow_same_enterprise_router",
+    "budgetflow_task_level",
+    "budgetflow_segment"
+  ],
   "projected_spend_by_strategy": {
     "bare_t2_baseline": 1.6495,
     "bare_t3_baseline": 3.149,
@@ -53,27 +61,40 @@
     "budgetflow_task_level": 0.85,
     "budgetflow_segment": 0.9
   },
-  "min_viable_budget": 2.999,
-  "loose_budget_threshold": 1.4995,
-  "tight_budget_threshold": 2.999,
+  "min_viable_budget": 3.149,
+  "loose_budget_threshold": 6.2979,
+  "tight_budget_threshold": 3.149,
   "decision": "PASS",
   "reasons": [
-    "hard_cap = frozen_router_plan.selected_cap_sum = $2.9990",
-    "budget mode is frozen_plan_cap_sum because prior target_utilization projection MAPE was 53.5%",
-    "pressure is created by diagnostic T3x3 catalog plus shared hard cap; advisory projections are not used to tune task values or outcomes",
-    "all 30 selected tasks have gold-harness verification before paid mainline"
+    "calibration:bare_t2_baseline n=0 (no historical data, projection uses frozen_cap_prior)",
+    "calibration:bare_t3_baseline n=0 (no historical data, projection uses frozen_cap_prior)",
+    "calibration:enterprise_router_baseline n=0 (no historical data, projection uses frozen_cap_prior)",
+    "calibration:budgetflow_same_enterprise_router n=0 (no historical data, projection uses frozen_cap_prior)",
+    "calibration:budgetflow_task_level n=0 (no historical data, projection uses frozen_cap_prior)",
+    "calibration:budgetflow_segment n=0 (no historical data, projection uses frozen_cap_prior)",
+    "pressure_contract: grade=pass",
+    "pressure_contract: t2_loose: bare_t2_baseline at 55.0% < target 80%",
+    "pressure_contract: t3_tight: bare_t3_baseline at 100.0% >= 68% \u2014 budget-constrained as expected",
+    "pressure_contract: budgetflow_near_target: budgetflow_task_level at 85.0% near target 80%",
+    "projection_confidence=unvalidated: no prior calibration audit provided. Run a no-paid calibration audit before relying on projected utilization."
   ],
   "pressure_contract": {
-    "grade": "passive_audit",
-    "expected_shape": [
-      "bare_t2_baseline should have more headroom than bare_t3_baseline",
-      "bare_t3_baseline may cap/stop early under t3x3 pricing",
-      "BudgetFlow policies should trade off value against spend under the same hard cap"
+    "target_utilization": 0.8,
+    "shape": {
+      "bare_t2_baseline": 0.55,
+      "bare_t3_baseline": 1.0,
+      "enterprise_router_baseline": 0.76,
+      "budgetflow_same_enterprise_router": 0.76,
+      "budgetflow_task_level": 0.85,
+      "budgetflow_segment": 0.9
+    },
+    "assertions": [
+      "t2_loose: bare_t2_baseline at 55.0% < target 80%",
+      "t3_tight: bare_t3_baseline at 100.0% >= 68% \u2014 budget-constrained as expected",
+      "budgetflow_near_target: budgetflow_task_level at 85.0% near target 80%"
     ],
-    "note": "Projection confidence is low; inspect actual utilization after the first 6x20 stage before continuing to +10."
+    "violations": [],
+    "grade": "pass"
   },
-  "projection_confidence": "low",
-  "calibration_error": {
-    "5x20_overall_mape": 0.5347
-  }
+  "projection_confidence": "unvalidated"
 }

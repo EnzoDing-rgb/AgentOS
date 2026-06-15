@@ -160,7 +160,7 @@ def test_calibrate_target_utilization_produces_p75_reference(tmp_path: Path) -> 
         target_utilization=0.80,
         output_path=tmp_path / "bp.json",
     )
-    assert plan.budget_mode == "target_utilization"
+    assert plan.generation_mode == "target_utilization"
     assert plan.target_projected_utilization == 0.80
     assert any("reference_rule: strategy_set_p75" in r for r in plan.reasons)
 
@@ -218,6 +218,9 @@ def test_calibrate_defaults_to_paper_mainline_six_policy_set(tmp_path: Path) -> 
         "budgetflow_task_level",
         "budgetflow_segment",
     ]
+    assert plan.strategy_names == list(plan.projected_spend_by_strategy)
+    written = json.loads((tmp_path / "bp.json").read_text())
+    assert written["strategy_names"] == list(plan.projected_spend_by_strategy)
 
 
 def test_target_utilization_below_zero_raises() -> None:
@@ -239,7 +242,7 @@ def test_pressure_contract_is_passive_only() -> None:
     """Pressure contract writes into plan but never changes plan.decision."""
     plan = BudgetBindingPlan(
         hard_cap_usd=10.0,
-        budget_mode="target_utilization",
+        generation_mode="target_utilization",
         target_projected_utilization=0.80,
     )
     plan.projected_utilization_by_strategy = {
@@ -261,7 +264,7 @@ def test_pressure_contract_healthy_shape_grade_pass() -> None:
     """T3 tight > T2 loose = expected shape, grade pass."""
     plan = BudgetBindingPlan(
         hard_cap_usd=5.0,
-        budget_mode="target_utilization",
+        generation_mode="target_utilization",
         target_projected_utilization=0.80,
     )
     plan.projected_utilization_by_strategy = {
@@ -279,8 +282,8 @@ def test_pressure_contract_healthy_shape_grade_pass() -> None:
     assert any("budgetflow_task_level" in a for a in plan.pressure_contract["assertions"])
 
 
-def test_calibrate_without_target_uses_frozen_cap_sum(tmp_path: Path) -> None:
-    """Without target_utilization, legacy frozen_plan_cap_sum mode is unchanged."""
+def test_calibrate_without_target_uses_frozen_cap_sum_generation_rule(tmp_path: Path) -> None:
+    """Without target_utilization, compiler uses the frozen cap sum generation rule."""
     fp = tmp_path / "fp.json"
     fp.write_text(json.dumps({"plan": {"task-a": {"base_cap": 3.5, "preferred_model": "tier2"}}}))
     vm = tmp_path / "vm.json"
@@ -291,7 +294,7 @@ def test_calibrate_without_target_uses_frozen_cap_sum(tmp_path: Path) -> None:
         value_matrix_path=vm,
         output_path=tmp_path / "bp.json",
     )
-    assert plan.budget_mode == "frozen_plan_cap_sum"
+    assert plan.generation_mode == "frozen_plan_cap_sum"
     assert plan.hard_cap_usd == 3.5
 
 
@@ -399,3 +402,25 @@ def test_calibration_excludes_enterprise_router_with_value_aware_active() -> Non
     eligible, reason = _row_is_calibration_eligible(row)
     assert eligible is False
     assert reason == "contaminated:enterprise_router_with_va_active"
+
+
+def test_calibration_excludes_protocol_retry_cost_overhead(tmp_path: Path) -> None:
+    row = {
+        "strategy": "budgetflow_task_level",
+        "instance_id": "task-a",
+        "total_cost": 0.12,
+        "budget_mode": "shared_batch_hard_budget",
+        "catalog": {"catalog_revision": "2026-06-10-a"},
+        "exit_status": "HarnessResolved",
+        "protocol_retry_used": True,
+        "protocol_retry_success": True,
+    }
+    eligible, reason = _row_is_calibration_eligible(row)
+    assert eligible is False
+    assert reason == "protocol_retry_overhead"
+
+    jsonl = tmp_path / "hist.jsonl"
+    jsonl.write_text(json.dumps(row) + "\n")
+    costs, excluded = _load_historical_costs(jsonl)
+    assert costs == {}
+    assert excluded == {"protocol_retry_overhead": 1}

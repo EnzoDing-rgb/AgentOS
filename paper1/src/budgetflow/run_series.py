@@ -18,6 +18,7 @@ from collections.abc import Callable, Iterable
 _SERIES_STEM_RE = re.compile(r"^(?P<base>.+)-(?P<idx>\d+)$")
 _LOCK_EXT = ".lock"
 ScoreableKey = tuple[str, str]
+RunContract = dict[str, object]
 
 
 def default_series_base(*, tasks_n: int, strategies_n: int, task_set: str = "easy") -> str:
@@ -163,6 +164,70 @@ def completed_scoreable_keys(
         if strategy and instance_id:
             done.add((strategy, instance_id))
     return done
+
+
+def _record_contract(record: dict) -> RunContract:
+    budget_plan = record.get("budget_plan") if isinstance(record.get("budget_plan"), dict) else {}
+    catalog = record.get("catalog") if isinstance(record.get("catalog"), dict) else {}
+    return {
+        "budget_mode": record.get("budget_mode"),
+        "batch_budget_cap": record.get("batch_budget_cap"),
+        "budget_plan_hard_cap_usd": budget_plan.get("hard_cap_usd"),
+        "budget_plan_generation_mode": budget_plan.get("generation_mode"),
+        "budget_plan_task_ids": tuple(str(task_id) for task_id in (budget_plan.get("task_ids") or ())),
+        "budget_plan_strategy_names": tuple(str(name) for name in (budget_plan.get("strategy_names") or ())),
+        "catalog_revision": catalog.get("catalog_revision"),
+        "catalog_path": catalog.get("catalog_path"),
+        "value_profile": record.get("task_value_profile"),
+        "value_source_class": record.get("task_value_source_class"),
+        "value_matrix_artifact": record.get("value_matrix_artifact"),
+    }
+
+
+def latest_run_contract(jsonl_path: Path) -> RunContract | None:
+    """Return the latest scoreable row's launch contract from a run JSONL."""
+    if not jsonl_path.is_file():
+        return None
+    latest: RunContract | None = None
+    for line in jsonl_path.read_text().splitlines():
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        score_status = str(record.get("score_status") or "")
+        if score_status not in {"pass", "true_fail"}:
+            continue
+        latest = _record_contract(record)
+    return latest
+
+
+def validate_resume_contract(
+    jsonl_path: Path,
+    *,
+    expected_contract: RunContract,
+) -> None:
+    """Fail fast when --resume would mix incompatible run provenance."""
+    prior = latest_run_contract(jsonl_path)
+    if prior is None:
+        return
+    mismatches: list[str] = []
+    for key, expected_value in expected_contract.items():
+        if expected_value in (None, "", (), []):
+            continue
+        prior_value = prior.get(key)
+        if prior_value in (None, "", (), []):
+            mismatches.append(f"{key}: prior=<missing> current={expected_value!r}")
+        elif prior_value != expected_value:
+            mismatches.append(f"{key}: prior={prior_value!r} current={expected_value!r}")
+    if mismatches:
+        preview = "; ".join(mismatches[:6])
+        suffix = "" if len(mismatches) <= 6 else f"; ... +{len(mismatches) - 6} more"
+        raise SystemExit(
+            "--resume contract mismatch; refusing to append to a run with different "
+            f"budget/catalog/value provenance: {preview}{suffix}"
+        )
 
 
 def series_run_complete(

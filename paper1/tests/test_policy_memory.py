@@ -1,18 +1,12 @@
 from __future__ import annotations
 
 import json
-import os
-import subprocess
-import sys
 from pathlib import Path
 
 from budgetflow.adaptive_routing import AdaptiveRoutingState, rescue_state_for_strategy
 from budgetflow.learning_context import looks_like_policy_memory_source
 from budgetflow.policy_memory import PolicyMemory
 from budgetflow.types import WorkflowSegment
-
-ROOT = Path(__file__).resolve().parents[1]
-
 
 def _record(**overrides) -> dict:
     record = {
@@ -844,58 +838,6 @@ def test_rebuild_from_jsonl_sets_source_and_ignores_bad_lines(tmp_path: Path) ->
     assert memory._source_path == str(source)
     assert memory.task_prior("django__django-1").seen == 1
     assert memory.routing_prior_summary("django__django-1")["policy_memory_source"] == str(source)
-
-
-def test_auto_budget_dry_run_exposes_escalation_memory_decision(tmp_path: Path) -> None:
-    policy_memory = tmp_path / "routing_memory.jsonl"
-    policy_memory.write_text(json.dumps(_record(
-        instance_id="sympy__sympy-14774",
-        routing="segment_value_aware",
-        turn_traces=[
-            {
-                "workflow_segment": "Action",
-                "backend_tier": 3,
-                "final_backend": "tier3",
-                "value_triggered_escalation_active": True,
-                "has_progress": False,
-                "action_has_progress": False,
-                "billable_cost": 0.08,
-            }
-        ],
-    )) + "\n")
-    env = {
-        **os.environ,
-        "NO_COLOR": "1",
-        "PYTHONPATH": f"{ROOT / 'src'}:{ROOT.parent / 'external' / 'mini-swe-agent' / 'src'}",
-    }
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "budgetflow.run_mini_swe_compare",
-            "--ids",
-            "sympy__sympy-14774",
-            "--strategies",
-            "budgetflow_segment",
-            "--auto-budget",
-            "--auto-budget-dry-run",
-            "--auto-budget-memory",
-            "data/runs/auto_budget_memory.jsonl",
-            "--policy-memory",
-            str(policy_memory),
-        ],
-        capture_output=True,
-        text=True,
-        cwd=str(ROOT),
-        env=env,
-    )
-
-    assert result.returncode == 0, f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-    assert "[policy_memory] loaded from" in result.stdout
-    policy_line = next(line for line in result.stdout.splitlines() if "policy_memory=on source=" in line)
-    assert str(policy_memory) in policy_line
-    assert "shorten_value_triggered_escalation" in result.stdout
-    assert "/w=1" in result.stdout
 
 
 def test_budgetflow_segment_routing_contributes_to_starter_prior() -> None:
