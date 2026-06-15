@@ -13,6 +13,7 @@ from budgetflow.run_series import (
     release_run_identity,
     resolve_compare_stem,
     resolve_run_identity,
+    scoreable_run_contracts,
     series_run_complete,
     sibling_stems_exist,
     validate_resume_contract,
@@ -270,6 +271,7 @@ def test_resume_contract_allows_same_budget_catalog_and_value_provenance(tmp_pat
     path.write_text(json.dumps(row) + "\n")
 
     assert latest_run_contract(path) == contract
+    assert scoreable_run_contracts(path) == [contract]
     validate_resume_contract(path, expected_contract=contract)
 
 
@@ -291,6 +293,54 @@ def test_resume_contract_blocks_missing_or_mismatched_provenance(tmp_path) -> No
                 "value_source_class": "pre_registered_manual",
             },
         )
+
+
+def test_resume_contract_checks_all_scoreable_rows_not_only_latest(tmp_path) -> None:
+    path = tmp_path / "mainline_6x30_v1-0.jsonl"
+    good_contract = {
+        "budget_mode": "shared_batch_hard_budget",
+        "batch_budget_cap": 2.999,
+        "budget_plan_hard_cap_usd": 2.999,
+        "budget_plan_generation_mode": "frozen_plan_cap_sum",
+        "budget_plan_task_ids": ("task-a", "task-b"),
+        "budget_plan_strategy_names": ("bare_t2_baseline", "budgetflow_segment"),
+        "catalog_revision": "default-2026-06-10",
+        "catalog_path": "/repo/docs/config/model_tiers.default.json",
+        "value_profile": "manual_value",
+        "value_source_class": "pre_registered_manual",
+        "value_matrix_artifact": "docs/reports/value_matrix.json",
+    }
+
+    def row(task_id: str, *, cap: float) -> dict:
+        return {
+            "strategy": "budgetflow_segment",
+            "instance_id": task_id,
+            "score_status": "pass",
+            "budget_mode": good_contract["budget_mode"],
+            "batch_budget_cap": cap,
+            "budget_plan": {
+                "hard_cap_usd": good_contract["budget_plan_hard_cap_usd"],
+                "generation_mode": good_contract["budget_plan_generation_mode"],
+                "task_ids": list(good_contract["budget_plan_task_ids"]),
+                "strategy_names": list(good_contract["budget_plan_strategy_names"]),
+            },
+            "catalog": {
+                "catalog_revision": good_contract["catalog_revision"],
+                "catalog_path": good_contract["catalog_path"],
+            },
+            "task_value_profile": good_contract["value_profile"],
+            "task_value_source_class": good_contract["value_source_class"],
+            "value_matrix_artifact": good_contract["value_matrix_artifact"],
+        }
+
+    path.write_text(
+        json.dumps(row("task-a", cap=0.06)) + "\n"
+        + json.dumps(row("task-b", cap=2.999)) + "\n"
+    )
+
+    assert latest_run_contract(path) == good_contract
+    with pytest.raises(SystemExit, match=r"row1:batch_budget_cap"):
+        validate_resume_contract(path, expected_contract=good_contract)
 
 
 # ── Sibling detection ──────────────────────────────────────────────────

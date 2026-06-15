@@ -22,11 +22,11 @@ from budgetflow.experiments.compare_config import load_strategy_set, paper_mainl
 from ..model_tiers import MODEL_CATALOG, catalog_revision, catalog_path, init_catalog
 
 
-# Cold-start pressure posture for paper-mainline strategies.  This prior only
-# applies when a pre-run frozen cap exists and no clean historical cost row is
-# available.  It is task-id agnostic and outcome-free; clean cost memory
-# supersedes it as soon as the strategy has usable rows.
-_FROZEN_CAP_COST_PRIOR_MULTIPLIERS: dict[str, float] = {
+# Cold-start pressure posture for paper-mainline strategies.  Frozen caps are
+# pre-registered pressure anchors, not empirical expected costs.  These
+# multipliers describe the intended initial pressure shape before clean Cost
+# Memory exists; clean current-schema rows supersede them strategy by strategy.
+_COLD_START_PRESSURE_PRIOR_MULTIPLIERS: dict[str, float] = {
     "bare_t2_baseline": 0.55,
     "bare_t3_baseline": 1.05,
     "enterprise_router_baseline": 0.76,
@@ -229,7 +229,11 @@ def calibrate_budget(
         frozen_caps = _load_frozen_caps(frozen_plan_path)
         preferred_models = _load_frozen_preferred_models(frozen_plan_path)
         if not historical_jsonl:
-            plan.historical_source = f"frozen_cap_prior:{frozen_plan_path}"
+            plan.historical_source = f"cold_start_pressure_prior:frozen_plan={frozen_plan_path}"
+            plan.reasons.append(
+                "projection_basis: cold_start_pressure_prior from frozen caps; "
+                "frozen caps are pressure anchors, not empirical expected-cost observations"
+            )
 
     # ── Estimate zero-history tasks from value matrix ────────────────────
     value_features: dict[str, dict] = {}
@@ -292,7 +296,7 @@ def calibrate_budget(
                 f"calibration:{strategy} n={cal_n} (low sample, treat projection as advisory)"
             )
         else:
-            cold_start_source = "frozen_cap_prior" if frozen_caps else "bootstrap_estimate"
+            cold_start_source = "cold_start_pressure_prior" if frozen_caps else "bootstrap_estimate"
             plan.reasons.append(
                 f"calibration:{strategy} n=0 (no historical data, projection uses {cold_start_source})"
             )
@@ -909,14 +913,15 @@ def _bootstrap_cost_estimate(
     *,
     frozen_caps: dict[str, float] | None = None,
 ) -> float:
-    """Estimate cost for a task with no historical data.
+    """Project cold-start spend pressure for a task with no historical data.
 
-    Uses the pre-run frozen cap prior when available, otherwise falls back to
-    bootstrap_difficulty ratios vs known tasks of the same strategy.
+    When frozen caps exist, they are used as pressure anchors rather than as
+    empirical expected-cost observations.  Otherwise the compiler falls back
+    to bootstrap_difficulty ratios vs known tasks of the same strategy.
     """
     frozen_cap = (frozen_caps or {}).get(task_id)
     if frozen_cap is not None and frozen_cap > 0:
-        multiplier = _FROZEN_CAP_COST_PRIOR_MULTIPLIERS.get(strategy)
+        multiplier = _COLD_START_PRESSURE_PRIOR_MULTIPLIERS.get(strategy)
         if multiplier is not None:
             return frozen_cap * multiplier
 

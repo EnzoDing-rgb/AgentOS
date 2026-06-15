@@ -298,6 +298,24 @@ def test_calibrate_without_target_uses_frozen_cap_sum_generation_rule(tmp_path: 
     assert plan.hard_cap_usd == 3.5
 
 
+def test_calibrate_labels_frozen_cap_projection_as_pressure_prior(tmp_path: Path) -> None:
+    fp = tmp_path / "fp.json"
+    fp.write_text(json.dumps({"plan": {"task-a": {"base_cap": 3.5, "preferred_model": "tier2", "priority": 1}}}))
+    vm = tmp_path / "vm.json"
+    vm.write_text(json.dumps({"tasks": {"task-a": {"bootstrap_difficulty": 20.0}}}))
+
+    plan = calibrate_budget(
+        ["task-a"],
+        frozen_plan_path=fp,
+        value_matrix_path=vm,
+        output_path=tmp_path / "bp.json",
+    )
+
+    assert plan.historical_source.startswith("cold_start_pressure_prior:")
+    assert any("frozen caps are pressure anchors" in reason for reason in plan.reasons)
+    assert any("projection uses cold_start_pressure_prior" in reason for reason in plan.reasons)
+
+
 def test_audit_calibration_dedup_keeps_last_row(tmp_path: Path) -> None:
     jsonl = tmp_path / "run.jsonl"
     jsonl.write_text(

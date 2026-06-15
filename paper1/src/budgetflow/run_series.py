@@ -208,9 +208,15 @@ def _record_contract(record: dict) -> RunContract:
 
 def latest_run_contract(jsonl_path: Path) -> RunContract | None:
     """Return the latest scoreable row's launch contract from a run JSONL."""
+    contracts = scoreable_run_contracts(jsonl_path)
+    return contracts[-1] if contracts else None
+
+
+def scoreable_run_contracts(jsonl_path: Path) -> list[RunContract]:
+    """Return every scoreable row's launch contract from a run JSONL."""
     if not jsonl_path.is_file():
-        return None
-    latest: RunContract | None = None
+        return []
+    contracts: list[RunContract] = []
     for line in jsonl_path.read_text().splitlines():
         if not line.strip():
             continue
@@ -221,8 +227,8 @@ def latest_run_contract(jsonl_path: Path) -> RunContract | None:
         score_status = str(record.get("score_status") or "")
         if score_status not in {"pass", "true_fail"}:
             continue
-        latest = _record_contract(record)
-    return latest
+        contracts.append(_record_contract(record))
+    return contracts
 
 
 def validate_resume_contract(
@@ -231,18 +237,19 @@ def validate_resume_contract(
     expected_contract: RunContract,
 ) -> None:
     """Fail fast when --resume would mix incompatible run provenance."""
-    prior = latest_run_contract(jsonl_path)
-    if prior is None:
+    prior_contracts = scoreable_run_contracts(jsonl_path)
+    if not prior_contracts:
         return
     mismatches: list[str] = []
-    for key, expected_value in expected_contract.items():
-        if expected_value in (None, "", (), []):
-            continue
-        prior_value = prior.get(key)
-        if prior_value in (None, "", (), []):
-            mismatches.append(f"{key}: prior=<missing> current={expected_value!r}")
-        elif prior_value != expected_value:
-            mismatches.append(f"{key}: prior={prior_value!r} current={expected_value!r}")
+    for row_idx, prior in enumerate(prior_contracts, start=1):
+        for key, expected_value in expected_contract.items():
+            if expected_value in (None, "", (), []):
+                continue
+            prior_value = prior.get(key)
+            if prior_value in (None, "", (), []):
+                mismatches.append(f"row{row_idx}:{key}: prior=<missing> current={expected_value!r}")
+            elif prior_value != expected_value:
+                mismatches.append(f"row{row_idx}:{key}: prior={prior_value!r} current={expected_value!r}")
     if mismatches:
         preview = "; ".join(mismatches[:6])
         suffix = "" if len(mismatches) <= 6 else f"; ... +{len(mismatches) - 6} more"

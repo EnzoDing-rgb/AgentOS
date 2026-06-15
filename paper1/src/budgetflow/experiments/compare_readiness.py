@@ -65,6 +65,7 @@ def build_compare_readiness_report(
     is_paper_mainline = strategy_names == mainline_strategy_names
     facts.append(f"paper_mainline={str(is_paper_mainline).lower()}")
     frozen_plan_arg = getattr(args, "frozen_plan", None)
+    frozen_plan = None
     uses_frozen_plan_routing = any(
         strategy.routing in {"enterprise_router", "budgetflow_same_router"}
         for strategy in strategies
@@ -200,7 +201,7 @@ def build_compare_readiness_report(
             requested_budget = float(getattr(args, "budget", 0.0) or 0.0)
             # When budget_plan provides the hard_cap (e.g. target_utilization mode),
             # the frozen cap sum is NOT the binding budget source.
-            budget_is_from_plan = bool(requested_budget == 0.0 and getattr(args, "budget_plan", None))
+            budget_is_from_plan = bool(requested_budget == 0.0 and budget_plan_path is not None)
             if budget_is_from_plan:
                 facts.append("budget_source=budget_plan")
             elif requested_budget == 0.0:
@@ -320,6 +321,28 @@ def build_compare_readiness_report(
                         f"budget plan is missing {len(missing_budget_tasks)} selected tasks: "
                         f"{preview}{suffix}"
                     )
+                bp_generation_mode = str(bp.get("generation_mode", "") or "")
+                if frozen_plan is not None and bp_generation_mode == "frozen_plan_cap_sum":
+                    bp_task_list = [str(task_id) for task_id in bp_task_ids]
+                    missing_frozen_tasks = [
+                        task_id for task_id in bp_task_list if frozen_plan.lookup(task_id) is None
+                    ]
+                    if missing_frozen_tasks:
+                        preview = ", ".join(missing_frozen_tasks[:8])
+                        suffix = "" if len(missing_frozen_tasks) <= 8 else f", ... +{len(missing_frozen_tasks) - 8} more"
+                        blocking.append(
+                            f"frozen router plan is missing {len(missing_frozen_tasks)} budget-plan tasks: "
+                            f"{preview}{suffix}"
+                        )
+                    else:
+                        bp_frozen_sum = frozen_plan.selected_cap_sum(bp_task_list)
+                        facts.append(f"budget_plan_frozen_cap_sum={bp_frozen_sum:.4f}")
+                        if abs(bp_hard_cap - bp_frozen_sum) > 0.0001:
+                            blocking.append(
+                                f"budget_plan hard_cap={bp_hard_cap:.4f} does not match "
+                                f"frozen plan cap sum over budget_plan.task_ids={bp_frozen_sum:.4f}; "
+                                "regenerate the budget plan from the frozen plan"
+                            )
             bp_strategy_names = bp.get("strategy_names")
             if isinstance(bp_strategy_names, list) and bp_strategy_names:
                 expected_strategies = [str(name) for name in bp_strategy_names]
