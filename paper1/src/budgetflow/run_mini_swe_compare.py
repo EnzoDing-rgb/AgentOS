@@ -251,6 +251,7 @@ def main() -> None:
         auto_budget_caps=auto_budget_task_caps,
         auto_budget_estimates=auto_budget_estimates,
         budget_plan_path=budget_plan_path,
+        per_task_cap=args.per_task_cap,
     )
     print(format_readiness_report(readiness), flush=True)
     if args.paid_readiness_only:
@@ -387,12 +388,12 @@ def main() -> None:
     print(f"{dim('tasks=' + ','.join(t.instance_id for t in tasks))}", flush=True)
     print(f"{dim('task_order=' + ', '.join(_task_descriptor(t) for t in tasks))}", flush=True)
     print(f"{dim('strategies=' + ','.join(strategy_names))}", flush=True)
-    if any(mode == "frozen_router_caps" for mode in budget_modes.values()):
-        budget_mode = "frozen_router_caps"
-    elif args.per_task_cap:
+    if any(mode == "per_task_cap" for mode in budget_modes.values()):
         budget_mode = f"per_task_cap={args.per_task_cap}" + (f"+overrun={max_overrun}" if max_overrun else "")
+    elif any(mode == "dynamic_task_caps" for mode in budget_modes.values()):
+        budget_mode = "dynamic_task_caps"
     else:
-        budget_mode = "shared_batch_budget" + (
+        budget_mode = "shared_batch_hard_budget" + (
             f" soft_budget={args.soft_budget}+overrun={max_overrun}" if args.soft_budget is not None else ""
         )
     print(
@@ -547,9 +548,9 @@ def main() -> None:
             )
 
         _eff_frozen = budget_modes_plan.effective_frozen_caps
-        _uses_frozen_caps = _eff_frozen is not None and cfg.routing in _frozen_routing_set
-        _eff_task_caps = _eff_frozen if _uses_frozen_caps else auto_budget_task_caps
-        _eff_budget_mode = "frozen_router_caps" if _uses_frozen_caps else None
+        _uses_frozen_routing = _eff_frozen is not None and cfg.routing in _frozen_routing_set
+        _eff_task_caps = auto_budget_task_caps
+        _eff_budget_mode = budget_modes[cfg.name] if budget_modes and cfg.name in budget_modes else None
         records, batch_spent = run_strategy_batch(
             cfg,
             batch_tasks,

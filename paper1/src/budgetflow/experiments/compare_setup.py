@@ -193,51 +193,44 @@ def build_batch_budget_modes(
     frozen_task_caps: dict[str, float] | None = None,
     budget_mode: str | None = None,
 ) -> BatchBudgetModes:
-    _frozen_routings = frozenset({"enterprise_router", "budgetflow_same_router"})
+    """Assign equal shared batch caps to all paper mainline strategies.
+
+    Every strategy gets the same ``constrained_budget`` as a policy-local
+    shared batch hard cap.  Per-task frozen caps and dynamic auto-budget caps
+    are explicit diagnostic modes — they only activate when the user passes
+    ``--per-task-cap`` or ``--auto-budget``.
+
+    Frozen router plans provide ``preferred_model`` and ``effort`` priors
+    (via ``effective_frozen_caps``), but do NOT change the budget cap for
+    enterprise_router / budgetflow_same_enterprise_router strategies.
+    """
     use_fixed_per_task_cap = per_task_cap is not None and per_task_cap > 0
     use_dynamic_task_caps = auto_budget_task_caps is not None
-    use_frozen_caps = frozen_task_caps is not None
     planned_dynamic_cap = sum(auto_budget_task_caps.values()) if auto_budget_task_caps else None
-    raw_frozen_sum = sum(frozen_task_caps.values()) if frozen_task_caps else 0.0
 
-    # In target_utilization mode, scale frozen per-task caps proportionally
-    # so their sum equals the shared hard budget.  The frozen plan continues
-    # to provide relative allocation and preferred_model; the budget_plan
-    # provides the binding hard cap.
+    # Frozen plan priors (preferred_model, effort) are available to all
+    # strategies, but do not change the shared cap.
     effective_frozen_caps: dict[str, float] | None = None
-    if (budget_mode == "target_utilization"
-            and frozen_task_caps
-            and raw_frozen_sum > 0
-            and constrained_budget > 0
-            and abs(raw_frozen_sum - constrained_budget) > 0.0001):
-        scale = constrained_budget / raw_frozen_sum
-        effective_frozen_caps = {
-            tid: cap * scale for tid, cap in frozen_task_caps.items()
-        }
-    else:
-        effective_frozen_caps = frozen_task_caps
-
-    planned_frozen_cap = sum(effective_frozen_caps.values()) if effective_frozen_caps else None
+    if frozen_task_caps:
+        effective_frozen_caps = dict(frozen_task_caps)
 
     def _cap_for(s: CompareStrategy) -> float | None:
-        if use_fixed_per_task_cap:
-            return per_task_cap
-        if use_frozen_caps and s.routing in _frozen_routings:
-            return planned_frozen_cap
-        if use_dynamic_task_caps and s.budgeted:
-            return planned_dynamic_cap
         if not s.budgeted:
             return None
+        if use_fixed_per_task_cap:
+            return per_task_cap
+        if use_dynamic_task_caps:
+            return planned_dynamic_cap
         return constrained_budget
 
     def _mode_for(s: CompareStrategy) -> str:
-        if use_fixed_per_task_cap and s.budgeted:
+        if not s.budgeted:
+            return "unconstrained"
+        if use_fixed_per_task_cap:
             return "per_task_cap"
-        if use_frozen_caps and s.routing in _frozen_routings:
-            return "frozen_router_caps"
-        if use_dynamic_task_caps and s.budgeted:
+        if use_dynamic_task_caps:
             return "dynamic_task_caps"
-        return "shared"
+        return "shared_batch_hard_budget"
 
     batch_caps: dict[str, float | None] = {s.name: _cap_for(s) for s in strategies}
     budget_modes: dict[str, str] = {s.name: _mode_for(s) for s in strategies}

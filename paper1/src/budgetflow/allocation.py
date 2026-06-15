@@ -27,7 +27,12 @@ class AllocationContext:
     """Estimated work, runway, or expected cost (diagnostic, not Claim 1 value)."""
 
     model_fit: dict[str, float] | None = None
-    """Per-tier effectiveness prior (tier_name → expected progress rate)."""
+    """Per-tier effectiveness prior (tier_name -> expected progress rate).
+
+    The canonical keyed form is ``{"tier2": rate, "tier3": rate}``.
+    ``{"strongest_vs_reference": delta}`` is accepted as a derived form at
+    policy boundaries, but runtime adapters should prefer per-tier rates.
+    """
 
     # Provenance
     value_source: str = "equal_sanity"
@@ -44,6 +49,18 @@ class AllocationContext:
     @property
     def has_model_fit(self) -> bool:
         return self.model_fit is not None and len(self.model_fit) > 0
+
+    def strongest_delta(self, *, reference_tier: int, strongest_tier: int) -> float | None:
+        """Return ModelFit delta for strongest minus reference tier if available."""
+        if not self.model_fit:
+            return None
+        if "strongest_vs_reference" in self.model_fit:
+            return float(self.model_fit["strongest_vs_reference"])
+        reference_key = f"tier{reference_tier}"
+        strongest_key = f"tier{strongest_tier}"
+        if reference_key not in self.model_fit or strongest_key not in self.model_fit:
+            return None
+        return float(self.model_fit[strongest_key]) - float(self.model_fit[reference_key])
 
     def to_metadata(self) -> dict:
         """Return a JSON-serialisable summary for trace/record observability."""

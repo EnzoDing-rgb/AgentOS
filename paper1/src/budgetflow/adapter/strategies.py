@@ -31,7 +31,6 @@ class RoutingContext:
     pressure_max: float | None = None
     adaptive: AdaptiveRoutingState | None = None
     workflow_level_backend: Backend | None = None
-    task_level_backend: Backend | None = None
     budget_only_router: BudgetOnlyStepRouter | None = None
     workflow_router: WorkflowLevelRouter | None = None
     bootstrap_policy: BootstrapPolicy | None = None
@@ -50,13 +49,14 @@ class RoutingContext:
     def __post_init__(self) -> None:
         if self.allocation is not None:
             self.task_value = self.allocation.task_value
+
+
 def build_progress_table_from_defaults(backends: list[Backend]) -> ProgressTable:
     pt = progress_table()
     table: ProgressTable = {stage: {} for stage in pt}
     defaults_by_tier: dict[int, str] = {}
     for stage, values in pt.items():
         for default_backend in values:
-            # The default backend names are stable tier ids ("tier1", ...).
             if default_backend.startswith("tier") and default_backend[4:].isdigit():
                 defaults_by_tier[int(default_backend[4:])] = default_backend
     for backend in sorted(backends, key=lambda backend: backend.tier):
@@ -114,30 +114,11 @@ def build_routing_context(
     if strategy == "segment_value_aware":
         ctx.selector = ValueAwareSelector(build_progress_table_from_defaults(backends), median_task_value=median_task_value)
         ctx.bootstrap_policy = BootstrapPolicy(ctx.selector, name=strategy)
+    # value_aware_task_level: per-turn ValueAwareSelector with segment=None.
+    # Re-selects backend every turn — does NOT pre-compute at init.
     if strategy == "value_aware_task_level":
-        selector = ValueAwareSelector(build_progress_table_from_defaults(backends), median_task_value=median_task_value)
-        avg_w = sum(active_w_i().values()) / len(active_w_i())
-        task_turn = TurnInfo(
-            workflow_id="task_level_init",
-            step_index=0,
-            stage=Stage.REPAIR,
-            w_i=avg_w,
-            context_len=0,
-            segment=None,
-        )
-        expected_costs = {
-            backend.name: backend.mean_output_tokens * backend.cost_per_output_token
-            for backend in ordered
-        }
-        selected = selector.select_backend(
-            turn_info=task_turn,
-            backends=ordered,
-            budget_pressure=pressure,
-            expected_costs=expected_costs,
-            task_value=task_value,
-        )
-        ctx.selector = selector
-        ctx.task_level_backend = selected.backend
+        ctx.selector = ValueAwareSelector(build_progress_table_from_defaults(backends), median_task_value=median_task_value)
+        ctx.bootstrap_policy = BootstrapPolicy(ctx.selector, name=strategy)
     return ctx
 
 
@@ -145,51 +126,45 @@ def _backend_by_tier(backends: list[Backend], tier: int) -> Backend:
     return next((backend for backend in backends if backend.tier == tier), backends[-1])
 
 
-def _budgetflow_max_tier(ctx: RoutingContext) -> int:
-    """Maximum tier for budgetflow_segment / budgetflow_conservative on this step.
+def _budgetflow_max_tier(ctx: RoutingContext, stage: Stage) -> int:
+    """Maximum tier cap for BudgetFlow policies on this step.
 
-    Default cap is the second available tier. When the tier frontier calibration
-    signals that the strongest tier is cheap and capable, the default cap is
-    lifted to the strongest tier — the selector still decides per-turn based on
-    cost/progress tradeoffs, but is not artificially capped at T2.
+    Uses the current turn's stage-specific tier frontier score as advisory
+    input.  The cap defaults to the strongest tier when the frontier score
+    indicates a good T3 case (score < 2.0), otherwise stays at the second tier.
 
-    If the previous step already used a higher tier, keep it to avoid ping-pong.
-    When budget pressure is elevated, lift the cap unconditionally.
-    If adaptive routing recommends a higher starting tier, honour it.
-
-    Conservative variant uses a lower pressure threshold (0.05 vs 0.15) because
-    the ConservativeSelector's conservation factor already makes T3 escalation
-    progressively harder.  The hard cap would double-penalize T3 access.
+    Budget pressure can still override: when pressure exceeds the threshold,
+    the strongest tier is unconditionally allowed regardless of frontier score.
     """
     cheapest = ModelCatalog.cheapest(ctx.backends)
     strongest = ModelCatalog.strongest(ctx.backends)
     second = ModelCatalog.second_cheapest(ctx.backends)
     frontier = ctx.tier_frontier
 
-    # When tier frontier says early T3 access is warranted, default to
-    # strongest tier; otherwise stick with second-cheapest as the cap floor.
-    # Before-frontier baseline: what the old hardcoded rule would produce
-    # (default_cap = second.tier, pressure threshold = 0.15).
     before_default = second.tier
     max_tier_before = max(cheapest.tier, min(before_default, strongest.tier))
     if ctx.budget_pressure >= 0.15:
         max_tier_before = strongest.tier
 
-    if frontier is not None and frontier.early_allow_strongest:
-        default_cap = strongest.tier
+    # Default cap uses frontier score — advisory, not binary
+    default_cap = second.tier
+    if frontier is not None:
+        score = frontier.frontier_score(
+            stage.value,
+            allocation=ctx.allocation,
+            budget_pressure=ctx.budget_pressure,
+        )
+        if score < 2.0:
+            default_cap = strongest.tier
     else:
+        # No frontier: conservative default to second tier
         default_cap = second.tier
 
     max_tier: int = max(cheapest.tier, min(default_cap, strongest.tier))
     ctx.max_tier_before_frontier = max_tier_before
     if ctx.last_backend is not None and ctx.last_backend.tier > max_tier:
         max_tier = ctx.last_backend.tier
-    # Pressure threshold: when budget_pressure crosses this value the
-    # strongest tier is unconditionally allowed.  Conservative and value-aware
-    # selectors have their own conservation mechanism, so they use a lower
-    # threshold (0.05) to avoid double-penalizing escalation.  When the
-    # frontier provides a threshold, use it; otherwise hardcode based on
-    # selector type.
+
     if frontier is not None:
         strongest_threshold = frontier.max_tier_pressure_threshold()
     elif ctx.strategy in ("budgetflow_conservative", "segment_value_aware"):
@@ -253,23 +228,15 @@ def choose_backend(ctx: RoutingContext, turn: TurnInfo, expected_costs: dict[str
             scores={}, pressure=ctx.budget_pressure, branch="workflow_level",
         )
         return ctx.workflow_level_backend
-    if ctx.strategy == "value_aware_task_level":
-        assert ctx.task_level_backend is not None
-        ctx.last_decision = RouterDecision(
-            backend=ctx.task_level_backend,
-            reason="value_aware_task_level_precomputed",
-            scores={ctx.task_level_backend.name: 0.0},
-            pressure=ctx.budget_pressure,
-            branch="value_aware_task_level",
-        )
-        return ctx.task_level_backend
     if ctx.strategy in {"budget_only", "budget_only_t2"}:
         assert ctx.budget_only_router is not None
         decision = ctx.budget_only_router.choose_backend(turn, ctx.backends, ctx.budget_pressure)
         ctx.last_decision = decision
         return decision.backend
-    if ctx.strategy in {"budgetflow_segment", "budgetflow_conservative", "segment_value_aware"}:
-        max_tier = _budgetflow_max_tier(ctx)
+    # value_aware_task_level: per-turn selection through BootstrapPolicy
+    # (segment=None, no segment signal — Claim 1 main policy)
+    if ctx.strategy in {"budgetflow_segment", "budgetflow_conservative", "segment_value_aware", "value_aware_task_level"}:
+        max_tier = _budgetflow_max_tier(ctx, turn.stage)
         policy = ctx.bootstrap_policy
         if policy is None:
             raise RuntimeError(f"strategy {ctx.strategy!r} requires a BootstrapPolicy")
@@ -278,9 +245,9 @@ def choose_backend(ctx: RoutingContext, turn: TurnInfo, expected_costs: dict[str
             backends=ctx.backends,
             budget_pressure=ctx.budget_pressure,
             expected_costs=expected_costs,
-            segment=turn.segment,
+            segment=turn.segment if ctx.strategy != "value_aware_task_level" else None,
         )
-        if ctx.strategy == "segment_value_aware":
+        if ctx.strategy in {"segment_value_aware", "value_aware_task_level"}:
             policy_kwargs["task_value"] = ctx.task_value
         policy_decision = policy.choose_backend(**policy_kwargs)
         ctx.last_policy_decision = policy_decision
@@ -299,11 +266,13 @@ def choose_backend(ctx: RoutingContext, turn: TurnInfo, expected_costs: dict[str
             "budgetflow_conservative": "budgetflow_conservative",
             "segment_value_aware": "segment_value_aware",
             "budgetflow_segment": "budgetflow_segment",
+            "value_aware_task_level": "value_aware_task_level",
         }
         reason_map = {
             "budgetflow_conservative": "bf_cons",
             "segment_value_aware": "bf_va",
             "budgetflow_segment": "bf_full",
+            "value_aware_task_level": "bf_task",
         }
         branch = branch_map.get(ctx.strategy, "budgetflow_segment")
         reason_prefix = reason_map.get(ctx.strategy, "bf_full")
@@ -359,11 +328,6 @@ def choose_backend(ctx: RoutingContext, turn: TurnInfo, expected_costs: dict[str
 
 
 def _backend_from_frozen_plan(ctx: RoutingContext, turn: TurnInfo) -> Backend:
-    """Look up preferred backend from the frozen router plan.
-
-    Falls back to the cheapest backend when no plan is loaded or the
-    instance is not found.
-    """
     if ctx.frozen_plan is None:
         return ModelCatalog.cheapest(ctx.backends)
     entry = ctx.frozen_plan.lookup(turn.workflow_id)

@@ -39,6 +39,7 @@ def build_compare_readiness_report(
     auto_budget_caps: dict[str, float] | None,
     auto_budget_estimates: dict[str, object] | None = None,
     budget_plan_path: Path | None = None,
+    per_task_cap: float | None = None,
 ) -> ReadinessReport:
     blocking: list[str] = []
     warnings: list[str] = []
@@ -46,6 +47,7 @@ def build_compare_readiness_report(
 
     task_ids = [str(task.instance_id) for task in tasks]
     strategy_names = [strategy.name for strategy in strategies]
+    use_fixed_per_task_cap = per_task_cap is not None and per_task_cap > 0
 
     facts.append(f"tasks={len(task_ids)}")
     facts.append(f"strategies={len(strategy_names)}")
@@ -57,16 +59,16 @@ def build_compare_readiness_report(
     facts.append(f"value_primary_t1={str(value_context.is_primary_value_evidence).lower()}")
     facts.append(f"value_matrix={value_context.matrix_path or 'equal_sanity'}")
     facts.append(f"runtime_root={runtime_root}")
-    uses_frozen_plan_caps = any(
+    uses_frozen_plan_routing = any(
         strategy.routing in {"enterprise_router", "budgetflow_same_router"}
         for strategy in strategies
-    ) and bool(getattr(args, "frozen_plan", None))
+    )
     if auto_budget_caps:
         facts.append("budget_mode=dynamic_task_caps")
-    elif uses_frozen_plan_caps:
-        facts.append("budget_mode=frozen_router_caps")
+    elif use_fixed_per_task_cap:
+        facts.append("budget_mode=per_task_cap")
     else:
-        facts.append("budget_mode=static_or_shared")
+        facts.append("budget_mode=shared_batch_hard_budget")
     facts.append(f"dynamic_caps={'on' if auto_budget_enabled else 'off'}")
     if auto_budget_caps:
         planned_policy_cap = sum(float(cap) for cap in auto_budget_caps.values())
@@ -264,6 +266,54 @@ def build_compare_readiness_report(
                         f"budget plan is missing {len(missing_budget_tasks)} selected tasks: "
                         f"{preview}{suffix}"
                     )
+
+    # ── Per-policy burn-rate deviation gate ───────────────────────────────
+    if budget_plan_path is not None and budget_plan_path.is_file():
+        try:
+            import json as _json2
+            bp2 = _json2.loads(budget_plan_path.read_text())
+        except (OSError, ValueError, TypeError):
+            bp2 = {}
+        cal_err = bp2.get("calibration_error", {}) if isinstance(bp2, dict) else {}
+        proj_conf = bp2.get("projection_confidence", "unvalidated") if isinstance(bp2, dict) else "unvalidated"
+        per_strat_util = bp2.get("projected_utilization_by_strategy", {}) if isinstance(bp2, dict) else {}
+
+        if proj_conf == "unvalidated":
+            warnings.append(
+                "budget plan projection_confidence=unvalidated: "
+                "do not claim target utilization or scarcity regime is satisfied"
+            )
+        elif proj_conf == "low":
+            warnings.append(
+                "budget plan projection_confidence=low: "
+                "treat projected utilization as advisory only"
+            )
+
+        # Check strongest baseline and primary BF policy for large deviations
+        gate_strategies = {"bare_t3_baseline", "budgetflow_task_level"}
+        for gs in gate_strategies:
+            gs_err = cal_err.get(gs) if cal_err else None
+            if gs_err is not None and gs_err > 1.0:
+                blocking.append(
+                    f"calibration error for {gs} = {gs_err:.1%} > 100%; "
+                    f"projection model is unreliable for primary paper strategies. "
+                    f"Recalibrate budget compiler before paid run."
+                )
+            elif gs_err is not None and gs_err > 0.50:
+                warnings.append(
+                    f"calibration WARNING: {gs} projection error {gs_err:.1%} > 50%. "
+                    f"Consider wider safety margin or frozen_plan_cap_sum mode."
+                )
+
+        # Per-policy utilization: flag if strongest baseline or BF task isn't budget-constrained
+        t3_util = per_strat_util.get("bare_t3_baseline", 0.0) if per_strat_util else 0.0
+        bf_util = per_strat_util.get("budgetflow_task_level", 0.0) if per_strat_util else 0.0
+        if t3_util < 0.10 and bf_util < 0.10:
+            warnings.append(
+                f"projected utilization too low for scarcity regime: "
+                f"bare_t3={t3_util:.1%}, bf_task_level={bf_util:.1%}. "
+                f"Budget may be too loose for mechanism discrimination."
+            )
 
     return ReadinessReport(tuple(blocking), tuple(warnings), tuple(facts))
 

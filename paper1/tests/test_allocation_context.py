@@ -150,3 +150,145 @@ def test_bootstrap_task_effort_structure() -> None:
     assert result["source"] == "task_metadata_formula"
     assert "features" in result
     assert isinstance(result["bootstrap_heuristic"], float)
+
+
+# ── TierFrontier: ModelFit-based advisory scoring ────────────────────────
+
+def test_tier_frontier_score_better_with_higher_progress_delta() -> None:
+    """Frontier score is lower (better T3 case) when progress delta is positive."""
+    from budgetflow.tier_frontier import TierFrontier
+    from budgetflow.allocation import AllocationContext
+
+    # Simulate a frontier where T3 has good repair progress delta
+    frontier = TierFrontier(
+        reference_tier=2,
+        strongest_tier=3,
+        reference_display="T2",
+        strongest_display="T3",
+        strongest_input_ratio=2.0,
+        strongest_output_ratio=2.5,
+        strongest_progress_delta={"localization": 0.1, "repair": 0.3, "validation": 0.2},
+        reason="test",
+    )
+
+    # High progress delta → low score → good T3 case
+    score_repair = frontier.frontier_score("repair", budget_pressure=0.1)
+    score_localization = frontier.frontier_score("localization", budget_pressure=0.1)
+    assert score_repair < score_localization  # repair has higher delta
+
+
+def test_tier_frontier_score_worse_with_tight_budget() -> None:
+    """Higher budget pressure → higher (worse) frontier score."""
+    from budgetflow.tier_frontier import TierFrontier
+    from budgetflow.allocation import AllocationContext
+
+    frontier = TierFrontier(
+        reference_tier=2,
+        strongest_tier=3,
+        reference_display="T2",
+        strongest_display="T3",
+        strongest_input_ratio=2.0,
+        strongest_output_ratio=2.5,
+        strongest_progress_delta={"localization": 0.1, "repair": 0.3, "validation": 0.2},
+        reason="test",
+    )
+
+    score_loose = frontier.frontier_score("repair", budget_pressure=0.0)
+    score_tight = frontier.frontier_score("repair", budget_pressure=0.8)
+    assert score_tight > score_loose  # tight budget → worse T3 case
+
+
+def test_tier_frontier_score_uses_task_value_from_allocation() -> None:
+    """Higher task value → lower (better) frontier score."""
+    from budgetflow.tier_frontier import TierFrontier
+    from budgetflow.allocation import AllocationContext
+
+    frontier = TierFrontier(
+        reference_tier=2,
+        strongest_tier=3,
+        reference_display="T2",
+        strongest_display="T3",
+        strongest_input_ratio=2.0,
+        strongest_output_ratio=2.5,
+        strongest_progress_delta={"repair": 0.2},
+        reason="test",
+    )
+
+    low_value = AllocationContext(task_value=0.5)
+    high_value = AllocationContext(task_value=2.0)
+    score_low = frontier.frontier_score("repair", allocation=low_value, budget_pressure=0.1)
+    score_high = frontier.frontier_score("repair", allocation=high_value, budget_pressure=0.1)
+    assert score_high < score_low  # higher value → better T3 case
+
+
+def test_tier_frontier_score_uses_per_tier_model_fit_delta() -> None:
+    """ModelFit tier priors must be consumed as tier3-tier2 delta."""
+    from budgetflow.tier_frontier import TierFrontier
+
+    frontier = TierFrontier(
+        reference_tier=2,
+        strongest_tier=3,
+        reference_display="T2",
+        strongest_display="T3",
+        strongest_input_ratio=1.0,
+        strongest_output_ratio=1.0,
+        strongest_progress_delta={"repair": 0.01},
+        reason="test",
+    )
+
+    weak_catalog_score = frontier.frontier_score("repair", allocation=AllocationContext(task_value=1.0))
+    empirical_fit_score = frontier.frontier_score(
+        "repair",
+        allocation=AllocationContext(
+            task_value=1.0,
+            model_fit={"tier2": 0.30, "tier3": 0.80},
+            model_fit_source="policy_memory",
+        ),
+    )
+
+    assert empirical_fit_score < weak_catalog_score
+    assert empirical_fit_score == pytest.approx(2.0)
+
+
+def test_tier_frontier_no_progress_delta_returns_cost_ratio() -> None:
+    """When progress delta is zero or negative, score is dominated by cost ratio."""
+    from budgetflow.tier_frontier import TierFrontier
+
+    frontier = TierFrontier(
+        reference_tier=2,
+        strongest_tier=3,
+        reference_display="T2",
+        strongest_display="T3",
+        strongest_input_ratio=3.0,
+        strongest_output_ratio=3.5,
+        strongest_progress_delta={"repair": -0.1},
+        reason="test",
+    )
+
+    score = frontier.frontier_score("repair", budget_pressure=0.0)
+    # No value gain → score = cost_ratio (≈3.0), well above 2.0 threshold
+    assert score > 2.0
+
+
+def test_value_aware_task_level_uses_bootstrap_policy_not_precomputed() -> None:
+    """value_aware_task_level must use per-turn BootstrapPolicy, not pre-select."""
+    from budgetflow.adapter.strategies import build_routing_context
+
+    ctx = build_routing_context(
+        "value_aware_task_level",
+        backends=[],
+    )
+    # Must have bootstrap_policy set (per-turn), not task_level_backend (pre-computed)
+    assert ctx.bootstrap_policy is not None
+    assert getattr(ctx, "task_level_backend", None) is None
+
+
+def test_budgetflow_segment_uses_segment_signal() -> None:
+    """bf_segment passes turn.segment to policy (Claim 2 enhancement)."""
+    from budgetflow.adapter.strategies import build_routing_context
+
+    ctx = build_routing_context(
+        "budgetflow_segment",
+        backends=[],
+    )
+    assert ctx.bootstrap_policy is not None

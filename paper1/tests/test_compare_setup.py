@@ -158,11 +158,11 @@ def test_batch_budget_modes_distinguish_dynamic_caps() -> None:
     assert modes.batch_caps["budgetflow_segment"] == pytest.approx(0.3)
     assert modes.budget_modes["budgetflow_segment"] == "dynamic_task_caps"
     assert modes.batch_caps["all_pro"] is None
-    assert modes.budget_modes["all_pro"] == "shared"
+    assert modes.budget_modes["all_pro"] == "unconstrained"
 
 
-def test_batch_budget_modes_frozen_router_caps_for_mechanism_strategies() -> None:
-    """enterprise_router and budgetflow_same_enterprise_router get frozen_router_caps mode."""
+def test_batch_budget_modes_frozen_caps_stored_as_priors() -> None:
+    """Frozen caps are stored as effective_frozen_caps for all strategies, not as per-policy caps."""
     strategies = (
         CompareStrategy("enterprise_router_baseline", "enterprise_router"),
         CompareStrategy("budgetflow_same_enterprise_router", "budgetflow_same_router"),
@@ -177,12 +177,12 @@ def test_batch_budget_modes_frozen_router_caps_for_mechanism_strategies() -> Non
         frozen_task_caps=frozen_caps,
     )
 
-    assert modes.budget_modes["enterprise_router_baseline"] == "frozen_router_caps"
-    assert modes.budget_modes["budgetflow_same_enterprise_router"] == "frozen_router_caps"
-    assert modes.budget_modes["bare_t3_baseline"] == "shared"
-    assert modes.batch_caps["enterprise_router_baseline"] == pytest.approx(0.75)
-    assert modes.batch_caps["budgetflow_same_enterprise_router"] == pytest.approx(0.75)
-    assert modes.batch_caps["bare_t3_baseline"] == pytest.approx(1.0)
+    # All strategies share the same batch cap. Frozen caps provide priors only.
+    for name in ("enterprise_router_baseline", "budgetflow_same_enterprise_router", "bare_t3_baseline"):
+        assert modes.budget_modes[name] == "shared_batch_hard_budget"
+        assert modes.batch_caps[name] == pytest.approx(1.0)
+    # Frozen caps are passed through as effective_frozen_caps for priors
+    assert modes.effective_frozen_caps == frozen_caps
 
 
 def test_resolve_budget_plan_from_budget_plan_json(tmp_path) -> None:
@@ -237,8 +237,8 @@ def test_resolve_budget_plan_frozen_fallback_when_no_budget_plan(tmp_path) -> No
     assert plan.source == "frozen_plan_cap_sum"
 
 
-def test_batch_budget_modes_frozen_caps_override_dynamic_caps() -> None:
-    """frozen_task_caps take priority over auto_budget_task_caps for mechanism strategies."""
+def test_batch_budget_modes_dynamic_caps_apply_to_all_strategies() -> None:
+    """auto_budget_task_caps apply to all budgeted strategies equally; frozen caps are priors."""
     strategies = (
         CompareStrategy("enterprise_router_baseline", "enterprise_router"),
         CompareStrategy("budgetflow_segment", "segment_value_aware"),
@@ -253,14 +253,17 @@ def test_batch_budget_modes_frozen_caps_override_dynamic_caps() -> None:
         frozen_task_caps=frozen_caps,
     )
 
-    assert modes.budget_modes["enterprise_router_baseline"] == "frozen_router_caps"
+    # Both strategies get dynamic_task_caps mode; frozen caps are priors only
+    assert modes.budget_modes["enterprise_router_baseline"] == "dynamic_task_caps"
     assert modes.budget_modes["budgetflow_segment"] == "dynamic_task_caps"
-    assert modes.batch_caps["enterprise_router_baseline"] == pytest.approx(0.25)
+    assert modes.batch_caps["enterprise_router_baseline"] == pytest.approx(0.99)
     assert modes.batch_caps["budgetflow_segment"] == pytest.approx(0.99)
+    # Frozen caps still available as priors
+    assert modes.effective_frozen_caps == frozen_caps
 
 
-def test_target_utilization_scales_frozen_caps_to_constrained_budget() -> None:
-    """In target_utilization mode, frozen per-task caps are scaled so sum = hard_cap."""
+def test_frozen_caps_are_priors_not_separate_batch_caps() -> None:
+    """Frozen caps provide priors only; all strategies share constrained_budget."""
     strategies = (
         CompareStrategy("enterprise_router_baseline", "enterprise_router"),
         CompareStrategy("budgetflow_same_enterprise_router", "budgetflow_same_router"),
@@ -272,61 +275,31 @@ def test_target_utilization_scales_frozen_caps_to_constrained_budget() -> None:
         strategies=strategies,
         per_task_cap=None,
         auto_budget_task_caps=None,
-        constrained_budget=2.0,  # target_utilization hard_cap
-        frozen_task_caps=frozen_caps,
-        budget_mode="target_utilization",
-    )
-
-    # Scaled sum = 2.0 (not 10.0)
-    assert modes.batch_caps["enterprise_router_baseline"] == pytest.approx(2.0)
-    assert modes.batch_caps["budgetflow_same_enterprise_router"] == pytest.approx(2.0)
-    # Non-frozen strategies still get constrained_budget
-    assert modes.batch_caps["bare_t3_baseline"] == pytest.approx(2.0)
-    assert modes.batch_caps["budgetflow_segment"] == pytest.approx(2.0)
-
-    # effective_frozen_caps are scaled proportionally
-    eff = modes.effective_frozen_caps
-    assert eff is not None
-    assert eff["task-a"] == pytest.approx(0.4)   # 2.0 * (2/10)
-    assert eff["task-b"] == pytest.approx(0.6)   # 3.0 * (2/10)
-    assert eff["task-c"] == pytest.approx(1.0)   # 5.0 * (2/10)
-    assert sum(eff.values()) == pytest.approx(2.0)
-
-
-def test_target_utilization_no_scaling_when_sum_already_matches() -> None:
-    """When frozen cap sum already equals constrained_budget, no scaling needed."""
-    strategies = (
-        CompareStrategy("enterprise_router_baseline", "enterprise_router"),
-    )
-    frozen_caps = {"task-a": 1.0, "task-b": 1.0}  # sum = 2.0
-    modes = build_batch_budget_modes(
-        strategies=strategies,
-        per_task_cap=None,
-        auto_budget_task_caps=None,
         constrained_budget=2.0,
         frozen_task_caps=frozen_caps,
         budget_mode="target_utilization",
     )
-    # effective_frozen_caps is the original dict (no scaling)
-    assert modes.effective_frozen_caps is frozen_caps
-    assert modes.batch_caps["enterprise_router_baseline"] == pytest.approx(2.0)
+
+    # All strategies get the same constrained_budget; frozen caps are priors
+    for name in ("enterprise_router_baseline", "budgetflow_same_enterprise_router",
+                 "bare_t3_baseline", "budgetflow_segment"):
+        assert modes.batch_caps[name] == pytest.approx(2.0)
+        assert modes.budget_modes[name] == "shared_batch_hard_budget"
+
+    # effective_frozen_caps are the original unmodified dict (priors only)
+    assert modes.effective_frozen_caps == frozen_caps
 
 
-def test_legacy_mode_does_not_scale_frozen_caps() -> None:
-    """Without target_utilization, frozen caps keep their raw sum."""
+def test_unbudgeted_strategy_gets_no_cap() -> None:
+    """Unbudgeted strategies get None cap and unconstrained mode."""
     strategies = (
-        CompareStrategy("enterprise_router_baseline", "enterprise_router"),
+        CompareStrategy("all_pro", "all_pro", budgeted=False),
     )
-    frozen_caps = {"task-a": 2.0, "task-b": 3.0}  # sum = 5.0
     modes = build_batch_budget_modes(
         strategies=strategies,
         per_task_cap=None,
         auto_budget_task_caps=None,
         constrained_budget=1.0,
-        frozen_task_caps=frozen_caps,
-        # no budget_mode → legacy
     )
-    # Legacy: frozen cap sum = 5.0, not constrained_budget 1.0
-    assert modes.batch_caps["enterprise_router_baseline"] == pytest.approx(5.0)
-    # effective_frozen_caps is the original unmodified dict
-    assert modes.effective_frozen_caps is frozen_caps
+    assert modes.batch_caps["all_pro"] is None
+    assert modes.budget_modes["all_pro"] == "unconstrained"

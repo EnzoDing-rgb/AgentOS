@@ -181,7 +181,8 @@ class TestBuildRoutingContext:
         assert ctx.task_value == 0.5
         assert ctx.median_task_value == 2.0
 
-    def test_task_level_value_control_precomputes_one_backend(self):
+    def test_task_level_value_control_uses_per_turn_policy(self):
+        """value_aware_task_level uses BootstrapPolicy per-turn, no pre-computed backend."""
         from budgetflow.adapter.strategies import build_routing_context, choose_backend
         from budgetflow.types import Stage
         backends = _backends()
@@ -196,11 +197,14 @@ class TestBuildRoutingContext:
         loc_backend = choose_backend(ctx, _turn(Stage.LOCALIZATION, w_i=1.0), {b.name: 0.01 for b in backends})
         repair_backend = choose_backend(ctx, _turn(Stage.REPAIR, w_i=3.0), {b.name: 0.01 for b in backends})
 
-        assert ctx.task_level_backend is not None
-        assert loc_backend == ctx.task_level_backend
-        assert repair_backend == ctx.task_level_backend
+        # Per-turn routing via BootstrapPolicy, not pre-computed
+        assert ctx.bootstrap_policy is not None
+        assert getattr(ctx, "task_level_backend", None) is None
         assert ctx.last_decision is not None
         assert ctx.last_decision.branch == "value_aware_task_level"
+        # Both calls should produce valid backends (may differ per-turn)
+        assert loc_backend is not None
+        assert repair_backend is not None
 
 
 class TestValueAwareTraceFields:

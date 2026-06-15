@@ -6,6 +6,8 @@ from pathlib import Path
 
 from budgetflow.experiments.budget_binding import (
     _estimate_t3_cost_share,
+    _load_historical_costs,
+    _row_is_calibration_eligible,
     _load_frozen_preferred_models,
     _load_frozen_caps,
     _distribution_p75,
@@ -330,3 +332,70 @@ def test_audit_calibration_dedup_keeps_last_row(tmp_path: Path) -> None:
 
     assert audit.strategy_errors["bare_t3_baseline"]["actual"] == 0.40
     assert audit.strategy_errors["bare_t3_baseline"]["task_count"] == 1
+
+
+def test_calibration_keeps_clean_shared_rows_from_frozen_plan_budget_source(tmp_path: Path) -> None:
+    """Budget source name is not contamination when runtime budget mode is clean."""
+    row = {
+        "strategy": "bare_t3_baseline",
+        "instance_id": "task-a",
+        "total_cost": 0.12,
+        "budget_mode": "shared_batch_hard_budget",
+        "budget_input": {"source": "budget_plan:frozen_plan_cap_sum"},
+        "catalog": {"catalog_revision": "2026-06-10-a"},
+        "exit_status": "HarnessResolved",
+    }
+    eligible, reason = _row_is_calibration_eligible(row)
+    assert (eligible, reason) == (True, "clean")
+
+    jsonl = tmp_path / "hist.jsonl"
+    jsonl.write_text(json.dumps(row) + "\n")
+    costs, excluded = _load_historical_costs(jsonl)
+    assert costs == {"bare_t3_baseline": {"task-a": 0.12}}
+    assert excluded == {}
+
+
+def test_calibration_excludes_actual_frozen_router_cap_rows() -> None:
+    row = {
+        "strategy": "enterprise_router_baseline",
+        "instance_id": "task-a",
+        "total_cost": 0.12,
+        "budget_mode": "frozen_router_caps",
+        "budget_input": {"source": "budget_plan:frozen_plan_cap_sum"},
+        "catalog": {"catalog_revision": "2026-06-10-a"},
+        "exit_status": "HarnessResolved",
+    }
+    eligible, reason = _row_is_calibration_eligible(row)
+    assert eligible is False
+    assert reason == "budget_asymmetry:frozen_router_caps"
+
+
+def test_calibration_keeps_enterprise_router_when_value_aware_inactive() -> None:
+    row = {
+        "strategy": "enterprise_router_baseline",
+        "routing": "enterprise_router",
+        "instance_id": "task-a",
+        "total_cost": 0.12,
+        "budget_mode": "shared_batch_hard_budget",
+        "catalog": {"catalog_revision": "2026-06-10-a"},
+        "exit_status": "HarnessResolved",
+        "va_active": False,
+    }
+    eligible, reason = _row_is_calibration_eligible(row)
+    assert (eligible, reason) == (True, "clean")
+
+
+def test_calibration_excludes_enterprise_router_with_value_aware_active() -> None:
+    row = {
+        "strategy": "enterprise_router_baseline",
+        "routing": "enterprise_router",
+        "instance_id": "task-a",
+        "total_cost": 0.12,
+        "budget_mode": "shared_batch_hard_budget",
+        "catalog": {"catalog_revision": "2026-06-10-a"},
+        "exit_status": "HarnessResolved",
+        "va_active": True,
+    }
+    eligible, reason = _row_is_calibration_eligible(row)
+    assert eligible is False
+    assert reason == "contaminated:enterprise_router_with_va_active"

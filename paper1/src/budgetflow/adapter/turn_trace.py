@@ -270,7 +270,7 @@ def router_trace_fields(routing) -> dict[str, Any]:
     }
     frontier = getattr(routing, "tier_frontier", None)
     if frontier is not None:
-        fields["tier_frontier_active"] = frontier.early_allow_strongest
+        fields["tier_frontier_active"] = True  # frontier is always active, advisory score replaces binary gate
         fields["tier_frontier_reason"] = frontier.reason
         fields["strongest_vs_reference_cost_ratio"] = round(
             max(frontier.strongest_input_ratio, frontier.strongest_output_ratio), 4

@@ -44,6 +44,7 @@ class BudgetBindingPlan:
     pressure_contract: dict[str, Any] = field(default_factory=dict)
     projection_confidence: str = "unvalidated"
     calibration_error: dict[str, float] = field(default_factory=dict)
+    calibration_excluded: dict[str, int] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         d: dict = {
@@ -74,6 +75,8 @@ class BudgetBindingPlan:
             d["override_reason"] = self.override_reason
         if self.calibration_error:
             d["calibration_error"] = {k: round(v, 4) for k, v in self.calibration_error.items()}
+        if self.calibration_excluded:
+            d["calibration_excluded"] = dict(self.calibration_excluded)
         return d
 
     @classmethod
@@ -98,6 +101,7 @@ class BudgetBindingPlan:
             pressure_contract=d.get("pressure_contract", {}),
             projection_confidence=d.get("projection_confidence", "unvalidated"),
             calibration_error=d.get("calibration_error", {}),
+            calibration_excluded=d.get("calibration_excluded", {}),
         )
 
 
@@ -185,8 +189,16 @@ def calibrate_budget(
 
     # ── Load historical per-strategy per-task costs ──────────────────────
     historical: dict[str, dict[str, float]] = {}  # strategy -> {task_id -> cost}
+    calibration_excluded: dict[str, int] = {}
     if historical_jsonl and historical_jsonl.exists():
-        historical = _load_historical_costs(historical_jsonl)
+        historical, calibration_excluded = _load_historical_costs(historical_jsonl)
+        if calibration_excluded:
+            plan.calibration_excluded = calibration_excluded
+            total_excluded = sum(calibration_excluded.values())
+            plan.reasons.append(
+                f"calibration:excluded {total_excluded} contaminated rows: "
+                + ", ".join(f"{k}={v}" for k, v in sorted(calibration_excluded.items()))
+            )
 
     # ── Compute T3 price multiplier for re-normalization ────────────────
     t3_multiplier = _t3_price_multiplier()
@@ -203,16 +215,42 @@ def calibrate_budget(
     if value_matrix_path and value_matrix_path.exists():
         value_features = _load_value_features(value_matrix_path)
 
+    # ── Effective-cost calibration per strategy ─────────────────────────
+    # Compute cost-per-effort-unit from clean historical rows to account for
+    # turn-efficiency differences (T3 may be cheaper than T2 despite higher
+    # token prices, because it completes tasks in fewer turns).
+    strategy_cost_per_effort: dict[str, float] = {}
+    strategy_cal_n: dict[str, int] = {}
+    for strategy in strategies:
+        costs: list[float] = []
+        for tid in task_ids:
+            hist_cost = historical.get(strategy, {}).get(tid)
+            if hist_cost is not None and hist_cost > 0:
+                feat = value_features.get(tid, {})
+                effort = feat.get("bootstrap_difficulty", 30.0) if feat else 30.0
+                if effort > 0:
+                    costs.append(hist_cost / effort)
+        if costs:
+            strategy_cost_per_effort[strategy] = sorted(costs)[len(costs) // 2]
+            strategy_cal_n[strategy] = len(costs)
+
     # ── Project spend per strategy ──────────────────────────────────────
     projected: dict[str, float] = {}
     for strategy in strategies:
         total = 0.0
+        cpe = strategy_cost_per_effort.get(strategy)
         for tid in task_ids:
             hist_cost = historical.get(strategy, {}).get(tid)
             if hist_cost is not None:
+                # Historical cost with catalog-based re-normalization
                 t3_share = _estimate_t3_cost_share(strategy, tid, historical, preferred_models=preferred_models)
                 normalized = hist_cost * (1.0 + t3_share * (t3_multiplier - 1.0))
                 total += normalized
+            elif cpe is not None:
+                # Cost-per-effort calibration: use observed efficiency
+                feat = value_features.get(tid, {})
+                effort = feat.get("bootstrap_difficulty", 30.0) if feat else 30.0
+                total += effort * cpe
             else:
                 total += _bootstrap_cost_estimate(
                     tid, strategy, value_features, historical, t3_multiplier
@@ -220,6 +258,22 @@ def calibrate_budget(
         projected[strategy] = total
 
     plan.projected_spend_by_strategy = projected
+
+    # Report per-strategy calibration confidence
+    for strategy in strategies:
+        cal_n = strategy_cal_n.get(strategy, 0)
+        if cal_n >= 5:
+            plan.reasons.append(
+                f"calibration:{strategy} n={cal_n} cost_per_effort={strategy_cost_per_effort.get(strategy, 0):.6f}"
+            )
+        elif cal_n > 0:
+            plan.reasons.append(
+                f"calibration:{strategy} n={cal_n} (low sample, treat projection as advisory)"
+            )
+        else:
+            plan.reasons.append(
+                f"calibration:{strategy} n=0 (no historical data, projection is bootstrap estimate)"
+            )
 
     plan.min_viable_budget = max(projected.values()) if projected else 0.0
     frozen_cap_sum = sum(frozen_caps.get(tid, 0.0) for tid in task_ids)
@@ -356,6 +410,7 @@ def audit_calibration(
     budget_plan: BudgetBindingPlan | Path,
     *,
     output_path: Path | None = None,
+    per_strategy_cap: dict[str, float] | None = None,
 ) -> CalibrationAudit:
     """Compare projected spend from a budget plan against actual spend in a JSONL.
 
@@ -365,6 +420,10 @@ def audit_calibration(
 
     *budget_plan* can be a BudgetBindingPlan instance or a path to a
     budget_plan.json file.
+
+    *per_strategy_cap* maps strategy name → batch cap for per-policy
+    utilization.  When provided, utilization is computed against each
+    strategy's own cap rather than the single ``hard_cap_usd``.
     """
     if isinstance(budget_plan, Path):
         plan = BudgetBindingPlan.from_dict(json.loads(budget_plan.read_text()))
@@ -404,10 +463,16 @@ def audit_calibration(
         actual_spend[strategy] = actual_spend.get(strategy, 0.0) + cost
         strategy_task_counts[strategy] = strategy_task_counts.get(strategy, 0) + 1
 
-    hard_cap = plan.hard_cap_usd
-    if hard_cap > 0:
+    if per_strategy_cap:
         for strategy in actual_spend:
-            actual_utilization[strategy] = min(actual_spend[strategy] / hard_cap, 1.0)
+            cap = per_strategy_cap.get(strategy, per_strategy_cap.get("default"))
+            if cap and cap > 0:
+                actual_utilization[strategy] = round(min(actual_spend[strategy] / cap, 1.0), 4)
+    else:
+        hard_cap = plan.hard_cap_usd
+        if hard_cap > 0:
+            for strategy in actual_spend:
+                actual_utilization[strategy] = round(min(actual_spend[strategy] / hard_cap, 1.0), 4)
 
     # ── Compare projected vs actual ────────────────────────────────────
     strategy_errors: dict[str, dict] = {}
@@ -422,10 +487,12 @@ def audit_calibration(
         n_strategies += 1
         error_pct = abs(projected - actual) / max(projected, 0.001)
         total_abs_error += error_pct
+        cap = per_strategy_cap.get(strategy) if per_strategy_cap else plan.hard_cap_usd
         strategy_errors[strategy] = {
             "projected": round(projected, 4),
             "actual": round(actual, 4),
             "error_pct": round(error_pct, 4),
+            "strategy_cap": round(cap, 4) if cap else None,
             "projected_utilization": plan.projected_utilization_by_strategy.get(strategy, 0.0),
             "actual_utilization": actual_utilization.get(strategy, 0.0),
             "task_count": strategy_task_counts.get(strategy, 0),
@@ -628,10 +695,53 @@ def _apply_calibration_gate(
         )
 
 
-def _load_historical_costs(jsonl_path: Path) -> dict[str, dict[str, float]]:
+def _row_is_calibration_eligible(row: dict) -> tuple[bool, str]:
+    """Check whether a historical JSONL row is clean enough for cost calibration.
+
+    Contaminated rows are forensic-only — they may inform postmortems but
+    must not enter cost-per-effort or ModelFit estimation.
+    """
+    budget_mode = row.get("budget_mode", "")
+
+    # Budget asymmetry is a runtime cap-mode problem.  A budget plan whose
+    # source is "frozen_plan_cap_sum" can still produce a clean shared batch
+    # cap after the cap semantics fix, so do not key on budget_input.source.
+    if budget_mode == "frozen_router_caps":
+        return False, "budget_asymmetry:frozen_router_caps"
+
+    # Diagnostic catalog with inflated prices (e.g. t3x3 = 3x T3 prices).
+    catalog = row.get("catalog") or {}
+    catalog_rev = catalog.get("catalog_revision", "")
+    if "t3x3" in catalog_rev.lower() or "diagnostic" in catalog_rev.lower():
+        return False, f"diagnostic_catalog:{catalog_rev}"
+
+    # Router bugs or pre-selected backend that contaminated tier choices.
+    routing = row.get("routing", "")
+    va_active = row.get("va_active")
+    if routing == "enterprise_router" and va_active is True:
+        return False, "contaminated:enterprise_router_with_va_active"
+
+    # Protocol/harness errors that truncated the run — cost is not
+    # representative of normal execution.
+    exit_status = row.get("exit_status", "")
+    if exit_status in ("BudgetFlowBudgetError",):
+        return False, f"budget_error:{exit_status}"
+
+    return True, "clean"
+
+
+def _load_historical_costs(
+    jsonl_path: Path,
+    *,
+    calibration_eligible_only: bool = True,
+) -> tuple[dict[str, dict[str, float]], dict[str, int]]:
     """Extract per-strategy per-task total_cost from historical JSONL.
+
+    Returns (costs, exclusion_counts) where exclusion_counts maps
+    exclusion_reason -> count of rows filtered out.
     """
     costs: dict[str, dict[str, float]] = {}
+    excluded: dict[str, int] = {}
     with jsonl_path.open() as f:
         for line in f:
             line = line.strip()
@@ -645,9 +755,16 @@ def _load_historical_costs(jsonl_path: Path) -> dict[str, dict[str, float]]:
             instance_id = d.get("instance_id", "")
             if not strategy or not instance_id:
                 continue
+
+            if calibration_eligible_only:
+                eligible, reason = _row_is_calibration_eligible(d)
+                if not eligible:
+                    excluded[reason] = excluded.get(reason, 0) + 1
+                    continue
+
             total_cost = d.get("total_cost") or d.get("scoreable_cost") or 0.0
             costs.setdefault(strategy, {})[instance_id] = float(total_cost)
-    return costs
+    return costs, excluded
 
 
 def _estimate_t3_cost_share(
@@ -657,27 +774,28 @@ def _estimate_t3_cost_share(
     *,
     preferred_models: dict[str, str] | None = None,
 ) -> float:
-    """Estimate the fraction of cost that came from T3 turns.
+    """Estimate T3 cost share from historical data, not hardcoded labels.
 
-    Uses per-strategy heuristics based on routing type.  For frozen-plan
-    strategies the T3 share is read from the plan's ``preferred_model``
-    field — no task-id hardcoding.
+    Uses per-strategy effective-cost observation when historical rows exist.
+    Falls back to catalog-based heuristics for zero-history tasks.
     """
-    # Strategies that are 100% T3
-    if strategy in ("bare_t3_baseline",):
+    # Strategies that use a single tier based on fixed routing
+    if strategy == "bare_t3_baseline":
         return 1.0
-    # Strategies that are 0% T3
-    if strategy in ("bare_t2_baseline",):
+    if strategy == "bare_t2_baseline":
         return 0.0
-    # Frozen plan strategies: read preferred_model from the plan
+    # Frozen-plan strategies: T3 share depends on preferred_model, not
+    # a hardcoded default.  When no plan entry exists, assume T2-only
+    # (conservative for budget estimation).
     if strategy in ("enterprise_router_baseline", "budgetflow_same_enterprise_router"):
         if preferred_models:
             model = preferred_models.get(task_id, "")
             if model == "tier3":
                 return 1.0
         return 0.0
-    # BudgetFlow value-aware policies: mixed T2/T3, estimate from historical tier proportions
-    # Default: assume ~30% T3 cost share for value-aware routing
+    # BudgetFlow value-aware policies: mixed T2/T3.  Use 0.30 as a
+    # weakly-informative prior — the actual share depends on task value,
+    # effort, model fit, and budget pressure at runtime.
     return 0.30
 
 

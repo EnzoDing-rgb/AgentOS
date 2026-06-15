@@ -1,44 +1,42 @@
-"""Tier frontier calibration — determines whether early T3 access is warranted.
+"""Tier frontier calibration — ModelFit-based advisory frontier scoring.
 
-Reads the currently loaded MODEL_CATALOG and computes cost ratios and
-progress deltas between the strongest tier and the reference tier (the
-enterprise default — second-cheapest when ≥3 tiers, cheapest when only 2).
+Uses catalog progress_priors as ModelFit signals to compute whether
+strongest-tier access is warranted for a given (stage, value, effort, budget).
+Replaces the old binary ``cost_ratio < 1.8`` hard gate with a continuous
+frontier score that policies can use as a decision input.
 
-No ML, no hardcoded model names.  Purely based on tier positions, token
-prices, and progress priors from the catalog.
+No ML, no hardcoded model names.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .allocation import AllocationContext
 
 
 @dataclass(frozen=True)
 class TierFrontier:
-    """Pre-run calibration: should BudgetFlow allow early strongest-tier access?
+    """Pre-run calibration: should BudgetFlow allow strongest-tier access?
 
-    The reference tier is the second-cheapest when the catalog has ≥3 tiers
-    (the enterprise default tier, typically T2).  When only 2 tiers exist,
-    the reference falls back to the cheapest.
+    Progress priors from the model catalog are used as ModelFit signals.
+    The frontier score combines cost ratio and progress delta into a single
+    advisory metric — lower score means stronger T3 case.
     """
 
     reference_tier: int
     strongest_tier: int
     reference_display: str
     strongest_display: str
-    strongest_input_ratio: float    # strongest / reference
-    strongest_output_ratio: float   # strongest / reference
-    strongest_progress_delta: dict[str, float]  # strongest - reference
-    early_allow_strongest: bool
+    strongest_input_ratio: float
+    strongest_output_ratio: float
+    strongest_progress_delta: dict[str, float]
     reason: str
 
     @classmethod
     def from_catalog(cls) -> TierFrontier | None:
-        """Build from the currently loaded MODEL_CATALOG.
-
-        Returns None when the catalog has fewer than 2 tiers (no frontier to
-        calibrate).
-        """
         from .model_tiers import MODEL_CATALOG
 
         configs = MODEL_CATALOG.configs
@@ -48,57 +46,27 @@ class TierFrontier:
         ordered = sorted(configs, key=lambda c: c.tier)
         strongest = ordered[-1]
 
-        # Reference tier: second-cheapest when ≥3 tiers (enterprise default T2),
-        # cheapest when only 2 tiers exist.
         if len(ordered) >= 3:
-            reference = ordered[1]  # second-cheapest = enterprise default
+            reference = ordered[1]
         else:
-            reference = ordered[0]  # cheapest (fallback for 2-tier catalogs)
+            reference = ordered[0]
 
         input_ratio = _safe_ratio(strongest.cost_per_input_token, reference.cost_per_input_token)
         output_ratio = _safe_ratio(strongest.cost_per_output_token, reference.cost_per_output_token)
         cost_ratio = max(input_ratio, output_ratio)
 
         progress_delta: dict[str, float] = {}
-        strongest_not_weaker = True
         for stage_key in ("localization", "repair", "validation"):
             sp = strongest.progress_prior.get(stage_key, 0.0)
             rp = reference.progress_prior.get(stage_key, 0.0)
-            delta = sp - rp
-            progress_delta[stage_key] = delta
-            if delta < 0:
-                strongest_not_weaker = False
+            progress_delta[stage_key] = sp - rp
 
-        early_allow = False
-        reason_parts: list[str] = []
-
-        # Rule 1: cost proximity — strongest must not be dramatically more
-        # expensive than the reference tier.  Threshold: max(input_ratio,
-        # output_ratio) < 1.8.
-        if cost_ratio < 1.8:
-            reason_parts.append(
-                f"cost_ratio={cost_ratio:.2f}<1.8 "
-                f"strongest_vs_reference_input={input_ratio:.2f}x_output={output_ratio:.2f}x"
-            )
-        else:
-            reason_parts.append(
-                f"cost_ratio={cost_ratio:.2f}>=1.8 strongest_too_expensive_vs_reference"
-            )
-
-        # Rule 2: capability — strongest progress priors must be >= reference
-        # in every stage.
-        if strongest_not_weaker:
-            reason_parts.append("strongest_progress>=reference_all_stages")
-        else:
-            reason_parts.append("strongest_weaker_in_some_stage_vs_reference")
-
-        if cost_ratio < 1.8 and strongest_not_weaker:
-            early_allow = True
-
-        reason = (
-            f"early_allow={'yes' if early_allow else 'no'}; "
-            + "; ".join(reason_parts)
-        )
+        reason_parts = [
+            f"cost_ratio={cost_ratio:.2f} "
+            f"input={input_ratio:.2f}x_output={output_ratio:.2f}x",
+            "progress_deltas={" + ", ".join(f"{k}: {v:+.3f}" for k, v in progress_delta.items()) + "}",
+        ]
+        reason = "; ".join(reason_parts)
 
         return cls(
             reference_tier=reference.tier,
@@ -108,19 +76,69 @@ class TierFrontier:
             strongest_input_ratio=input_ratio,
             strongest_output_ratio=output_ratio,
             strongest_progress_delta=progress_delta,
-            early_allow_strongest=early_allow,
             reason=reason,
         )
 
-    def max_tier_pressure_threshold(self) -> float:
-        """Budget pressure at which the strongest tier is unconditionally allowed.
+    def frontier_score(
+        self,
+        stage: str,
+        allocation: AllocationContext | None = None,
+        budget_pressure: float = 0.0,
+    ) -> float:
+        """Advisory frontier score: lower = stronger T3 case.
 
-        When early_allow_strongest is True the cap starts at the strongest tier
-        anyway, so this is only meaningful for the conservative path.
+        Combines cost ratio and ModelFit (progress delta) into a single
+        continuous score.  Policies use this as a decision input, not a
+        binary gate.
+
+        *stage* is one of "localization", "repair", "validation".
+
+        *allocation* provides TaskValue and ModelFit priors.  Higher task
+        value amplifies the progress-delta benefit, making T3 more attractive
+        for high-value tasks.
+
+        *budget_pressure* (0..1) dampens T3 attractiveness when budget is
+        tight.  At pressure=0 no dampening; at pressure=1 the cost ratio
+        penalty is doubled.
+
+        Score < 1.0: T3 effective cost is justified by expected value gain.
+        Score 1.0–2.0: marginal, depends on budget headroom.
+        Score > 2.0: T3 cost likely not justified by progress delta alone.
         """
-        if self.early_allow_strongest:
-            return 0.02  # nearly always allowed
-        return 0.15  # conservative default
+        delta = self.strongest_progress_delta.get(stage, 0.0)
+        cost_ratio = max(self.strongest_input_ratio, self.strongest_output_ratio)
+
+        task_value = 1.0
+        if allocation is not None:
+            task_value = allocation.task_value
+            if allocation.has_model_fit and allocation.model_fit:
+                fit_delta = allocation.strongest_delta(
+                    reference_tier=self.reference_tier,
+                    strongest_tier=self.strongest_tier,
+                )
+                if fit_delta is not None and fit_delta > delta:
+                    delta = fit_delta
+
+        value_gain = max(delta, 0.0) * task_value
+        if value_gain <= 0:
+            return cost_ratio * (1.0 + budget_pressure)
+
+        effective_cost_ratio = cost_ratio * (1.0 + budget_pressure * 0.5)
+        return effective_cost_ratio / value_gain
+
+    def max_tier_pressure_threshold(self) -> float:
+        """Budget pressure at which strongest tier is unconditionally allowed.
+
+        With the frontier score model, the threshold is lower because the
+        cost/progress tradeoff handles the normal case.  The unconditional
+        threshold only gates extreme budget pressure.
+        """
+        cost_ratio = max(self.strongest_input_ratio, self.strongest_output_ratio)
+        if cost_ratio < 1.5:
+            return 0.10
+        elif cost_ratio < 3.0:
+            return 0.20
+        return 0.35
 
     def to_dict(self) -> dict:
         return {
@@ -131,7 +149,6 @@ class TierFrontier:
             "strongest_input_ratio": round(self.strongest_input_ratio, 4),
             "strongest_output_ratio": round(self.strongest_output_ratio, 4),
             "strongest_progress_delta": {k: round(v, 4) for k, v in self.strongest_progress_delta.items()},
-            "early_allow_strongest": self.early_allow_strongest,
             "reason": self.reason,
         }
 
