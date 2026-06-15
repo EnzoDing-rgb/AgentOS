@@ -493,3 +493,62 @@ def test_readiness_accepts_pass_with_diagnostic_override_with_warning(tmp_path) 
     assert report.ok
     assert any("PASS_WITH_DIAGNOSTIC_OVERRIDE" in w for w in report.warnings)
     assert any("budget_plan_override" in f for f in report.facts)
+
+
+def test_readiness_blocks_budget_plan_missing_selected_tasks(tmp_path) -> None:
+    """Budget plans may cover a staged superset, but must cover every selected task."""
+    bp = tmp_path / "budget_plan.json"
+    bp.write_text(
+        '{"hard_cap_usd":1.0,"source":"frozen_plan_cap_sum","decision":"PASS",'
+        '"task_ids":["task-a"]}'
+    )
+    value_context = ValueEfficiencyContext()
+    value_context.init(value_profile="equal")
+
+    report = build_compare_readiness_report(
+        args=_args(),
+        tasks=[
+            SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",)),
+            SimpleNamespace(instance_id="task-b", test_patch="diff", fail_to_pass=("test_b",)),
+        ],
+        strategies=(CompareStrategy("budgetflow_segment", "segment_value_aware"),),
+        policy_jobs=1,
+        value_context=value_context,
+        catalog_issues=[],
+        runtime_root=Path("/tmp/budgetflow-runtime"),
+        auto_budget_enabled=False,
+        auto_budget_caps=None,
+        budget_plan_path=bp,
+    )
+
+    assert not report.ok
+    assert any("budget plan is missing 1 selected tasks" in issue for issue in report.blocking)
+
+
+def test_readiness_accepts_budget_plan_superset_for_staged_resume(tmp_path) -> None:
+    bp = tmp_path / "budget_plan.json"
+    bp.write_text(
+        '{"hard_cap_usd":1.0,"source":"frozen_plan_cap_sum","decision":"PASS",'
+        '"task_ids":["task-a","task-b","task-c"]}'
+    )
+    value_context = ValueEfficiencyContext()
+    value_context.init(value_profile="equal")
+
+    report = build_compare_readiness_report(
+        args=_args(),
+        tasks=[
+            SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",)),
+            SimpleNamespace(instance_id="task-b", test_patch="diff", fail_to_pass=("test_b",)),
+        ],
+        strategies=(CompareStrategy("budgetflow_segment", "segment_value_aware"),),
+        policy_jobs=1,
+        value_context=value_context,
+        catalog_issues=[],
+        runtime_root=Path("/tmp/budgetflow-runtime"),
+        auto_budget_enabled=False,
+        auto_budget_caps=None,
+        budget_plan_path=bp,
+    )
+
+    assert report.ok
+    assert "budget_plan_task_ids=3" in report.facts

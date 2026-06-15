@@ -252,6 +252,18 @@ def build_compare_readiness_report(
                     f"budget_plan hard_cap={bp_hard_cap:.4f}; "
                     f"use the budget plan value or omit --budget"
                 )
+            bp_task_ids = bp.get("task_ids")
+            if isinstance(bp_task_ids, list) and bp_task_ids:
+                bp_task_set = {str(task_id) for task_id in bp_task_ids}
+                facts.append(f"budget_plan_task_ids={len(bp_task_set)}")
+                missing_budget_tasks = [task_id for task_id in task_ids if task_id not in bp_task_set]
+                if missing_budget_tasks:
+                    preview = ", ".join(missing_budget_tasks[:8])
+                    suffix = "" if len(missing_budget_tasks) <= 8 else f", ... +{len(missing_budget_tasks) - 8} more"
+                    blocking.append(
+                        f"budget plan is missing {len(missing_budget_tasks)} selected tasks: "
+                        f"{preview}{suffix}"
+                    )
 
     return ReadinessReport(tuple(blocking), tuple(warnings), tuple(facts))
 

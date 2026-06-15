@@ -10,6 +10,7 @@ from budgetflow.run_series import (
     resolve_compare_stem,
     sibling_stems_exist,
 )
+from budgetflow.compare_checkpoint import CompareCheckpointStore
 
 
 def test_resume_explicit_stem_blocks_completed_run(tmp_path) -> None:
@@ -141,3 +142,15 @@ def test_list_series_stems_sorted(tmp_path) -> None:
 
     stems = list_series_stems(tmp_path, "compare_1x2")
     assert stems == ["compare_1x2-0", "compare_1x2-3", "compare_1x2-5"]
+
+
+def test_checkpoint_resume_updates_total_runs_when_task_set_expands(tmp_path) -> None:
+    path = tmp_path / "mainline_6x30_v1-0.checkpoint.json"
+    checkpoint = CompareCheckpointStore(path, stem="mainline_6x30_v1-0", total_runs=120)
+    checkpoint.mark_task_done("bare_t2_baseline", "task-a", batch_spent=0.01, batch_cap=1.0)
+
+    resumed = CompareCheckpointStore(path, stem="mainline_6x30_v1-0", total_runs=180)
+    resumed.mark_task_done("bare_t2_baseline", "task-b", batch_spent=0.02, batch_cap=1.0)
+
+    assert resumed.total_runs == 180
+    assert '"total_runs": 180' in path.read_text()

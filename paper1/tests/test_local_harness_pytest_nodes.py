@@ -110,6 +110,14 @@ def test_evaluate_local_harness_runs_all_pass_to_pass_tests(tmp_path: Path, monk
     assert calls[-1] == task.pass_to_pass
 
 
+def test_pip_marker_lives_inside_current_worktree(tmp_path: Path) -> None:
+    worktree = tmp_path / "worktrees" / "repo__task"
+
+    marker = local_harness._pip_marker_path(worktree)
+
+    assert marker == worktree / ".budgetflow_pip_ok"
+
+
 # ---- RepoHarnessAdapter tests ----
 
 

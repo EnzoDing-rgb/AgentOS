@@ -154,7 +154,7 @@ def repo_dir_for(task: LiteTaskRecord) -> Path:
 
 
 def _pip_marker_path(repo_dir: Path) -> Path:
-    return repo_dir.parent / f"{repo_dir.name}.pip_ok"
+    return repo_dir / ".budgetflow_pip_ok"
 
 
 def _ensure_commit_available(repo_dir: Path, commit: str) -> None:

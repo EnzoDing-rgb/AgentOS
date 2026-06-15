@@ -56,7 +56,9 @@ class CompareCheckpointStore:
     def _load(self) -> None:
         raw = json.loads(self.path.read_text())
         self.stem = raw.get("stem", self.stem)
-        self.total_runs = int(raw.get("total_runs", self.total_runs))
+        stored_total = int(raw.get("total_runs", 0) or 0)
+        if stored_total > self.total_runs:
+            self.total_runs = stored_total
         for name, payload in (raw.get("strategies") or {}).items():
             self.strategies[name] = StrategyCheckpoint.from_dict(payload)
 

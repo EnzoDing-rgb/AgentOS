@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "name": "6x30_candidate_manifest",
+  "date": "2026-06-15",
+  "source": "SWE-bench Lite (local export, 300 tasks)",
+  "selection_criteria": [
+    "diverse repos: flask, pylint, seaborn, sphinx, django, requests, matplotlib",
+    "light dependencies (pip install works or package pre-installed)",
+    "standard pytest or Django test runner (compatible with existing harness adapters)",
+    "f2p >= 1, p2p reasonable",
+    "patch_lines < 50 (small to moderate patches)",
+    "no overlap with existing 5x20 or 15-candidate sets"
+  ],
+  "candidates": [
+    "pallets__flask-4045",
+    "pallets__flask-4992",
+    "pallets__flask-5063",
+    "pylint-dev__pylint-5859",
+    "pylint-dev__pylint-7080",
+    "pylint-dev__pylint-7114",
+    "pylint-dev__pylint-7228",
+    "mwaskom__seaborn-3190",
+    "mwaskom__seaborn-3407",
+    "sphinx-doc__sphinx-7738",
+    "sphinx-doc__sphinx-8282",
+    "sphinx-doc__sphinx-8435",
+    "sphinx-doc__sphinx-8506",
+    "sphinx-doc__sphinx-8595",
+    "sphinx-doc__sphinx-8721",
+    "django__django-11049",
+    "django__django-11179",
+    "django__django-12908",
+    "django__django-13964",
+    "django__django-15814",
+    "django__django-15851",
+    "psf__requests-863",
+    "psf__requests-2148",
+    "matplotlib__matplotlib-23964",
+    "matplotlib__matplotlib-25433"
+  ],
+  "repo_breakdown": {
+    "pallets/flask": 3,
+    "pylint-dev/pylint": 4,
+    "mwaskom/seaborn": 2,
+    "sphinx-doc/sphinx": 6,
+    "django/django": 6,
+    "psf/requests": 2,
+    "matplotlib/matplotlib": 2
+  }
+}

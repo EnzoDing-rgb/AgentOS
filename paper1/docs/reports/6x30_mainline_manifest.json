@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "name": "6x30_mainline_manifest",
+  "date": "2026-06-15",
+  "source": "Combined: Phase 6 15-candidate gold harness gate (10 PASS) + 25-candidate gold harness gate (15 PASS) + pending SymPy gold gate (5 PASS)",
+  "total": 30,
+  "selection_criteria": [
+    "harness-admissible before paid mainline: gold patch reproduces fail-before and passes fail-after/pass-to-pass locally",
+    "diverse repos: sympy, flask, pylint, seaborn, sphinx, django, matplotlib",
+    "6-policy paper mainline compatible",
+    "staged execution: first 20 tasks then resume with remaining 10 under the same run identity",
+    "task values and frozen caps use pre-run SWE-bench metadata, not paid mainline outcomes"
+  ],
+  "candidates": [
+    "sympy__sympy-22714",
+    "sympy__sympy-12171",
+    "sympy__sympy-17655",
+    "sympy__sympy-24102",
+    "sympy__sympy-15346",
+    "sympy__sympy-18621",
+    "sympy__sympy-13647",
+    "sympy__sympy-13177",
+    "pallets__flask-4045",
+    "pallets__flask-4992",
+    "pylint-dev__pylint-5859",
+    "pylint-dev__pylint-7993",
+    "pylint-dev__pylint-6506",
+    "mwaskom__seaborn-3190",
+    "mwaskom__seaborn-3407",
+    "mwaskom__seaborn-3010",
+    "mwaskom__seaborn-2848",
+    "sphinx-doc__sphinx-8273",
+    "sphinx-doc__sphinx-7686",
+    "sphinx-doc__sphinx-7738",
+    "sphinx-doc__sphinx-8282",
+    "sphinx-doc__sphinx-8595",
+    "django__django-13447",
+    "django__django-11049",
+    "django__django-11179",
+    "django__django-12908",
+    "django__django-13964",
+    "django__django-15814",
+    "django__django-15851",
+    "matplotlib__matplotlib-25433"
+  ],
+  "repo_breakdown": {
+    "sympy/sympy": 8,
+    "pallets/flask": 2,
+    "pylint-dev/pylint": 3,
+    "mwaskom/seaborn": 4,
+    "sphinx-doc/sphinx": 5,
+    "django/django": 7,
+    "matplotlib/matplotlib": 1
+  },
+  "verification_status": {
+    "verified_harness": 30,
+    "pending_harness_verification": 0,
+    "pending_tasks": [],
+    "evidence": {
+      "phase6_gate": "docs/reports/15_candidate_gold_harness_gate_2026-06-15.md",
+      "candidate25_gate": "docs/reports/25_candidate_gold_harness_gate_2026-06-15.md",
+      "pending_sympy_gate": "data/runs/gold_harness_probe_6x30_pending_sympy.jsonl",
+      "pending_sympy_gate_report": "docs/reports/6x30_pending_sympy_gold_gate_2026-06-15.md"
+    }
+  },
+  "t3_solvability_summary": {
+    "probed_tasks": 15,
+    "solved": 7,
+    "harness_verified_model_fail": 5,
+    "infra_or_dependency_noise": 1,
+    "patch_apply_or_protocol_fail": 2,
+    "unprobed": 15,
+    "notes": "T3 probe is diagnostic only. It is not used for task values or frozen caps. Unprobed tasks remain harness-admissible but have unknown strongest-model solvability."
+  }
+}
