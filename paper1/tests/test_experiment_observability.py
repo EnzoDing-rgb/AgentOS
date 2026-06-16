@@ -67,6 +67,19 @@ def test_routing_observability_marks_equal_value_as_ablation() -> None:
     assert record["routing_policy_family"] == "bootstrap:value_aware_segment"
 
 
+def test_routing_observability_marks_task_level_as_main_bootstrap_policy() -> None:
+    record = {
+        "routing": "value_aware_task_level",
+        "task_value_profile": "difficulty",
+    }
+
+    enrich_routing_observability(record)
+
+    assert record["routing_policy_family"] == "bootstrap:value_aware_task_level_main_policy"
+    assert record["policy_kind"] == "bootstrap"
+    assert record["policy_role"] == "value_aware_task_level_main_policy"
+
+
 def test_routing_observability_marks_pre_registered_value_as_diagnostic() -> None:
     record = {
         "routing": "segment_value_aware",

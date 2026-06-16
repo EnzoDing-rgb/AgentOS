@@ -6,6 +6,8 @@ schema explicit so checker, summary, and offline analysis read the same fields.
 
 from __future__ import annotations
 
+from .routing_sets import ADAPTIVE_ROUTINGS
+
 
 def enrich_routing_observability(record: dict, *, policy_memory_source: str = "") -> dict:
     """Add standard routing-learning fields to a completed task row."""
@@ -43,9 +45,9 @@ def _policy_kind(routing: str) -> str:
         return "mechanism"
     if routing in {"bare_t3", "enterprise_router"}:
         return "bare_harness"
-    if routing in {"budgetflow_segment", "budgetflow_conservative", "segment_value_aware", "budgetflow_equal_weight", "stage_blind"}:
+    if routing in ADAPTIVE_ROUTINGS:
         return "bootstrap"
-    if routing in {"budget_only", "budget_only_t2", "all_flash", "all_tier2", "all_t3", "all_pro", "workflow_level", "value_aware_task_level"}:
+    if routing in {"budget_only", "budget_only_t2", "all_flash", "all_tier2", "all_t3", "all_pro", "workflow_level"}:
         return "fixed_baseline"
     return "unknown"
 
@@ -60,7 +62,7 @@ def _policy_role(routing: str) -> str:
         "budgetflow_segment": "full_segment",
         "budgetflow_equal_weight": "equal_weight_segment",
         "stage_blind": "no_segment_control",
-        "value_aware_task_level": "value_aware_task_level_control",
+        "value_aware_task_level": "value_aware_task_level_main_policy",
         "budget_only": "budget_only_control",
         "budget_only_t2": "budget_only_mid_tier_control",
         "all_flash": "static_cheap_control",

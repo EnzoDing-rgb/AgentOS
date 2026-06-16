@@ -894,7 +894,6 @@ def _parser_abort_breakdown(records: list[dict]) -> dict:
     breakdown: dict[str, int] = {
         "found_0_actions": 0,
         "found_2_actions": 0,
-        "empty_response": 0,
         "unknown": 0,
         "retry_success": 0,
         "retry_failed": 0,
@@ -952,18 +951,7 @@ def _parser_abort_breakdown(records: list[dict]) -> dict:
         # Infer from turn traces
         action_count = _infer_parser_action_count(r)
         if action_count == 0:
-            traces = r.get("turn_traces") or []
-            if isinstance(traces, list):
-                for trace in traces:
-                    if isinstance(trace, dict):
-                        content = str(trace.get("assistant_content_head") or "")
-                        if not content.strip():
-                            breakdown["empty_response"] += 1
-                            break
-                else:
-                    breakdown["found_0_actions"] += 1
-            else:
-                breakdown["found_0_actions"] += 1
+            breakdown["found_0_actions"] += 1
         elif action_count is not None and action_count >= 2:
             breakdown["found_2_actions"] += 1
         elif action_count is None:

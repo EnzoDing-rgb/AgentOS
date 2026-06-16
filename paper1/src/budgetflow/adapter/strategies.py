@@ -41,7 +41,7 @@ class RoutingContext:
     last_backend: Backend | None = None
     max_tier: int | None = None
     max_tier_before_frontier: int | None = None
-    max_tier_pressure_threshold: float | None = None
+    tier_frontier_score: float | None = None
     task_value: float = 1.0
     median_task_value: float = 1.0
     allocation: AllocationContext | None = None
@@ -132,9 +132,9 @@ def _budgetflow_max_tier(ctx: RoutingContext, stage: Stage) -> int:
     Uses the current turn's stage-specific tier frontier score as advisory
     input.  The cap defaults to the strongest tier when the frontier score
     indicates a good T3 case (score < 2.0), otherwise stays at the second tier.
-
-    Budget pressure can still override: when pressure exceeds the threshold,
-    the strongest tier is unconditionally allowed regardless of frontier score.
+    Budget pressure is a scarcity signal: it can make frontier scores more
+    conservative, but it must not by itself open the strongest tier. Stuck-task
+    urgency is handled by explicit escalation/rescue paths in the runtime.
     """
     cheapest = ModelCatalog.cheapest(ctx.backends)
     strongest = ModelCatalog.strongest(ctx.backends)
@@ -143,8 +143,6 @@ def _budgetflow_max_tier(ctx: RoutingContext, stage: Stage) -> int:
 
     before_default = second.tier
     max_tier_before = max(cheapest.tier, min(before_default, strongest.tier))
-    if ctx.budget_pressure >= 0.15:
-        max_tier_before = strongest.tier
 
     # Default cap uses frontier score — advisory, not binary
     default_cap = second.tier
@@ -154,10 +152,12 @@ def _budgetflow_max_tier(ctx: RoutingContext, stage: Stage) -> int:
             allocation=ctx.allocation,
             budget_pressure=ctx.budget_pressure,
         )
+        ctx.tier_frontier_score = score
         if score < 2.0:
             default_cap = strongest.tier
     else:
         # No frontier: conservative default to second tier
+        ctx.tier_frontier_score = None
         default_cap = second.tier
 
     max_tier: int = max(cheapest.tier, min(default_cap, strongest.tier))
@@ -165,18 +165,6 @@ def _budgetflow_max_tier(ctx: RoutingContext, stage: Stage) -> int:
     if ctx.last_backend is not None and ctx.last_backend.tier > max_tier:
         max_tier = ctx.last_backend.tier
 
-    if frontier is not None:
-        strongest_threshold = frontier.max_tier_pressure_threshold()
-    elif ctx.strategy == "budgetflow_conservative":
-        # ConservativeSelector has its own conservation factor that already
-        # makes T3 escalation harder, so use a lower pressure threshold to
-        # avoid double-penalizing.  Other strategies use the standard 0.15.
-        strongest_threshold = 0.05
-    else:
-        strongest_threshold = 0.15
-    ctx.max_tier_pressure_threshold = strongest_threshold
-    if ctx.budget_pressure >= strongest_threshold:
-        max_tier = strongest.tier
     if ctx.adaptive is not None:
         start_tier = ctx.adaptive.starting_tier()
         if start_tier > max_tier:

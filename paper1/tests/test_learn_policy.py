@@ -67,6 +67,24 @@ def test_learn_policy_inputs_reaches_adaptive_routing_state() -> None:
     assert state.memory_mode == "built_in"
 
 
+def test_task_level_value_policy_gets_adaptive_routing_state() -> None:
+    from budgetflow.adaptive_routing import AdaptiveRoutingRegistry
+
+    routing = FakeRoutingMemory()
+    bundle = LearnPolicyInputs.built_in(
+        routing=routing,
+        escalation=routing,
+        source="unit-routing-memory",
+    )
+    registry = AdaptiveRoutingRegistry(learn_policy_inputs=bundle)
+
+    state = registry.for_strategy("budgetflow_task_level", "value_aware_task_level")
+
+    assert state is not None
+    assert state.policy_memory is routing
+    assert state.memory_mode == "built_in"
+
+
 def test_cost_only_memory_does_not_enable_routing_memory_mode() -> None:
     from budgetflow.adaptive_routing import AdaptiveRoutingRegistry
 

@@ -4,7 +4,8 @@ The reference tier is the second-cheapest (enterprise default T2) when >=3
 tiers exist, falling back to cheapest for 2-tier catalogs.
 
 frontier_score() replaces the old binary early_allow_strongest gate.
-Score < 1.0: T3 justified; 1.0-2.0: marginal; > 2.0: T3 cost not justified.
+Score < 1.0: T3 strongly justified; 1.0-2.0: frontier-allowed;
+> 2.0: T3 cost not justified by catalog ModelFit alone.
 """
 
 import sys
@@ -77,10 +78,9 @@ class TestTierFrontierCalibration:
         assert frontier.strongest_tier == 3
         # T3x2: normalized diagnostic ratio, not provider billing.
         assert frontier.strongest_output_ratio == pytest.approx(2.0)
-        # High cost ratio should make frontier score >= 2.0
+        # T3x2 is a loose diagnostic catalog: repair is frontier-allowed.
         score = frontier.frontier_score("repair")
-        assert score >= 2.0, f"expected frontier score >= 2.0 for T3x2, got {score}"
-        assert frontier.max_tier_pressure_threshold() > 0.15
+        assert 0.0 < score < 2.0, f"expected frontier-allowed T3x2 repair score, got {score}"
 
         # Restore default catalog
         from budgetflow.model_tiers import init_catalog as _ic
@@ -132,13 +132,14 @@ class TestTierFrontierCalibration:
             strongest_input_ratio=float("inf"),
             strongest_output_ratio=float("inf"),
             strongest_progress_delta={"repair": 0.0},
+            reference_runway_turns=35,
             reason="bad catalog",
         )
 
         assert math.isfinite(frontier.frontier_score("repair"))
 
     def test_expensive_t3_conservative(self):
-        """When T3 is expensive vs reference, frontier score >= 2.0."""
+        """Very expensive T3 stays above the frontier."""
         from budgetflow.tier_frontier import TierFrontier
 
         frontier = TierFrontier(
@@ -149,11 +150,11 @@ class TestTierFrontierCalibration:
             strongest_input_ratio=28.57,
             strongest_output_ratio=44.64,
             strongest_progress_delta={"localization": 0.01, "repair": 0.03, "validation": 0.03},
+            reference_runway_turns=35,
             reason="cost_ratio=44.64>=1.8 strongest_too_expensive_vs_reference",
         )
         score = frontier.frontier_score("repair")
-        assert score >= 2.0, f"expensive T3 should have score >= 2.0, got {score}"
-        assert frontier.max_tier_pressure_threshold() >= 0.15
+        assert score >= 20.0, f"expensive T3 should have a high score, got {score}"
 
     def test_weak_t3_stage_returns_cost_ratio(self):
         """Negative progress delta → zero value gain → score = cost_ratio (advisory)."""
@@ -167,15 +168,16 @@ class TestTierFrontierCalibration:
             strongest_input_ratio=1.05,
             strongest_output_ratio=1.60,
             strongest_progress_delta={"localization": -0.40, "repair": 0.03, "validation": 0.03},
+            reference_runway_turns=35,
             reason="cost_ratio=1.60<1.8; strongest_weaker_in_some_stage_vs_reference",
         )
         # localization delta is negative → value_gain = 0 → score = cost_ratio
         score_loc = frontier.frontier_score("localization")
         assert score_loc == pytest.approx(1.60)  # raw cost ratio, advisory
-        # repair has small positive delta → score = cost_ratio / 0.03
+        # repair has small positive delta, scaled into normalized value units.
         score_repair = frontier.frontier_score("repair")
-        # cost_ratio=1.60, delta=0.03 → 1.60/0.03 ≈ 53
-        assert score_repair > 10  # weak T3 case, high score
+        assert score_repair < score_loc
+        assert score_repair == pytest.approx((1.60 - 1.0) / (0.03 * 35.0))
 
     def test_to_dict_uses_reference_naming(self):
         from budgetflow.tier_frontier import TierFrontier
@@ -188,6 +190,7 @@ class TestTierFrontierCalibration:
             strongest_input_ratio=1.05,
             strongest_output_ratio=1.60,
             strongest_progress_delta={"localization": 0.01, "repair": 0.03, "validation": 0.03},
+            reference_runway_turns=35,
             reason="frontier_score based on ModelFit progress deltas",
         )
         d = frontier.to_dict()
@@ -287,6 +290,84 @@ class TestMaxTierWithFrontier:
         assert ctx.max_tier_before_frontier is not None
         assert ctx.max_tier >= ctx.max_tier_before_frontier
 
+    def test_budget_depletion_alone_does_not_open_strongest_tier(self):
+        """Budget pressure is scarcity, not an unconditional strongest-tier trigger."""
+        from budgetflow.adapter.strategies import build_routing_context, choose_backend
+        from budgetflow.tier_frontier import TierFrontier
+        from budgetflow.types import Stage, TurnInfo
+
+        ctx = build_routing_context("value_aware_task_level", _backends(), budget_pressure=1.0)
+        ctx.tier_frontier = TierFrontier(
+            reference_tier=2,
+            strongest_tier=3,
+            reference_display="T2",
+            strongest_display="T3",
+            strongest_input_ratio=10.0,
+            strongest_output_ratio=10.0,
+            strongest_progress_delta={
+                "localization": 0.01,
+                "repair": 0.01,
+                "validation": 0.01,
+            },
+            reference_runway_turns=35,
+            reason="expensive strongest",
+        )
+        turn = TurnInfo(
+            workflow_id="test",
+            step_index=0,
+            stage=Stage.REPAIR,
+            w_i=3.0,
+            context_len=1000,
+        )
+        expected = {b.name: 0.01 for b in _backends()}
+
+        backend = choose_backend(ctx, turn, expected)
+
+        assert ctx.max_tier == 2
+        assert backend.tier <= 2
+
+    def test_frontier_allows_strongest_only_when_budget_slack_supports_it(self):
+        from budgetflow.adapter.strategies import build_routing_context, choose_backend
+        from budgetflow.tier_frontier import TierFrontier
+        from budgetflow.types import Stage, TurnInfo
+
+        frontier = TierFrontier(
+            reference_tier=2,
+            strongest_tier=3,
+            reference_display="T2",
+            strongest_display="T3",
+            strongest_input_ratio=3.0,
+            strongest_output_ratio=3.0,
+            strongest_progress_delta={
+                "localization": 0.01,
+                "repair": 0.03,
+                "validation": 0.03,
+            },
+            reference_runway_turns=35,
+            reason="current t3x3 scale",
+        )
+        turn = TurnInfo(
+            workflow_id="test",
+            step_index=0,
+            stage=Stage.REPAIR,
+            w_i=3.0,
+            context_len=1000,
+        )
+        expected = {b.name: b.cost_per_output_token * b.mean_output_tokens for b in _backends()}
+
+        loose = build_routing_context("value_aware_task_level", _backends(), budget_pressure=0.01)
+        loose.tier_frontier = frontier
+        choose_backend(loose, turn, expected)
+
+        tight = build_routing_context("value_aware_task_level", _backends(), budget_pressure=0.80)
+        tight.tier_frontier = frontier
+        choose_backend(tight, turn, expected)
+
+        assert loose.tier_frontier_score is not None and loose.tier_frontier_score < 2.0
+        assert loose.max_tier == 3
+        assert tight.tier_frontier_score is not None and tight.tier_frontier_score > 2.0
+        assert tight.max_tier == 2
+
     def test_max_tier_fields_in_turn_trace_use_reference_naming(self):
         """Router trace fields include reference-named frontier fields."""
         from budgetflow.adapter.strategies import build_routing_context, choose_backend
@@ -318,13 +399,14 @@ class TestMaxTierWithFrontier:
             strongest_tier=3,
             reference_display="T2",
             strongest_display="T3",
-            strongest_input_ratio=1.0,
-            strongest_output_ratio=1.0,
+            strongest_input_ratio=3.0,
+            strongest_output_ratio=3.0,
             strongest_progress_delta={
                 "localization": 0.01,
                 "repair": 1.00,
                 "validation": 0.01,
             },
+            reference_runway_turns=35,
             reason="test",
         )
         turn = TurnInfo(
@@ -358,8 +440,8 @@ class TestMaxTierWithFrontier:
         assert fields["max_tier_after_frontier"] is None
         assert "tier_frontier_active" in fields
 
-    def test_pressure_threshold_in_trace(self):
-        """max_tier_pressure_threshold is stored and exposed in traces."""
+    def test_frontier_score_in_trace(self):
+        """tier_frontier_score is stored and exposed in traces."""
         from budgetflow.adapter.strategies import build_routing_context, choose_backend
         from budgetflow.adapter.turn_trace import router_trace_fields
         from budgetflow.types import Stage, TurnInfo
@@ -372,12 +454,13 @@ class TestMaxTierWithFrontier:
         expected = {b.name: b.cost_per_output_token * b.mean_output_tokens for b in _backends()}
         choose_backend(ctx, turn, expected)
         fields = router_trace_fields(ctx)
-        assert "max_tier_pressure_threshold" in fields
-        assert fields["max_tier_pressure_threshold"] is not None
-        assert isinstance(fields["max_tier_pressure_threshold"], float)
+        assert "tier_frontier_score" in fields
+        assert fields["tier_frontier_score"] is not None
+        assert isinstance(fields["tier_frontier_score"], float)
+        assert "max_tier_pressure_threshold" not in fields
 
-    def test_value_aware_threshold_matches_frontier(self):
-        """Value-aware strategy uses frontier threshold, not hardcoded value."""
+    def test_value_aware_frontier_score_matches_frontier(self):
+        """Value-aware strategy uses the current frontier score."""
         from budgetflow.adapter.strategies import build_routing_context, choose_backend
         from budgetflow.types import Stage, TurnInfo
 
@@ -391,5 +474,5 @@ class TestMaxTierWithFrontier:
         from budgetflow.tier_frontier import TierFrontier
         frontier = TierFrontier.from_catalog()
         assert frontier is not None
-        expected_threshold = frontier.max_tier_pressure_threshold()
-        assert ctx.max_tier_pressure_threshold == expected_threshold
+        expected_score = frontier.frontier_score("localization", budget_pressure=ctx.budget_pressure)
+        assert ctx.tier_frontier_score == pytest.approx(expected_score)

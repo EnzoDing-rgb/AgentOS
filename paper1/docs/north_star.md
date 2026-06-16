@@ -100,6 +100,41 @@ Task Effort and cost follow the same rule.
   and absorb the reusable principle through Tier Boundary Selection, not weaken
   the baseline.
 
+## Calibration Discipline
+
+BudgetFlow is not claiming that one fixed set of constants is universally
+optimal. Real deployments must calibrate budgets, model prices, Task Value,
+Task Effort, Model Fit, and policy thresholds against their own workload.
+That calibration is part of the enterprise mechanism, not a benchmark trick,
+when it follows these rules:
+
+- Calibrate only on diagnostic runs or production holdout data, then freeze the
+  policy and ValueSource before the evidence run.
+- Tune abstract mechanism inputs: task value scale, cost source, model-tier
+  fit, budget slack or shadow price, progress urgency, rescue window, stop-loss
+  patience, and escalation confidence.
+- Do not tune on SWE-bench task IDs, repo names, pytest names, known patches,
+  historical pass/fail labels for the evaluation set, or harness quirks.
+- Report the calibration source and whether learning inputs were enabled. A
+  small diagnostic run can justify the next frozen configuration, but it is not
+  paper-level evidence by itself.
+- Treat calibration as reusable only if the same procedure could be repeated on
+  another enterprise workload with different tasks, values, models, and prices.
+
+The clean policy semantics are:
+
+- Budget slack or shadow price measures scarcity. As the shared budget is
+  spent, strongest-tier access should become harder unless expected value
+  clearly justifies it.
+- Progress urgency measures being stuck. No-progress streaks, repair evidence,
+  and validation failure can trigger bounded escalation or rescue windows.
+- Value density combines Task Value, Model Fit gain, and extra model cost. It
+  explains when spending more can improve Yield per Dollar.
+
+These signals must stay separate in code and traces. A variable named budget
+pressure must not simultaneously mean "budget is scarce" and "upgrade because
+the agent is stuck."
+
 ## Mechanism Layers
 
 | Layer | Responsibility |

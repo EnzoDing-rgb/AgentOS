@@ -112,6 +112,11 @@ VALUE_TRIGGERED_ESCALATION_MIN_MULTIPLIER = 1.15
 VALUE_TRIGGERED_ESCALATION_DEFAULT_WINDOW_TURNS = 3
 VALUE_TRIGGERED_ESCALATION_MIN_HEADROOM_FRAC = 0.12
 
+# Tier frontier fallback when a catalog tier omits max_turns. Normal runs use
+# the reference tier's catalog max_turns, so this is a portability default, not
+# a benchmark-specific tuning knob.
+FRONTIER_DEFAULT_RUNWAY_TURNS = 35
+
 # PolicyMemory regret threshold: when full_vs_baseline_regret exceeds this,
 # budgetflow_segment receives stronger budget-pressure correction.
 POLICY_REGRET_THRESHOLD = 0.15

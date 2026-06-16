@@ -168,6 +168,7 @@ def test_tier_frontier_score_better_with_higher_progress_delta() -> None:
         strongest_input_ratio=2.0,
         strongest_output_ratio=2.5,
         strongest_progress_delta={"localization": 0.1, "repair": 0.3, "validation": 0.2},
+        reference_runway_turns=35,
         reason="test",
     )
 
@@ -190,6 +191,7 @@ def test_tier_frontier_score_worse_with_tight_budget() -> None:
         strongest_input_ratio=2.0,
         strongest_output_ratio=2.5,
         strongest_progress_delta={"localization": 0.1, "repair": 0.3, "validation": 0.2},
+        reference_runway_turns=35,
         reason="test",
     )
 
@@ -211,6 +213,7 @@ def test_tier_frontier_score_uses_task_value_from_allocation() -> None:
         strongest_input_ratio=2.0,
         strongest_output_ratio=2.5,
         strongest_progress_delta={"repair": 0.2},
+        reference_runway_turns=35,
         reason="test",
     )
 
@@ -230,9 +233,10 @@ def test_tier_frontier_score_uses_per_tier_model_fit_delta() -> None:
         strongest_tier=3,
         reference_display="T2",
         strongest_display="T3",
-        strongest_input_ratio=1.0,
-        strongest_output_ratio=1.0,
+        strongest_input_ratio=2.0,
+        strongest_output_ratio=2.0,
         strongest_progress_delta={"repair": 0.01},
+        reference_runway_turns=35,
         reason="test",
     )
 
@@ -247,7 +251,7 @@ def test_tier_frontier_score_uses_per_tier_model_fit_delta() -> None:
     )
 
     assert empirical_fit_score < weak_catalog_score
-    assert empirical_fit_score == pytest.approx(2.0)
+    assert empirical_fit_score == pytest.approx((2.0 - 1.0) / (0.50 * 35.0))
 
 
 def test_tier_frontier_no_progress_delta_returns_cost_ratio() -> None:
@@ -262,6 +266,7 @@ def test_tier_frontier_no_progress_delta_returns_cost_ratio() -> None:
         strongest_input_ratio=3.0,
         strongest_output_ratio=3.5,
         strongest_progress_delta={"repair": -0.1},
+        reference_runway_turns=35,
         reason="test",
     )
 

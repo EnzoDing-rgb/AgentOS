@@ -19,6 +19,7 @@ from .defaults import (
 )
 from .failure_classification import is_scoreable
 from .learn_policy import LearnPolicyInputs
+from .routing_sets import ADAPTIVE_ROUTINGS
 from .types import WorkflowSegment
 
 if TYPE_CHECKING:
@@ -359,7 +360,7 @@ def _segment_name(segment: str | WorkflowSegment) -> str:
 
 
 class AdaptiveRoutingRegistry:
-    """Thread-safe registry: one adaptive state per budgetflow_segment compare policy."""
+    """Thread-safe registry: one adaptive state per active BudgetFlow policy."""
 
     def __init__(
         self,
@@ -411,7 +412,7 @@ class AdaptiveRoutingRegistry:
                 state.memory_mode = self._memory_mode
 
     def for_strategy(self, strategy_name: str, routing: str) -> AdaptiveRoutingState | None:
-        if routing not in ("budgetflow_segment", "budgetflow_conservative", "segment_value_aware", "budgetflow_equal_weight", "stage_blind"):
+        if routing not in ADAPTIVE_ROUTINGS:
             return None
         with self._lock:
             state = self._states.get(strategy_name)
@@ -442,7 +443,7 @@ class AdaptiveRoutingRegistry:
                 record = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if record.get("routing") not in ("budgetflow_segment", "budgetflow_conservative", "segment_value_aware", "stage_blind"):
+            if record.get("routing") not in ADAPTIVE_ROUTINGS:
                 continue
             name = record.get("strategy")
             if not name:
@@ -463,7 +464,7 @@ class AdaptiveRoutingRegistry:
             states = list(self._states.values())
         if not states:
             return []
-        lines = ["adaptive_routing (budgetflow_segment / budgetflow_conservative / segment_value_aware, always on):"]
+        lines = ["adaptive_routing (active BudgetFlow policies, always on):"]
         for state in sorted(states, key=lambda s: s.strategy_name):
             lines.append(f"  {state.strategy_name}: {state.status_snippet()}")
         return lines

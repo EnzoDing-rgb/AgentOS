@@ -4,6 +4,7 @@ import json
 from typing import Any
 
 from ..adapters import SwebenchCostAdapter
+from ..routing_sets import ADAPTIVE_ROUTINGS
 from .bash_stage import extract_trace_file_paths
 from ..model_tiers import MODEL_CATALOG, tier_confidence, token_cost_rates
 from .protocol_adapter import ActionProtocolAdapter
@@ -116,7 +117,7 @@ def build_turn_trace(
     strongest_progress_delta: dict[str, float] | None = None,
     max_tier_before_frontier: int | None = None,
     max_tier_after_frontier: int | None = None,
-    max_tier_pressure_threshold: float | None = None,
+    tier_frontier_score: float | None = None,
     stall_guard_enabled: bool = False,
     protocol_retry_used: bool = False,
     protocol_retry_success: bool = False,
@@ -228,7 +229,7 @@ def build_turn_trace(
         "strongest_progress_delta": strongest_progress_delta,
         "max_tier_before_frontier": max_tier_before_frontier,
         "max_tier_after_frontier": max_tier_after_frontier,
-        "max_tier_pressure_threshold": max_tier_pressure_threshold,
+        "tier_frontier_score": tier_frontier_score,
         "stall_guard_enabled": stall_guard_enabled,
         "protocol_retry_used": protocol_retry_used,
         "protocol_retry_success": protocol_retry_success,
@@ -295,7 +296,8 @@ def router_trace_fields(routing) -> dict[str, Any]:
         }
     fields["max_tier_before_frontier"] = getattr(routing, "max_tier_before_frontier", None)
     fields["max_tier_after_frontier"] = getattr(routing, "max_tier", None)
-    fields["max_tier_pressure_threshold"] = getattr(routing, "max_tier_pressure_threshold", None)
+    score = getattr(routing, "tier_frontier_score", None)
+    fields["tier_frontier_score"] = round(score, 4) if isinstance(score, (int, float)) else None
     fields["stall_guard_enabled"] = stall_guard_enabled(str(getattr(routing, "strategy", "") or ""))
     return fields
 
@@ -303,6 +305,8 @@ def router_trace_fields(routing) -> dict[str, Any]:
 def _policy_type_for_routing(routing) -> str:
     strategy = str(getattr(routing, "strategy", "") or "")
     if getattr(routing, "bootstrap_policy", None) is not None:
+        return "bootstrap"
+    if strategy in ADAPTIVE_ROUTINGS:
         return "bootstrap"
     if strategy in {
         "all_flash",
@@ -312,7 +316,6 @@ def _policy_type_for_routing(routing) -> str:
         "budget_only",
         "budget_only_t2",
         "workflow_level",
-        "value_aware_task_level",
     }:
         return "fixed_baseline"
     return "unknown"

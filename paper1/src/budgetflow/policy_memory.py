@@ -475,7 +475,7 @@ class PolicyMemory:
     def _build_escalation_prior(self, records: list[dict]) -> EscalationPrior:
         prior = EscalationPrior()
         for record in records:
-            if str(record.get("routing") or "") != "segment_value_aware":
+            if str(record.get("routing") or "") not in {"segment_value_aware", "value_aware_task_level"}:
                 continue
             traces = record.get("turn_traces") or []
             if not isinstance(traces, list):
@@ -518,7 +518,12 @@ class PolicyMemory:
             ]
             budgetflow = [
                 record for record in task_records
-                if str(record.get("routing") or "") in {"budgetflow_conservative", "segment_value_aware", "budgetflow_segment"}
+                if str(record.get("routing") or "") in {
+                    "budgetflow_conservative",
+                    "segment_value_aware",
+                    "value_aware_task_level",
+                    "budgetflow_segment",
+                }
             ]
             for record in budgetflow:
                 traces = [trace for trace in (record.get("turn_traces") or []) if isinstance(trace, dict)]

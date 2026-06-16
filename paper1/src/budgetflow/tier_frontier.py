@@ -14,6 +14,8 @@ from dataclasses import dataclass
 import math
 from typing import TYPE_CHECKING
 
+from .defaults import FRONTIER_DEFAULT_RUNWAY_TURNS
+
 if TYPE_CHECKING:
     from .allocation import AllocationContext
 
@@ -34,6 +36,7 @@ class TierFrontier:
     strongest_input_ratio: float
     strongest_output_ratio: float
     strongest_progress_delta: dict[str, float]
+    reference_runway_turns: int
     reason: str
 
     @classmethod
@@ -61,11 +64,13 @@ class TierFrontier:
             sp = strongest.progress_prior.get(stage_key, 0.0)
             rp = reference.progress_prior.get(stage_key, 0.0)
             progress_delta[stage_key] = sp - rp
+        reference_runway = getattr(reference, "max_turns", None) or FRONTIER_DEFAULT_RUNWAY_TURNS
 
         reason_parts = [
             f"cost_ratio={cost_ratio:.2f} "
             f"input={input_ratio:.2f}x_output={output_ratio:.2f}x",
             "progress_deltas={" + ", ".join(f"{k}: {v:+.3f}" for k, v in progress_delta.items()) + "}",
+            f"reference_runway_turns={reference_runway}",
         ]
         reason = "; ".join(reason_parts)
 
@@ -77,6 +82,7 @@ class TierFrontier:
             strongest_input_ratio=input_ratio,
             strongest_output_ratio=output_ratio,
             strongest_progress_delta=progress_delta,
+            reference_runway_turns=reference_runway,
             reason=reason,
         )
 
@@ -120,26 +126,16 @@ class TierFrontier:
                 if fit_delta is not None and fit_delta > delta:
                     delta = fit_delta
 
-        value_gain = max(delta, 0.0) * task_value
+        incremental_cost_ratio = max(
+            max(self.strongest_input_ratio, self.strongest_output_ratio) - 1.0,
+            0.0,
+        )
+        value_gain = max(delta, 0.0) * task_value * max(1, self.reference_runway_turns)
         if value_gain <= 0:
             return _finite_score(cost_ratio * (1.0 + budget_pressure), cost_ratio, budget_pressure)
 
-        effective_cost_ratio = cost_ratio * (1.0 + budget_pressure * 0.5)
-        return _finite_score(effective_cost_ratio / value_gain, cost_ratio, budget_pressure)
-
-    def max_tier_pressure_threshold(self) -> float:
-        """Budget pressure at which strongest tier is unconditionally allowed.
-
-        With the frontier score model, the threshold is lower because the
-        cost/progress tradeoff handles the normal case.  The unconditional
-        threshold only gates extreme budget pressure.
-        """
-        cost_ratio = max(self.strongest_input_ratio, self.strongest_output_ratio)
-        if cost_ratio < 1.5:
-            return 0.10
-        elif cost_ratio < 3.0:
-            return 0.20
-        return 0.35
+        effective_incremental_cost = incremental_cost_ratio * (1.0 + budget_pressure * 0.5)
+        return _finite_score(effective_incremental_cost / value_gain, cost_ratio, budget_pressure)
 
     def to_dict(self) -> dict:
         return {
@@ -150,6 +146,7 @@ class TierFrontier:
             "strongest_input_ratio": round(self.strongest_input_ratio, 4),
             "strongest_output_ratio": round(self.strongest_output_ratio, 4),
             "strongest_progress_delta": {k: round(v, 4) for k, v in self.strongest_progress_delta.items()},
+            "reference_runway_turns": self.reference_runway_turns,
             "reason": self.reason,
         }
 

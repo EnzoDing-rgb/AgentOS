@@ -20,7 +20,6 @@ from ..defaults import (
     GOLD_EDIT_MID_TIER_REPAIR_TURN_LIMIT,
     PRESSURE_MAX,
     STRONGEST_DOWNGRADE_TIER,
-    TIER1_BACKEND,
     VALUE_TRIGGERED_ESCALATION_DEFAULT_WINDOW_TURNS,
     VALUE_TRIGGERED_ESCALATION_MIN_HEADROOM_FRAC,
     VALUE_TRIGGERED_ESCALATION_MIN_MULTIPLIER,
@@ -30,10 +29,15 @@ from ..defaults import (
 from ..model_tiers import MODEL_CATALOG, TIER_CONFIGS, ModelCatalog, apply_provider_proxy, estimate_token_cost, load_env_file
 from ..console_log import backend_tier_label, bold, dim, routing_stage_label, tag
 from ..governor import BudgetGovernor
-from ..types import Backend, Stage, TurnInfo, WorkflowStatus
+from ..types import Backend, Stage, TurnInfo, WorkflowSegment, WorkflowStatus
 from .errors import BudgetFlowBudgetError, BudgetFlowStagnationError, BudgetFlowUpstreamError
 from ..run_guards import is_fatal_billing_error, record_billing_halt, record_upstream_error
 from ..adapters import SwebenchProgressAdapter
+from ..routing_sets import (
+    ADAPTIVE_ROUTINGS,
+    GOLD_EDIT_REPAIR_GUARD_ROUTINGS,
+    VALUE_TRIGGERED_ESCALATION_ROUTINGS,
+)
 from .action_parsing import format_error_stop_after, parse_tool_actions
 from .stall_guard import check_post_patch_stop, check_stagnation, normalize_bash_command, stall_guard_enabled
 from .message_utils import estimate_input_tokens, extract_bash_context
@@ -425,13 +429,7 @@ class BudgetFlowLitellmModel:
                     f"starting_tier={min_start} ({backend_tier_label(backend.name)})",
                     flush=True,
                 )
-        if self.routing.adaptive is not None and self.routing.strategy in (
-            "budgetflow_segment",
-            "budgetflow_conservative",
-            "segment_value_aware",
-            "budgetflow_equal_weight",
-            "stage_blind",
-        ):
+        if self.routing.adaptive is not None and self.routing.strategy in ADAPTIVE_ROUTINGS:
             forced_start = self.routing.adaptive.consume_strongest_starter_tier(
                 ModelCatalog.strongest(self.routing.backends).tier
             )
@@ -444,13 +442,7 @@ class BudgetFlowLitellmModel:
                     flush=True,
                 )
                 backend = candidate
-        if self.routing.adaptive is not None and self.routing.strategy in (
-            "budgetflow_segment",
-            "budgetflow_conservative",
-            "segment_value_aware",
-            "budgetflow_equal_weight",
-            "stage_blind",
-        ):
+        if self.routing.adaptive is not None and self.routing.strategy in ADAPTIVE_ROUTINGS:
             forced_tier = self.routing.adaptive.rescue.forced_min_tier(
                 segment=progress_signal.segment,
                 gold_edited=self.agent_gold_edited,
@@ -1074,7 +1066,7 @@ class BudgetFlowLitellmModel:
 
     def _can_value_triggered_escalation(self) -> bool:
         self._refresh_value_triggered_escalation_policy()
-        if self.routing.strategy != "segment_value_aware":
+        if self.routing.strategy not in VALUE_TRIGGERED_ESCALATION_ROUTINGS:
             return False
         if self._value_triggered_escalation_opened:
             return False
@@ -1148,7 +1140,7 @@ class BudgetFlowLitellmModel:
         - strongest tier downgrades as stop-loss when it cannot make progress
         - Resets when progress is made.
         """
-        if self.routing.strategy not in ("budgetflow_segment", "budgetflow_conservative", "segment_value_aware", "budgetflow_equal_weight", "stage_blind"):
+        if self.routing.strategy not in ADAPTIVE_ROUTINGS:
             return backend
         ordered = self.routing.backends
         strongest = ModelCatalog.strongest(ordered)
@@ -1197,14 +1189,7 @@ class BudgetFlowLitellmModel:
 
     def _apply_gold_edit_repair_guard(self, backend: Backend, segment: WorkflowSegment) -> Backend:
         """Avoid long second-cheapest-tier repair loops after a gold edit."""
-        if self.routing.strategy not in (
-            "budgetflow_segment",
-            "budgetflow_conservative",
-            "segment_value_aware",
-            "budgetflow_equal_weight",
-            "stage_blind",
-            "budget_only",
-        ):
+        if self.routing.strategy not in GOLD_EDIT_REPAIR_GUARD_ROUTINGS:
             return backend
         if not self.agent_gold_edited or segment.name not in (WorkflowSegment.ACTION, WorkflowSegment.VERIFICATION):
             return backend
@@ -1245,7 +1230,7 @@ class BudgetFlowLitellmModel:
         start_index = ordered.index(backend)
         min_tier = 1
         adaptive = self.routing.adaptive
-        if adaptive is not None and self.routing.strategy in ("budgetflow_segment", "budgetflow_conservative", "segment_value_aware", "budgetflow_equal_weight", "stage_blind"):
+        if adaptive is not None and self.routing.strategy in ADAPTIVE_ROUTINGS:
             min_tier = adaptive.min_tier_for_reserve()
         reserve_out = None
         last_reason: str | None = None

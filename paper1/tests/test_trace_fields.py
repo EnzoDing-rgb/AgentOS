@@ -195,6 +195,7 @@ PY"""
     assert fields["action_touched_file_paths"] == ["sympy/functions/elementary/hyperbolic.py"]
 
 
+@pytest.mark.skipif(not _minisweagent_available, reason="minisweagent not installed")
 def test_parser_error_trace_fields_extracts_format_error_action_count() -> None:
     from minisweagent.exceptions import FormatError
     from budgetflow.adapter.turn_trace import parser_error_trace_fields
@@ -298,6 +299,29 @@ def test_router_trace_fields_report_built_in_memory_mode() -> None:
     assert fields["policy_type"] == "bootstrap"
     assert fields["memory_mode"] == "built_in"
     assert fields["policy_decision"]["memory_mode"] == "built_in"
+
+
+def test_router_trace_fields_mark_task_level_as_bootstrap_policy() -> None:
+    from budgetflow.adapter.strategies import choose_backend
+    from budgetflow.adapter.turn_trace import router_trace_fields
+    from budgetflow.types import TurnInfo
+
+    t1 = _backend("tier1", 1)
+    t2 = _backend("tier2", 2)
+    routing = build_routing_context(
+        "value_aware_task_level",
+        [t1, t2],
+        task_value=2.0,
+        median_task_value=1.0,
+    )
+    turn = TurnInfo(workflow_id="t", step_index=1, stage=Stage.REPAIR, w_i=0.5, context_len=100)
+
+    choose_backend(routing, turn, {"tier1": 0.01, "tier2": 0.02})
+    fields = router_trace_fields(routing)
+
+    assert fields["policy_type"] == "bootstrap"
+    assert fields["policy_name"] == "value_aware_task_level"
+    assert fields["policy_decision"]["router_branch"] == "value_aware_task_level"
 
 
 @pytest.mark.skipif(not _minisweagent_available, reason="minisweagent not installed")

@@ -55,7 +55,8 @@ class BudgetFlowSelector:
                 upgrade_threshold = delta_cost / (delta_progress * PROGRESS_SCALE * turn_info.w_i)
             else:
                 upgrade_threshold = float("inf")
-            if budget_pressure >= upgrade_threshold:
+            budget_slack = max(0.0, 1.0 - min(1.0, budget_pressure))
+            if budget_slack >= upgrade_threshold:
                 current = next_backend
                 current_score = upgrade_threshold
                 upgraded = True
@@ -132,7 +133,8 @@ class ValueAwareSelector(BudgetFlowSelector):
             conservation = 1.0 + max(0.0, budget_pressure - 0.3) * 1.5
             effective_threshold = upgrade_threshold * conservation
 
-            if budget_pressure >= effective_threshold:
+            budget_slack = max(0.0, 1.0 - min(1.0, budget_pressure))
+            if budget_slack >= effective_threshold:
                 current = next_backend
                 current_score = effective_threshold
                 upgraded = True
@@ -145,15 +147,9 @@ class ValueAwareSelector(BudgetFlowSelector):
 class ConservativeSelector(BudgetFlowSelector):
     """BudgetFlowSelector with budget-conservation pressure.
 
-    Standard BudgetFlowSelector escalates to T3 as pressure rises (higher
-    pressure → lower upgrade_threshold → easier escalation). This is correct
-    for no-progress streaks but wrong for budget depletion: when the shared
-    budget is running low, the router should become MORE conservative, not
-    MORE aggressive.
-
-    This variant multiplies the upgrade threshold by a conservation factor
-    that grows with budget_pressure, making T3 escalation progressively
-    harder as the shared budget depletes.
+    Budget pressure is budget depletion, not progress urgency. As pressure
+    rises, stronger-tier access must become harder unless an explicit
+    progress/escalation path overrides this selector.
     """
 
     def select_backend(
@@ -188,7 +184,8 @@ class ConservativeSelector(BudgetFlowSelector):
             conservation = 1.0 + max(0.0, budget_pressure - 0.3) * 1.5
             effective_threshold = upgrade_threshold * conservation
 
-            if budget_pressure >= effective_threshold:
+            budget_slack = max(0.0, 1.0 - min(1.0, budget_pressure))
+            if budget_slack >= effective_threshold:
                 current = next_backend
                 current_score = effective_threshold
                 upgraded = True

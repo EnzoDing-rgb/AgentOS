@@ -111,3 +111,10 @@ def test_value_aware_default_rescue_is_bounded() -> None:
     assert rescue.trigger_turns <= 6
     assert rescue.window_turns <= 3
     assert rescue.stop_loss_turns <= 6
+
+
+def test_value_aware_task_level_is_an_adaptive_routing() -> None:
+    from budgetflow.routing_sets import ADAPTIVE_ROUTINGS, VALUE_TRIGGERED_ESCALATION_ROUTINGS
+
+    assert "value_aware_task_level" in ADAPTIVE_ROUTINGS
+    assert "value_aware_task_level" in VALUE_TRIGGERED_ESCALATION_ROUTINGS

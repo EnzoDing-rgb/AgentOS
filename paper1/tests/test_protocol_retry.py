@@ -163,7 +163,7 @@ def test_parser_abort_breakdown_empty():
     result = _parser_abort_breakdown([])
     assert result["found_0_actions"] == 0
     assert result["found_2_actions"] == 0
-    assert result["empty_response"] == 0
+    assert "empty_response" not in result
     assert result["unknown"] == 0
     assert result["retry_success"] == 0
     assert result["retry_failed"] == 0
