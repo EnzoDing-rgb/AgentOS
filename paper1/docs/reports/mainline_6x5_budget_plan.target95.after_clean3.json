@@ -1,0 +1,110 @@
+{
+  "hard_cap_usd": 0.5235,
+  "source": "budget_binding_calibrator",
+  "generation_mode": "target_utilization",
+  "catalog_revision": "2026-06-16-qwen37plus-t2-normalized",
+  "catalog_path": "/root/.dev/AgentOS/paper1/docs/config/model_tiers.default.json",
+  "catalog_content_hash": "f7dd3820d517",
+  "historical_source": "paper1/data/runs/mainline_6x5_paid_small_check_20260616_clean2-0.jsonl",
+  "task_ids": [
+    "sympy__sympy-22714",
+    "sympy__sympy-12171",
+    "sympy__sympy-17655",
+    "sympy__sympy-24102",
+    "sympy__sympy-15346"
+  ],
+  "strategy_names": [
+    "bare_t2_baseline",
+    "bare_t3_baseline",
+    "enterprise_router_baseline",
+    "budgetflow_same_enterprise_router",
+    "budgetflow_task_level",
+    "budgetflow_segment"
+  ],
+  "projected_spend_by_strategy": {
+    "bare_t2_baseline": 0.4165,
+    "bare_t3_baseline": 0.5235,
+    "enterprise_router_baseline": 0.6157,
+    "budgetflow_same_enterprise_router": 0.4165,
+    "budgetflow_task_level": 0.5751,
+    "budgetflow_segment": 0.5774
+  },
+  "projected_utilization_by_strategy": {
+    "bare_t2_baseline": 0.7957,
+    "bare_t3_baseline": 1.0,
+    "enterprise_router_baseline": 1.0,
+    "budgetflow_same_enterprise_router": 0.7957,
+    "budgetflow_task_level": 1.0,
+    "budgetflow_segment": 1.0
+  },
+  "raw_projected_utilization_by_strategy": {
+    "bare_t2_baseline": 0.7957,
+    "bare_t3_baseline": 1.0,
+    "enterprise_router_baseline": 1.1761,
+    "budgetflow_same_enterprise_router": 0.7957,
+    "budgetflow_task_level": 1.0986,
+    "budgetflow_segment": 1.103
+  },
+  "reference_spend_usd": 0.5774,
+  "strongest_boundary_usd": 0.5235,
+  "max_projected_spend_usd": 0.6157,
+  "decision": "PASS",
+  "reasons": [
+    "calibration:censored spend floors from budget-exhausted rows: bare_t2_baseline=$0.3314, bare_t3_baseline=$0.1150, budgetflow_same_enterprise_router=$0.3321, budgetflow_segment=$0.0619, budgetflow_task_level=$0.1159, enterprise_router_baseline=$0.0753",
+    "calibration:bare_t2_baseline n=0 (no historical data, projection uses bootstrap_estimate)",
+    "calibration:bare_t3_baseline n=2 exact observed costs (low sample, no cross-task extrapolation)",
+    "calibration:enterprise_router_baseline n=1 exact observed costs (low sample, no cross-task extrapolation)",
+    "calibration:budgetflow_same_enterprise_router n=0 (no historical data, projection uses bootstrap_estimate)",
+    "calibration:budgetflow_task_level n=1 exact observed costs (low sample, no cross-task extrapolation)",
+    "calibration:budgetflow_segment n=2 exact observed costs (low sample, no cross-task extrapolation)",
+    "reference_rule: strategy_set_p75_projected_spend = $0.5774",
+    "hard_cap = p75_ref($0.5774) / target_utilization(0.95) = $0.6078",
+    "strongest_boundary: hard_cap clipped to bare_t3_baseline projected spend $0.5235 so the Strongest Model baseline remains budget-constrained",
+    "pressure_contract: grade=pass",
+    "pressure_contract: t2_loose: bare_t2_baseline at 79.6% < target 95%",
+    "pressure_contract: t3_tight: bare_t3_baseline at 100.0% >= 81% \u2014 budget-constrained as expected",
+    "pressure_contract: budgetflow_near_target: budgetflow_task_level at 100.0% near target 95%",
+    "tight_budget_warning: enterprise_router_baseline projected spend $0.62 > hard_cap $0.52 (117.6% utilization) \u2014 strategy may not complete within shared budget",
+    "tight_budget_warning: budgetflow_task_level projected spend $0.58 > hard_cap $0.52 (109.9% utilization) \u2014 strategy may not complete within shared budget",
+    "tight_budget_warning: budgetflow_segment projected spend $0.58 > hard_cap $0.52 (110.3% utilization) \u2014 strategy may not complete within shared budget",
+    "decision=PASS: hard_cap=$0.52 from target pressure with strongest boundary, max projected utilization 100.0%",
+    "CALIBRATION_GATE WARNING: prior projection MAPE=29.7% confidence=low. Max error: bare_t2_baseline at 81.4%. Treat the next run as diagnostic calibration evidence, not paper evidence.",
+    "CALIBRATION_GATE: WARNING: all primary strategies exhausted or nearly exhausted the shared cap (bare_t2_baseline, bare_t3_baseline, budgetflow_segment, budgetflow_task_level). Projection error alone is not enough to certify the target utilization regime; widen or recalibrate the budget plan before treating policy strength as interpretable."
+  ],
+  "pressure_contract": {
+    "target_utilization": 0.95,
+    "shape": {
+      "bare_t2_baseline": 0.7957,
+      "bare_t3_baseline": 1.0,
+      "enterprise_router_baseline": 1.0,
+      "budgetflow_same_enterprise_router": 0.7957,
+      "budgetflow_task_level": 1.0,
+      "budgetflow_segment": 1.0
+    },
+    "assertions": [
+      "t2_loose: bare_t2_baseline at 79.6% < target 95%",
+      "t3_tight: bare_t3_baseline at 100.0% >= 81% \u2014 budget-constrained as expected",
+      "budgetflow_near_target: budgetflow_task_level at 100.0% near target 95%"
+    ],
+    "violations": [],
+    "grade": "pass"
+  },
+  "projection_confidence": "low",
+  "target_projected_utilization": 0.95,
+  "calibration_error": {
+    "bare_t2_baseline": 0.8139,
+    "bare_t3_baseline": 0.0499,
+    "enterprise_router_baseline": 0.3158,
+    "budgetflow_same_enterprise_router": 0.3158,
+    "budgetflow_task_level": 0.1764,
+    "budgetflow_segment": 0.1111
+  },
+  "censored_spend_floor_by_strategy": {
+    "budgetflow_same_enterprise_router": 0.3321,
+    "bare_t3_baseline": 0.115,
+    "budgetflow_task_level": 0.1159,
+    "enterprise_router_baseline": 0.0753,
+    "budgetflow_segment": 0.0619,
+    "bare_t2_baseline": 0.3314
+  }
+}

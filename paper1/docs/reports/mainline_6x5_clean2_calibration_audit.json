@@ -1,0 +1,109 @@
+{
+  "strategy_errors": {
+    "bare_t2_baseline": {
+      "projected": 0.1827,
+      "actual": 0.3314,
+      "error_pct": 0.8139,
+      "strategy_cap": 0.3321,
+      "projected_utilization": 0.55,
+      "raw_projected_utilization": 0.55,
+      "actual_utilization": 0.9979,
+      "raw_actual_utilization": 0.9979,
+      "budget_exhausted_rows": 5,
+      "task_count": 5
+    },
+    "bare_t3_baseline": {
+      "projected": 0.3487,
+      "actual": 0.3313,
+      "error_pct": 0.0499,
+      "strategy_cap": 0.3321,
+      "projected_utilization": 1.0,
+      "raw_projected_utilization": 1.0,
+      "actual_utilization": 0.9976,
+      "raw_actual_utilization": 0.9976,
+      "budget_exhausted_rows": 3,
+      "task_count": 5
+    },
+    "enterprise_router_baseline": {
+      "projected": 0.2524,
+      "actual": 0.3321,
+      "error_pct": 0.3158,
+      "strategy_cap": 0.3321,
+      "projected_utilization": 0.76,
+      "raw_projected_utilization": 0.76,
+      "actual_utilization": 1.0,
+      "raw_actual_utilization": 1.0,
+      "budget_exhausted_rows": 4,
+      "task_count": 5
+    },
+    "budgetflow_same_enterprise_router": {
+      "projected": 0.2524,
+      "actual": 0.3321,
+      "error_pct": 0.3158,
+      "strategy_cap": 0.3321,
+      "projected_utilization": 0.76,
+      "raw_projected_utilization": 0.76,
+      "actual_utilization": 1.0,
+      "raw_actual_utilization": 1.0,
+      "budget_exhausted_rows": 5,
+      "task_count": 5
+    },
+    "budgetflow_task_level": {
+      "projected": 0.2823,
+      "actual": 0.3321,
+      "error_pct": 0.1764,
+      "strategy_cap": 0.3321,
+      "projected_utilization": 0.85,
+      "raw_projected_utilization": 0.85,
+      "actual_utilization": 1.0,
+      "raw_actual_utilization": 1.0,
+      "budget_exhausted_rows": 4,
+      "task_count": 5
+    },
+    "budgetflow_segment": {
+      "projected": 0.2989,
+      "actual": 0.3321,
+      "error_pct": 0.1111,
+      "strategy_cap": 0.3321,
+      "projected_utilization": 0.9,
+      "raw_projected_utilization": 0.9,
+      "actual_utilization": 1.0,
+      "raw_actual_utilization": 1.0,
+      "budget_exhausted_rows": 3,
+      "task_count": 5
+    }
+  },
+  "overall_mape": 0.2971,
+  "max_error_strategy": "bare_t2_baseline",
+  "max_error_pct": 0.8139,
+  "projection_confidence": "low",
+  "recommendations": [
+    "WARNING: all primary strategies exhausted or nearly exhausted the shared cap (bare_t2_baseline, bare_t3_baseline, budgetflow_segment, budgetflow_task_level). Projection error alone is not enough to certify the target utilization regime; widen or recalibrate the budget plan before treating policy strength as interpretable."
+  ],
+  "generation_mode": "target_utilization",
+  "target_utilization": 0.9,
+  "actual_utilization_by_strategy": {
+    "bare_t3_baseline": 0.9976,
+    "budgetflow_segment": 1.0,
+    "budgetflow_task_level": 1.0,
+    "enterprise_router_baseline": 1.0,
+    "budgetflow_same_enterprise_router": 1.0,
+    "bare_t2_baseline": 0.9979
+  },
+  "raw_actual_utilization_by_strategy": {
+    "bare_t3_baseline": 0.9976,
+    "budgetflow_segment": 1.0,
+    "budgetflow_task_level": 1.0,
+    "enterprise_router_baseline": 1.0,
+    "budgetflow_same_enterprise_router": 1.0,
+    "bare_t2_baseline": 0.9979
+  },
+  "budget_exhausted_by_strategy": {
+    "budgetflow_same_enterprise_router": 5,
+    "bare_t3_baseline": 3,
+    "budgetflow_task_level": 4,
+    "enterprise_router_baseline": 4,
+    "budgetflow_segment": 3,
+    "bare_t2_baseline": 5
+  }
+}

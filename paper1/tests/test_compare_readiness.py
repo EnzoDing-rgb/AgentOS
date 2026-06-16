@@ -276,7 +276,7 @@ def test_readiness_blocks_paper_mainline_without_primary_value_source(tmp_path) 
     frozen_plan = tmp_path / "frozen_plan.json"
     frozen_plan.write_text(
         '{"meta":{"name":"unit_plan"},'
-        '"plan":{"task-a":{"preferred_model":"tier2","base_cap":0.2,"priority":1}}}'
+        '"plan":{"task-a":{"preferred_model":"tier2","priority":1}}}'
     )
     value_context = ValueEfficiencyContext()
     value_context.init(value_profile="equal")
@@ -302,7 +302,7 @@ def test_readiness_blocks_paper_mainline_without_primary_value_source(tmp_path) 
 def test_readiness_blocks_frozen_plan_without_selected_task(tmp_path) -> None:
     plan = tmp_path / "frozen_plan.json"
     plan.write_text(
-        '{"meta":{"name":"unit_plan"},"plan":{"task-a":{"preferred_model":"tier2","base_cap":0.2,"priority":1}}}'
+        '{"meta":{"name":"unit_plan"},"plan":{"task-a":{"preferred_model":"tier2","priority":1}}}'
     )
     value_context = ValueEfficiencyContext()
     value_context.init(value_profile="equal")
@@ -331,7 +331,7 @@ def test_readiness_blocks_frozen_plan_without_selected_task(tmp_path) -> None:
 def test_readiness_accepts_frozen_plan_covering_selected_tasks(tmp_path) -> None:
     plan = tmp_path / "frozen_plan.json"
     plan.write_text(
-        '{"meta":{"name":"unit_plan"},"plan":{"task-a":{"preferred_model":"tier2","base_cap":0.2,"priority":1}}}'
+        '{"meta":{"name":"unit_plan"},"plan":{"task-a":{"preferred_model":"tier2","priority":1}}}'
     )
     value_context = ValueEfficiencyContext()
     value_context.init(value_profile="equal")
@@ -351,99 +351,6 @@ def test_readiness_accepts_frozen_plan_covering_selected_tasks(tmp_path) -> None
     assert report.ok
     assert "frozen_plan=unit_plan" in report.facts
     assert "frozen_plan_entries=1" in report.facts
-    assert "frozen_plan_planned_cap=0.2000" in report.facts
-
-
-def test_readiness_blocks_budget_mismatch_with_frozen_plan_selected_cap_sum(tmp_path) -> None:
-    """Explicit --budget that does not match selected cap sum blocks the run."""
-    plan = tmp_path / "frozen_plan.json"
-    plan.write_text(
-        '{"meta":{"name":"unit_plan","hard_cap_usd":1.5},'
-        '"plan":{"task-a":{"preferred_model":"tier2","base_cap":0.2,"priority":1},'
-        '"task-b":{"preferred_model":"tier3","base_cap":0.5,"priority":2}}}'
-    )
-    value_context = ValueEfficiencyContext()
-    value_context.init(value_profile="equal")
-
-    report = build_compare_readiness_report(
-        args=_args(frozen_plan=str(plan), budget=1.0),
-        tasks=[SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",))],
-        strategies=(CompareStrategy("budgetflow_same_enterprise_router", "budgetflow_same_router"),),
-        policy_jobs=1,
-        value_context=value_context,
-        catalog_issues=[],
-        runtime_root=Path("/tmp/budgetflow-runtime"),
-        auto_budget_enabled=False,
-        auto_budget_caps=None,
-    )
-
-    assert not report.ok
-    assert "frozen_plan_selected_cap_sum=0.2000" in report.facts
-    assert any("does not match frozen plan selected cap sum" in issue for issue in report.blocking)
-
-
-def test_readiness_allows_budget_matching_selected_cap_sum(tmp_path) -> None:
-    """Explicit --budget that matches selected cap sum passes readiness."""
-    plan = tmp_path / "frozen_plan.json"
-    plan.write_text(
-        '{"meta":{"name":"unit_plan","hard_cap_usd":0.7},'
-        '"plan":{"task-a":{"preferred_model":"tier2","base_cap":0.2,"priority":1},'
-        '"task-b":{"preferred_model":"tier3","base_cap":0.5,"priority":2}}}'
-    )
-    value_context = ValueEfficiencyContext()
-    value_context.init(value_profile="equal")
-
-    report = build_compare_readiness_report(
-        args=_args(frozen_plan=str(plan), budget=0.7),
-        tasks=[
-            SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",)),
-            SimpleNamespace(instance_id="task-b", test_patch="diff", fail_to_pass=("test_b",)),
-        ],
-        strategies=(CompareStrategy("budgetflow_same_enterprise_router", "budgetflow_same_router"),),
-        policy_jobs=1,
-        value_context=value_context,
-        catalog_issues=[],
-        runtime_root=Path("/tmp/budgetflow-runtime"),
-        auto_budget_enabled=False,
-        auto_budget_caps=None,
-    )
-
-    assert report.ok
-    assert "frozen_plan_selected_cap_sum=0.7000" in report.facts
-    assert "budget_source=cli" in report.facts
-    assert "budget=0.7000" in report.facts
-
-
-def test_readiness_auto_budget_when_no_explicit_budget(tmp_path) -> None:
-    """Without --budget, source is frozen_plan_cap_sum and value is selected cap sum."""
-    plan = tmp_path / "frozen_plan.json"
-    plan.write_text(
-        '{"meta":{"name":"unit_plan","hard_cap_usd":0.7},'
-        '"plan":{"task-a":{"preferred_model":"tier2","base_cap":0.2,"priority":1},'
-        '"task-b":{"preferred_model":"tier3","base_cap":0.5,"priority":2}}}'
-    )
-    value_context = ValueEfficiencyContext()
-    value_context.init(value_profile="equal")
-
-    report = build_compare_readiness_report(
-        args=_args(frozen_plan=str(plan)),
-        tasks=[
-            SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",)),
-            SimpleNamespace(instance_id="task-b", test_patch="diff", fail_to_pass=("test_b",)),
-        ],
-        strategies=(CompareStrategy("budgetflow_same_enterprise_router", "budgetflow_same_router"),),
-        policy_jobs=1,
-        value_context=value_context,
-        catalog_issues=[],
-        runtime_root=Path("/tmp/budgetflow-runtime"),
-        auto_budget_enabled=False,
-        auto_budget_caps=None,
-    )
-
-    assert report.ok
-    assert "frozen_plan_selected_cap_sum=0.7000" in report.facts
-    assert "budget_source=frozen_plan_cap_sum" in report.facts
-    assert "budget=0.7000" in report.facts
 
 
 def test_readiness_blocks_tasks_without_verifiable_harness_metadata() -> None:
@@ -472,7 +379,7 @@ def test_readiness_blocks_tasks_without_verifiable_harness_metadata() -> None:
 
 def test_readiness_blocks_malformed_frozen_plan(tmp_path) -> None:
     plan = tmp_path / "bad_frozen_plan.json"
-    plan.write_text('{"meta":{"name":"bad"},"plan":{"task-a":{"preferred_model":"tier2","priority":1}}}')
+    plan.write_text('{"meta":{"name":"bad"},"plan":{"task-a":{"preferred_model":"tier2","base_cap":0.2,"priority":1}}}')
     value_context = ValueEfficiencyContext()
     value_context.init(value_profile="equal")
 
@@ -551,7 +458,7 @@ def test_readiness_blocks_budget_plan_blck_decision(tmp_path) -> None:
     bp = tmp_path / "budget_plan.json"
     bp.write_text(
         '{"hard_cap_usd":3.58,"source":"budget_binding_calibrator",'
-        '"generation_mode":"frozen_plan_cap_sum",'
+        '"generation_mode":"target_utilization",'
         '"decision":"BLOCK","reasons":["max utilization 13% < 15%"]}'
     )
     value_context = ValueEfficiencyContext()
@@ -574,27 +481,20 @@ def test_readiness_blocks_budget_plan_blck_decision(tmp_path) -> None:
     assert any("budget plan decision is BLOCK" in issue for issue in report.blocking)
 
 
-def test_readiness_accepts_pass_with_diagnostic_override_with_warning(tmp_path) -> None:
-    """PASS_WITH_DIAGNOSTIC_OVERRIDE + override_reason + cap_sum match → GO with warning."""
-    plan = tmp_path / "frozen_plan.json"
-    plan.write_text(
-        '{"meta":{"name":"unit_plan","hard_cap_usd":3.58},"plan":{"task-a":{"preferred_model":"tier2","base_cap":3.58,"priority":1}}}'
-    )
+def test_readiness_blocks_retired_budget_plan_generation_mode(tmp_path) -> None:
     bp = tmp_path / "budget_plan.json"
     bp.write_text(
-        '{"hard_cap_usd":3.58,"source":"budget_binding_calibrator",'
-        '"generation_mode":"frozen_plan_cap_sum",'
-        '"decision":"PASS_WITH_DIAGNOSTIC_OVERRIDE",'
-        '"override_reason":"intentionally bound to pre-registered frozen plan cap sum",'
-        '"reasons":["max projected utilization 13% < 15%"]}'
+        '{"hard_cap_usd":1.0,"source":"budget_binding_calibrator",'
+        '"generation_mode":"retired_budget_mode",'
+        '"decision":"PASS","task_ids":["task-a"]}'
     )
     value_context = ValueEfficiencyContext()
     value_context.init(value_profile="equal")
 
     report = build_compare_readiness_report(
-        args=_args(frozen_plan=str(plan)),
+        args=_args(),
         tasks=[SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",))],
-        strategies=(CompareStrategy("budgetflow_same_enterprise_router", "budgetflow_same_router"),),
+        strategies=(CompareStrategy("budgetflow_segment", "segment_value_aware"),),
         policy_jobs=1,
         value_context=value_context,
         catalog_issues=[],
@@ -604,9 +504,8 @@ def test_readiness_accepts_pass_with_diagnostic_override_with_warning(tmp_path) 
         budget_plan_path=bp,
     )
 
-    assert report.ok
-    assert any("PASS_WITH_DIAGNOSTIC_OVERRIDE" in w for w in report.warnings)
-    assert any("budget_plan_override" in f for f in report.facts)
+    assert not report.ok
+    assert any("generation_mode must be target_utilization" in issue for issue in report.blocking)
 
 
 def test_readiness_blocks_budget_plan_missing_selected_tasks(tmp_path) -> None:
@@ -614,7 +513,7 @@ def test_readiness_blocks_budget_plan_missing_selected_tasks(tmp_path) -> None:
     bp = tmp_path / "budget_plan.json"
     bp.write_text(
         '{"hard_cap_usd":1.0,"source":"budget_binding_calibrator",'
-        '"generation_mode":"frozen_plan_cap_sum","decision":"PASS",'
+        '"generation_mode":"target_utilization","decision":"PASS",'
         '"task_ids":["task-a"]}'
     )
     value_context = ValueEfficiencyContext()
@@ -645,7 +544,7 @@ def test_readiness_blocks_budget_plan_strategy_set_drift(tmp_path) -> None:
     bp = tmp_path / "budget_plan.json"
     bp.write_text(
         '{"hard_cap_usd":1.0,"source":"budget_binding_calibrator","decision":"PASS",'
-        '"generation_mode":"frozen_plan_cap_sum",'
+        '"generation_mode":"target_utilization",'
         '"task_ids":["task-a"],'
         '"strategy_names":["budgetflow_task_level","bare_t2_baseline"]}'
     )
@@ -676,7 +575,7 @@ def test_readiness_blocks_budget_plan_with_retired_dynamic_caps(tmp_path) -> Non
     bp = tmp_path / "budget_plan.json"
     bp.write_text(
         '{"hard_cap_usd":1.0,"source":"budget_binding_calibrator","decision":"PASS",'
-        '"generation_mode":"frozen_plan_cap_sum",'
+        '"generation_mode":"target_utilization",'
         '"task_ids":["task-a"],"strategy_names":["budgetflow_segment"]}'
     )
     value_context = ValueEfficiencyContext()
@@ -703,7 +602,7 @@ def test_readiness_blocks_budget_plan_superset_for_short_run(tmp_path) -> None:
     bp = tmp_path / "budget_plan.json"
     bp.write_text(
         '{"hard_cap_usd":1.0,"source":"budget_binding_calibrator",'
-        '"generation_mode":"frozen_plan_cap_sum","decision":"PASS",'
+        '"generation_mode":"target_utilization","decision":"PASS",'
         '"task_ids":["task-a","task-b","task-c"]}'
     )
     value_context = ValueEfficiencyContext()
@@ -758,91 +657,6 @@ def test_readiness_blocks_budget_plan_task_order_drift(tmp_path) -> None:
 
     assert not report.ok
     assert any("same task set but different order" in issue for issue in report.blocking)
-
-
-def test_readiness_checks_budget_plan_hard_cap_against_full_frozen_plan(tmp_path) -> None:
-    frozen = tmp_path / "frozen_plan.json"
-    frozen.write_text(json.dumps({
-        "meta": {"name": "unit_plan", "hard_cap_usd": 1.5},
-        "plan": {
-            "task-a": {"preferred_model": "tier2", "base_cap": 0.5, "priority": 1},
-            "task-b": {"preferred_model": "tier2", "base_cap": 0.5, "priority": 2},
-            "task-c": {"preferred_model": "tier3", "base_cap": 0.5, "priority": 3},
-        },
-    }))
-    bp = tmp_path / "budget_plan.json"
-    bp.write_text(json.dumps({
-        "hard_cap_usd": 1.5,
-        "source": "budget_binding_calibrator",
-        "generation_mode": "frozen_plan_cap_sum",
-        "decision": "PASS",
-        "task_ids": ["task-a", "task-b", "task-c"],
-    }))
-    value_context = ValueEfficiencyContext()
-    value_context.init(value_profile="equal")
-
-    report = build_compare_readiness_report(
-        args=_args(frozen_plan=str(frozen)),
-        tasks=[
-            SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",)),
-            SimpleNamespace(instance_id="task-b", test_patch="diff", fail_to_pass=("test_b",)),
-            SimpleNamespace(instance_id="task-c", test_patch="diff", fail_to_pass=("test_c",)),
-        ],
-        strategies=(CompareStrategy("budgetflow_same_enterprise_router", "budgetflow_same_router"),),
-        policy_jobs=1,
-        value_context=value_context,
-        catalog_issues=[],
-        runtime_root=Path("/tmp/budgetflow-runtime"),
-        auto_budget_enabled=False,
-        auto_budget_caps=None,
-        budget_plan_path=bp,
-    )
-
-    assert report.ok
-    assert "frozen_plan_selected_cap_sum=1.5000" in report.facts
-    assert "budget_plan_frozen_cap_sum=1.5000" in report.facts
-
-
-def test_readiness_blocks_budget_plan_hard_cap_drift_from_frozen_plan(tmp_path) -> None:
-    frozen = tmp_path / "frozen_plan.json"
-    frozen.write_text(json.dumps({
-        "meta": {"name": "unit_plan", "hard_cap_usd": 1.5},
-        "plan": {
-            "task-a": {"preferred_model": "tier2", "base_cap": 0.5, "priority": 1},
-            "task-b": {"preferred_model": "tier2", "base_cap": 0.5, "priority": 2},
-            "task-c": {"preferred_model": "tier3", "base_cap": 0.5, "priority": 3},
-        },
-    }))
-    bp = tmp_path / "budget_plan.json"
-    bp.write_text(json.dumps({
-        "hard_cap_usd": 1.2,
-        "source": "budget_binding_calibrator",
-        "generation_mode": "frozen_plan_cap_sum",
-        "decision": "PASS",
-        "task_ids": ["task-a", "task-b", "task-c"],
-    }))
-    value_context = ValueEfficiencyContext()
-    value_context.init(value_profile="equal")
-
-    report = build_compare_readiness_report(
-        args=_args(frozen_plan=str(frozen)),
-        tasks=[
-            SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",)),
-            SimpleNamespace(instance_id="task-b", test_patch="diff", fail_to_pass=("test_b",)),
-            SimpleNamespace(instance_id="task-c", test_patch="diff", fail_to_pass=("test_c",)),
-        ],
-        strategies=(CompareStrategy("budgetflow_same_enterprise_router", "budgetflow_same_router"),),
-        policy_jobs=1,
-        value_context=value_context,
-        catalog_issues=[],
-        runtime_root=Path("/tmp/budgetflow-runtime"),
-        auto_budget_enabled=False,
-        auto_budget_caps=None,
-        budget_plan_path=bp,
-    )
-
-    assert not report.ok
-    assert any("does not match frozen plan cap sum over budget_plan.task_ids" in issue for issue in report.blocking)
 
 
 def test_readiness_blocks_diagnostic_catalog_without_explicit_opt_in(tmp_path) -> None:

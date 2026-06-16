@@ -255,18 +255,18 @@ def format_compact_audit(audit: dict) -> str:
         lines.append("PER-TASK POLICY COMPARISON")
         lines.append(
             f"{'instance_id':<30} {'strategy':<34} {'S':>4} {'cost':>7} {'val':>5} "
-            f"{'plan':>5} {'cap':>5} {'turn':>4} {'1st':>5} {'T3@':>4} {'use@':>4} {'gap':>3} "
+            f"{'plan':>5} {'pri':>3} {'turn':>4} {'1st':>5} {'T3@':>4} {'use@':>4} {'gap':>3} "
             f"{'patch':>5} {'fail':<14} {'trust':<5}"
         )
         lines.append("-" * 140)
         for row in per_task:
             plan_model = row.get("frozen_plan_preferred_model") or "-"
-            plan_cap = row.get("frozen_plan_base_cap")
-            plan_cap_text = "-" if plan_cap in (None, "") else f"{float(plan_cap):.2f}"
+            plan_priority = row.get("frozen_plan_priority")
+            plan_priority_text = "-" if plan_priority in (None, "") else str(plan_priority)
             lines.append(
                 f"{row['instance_id']:<30} {row['strategy']:<34} {str(row.get('score_status') or '-')[:4]:>4} "
                 f"${row['cost']:>6.2f} {row['task_value']:>5.2f} "
-                f"{plan_model:>5} {plan_cap_text:>5} "
+                f"{plan_model:>5} {plan_priority_text:>3} "
                 f"{row['turns']:>4} T{row['first_tier']:>4} "
                 f"{row['first_t3_turn'] if row['first_t3_turn'] is not None else '-':>4} "
                 f"{row['first_useful_action'] if row['first_useful_action'] is not None else '-':>4} "
@@ -281,7 +281,7 @@ def format_compact_audit(audit: dict) -> str:
         # Legend
         lines.append(
             "  S=score_status(pass/true_fail/abort)  val=task_value  turn=llm_turns  1st=first_backend_tier  "
-            "plan=frozen_plan_preferred_model  cap=frozen_plan_base_cap  "
+            "plan=frozen_plan_preferred_model  pri=frozen_plan_priority  "
             "T3@=first_T3_turn  use@=first_useful_action  gap=max_no_progress_streak"
         )
 

@@ -15,13 +15,15 @@ tiers only.
 | Claim 2 | BudgetFlow's value-aware budget allocation, routing, escalation, stop, and learning mechanisms explain how Claim 1 is achieved and must improve or preserve value/cost efficiency against strong diagnostic controls. |
 | Yield | Total resolved task value within a shared budget window. It is not raw task count. |
 | Yield per Dollar | Total resolved task value divided by model spend. It is the main efficiency diagnostic. |
-| Value-Driven Budget Allocation | Allocation of task caps and spend from Task Value, Task Effort, Model Fit, expected payoff, cost, and budget pressure. |
+| Value-Driven Budget Allocation | Compilation of a shared hard-budget regime, then allocation of task caps and spend from Task Value, Task Effort, Model Fit, expected payoff, cost, and budget pressure. |
+| Budget Regime Compiler | Pre-run mechanism that turns a task set, ValueSource, Task Effort, model-tier catalog, Cost Memory, and target pressure into a pre-registered shared hard budget plan with confidence and audit fields. It is part of Claim 1, not a separate claim. |
 | Task Value | Estimated utility of a verified resolved outcome. It answers "what is this task worth if solved?" |
 | Task Effort | Estimated work, runway, or expected cost needed to resolve a task. It answers "how much budget should this task need?" |
 | Model Fit | Estimated suitability of each model tier for a task, repo, or workflow stage. It answers "which tier is likely to make verified progress here?" |
 | AllocationContext | Standard decision input that carries Task Value, Task Effort, Model Fit, budget state, cost source, and confidence into policy decisions. |
 | Tier Boundary Selection | Choosing whether a BudgetFlow policy should behave near the T2 boundary, near the T3 boundary, or use mixed model-tier routing for the current allocation context. |
 | ValueSource | Versioned input that defines or estimates task value for one run or deployment. |
+| Frozen Router Plan | Pre-registered static router prior for diagnostic controls. It may contain task IDs, preferred model tier, priority/order, and router rules. It must not contain or imply budget caps. |
 | CostSource | Versioned input that defines or estimates model cost for one run or deployment. |
 | TaskAdapter | Adapter that turns external work into standard BudgetFlow task inputs: identity, description, features, difficulty/value hints, and value-source metadata. |
 | BudgetAdapter | Adapter that turns customer or experiment budget input into a standard budget window, hard/soft cap, shared scope, allowed model pool, source, and confidence. |
@@ -57,10 +59,12 @@ keeps the system broader than a routing heuristic.
 
 | Claim | Main question | Primary evidence |
 |---|---|---|
-| Claim 1 | Under the same shared hard budget, does BudgetFlow resolve more normalized task value? | Yield and Yield per Dollar at fixed budget. |
+| Claim 1 | Under the same compiled shared hard-budget regime, does BudgetFlow resolve more normalized task value? | Yield and Yield per Dollar at fixed budget, with budget-plan confidence and actual utilization reported. |
 | Claim 2 | Why did that happen, and are the mechanisms reusable? | Resolution-cost frontier, Strongest Model productive use, Tier Boundary Selection, stop-loss behavior, stage/task routing controls, memory effect, and failure attribution. |
 
-Claim 1 is the objective. Claim 2 explains the mechanism. Routing savings,
+Claim 1 is the objective. The Budget Regime Compiler is the pre-run part of
+Value-Driven Budget Allocation: it defines the shared budget regime before any
+policy comparison. Claim 2 explains the runtime mechanism. Routing savings,
 stage-aware routing, Tier Boundary Selection, stop-loss, escalation, and memory
 are useful only when they protect or improve Claim 1.
 
@@ -74,6 +78,9 @@ Task Value is a proxy, so every paid run must make the proxy auditable.
 
 - Freeze the ValueSource before execution. Do not change task values after
   seeing outcomes.
+- Pre-registered manual value belongs to the ValueSource/value matrix, not to
+  the frozen router plan. A frozen router plan may choose a preferred model from
+  task value and effort, but it does not define Task Value.
 - Manual value, when used, is a pre-registered researcher value proxy based on
   task priority, expected user impact, scope, and benchmark diversity. Treat it
   as a proxy, not ground truth.
@@ -100,6 +107,38 @@ Task Effort and cost follow the same rule.
   and absorb the reusable principle through Tier Boundary Selection, not weaken
   the baseline.
 
+The Budget Regime Compiler makes the fixed budget auditable rather than
+hand-picked.
+
+- Compile the shared hard budget from frozen task IDs, ValueSource, Task Effort,
+  model-tier catalog, Cost Memory when available, and a predeclared target
+  pressure such as roughly 80%-90% expected utilization.
+- Keep the compiled cap tight enough that a pure Strongest Model baseline is
+  budget-constrained or exhausts the cap. If the strongest baseline can solve the
+  workload without pressure, the budget regime is too loose to test allocation.
+- Use one small diagnostic calibration pass at most for a new workload/model
+  catalog before freezing the budget plan for the evidence run. Repeated
+  calibration on the same evaluation slice weakens the claim.
+- Report budget-plan confidence, projected utilization, actual utilization, and
+  whether pure T3 hit the cap. A strongest-tier baseline near 100% utilization
+  can be a healthy sign that the budget is genuinely binding.
+- Do not claim the compiler guarantees exact utilization. It targets a pressure
+  regime and must expose projection error when actual spend is too loose or too
+  tight.
+- Active Cost Memory for the compiler must consume only current-schema,
+  same-catalog, scoreable rows. Budget-exhausted rows may enter only as censored
+  spend floors, never as complete cost observations. Provider, parser, infra, old
+  schema, or catalog-mismatched rows are forensic evidence, not calibration
+  samples.
+- Frozen router plans are never a budget source. Retired frozen-cap fields such
+  as per-task ``base_cap`` or meta ``hard_cap_usd`` must be regenerated out of
+  active router-plan artifacts before paid runs.
+
+The compiler handles the main "how small can the shared budget be?" question.
+The runtime BudgetFlow policy should then win by allocating that already-tight
+budget toward higher verified value, not by claiming savings from an overly
+generous cap.
+
 ## Calibration Discipline
 
 BudgetFlow is not claiming that one fixed set of constants is universally
@@ -110,6 +149,9 @@ when it follows these rules:
 
 - Calibrate only on diagnostic runs or production holdout data, then freeze the
   policy and ValueSource before the evidence run.
+- Prefer a single diagnostic calibration pass for each new workload/model
+  catalog. If more passes are needed, report them as mechanism development, not
+  as final evidence.
 - Tune abstract mechanism inputs: task value scale, cost source, model-tier
   fit, budget slack or shadow price, progress urgency, rescue window, stop-loss
   patience, and escalation confidence.

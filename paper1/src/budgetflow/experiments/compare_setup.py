@@ -56,7 +56,6 @@ class BatchBudgetModes:
     use_fixed_per_task_cap: bool
     use_dynamic_task_caps: bool
     planned_dynamic_cap: float | None
-    effective_frozen_caps: dict[str, float] | None = None
 
 
 def resolve_task_count(args: Namespace) -> int:
@@ -66,20 +65,7 @@ def resolve_task_count(args: Namespace) -> int:
     return tasks_n
 
 
-def _resolve_task_ids(args: Namespace) -> list[str] | None:
-    """Return instance IDs from --ids or known presets, or None."""
-    if args.ids:
-        return [s.strip() for s in args.ids.split(",") if s.strip()]
-    if args.preset == "3x3":
-        return list(DIAGNOSTIC_3X3_IDS)
-    return None
-
-
-def resolve_budget_plan(
-    args: Namespace, *, tasks_n: int,
-    frozen_plan_path: str | None = None,
-    task_ids: list[str] | None = None,
-) -> CompareBudgetPlan:
+def resolve_budget_plan(args: Namespace) -> CompareBudgetPlan:
     constrained = args.budget
     pressure_init = args.pressure_init
     pressure_max = args.pressure_max
@@ -89,8 +75,8 @@ def resolve_budget_plan(
     if args.budget_scale != 1.0:
         constrained = (constrained or 100.0) * args.budget_scale
     # Priority when --budget is not explicitly set:
-    #   1. --budget-plan hard_cap_usd (code-generated from calibrate_budget)
-    #   2. --frozen-plan selected cap sum (legacy, only when budget plan absent)
+    #   1. --budget-plan hard_cap_usd (code-generated from Budget Regime Compiler)
+    #   2. built-in default for non-paid local diagnostics
     if constrained is None:
         budget_plan_path = getattr(args, "budget_plan", None)
         if budget_plan_path:
@@ -101,11 +87,6 @@ def resolve_budget_plan(
             if bp_hard_cap > 0:
                 constrained = bp_hard_cap
             source = f"budget_plan:{bp.get('generation_mode', 'unknown')}"
-        elif frozen_plan_path and task_ids:
-            from budgetflow.frozen_router import load_frozen_plan
-            plan = load_frozen_plan(frozen_plan_path)
-            constrained = plan.selected_cap_sum(task_ids)
-            source = "frozen_plan_cap_sum"
     return CompareBudgetPlan(
         constrained=100.0 if constrained is None else constrained,
         pressure_init=pressure_init,
@@ -191,28 +172,17 @@ def build_batch_budget_modes(
     per_task_cap: float | None,
     auto_budget_task_caps: dict[str, float] | None,
     constrained_budget: float,
-    frozen_task_caps: dict[str, float] | None = None,
 ) -> BatchBudgetModes:
     """Assign equal shared batch caps to all paper mainline strategies.
 
     Every strategy gets the same ``constrained_budget`` as a policy-local
-    shared batch hard cap.  Per-task frozen caps and dynamic auto-budget caps
-    are explicit diagnostic modes — they only activate when the user passes
-    ``--per-task-cap`` or ``--auto-budget``.
-
-    Frozen router plans provide ``preferred_model`` and ``effort`` priors
-    (via ``effective_frozen_caps``), but do NOT change the budget cap for
-    enterprise_router / budgetflow_same_enterprise_router strategies.
+    shared batch hard cap.  Dynamic auto-budget caps are an explicit retired
+    diagnostic mode and only activate in code paths that set
+    ``auto_budget_task_caps``. Frozen router plans never provide budget caps.
     """
     use_fixed_per_task_cap = per_task_cap is not None and per_task_cap > 0
     use_dynamic_task_caps = auto_budget_task_caps is not None
     planned_dynamic_cap = sum(auto_budget_task_caps.values()) if auto_budget_task_caps else None
-
-    # Frozen plan priors (preferred_model, effort) are available to all
-    # strategies, but do not change the shared cap.
-    effective_frozen_caps: dict[str, float] | None = None
-    if frozen_task_caps:
-        effective_frozen_caps = dict(frozen_task_caps)
 
     def _cap_for(s: CompareStrategy) -> float | None:
         if not s.budgeted:
@@ -240,7 +210,6 @@ def build_batch_budget_modes(
         use_fixed_per_task_cap=use_fixed_per_task_cap,
         use_dynamic_task_caps=use_dynamic_task_caps,
         planned_dynamic_cap=planned_dynamic_cap,
-        effective_frozen_caps=effective_frozen_caps,
     )
 
 

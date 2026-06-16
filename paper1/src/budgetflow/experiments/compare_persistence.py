@@ -21,7 +21,7 @@ from budgetflow.experiments.compare_summary import (
 from budgetflow.failure_classification import classify_failure
 from budgetflow.run_series import completed_scoreable_keys
 
-_PLANNED_CAP_MODES = frozenset({"per_task_cap", "dynamic_task_caps", "frozen_router_caps"})
+_PLANNED_CAP_MODES = frozenset({"per_task_cap", "dynamic_task_caps"})
 
 
 @dataclass
@@ -264,7 +264,7 @@ def ingest_batch_footer(
     with io_lock:
         mode = budget_modes.get(cfg.name, "shared")
         cap_label = (
-            "planned_cap" if mode in {"dynamic_task_caps", "frozen_router_caps"}
+            "planned_cap" if mode == "dynamic_task_caps"
             else "per_task_cap" if mode == "per_task_cap"
             else "shared_cap"
         )

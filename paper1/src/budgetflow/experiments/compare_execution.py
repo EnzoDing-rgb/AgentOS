@@ -249,7 +249,6 @@ def run_task_record(
     else:
         record["frozen_plan_name"] = None
         record["frozen_plan_preferred_model"] = None
-        record["frozen_plan_base_cap"] = None
         record["frozen_plan_priority"] = None
 
     record["failure_class"] = classify_failure(record)

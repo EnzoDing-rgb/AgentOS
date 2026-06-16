@@ -1,11 +1,11 @@
 """Budget binding calibrator — generates auditable budget_plan.json from code.
 
-Reads historical diagnostic JSONL, re-normalizes costs with the active model
-catalog, and projects spend for the target task set.  Produces a budget plan
-with a GO/NO-GO decision that paid-readiness gates on.
+Reads historical diagnostic JSONL and projects spend for the target task set.
+Produces a budget plan with a GO/NO-GO decision that paid-readiness gates on.
 
-No ML, no outcome leakage.  Historical data is used only for token/tier
-proportions; costs are always re-priced with the current catalog.
+No ML, no outcome leakage.  Current-schema JSONL costs are already settled in
+the run's model-tier catalog units. Budget-exhausted rows are censored spend
+floors, not complete cost observations.
 """
 
 from __future__ import annotations
@@ -19,21 +19,7 @@ from typing import Any
 
 from budgetflow.experiments.compare_config import load_strategy_set, paper_mainline_strategy_names
 
-from ..model_tiers import MODEL_CATALOG, catalog_path, catalog_revision, catalog_source_info, init_catalog
-
-
-# Cold-start pressure posture for paper-mainline strategies.  Frozen caps are
-# pre-registered pressure anchors, not empirical expected costs.  These
-# multipliers describe the intended initial pressure shape before clean Cost
-# Memory exists; clean current-schema rows supersede them strategy by strategy.
-_COLD_START_PRESSURE_PRIOR_MULTIPLIERS: dict[str, float] = {
-    "bare_t2_baseline": 0.55,
-    "bare_t3_baseline": 1.05,
-    "enterprise_router_baseline": 0.76,
-    "budgetflow_same_enterprise_router": 0.76,
-    "budgetflow_task_level": 0.85,
-    "budgetflow_segment": 0.90,
-}
+from ..model_tiers import catalog_path, catalog_revision, catalog_source_info, init_catalog
 
 
 @dataclass
@@ -42,7 +28,7 @@ class BudgetBindingPlan:
 
     hard_cap_usd: float
     source: str = "budget_binding_calibrator"
-    generation_mode: str = "frozen_plan_cap_sum"
+    generation_mode: str = "target_utilization"
     target_projected_utilization: float | None = None
     catalog_revision: str = ""
     catalog_path: str = ""
@@ -52,16 +38,17 @@ class BudgetBindingPlan:
     strategy_names: list[str] = field(default_factory=list)
     projected_spend_by_strategy: dict[str, float] = field(default_factory=dict)
     projected_utilization_by_strategy: dict[str, float] = field(default_factory=dict)
-    min_viable_budget: float = 0.0
-    loose_budget_threshold: float = 0.0
-    tight_budget_threshold: float = 0.0
+    raw_projected_utilization_by_strategy: dict[str, float] = field(default_factory=dict)
+    reference_spend_usd: float = 0.0
+    strongest_boundary_usd: float = 0.0
+    max_projected_spend_usd: float = 0.0
     decision: str = "PASS"
     reasons: list[str] = field(default_factory=list)
-    override_reason: str = ""
     pressure_contract: dict[str, Any] = field(default_factory=dict)
     projection_confidence: str = "unvalidated"
     calibration_error: dict[str, float] = field(default_factory=dict)
     calibration_excluded: dict[str, int] = field(default_factory=dict)
+    censored_spend_floor_by_strategy: dict[str, float] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         d: dict = {
@@ -80,9 +67,12 @@ class BudgetBindingPlan:
             "projected_utilization_by_strategy": {
                 k: round(v, 4) for k, v in self.projected_utilization_by_strategy.items()
             },
-            "min_viable_budget": round(self.min_viable_budget, 4),
-            "loose_budget_threshold": round(self.loose_budget_threshold, 4),
-            "tight_budget_threshold": round(self.tight_budget_threshold, 4),
+            "raw_projected_utilization_by_strategy": {
+                k: round(v, 4) for k, v in self.raw_projected_utilization_by_strategy.items()
+            },
+            "reference_spend_usd": round(self.reference_spend_usd, 4),
+            "strongest_boundary_usd": round(self.strongest_boundary_usd, 4),
+            "max_projected_spend_usd": round(self.max_projected_spend_usd, 4),
             "decision": self.decision,
             "reasons": self.reasons,
             "pressure_contract": self.pressure_contract,
@@ -90,12 +80,14 @@ class BudgetBindingPlan:
         }
         if self.target_projected_utilization is not None:
             d["target_projected_utilization"] = round(self.target_projected_utilization, 4)
-        if self.override_reason:
-            d["override_reason"] = self.override_reason
         if self.calibration_error:
             d["calibration_error"] = {k: round(v, 4) for k, v in self.calibration_error.items()}
         if self.calibration_excluded:
             d["calibration_excluded"] = dict(self.calibration_excluded)
+        if self.censored_spend_floor_by_strategy:
+            d["censored_spend_floor_by_strategy"] = {
+                k: round(v, 4) for k, v in self.censored_spend_floor_by_strategy.items()
+            }
         return d
 
     @classmethod
@@ -113,16 +105,17 @@ class BudgetBindingPlan:
             strategy_names=d.get("strategy_names", []),
             projected_spend_by_strategy=d.get("projected_spend_by_strategy", {}),
             projected_utilization_by_strategy=d.get("projected_utilization_by_strategy", {}),
-            min_viable_budget=d.get("min_viable_budget", 0.0),
-            loose_budget_threshold=d.get("loose_budget_threshold", 0.0),
-            tight_budget_threshold=d.get("tight_budget_threshold", 0.0),
+            raw_projected_utilization_by_strategy=d.get("raw_projected_utilization_by_strategy", {}),
+            reference_spend_usd=d.get("reference_spend_usd", 0.0),
+            strongest_boundary_usd=d.get("strongest_boundary_usd", 0.0),
+            max_projected_spend_usd=d.get("max_projected_spend_usd", 0.0),
             decision=d.get("decision", "PASS"),
             reasons=d.get("reasons", []),
-            override_reason=d.get("override_reason", ""),
             pressure_contract=d.get("pressure_contract", {}),
             projection_confidence=d.get("projection_confidence", "unvalidated"),
             calibration_error=d.get("calibration_error", {}),
             calibration_excluded=d.get("calibration_excluded", {}),
+            censored_spend_floor_by_strategy=d.get("censored_spend_floor_by_strategy", {}),
         )
 
 
@@ -139,6 +132,8 @@ class CalibrationAudit:
     generation_mode: str = ""
     target_utilization: float | None = None
     actual_utilization_by_strategy: dict[str, float] = field(default_factory=dict)
+    raw_actual_utilization_by_strategy: dict[str, float] = field(default_factory=dict)
+    budget_exhausted_by_strategy: dict[str, int] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -153,7 +148,37 @@ class CalibrationAudit:
             "actual_utilization_by_strategy": {
                 k: round(v, 4) for k, v in self.actual_utilization_by_strategy.items()
             },
+            "raw_actual_utilization_by_strategy": {
+                k: round(v, 4) for k, v in self.raw_actual_utilization_by_strategy.items()
+            },
+            "budget_exhausted_by_strategy": dict(self.budget_exhausted_by_strategy),
         }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> CalibrationAudit:
+        return cls(
+            strategy_errors=d.get("strategy_errors", {}),
+            overall_mape=float(d.get("overall_mape", 0.0) or 0.0),
+            max_error_strategy=str(d.get("max_error_strategy", "") or ""),
+            max_error_pct=float(d.get("max_error_pct", 0.0) or 0.0),
+            projection_confidence=str(d.get("projection_confidence", "unvalidated") or "unvalidated"),
+            recommendations=list(d.get("recommendations", []) or []),
+            generation_mode=str(d.get("generation_mode", "") or ""),
+            target_utilization=d.get("target_utilization"),
+            actual_utilization_by_strategy=d.get("actual_utilization_by_strategy", {}),
+            raw_actual_utilization_by_strategy=d.get("raw_actual_utilization_by_strategy", {}),
+            budget_exhausted_by_strategy=d.get("budget_exhausted_by_strategy", {}),
+        )
+
+
+@dataclass
+class HistoricalCostSignals:
+    """Cost signals with complete observations separated from censored floors."""
+
+    observed_costs: dict[str, dict[str, float]] = field(default_factory=dict)
+    censored_spend_floor_by_strategy: dict[str, float] = field(default_factory=dict)
+    censored_row_counts: dict[str, int] = field(default_factory=dict)
+    excluded: dict[str, int] = field(default_factory=dict)
 
 
 # ── Public API ────────────────────────────────────────────────────────────
@@ -163,45 +188,35 @@ def calibrate_budget(
     task_ids: list[str],
     *,
     historical_jsonl: Path | None = None,
-    frozen_plan_path: Path | None = None,
     value_matrix_path: Path | None = None,
     strategies: tuple[str, ...] | None = None,
     output_path: Path | None = None,
-    override_reason: str = "",
     target_utilization: float | None = None,
-    prior_calibration: CalibrationAudit | None = None,
+    calibration_evidence: CalibrationAudit | None = None,
 ) -> BudgetBindingPlan:
     """Generate a budget binding plan from historical data and current catalog.
 
-    Two modes:
+    ``hard_cap`` = p75(projected spend) / *target_utilization*, clipped by the
+    Strongest Model projected spend. The reference is the 75th percentile of the
+    configured paper-mainline strategy set — not any single BudgetFlow policy's
+    spend. Cheaper strategies have more headroom; bare T3 may be at or above
+    cap. The pressure shape is an audit output, never a generation rule.
 
-    * **frozen_plan_cap_sum** (default when *target_utilization* is None):
-      ``hard_cap`` = sum of frozen plan per-task ``base_cap`` values.
-      Suitable for mechanism-diagnostic runs whose budget is bound to a
-      pre-registered static router plan.
-
-    * **target_utilization** (when set, e.g. 0.80):
-      ``hard_cap`` = p75(projected spend) / *target_utilization*.
-      The reference is the 75th percentile of the configured paper-mainline
-      strategy set — not any single BudgetFlow policy's spend.  Cheaper
-      strategies have more headroom; bare T3 may be at or above cap.  The
-      pressure shape is an audit output, never a generation rule.
-
-    *prior_calibration* feeds projection confidence into the readiness gate.
-    When a prior calibration audit shows high projection error, the plan
-    decision may be downgraded to WARNING or BLOCK.
+    *calibration_evidence* is read-only readiness evidence from one prior
+    diagnostic pass. It does not tune the cap. When the audit shows high
+    projection error, the plan decision may be downgraded to WARNING or BLOCK.
     """
-    if target_utilization is not None and not (0.0 < target_utilization <= 1.0):
+    if target_utilization is None:
+        raise ValueError("target_utilization is required")
+    if not (0.0 < target_utilization <= 1.0):
         raise ValueError(f"target_utilization must be in (0, 1], got {target_utilization}")
     if strategies is None:
         strategies = paper_mainline_strategy_names()
 
-    generation_mode = "target_utilization" if target_utilization is not None else "frozen_plan_cap_sum"
-
     catalog_info = catalog_source_info()
     plan = BudgetBindingPlan(
         hard_cap_usd=0.0,
-        generation_mode=generation_mode,
+        generation_mode="target_utilization",
         target_projected_utilization=target_utilization,
         catalog_revision=str(catalog_info.get("catalog_revision") or catalog_revision()),
         catalog_path=str(
@@ -214,11 +229,15 @@ def calibrate_budget(
         strategy_names=list(strategies),
     )
 
-    # ── Load historical per-strategy per-task costs ──────────────────────
+    # ── Load historical per-strategy per-task cost signals ───────────────
     historical: dict[str, dict[str, float]] = {}  # strategy -> {task_id -> cost}
     calibration_excluded: dict[str, int] = {}
+    censored_spend_floor_by_strategy: dict[str, float] = {}
     if historical_jsonl and historical_jsonl.exists():
-        historical, calibration_excluded = _load_historical_costs(historical_jsonl)
+        signals = _load_historical_cost_signals(historical_jsonl)
+        historical = signals.observed_costs
+        calibration_excluded = signals.excluded
+        censored_spend_floor_by_strategy = signals.censored_spend_floor_by_strategy
         if calibration_excluded:
             plan.calibration_excluded = calibration_excluded
             total_excluded = sum(calibration_excluded.values())
@@ -226,21 +245,13 @@ def calibrate_budget(
                 f"calibration:excluded {total_excluded} contaminated rows: "
                 + ", ".join(f"{k}={v}" for k, v in sorted(calibration_excluded.items()))
             )
-
-    # ── Compute T3 price multiplier for re-normalization ────────────────
-    t3_multiplier = _t3_price_multiplier()
-
-    # ── Load frozen plan caps for reference ─────────────────────────────
-    frozen_caps: dict[str, float] = {}
-    preferred_models: dict[str, str] = {}
-    if frozen_plan_path and frozen_plan_path.exists():
-        frozen_caps = _load_frozen_caps(frozen_plan_path)
-        preferred_models = _load_frozen_preferred_models(frozen_plan_path)
-        if not historical_jsonl:
-            plan.historical_source = f"cold_start_pressure_prior:frozen_plan={frozen_plan_path}"
+        if censored_spend_floor_by_strategy:
+            plan.censored_spend_floor_by_strategy = censored_spend_floor_by_strategy
             plan.reasons.append(
-                "projection_basis: cold_start_pressure_prior from frozen caps; "
-                "frozen caps are pressure anchors, not empirical expected-cost observations"
+                "calibration:censored spend floors from budget-exhausted rows: "
+                + ", ".join(
+                    f"{k}=${v:.4f}" for k, v in sorted(censored_spend_floor_by_strategy.items())
+                )
             )
 
     # ── Estimate zero-history tasks from value matrix ────────────────────
@@ -248,46 +259,31 @@ def calibrate_budget(
     if value_matrix_path and value_matrix_path.exists():
         value_features = _load_value_features(value_matrix_path)
 
-    # ── Effective-cost calibration per strategy ─────────────────────────
-    # Compute cost-per-effort-unit from clean historical rows to account for
-    # turn-efficiency differences (T3 may be cheaper than T2 despite higher
-    # token prices, because it completes tasks in fewer turns).
-    strategy_cost_per_effort: dict[str, float] = {}
     strategy_cal_n: dict[str, int] = {}
     for strategy in strategies:
-        costs: list[float] = []
+        observed = 0
         for tid in task_ids:
             hist_cost = historical.get(strategy, {}).get(tid)
             if hist_cost is not None and hist_cost > 0:
-                feat = value_features.get(tid, {})
-                effort = feat.get("bootstrap_difficulty", 30.0) if feat else 30.0
-                if effort > 0:
-                    costs.append(hist_cost / effort)
-        if costs:
-            strategy_cost_per_effort[strategy] = sorted(costs)[len(costs) // 2]
-            strategy_cal_n[strategy] = len(costs)
+                observed += 1
+        if observed:
+            strategy_cal_n[strategy] = observed
 
     # ── Project spend per strategy ──────────────────────────────────────
     projected: dict[str, float] = {}
     for strategy in strategies:
         total = 0.0
-        cpe = strategy_cost_per_effort.get(strategy)
         for tid in task_ids:
             hist_cost = historical.get(strategy, {}).get(tid)
             if hist_cost is not None:
-                # Historical cost with catalog-based re-normalization
-                t3_share = _estimate_t3_cost_share(strategy, tid, historical, preferred_models=preferred_models)
-                normalized = hist_cost * (1.0 + t3_share * (t3_multiplier - 1.0))
-                total += normalized
-            elif cpe is not None:
-                # Cost-per-effort calibration: use observed efficiency
-                feat = value_features.get(tid, {})
-                effort = feat.get("bootstrap_difficulty", 30.0) if feat else 30.0
-                total += effort * cpe
+                # Current-schema JSONL total_cost is already settled in the
+                # active BudgetFlow catalog units recorded by the run.
+                total += hist_cost
             else:
-                total += _bootstrap_cost_estimate(
-                    tid, strategy, value_features, historical, t3_multiplier, frozen_caps=frozen_caps
-                )
+                total += _bootstrap_cost_estimate(tid, strategy, value_features)
+        floor = censored_spend_floor_by_strategy.get(strategy, 0.0)
+        if floor > total:
+            total = floor
         projected[strategy] = total
 
     plan.projected_spend_by_strategy = projected
@@ -297,141 +293,84 @@ def calibrate_budget(
         cal_n = strategy_cal_n.get(strategy, 0)
         if cal_n >= 5:
             plan.reasons.append(
-                f"calibration:{strategy} n={cal_n} cost_per_effort={strategy_cost_per_effort.get(strategy, 0):.6f}"
+                f"calibration:{strategy} n={cal_n} exact observed costs"
             )
         elif cal_n > 0:
             plan.reasons.append(
-                f"calibration:{strategy} n={cal_n} (low sample, treat projection as advisory)"
+                f"calibration:{strategy} n={cal_n} exact observed costs (low sample, no cross-task extrapolation)"
             )
         else:
-            cold_start_source = "cold_start_pressure_prior" if frozen_caps else "bootstrap_estimate"
             plan.reasons.append(
-                f"calibration:{strategy} n=0 (no historical data, projection uses {cold_start_source})"
+                f"calibration:{strategy} n=0 (no historical data, projection uses bootstrap_estimate)"
             )
 
-    plan.min_viable_budget = max(projected.values()) if projected else 0.0
-    frozen_cap_sum = sum(frozen_caps.get(tid, 0.0) for tid in task_ids)
-
-    plan.loose_budget_threshold = plan.min_viable_budget * 2.0
-    plan.tight_budget_threshold = plan.min_viable_budget
+    plan.max_projected_spend_usd = max(projected.values()) if projected else 0.0
 
     # ── Decision logic ──────────────────────────────────────────────────
+    ref_spend = _distribution_p75(list(projected.values()))
+    plan.reference_spend_usd = ref_spend
+    plan.reasons.append(
+        f"reference_rule: strategy_set_p75_projected_spend = ${ref_spend:.4f}"
+    )
 
-    if target_utilization is not None:
-        # ── target_utilization mode ──────────────────────────────────
-        ref_spend = _distribution_p75(list(projected.values()))
+    t3_boundary = projected.get("bare_t3_baseline", 0.0)
+    plan.strongest_boundary_usd = t3_boundary
+    if ref_spend <= 0:
+        plan.hard_cap_usd = 1.0
+        plan.decision = "BLOCK"
+        plan.reasons.append("no projected spend data; cannot compute p75 reference")
+    else:
+        target_cap = ref_spend / target_utilization
+        plan.hard_cap_usd = min(target_cap, t3_boundary) if t3_boundary > 0 else target_cap
         plan.reasons.append(
-            f"reference_rule: strategy_set_p75_projected_spend = ${ref_spend:.4f}"
+            f"hard_cap = p75_ref(${ref_spend:.4f}) / "
+            f"target_utilization({target_utilization}) = ${target_cap:.4f}"
+        )
+        if t3_boundary > 0 and plan.hard_cap_usd == t3_boundary:
+            plan.reasons.append(
+                f"strongest_boundary: hard_cap clipped to bare_t3_baseline projected "
+                f"spend ${t3_boundary:.4f} so the Strongest Model baseline remains "
+                "budget-constrained"
+            )
+
+    for strategy in strategies:
+        spend = projected.get(strategy, 0.0)
+        raw_util = spend / plan.hard_cap_usd if plan.hard_cap_usd > 0 else 0.0
+        plan.raw_projected_utilization_by_strategy[strategy] = raw_util
+        plan.projected_utilization_by_strategy[strategy] = min(raw_util, 1.0)
+
+    _build_pressure_contract(plan, strategies)
+
+    for strategy in strategies:
+        spend = projected.get(strategy, 0.0)
+        if plan.hard_cap_usd > 0 and spend > plan.hard_cap_usd * 1.05:
+            plan.reasons.append(
+                f"tight_budget_warning: {strategy} projected spend "
+                f"${spend:.2f} > hard_cap ${plan.hard_cap_usd:.2f} "
+                f"({spend / plan.hard_cap_usd:.1%} utilization) — "
+                f"strategy may not complete within shared budget"
+            )
+
+    if plan.decision != "BLOCK":
+        max_util = max(plan.projected_utilization_by_strategy.values()) if plan.projected_utilization_by_strategy else 0.0
+        plan.reasons.append(
+            f"decision=PASS: hard_cap=${plan.hard_cap_usd:.2f} from "
+            f"target pressure with strongest boundary, max projected utilization "
+            f"{max_util:.1%}"
         )
 
-        if ref_spend <= 0:
-            plan.hard_cap_usd = frozen_cap_sum if frozen_cap_sum > 0 else 1.0
-            plan.decision = "BLOCK"
-            plan.reasons.append("no projected spend data; cannot compute p75 reference")
-        else:
-            plan.hard_cap_usd = ref_spend / target_utilization
-            plan.reasons.append(
-                f"hard_cap = p75_ref(${ref_spend:.4f}) / "
-                f"target_utilization({target_utilization}) = ${plan.hard_cap_usd:.4f}"
-            )
-
-        for strategy in strategies:
-            spend = projected.get(strategy, 0.0)
-            plan.projected_utilization_by_strategy[strategy] = (
-                min(spend / plan.hard_cap_usd, 1.0) if plan.hard_cap_usd > 0 else 0.0
-            )
-
-        # ── Pressure contract (formalized audit output) ──────────────
-        _build_pressure_contract(plan, strategies)
-
-        # Tight-budget warnings for strategies that exceed hard cap
-        for strategy in strategies:
-            spend = projected.get(strategy, 0.0)
-            if spend > plan.hard_cap_usd * 1.05:
-                plan.reasons.append(
-                    f"tight_budget_warning: {strategy} projected spend "
-                    f"${spend:.2f} > hard_cap ${plan.hard_cap_usd:.2f} "
-                    f"({spend / plan.hard_cap_usd:.1%} utilization) — "
-                    f"strategy may not complete within shared budget"
-                )
-
-        if plan.decision != "BLOCK":
-            max_util = max(plan.projected_utilization_by_strategy.values()) if plan.projected_utilization_by_strategy else 0.0
-            plan.reasons.append(
-                f"decision=PASS: hard_cap=${plan.hard_cap_usd:.2f} from "
-                f"p75_ref / {target_utilization}, max projected utilization "
-                f"{max_util:.1%}"
-            )
-
-    else:
-        # ── frozen_plan_cap_sum mode (legacy) ─────────────────────────
-        plan.hard_cap_usd = frozen_cap_sum if frozen_cap_sum > 0 else plan.min_viable_budget
-
-        for strategy in strategies:
-            spend = projected.get(strategy, 0.0)
-            plan.projected_utilization_by_strategy[strategy] = (
-                min(spend / plan.hard_cap_usd, 1.0) if plan.hard_cap_usd > 0 else 0.0
-            )
-
-        _build_pressure_contract(plan, strategies)
-
-        max_util = max(plan.projected_utilization_by_strategy.values()) if plan.projected_utilization_by_strategy else 0.0
-        budget_loose = max_util < 0.15
-        if budget_loose and override_reason and frozen_cap_sum > 0:
-            plan.decision = "PASS_WITH_DIAGNOSTIC_OVERRIDE"
-            plan.override_reason = override_reason
-            plan.reasons.append(
-                f"max projected utilization {max_util:.1%} < 15% — "
-                f"hard_cap=${plan.hard_cap_usd:.2f} is loose, but budget intentionally "
-                f"bound to pre-registered frozen plan cap sum for "
-                f"enterprise_router/budgetflow_same_enterprise_router symmetry"
-            )
-            plan.reasons.append(f"override: {override_reason}")
-        elif max_util < 0.15:
-            plan.decision = "BLOCK"
-            plan.reasons.append(
-                f"max projected utilization {max_util:.1%} < 15% — "
-                f"hard_cap=${plan.hard_cap_usd:.2f} is too loose, budget not binding"
-            )
-        elif max_util < 0.30:
-            plan.reasons.append(
-                f"max projected utilization {max_util:.1%} is low (< 30%) — "
-                f"consider tightening hard_cap"
-            )
-
-        for strategy in strategies:
-            spend = projected.get(strategy, 0.0)
-            if spend > plan.hard_cap_usd * 1.1:
-                plan.decision = "BLOCK"
-                plan.reasons.append(
-                    f"{strategy} projected spend ${spend:.2f} > "
-                    f"hard_cap ${plan.hard_cap_usd:.2f} — budget too tight"
-                )
-
-        if frozen_cap_sum > 0 and plan.hard_cap_usd != frozen_cap_sum:
-            plan.decision = "BLOCK"
-            plan.reasons.append(
-                f"hard_cap ${plan.hard_cap_usd:.2f} != frozen cap sum ${frozen_cap_sum:.2f}"
-            )
-
-        if not plan.reasons:
-            plan.reasons.append(
-                f"all strategies projected within hard_cap=${plan.hard_cap_usd:.2f}, "
-                f"max utilization {max_util:.1%}"
-            )
-
-    # ── Projection confidence from prior calibration ────────────────────
-    if prior_calibration is not None:
-        plan.projection_confidence = prior_calibration.projection_confidence
+    # ── Projection confidence from calibration evidence ─────────────────
+    if calibration_evidence is not None:
+        plan.projection_confidence = calibration_evidence.projection_confidence
         plan.calibration_error = {
-            s: e["error_pct"] for s, e in prior_calibration.strategy_errors.items()
+            s: e["error_pct"] for s, e in calibration_evidence.strategy_errors.items()
         }
-        _apply_calibration_gate(plan, prior_calibration)
+        _apply_calibration_gate(plan, calibration_evidence)
     else:
         plan.projection_confidence = "unvalidated"
         plan.reasons.append(
-            "projection_confidence=unvalidated: no prior calibration audit provided. "
-            "Run a no-paid calibration audit before relying on projected utilization."
+            "projection_confidence=unvalidated: no calibration evidence provided. "
+            "Run one diagnostic calibration audit before relying on projected utilization."
         )
 
     if output_path:
@@ -469,7 +408,9 @@ def audit_calibration(
     # ── Aggregate actual spend from JSONL ──────────────────────────────
     actual_spend: dict[str, float] = {}
     actual_utilization: dict[str, float] = {}
+    raw_actual_utilization: dict[str, float] = {}
     strategy_task_counts: dict[str, int] = {}
+    budget_exhausted_by_strategy: dict[str, int] = {}
 
     latest_records: dict[tuple[str, str], tuple[float, int, dict]] = {}
     with jsonl_path.open() as f:
@@ -498,17 +439,23 @@ def audit_calibration(
         cost = float(rec.get("total_cost") or 0)
         actual_spend[strategy] = actual_spend.get(strategy, 0.0) + cost
         strategy_task_counts[strategy] = strategy_task_counts.get(strategy, 0) + 1
+        if _row_is_budget_exhausted(rec):
+            budget_exhausted_by_strategy[strategy] = budget_exhausted_by_strategy.get(strategy, 0) + 1
 
     if per_strategy_cap:
         for strategy in actual_spend:
             cap = per_strategy_cap.get(strategy, per_strategy_cap.get("default"))
             if cap and cap > 0:
-                actual_utilization[strategy] = round(min(actual_spend[strategy] / cap, 1.0), 4)
+                raw_util = actual_spend[strategy] / cap
+                raw_actual_utilization[strategy] = round(raw_util, 4)
+                actual_utilization[strategy] = round(min(raw_util, 1.0), 4)
     else:
         hard_cap = plan.hard_cap_usd
         if hard_cap > 0:
             for strategy in actual_spend:
-                actual_utilization[strategy] = round(min(actual_spend[strategy] / hard_cap, 1.0), 4)
+                raw_util = actual_spend[strategy] / hard_cap
+                raw_actual_utilization[strategy] = round(raw_util, 4)
+                actual_utilization[strategy] = round(min(raw_util, 1.0), 4)
 
     # ── Compare projected vs actual ────────────────────────────────────
     strategy_errors: dict[str, dict] = {}
@@ -530,7 +477,13 @@ def audit_calibration(
             "error_pct": round(error_pct, 4),
             "strategy_cap": round(cap, 4) if cap else None,
             "projected_utilization": plan.projected_utilization_by_strategy.get(strategy, 0.0),
+            "raw_projected_utilization": plan.raw_projected_utilization_by_strategy.get(
+                strategy,
+                plan.projected_utilization_by_strategy.get(strategy, 0.0),
+            ),
             "actual_utilization": actual_utilization.get(strategy, 0.0),
+            "raw_actual_utilization": raw_actual_utilization.get(strategy, 0.0),
+            "budget_exhausted_rows": budget_exhausted_by_strategy.get(strategy, 0),
             "task_count": strategy_task_counts.get(strategy, 0),
         }
 
@@ -562,12 +515,32 @@ def audit_calibration(
     elif confidence == "low":
         recommendations.append(
             f"WARNING: projection error MAPE={overall_mape:.1%}. "
-            "Consider using frozen_plan_cap_sum mode or a larger safety margin."
+            "Treat the next run as diagnostic calibration evidence."
         )
     if max_err_pct > 1.0:
         recommendations.append(
             f"CRITICAL: {max_err_strat} projection error {max_err_pct:.1%} — "
             "this strategy's spend estimate is off by more than 2x."
+        )
+
+    primary_strategies = {
+        "bare_t2_baseline",
+        "bare_t3_baseline",
+        "budgetflow_task_level",
+        "budgetflow_segment",
+    }
+    saturated_primary = [
+        strategy for strategy, util in actual_utilization.items()
+        if strategy in primary_strategies and util >= 0.98
+    ]
+    if len(saturated_primary) >= 3:
+        if confidence == "high":
+            confidence = "low"
+        recommendations.append(
+            "WARNING: all primary strategies exhausted or nearly exhausted the shared cap "
+            f"({', '.join(sorted(saturated_primary))}). Projection error alone is not enough "
+            "to certify the target utilization regime; widen or recalibrate the budget plan "
+            "before treating policy strength as interpretable."
         )
 
     audit = CalibrationAudit(
@@ -580,6 +553,8 @@ def audit_calibration(
         generation_mode=plan.generation_mode,
         target_utilization=plan.target_projected_utilization,
         actual_utilization_by_strategy=actual_utilization,
+        raw_actual_utilization_by_strategy=raw_actual_utilization,
+        budget_exhausted_by_strategy=budget_exhausted_by_strategy,
     )
 
     if output_path:
@@ -693,7 +668,7 @@ def _apply_calibration_gate(
     plan: BudgetBindingPlan,
     audit: CalibrationAudit,
 ) -> None:
-    """Apply prior calibration results to the readiness gate.
+    """Apply calibration evidence to the readiness gate.
 
     Downgrades the plan decision when projection confidence is insufficient.
     This prevents pretending target_utilization is satisfied when the
@@ -707,8 +682,7 @@ def _apply_calibration_gate(
             plan.reasons.append(
                 f"CALIBRATION_GATE BLOCK: prior projection MAPE={audit.overall_mape:.1%} "
                 f"exceeds 60% threshold. Projection model is unvalidated — cannot "
-                f"rely on target_utilization budget. Recalibrate projection model or "
-                f"use frozen_plan_cap_sum budget mode."
+                f"rely on target_utilization budget."
             )
         for rec in audit.recommendations:
             plan.reasons.append(f"CALIBRATION_GATE: {rec}")
@@ -716,9 +690,9 @@ def _apply_calibration_gate(
     elif confidence == "low":
         plan.reasons.append(
             f"CALIBRATION_GATE WARNING: prior projection MAPE={audit.overall_mape:.1%} "
-            f"is in 30-60% range. Projection confidence is low. "
+            f"confidence=low. "
             f"Max error: {audit.max_error_strategy} at {audit.max_error_pct:.1%}. "
-            f"Consider adding a 20-30% safety margin to hard_cap."
+            f"Treat the next run as diagnostic calibration evidence, not paper evidence."
         )
         for rec in audit.recommendations:
             plan.reasons.append(f"CALIBRATION_GATE: {rec}")
@@ -738,15 +712,22 @@ def _row_is_calibration_eligible(row: dict) -> tuple[bool, str]:
     must not enter cost-per-effort or ModelFit estimation.
     """
     budget_mode = row.get("budget_mode", "")
+    score_status = str(row.get("score_status") or "")
+    if not score_status:
+        return False, "missing_score_status"
+    if score_status not in {"pass", "true_fail"}:
+        return False, f"not_scoreable:{score_status}"
 
-    # Budget asymmetry is a runtime cap-mode problem.  A budget plan whose
-    # source is "frozen_plan_cap_sum" can still produce a clean shared batch
-    # cap after the cap semantics fix, so do not key on budget_input.source.
+    row_catalog = row.get("catalog") or {}
+    catalog_ok, catalog_reason = _row_catalog_compatible(row_catalog)
+    if not catalog_ok:
+        return False, catalog_reason
+
     if budget_mode == "frozen_router_caps":
         return False, "budget_asymmetry:frozen_router_caps"
 
     # Diagnostic catalog with inflated prices (e.g. t3x3 = 3x T3 prices).
-    catalog = row.get("catalog") or {}
+    catalog = row_catalog
     catalog_rev = catalog.get("catalog_revision", "")
     if "t3x3" in catalog_rev.lower() or "diagnostic" in catalog_rev.lower():
         return False, f"diagnostic_catalog:{catalog_rev}"
@@ -760,8 +741,31 @@ def _row_is_calibration_eligible(row: dict) -> tuple[bool, str]:
     # Protocol/harness errors that truncated the run — cost is not
     # representative of normal execution.
     exit_status = row.get("exit_status", "")
+    exit_reason = str(row.get("exit_reason") or "")
     if exit_status in ("BudgetFlowBudgetError",):
         return False, f"budget_error:{exit_status}"
+    failure_class = str(row.get("failure_class") or "")
+    abort_reason = str(row.get("abort_reason") or "")
+    exit_owner = str(row.get("exit_owner") or "")
+    provider_error_kind = str(row.get("provider_error_kind") or "")
+    if (
+        failure_class == "infra_fail"
+        or "infra" in abort_reason
+        or "provider" in abort_reason
+        or exit_owner == "provider_error"
+        or provider_error_kind
+        or "provider" in exit_reason.lower()
+    ):
+        return False, "infra_or_provider_abort"
+    if (
+        failure_class == "extract_fail"
+        and (
+            str(row.get("exit_status") or "") == "FormatError"
+            or "format_error" in exit_reason.lower()
+            or exit_owner == "parser_protocol"
+        )
+    ):
+        return False, "protocol_or_parser_abort"
 
     # Successful protocol retries are valid scoreable evidence, but their
     # cost includes a failed formatting/provider turn.  Keep them out of cost
@@ -774,120 +778,99 @@ def _row_is_calibration_eligible(row: dict) -> tuple[bool, str]:
 
 def _load_historical_costs(
     jsonl_path: Path,
-    *,
-    calibration_eligible_only: bool = True,
 ) -> tuple[dict[str, dict[str, float]], dict[str, int]]:
     """Extract per-strategy per-task total_cost from historical JSONL.
 
     Returns (costs, exclusion_counts) where exclusion_counts maps
     exclusion_reason -> count of rows filtered out.
     """
-    costs: dict[str, dict[str, float]] = {}
-    excluded: dict[str, int] = {}
+    signals = _load_historical_cost_signals(jsonl_path)
+    return signals.observed_costs, signals.excluded
+
+
+def _load_historical_cost_signals(jsonl_path: Path) -> HistoricalCostSignals:
+    """Load current cost signals without mixing complete and censored rows."""
+
+    signals = HistoricalCostSignals()
+    records = _latest_records_by_strategy_task(jsonl_path)
+    for (strategy, instance_id), rec in records.items():
+        total_cost = float(rec.get("total_cost") or rec.get("scoreable_cost") or 0.0)
+        catalog_ok, catalog_reason = _row_catalog_compatible(rec.get("catalog") or {})
+        if not catalog_ok:
+            signals.excluded[catalog_reason] = signals.excluded.get(catalog_reason, 0) + 1
+            continue
+        score_status = str(rec.get("score_status") or "")
+        if not score_status:
+            signals.excluded["missing_score_status"] = signals.excluded.get("missing_score_status", 0) + 1
+            continue
+        if score_status not in {"pass", "true_fail"}:
+            reason = f"not_scoreable:{score_status}"
+            signals.excluded[reason] = signals.excluded.get(reason, 0) + 1
+            continue
+        if _row_is_budget_exhausted(rec):
+            signals.censored_spend_floor_by_strategy[strategy] = (
+                signals.censored_spend_floor_by_strategy.get(strategy, 0.0) + total_cost
+            )
+            signals.censored_row_counts[strategy] = signals.censored_row_counts.get(strategy, 0) + 1
+            continue
+
+        eligible, reason = _row_is_calibration_eligible(rec)
+        if not eligible:
+            signals.excluded[reason] = signals.excluded.get(reason, 0) + 1
+            continue
+
+        signals.observed_costs.setdefault(strategy, {})[instance_id] = total_cost
+    return signals
+
+
+def _latest_records_by_strategy_task(jsonl_path: Path) -> dict[tuple[str, str], dict]:
+    latest: dict[tuple[str, str], tuple[float, int, dict]] = {}
     with jsonl_path.open() as f:
-        for line in f:
+        for order, line in enumerate(f):
             line = line.strip()
             if not line:
                 continue
             try:
-                d = json.loads(line)
+                rec = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            strategy = d.get("strategy", "")
-            instance_id = d.get("instance_id", "")
+            strategy = rec.get("strategy", "")
+            instance_id = rec.get("instance_id", "")
             if not strategy or not instance_id:
                 continue
-
-            if calibration_eligible_only:
-                eligible, reason = _row_is_calibration_eligible(d)
-                if not eligible:
-                    excluded[reason] = excluded.get(reason, 0) + 1
-                    continue
-
-            total_cost = d.get("total_cost") or d.get("scoreable_cost") or 0.0
-            costs.setdefault(strategy, {})[instance_id] = float(total_cost)
-    return costs, excluded
+            finished_at = float(rec.get("row_finished_at", 0) or 0)
+            key = (strategy, instance_id)
+            if key not in latest or (finished_at, order) >= (latest[key][0], latest[key][1]):
+                latest[key] = (finished_at, order, rec)
+    return {key: rec for key, (_finished_at, _order, rec) in latest.items()}
 
 
-def _estimate_t3_cost_share(
-    strategy: str,
-    task_id: str,
-    historical: dict[str, dict[str, float]],
-    *,
-    preferred_models: dict[str, str] | None = None,
-) -> float:
-    """Estimate T3 cost share from historical data, not hardcoded labels.
-
-    Uses per-strategy effective-cost observation when historical rows exist.
-    Falls back to catalog-based heuristics for zero-history tasks.
-    """
-    # Strategies that use a single tier based on fixed routing
-    if strategy == "bare_t3_baseline":
-        return 1.0
-    if strategy == "bare_t2_baseline":
-        return 0.0
-    # Frozen-plan strategies: T3 share depends on preferred_model, not
-    # a hardcoded default.  When no plan entry exists, assume T2-only
-    # (conservative for budget estimation).
-    if strategy in ("enterprise_router_baseline", "budgetflow_same_enterprise_router"):
-        if preferred_models:
-            model = preferred_models.get(task_id, "")
-            if model == "tier3":
-                return 1.0
-        return 0.0
-    # BudgetFlow value-aware and segment-aware policies: mixed T2/T3.
-    # Use 0.30 as a weakly-informative prior — the actual share depends
-    # on task value, effort, model fit, and budget pressure at runtime.
-    if strategy in {"budgetflow_task_level", "budgetflow_segment",
-                    "budgetflow_conservative", "segment_value_aware",
-                    "budgetflow_same_enterprise_router"}:
-        return 0.30
-    # Conservative default for unrecognised strategies: assume T2-only.
-    # Override this when adding a new strategy that uses mixed routing.
-    return 0.0
+def _row_is_budget_exhausted(row: dict) -> bool:
+    fields = (
+        row.get("exit_status"),
+        row.get("exit_reason"),
+        row.get("agent_exit_status"),
+        row.get("agent_exit_reason"),
+        row.get("failure_class"),
+    )
+    return any("budget" in str(value).lower() and "exhaust" in str(value).lower() for value in fields)
 
 
-def _t3_price_multiplier() -> float:
-    """Compute how much more expensive T3 is in current catalog vs reference.
+def _row_catalog_compatible(row_catalog: dict) -> tuple[bool, str]:
+    """Current cost observations must use the active catalog units."""
 
-    Reference: the calibrated T3 price from the default catalog
-    ($0.294/$1.793 per 1M).  Returns the multiplier to apply to historical
-    T3 costs.
-    """
-    t3_cfg = MODEL_CATALOG.config_for("tier3")
-    if t3_cfg is None:
-        return 1.0
-    # Reference: default catalog T3 prices (calibrated transaction price)
-    ref_input = 0.294  # $/1M
-    ref_output = 1.793  # $/1M
-    cur_input = t3_cfg.cost_per_input_token * 1_000_000
-    cur_output = t3_cfg.cost_per_output_token * 1_000_000
-    # Average multiplier weighted toward output (output tokens dominate cost)
-    input_mult = cur_input / ref_input if ref_input > 0 else 1.0
-    output_mult = cur_output / ref_output if ref_output > 0 else 1.0
-    return (input_mult + output_mult) / 2.0
-
-
-def _load_frozen_caps(frozen_plan_path: Path) -> dict[str, float]:
-    """Extract per-task base_cap from frozen router plan."""
-    with frozen_plan_path.open() as f:
-        plan = json.load(f)
-    caps: dict[str, float] = {}
-    for tid, entry in plan.get("plan", {}).items():
-        caps[tid] = float(entry.get("base_cap", 0.0))
-    return caps
-
-
-def _load_frozen_preferred_models(frozen_plan_path: Path) -> dict[str, str]:
-    """Extract per-task preferred_model from frozen router plan."""
-    with frozen_plan_path.open() as f:
-        plan = json.load(f)
-    models: dict[str, str] = {}
-    for tid, entry in plan.get("plan", {}).items():
-        model = str(entry.get("preferred_model", ""))
-        if model:
-            models[tid] = model
-    return models
+    if not isinstance(row_catalog, dict) or not row_catalog:
+        return False, "missing_catalog"
+    active_catalog = catalog_source_info()
+    row_hash = str(row_catalog.get("catalog_content_hash") or "")
+    active_hash = str(active_catalog.get("catalog_content_hash") or "")
+    row_revision = str(row_catalog.get("catalog_revision") or "")
+    active_revision = str(active_catalog.get("catalog_revision") or "")
+    if row_hash and active_hash:
+        return (True, "clean") if row_hash == active_hash else (False, "catalog_mismatch")
+    if row_revision and active_revision:
+        return (True, "clean") if row_revision == active_revision else (False, "catalog_mismatch")
+    return False, "missing_catalog"
 
 
 def _load_value_features(value_matrix_path: Path) -> dict[str, dict]:
@@ -916,73 +899,29 @@ def _bootstrap_cost_estimate(
     task_id: str,
     strategy: str,
     value_features: dict[str, dict],
-    historical: dict[str, dict[str, float]],
-    t3_multiplier: float,
-    *,
-    frozen_caps: dict[str, float] | None = None,
 ) -> float:
     """Project cold-start spend pressure for a task with no historical data.
 
-    When frozen caps exist, they are used as pressure anchors rather than as
-    empirical expected-cost observations.  Otherwise the compiler falls back
-    to bootstrap_difficulty ratios vs known tasks of the same strategy.
+    Cold-start estimates use pre-registered task-effort features. Router plans
+    do not provide budget caps to the compiler.
     """
-    frozen_cap = (frozen_caps or {}).get(task_id)
-    if frozen_cap is not None and frozen_cap > 0:
-        multiplier = _COLD_START_PRESSURE_PRIOR_MULTIPLIERS.get(strategy)
-        if multiplier is not None:
-            return frozen_cap * multiplier
-
     features = value_features.get(task_id, {})
     difficulty = (
         features.get("bootstrap_difficulty", 30.0)
         if features else 30.0
     )
 
-    # Find median cost per difficulty unit from historical data
-    ratios: list[float] = []
-    for hist_tid, hist_feat in value_features.items():
-        hist_cost = historical.get(strategy, {}).get(hist_tid)
-        if hist_cost is None or hist_cost <= 0:
-            continue
-        hist_diff = hist_feat.get("bootstrap_difficulty")
-        if hist_diff is None or hist_diff <= 0:
-            continue
-        ratios.append(hist_cost / hist_diff)
-
-    if not ratios:
-        return _fallback_cost_estimate(strategy, difficulty, t3_multiplier)
-
-    median_ratio = sorted(ratios)[len(ratios) // 2]
-    estimated = difficulty * median_ratio
-
-    # Apply T3 multiplier for strategies that may use T3
-    if strategy == "bare_t3_baseline":
-        estimated *= t3_multiplier
-    elif strategy in {"budgetflow_task_level", "budgetflow_segment",
-                      "budgetflow_conservative", "segment_value_aware",
-                      "budgetflow_same_enterprise_router"}:
-        estimated *= (1.0 + 0.30 * (t3_multiplier - 1.0))
-
-    return estimated
+    return _fallback_cost_estimate(strategy, difficulty)
 
 
 def _fallback_cost_estimate(
     strategy: str,
     difficulty: float,
-    t3_multiplier: float,
 ) -> float:
     """Conservative cost estimate when no historical data is available."""
     # Base: ~$0.001 per difficulty unit (calibrated from SymPy data)
     base_rate = 0.001
-    estimated = difficulty * base_rate
-    if strategy == "bare_t3_baseline":
-        estimated *= t3_multiplier
-    elif strategy in {"budgetflow_task_level", "budgetflow_segment",
-                      "budgetflow_conservative", "segment_value_aware",
-                      "budgetflow_same_enterprise_router"}:
-        estimated *= (1.0 + 0.30 * (t3_multiplier - 1.0))
-    return estimated
+    return difficulty * base_rate
 
 
 def _parse_task_ids(raw: str) -> list[str]:
@@ -1007,17 +946,20 @@ def _build_parser() -> argparse.ArgumentParser:
     calibrate = sub.add_parser("calibrate", help="generate a budget_plan.json")
     calibrate.add_argument("--task-ids", required=True, help="comma-separated selected task ids")
     calibrate.add_argument("--strategy-set", default=None, help="strategy-set JSON; default is paper mainline")
-    calibrate.add_argument("--frozen-plan", default=None, help="frozen router plan JSON")
     calibrate.add_argument("--value-matrix", default=None, help="value matrix JSON")
     calibrate.add_argument("--model-catalog", default=None, help="model tier catalog JSON")
     calibrate.add_argument("--historical-jsonl", default=None, help="optional clean historical JSONL")
+    calibrate.add_argument(
+        "--calibration-evidence",
+        default=None,
+        help="optional read-only calibration audit JSON from one previous diagnostic run",
+    )
     calibrate.add_argument(
         "--target-utilization",
         type=float,
         default=None,
         help="generate hard_cap from p75(projected spend) / target utilization",
     )
-    calibrate.add_argument("--override-reason", default="", help="documented diagnostic override reason")
     calibrate.add_argument("--output", required=True, help="output budget_plan.json path")
 
     audit = sub.add_parser("audit", help="compare projected vs actual spend from a completed JSONL")
@@ -1035,12 +977,14 @@ def main(argv: list[str] | None = None) -> int:
         plan = calibrate_budget(
             _parse_task_ids(args.task_ids),
             historical_jsonl=Path(args.historical_jsonl) if args.historical_jsonl else None,
-            frozen_plan_path=Path(args.frozen_plan) if args.frozen_plan else None,
             value_matrix_path=Path(args.value_matrix) if args.value_matrix else None,
             strategies=_strategy_names_from_set(args.strategy_set),
             output_path=Path(args.output),
-            override_reason=args.override_reason,
             target_utilization=args.target_utilization,
+            calibration_evidence=(
+                CalibrationAudit.from_dict(json.loads(Path(args.calibration_evidence).read_text()))
+                if args.calibration_evidence else None
+            ),
         )
         print(
             f"wrote {args.output}: decision={plan.decision} "

@@ -13,8 +13,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 _SAMPLE_PLAN = {
     "meta": {"name": "test_plan", "created": "2026-06-08"},
     "plan": {
-        "task_a": {"preferred_model": "tier2", "base_cap": 0.30, "priority": 1},
-        "task_b": {"preferred_model": "tier3", "base_cap": 0.50, "priority": 2},
+        "task_a": {"preferred_model": "tier2", "priority": 1},
+        "task_b": {"preferred_model": "tier3", "priority": 2},
     },
 }
 
@@ -31,11 +31,10 @@ class TestFrozenRouterPlan:
             assert isinstance(plan, FrozenRouterPlan)
             assert plan.name == "test_plan"
             assert len(plan.plan) == 2
-            assert plan.planned_cap == pytest.approx(0.8)
         finally:
             tmp.unlink()
 
-    def test_load_reads_hard_cap_metadata(self):
+    def test_load_rejects_historical_cap_metadata(self):
         from budgetflow.frozen_router import load_frozen_plan
 
         data = {
@@ -49,9 +48,24 @@ class TestFrozenRouterPlan:
             json.dump(data, f)
             tmp = Path(f.name)
         try:
-            plan = load_frozen_plan(tmp)
-            assert plan.hard_cap_usd == pytest.approx(0.8)
-            assert plan.planned_cap == pytest.approx(0.8)
+            with pytest.raises(ValueError, match="hard_cap_usd"):
+                load_frozen_plan(tmp)
+        finally:
+            tmp.unlink()
+
+    def test_load_rejects_entry_cap_fields(self):
+        from budgetflow.frozen_router import load_frozen_plan
+
+        data = {
+            "meta": {"name": "bad"},
+            "plan": {"task_a": {"preferred_model": "tier2", "base_cap": 0.30, "priority": 1}},
+        }
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(data, f)
+            tmp = Path(f.name)
+        try:
+            with pytest.raises(ValueError, match="retired cap fields"):
+                load_frozen_plan(tmp)
         finally:
             tmp.unlink()
 
@@ -61,14 +75,13 @@ class TestFrozenRouterPlan:
         plan = FrozenRouterPlan(
             name="test",
             plan={
-                "task_a": FrozenPlanEntry("task_a", "tier2", 0.3, 1),
-                "task_b": FrozenPlanEntry("task_b", "tier3", 0.5, 2),
+                "task_a": FrozenPlanEntry("task_a", "tier2", 1),
+                "task_b": FrozenPlanEntry("task_b", "tier3", 2),
             },
         )
         entry = plan.lookup("task_a")
         assert entry is not None
         assert entry.preferred_model == "tier2"
-        assert entry.base_cap == 0.3
         assert entry.priority == 1
 
     def test_lookup_missing(self):
@@ -76,7 +89,7 @@ class TestFrozenRouterPlan:
 
         plan = FrozenRouterPlan(
             name="test",
-            plan={"task_a": FrozenPlanEntry("task_a", "tier2", 0.3, 1)},
+            plan={"task_a": FrozenPlanEntry("task_a", "tier2", 1)},
         )
         assert plan.lookup("unknown") is None
 
@@ -85,20 +98,20 @@ class TestFrozenRouterPlan:
 
         plan = FrozenRouterPlan(
             name="test",
-            plan={"task_a": FrozenPlanEntry("task_a", "tier2", 0.3, 1)},
+            plan={"task_a": FrozenPlanEntry("task_a", "tier2", 1)},
         )
         rec = plan.as_jsonl_record("task_a")
         assert rec["frozen_plan_name"] == "test"
         assert rec["frozen_plan_preferred_model"] == "tier2"
-        assert rec["frozen_plan_base_cap"] == 0.3
         assert rec["frozen_plan_priority"] == 1
+        assert "frozen_plan_base_cap" not in rec
 
     def test_as_jsonl_record_missing(self):
         from budgetflow.frozen_router import FrozenPlanEntry, FrozenRouterPlan
 
         plan = FrozenRouterPlan(
             name="test",
-            plan={"task_a": FrozenPlanEntry("task_a", "tier2", 0.3, 1)},
+            plan={"task_a": FrozenPlanEntry("task_a", "tier2", 1)},
         )
         rec = plan.as_jsonl_record("unknown")
         assert rec["frozen_plan_name"] == "test"
@@ -107,7 +120,7 @@ class TestFrozenRouterPlan:
     def test_load_requires_explicit_fields(self):
         from budgetflow.frozen_router import load_frozen_plan
 
-        data = {"meta": {"name": "bad"}, "plan": {"x": {"preferred_model": "tier2", "priority": 1}}}
+        data = {"meta": {"name": "bad"}, "plan": {"x": {"priority": 1}}}
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(data, f)
             tmp = Path(f.name)
@@ -116,23 +129,6 @@ class TestFrozenRouterPlan:
                 load_frozen_plan(tmp)
         finally:
             tmp.unlink()
-
-    def test_load_rejects_non_positive_base_cap(self):
-        from budgetflow.frozen_router import load_frozen_plan
-
-        data = {
-            "meta": {"name": "bad"},
-            "plan": {"x": {"preferred_model": "tier2", "base_cap": 0.0, "priority": 1}},
-        }
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-            json.dump(data, f)
-            tmp = Path(f.name)
-        try:
-            with pytest.raises(ValueError, match="non-positive base_cap"):
-                load_frozen_plan(tmp)
-        finally:
-            tmp.unlink()
-
 
 class TestMechanismStrategiesRegistered:
     def test_all_three_in_catalog(self):
@@ -173,7 +169,7 @@ class TestFrozenPlanRouting:
 
         plan = FrozenRouterPlan(
             name="test",
-            plan={"test_task": FrozenPlanEntry("test_task", "tier3", 0.5, 2)},
+            plan={"test_task": FrozenPlanEntry("test_task", "tier3", 2)},
         )
         ctx = build_routing_context(
             "enterprise_router",
@@ -196,7 +192,7 @@ class TestFrozenPlanRouting:
 
         plan = FrozenRouterPlan(
             name="test",
-            plan={"test_task": FrozenPlanEntry("test_task", "tier2", 0.3, 1)},
+            plan={"test_task": FrozenPlanEntry("test_task", "tier2", 1)},
         )
         ctx = build_routing_context(
             "bare_t3",
@@ -226,7 +222,7 @@ class TestFrozenPlanRouting:
         ]
         plan = FrozenRouterPlan(
             name="test",
-            plan={"test_task": FrozenPlanEntry("test_task", "tier3", 0.5, 2)},
+            plan={"test_task": FrozenPlanEntry("test_task", "tier3", 2)},
         )
         ctx = build_routing_context(
             "budgetflow_same_router",
@@ -268,52 +264,3 @@ class TestFrozenPlanRouting:
         enrich_routing_observability(record)
         assert record["policy_kind"] == "mechanism"
         assert record["policy_role"] == "mechanism_with_frozen_router"
-
-
-class TestSelectedCapSum:
-    """Frozen plan budget auto-compute from selected-task cap sum."""
-
-    @staticmethod
-    def _twelve_task_ids() -> list[str]:
-        return [
-            "sympy__sympy-13480", "sympy__sympy-14774", "sympy__sympy-16988",
-            "sympy__sympy-20212", "sympy__sympy-12419", "sympy__sympy-19007",
-            "sympy__sympy-20154", "sympy__sympy-20639", "sympy__sympy-15011",
-            "sympy__sympy-16792", "sympy__sympy-21055", "sympy__sympy-23117",
-        ]
-
-    def test_4x12_selected_cap_sum_is_2_70(self):
-        from budgetflow.frozen_router import load_frozen_plan
-
-        plan_path = Path(__file__).resolve().parents[1] / "docs/reports/mainline_4x12_frozen_router_plan.json"
-        plan = load_frozen_plan(plan_path)
-        task_ids = self._twelve_task_ids()
-        cap_sum = plan.selected_cap_sum(task_ids)
-        assert cap_sum == pytest.approx(2.70)
-
-    def test_subset_cap_sum_only_sums_selected(self):
-        from budgetflow.frozen_router import load_frozen_plan
-
-        plan_path = Path(__file__).resolve().parents[1] / "docs/reports/mainline_4x12_frozen_router_plan.json"
-        plan = load_frozen_plan(plan_path)
-        subset = ["sympy__sympy-13480", "sympy__sympy-16988"]
-        cap_sum = plan.selected_cap_sum(subset)
-        expected = plan.lookup("sympy__sympy-13480").base_cap + plan.lookup("sympy__sympy-16988").base_cap
-        assert cap_sum == pytest.approx(expected)
-        assert cap_sum == pytest.approx(0.48)  # 0.18 + 0.30
-
-    def test_selected_cap_sum_empty_list_returns_zero(self):
-        from budgetflow.frozen_router import FrozenPlanEntry, FrozenRouterPlan
-        plan = FrozenRouterPlan(
-            name="test",
-            plan={"task_a": FrozenPlanEntry("task_a", "tier2", 0.3, 1)},
-        )
-        assert plan.selected_cap_sum([]) == 0.0
-
-    def test_selected_cap_sum_unknown_id_skipped(self):
-        from budgetflow.frozen_router import FrozenPlanEntry, FrozenRouterPlan
-        plan = FrozenRouterPlan(
-            name="test",
-            plan={"task_a": FrozenPlanEntry("task_a", "tier2", 0.3, 1)},
-        )
-        assert plan.selected_cap_sum(["task_a", "unknown"]) == 0.3

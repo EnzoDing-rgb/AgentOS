@@ -64,7 +64,6 @@ from budgetflow.experiments.compare_readiness import (  # noqa: E402
     format_readiness_report,
 )
 from budgetflow.experiments.compare_setup import (  # noqa: E402
-    _resolve_task_ids,
     build_batch_budget_modes,
     load_tasks_for_compare,
     resolve_budget_plan,
@@ -182,12 +181,7 @@ def main() -> None:
         args.skip_completed = True
 
     tasks_n = resolve_task_count(args)
-    task_ids_early = _resolve_task_ids(args)
-    budget_plan = resolve_budget_plan(
-        args, tasks_n=tasks_n,
-        frozen_plan_path=args.frozen_plan,
-        task_ids=task_ids_early,
-    )
+    budget_plan = resolve_budget_plan(args)
     max_overrun = budget_plan.max_overrun
     trace_console: TraceConsoleLevel = trace_console_from_args(args)
     strategy_selection = select_strategies(args)
@@ -331,18 +325,11 @@ def main() -> None:
     )
     # ── Frozen router plan for mechanism isolation ─────────────────────────
     frozen_plan = None
-    frozen_task_caps: dict[str, float] | None = None
-    _frozen_routing_set = frozenset({"enterprise_router", "budgetflow_same_router"})
     if args.frozen_plan:
         frozen_plan = load_frozen_plan(args.frozen_plan)
-        frozen_task_caps = {
-            task.instance_id: entry.base_cap
-            for task in tasks
-            if (entry := frozen_plan.lookup(task.instance_id)) is not None
-        }
         print(
             f"{tag('frozen_plan', bold=False)} loaded '{frozen_plan.name}' "
-            f"with {len(frozen_plan.plan)} task entries, selected_base_caps={len(frozen_task_caps)}",
+            f"with {len(frozen_plan.plan)} task entries",
             flush=True,
         )
 
@@ -351,7 +338,6 @@ def main() -> None:
         per_task_cap=args.per_task_cap,
         auto_budget_task_caps=auto_budget_task_caps,
         constrained_budget=budget_input["hard_cap_usd"],
-        frozen_task_caps=frozen_task_caps,
     )
     batch_caps = budget_modes_plan.batch_caps
     budget_modes = budget_modes_plan.budget_modes
@@ -561,8 +547,6 @@ def main() -> None:
                 last_completed=str(record.get("instance_id", "")),
             )
 
-        _eff_frozen = budget_modes_plan.effective_frozen_caps
-        _uses_frozen_routing = _eff_frozen is not None and cfg.routing in _frozen_routing_set
         _eff_task_caps = auto_budget_task_caps
         _eff_budget_mode = budget_modes[cfg.name] if budget_modes and cfg.name in budget_modes else None
         records, batch_spent = run_strategy_batch(

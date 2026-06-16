@@ -279,36 +279,22 @@ def build_compare_readiness_report(
         except (OSError, ValueError, TypeError) as exc:
             blocking.append(f"cannot load frozen router plan: {exc}")
         else:
-            selected_sum = frozen_plan.selected_cap_sum(task_ids) if task_ids else 0.0
             facts.append(f"frozen_plan={frozen_plan.name}")
             facts.append(f"frozen_plan_entries={len(frozen_plan.plan)}")
-            facts.append(f"frozen_plan_planned_cap={frozen_plan.planned_cap:.4f}")
-            facts.append(f"frozen_plan_selected_cap_sum={selected_sum:.4f}")
-            if frozen_plan.hard_cap_usd is not None:
-                facts.append(f"frozen_plan_hard_cap={frozen_plan.hard_cap_usd:.4f}")
-                if abs(frozen_plan.planned_cap - frozen_plan.hard_cap_usd) > 0.0001:
-                    blocking.append(
-                        f"frozen plan base caps sum to {frozen_plan.planned_cap:.4f}, "
-                        f"but meta hard_cap_usd={frozen_plan.hard_cap_usd:.4f}"
-                    )
             requested_budget = float(getattr(args, "budget", 0.0) or 0.0)
-            # When budget_plan provides the hard_cap (e.g. target_utilization mode),
-            # the frozen cap sum is NOT the binding budget source.
             budget_is_from_plan = bool(requested_budget == 0.0 and budget_plan_path is not None)
             if budget_is_from_plan:
                 facts.append("budget_source=budget_plan")
             elif requested_budget == 0.0:
-                facts.append("budget_source=frozen_plan_cap_sum")
-                facts.append(f"budget={selected_sum:.4f}")
+                facts.append("budget_source=unset")
+                if is_paper_mainline:
+                    blocking.append(
+                        "paper mainline paid runs must use --budget-plan; "
+                        "frozen router plans provide routing priors, not budget caps"
+                    )
             else:
                 facts.append(f"budget_source=cli")
                 facts.append(f"budget={requested_budget:.4f}")
-                if abs(requested_budget - selected_sum) > 0.0001:
-                    blocking.append(
-                        f"--budget={requested_budget:.4f} does not match frozen plan "
-                        f"selected cap sum={selected_sum:.4f}; "
-                        "mechanism-isolation caps must be pre-registered and symmetric"
-                    )
             missing_plan = [task_id for task_id in task_ids if frozen_plan.lookup(task_id) is None]
             if missing_plan:
                 preview = ", ".join(missing_plan[:8])
@@ -383,18 +369,15 @@ def build_compare_readiness_report(
                 blocking.append(
                     "budget plan is missing generation_mode; regenerate it with the Budget Regime Compiler"
                 )
+            elif bp.get("generation_mode") != "target_utilization":
+                blocking.append(
+                    "budget plan generation_mode must be target_utilization; "
+                    "regenerate it with the Budget Regime Compiler"
+                )
             if bp_decision == "BLOCK":
                 blocking.append(
                     f"budget plan decision is BLOCK: {'; '.join(bp_reasons)}"
                 )
-            elif bp_decision == "PASS_WITH_DIAGNOSTIC_OVERRIDE":
-                override = bp.get("override_reason", "")
-                warnings.append(
-                    f"budget plan decision is PASS_WITH_DIAGNOSTIC_OVERRIDE: "
-                    f"{'; '.join(bp_reasons)}"
-                )
-                if override:
-                    facts.append(f"budget_plan_override: {override}")
             requested_budget = float(getattr(args, "budget", 0.0) or 0.0)
             if requested_budget > 0 and abs(requested_budget - bp_hard_cap) > 0.0001:
                 blocking.append(
@@ -425,26 +408,6 @@ def build_compare_readiness_report(
                         + "; ".join(detail_parts)
                     )
                 bp_generation_mode = str(bp.get("generation_mode", "") or "")
-                if frozen_plan is not None and bp_generation_mode == "frozen_plan_cap_sum":
-                    missing_frozen_tasks = [
-                        task_id for task_id in bp_task_list if frozen_plan.lookup(task_id) is None
-                    ]
-                    if missing_frozen_tasks:
-                        preview = ", ".join(missing_frozen_tasks[:8])
-                        suffix = "" if len(missing_frozen_tasks) <= 8 else f", ... +{len(missing_frozen_tasks) - 8} more"
-                        blocking.append(
-                            f"frozen router plan is missing {len(missing_frozen_tasks)} budget-plan tasks: "
-                            f"{preview}{suffix}"
-                        )
-                    else:
-                        bp_frozen_sum = frozen_plan.selected_cap_sum(bp_task_list)
-                        facts.append(f"budget_plan_frozen_cap_sum={bp_frozen_sum:.4f}")
-                        if abs(bp_hard_cap - bp_frozen_sum) > 0.0001:
-                            blocking.append(
-                                f"budget_plan hard_cap={bp_hard_cap:.4f} does not match "
-                                f"frozen plan cap sum over budget_plan.task_ids={bp_frozen_sum:.4f}; "
-                                "regenerate the budget plan from the frozen plan"
-                            )
             bp_strategy_names = bp.get("strategy_names")
             if isinstance(bp_strategy_names, list) and bp_strategy_names:
                 expected_strategies = [str(name) for name in bp_strategy_names]
@@ -521,7 +484,7 @@ def build_compare_readiness_report(
             elif gs_err is not None and gs_err > 0.50:
                 warnings.append(
                     f"calibration WARNING: {gs} projection error {gs_err:.1%} > 50%. "
-                    f"Consider wider safety margin or frozen_plan_cap_sum mode."
+                    f"treat the next run as diagnostic calibration evidence."
                 )
 
         # Per-policy utilization: flag if strongest baseline or BF policies aren't budget-constrained

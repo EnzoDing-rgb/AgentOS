@@ -520,7 +520,6 @@ def _per_task_comparison(records: list[dict], t3_tier: int) -> list[dict]:
             "first_segment": str(first_trace.get("workflow_segment") or "?"),
             "frozen_plan_name": str(record.get("frozen_plan_name") or ""),
             "frozen_plan_preferred_model": str(record.get("frozen_plan_preferred_model") or ""),
-            "frozen_plan_base_cap": record.get("frozen_plan_base_cap"),
             "frozen_plan_priority": record.get("frozen_plan_priority"),
             "first_router_branch": _first_non_empty_trace_value(record, "router_branch"),
             "last_router_reason": _last_non_empty_trace_value(record, "router_reason"),

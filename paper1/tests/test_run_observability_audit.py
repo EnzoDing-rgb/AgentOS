@@ -755,7 +755,6 @@ def test_per_task_comparison_includes_cross_policy_rows() -> None:
             "resolved_value": 0.0,
             "frozen_plan_name": "unit_plan",
             "frozen_plan_preferred_model": "tier3",
-            "frozen_plan_base_cap": 0.45,
             "frozen_plan_priority": 2,
             "turn_traces": [
                 {"workflow_segment": "Context", "backend_tier": 2, "has_progress": False},
@@ -816,7 +815,6 @@ def test_per_task_comparison_includes_cross_policy_rows() -> None:
     assert bf_row["cost_estimate_source"] == "tier_catalog:test"
     assert bf_row["frozen_plan_name"] == "unit_plan"
     assert bf_row["frozen_plan_preferred_model"] == "tier3"
-    assert bf_row["frozen_plan_base_cap"] == 0.45
     assert bf_row["frozen_plan_priority"] == 2
 
     text = format_compact_audit(audit)
@@ -826,7 +824,7 @@ def test_per_task_comparison_includes_cross_policy_rows() -> None:
     assert "bootstrap_conservative_diagnostic" in text
     assert "decision:" in text
     assert "tier3" in text
-    assert "cap=frozen_plan_base_cap" in text
+    assert "pri=frozen_plan_priority" in text
     assert "frozen=unit_plan/tier3/2" in text
     assert "memory=built_in" in text
     assert "cost=tier_catalog:test" in text

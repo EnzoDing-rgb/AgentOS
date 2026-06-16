@@ -1,0 +1,227 @@
+{
+  "meta": {
+    "name": "mainline_6x30_frozen_router_plan.router_only",
+    "created": "2026-06-15",
+    "description": "Pre-registered static enterprise-router plan. Router-only: preferred_model and priority; budget cap comes from Budget Regime Compiler budget_plan.",
+    "source_class": "code_generated_from_pre_run_task_metadata",
+    "task_order": [
+      "sympy__sympy-22714",
+      "sympy__sympy-12171",
+      "sympy__sympy-17655",
+      "sympy__sympy-24102",
+      "sympy__sympy-15346",
+      "sympy__sympy-18621",
+      "sympy__sympy-13647",
+      "sympy__sympy-13177",
+      "pallets__flask-4045",
+      "pallets__flask-4992",
+      "pylint-dev__pylint-5859",
+      "pylint-dev__pylint-7993",
+      "pylint-dev__pylint-6506",
+      "mwaskom__seaborn-3190",
+      "mwaskom__seaborn-3407",
+      "mwaskom__seaborn-3010",
+      "mwaskom__seaborn-2848",
+      "sphinx-doc__sphinx-8273",
+      "sphinx-doc__sphinx-7686",
+      "sphinx-doc__sphinx-7738",
+      "sphinx-doc__sphinx-8282",
+      "sphinx-doc__sphinx-8595",
+      "django__django-13447",
+      "django__django-11049",
+      "django__django-11179",
+      "django__django-12908",
+      "django__django-13964",
+      "django__django-15814",
+      "django__django-15851",
+      "matplotlib__matplotlib-25433"
+    ],
+    "preferred_model_formula": "tier3 if manual_value >= 0.95 or bootstrap_effort >= 300 else tier2",
+    "outcome_free_for_this_run": true,
+    "staged_execution": "Run first 20 tasks, inspect, then resume same out_stem with all 30 ids so completed 20 are skipped and budget ledger/checkpoint state carries forward.",
+    "schema_version": "router_only_v1",
+    "budget_source": "budget_plan.hard_cap_usd"
+  },
+  "plan": {
+    "sympy__sympy-22714": {
+      "repo": "sympy/sympy",
+      "preferred_model": "tier2",
+      "priority": 1,
+      "preferred_model_rule": "tier3 if manual_value>=0.95 or bootstrap_effort>=300 else tier2"
+    },
+    "sympy__sympy-12171": {
+      "repo": "sympy/sympy",
+      "preferred_model": "tier2",
+      "priority": 2,
+      "preferred_model_rule": "tier3 if manual_value>=0.95 or bootstrap_effort>=300 else tier2"
+    },
+    "sympy__sympy-17655": {
+      "repo": "sympy/sympy",
+      "preferred_model": "tier2",
+      "priority": 3,
+      "preferred_model_rule": "tier3 if manual_value>=0.95 or bootstrap_effort>=300 else tier2"
+    },
+    "sympy__sympy-24102": {
+      "repo": "sympy/sympy",
+      "preferred_model": "tier2",
+      "priority": 4,
+      "preferred_model_rule": "tier3 if manual_value>=0.95 or bootstrap_effort>=300 else tier2"
+    },
+    "sympy__sympy-15346": {
+      "repo": "sympy/sympy",
+      "preferred_model": "tier2",
+      "priority": 5,
+      "preferred_model_rule": "tier3 if manual_value>=0.95 or bootstrap_effort>=300 else tier2"
+    },
+    "sympy__sympy-18621": {
+      "repo": "sympy/sympy",
+      "preferred_model": "tier2",
+      "priority": 6,
+      "preferred_model_rule": "tier3 if manual_value>=0.95 or bootstrap_effort>=300 else tier2"
+    },
+    "sympy__sympy-13647": {
+      "repo": "sympy/sympy",
+      "preferred_model": "tier2",
+      "priority": 7,
+      "preferred_model_rule": "tier3 if manual_value>=0.95 or bootstrap_effort>=300 else tier2"
+    },
+    "sympy__sympy-13177": {
+      "repo": "sympy/sympy",
+      "preferred_model": "tier2",
+      "priority": 8,
+      "preferred_model_rule": "tier3 if manual_value>=0.95 or bootstrap_effort>=300 else tier2"
+    },
+    "pallets__flask-4045": {
+      "repo": "pallets/flask",
+      "preferred_model": "tier3",
+      "priority": 9,
+      "preferred_model_rule": "tier3 if manual_value>=0.95 or bootstrap_effort>=300 else tier2"
+    },
+    "pallets__flask-4992": {
+      "repo": "pallets/flask",
+      "preferred_model": "tier2",
+      "priority": 10,
+      "preferred_model_rule": "tier3 if manual_value>=0.95 or bootstrap_effort>=300 else tier2"
+    },
+    "pylint-dev__pylint-5859": {
+      "repo": "pylint-dev/pylint",
+      "preferred_model": "tier3",
+      "priority": 11,
+      "preferred_model_rule": "tier3 if manual_value>=0.95 or bootstrap_effort>=300 else tier2"
+    },
+    "pylint-dev__pylint-7993": {
+      "repo": "pylint-dev/pylint",
+      "preferred_model": "tier3",
+      "priority": 12,
+      "preferred_model_rule": "tier3 if manual_value>=0.95 or bootstrap_effort>=300 else tier2"
+    },
+    "pylint-dev__pylint-6506": {
+      "repo": "pylint-dev/pylint",
+      "preferred_model": "tier3",
+      "priority": 13,
+      "preferred_model_rule": "tier3 if manual_value>=0.95 or bootstrap_effort>=300 else tier2"
+    },
+    "mwaskom__seaborn-3190": {
+      "repo": "mwaskom/seaborn",
+      "preferred_model": "tier3",
+      "priority": 14,
+      "preferred_model_rule": "tier3 if manual_value>=0.95 or bootstrap_effort>=300 else tier2"
+    },
+    "mwaskom__seaborn-3407": {
+      "repo": "mwaskom/seaborn",
+      "preferred_model": "tier3",
+      "priority": 15,
+      "preferred_model_rule": "tier3 if manual_value>=0.95 or bootstrap_effort>=300 else tier2"
+    },
+    "mwaskom__seaborn-3010": {
+      "repo": "mwaskom/seaborn",
+      "preferred_model": "tier2",
+      "priority": 16,
+      "preferred_model_rule": "tier3 if manual_value>=0.95 or bootstrap_effort>=300 else tier2"
+    },
+    "mwaskom__seaborn-2848": {
+      "repo": "mwaskom/seaborn",
+      "preferred_model": "tier3",
+      "priority": 17,
+      "preferred_model_rule": "tier3 if manual_value>=0.95 or bootstrap_effort>=300 else tier2"
+    },
+    "sphinx-doc__sphinx-8273": {
+      "repo": "sphinx-doc/sphinx",
+      "preferred_model": "tier2",
+      "priority": 18,
+      "preferred_model_rule": "tier3 if manual_value>=0.95 or bootstrap_effort>=300 else tier2"
+    },
+    "sphinx-doc__sphinx-7686": {
+      "repo": "sphinx-doc/sphinx",
+      "preferred_model": "tier3",
+      "priority": 19,
+      "preferred_model_rule": "tier3 if manual_value>=0.95 or bootstrap_effort>=300 else tier2"
+    },
+    "sphinx-doc__sphinx-7738": {
+      "repo": "sphinx-doc/sphinx",
+      "preferred_model": "tier3",
+      "priority": 20,
+      "preferred_model_rule": "tier3 if manual_value>=0.95 or bootstrap_effort>=300 else tier2"
+    },
+    "sphinx-doc__sphinx-8282": {
+      "repo": "sphinx-doc/sphinx",
+      "preferred_model": "tier3",
+      "priority": 21,
+      "preferred_model_rule": "tier3 if manual_value>=0.95 or bootstrap_effort>=300 else tier2"
+    },
+    "sphinx-doc__sphinx-8595": {
+      "repo": "sphinx-doc/sphinx",
+      "preferred_model": "tier2",
+      "priority": 22,
+      "preferred_model_rule": "tier3 if manual_value>=0.95 or bootstrap_effort>=300 else tier2"
+    },
+    "django__django-13447": {
+      "repo": "django/django",
+      "preferred_model": "tier3",
+      "priority": 23,
+      "preferred_model_rule": "tier3 if manual_value>=0.95 or bootstrap_effort>=300 else tier2"
+    },
+    "django__django-11049": {
+      "repo": "django/django",
+      "preferred_model": "tier3",
+      "priority": 24,
+      "preferred_model_rule": "tier3 if manual_value>=0.95 or bootstrap_effort>=300 else tier2"
+    },
+    "django__django-11179": {
+      "repo": "django/django",
+      "preferred_model": "tier3",
+      "priority": 25,
+      "preferred_model_rule": "tier3 if manual_value>=0.95 or bootstrap_effort>=300 else tier2"
+    },
+    "django__django-12908": {
+      "repo": "django/django",
+      "preferred_model": "tier3",
+      "priority": 26,
+      "preferred_model_rule": "tier3 if manual_value>=0.95 or bootstrap_effort>=300 else tier2"
+    },
+    "django__django-13964": {
+      "repo": "django/django",
+      "preferred_model": "tier3",
+      "priority": 27,
+      "preferred_model_rule": "tier3 if manual_value>=0.95 or bootstrap_effort>=300 else tier2"
+    },
+    "django__django-15814": {
+      "repo": "django/django",
+      "preferred_model": "tier3",
+      "priority": 28,
+      "preferred_model_rule": "tier3 if manual_value>=0.95 or bootstrap_effort>=300 else tier2"
+    },
+    "django__django-15851": {
+      "repo": "django/django",
+      "preferred_model": "tier3",
+      "priority": 29,
+      "preferred_model_rule": "tier3 if manual_value>=0.95 or bootstrap_effort>=300 else tier2"
+    },
+    "matplotlib__matplotlib-25433": {
+      "repo": "matplotlib/matplotlib",
+      "preferred_model": "tier3",
+      "priority": 30,
+      "preferred_model_rule": "tier3 if manual_value>=0.95 or bootstrap_effort>=300 else tier2"
+    }
+  }
+}

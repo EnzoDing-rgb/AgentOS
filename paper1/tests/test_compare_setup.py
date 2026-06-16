@@ -66,7 +66,7 @@ def test_task_set_kind_labels_experiment_groups() -> None:
 
 
 def test_budget_plan_uses_defaults_and_scales() -> None:
-    plan = resolve_budget_plan(_args(budget=2.0, budget_scale=2.0), tasks_n=3)
+    plan = resolve_budget_plan(_args(budget=2.0, budget_scale=2.0))
 
     assert plan.constrained == 4.0
     assert plan.max_overrun == 0.0
@@ -173,30 +173,6 @@ def test_batch_budget_modes_distinguish_dynamic_caps() -> None:
     assert modes.budget_modes["all_pro"] == "unconstrained"
 
 
-def test_batch_budget_modes_frozen_caps_stored_as_priors() -> None:
-    """Frozen caps are stored as effective_frozen_caps for all strategies, not as per-policy caps."""
-    strategies = (
-        CompareStrategy("enterprise_router_baseline", "enterprise_router"),
-        CompareStrategy("budgetflow_same_enterprise_router", "budgetflow_same_router"),
-        CompareStrategy("bare_t3_baseline", "bare_t3"),
-    )
-    frozen_caps = {"task-a": 0.25, "task-b": 0.50}
-    modes = build_batch_budget_modes(
-        strategies=strategies,
-        per_task_cap=None,
-        auto_budget_task_caps=None,
-        constrained_budget=1.0,
-        frozen_task_caps=frozen_caps,
-    )
-
-    # All strategies share the same batch cap. Frozen caps provide priors only.
-    for name in ("enterprise_router_baseline", "budgetflow_same_enterprise_router", "bare_t3_baseline"):
-        assert modes.budget_modes[name] == "shared_batch_hard_budget"
-        assert modes.batch_caps[name] == pytest.approx(1.0)
-    # Frozen caps are passed through as effective_frozen_caps for priors
-    assert modes.effective_frozen_caps == frozen_caps
-
-
 def test_resolve_budget_plan_from_budget_plan_json(tmp_path) -> None:
     """When --budget-plan is provided and --budget is not set, use hard_cap_usd."""
     import json
@@ -209,7 +185,6 @@ def test_resolve_budget_plan_from_budget_plan_json(tmp_path) -> None:
 
     plan = resolve_budget_plan(
         _args(budget_plan=str(bp_path)),
-        tasks_n=20,
     )
     assert plan.constrained == 1.2262, f"expected 1.2262, got {plan.constrained}"
     assert "budget_plan" in plan.source, f"source should mention budget_plan, got {plan.source}"
@@ -223,82 +198,50 @@ def test_resolve_budget_plan_explicit_budget_overrides_budget_plan(tmp_path) -> 
 
     plan = resolve_budget_plan(
         _args(budget=5.0, budget_plan=str(bp_path)),
-        tasks_n=20,
     )
     assert plan.constrained == 5.0
     assert plan.source == "cli"
 
 
-def test_resolve_budget_plan_frozen_fallback_when_no_budget_plan(tmp_path) -> None:
-    """When --budget-plan is absent, frozen plan cap sum still works."""
-    import json
-    fp_path = tmp_path / "fp.json"
-    fp_path.write_text(json.dumps({
-        "plan": {
-            "task-a": {"base_cap": 1.5, "preferred_model": "tier2", "priority": 1},
-            "task-b": {"base_cap": 2.0, "preferred_model": "tier3", "priority": 2},
-        }
-    }))
-
-    plan = resolve_budget_plan(
-        _args(), tasks_n=2,
-        frozen_plan_path=str(fp_path),
-        task_ids=["task-a", "task-b"],
-    )
-    assert plan.constrained == 3.5
-    assert plan.source == "frozen_plan_cap_sum"
-
-
 def test_batch_budget_modes_dynamic_caps_apply_to_all_strategies() -> None:
-    """auto_budget_task_caps apply to all budgeted strategies equally; frozen caps are priors."""
+    """auto_budget_task_caps apply to all budgeted strategies equally."""
     strategies = (
         CompareStrategy("enterprise_router_baseline", "enterprise_router"),
         CompareStrategy("budgetflow_segment", "segment_value_aware"),
     )
-    frozen_caps = {"task-a": 0.25}
     auto_caps = {"task-a": 0.99}
     modes = build_batch_budget_modes(
         strategies=strategies,
         per_task_cap=None,
         auto_budget_task_caps=auto_caps,
         constrained_budget=1.0,
-        frozen_task_caps=frozen_caps,
     )
 
-    # Both strategies get dynamic_task_caps mode; frozen caps are priors only
     assert modes.budget_modes["enterprise_router_baseline"] == "dynamic_task_caps"
     assert modes.budget_modes["budgetflow_segment"] == "dynamic_task_caps"
     assert modes.batch_caps["enterprise_router_baseline"] == pytest.approx(0.99)
     assert modes.batch_caps["budgetflow_segment"] == pytest.approx(0.99)
-    # Frozen caps still available as priors
-    assert modes.effective_frozen_caps == frozen_caps
 
 
-def test_frozen_caps_are_priors_not_separate_batch_caps() -> None:
-    """Frozen caps provide priors only; all strategies share constrained_budget."""
+def test_frozen_router_plan_does_not_create_separate_batch_caps() -> None:
+    """Frozen router plans are passed to routing, not batch budget setup."""
     strategies = (
         CompareStrategy("enterprise_router_baseline", "enterprise_router"),
         CompareStrategy("budgetflow_same_enterprise_router", "budgetflow_same_router"),
         CompareStrategy("bare_t3_baseline", "bare_t3"),
         CompareStrategy("budgetflow_segment", "segment_value_aware"),
     )
-    frozen_caps = {"task-a": 2.0, "task-b": 3.0, "task-c": 5.0}  # sum = 10.0
     modes = build_batch_budget_modes(
         strategies=strategies,
         per_task_cap=None,
         auto_budget_task_caps=None,
         constrained_budget=2.0,
-        frozen_task_caps=frozen_caps,
     )
 
-    # All strategies get the same constrained_budget; frozen caps are priors
     for name in ("enterprise_router_baseline", "budgetflow_same_enterprise_router",
                  "bare_t3_baseline", "budgetflow_segment"):
         assert modes.batch_caps[name] == pytest.approx(2.0)
         assert modes.budget_modes[name] == "shared_batch_hard_budget"
-
-    # effective_frozen_caps are the original unmodified dict (priors only)
-    assert modes.effective_frozen_caps == frozen_caps
 
 
 def test_unbudgeted_strategy_gets_no_cap() -> None:
@@ -348,7 +291,7 @@ def test_retired_auto_budget_cli_flags_are_not_exposed() -> None:
     with pytest.raises(SystemExit):
         parse_compare_args(["--auto-budget"])
     with pytest.raises(SystemExit):
-        parse_compare_args(["--budget-mode", "frozen_plan_cap_sum"])
+        parse_compare_args(["--budget-mode", "retired"])
     with pytest.raises(SystemExit):
         parse_compare_args(["--target-utilization", "0.9"])
     args = parse_compare_args([])

@@ -382,26 +382,6 @@ def test_budget_summary_reports_planned_cap_not_provider_runtime_balance() -> No
     assert "100.00" not in text
 
 
-def test_budget_summary_treats_frozen_router_caps_as_planned_cap() -> None:
-    lines = _format_strategy_totals(
-        strategy_names=["budgetflow_same_enterprise_router"],
-        resolved_by_strategy={"budgetflow_same_enterprise_router": [True, False]},
-        score_status_by_strategy={"budgetflow_same_enterprise_router": ["pass", "true_fail"]},
-        task_cost_by_strategy={"budgetflow_same_enterprise_router": [0.2, 0.3]},
-        batch_spent_by_strategy={"budgetflow_same_enterprise_router": 0.5},
-        turns_by_strategy={"budgetflow_same_enterprise_router": [3, 7]},
-        tier_mix_by_strategy={"budgetflow_same_enterprise_router": [{2: 1.0}, {3: 1.0}]},
-        failure_by_strategy={"budgetflow_same_enterprise_router": {"pass": 1, "budget_fail": 1}},
-        batch_caps={"budgetflow_same_enterprise_router": 0.75},
-        budget_modes={"budgetflow_same_enterprise_router": "frozen_router_caps"},
-    )
-
-    text = "\n".join(lines)
-    assert "per-task cap" in text
-    assert "planned_cap" in text
-    assert "0.7500" in text
-
-
 def test_live_snapshot_uses_score_status_for_value_pass_count(tmp_path) -> None:
     lines = _format_live_snapshot(
         strategy_names=["budgetflow_segment"],
@@ -412,7 +392,7 @@ def test_live_snapshot_uses_score_status_for_value_pass_count(tmp_path) -> None:
         tier_mix_by_strategy={"budgetflow_segment": [{2: 1.0}, {5: 1.0}]},
         batch_spent_by_strategy={"budgetflow_segment": 0.3},
         batch_caps={"budgetflow_segment": 0.5},
-        budget_modes={"budgetflow_segment": "frozen_router_caps"},
+        budget_modes={"budgetflow_segment": "dynamic_task_caps"},
         runs_done=2,
         total_runs=2,
         tasks_per_strategy=2,
