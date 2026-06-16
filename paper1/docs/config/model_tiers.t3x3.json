@@ -1,7 +1,7 @@
 {
   "meta": {
-    "revision": "2026-06-15-t3x3",
-    "revision_note": "Diagnostic catalog: T3 input/output prices are 3x the calibrated transaction price. T1/T2 unchanged from default. This is NOT a real billing catalog \u2014 it normalizes the stronger-model price for scarcity/sensitivity diagnostic. Use model_tiers.default.json for actual transaction prices.",
+    "revision": "2026-06-16-t3x3-toolcall",
+    "revision_note": "Diagnostic catalog: T3 input/output prices are 3x the calibrated transaction price. T1/T2 unchanged from default. All tiers use the same native tool_call action protocol as the default catalog. This is NOT a real billing catalog \u2014 it normalizes the stronger-model price for scarcity/sensitivity diagnostic. Use model_tiers.default.json for actual transaction prices.",
     "schema_version": "v1"
   },
   "tiers": [
@@ -47,7 +47,7 @@
       },
       "escalation_patience": 4,
       "max_turns": 20,
-      "protocol": "text_regex",
+      "protocol": "tool_call",
       "cost_source": "Alibaba Cloud Model Studio pricing, qwen3-coder-flash series",
       "cost_updated": "2026-06-07",
       "cost_notes": "USD per 1M tokens, input-length tiered; cache discounts intentionally not assumed.",
@@ -87,7 +87,7 @@
       },
       "escalation_patience": 5,
       "max_turns": 35,
-      "protocol": "text_regex",
+      "protocol": "tool_call",
       "cost_source": "Alibaba Cloud Model Studio pricing, qwen3.7-plus",
       "cost_updated": "2026-06-09",
       "cost_notes": "Canonical USD estimate converted from public mainland/global CNY pricing: \u00a52 input / \u00a58 output per 1M tokens for <=256K input, \u00a56 input / \u00a524 output for 256K-1M, at ~7.14 CNY/USD; cache discounts and promotions intentionally not assumed.",
@@ -117,7 +117,7 @@
       },
       "escalation_patience": 5,
       "max_turns": null,
-      "protocol": "text_regex",
+      "protocol": "tool_call",
       "cost_source": "Normalized stronger-model diagnostic price (3x AICode007 GPT-5.4 transaction price). NOT a real billing price.",
       "cost_updated": "2026-06-15",
       "cost_notes": "T3x3 diagnostic catalog for scarcity/sensitivity analysis. Input=$0.882/1M, Output=$5.379/1M (3x calibrated price). This is a normalized diagnostic price, not a billing price. Real transaction price is in model_tiers.default.json.",

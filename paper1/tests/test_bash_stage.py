@@ -152,7 +152,7 @@ from budgetflow.adapter.bash_stage import extract_text_file_paths, extract_trace
 
 
 def test_text_extract_from_assistant_content():
-    """GPT text_regex snippet with file paths in content head."""
+    """Assistant text snippet with file paths in content head."""
     text = 'I will edit sympy/matrices/common.py to fix the Matrix class.'
     paths = extract_text_file_paths(text)
     assert "sympy/matrices/common.py" in paths

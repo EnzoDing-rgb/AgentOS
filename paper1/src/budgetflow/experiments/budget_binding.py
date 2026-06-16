@@ -19,7 +19,7 @@ from typing import Any
 
 from budgetflow.experiments.compare_config import load_strategy_set, paper_mainline_strategy_names
 
-from ..model_tiers import MODEL_CATALOG, catalog_revision, catalog_path, init_catalog
+from ..model_tiers import MODEL_CATALOG, catalog_path, catalog_revision, catalog_source_info, init_catalog
 
 
 # Cold-start pressure posture for paper-mainline strategies.  Frozen caps are
@@ -46,6 +46,7 @@ class BudgetBindingPlan:
     target_projected_utilization: float | None = None
     catalog_revision: str = ""
     catalog_path: str = ""
+    catalog_content_hash: str = ""
     historical_source: str = ""
     task_ids: list[str] = field(default_factory=list)
     strategy_names: list[str] = field(default_factory=list)
@@ -69,6 +70,7 @@ class BudgetBindingPlan:
             "generation_mode": self.generation_mode,
             "catalog_revision": self.catalog_revision,
             "catalog_path": self.catalog_path,
+            "catalog_content_hash": self.catalog_content_hash,
             "historical_source": self.historical_source,
             "task_ids": self.task_ids,
             "strategy_names": self.strategy_names,
@@ -105,6 +107,7 @@ class BudgetBindingPlan:
             target_projected_utilization=d.get("target_projected_utilization"),
             catalog_revision=d.get("catalog_revision", ""),
             catalog_path=d.get("catalog_path", ""),
+            catalog_content_hash=d.get("catalog_content_hash", ""),
             historical_source=d.get("historical_source", ""),
             task_ids=d.get("task_ids", []),
             strategy_names=d.get("strategy_names", []),
@@ -195,12 +198,17 @@ def calibrate_budget(
 
     generation_mode = "target_utilization" if target_utilization is not None else "frozen_plan_cap_sum"
 
+    catalog_info = catalog_source_info()
     plan = BudgetBindingPlan(
         hard_cap_usd=0.0,
         generation_mode=generation_mode,
         target_projected_utilization=target_utilization,
-        catalog_revision=catalog_revision(),
-        catalog_path=str(catalog_path()) if catalog_path() else "python_fallback",
+        catalog_revision=str(catalog_info.get("catalog_revision") or catalog_revision()),
+        catalog_path=str(
+            catalog_info.get("catalog_path")
+            or (str(catalog_path()) if catalog_path() else "python_fallback")
+        ),
+        catalog_content_hash=str(catalog_info.get("catalog_content_hash") or ""),
         historical_source=str(historical_jsonl) if historical_jsonl else "bootstrap_estimate",
         task_ids=list(task_ids),
         strategy_names=list(strategies),

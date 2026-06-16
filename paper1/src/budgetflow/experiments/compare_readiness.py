@@ -12,7 +12,13 @@ from pathlib import Path
 
 from budgetflow.experiments.compare_config import CompareStrategy, paper_mainline_strategy_names
 from budgetflow.frozen_router import load_frozen_plan
-from budgetflow.model_tiers import DEFAULT_CATALOG_PATH, catalog_path, catalog_revision
+from budgetflow.model_tiers import (
+    DEFAULT_CATALOG_PATH,
+    MODEL_CATALOG,
+    catalog_path,
+    catalog_revision,
+    catalog_source_info,
+)
 from budgetflow.run_series import retired_series_reason
 from budgetflow.value_efficiency import ValueEfficiencyContext
 
@@ -26,6 +32,76 @@ class ReadinessReport:
     @property
     def ok(self) -> bool:
         return not self.blocking
+
+
+def _find_existing_jsonl(run_series: str | None, runs_dir: Path | None) -> Path | None:
+    """Return the JSONL path for *run_series* if it already exists on disk."""
+    if not run_series or runs_dir is None:
+        return None
+    candidate = Path(runs_dir) / f"{run_series}-0.jsonl"
+    if candidate.is_file():
+        return candidate
+    return None
+
+
+def _compute_protocol_health(jsonl_path: Path) -> dict:
+    """Compute protocol health from existing JSONL using current row fields."""
+    import json as _json
+
+    total_rows = 0
+    protocol_abort_rows = 0
+    failed_protocol_retry_rows = 0
+    empty_response_rows = 0
+
+    with jsonl_path.open() as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = _json.loads(line)
+            except _json.JSONDecodeError:
+                continue
+            total_rows += 1
+
+            score_status = str(row.get("score_status") or "")
+            failure_owner = str(row.get("failure_owner") or "")
+            abort_owner = str(row.get("abort_owner") or "")
+            exit_owner = str(row.get("exit_owner") or "")
+            exit_reason = str(row.get("exit_reason") or "")
+            if (
+                score_status == "abort"
+                and (
+                    failure_owner == "protocol"
+                    or abort_owner == "protocol"
+                    or exit_owner in {"protocol", "parser_protocol"}
+                    or exit_reason.startswith("format_error_")
+                )
+            ):
+                protocol_abort_rows += 1
+
+            retry_used = bool(row.get("protocol_retry_used"))
+            retry_success = bool(row.get("protocol_retry_success"))
+            retry_reason = str(row.get("protocol_retry_reason") or "")
+            if retry_used and not retry_success:
+                failed_protocol_retry_rows += 1
+            if retry_reason == "empty_response":
+                empty_response_rows += 1
+
+    if total_rows == 0:
+        return {
+            "total_rows": 0,
+            "protocol_abort_rate": 0.0,
+            "failed_protocol_retry_rate": 0.0,
+            "empty_response_rate": 0.0,
+        }
+
+    return {
+        "total_rows": total_rows,
+        "protocol_abort_rate": protocol_abort_rows / total_rows,
+        "failed_protocol_retry_rate": failed_protocol_retry_rows / total_rows,
+        "empty_response_rate": empty_response_rows / total_rows,
+    }
 
 
 def build_compare_readiness_report(
@@ -42,6 +118,7 @@ def build_compare_readiness_report(
     auto_budget_estimates: dict[str, object] | None = None,
     budget_plan_path: Path | None = None,
     per_task_cap: float | None = None,
+    runs_dir: Path | None = None,
 ) -> ReadinessReport:
     blocking: list[str] = []
     warnings: list[str] = []
@@ -117,6 +194,22 @@ def build_compare_readiness_report(
         )
     if catalog_issues:
         blocking.extend(f"tier catalog: {issue}" for issue in catalog_issues)
+    active_protocols = {cfg.backend: cfg.protocol for cfg in MODEL_CATALOG.configs}
+    facts.append(
+        "catalog_protocols="
+        + ",".join(f"{backend}:{protocol}" for backend, protocol in sorted(active_protocols.items()))
+    )
+    if is_paper_mainline:
+        non_tool_call = {
+            backend: protocol
+            for backend, protocol in active_protocols.items()
+            if protocol != "tool_call"
+        }
+        if non_tool_call:
+            blocking.append(
+                "paper mainline requires native tool_call action protocol for every tier; "
+                f"found {non_tool_call}"
+            )
     active_catalog_path = catalog_path()
     active_catalog_revision = catalog_revision()
     uses_default_catalog = (
@@ -362,10 +455,13 @@ def build_compare_readiness_report(
 
             active_revision = active_catalog_revision
             active_path = str(active_catalog_path) if active_catalog_path else "python_fallback"
+            active_hash = str(catalog_source_info().get("catalog_content_hash") or "")
             facts.append(f"active_catalog_revision={active_revision}")
             facts.append(f"active_catalog_path={active_path}")
+            facts.append(f"active_catalog_content_hash={active_hash}")
             bp_catalog_revision = str(bp.get("catalog_revision", "") or "")
             bp_catalog_path = str(bp.get("catalog_path", "") or "")
+            bp_catalog_hash = str(bp.get("catalog_content_hash", "") or "")
             if bp_catalog_revision and active_revision and bp_catalog_revision != active_revision:
                 blocking.append(
                     f"budget plan catalog_revision={bp_catalog_revision} does not match "
@@ -374,6 +470,11 @@ def build_compare_readiness_report(
             if bp_catalog_path and active_path and Path(bp_catalog_path).resolve() != Path(active_path).resolve():
                 blocking.append(
                     f"budget plan catalog_path={bp_catalog_path} does not match active catalog_path={active_path}"
+                )
+            if bp_catalog_hash and active_hash and bp_catalog_hash != active_hash:
+                blocking.append(
+                    f"budget plan catalog_content_hash={bp_catalog_hash} does not match "
+                    f"active catalog_content_hash={active_hash}; regenerate the budget plan"
                 )
 
     # ── Per-policy burn-rate deviation gate ───────────────────────────────
@@ -424,6 +525,35 @@ def build_compare_readiness_report(
                 f"bare_t3={t3_util:.1%}, bf_task_level={bf_task_util:.1%}, bf_segment={bf_seg_util:.1%}. "
                 f"Budget may be too loose for mechanism discrimination."
             )
+
+    # ── Protocol health gate ───────────────────────────────────────────────
+    existing_jsonl = _find_existing_jsonl(run_series, runs_dir)
+    if existing_jsonl is not None:
+        try:
+            protocol_stats = _compute_protocol_health(existing_jsonl)
+            facts.append(f"protocol_health_rows={protocol_stats['total_rows']}")
+            facts.append(f"protocol_health_abort_rate={protocol_stats['protocol_abort_rate']:.1%}")
+            facts.append(f"protocol_health_failed_retry_rate={protocol_stats['failed_protocol_retry_rate']:.1%}")
+            facts.append(f"protocol_health_empty_response_rate={protocol_stats['empty_response_rate']:.1%}")
+            if protocol_stats["protocol_abort_rate"] > 0.05:
+                blocking.append(
+                    f"protocol-owner abort rate {protocol_stats['protocol_abort_rate']:.1%} > 5%; "
+                    f"action protocol is unstable — fix catalog protocol before paid run"
+                )
+            if protocol_stats["failed_protocol_retry_rate"] > 0.10:
+                blocking.append(
+                    f"failed protocol retry rate {protocol_stats['failed_protocol_retry_rate']:.1%} > 10%; "
+                    f"excessive format failures — fix catalog protocol before paid run"
+                )
+            if protocol_stats["empty_response_rate"] > 0.10:
+                blocking.append(
+                    f"parser empty_response rate {protocol_stats['empty_response_rate']:.1%} > 10%; "
+                    f"model/action protocol is unstable before paid run"
+                )
+        except (OSError, ValueError, TypeError) as exc:
+            warnings.append(f"cannot compute protocol health from {existing_jsonl}: {exc}")
+    else:
+        facts.append("protocol_health=no_existing_jsonl")
 
     return ReadinessReport(tuple(blocking), tuple(warnings), tuple(facts))
 

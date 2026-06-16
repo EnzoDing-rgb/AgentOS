@@ -32,7 +32,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -618,23 +617,14 @@ def calibrate_progress_table(data_dir: str | Path) -> dict[str, Any]:
 # Localization progress diagnostic (offline, read-only)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# Regex patterns to extract file paths from bash commands.
-# Matches paths like django/forms/fields.py or ./sympy/core/basic.py
-_FILE_PATH_RE = re.compile(
-    r'(?:^|\s|["\'])(\.?/?[a-zA-Z0-9_\-./]+\.(?:py|pyx|pxd|pxi|md|rst|txt|cfg|ini|yml|yaml|json|toml|sh|bash))(?:\s|$|["\'])',
-    re.MULTILINE,
-)
-
-
 def diagnose_localization_progress(
     data_dir: str | Path,
     manifest: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Offline diagnostic for LOCALIZATION file-exploration activity.
 
-    Prefers the runtime ``touched_file_paths`` field when present (Task A
-    output). Falls back to regex extraction from ``bash_digest`` and
-    ``assistant_content_head`` for traces produced before the field was added.
+    Uses the current runtime ``touched_file_paths`` field only.  Historical
+    traces that lack this field are forensic-only and are not guessed from text.
 
     Returns a diagnostic summary with per-task file activity and extraction
     method breakdown.
@@ -649,12 +639,12 @@ def diagnose_localization_progress(
     loc_turns = 0
     loc_with_files = 0
     runtime_field_turns = 0
-    fallback_regex_turns = 0
+    missing_runtime_field_turns = 0
     task_file_activity: dict[str, dict] = defaultdict(lambda: {
         "loc_turns": 0,
         "loc_with_files": 0,
         "runtime_field_turns": 0,
-        "fallback_regex_turns": 0,
+        "missing_runtime_field_turns": 0,
         "unique_files": set(),
     })
 
@@ -679,12 +669,8 @@ def diagnose_localization_progress(
                 task_file_activity[iid]["loc_turns"] += 1
 
                 files_found: set[str] = set()
-                used_runtime = False
-
-                # Preferred: runtime touched_file_paths field (Task A)
                 tfp = t.get("touched_file_paths")
                 if tfp is not None and isinstance(tfp, list):
-                    used_runtime = True
                     runtime_field_turns += 1
                     task_file_activity[iid]["runtime_field_turns"] += 1
                     for p in tfp:
@@ -692,17 +678,8 @@ def diagnose_localization_progress(
                         if p_str and "/tmp/" not in p_str:
                             files_found.add(p_str)
                 else:
-                    # Fallback: regex extraction from bash_digest / content_head / parser_input
-                    fallback_regex_turns += 1
-                    task_file_activity[iid]["fallback_regex_turns"] += 1
-                    bash_digest = str(t.get("bash_digest", "") or "")
-                    content_head = str(t.get("assistant_content_head", "") or "")
-                    parser_input = str(t.get("parser_input_snippet", "") or "")
-                    for source in (bash_digest, content_head, parser_input):
-                        for m in _FILE_PATH_RE.finditer(source):
-                            p = m.group(1)
-                            if not p.startswith("test_") and "/tmp/" not in p:
-                                files_found.add(p)
+                    missing_runtime_field_turns += 1
+                    task_file_activity[iid]["missing_runtime_field_turns"] += 1
 
                 if files_found:
                     loc_with_files += 1
@@ -726,6 +703,7 @@ def diagnose_localization_progress(
             "unique_files_count": len(unique),
             "top_files": unique[:10],
             "runtime_field_fraction": runtime_frac,
+            "missing_runtime_field_turns": activity["missing_runtime_field_turns"],
         }
 
     overall_rate = loc_with_files / loc_turns if loc_turns > 0 else 0.0
@@ -733,9 +711,8 @@ def diagnose_localization_progress(
 
     return {
         "meta": {
-            "note": "Prefers runtime touched_file_paths field when present; "
-                    "falls back to regex extraction from bash_digest / "
-                    "assistant_content_head for legacy traces.",
+            "note": "Uses runtime touched_file_paths only; legacy traces without "
+                    "that field are counted as missing instrumentation.",
             "caveat": "has_progress is always False for LOCALIZATION in runtime "
                       "traces because the progress signal only fires on file "
                       "modifications (REPAIR/VALIDATION), not on file exploration.",
@@ -744,7 +721,7 @@ def diagnose_localization_progress(
             "overall_file_activity_rate": round(overall_rate, 4),
             "runtime_field_available": runtime_available,
             "runtime_field_turns": runtime_field_turns,
-            "fallback_regex_turns": fallback_regex_turns,
+            "missing_runtime_field_turns": missing_runtime_field_turns,
             "gold_patch_available": False,
         },
         "per_task": tasks_summary,

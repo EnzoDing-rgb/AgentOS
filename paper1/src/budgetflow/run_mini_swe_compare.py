@@ -255,6 +255,7 @@ def main() -> None:
         auto_budget_estimates=auto_budget_estimates,
         budget_plan_path=budget_plan_path,
         per_task_cap=args.per_task_cap,
+        runs_dir=RUNS_DIR,
     )
     print(format_readiness_report(readiness), flush=True)
     if args.paid_readiness_only:
@@ -379,6 +380,7 @@ def main() -> None:
             "budget_plan_strategy_names": bp_strategy_names,
             "catalog_revision": catalog_info.get("catalog_revision"),
             "catalog_path": catalog_info.get("catalog_path"),
+            "catalog_content_hash": catalog_info.get("catalog_content_hash"),
             "value_profile": value_context.profile,
             "value_source_class": value_context.source_class,
             "value_matrix_artifact": value_context.matrix_path,

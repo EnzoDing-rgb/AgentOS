@@ -351,10 +351,10 @@ def cost_basis_trace_fields(backend_name: str, input_tokens: int) -> dict[str, A
     }
 
 
-def protocol_trace_fields(backend_name: str, text_mode: bool) -> dict[str, Any]:
+def protocol_trace_fields(backend_name: str) -> dict[str, Any]:
     decision = ActionProtocolAdapter.resolve(backend_name)
     return {
-        "text_mode": text_mode,
+        "text_mode": False,
         "protocol": decision.protocol,
         "parser": decision.parser,
     }
@@ -379,9 +379,7 @@ def tool_call_summary(response) -> dict | None:
         return None
 
 
-def parser_input_snippet(response, text_mode: bool) -> str | None:
-    if text_mode:
-        return safe_content_head(response, max_chars=500)
+def parser_input_snippet(response) -> str | None:
     summary = tool_call_summary(response)
     if summary is None:
         return None

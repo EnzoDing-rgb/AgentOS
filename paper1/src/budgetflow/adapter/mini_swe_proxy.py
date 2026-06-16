@@ -9,7 +9,6 @@ from typing import Any
 import litellm
 from minisweagent.models.utils.actions_toolcall import BASH_TOOL, format_toolcall_observation_messages
 from minisweagent.exceptions import FormatError
-from minisweagent.models.utils.actions_text import format_observation_messages as format_text_observation_messages
 from minisweagent.models.utils.anthropic_utils import _reorder_anthropic_thinking_blocks
 from minisweagent.models.utils.cache_control import set_cache_control
 from minisweagent.models.utils.openai_multimodal import expand_multimodal_content
@@ -35,7 +34,7 @@ from ..types import Backend, Stage, TurnInfo, WorkflowStatus
 from .errors import BudgetFlowBudgetError, BudgetFlowStagnationError, BudgetFlowUpstreamError
 from ..run_guards import is_fatal_billing_error, record_billing_halt, record_upstream_error
 from ..adapters import SwebenchProgressAdapter
-from .action_parsing import format_error_stop_after, parse_text_actions, parse_tool_actions
+from .action_parsing import format_error_stop_after, parse_tool_actions
 from .stall_guard import check_post_patch_stop, check_stagnation, normalize_bash_command, stall_guard_enabled
 from .message_utils import estimate_input_tokens, extract_bash_context
 from .protocol_adapter import ActionProtocolAdapter
@@ -132,7 +131,7 @@ _FORMAT_RETRY_PROMPT = (
 )
 
 
-def _classify_format_reason(exc: Exception, response, text_mode: bool) -> str:
+def _classify_format_reason(exc: Exception, response) -> str:
     """Classify a FormatError into a stable reason code for observability."""
     # Extract action count from FormatError payload
     payload = exc.args[0] if getattr(exc, "args", None) else None
@@ -151,31 +150,12 @@ def _classify_format_reason(exc: Exception, response, text_mode: bool) -> str:
                 try:
                     n = int(count)
                     if n == 0:
-                        if text_mode:
-                            try:
-                                content = response.choices[0].message.content or ""
-                            except Exception:
-                                content = ""
-                            if not content.strip():
-                                return "empty_response"
                         return "found_0_actions"
                     if n >= 2:
                         return "found_2_actions"
                 except (TypeError, ValueError):
                     pass
 
-    # Fallback: inspect response content
-    if text_mode:
-        content = ""
-        try:
-            content = response.choices[0].message.content or ""
-        except Exception:
-            pass
-        if not content.strip():
-            return "empty_response"
-        return "found_0_actions"
-
-    # Tool mode fallback
     tool_calls = []
     try:
         tool_calls = response.choices[0].message.tool_calls or []
@@ -183,11 +163,11 @@ def _classify_format_reason(exc: Exception, response, text_mode: bool) -> str:
         pass
     if not tool_calls:
         return "found_0_actions"
-    return "found_2_actions"
+    return "invalid_tool_call"
 
 
-def _format_error_limit_for(exc: Exception, response, text_mode: bool, backend_tier: int | None = None) -> tuple[str, int]:
-    reason = _classify_format_reason(exc, response, text_mode)
+def _format_error_limit_for(exc: Exception, response, backend_tier: int | None = None) -> tuple[str, int]:
+    reason = _classify_format_reason(exc, response)
     return reason, format_error_stop_after(backend_tier, error_reason=reason)
 
 
@@ -264,7 +244,6 @@ class BudgetFlowLitellmModel:
         self._protocol_retry_reason: str = ""
         self._protocol_retry_attempts: int = 0
         self._protocol_retry_limit: int = 4
-        self._last_text_mode: bool = False
         self._unavailable_backends: set[str] = set()
         self._value_triggered_escalation_turns_remaining = 0
         self._value_triggered_escalation_opened = False
@@ -452,7 +431,6 @@ class BudgetFlowLitellmModel:
         backend = self._apply_gold_edit_repair_guard(backend, progress_signal.segment)
         escalated_backend = backend.name
         response = None
-        text_mode = False
         attempted_unavailable: list[str] = []
         for candidate in self._provider_candidates(backend):
             backend = self._reserve_with_downgrade(candidate, input_tokens)
@@ -487,14 +465,11 @@ class BudgetFlowLitellmModel:
 
             model_name, model_kwargs = self._model_config_for(backend)
             try:
-                text_mode = self._use_text_mode(backend.name)
-                self._last_text_mode = text_mode
                 response = self._completion(
                     messages,
                     backend_name=backend.name,
                     model_name=model_name,
                     model_kwargs=model_kwargs,
-                    text_mode=text_mode,
                     **kwargs,
                 )
                 break
@@ -534,7 +509,7 @@ class BudgetFlowLitellmModel:
                         error_type=error_type,
                         **provider_trace_fields(backend.name),
                         **cost_basis_trace_fields(backend.name, input_tokens),
-                        **protocol_trace_fields(backend.name, text_mode=ActionProtocolAdapter.resolve(backend.name).protocol == "text_regex"),
+                        **protocol_trace_fields(backend.name),
                         **router_trace_fields(self.routing),
                         **value_aware_trace_fields(self.routing),
                         **self._gold_edit_guard_trace_fields(),
@@ -582,10 +557,10 @@ class BudgetFlowLitellmModel:
         self._last_reserve_out = 0
         _parse_error: Exception | None = None
         try:
-            actions = self._parse_actions(response, text_mode=text_mode, backend_tier=backend.tier)
+            actions = self._parse_actions(response, backend_tier=backend.tier)
         except FormatError as _fe:
             turn_protocol_retry_reason, turn_protocol_retry_limit = _format_error_limit_for(
-                _fe, response, text_mode, backend.tier
+                _fe, response, backend.tier
             )
             self._protocol_retry_reason = turn_protocol_retry_reason
             self._protocol_retry_limit = turn_protocol_retry_limit
@@ -598,7 +573,7 @@ class BudgetFlowLitellmModel:
                 # Write turn trace for the failed parse attempt
                 if self._enable_turn_trace:
                     _content_head = safe_content_head(response)
-                    _parser_snippet = parser_input_snippet(response, text_mode)
+                    _parser_snippet = parser_input_snippet(response)
                     _parser_error_fields = parser_error_trace_fields(_fe)
                     _parser_progress_signal = self._progress_adapter.signal_from_context(
                         bash_command=bash_command,
@@ -639,7 +614,7 @@ class BudgetFlowLitellmModel:
                         error_type=type(_fe).__name__,
                         **provider_trace_fields(backend.name),
                         **cost_basis_trace_fields(backend.name, prompt_tokens),
-                        **protocol_trace_fields(backend.name, text_mode),
+                        **protocol_trace_fields(backend.name),
                         **router_trace_fields(self.routing),
                         **value_aware_trace_fields(self.routing),
                         **self._gold_edit_guard_trace_fields(),
@@ -683,7 +658,6 @@ class BudgetFlowLitellmModel:
                         backend_name=backend.name,
                         model_name=model_name,
                         model_kwargs=model_kwargs,
-                        text_mode=text_mode,
                         **kwargs,
                     )
                     # Settle retry reservation
@@ -698,7 +672,7 @@ class BudgetFlowLitellmModel:
                     self._last_reservation_id = None
                     self._last_reserve_out = 0
                     # Parse retry response — must succeed this time
-                    actions = self._parse_actions(retry_response, text_mode=text_mode, backend_tier=backend.tier)
+                    actions = self._parse_actions(retry_response, backend_tier=backend.tier)
                     turn_protocol_retry_success = True
                     self._protocol_retry_success = True
                     # Use retry response for the rest of this turn
@@ -719,7 +693,7 @@ class BudgetFlowLitellmModel:
                     if self._enable_turn_trace:
                         _retry_content_head = safe_content_head(retry_response) if "retry_response" in locals() else ""
                         _retry_parser_snippet = (
-                            parser_input_snippet(retry_response, text_mode) if "retry_response" in locals() else ""
+                            parser_input_snippet(retry_response) if "retry_response" in locals() else ""
                         )
                         _retry_parser_error_fields = parser_error_trace_fields(_retry_exc)
                         _retry_progress_signal = self._progress_adapter.signal_from_context(
@@ -761,7 +735,7 @@ class BudgetFlowLitellmModel:
                             error_type=type(_retry_exc).__name__,
                             **provider_trace_fields(backend.name),
                             **cost_basis_trace_fields(backend.name, prompt_tokens),
-                            **protocol_trace_fields(backend.name, text_mode),
+                            **protocol_trace_fields(backend.name),
                             **router_trace_fields(self.routing),
                             **value_aware_trace_fields(self.routing),
                             **self._gold_edit_guard_trace_fields(),
@@ -788,7 +762,7 @@ class BudgetFlowLitellmModel:
             if self._enable_turn_trace and not turn_protocol_retry_used:
                 # Write turn trace for non-retry parse errors (original path)
                 _content_head = safe_content_head(response)
-                _parser_snippet = parser_input_snippet(response, text_mode)
+                _parser_snippet = parser_input_snippet(response)
                 _parser_error_fields = parser_error_trace_fields(_parse_error)
                 _parser_progress_signal = self._progress_adapter.signal_from_context(
                     bash_command=bash_command,
@@ -829,7 +803,7 @@ class BudgetFlowLitellmModel:
                     error_type=type(_parse_error).__name__,
                     **provider_trace_fields(backend.name),
                     **cost_basis_trace_fields(backend.name, prompt_tokens),
-                    **protocol_trace_fields(backend.name, text_mode),
+                    **protocol_trace_fields(backend.name),
                     **router_trace_fields(self.routing),
                     **value_aware_trace_fields(self.routing),
                     **self._gold_edit_guard_trace_fields(),
@@ -857,11 +831,11 @@ class BudgetFlowLitellmModel:
             "cost": billable,
             "backend": backend.name,
             "stage": stage.value,
-            "text_mode": text_mode,
+            "text_mode": False,
         }
         if self._enable_turn_trace:
             content_head = safe_content_head(response)
-            parser_snippet = parser_input_snippet(response, text_mode)
+            parser_snippet = parser_input_snippet(response)
             parser_progress_signal = self._progress_adapter.signal_from_context(
                 bash_command=bash_command,
                 observation=observation,
@@ -902,7 +876,7 @@ class BudgetFlowLitellmModel:
                 error_type=None,
                 **provider_trace_fields(backend.name),
                 **cost_basis_trace_fields(backend.name, prompt_tokens),
-                **protocol_trace_fields(backend.name, text_mode),
+                **protocol_trace_fields(backend.name),
                 **router_trace_fields(self.routing),
                         **value_aware_trace_fields(self.routing),
                 **self._gold_edit_guard_trace_fields(),
@@ -1211,7 +1185,6 @@ class BudgetFlowLitellmModel:
         backend_name: str,
         model_name: str,
         model_kwargs: dict[str, Any],
-        text_mode: bool = False,
         **kwargs,
     ):
         prepared = [{k: v for k, v in msg.items() if k != "extra"} for msg in messages]
@@ -1228,7 +1201,7 @@ class BudgetFlowLitellmModel:
                     model=model_name,
                     messages=prepared,
                     timeout=_llm_timeout_s(),
-                    **({} if text_mode else {"tools": [BASH_TOOL]}),
+                    tools=[BASH_TOOL],
                     **kwargs_merged,
                 )
             except Exception as exc:  # noqa: BLE001
@@ -1287,40 +1260,14 @@ class BudgetFlowLitellmModel:
                 ) from exc
             raise
 
-    def _use_text_mode(self, backend_name: str) -> bool:
-        decision = ActionProtocolAdapter.resolve(backend_name)
-        return decision.protocol == "text_regex"
-
-    def _parse_actions(self, response, *, text_mode: bool = False, backend_tier: int | None = None) -> list[dict]:
-        if text_mode:
-            content = response.choices[0].message.content or ""
-            try:
-                actions = parse_text_actions(content, format_error_template=self.format_error_template)
-                self._format_error_streak = 0
-                return actions
-            except FormatError as exc:
-                reason, stop_after = _format_error_limit_for(exc, response, text_mode, backend_tier)
-                self._protocol_retry_reason = reason
-                self._protocol_retry_limit = stop_after
-                self._format_error_streak += 1
-                if self._format_error_streak >= stop_after:
-                    raise BudgetFlowStagnationError(
-                        self.workflow_id,
-                        exit_reason="format_error_text_action",
-                        step_index=self.step_index,
-                        no_progress_streak=self._format_error_streak,
-                    )
-                raise
-
+    def _parse_actions(self, response, *, backend_tier: int | None = None) -> list[dict]:
         tool_calls = response.choices[0].message.tool_calls or []
-        if tool_calls:
-            self._format_error_streak = 0
         counted_format_error = False
         if not tool_calls:
             class _NoToolCallsFormatError(Exception):
                 pass
 
-            reason, stop_after = _format_error_limit_for(_NoToolCallsFormatError(), response, text_mode, backend_tier)
+            reason, stop_after = _format_error_limit_for(_NoToolCallsFormatError(), response, backend_tier)
             self._protocol_retry_reason = reason
             self._protocol_retry_limit = stop_after
             self._format_error_streak += 1
@@ -1333,10 +1280,12 @@ class BudgetFlowLitellmModel:
                     no_progress_streak=self._format_error_streak,
                 )
         try:
-            return parse_tool_actions(tool_calls, format_error_template=self.format_error_template)
+            actions = parse_tool_actions(tool_calls, format_error_template=self.format_error_template)
+            self._format_error_streak = 0
+            return actions
         except FormatError as exc:
             if not counted_format_error:
-                reason, stop_after = _format_error_limit_for(exc, response, text_mode, backend_tier)
+                reason, stop_after = _format_error_limit_for(exc, response, backend_tier)
                 self._protocol_retry_reason = reason
                 self._protocol_retry_limit = stop_after
                 self._format_error_streak += 1
@@ -1356,13 +1305,6 @@ class BudgetFlowLitellmModel:
         self, message: dict, outputs: list[dict], template_vars: dict | None = None
     ) -> list[dict]:
         actions = message.get("extra", {}).get("actions", [])
-        if message.get("extra", {}).get("text_mode"):
-            return format_text_observation_messages(
-                outputs,
-                observation_template=self.observation_template,
-                template_vars=template_vars,
-                multimodal_regex=self.multimodal_regex,
-            )
         return format_toolcall_observation_messages(
             actions=actions,
             outputs=outputs,

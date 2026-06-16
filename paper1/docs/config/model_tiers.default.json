@@ -1,7 +1,7 @@
 {
   "meta": {
-    "revision": "2026-06-10-a",
-    "revision_note": "Initial default catalog. T3 uses calibrated GPT-5.4 transaction pricing (¥2.1/¥12.8 per 1M at ~7.14 CNY/USD). T2 uses Alibaba Cloud public pricing for qwen3.7-plus.",
+    "revision": "2026-06-16-toolcall",
+    "revision_note": "Default catalog with all tiers using native tool_call protocol. T3 uses calibrated GPT-5.4 transaction pricing (¥2.1/¥12.8 per 1M at ~7.14 CNY/USD). T2 uses Alibaba Cloud public pricing for qwen3.7-plus.",
     "schema_version": "v1"
   },
   "tiers": [
@@ -27,7 +27,7 @@
       "progress_prior": {"localization": 0.50, "repair": 0.38, "validation": 0.45},
       "escalation_patience": 4,
       "max_turns": 20,
-      "protocol": "text_regex",
+      "protocol": "tool_call",
       "cost_source": "Alibaba Cloud Model Studio pricing, qwen3-coder-flash series",
       "cost_updated": "2026-06-07",
       "cost_notes": "USD per 1M tokens, input-length tiered; cache discounts intentionally not assumed.",
@@ -55,7 +55,7 @@
       "progress_prior": {"localization": 0.67, "repair": 0.65, "validation": 0.63},
       "escalation_patience": 5,
       "max_turns": 35,
-      "protocol": "text_regex",
+      "protocol": "tool_call",
       "cost_source": "Alibaba Cloud Model Studio pricing, qwen3.7-plus",
       "cost_updated": "2026-06-09",
       "cost_notes": "Canonical USD estimate converted from public mainland/global CNY pricing: ¥2 input / ¥8 output per 1M tokens for <=256K input, ¥6 input / ¥24 output for 256K-1M, at ~7.14 CNY/USD; cache discounts and promotions intentionally not assumed. Verify against DashScope billing before paper-scale paid runs.",
@@ -81,7 +81,7 @@
       "progress_prior": {"localization": 0.68, "repair": 0.68, "validation": 0.66},
       "escalation_patience": 5,
       "max_turns": null,
-      "protocol": "text_regex",
+      "protocol": "tool_call",
       "cost_source": "AICode007 GPT-5.4 transaction price (¥2.1/¥12.8 per 1M tokens at ~7.14 CNY/USD)",
       "cost_updated": "2026-06-10",
       "cost_notes": "Actual transaction price in CNY converted to USD at ~7.14 CNY/USD. T2/T3 input costs are near-identical ($0.28 vs $0.29/1M); output is ~1.6x, not 10x. Verify against account billing before paper-scale paid runs.",

@@ -75,7 +75,7 @@ DEFAULT_TIER_CONFIGS: tuple[TierConfig, ...] = (
         progress_prior={"localization": 0.50, "repair": 0.38, "validation": 0.45},
         escalation_patience=4,
         max_turns=20,
-        protocol="text_regex",
+        protocol="tool_call",
         cost_source="Alibaba Cloud Model Studio pricing, qwen3-coder-flash series",
         cost_updated="2026-06-07",
         cost_notes="USD per 1M tokens, input-length tiered; cache discounts intentionally not assumed.",
@@ -103,7 +103,7 @@ DEFAULT_TIER_CONFIGS: tuple[TierConfig, ...] = (
         progress_prior={"localization": 0.67, "repair": 0.65, "validation": 0.63},
         escalation_patience=5,
         max_turns=35,
-        protocol="text_regex",
+        protocol="tool_call",
         cost_source="Alibaba Cloud Model Studio pricing, qwen3.7-plus",
         cost_updated="2026-06-09",
         cost_notes="Canonical USD estimate converted from public mainland/global CNY pricing: ¥2 input / ¥8 output per 1M tokens for <=256K input, ¥6 input / ¥24 output for 256K-1M, at ~7.14 CNY/USD; cache discounts and promotions intentionally not assumed. Verify against DashScope billing before paper-scale paid runs.",
@@ -127,7 +127,7 @@ DEFAULT_TIER_CONFIGS: tuple[TierConfig, ...] = (
         progress_prior={"localization": 0.68, "repair": 0.68, "validation": 0.66},
         escalation_patience=5,
         max_turns=None,
-        protocol="text_regex",
+        protocol="tool_call",
         api_base_env="AICODE007_BASE_URL",
         proxy_env="AICODE007_HTTP_PROXY",
         cost_source="AICode007 GPT-5.4 transaction price (¥2.1/¥12.8 per 1M tokens at ~7.14 CNY/USD)",
@@ -166,6 +166,11 @@ def validate_tier_catalog(configs: tuple[TierConfig, ...] | None = None) -> list
             issues.append(f"{cfg.backend}: missing progress confidence")
         if not _looks_like_iso_date(cfg.progress_updated):
             issues.append(f"{cfg.backend}: missing progress_updated YYYY-MM-DD")
+        if cfg.protocol != "tool_call":
+            issues.append(
+                f"{cfg.backend}: unsupported action protocol {cfg.protocol!r}; "
+                "active BudgetFlow runs require tool_call"
+            )
         for stage, value in cfg.progress_prior.items():
             if not 0.0 <= value <= 1.0:
                 issues.append(f"{cfg.backend}: invalid progress_prior {stage}={value}")

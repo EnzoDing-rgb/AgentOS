@@ -14,6 +14,7 @@ _POST_PATCH_STOP_STRATEGIES = frozenset(
         "segment_value_aware",
         "budgetflow_equal_weight",
         "stage_blind",
+        "value_aware_task_level",
     }
 )
 
@@ -29,6 +30,7 @@ _STALL_GUARD_STRATEGIES = frozenset(
         "budgetflow_equal_weight",
         "stage_blind",
         "budgetflow_same_router",
+        "value_aware_task_level",
     }
 )
 

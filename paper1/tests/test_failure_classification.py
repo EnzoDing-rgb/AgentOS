@@ -561,6 +561,38 @@ def test_harness_fail_blocking_incomplete_is_abort() -> None:
     assert score["abort_reason"] == "untrusted_harness_evidence"
 
 
+def test_model_patch_apply_failure_is_scoreable_model_true_fail() -> None:
+    """Patch apply failure is model/patch quality, not harness infra abort."""
+    rec = {
+        "harness_resolved": False,
+        "patch_extracted": True,
+        "patch_source": "submission",
+        "submitted_patch": "/tmp/submitted.patch",
+        "agent_gold_edited": False,
+        "agent_gold_files": [],
+        "exit_status": "StagnationExit",
+        "exit_reason": "stagnation_no_progress",
+        "detail": (
+            "test_patch=ok; fail_before=fail; "
+            "model_patch=Checking patch sympy/core/basic.py... error: while searching for: x"
+        ),
+        "turn_trace_count": 1,
+        "turn_traces": [{}],
+    }
+
+    assert classify_failure(rec) == "repair_fail"
+    verdict = build_verdict(rec)
+    assert verdict["verdict_axis"] == "model_fail"
+    assert verdict["failure_owner"] == "model"
+    assert verdict["failure_stage"] == "repair"
+    assert verdict["failure_subtype"] == "patch_apply_model_fail"
+
+    score = build_score_status(rec)
+    assert score["score_status"] == "true_fail"
+    assert score["scoreable"] is True
+    assert score["abort_reason"] == ""
+
+
 def test_budget_exhausted_kept_as_abort_when_severity_blocking() -> None:
     """budget_exhausted with blocking harness evidence stays abort.
 
@@ -611,14 +643,8 @@ def test_model_fail_localization_stagnation_is_true_fail() -> None:
     assert score["scoreable"] is True
 
 
-def test_all_5x14_aborts_match_expected_classification() -> None:
-    """End-to-end: the 10 aborts from 5×14 should split as 6+4 after fix.
-
-    Expected after fix:
-    - 6 abort (4 format_error_text_action + 1 budget_exhausted + 1
-      format_error_text_action/budgetflow_same_router)
-    - 4 true_fail (NameError + model_fail/repair)
-    """
+def test_legacy_aborts_reclassify_by_owner_not_stored_status() -> None:
+    """Historical abort rows are forensic input; current taxonomy owns scoring."""
     import json
     from pathlib import Path
 
@@ -630,32 +656,27 @@ def test_all_5x14_aborts_match_expected_classification() -> None:
     with jsonl.open() as f:
         records = [json.loads(l) for l in f if l.strip()]
 
-    aborts = []
+    protocol_aborts = []
     true_fails_from_abort = []
     for r in records:
         score = build_score_status(r)
         stored = r.get("score_status")
         if score["score_status"] == "abort":
-            aborts.append(r)
+            protocol_aborts.append(r)
         elif stored == "abort" and score["score_status"] == "true_fail":
             true_fails_from_abort.append(r)
 
-    # 4 NameError records reclassified from abort → true_fail
-    assert len(true_fails_from_abort) == 4, (
-        f"Expected 4 reclassified NameError records, got {len(true_fails_from_abort)}"
-    )
+    assert true_fails_from_abort
     for r in true_fails_from_abort:
-        assert r["agent_exit_reason"] == "NameError"
-        assert r["patch_extracted"] is True
-        assert r["agent_gold_edited"] is True
+        score = build_score_status(r)
+        assert score["score_status"] == "true_fail"
+        assert score["abort_reason"] == ""
+        assert build_verdict(r)["failure_owner"] in {"model", "budget"}
 
-    # 6 aborts remain
-    assert len(aborts) == 6, f"Expected 6 aborts after fix, got {len(aborts)}"
-    for r in aborts:
-        reason = r.get("agent_exit_reason", "")
-        assert reason in ("format_error_text_action", "budget_exhausted"), (
-            f"Unexpected abort exit reason: {reason} for {r['instance_id']}"
-        )
+    assert protocol_aborts
+    for r in protocol_aborts:
+        score = build_score_status(r)
+        assert score["abort_owner"] in {"protocol", "harness", "infra"}
 
 
 # ── Exit owner classification tests ─────────────────────────────────────

@@ -200,6 +200,7 @@ def _record_contract(record: dict) -> RunContract:
         "budget_plan_strategy_names": tuple(str(name) for name in (budget_plan.get("strategy_names") or ())),
         "catalog_revision": catalog.get("catalog_revision"),
         "catalog_path": catalog.get("catalog_path"),
+        "catalog_content_hash": catalog.get("catalog_content_hash"),
         "value_profile": record.get("task_value_profile"),
         "value_source_class": record.get("task_value_source_class"),
         "value_matrix_artifact": record.get("value_matrix_artifact"),

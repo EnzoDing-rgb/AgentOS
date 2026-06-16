@@ -45,7 +45,7 @@ def test_classify_found_2_actions_from_payload():
     from budgetflow.adapter.mini_swe_proxy import _classify_format_reason
     exc = _FakeFormatError(n_actions=2)
     resp = _FakeResponse(content="```bash\ncmd1\n```\n```bash\ncmd2\n```")
-    assert _classify_format_reason(exc, resp, text_mode=True) == "found_2_actions"
+    assert _classify_format_reason(exc, resp) == "found_2_actions"
 
 
 @requires_minisweagent
@@ -53,33 +53,26 @@ def test_classify_found_0_actions_from_payload():
     from budgetflow.adapter.mini_swe_proxy import _classify_format_reason
     exc = _FakeFormatError(n_actions=0)
     resp = _FakeResponse(content="garbage")
-    assert _classify_format_reason(exc, resp, text_mode=True) == "found_0_actions"
+    assert _classify_format_reason(exc, resp) == "found_0_actions"
 
 
 @requires_minisweagent
-def test_classify_empty_response():
-    from budgetflow.adapter.mini_swe_proxy import _classify_format_reason
-    exc = _FakeFormatError()  # no n_actions
-    resp = _FakeResponse(content="   ")
-    assert _classify_format_reason(exc, resp, text_mode=True) == "empty_response"
-
-
 @requires_minisweagent
 def test_classify_empty_response_tool_mode():
     from budgetflow.adapter.mini_swe_proxy import _classify_format_reason
     exc = _FakeFormatError()
     resp = _FakeResponse(content="", tool_calls=[])
-    assert _classify_format_reason(exc, resp, text_mode=False) == "found_0_actions"
+    assert _classify_format_reason(exc, resp) == "found_0_actions"
 
 
 @requires_minisweagent
-def test_classify_found_2_actions_tool_mode():
+def test_classify_invalid_tool_call_when_tool_calls_present():
     from budgetflow.adapter.mini_swe_proxy import _classify_format_reason
     exc = _FakeFormatError()
     tc1 = MagicMock()
     tc2 = MagicMock()
     resp = _FakeResponse(content="", tool_calls=[tc1, tc2])
-    assert _classify_format_reason(exc, resp, text_mode=False) == "found_2_actions"
+    assert _classify_format_reason(exc, resp) == "invalid_tool_call"
 
 
 # ── Stall guard gating + protocol retry interaction ──────────────────────────
@@ -214,11 +207,12 @@ def test_format_error_stop_after_found_0_or_empty():
 
     assert format_error_stop_after(error_reason="found_0_actions") == 3
     assert format_error_stop_after(error_reason="empty_response") == 3
+    assert format_error_stop_after(error_reason="invalid_tool_call") == 3
 
 
 @requires_minisweagent
-def test_parse_actions_empty_response_uses_current_reason_limit():
-    """First empty response must use the empty-response limit, not stale default."""
+def test_parse_actions_no_tool_calls_uses_current_reason_limit():
+    """No tool calls should stop on the found_0_actions threshold."""
     from budgetflow.adapter.mini_swe_proxy import BudgetFlowLitellmModel
     from budgetflow.adapter.errors import BudgetFlowStagnationError
 
@@ -230,23 +224,21 @@ def test_parse_actions_empty_response_uses_current_reason_limit():
     model._protocol_retry_reason = ""
     model._protocol_retry_limit = 4
 
-    resp = _FakeResponse(content="")
+    resp = _FakeResponse(content="", tool_calls=[])
     try:
-        model._parse_actions(resp, text_mode=True, backend_tier=3)
-        assert False, "third consecutive empty response should stop"
+        model._parse_actions(resp, backend_tier=3)
+        assert False, "third consecutive no-tool response should stop"
     except BudgetFlowStagnationError:
         pass
 
-    assert model._protocol_retry_reason == "empty_response"
+    assert model._protocol_retry_reason == "found_0_actions"
     assert model._protocol_retry_limit == 3
 
 
 @requires_minisweagent
-def test_parse_actions_found_2_actions_uses_current_reason_limit():
-    """found_2_actions stays more lenient than empty_response."""
+def test_parse_actions_invalid_tool_call_accumulates_streak():
     from budgetflow.adapter.mini_swe_proxy import BudgetFlowLitellmModel
     from budgetflow.adapter.errors import BudgetFlowStagnationError
-    from minisweagent.exceptions import FormatError
 
     model = object.__new__(BudgetFlowLitellmModel)
     model.workflow_id = "wf"
@@ -256,16 +248,10 @@ def test_parse_actions_found_2_actions_uses_current_reason_limit():
     model._protocol_retry_reason = "empty_response"
     model._protocol_retry_limit = 3
 
-    resp = _FakeResponse(content="```bash\ncmd1\n```\n```bash\ncmd2\n```")
-    try:
-        model._parse_actions(resp, text_mode=True, backend_tier=3)
-    except BudgetFlowStagnationError:
-        assert False, "found_2_actions should not stop at empty-response limit"
-    except FormatError:
-        pass
-    else:
-        assert False, "FormatError should propagate before found_2_actions reaches limit"
+    resp = _FakeResponse(content="", tool_calls=[MagicMock(), MagicMock()])
+    with pytest.raises(BudgetFlowStagnationError):
+        model._parse_actions(resp, backend_tier=3)
 
-    assert model._protocol_retry_reason == "found_2_actions"
-    assert model._protocol_retry_limit == 4
+    assert model._protocol_retry_reason == "invalid_tool_call"
+    assert model._protocol_retry_limit == 3
     assert model._format_error_streak == 3

@@ -36,6 +36,7 @@ from budgetflow.governor import BudgetGovernor, GovernorConfig
 from budgetflow.heartbeat import run_with_heartbeat
 from budgetflow.ledger import WorkflowLedgerStore
 from budgetflow.observability import build_observability_status, parse_harness_evidence
+from budgetflow.observability import build_harness_trust
 from budgetflow.run_guards import CompareRunGuards
 from budgetflow.run_trace import TraceConsoleLevel
 from budgetflow.types import WorkflowSegment
@@ -247,6 +248,11 @@ def run_task_record(
     record["forensic_summary"] = build_forensic_summary(record)
     record["harness_evidence"] = parse_harness_evidence(str(record.get("detail") or "")).__dict__
     record["observability_status"] = build_observability_status(record)
+    harness_trust = build_harness_trust(record)
+    record["harness_trust"] = harness_trust["harness_trust"]
+    record["harness_issues"] = harness_trust["harness_issues"]
+    record["harness_owner"] = harness_trust["harness_owner"]
+    record["harness_severity"] = harness_trust["severity"]
     verdict = build_verdict(record)
     record["verdict_axis"] = verdict["verdict_axis"]
     record["failure_owner"] = verdict["failure_owner"]

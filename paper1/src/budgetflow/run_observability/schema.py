@@ -14,6 +14,7 @@ REQUIRED_FIELDS = frozenset({
     "row_started_at", "row_finished_at",
     "harness_evidence", "observability_status",
     "score_status", "scoreable",
+    "harness_trust", "harness_issues", "harness_owner", "harness_severity",
 })
 
 OPTIONAL_BUT_DESIRED = frozenset({
@@ -85,13 +86,6 @@ def _check_trace_coverage(records: list[dict]) -> list[str]:
                         f"{rec.get('strategy', '?')} — parser error lacks message/action count"
                     )
                 continue
-            protocol = str(trace.get("protocol") or "")
-            action_state = str(trace.get("action_progress_state") or "")
-            if protocol == "text_regex" and action_state in {"progress", "no_progress"} and not trace.get("action_digest"):
-                issues.append(
-                    f"ACTION_TRACE_MISSING row {i} trace {j}: {rec.get('instance_id', '?')} "
-                    f"{rec.get('strategy', '?')} — text action parsed but current action_digest missing"
-                )
     return issues
 
 

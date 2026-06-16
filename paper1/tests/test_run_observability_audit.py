@@ -309,7 +309,7 @@ def test_checker_ignores_unrelated_stale_heartbeat_files(tmp_path) -> None:
         '"turn_trace_count":1,"run_series":"current","policy_lane":"budgetflow_same_router","task_order_index":1,'
         '"row_started_at":1,"row_finished_at":2,"harness_evidence":{"evidence_complete":true},'
         '"observability_status":{},"score_status":"true_fail","scoreable":true,'
-        '"turn_traces":[{"response_ok":true,"protocol":"text_regex","action_progress_state":"progress","action_digest":"edit"}]}\n'
+        '"turn_traces":[{"response_ok":true,"protocol":"tool_call","action_progress_state":"progress","action_digest":"edit"}]}\n'
     )
     (tmp_path / "current.heartbeat.json").write_text(
         '{"run_series":"current","rows_done":1,"total_expected":1,"status":"completed","current_pid":0}\n'

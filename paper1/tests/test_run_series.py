@@ -244,6 +244,7 @@ def test_resume_contract_allows_same_budget_catalog_and_value_provenance(tmp_pat
         "budget_plan_strategy_names": ("bare_t2_baseline", "budgetflow_segment"),
         "catalog_revision": "default-2026-06-10",
         "catalog_path": "/repo/docs/config/model_tiers.default.json",
+        "catalog_content_hash": "sha256:abc123",
         "value_profile": "manual_value",
         "value_source_class": "pre_registered_manual",
         "value_matrix_artifact": "docs/reports/value_matrix.json",
@@ -263,6 +264,7 @@ def test_resume_contract_allows_same_budget_catalog_and_value_provenance(tmp_pat
         "catalog": {
             "catalog_revision": contract["catalog_revision"],
             "catalog_path": contract["catalog_path"],
+            "catalog_content_hash": contract["catalog_content_hash"],
         },
         "task_value_profile": contract["value_profile"],
         "task_value_source_class": contract["value_source_class"],
@@ -306,6 +308,7 @@ def test_resume_contract_checks_all_scoreable_rows_not_only_latest(tmp_path) -> 
         "budget_plan_strategy_names": ("bare_t2_baseline", "budgetflow_segment"),
         "catalog_revision": "default-2026-06-10",
         "catalog_path": "/repo/docs/config/model_tiers.default.json",
+        "catalog_content_hash": "sha256:old",
         "value_profile": "manual_value",
         "value_source_class": "pre_registered_manual",
         "value_matrix_artifact": "docs/reports/value_matrix.json",
@@ -327,6 +330,7 @@ def test_resume_contract_checks_all_scoreable_rows_not_only_latest(tmp_path) -> 
             "catalog": {
                 "catalog_revision": good_contract["catalog_revision"],
                 "catalog_path": good_contract["catalog_path"],
+                "catalog_content_hash": good_contract["catalog_content_hash"],
             },
             "task_value_profile": good_contract["value_profile"],
             "task_value_source_class": good_contract["value_source_class"],
@@ -341,6 +345,33 @@ def test_resume_contract_checks_all_scoreable_rows_not_only_latest(tmp_path) -> 
     assert latest_run_contract(path) == good_contract
     with pytest.raises(SystemExit, match=r"row1:batch_budget_cap"):
         validate_resume_contract(path, expected_contract=good_contract)
+
+
+def test_resume_contract_blocks_catalog_content_hash_change(tmp_path) -> None:
+    path = tmp_path / "mainline_6x30_toolcall-0.jsonl"
+    row = {
+        "strategy": "budgetflow_segment",
+        "instance_id": "task-a",
+        "score_status": "pass",
+        "budget_mode": "shared_batch_hard_budget",
+        "catalog": {
+            "catalog_revision": "2026-06-16-toolcall",
+            "catalog_path": "/repo/docs/config/model_tiers.default.json",
+            "catalog_content_hash": "sha256:old",
+        },
+    }
+    path.write_text(json.dumps(row) + "\n")
+
+    with pytest.raises(SystemExit, match="catalog_content_hash"):
+        validate_resume_contract(
+            path,
+            expected_contract={
+                "budget_mode": "shared_batch_hard_budget",
+                "catalog_revision": "2026-06-16-toolcall",
+                "catalog_path": "/repo/docs/config/model_tiers.default.json",
+                "catalog_content_hash": "sha256:new",
+            },
+        )
 
 
 # ── Sibling detection ──────────────────────────────────────────────────

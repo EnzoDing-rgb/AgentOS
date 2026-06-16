@@ -466,6 +466,10 @@ def classify_failure(record: dict[str, Any]) -> str:
     if _is_infra_exit(status):
         return "infra_fail"
 
+    evidence = parse_harness_evidence(str(record.get("detail") or ""))
+    if record.get("patch_extracted") and evidence.model_patch_status and not evidence.model_patch_ok:
+        return "repair_fail"
+
     if not record.get("patch_extracted") and reason.startswith("stagnation_"):
         return "loc_fail"
 
@@ -595,6 +599,8 @@ def build_verdict(record: dict[str, Any]) -> dict[str, Any]:
         stage = "runtime"
     elif axis == "protocol_fail":
         stage = "extraction"
+    elif evidence.model_patch_status and not evidence.model_patch_ok:
+        stage = "repair"
     elif not gold_edited:
         stage = "localization"
     elif harness.get("model_patch") == "fail":
@@ -664,6 +670,9 @@ def classify_failure_subtype(
         return "budget_exhausted_after_progress" if has_progress else "budget_exhausted_no_progress"
 
     if axis == "model_fail":
+        evidence = parse_harness_evidence(str(record.get("detail") or ""))
+        if evidence.model_patch_status and not evidence.model_patch_ok:
+            return "patch_apply_model_fail"
         if stage == "localization":
             return "loc_model_fail"
         elif stage == "repair":

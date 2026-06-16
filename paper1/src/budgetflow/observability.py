@@ -20,6 +20,11 @@ from .harness_contamination import has_host_dependency_contamination
 
 @dataclass
 class HarnessEvidence:
+    test_patch_status: str = ""
+    fail_before_status: str = ""
+    model_patch_status: str = ""
+    fail_after_status: str = ""
+    pass_to_pass_status: str = ""
     test_patch_ok: bool = False
     fail_before_failed: bool = False
     model_patch_ok: bool = False
@@ -49,11 +54,17 @@ def parse_harness_evidence(detail: str) -> HarnessEvidence:
             k, v = part.split("=", 1)
             fields[k.strip()] = v.strip()
 
-    ev.test_patch_ok = fields.get("test_patch") == "ok"
-    ev.fail_before_failed = fields.get("fail_before") == "fail"
-    ev.model_patch_ok = fields.get("model_patch") == "ok"
-    ev.fail_after_passed = fields.get("fail_after") == "pass"
-    ev.pass_to_pass_ok = fields.get("pass_to_pass") == "pass"
+    ev.test_patch_status = fields.get("test_patch", "")
+    ev.fail_before_status = fields.get("fail_before", "")
+    ev.model_patch_status = fields.get("model_patch", "")
+    ev.fail_after_status = fields.get("fail_after", "")
+    ev.pass_to_pass_status = fields.get("pass_to_pass", "")
+
+    ev.test_patch_ok = ev.test_patch_status == "ok"
+    ev.fail_before_failed = ev.fail_before_status == "fail"
+    ev.model_patch_ok = ev.model_patch_status == "ok"
+    ev.fail_after_passed = ev.fail_after_status == "pass"
+    ev.pass_to_pass_ok = ev.pass_to_pass_status == "pass"
 
     ev.evidence_complete = all([
         ev.test_patch_ok,
@@ -62,13 +73,13 @@ def parse_harness_evidence(detail: str) -> HarnessEvidence:
         ev.fail_after_passed,
         ev.pass_to_pass_ok,
     ])
-    ev.evaluated_complete = all([
-        ev.test_patch_ok,
-        ev.fail_before_failed,
-        ev.model_patch_ok,
-        ev.pass_to_pass_ok,
-        "fail_after=" in detail,
-    ])
+    if ev.test_patch_ok and ev.fail_before_failed and ev.model_patch_status:
+        if not ev.model_patch_ok:
+            ev.evaluated_complete = True
+        elif ev.fail_after_status == "fail":
+            ev.evaluated_complete = True
+        elif ev.fail_after_status == "pass" and ev.pass_to_pass_status in {"pass", "fail"}:
+            ev.evaluated_complete = True
     return ev
 
 
@@ -82,15 +93,15 @@ def build_observability_status(record: dict) -> dict:
     evidence = parse_harness_evidence(str(record.get("detail") or ""))
     suspicious_pass = harness_resolved and not evidence.evidence_complete
     missing_evidence = []
-    if not evidence.test_patch_ok:
+    if not evidence.test_patch_status:
         missing_evidence.append("test_patch_ok")
-    if not evidence.fail_before_failed:
+    if not evidence.fail_before_status:
         missing_evidence.append("fail_before_failed")
-    if not evidence.model_patch_ok:
+    if not evidence.model_patch_status:
         missing_evidence.append("model_patch_ok")
-    if harness_resolved and not evidence.fail_after_passed:
+    if harness_resolved and not evidence.fail_after_status:
         missing_evidence.append("fail_after_passed")
-    if harness_resolved and not evidence.pass_to_pass_ok:
+    if harness_resolved and not evidence.pass_to_pass_status:
         missing_evidence.append("pass_to_pass_ok")
 
     return {
@@ -161,7 +172,15 @@ def build_harness_trust(record: dict) -> dict:
     if patch_extracted and not evidence.fail_before_failed:
         issues.append("fail_before_not_failed")
     if patch_extracted and not evidence.model_patch_ok:
-        issues.append("model_patch_not_ok")
+        if evidence.model_patch_status:
+            issues.append("model_patch_failed")
+        else:
+            issues.append("model_patch_missing")
+    if patch_extracted and evidence.model_patch_ok and not resolved:
+        if not evidence.fail_after_status:
+            issues.append("fail_after_missing")
+        elif evidence.fail_after_status == "pass" and not evidence.pass_to_pass_status:
+            issues.append("pass_to_pass_missing")
     if resolved and not evidence.fail_after_passed:
         issues.append("resolved_but_fail_after_not_passed")
     if resolved and not evidence.pass_to_pass_ok:
@@ -179,6 +198,8 @@ def build_harness_trust(record: dict) -> dict:
         trust = "invalid"
     elif not patch_extracted and not resolved:
         trust = "incomplete"
+    elif evidence.evaluated_complete and not resolved:
+        trust = "trusted"
     elif not evidence.evidence_complete:
         if resolved:
             if issue_set & blocking_gaps:
@@ -208,7 +229,7 @@ def build_harness_trust(record: dict) -> dict:
         severity = "blocking"
     elif resolved and issue_set & {"fail_before_not_failed", "model_patch_not_ok"}:
         severity = "blocking"
-    elif not resolved and patch_extracted and issue_set & {"fail_before_not_failed", "model_patch_not_ok"}:
+    elif not resolved and patch_extracted and issue_set & {"fail_before_not_failed", "model_patch_missing"}:
         severity = "blocking"
     elif "host_dependency_contamination" in issue_set:
         severity = "blocking"
@@ -239,10 +260,10 @@ def _harness_owner(
     """Infer who owns the trust gap."""
     if not issues:
         return "none"
-    harness_gaps = {"test_patch_not_ok", "fail_before_not_failed", "model_patch_not_ok",
+    harness_gaps = {"test_patch_not_ok", "fail_before_not_failed", "model_patch_missing",
                     "resolved_but_fail_after_not_passed", "resolved_but_pass_to_pass_not_ok"}
     model_gaps = {"submitted_without_attempt", "attempted_but_not_submitted",
-                  "gold_edited_but_no_files_listed"}
+                  "gold_edited_but_no_files_listed", "model_patch_failed"}
     protocol_gaps = {"no_patch_extracted", "patch_from_worktree_fallback",
                      "submitted_patch_path_missing", "unknown_patch_source"}
 
@@ -349,7 +370,9 @@ def classify_incomplete_fail(record: dict) -> str:
 
     # Explicit failure signals in harness detail → expected, not incomplete
     detail = str(record.get("detail") or "")
-    if "fail_after=fail" in detail or "model_patch=fail" in detail:
+    if "fail_after=fail" in detail or (
+        evidence.model_patch_status and not evidence.model_patch_ok
+    ):
         return "expected_fail_incomplete"
 
     if evidence.evidence_complete:
@@ -366,15 +389,15 @@ def _evidence_summary(ev: HarnessEvidence) -> str:
         return "complete"
     parts = []
     if not ev.test_patch_ok:
-        parts.append("test_patch")
+        parts.append(f"test_patch:{ev.test_patch_status or 'missing'}")
     if not ev.fail_before_failed:
-        parts.append("fail_before")
+        parts.append(f"fail_before:{ev.fail_before_status or 'missing'}")
     if not ev.model_patch_ok:
-        parts.append("model_patch")
-    if not ev.fail_after_passed:
-        parts.append("fail_after")
-    if not ev.pass_to_pass_ok:
-        parts.append("pass_to_pass")
+        parts.append(f"model_patch:{ev.model_patch_status or 'missing'}")
+    if ev.model_patch_ok and not ev.fail_after_passed:
+        parts.append(f"fail_after:{ev.fail_after_status or 'missing'}")
+    if ev.model_patch_ok and ev.fail_after_passed and not ev.pass_to_pass_ok:
+        parts.append(f"pass_to_pass:{ev.pass_to_pass_status or 'missing'}")
     return "missing:" + ",".join(parts) if parts else "complete"
 
 

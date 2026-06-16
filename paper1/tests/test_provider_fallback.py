@@ -88,7 +88,7 @@ def test_provider_unavailable_releases_reservation_and_falls_back(monkeypatch) -
     assert model.turn_traces[0]["final_backend"] == TIER3_BACKEND
     assert model.turn_traces[-1]["response_ok"] is True
     assert model.turn_traces[-1]["final_backend"] == TIER2_BACKEND
-    assert model.turn_traces[-1]["protocol"] == "text_regex"
+    assert model.turn_traces[-1]["protocol"] == "tool_call"
 
 
 def test_provider_all_unavailable_releases_every_reservation(monkeypatch) -> None:
@@ -133,8 +133,7 @@ def test_completion_uses_configurable_short_timeout(monkeypatch) -> None:
         backend_name=TIER3_BACKEND,
         model_name="openai/gpt-5.4",
         model_kwargs={"api_key": "test", "api_base": "https://example.test"},
-        text_mode=True,
     )
 
     assert captured["timeout"] == 42.0
-    assert "tools" not in captured
+    assert "tools" in captured

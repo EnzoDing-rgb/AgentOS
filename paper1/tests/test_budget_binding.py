@@ -223,6 +223,21 @@ def test_calibrate_defaults_to_paper_mainline_six_policy_set(tmp_path: Path) -> 
     assert written["strategy_names"] == list(plan.projected_spend_by_strategy)
 
 
+def test_calibrate_budget_plan_records_catalog_content_hash(tmp_path: Path) -> None:
+    vm = tmp_path / "vm.json"
+    vm.write_text(json.dumps({"tasks": {}}))
+    plan = calibrate_budget(
+        ["task-a"],
+        value_matrix_path=vm,
+        target_utilization=0.80,
+        output_path=tmp_path / "bp.json",
+    )
+
+    written = json.loads((tmp_path / "bp.json").read_text())
+    assert plan.catalog_content_hash
+    assert written["catalog_content_hash"] == plan.catalog_content_hash
+
+
 def test_target_utilization_below_zero_raises() -> None:
     import pytest
     with pytest.raises(ValueError, match="target_utilization"):

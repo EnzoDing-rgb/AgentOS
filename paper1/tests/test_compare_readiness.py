@@ -154,6 +154,37 @@ def test_readiness_blocks_underparallel_policy_jobs() -> None:
     assert any("policy_jobs=1" in issue for issue in report.blocking)
 
 
+def test_paper_mainline_blocks_non_tool_call_catalog(monkeypatch) -> None:
+    import budgetflow.experiments.compare_readiness as readiness
+
+    value_context = ValueEfficiencyContext()
+    value_context.init(value_profile="equal")
+
+    class _Catalog:
+        configs = (
+            SimpleNamespace(backend="tier1", protocol="tool_call"),
+            SimpleNamespace(backend="tier2", protocol="legacy_parser"),
+            SimpleNamespace(backend="tier3", protocol="tool_call"),
+        )
+
+    monkeypatch.setattr(readiness, "MODEL_CATALOG", _Catalog())
+
+    report = build_compare_readiness_report(
+        args=_args(),
+        tasks=[SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",))],
+        strategies=paper_mainline_strategies(),
+        policy_jobs=len(paper_mainline_strategies()),
+        value_context=value_context,
+        catalog_issues=[],
+        runtime_root=Path("/tmp/budgetflow-runtime"),
+        auto_budget_enabled=False,
+        auto_budget_caps=None,
+    )
+
+    assert not report.ok
+    assert any("requires native tool_call action protocol" in issue for issue in report.blocking)
+
+
 def test_readiness_blocks_skipping_provider_signature_check() -> None:
     value_context = ValueEfficiencyContext()
     value_context.init(value_profile="equal")

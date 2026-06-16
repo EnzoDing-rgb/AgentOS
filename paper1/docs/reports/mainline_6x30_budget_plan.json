@@ -2,8 +2,9 @@
   "hard_cap_usd": 2.999,
   "source": "budget_binding_calibrator",
   "generation_mode": "frozen_plan_cap_sum",
-  "catalog_revision": "2026-06-15-t3x3",
+  "catalog_revision": "2026-06-16-t3x3-toolcall",
   "catalog_path": "/root/.dev/AgentOS/paper1/docs/config/model_tiers.t3x3.json",
+  "catalog_content_hash": "3bdd17b135b0",
   "historical_source": "cold_start_pressure_prior:frozen_plan=docs/reports/mainline_6x30_frozen_router_plan.json",
   "task_ids": [
     "sympy__sympy-22714",
