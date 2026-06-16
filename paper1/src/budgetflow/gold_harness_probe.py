@@ -6,6 +6,11 @@ from pathlib import Path
 
 from .lite_tasks import load_compare_easy_tasks, load_swebench_lite_tasks
 from .local_harness import evaluate_local_harness
+from .harness_contamination import (
+    find_runtime_worktree_python_contamination,
+    format_runtime_worktree_contamination,
+)
+from .runtime import resolve_runtime_root
 
 RUNS_DIR = Path(__file__).resolve().parents[2] / "data" / "runs"
 
@@ -25,6 +30,13 @@ def main() -> None:
     args = parser.parse_args()
 
     tasks = _load_tasks(args)
+    runtime_root, _ = resolve_runtime_root()
+    contamination = find_runtime_worktree_python_contamination(runtime_root)
+    if contamination:
+        raise SystemExit(
+            "host dependency contamination: runtime worktree paths in Python environment: "
+            f"{format_runtime_worktree_contamination(contamination)}"
+        )
     args.out.parent.mkdir(parents=True, exist_ok=True)
     passed = 0
     with args.out.open("w") as handle:

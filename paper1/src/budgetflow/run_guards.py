@@ -10,6 +10,7 @@ from typing import Any
 
 from .console_log import tag
 from .failure_classification import is_score_abort, is_score_pass, is_score_true_fail
+from .harness_contamination import has_host_dependency_contamination
 
 # Defaults tuned for 15×7 (105 runs); override via CompareRunGuards config.
 GLOBAL_WINDOW = 200
@@ -96,6 +97,13 @@ class CompareRunGuards:
 
             strategy = str(record.get("strategy") or "")
             self._recent.append(record)
+
+            if has_host_dependency_contamination(str(record.get("detail") or "")):
+                self._abort_all_reason = (
+                    f"host_dependency_contamination strategy={strategy} "
+                    f"task={record.get('instance_id') or ''}"
+                )
+                return GuardAction(halt_all=True, reason=self._abort_all_reason)
 
             if _is_pipeline_failure(record):
                 self._strategy_streak[strategy] = self._strategy_streak.get(strategy, 0) + 1

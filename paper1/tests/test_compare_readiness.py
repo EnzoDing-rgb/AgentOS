@@ -205,6 +205,33 @@ def test_readiness_blocks_skipping_provider_signature_check() -> None:
     assert any("--no-provider-signature-check is not allowed" in issue for issue in report.blocking)
 
 
+def test_readiness_blocks_runtime_worktree_python_contamination(tmp_path, monkeypatch) -> None:
+    import budgetflow.experiments.compare_readiness as readiness
+
+    monkeypatch.setattr(
+        readiness,
+        "find_runtime_worktree_python_contamination",
+        lambda runtime_root: [f"{tmp_path}/site-packages/stale.pth: /tmp/budgetflow-runtime/worktrees/repo/task"],
+    )
+    value_context = ValueEfficiencyContext()
+    value_context.init(value_profile="equal")
+
+    report = build_compare_readiness_report(
+        args=_args(),
+        tasks=[SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",))],
+        strategies=(CompareStrategy("bare_t3_baseline", "bare_t3"),),
+        policy_jobs=1,
+        value_context=value_context,
+        catalog_issues=[],
+        runtime_root=Path("/tmp/budgetflow-runtime"),
+        auto_budget_enabled=False,
+        auto_budget_caps=None,
+    )
+
+    assert not report.ok
+    assert any("runtime worktree paths" in issue for issue in report.blocking)
+
+
 def test_readiness_blocks_missing_frozen_plan_for_mechanism_router() -> None:
     value_context = ValueEfficiencyContext()
     value_context.init(value_profile="equal")

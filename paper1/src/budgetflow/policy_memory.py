@@ -13,6 +13,7 @@ from pathlib import Path
 
 from .defaults import POLICY_REGRET_THRESHOLD
 from .failure_classification import SCOREABLE_STATUSES, is_scoreable
+from .harness_contamination import has_host_dependency_contamination
 from .model_tiers import parse_tier_label
 from .types import WorkflowSegment
 
@@ -229,7 +230,7 @@ def _memory_skip_reason(record: dict) -> str:
         return "missing_learn_policy_views"
     # Exclude host dependency contamination
     detail = str(record.get("detail") or "")
-    if "has_host_dependency_contamination" in detail:
+    if has_host_dependency_contamination(detail):
         return "host_dependency_contamination"
     return ""
 

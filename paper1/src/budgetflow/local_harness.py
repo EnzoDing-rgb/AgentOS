@@ -18,6 +18,10 @@ from .console_log import (
     paint,
     tag,
 )
+from .harness_contamination import (
+    find_runtime_worktree_python_contamination,
+    format_runtime_worktree_contamination,
+)
 from .runtime import (
     get_locks_dir,
     get_repo_cache_dir,
@@ -425,6 +429,24 @@ def evaluate_local_harness(
 ) -> HarnessResult:
     repo_dir = repo_dir_for(task)
     detail_parts: list[str] = []
+    runtime_root, _ = resolve_runtime_root()
+    contamination = find_runtime_worktree_python_contamination(runtime_root)
+    if contamination:
+        detail = (
+            "host_dependency_contamination: runtime worktree paths in Python environment: "
+            f"{format_runtime_worktree_contamination(contamination)}"
+        )
+        return HarnessResult(
+            instance_id=task.instance_id,
+            patch_applied=False,
+            harness_resolved=False,
+            fail_to_pass_passed=False,
+            pass_to_pass_passed=False,
+            detail=detail,
+            repo_dir=str(repo_dir),
+            fail_to_pass=task.fail_to_pass,
+            pass_to_pass=task.pass_to_pass,
+        )
     if model_patch is None:
         return HarnessResult(
             instance_id=task.instance_id,

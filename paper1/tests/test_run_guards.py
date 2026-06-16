@@ -73,3 +73,19 @@ def test_upstream_pattern() -> None:
 def test_billing_errors_are_fatal() -> None:
     assert is_fatal_billing_error("Access denied, please make sure your account is in good standing")
     assert is_fatal_billing_error("overdue-payment")
+
+
+def test_host_dependency_contamination_halts_all() -> None:
+    g = CompareRunGuards()
+    action = g.record_task(
+        {
+            "strategy": "budgetflow_task_level",
+            "instance_id": "mwaskom__seaborn-3407",
+            "detail": "host_dependency_contamination: budgetflow-runtime/worktrees/matplotlib stale path",
+            "score_status": "abort",
+        }
+    )
+
+    assert action.halt_all
+    assert "host_dependency_contamination" in action.reason
+    assert g.is_aborted()

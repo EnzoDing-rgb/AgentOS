@@ -110,6 +110,57 @@ def test_evaluate_local_harness_runs_all_pass_to_pass_tests(tmp_path: Path, monk
     assert calls[-1] == task.pass_to_pass
 
 
+def test_run_pytest_filters_runtime_worktrees_from_pythonpath(tmp_path: Path, monkeypatch) -> None:
+    captured: dict[str, dict[str, str]] = {}
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    stale = Path("/tmp/budgetflow-runtime/worktrees/other_repo/stale_task")
+
+    def fake_run(cmd, *, cwd, capture_output, text, env):
+        captured["env"] = env
+        return SimpleNamespace(returncode=0, stdout="ok", stderr="")
+
+    monkeypatch.setenv("PYTHONPATH", f"{stale}:{tmp_path / 'shared'}")
+    monkeypatch.setattr("budgetflow.local_harness_adapters.subprocess.run", fake_run)
+
+    ok, _ = local_harness.run_pytest(
+        repo_dir,
+        ("tests/test_x.py::test_regression",),
+        ["tests/test_x.py"],
+    )
+
+    assert ok is True
+    pythonpath = captured["env"]["PYTHONPATH"].split(":")
+    assert str(repo_dir) in pythonpath
+    assert str(stale) not in pythonpath
+
+
+def test_evaluate_local_harness_fails_fast_on_runtime_worktree_contamination(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    task = SimpleNamespace(
+        instance_id="repo__contaminated",
+        repo="repo/project",
+        base_commit="abc123",
+        test_patch="diff --git a/tests/test_sample.py b/tests/test_sample.py\n",
+        patch="",
+        fail_to_pass=("tests/test_sample.py::test_regression",),
+        pass_to_pass=("tests/test_sample.py::test_existing",),
+    )
+    monkeypatch.setattr(local_harness, "repo_dir_for", lambda task: tmp_path)
+    monkeypatch.setattr(
+        local_harness,
+        "find_runtime_worktree_python_contamination",
+        lambda runtime_root: ["stale.pth: /tmp/budgetflow-runtime/worktrees/repo/task"],
+    )
+
+    result = evaluate_local_harness(task, "diff --git a/app.py b/app.py\n")
+
+    assert result.harness_resolved is False
+    assert "host_dependency_contamination" in result.detail
+
+
 def test_finalize_repo_workspace_never_installs_into_global_python(tmp_path: Path, monkeypatch) -> None:
     task = SimpleNamespace(instance_id="sympy__sympy-22714", base_commit="abc123")
 

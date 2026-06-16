@@ -7,6 +7,8 @@ import sys
 from pathlib import Path
 
 from .console_log import _BRIGHT_GREEN, paint, tag
+from .harness_contamination import isolated_repo_pythonpath
+from .runtime import get_runtime_root
 
 
 class RepoHarnessAdapter:
@@ -492,11 +494,11 @@ def run_pytest(
     # Ensure repo root is on PYTHONPATH so test-directory packages
     # (e.g. Django's ``tests.test_sqlite``) are importable regardless of
     # which test command the adapter produces.
-    existing_path = os.environ.get("PYTHONPATH", "")
-    if existing_path:
-        env["PYTHONPATH"] = f"{repo_dir}{os.pathsep}{existing_path}"
-    else:
-        env["PYTHONPATH"] = str(repo_dir)
+    env["PYTHONPATH"] = isolated_repo_pythonpath(
+        repo_dir,
+        get_runtime_root(),
+        os.environ.get("PYTHONPATH", ""),
+    )
     if adapter:
         extra_env = adapter.pytest_env()
         if extra_env:

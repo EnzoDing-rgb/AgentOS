@@ -12,6 +12,10 @@ from pathlib import Path
 
 from budgetflow.experiments.compare_config import CompareStrategy, paper_mainline_strategy_names
 from budgetflow.frozen_router import load_frozen_plan
+from budgetflow.harness_contamination import (
+    find_runtime_worktree_python_contamination,
+    format_runtime_worktree_contamination,
+)
 from budgetflow.model_tiers import (
     DEFAULT_CATALOG_PATH,
     MODEL_CATALOG,
@@ -138,6 +142,13 @@ def build_compare_readiness_report(
     facts.append(f"value_primary_t1={str(value_context.is_primary_value_evidence).lower()}")
     facts.append(f"value_matrix={value_context.matrix_path or 'equal_sanity'}")
     facts.append(f"runtime_root={runtime_root}")
+    site_contamination = find_runtime_worktree_python_contamination(runtime_root)
+    if site_contamination:
+        blocking.append(
+            "global Python environment contains runtime worktree paths; "
+            "remove stale .pth/sys.path entries before paid runs: "
+            f"{format_runtime_worktree_contamination(site_contamination)}"
+        )
     mainline_strategy_names = list(paper_mainline_strategy_names())
     is_paper_mainline = strategy_names == mainline_strategy_names
     facts.append(f"paper_mainline={str(is_paper_mainline).lower()}")
