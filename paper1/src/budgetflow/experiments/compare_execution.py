@@ -177,6 +177,10 @@ def run_task_record(
         "agent_submitted": result.agent_submitted,
         "prompt_tokens_total": result.prompt_tokens_total,
         "completion_tokens_total": result.completion_tokens_total,
+        "provider_usage_turns": result.provider_usage_turns,
+        "estimated_usage_turns": result.estimated_usage_turns,
+        "usage_source": result.usage_source,
+        "cost_mode": result.cost_mode,
         "elapsed_s": round(time.time() - started, 1),
         "agent_summary": {
             "gold_edited": result.agent_gold_edited,
@@ -207,6 +211,10 @@ def run_task_record(
     record["protocol_retry_reason"] = result.protocol_retry_reason
     record["protocol_retry_attempts"] = result.protocol_retry_attempts
     record["protocol_retry_limit"] = result.protocol_retry_limit
+    record["protocol"] = result.protocol
+    record["parser"] = result.parser
+    record["provider_error_kind"] = result.provider_error_kind
+    record["provider_retryable"] = result.provider_retryable
     if adaptive is not None:
         prior = adaptive.prior_summary_for_trace()
         record["memory_mode"] = getattr(adaptive, "memory_mode", "off")

@@ -1,5 +1,5 @@
 {
-  "hard_cap_usd": 2.999,
+  "hard_cap_usd": 0.3321,
   "source": "budget_binding_calibrator",
   "generation_mode": "target_utilization",
   "catalog_revision": "2026-06-16-qwen37plus-t2-t3x3",
@@ -11,32 +11,7 @@
     "sympy__sympy-12171",
     "sympy__sympy-17655",
     "sympy__sympy-24102",
-    "sympy__sympy-15346",
-    "sympy__sympy-18621",
-    "sympy__sympy-13647",
-    "sympy__sympy-13177",
-    "pallets__flask-4045",
-    "pallets__flask-4992",
-    "pylint-dev__pylint-5859",
-    "pylint-dev__pylint-7993",
-    "pylint-dev__pylint-6506",
-    "mwaskom__seaborn-3190",
-    "mwaskom__seaborn-3407",
-    "mwaskom__seaborn-3010",
-    "mwaskom__seaborn-2848",
-    "sphinx-doc__sphinx-8273",
-    "sphinx-doc__sphinx-7686",
-    "sphinx-doc__sphinx-7738",
-    "sphinx-doc__sphinx-8282",
-    "sphinx-doc__sphinx-8595",
-    "django__django-13447",
-    "django__django-11049",
-    "django__django-11179",
-    "django__django-12908",
-    "django__django-13964",
-    "django__django-15814",
-    "django__django-15851",
-    "matplotlib__matplotlib-25433"
+    "sympy__sympy-15346"
   ],
   "strategy_names": [
     "bare_t2_baseline",
@@ -47,12 +22,12 @@
     "budgetflow_segment"
   ],
   "projected_spend_by_strategy": {
-    "bare_t2_baseline": 1.6495,
-    "bare_t3_baseline": 3.149,
-    "enterprise_router_baseline": 2.2792,
-    "budgetflow_same_enterprise_router": 2.2792,
-    "budgetflow_task_level": 2.5492,
-    "budgetflow_segment": 2.6991
+    "bare_t2_baseline": 0.1827,
+    "bare_t3_baseline": 0.3487,
+    "enterprise_router_baseline": 0.2524,
+    "budgetflow_same_enterprise_router": 0.2524,
+    "budgetflow_task_level": 0.2823,
+    "budgetflow_segment": 0.2989
   },
   "projected_utilization_by_strategy": {
     "bare_t2_baseline": 0.55,
@@ -62,9 +37,9 @@
     "budgetflow_task_level": 0.85,
     "budgetflow_segment": 0.9
   },
-  "min_viable_budget": 3.149,
-  "loose_budget_threshold": 6.2979,
-  "tight_budget_threshold": 3.149,
+  "min_viable_budget": 0.3487,
+  "loose_budget_threshold": 0.6974,
+  "tight_budget_threshold": 0.3487,
   "decision": "PASS",
   "reasons": [
     "projection_basis: cold_start_pressure_prior from frozen caps; frozen caps are pressure anchors, not empirical expected-cost observations",
@@ -74,13 +49,13 @@
     "calibration:budgetflow_same_enterprise_router n=0 (no historical data, projection uses cold_start_pressure_prior)",
     "calibration:budgetflow_task_level n=0 (no historical data, projection uses cold_start_pressure_prior)",
     "calibration:budgetflow_segment n=0 (no historical data, projection uses cold_start_pressure_prior)",
-    "reference_rule: strategy_set_p75_projected_spend = $2.6991",
-    "hard_cap = p75_ref($2.6991) / target_utilization(0.9) = $2.9990",
+    "reference_rule: strategy_set_p75_projected_spend = $0.2989",
+    "hard_cap = p75_ref($0.2989) / target_utilization(0.9) = $0.3321",
     "pressure_contract: grade=pass",
     "pressure_contract: t2_loose: bare_t2_baseline at 55.0% < target 90%",
     "pressure_contract: t3_tight: bare_t3_baseline at 100.0% >= 76% \u2014 budget-constrained as expected",
     "pressure_contract: budgetflow_near_target: budgetflow_task_level at 85.0% near target 90%",
-    "decision=PASS: hard_cap=$3.00 from p75_ref / 0.9, max projected utilization 100.0%",
+    "decision=PASS: hard_cap=$0.33 from p75_ref / 0.9, max projected utilization 100.0%",
     "projection_confidence=unvalidated: no prior calibration audit provided. Run a no-paid calibration audit before relying on projected utilization."
   ],
   "pressure_contract": {

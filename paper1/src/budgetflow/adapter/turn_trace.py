@@ -43,6 +43,10 @@ def build_turn_trace(
     progress_reason: str,
     prompt_tokens: int,
     completion_tokens: int,
+    prompt_tokens_source: str = "unknown",
+    completion_tokens_source: str = "unknown",
+    cost_mode: str = "unknown",
+    cost_fallback_reason: str = "",
     actual_cost: float,
     billable: float,
     response_ok: bool,
@@ -66,7 +70,6 @@ def build_turn_trace(
     cost_output_per_1m: float | None = None,
     cost_band_input_tokens: int | None = None,
     progress_prior: dict[str, float] | None = None,
-    text_mode: bool = False,
     protocol: str | None = None,
     parser: str | None = None,
     assistant_content_head: str | None = None,
@@ -78,6 +81,8 @@ def build_turn_trace(
     provider_status_code: int | None = None,
     provider_error_body: str | None = None,
     provider_request_id: str | None = None,
+    provider_error_kind: str | None = None,
+    provider_retryable: bool | None = None,
     reservation_id: str | None = None,
     reserved_cost: float | None = None,
     reservation_released: bool = False,
@@ -150,6 +155,15 @@ def build_turn_trace(
         "action_touched_file_paths": action_touched_file_paths or [],
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
+        "prompt_tokens_source": prompt_tokens_source,
+        "completion_tokens_source": completion_tokens_source,
+        "usage_source": (
+            "provider"
+            if prompt_tokens_source == "provider" and completion_tokens_source == "provider"
+            else "estimated"
+        ),
+        "cost_mode": cost_mode,
+        "cost_fallback_reason": cost_fallback_reason,
         "actual_cost": round(actual_cost, 6),
         "billable_cost": round(billable, 6),
         "response_ok": response_ok,
@@ -169,7 +183,6 @@ def build_turn_trace(
         "cost_output_per_1m": cost_output_per_1m,
         "cost_band_input_tokens": cost_band_input_tokens,
         "progress_prior": progress_prior,
-        "text_mode": text_mode,
         "protocol": protocol,
         "parser": parser,
         "assistant_content_head": assistant_content_head,
@@ -181,6 +194,8 @@ def build_turn_trace(
         "provider_status_code": provider_status_code,
         "provider_error_body": provider_error_body,
         "provider_request_id": provider_request_id,
+        "provider_error_kind": provider_error_kind,
+        "provider_retryable": provider_retryable,
         "reservation_id": reservation_id,
         "reserved_cost": reserved_cost,
         "reservation_released": reservation_released,
@@ -354,7 +369,6 @@ def cost_basis_trace_fields(backend_name: str, input_tokens: int) -> dict[str, A
 def protocol_trace_fields(backend_name: str) -> dict[str, Any]:
     decision = ActionProtocolAdapter.resolve(backend_name)
     return {
-        "text_mode": False,
         "protocol": decision.protocol,
         "parser": decision.parser,
     }

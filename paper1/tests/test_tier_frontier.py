@@ -54,14 +54,15 @@ class TestTierFrontierCalibration:
         assert frontier is not None
         assert frontier.reference_tier == 2
         assert frontier.strongest_tier == 3
-        # Default catalog: T3 input 0.294/0.28 ≈ 1.05, output 1.793/1.12 ≈ 1.60
-        assert frontier.strongest_output_ratio > 1.5
-        assert frontier.strongest_output_ratio < 1.7
+        # Default mainline catalog uses normalized experimental units:
+        # T3 is fixed at approximately 3x the T2 reference.
+        assert frontier.reference_display == "qwen3.7-plus"
+        assert frontier.strongest_output_ratio == pytest.approx(3.0)
         assert "strongest_vs_reference" in frontier.reason or "cost_ratio" in frontier.reason
         assert "cheapest" not in frontier.reason
 
     def test_t3x2_catalog_reference_t2_high_frontier_score(self):
-        """T3x2 catalog: reference = tier2, T3/T2 output ≈ 3.20, frontier score >= 2.0."""
+        """T3x2 catalog: reference = tier2, T3/T2 output ≈ 2.0."""
         from pathlib import Path
         from budgetflow.model_tiers import init_catalog
         from budgetflow.tier_frontier import TierFrontier
@@ -74,9 +75,8 @@ class TestTierFrontierCalibration:
         assert frontier is not None
         assert frontier.reference_tier == 2
         assert frontier.strongest_tier == 3
-        # T3x2: T3 output 3.586 / T2 output 1.12 ≈ 3.20
-        assert frontier.strongest_output_ratio > 3.0
-        assert frontier.strongest_output_ratio < 3.3
+        # T3x2: normalized diagnostic ratio, not provider billing.
+        assert frontier.strongest_output_ratio == pytest.approx(2.0)
         # High cost ratio should make frontier score >= 2.0
         score = frontier.frontier_score("repair")
         assert score >= 2.0, f"expected frontier score >= 2.0 for T3x2, got {score}"

@@ -1,7 +1,7 @@
 {
   "meta": {
-    "revision": "2026-06-16-t3x2-toolcall",
-    "revision_note": "Diagnostic catalog: T3 input/output prices are 2x the calibrated transaction price. T1/T2 unchanged from default. All tiers use the same native tool_call action protocol as the default catalog. This is NOT a real billing catalog — it normalizes the stronger-model price for mechanism-isolation sensitivity analysis. Use model_tiers.default.json for actual transaction prices.",
+    "revision": "2026-06-16-qwen37plus-t2-t3x2",
+    "revision_note": "Diagnostic catalog with Qwen3.7-Plus as T2 and T3/T2 approximately 2x. Native tool_call only. Costs are normalized experimental units, not public provider billing.",
     "schema_version": "v1"
   },
   "tiers": [
@@ -13,27 +13,47 @@
       "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
       "api_key_env": "DASHSCOPE_API_KEY",
       "display": "qwen3-coder-flash",
-      "cost_per_input_1m": 0.30,
-      "cost_per_output_1m": 1.50,
+      "cost_per_input_1m": 0.3,
+      "cost_per_output_1m": 1.5,
       "token_cost_bands": [
-        {"max_input_tokens": 32000, "input_per_1m": 0.30, "output_per_1m": 1.50},
-        {"max_input_tokens": 128000, "input_per_1m": 0.50, "output_per_1m": 2.50},
-        {"max_input_tokens": 256000, "input_per_1m": 0.80, "output_per_1m": 4.00},
-        {"max_input_tokens": 1000000, "input_per_1m": 1.60, "output_per_1m": 9.60}
+        {
+          "max_input_tokens": 32000,
+          "input_per_1m": 0.3,
+          "output_per_1m": 1.5
+        },
+        {
+          "max_input_tokens": 128000,
+          "input_per_1m": 0.5,
+          "output_per_1m": 2.5
+        },
+        {
+          "max_input_tokens": 256000,
+          "input_per_1m": 0.8,
+          "output_per_1m": 4.0
+        },
+        {
+          "max_input_tokens": 1000000,
+          "input_per_1m": 1.6,
+          "output_per_1m": 9.6
+        }
       ],
       "mean_output_tokens": 768,
       "progress_score": 0.15,
       "latency_ms": 500,
-      "progress_prior": {"localization": 0.50, "repair": 0.38, "validation": 0.45},
+      "progress_prior": {
+        "localization": 0.5,
+        "repair": 0.38,
+        "validation": 0.45
+      },
       "escalation_patience": 4,
       "max_turns": 20,
       "protocol": "tool_call",
-      "cost_source": "Alibaba Cloud Model Studio pricing, qwen3-coder-flash series",
-      "cost_updated": "2026-06-07",
-      "cost_notes": "USD per 1M tokens, input-length tiered; cache discounts intentionally not assumed.",
-      "progress_source": "BudgetFlow heuristic prior, not yet empirically calibrated",
+      "cost_source": "BudgetFlow normalized experimental cost unit for Qwen3-Coder-Flash T1",
+      "cost_updated": "2026-06-16",
+      "cost_notes": "Virtual experiment units, not public Alibaba Cloud billing. T1 is the cheap reference tier; active mainline currently uses T2/T3, with T1 reserved for diagnostics and future low-cost routing.",
+      "progress_source": "BudgetFlow heuristic prior for cheap reference tier; not outcome-calibrated",
       "progress_updated": "2026-06-07",
-      "progress_notes": "Must be sensitivity-checked before paper-scale paid runs."
+      "progress_notes": "Protocol-compatible in small checks, but T1 is diagnostic only for current mainline."
     },
     {
       "tier": 2,
@@ -43,25 +63,32 @@
       "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
       "api_key_env": "DASHSCOPE_API_KEY",
       "display": "qwen3.7-plus",
-      "cost_per_input_1m": 0.28,
-      "cost_per_output_1m": 1.12,
+      "cost_per_input_1m": 0.9,
+      "cost_per_output_1m": 4.5,
       "token_cost_bands": [
-        {"max_input_tokens": 256000, "input_per_1m": 0.28, "output_per_1m": 1.12},
-        {"max_input_tokens": 1000000, "input_per_1m": 0.84, "output_per_1m": 3.36}
+        {
+          "max_input_tokens": 1000000,
+          "input_per_1m": 0.9,
+          "output_per_1m": 4.5
+        }
       ],
       "mean_output_tokens": 1024,
       "progress_score": 0.24,
       "latency_ms": 1100,
-      "progress_prior": {"localization": 0.67, "repair": 0.65, "validation": 0.63},
+      "progress_prior": {
+        "localization": 0.67,
+        "repair": 0.65,
+        "validation": 0.63
+      },
       "escalation_patience": 5,
       "max_turns": 35,
       "protocol": "tool_call",
-      "cost_source": "Alibaba Cloud Model Studio pricing, qwen3.7-plus",
-      "cost_updated": "2026-06-09",
-      "cost_notes": "Canonical USD estimate converted from public mainland/global CNY pricing: ¥2 input / ¥8 output per 1M tokens for <=256K input, ¥6 input / ¥24 output for 256K-1M, at ~7.14 CNY/USD; cache discounts and promotions intentionally not assumed.",
-      "progress_source": "BudgetFlow heuristic prior after catalog swap from qwen3.7-max to qwen3.7-plus; public benchmarks are close to Max but local BudgetFlow calibration is not yet established",
-      "progress_updated": "2026-06-09",
-      "progress_notes": "Treat first paid run after swap as a model-tier diagnostic; do not use as paper-scale evidence until sympy/mini-swe-agent behavior is inspected."
+      "cost_source": "BudgetFlow normalized experimental cost unit for Qwen3.7-Plus T2",
+      "cost_updated": "2026-06-16",
+      "cost_notes": "Virtual experiment units, not public Alibaba Cloud billing. T2 is fixed at approximately 3x T1; real invoices are spend-accounting evidence only.",
+      "progress_source": "BudgetFlow tier-level heuristic prior after Qwen3.7-Plus protocol fix; not outcome-calibrated",
+      "progress_updated": "2026-06-16",
+      "progress_notes": "Small check established native tool-call compatibility after protocol unification. Do not treat as paper-scale ModelFit calibration."
     },
     {
       "tier": 3,
@@ -73,18 +100,22 @@
       "api_base_env": "AICODE007_BASE_URL",
       "proxy_env": "AICODE007_HTTP_PROXY",
       "display": "GPT-5.4",
-      "cost_per_input_1m": 0.588,
-      "cost_per_output_1m": 3.586,
+      "cost_per_input_1m": 1.8,
+      "cost_per_output_1m": 9.0,
       "mean_output_tokens": 1024,
       "progress_score": 0.25,
       "latency_ms": 1200,
-      "progress_prior": {"localization": 0.68, "repair": 0.68, "validation": 0.66},
+      "progress_prior": {
+        "localization": 0.68,
+        "repair": 0.68,
+        "validation": 0.66
+      },
       "escalation_patience": 5,
       "max_turns": null,
       "protocol": "tool_call",
-      "cost_source": "Normalized stronger-model diagnostic price (2× AICode007 GPT-5.4 transaction price). NOT a real billing price. Use model_tiers.default.json for actual transaction pricing.",
-      "cost_updated": "2026-06-10",
-      "cost_notes": "T3×2 diagnostic catalog for mechanism-isolation sensitivity analysis. Input=$0.588/1M, Output=$3.586/1M (2× calibrated ¥2.1/¥12.8 at ~7.14 CNY/USD). This is a normalized price, not a promotional or billing price. Real transaction price is in model_tiers.default.json.",
+      "cost_source": "BudgetFlow normalized experimental cost unit for GPT-5.4 T3 (2x T2)",
+      "cost_updated": "2026-06-16",
+      "cost_notes": "Virtual experiment units, not public provider billing. Diagnostic catalog fixes T3 at approximately 2x T2.",
       "progress_source": "BudgetFlow heuristic prior, not yet empirically calibrated",
       "progress_updated": "2026-06-07",
       "progress_notes": "Must be sensitivity-checked before paper-scale paid runs."

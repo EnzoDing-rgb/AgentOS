@@ -19,13 +19,12 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-# Reference token prices (per-token, not per-1M) from the default catalog.
-# T2: qwen3.7-plus at $0.28/$1.12 per 1M
-# T3: GPT-5.4 calibrated at $0.294/$1.793 per 1M
-_REF_T2_INPUT = 0.28 / 1_000_000
-_REF_T2_OUTPUT = 1.12 / 1_000_000
-_REF_T3_INPUT = 0.294 / 1_000_000   # calibrated transaction price
-_REF_T3_OUTPUT = 1.793 / 1_000_000  # calibrated transaction price
+# Reference token prices (per-token, not per-1M) from normalized experiment units.
+# These are routing/cost-sensitivity units, not provider billing rates.
+_REF_T2_INPUT = 0.90 / 1_000_000
+_REF_T2_OUTPUT = 4.50 / 1_000_000
+_REF_T3_INPUT = 2.70 / 1_000_000
+_REF_T3_OUTPUT = 13.50 / 1_000_000
 
 # Default T3/T2 ratios to test (diagnostic sweep).
 DEFAULT_RATIOS = (1.5, 2.0, 3.0, 5.0, 10.0)

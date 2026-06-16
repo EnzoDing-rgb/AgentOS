@@ -132,6 +132,22 @@ Strong controls stay strong. Do not weaken pure-tier, budget-only, or static
 router baselines to make BudgetFlow look better. When BudgetFlow loses, explain
 what principle the control exposed and whether BudgetFlow should absorb it.
 
+## Related Work Boundary
+
+The closest current papers are mostly component-level neighbors. They should
+shape Claim 2 diagnostics, but they do not replace Claim 1.
+
+| Work | What it studies | Boundary against BudgetFlow |
+|---|---|---|
+| Inference-Time Budget Control | Controls tool and token budgets inside one search or QA example. A run that exceeds the per-example budget fails. | Useful contrast for per-request budget control. It does not allocate one shared hard budget across a batch of valued tasks or report frozen-value Yield. |
+| UCCI | Uses calibrated uncertainty in a two-model cascade to decide when to upgrade from a cheaper model to a stronger model under a quality or F1 constraint. | Strong Claim 2 neighbor for Model Fit, uncertainty, and escalation calibration. It is not shared workload budget governance and does not optimize verified task value across a pre-registered value set. |
+| Topaz | Builds an auditable routing layer with skill profiles, budget assignment, and explanation traces, mainly in customer-support style case studies and demos. | Useful Claim 2 neighbor for auditability and routing explanations. BudgetFlow still needs verified task execution, frozen ValueSource, shared ledger accounting, and Yield under the same hard budget. |
+
+The paper's core distinction is: BudgetFlow asks how a batch of tasks should
+share a hard budget so model capability flows toward the highest verified task
+value. Per-request budget control, uncertainty cascades, and auditable routers
+are related mechanisms or baselines, not the Claim 1 objective.
+
 ## Experiment Audit After Every Paid Run
 
 Run this audit before writing conclusions:

@@ -4,11 +4,10 @@ from minisweagent.models.utils.actions_toolcall import parse_toolcall_actions
 
 
 # Per-reason format error stop thresholds (consecutive errors before abort).
-# Tighter for empty/found_0 (less likely to self-correct) vs found_2_actions.
+# Native tool-call parsing currently emits found_0/found_2/invalid reasons.
 _FORMAT_ERROR_STOP = {
     "found_2_actions": 4,
     "found_0_actions": 3,
-    "empty_response": 3,
     "invalid_tool_call": 3,
 }
 _FORMAT_ERROR_STOP_DEFAULT = 4

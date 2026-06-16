@@ -43,7 +43,6 @@ from .strategies import build_routing_context
 # Config paths derived from resolved mini-swe-agent src.
 _SWE_AGENT_BASE = MINI_SWE_SRC.parent  # external/mini-swe-agent/
 SWEBENCH_CONFIG = MINI_SWE_SRC / "minisweagent" / "config" / "benchmarks" / "swebench.yaml"
-SWEBENCH_TEXT_CONFIG = MINI_SWE_SRC / "minisweagent" / "config" / "benchmarks" / "swebench_backticks.yaml"
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 RUNS_DIR = REPO_ROOT / "paper1" / "data" / "runs"
@@ -73,6 +72,10 @@ class MiniSweRunResult:
     violations: tuple[str, ...]
     prompt_tokens_total: int = 0
     completion_tokens_total: int = 0
+    provider_usage_turns: int = 0
+    estimated_usage_turns: int = 0
+    cost_mode: str = ""
+    usage_source: str = ""
     patch_source: str = "submission"
     submitted_patch_path: str | None = None
     turn_trace_count: int = 0
@@ -82,13 +85,17 @@ class MiniSweRunResult:
     protocol_retry_reason: str = ""
     protocol_retry_attempts: int = 0
     protocol_retry_limit: int = 4
+    protocol: str = ""
+    parser: str = ""
+    provider_error_kind: str = ""
+    provider_retryable: bool | None = None
 
 
 def _load_agent_config(*, step_limit: int = 250) -> dict:
     # Keep one action contract across all routed tiers. BudgetFlow experiments
     # should isolate model/routing decisions, not switch the mini-SWE protocol
     # when a policy escalates or downgrades between tiers.
-    config_path = SWEBENCH_TEXT_CONFIG
+    config_path = SWEBENCH_CONFIG
     config = recursive_merge(
         get_config_from_spec(config_path),
         {
@@ -285,6 +292,12 @@ def run_mini_swe_task(
         violations.append("budget_violation")
     snapshot = model.last_budget_snapshot or governor.budget_snapshot()
     task_cost = ledger.get(task.instance_id).actual_cost
+    trace_rows = list(model.turn_traces)
+    first_trace = next((t for t in trace_rows if isinstance(t, dict)), {})
+    first_provider_error = next(
+        (t for t in trace_rows if isinstance(t, dict) and t.get("provider_error_kind")),
+        {},
+    )
     return MiniSweRunResult(
         instance_id=task.instance_id,
         strategy=strategy,
@@ -309,12 +322,32 @@ def run_mini_swe_task(
         patch_source=patch_source,
         prompt_tokens_total=model._total_prompt_tokens,
         completion_tokens_total=model._total_completion_tokens,
+        provider_usage_turns=model._provider_usage_turns,
+        estimated_usage_turns=model._estimated_usage_turns,
+        cost_mode=(
+            "catalog_provider_usage"
+            if model._estimated_usage_turns == 0 and model._provider_usage_turns > 0
+            else "catalog_estimated_usage"
+            if model._estimated_usage_turns > 0
+            else ""
+        ),
+        usage_source=(
+            "provider"
+            if model._estimated_usage_turns == 0 and model._provider_usage_turns > 0
+            else "estimated"
+            if model._estimated_usage_turns > 0
+            else ""
+        ),
         turn_trace_count=len(model.turn_traces),
-        turn_traces=list(model.turn_traces) if model.turn_traces else None,
+        turn_traces=trace_rows if trace_rows else None,
         submitted_patch_path=str(submitted_patch) if submitted_patch is not None else None,
         protocol_retry_used=model._protocol_retry_used,
         protocol_retry_success=model._protocol_retry_success,
         protocol_retry_reason=model._protocol_retry_reason,
         protocol_retry_attempts=model._protocol_retry_attempts,
         protocol_retry_limit=model._protocol_retry_limit,
+        protocol=str(first_trace.get("protocol") or ""),
+        parser=str(first_trace.get("parser") or ""),
+        provider_error_kind=str(first_provider_error.get("provider_error_kind") or ""),
+        provider_retryable=first_provider_error.get("provider_retryable"),
     )

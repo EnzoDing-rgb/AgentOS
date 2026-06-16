@@ -1,7 +1,7 @@
 {
   "meta": {
-    "revision": "2026-06-16-toolcall",
-    "revision_note": "Default catalog with all tiers using native tool_call protocol. T3 uses calibrated GPT-5.4 transaction pricing (¥2.1/¥12.8 per 1M at ~7.14 CNY/USD). T2 uses Alibaba Cloud public pricing for qwen3.7-plus.",
+    "revision": "2026-06-16-qwen37plus-t2-normalized",
+    "revision_note": "Default catalog with Qwen3.7-Plus as T2 and normalized experimental cost units. Active mainline uses native tool_call and fixes T1:T2:T3 approximately 1:3:9 for routing/budget semantics.",
     "schema_version": "v1"
   },
   "tiers": [
@@ -13,27 +13,47 @@
       "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
       "api_key_env": "DASHSCOPE_API_KEY",
       "display": "qwen3-coder-flash",
-      "cost_per_input_1m": 0.30,
-      "cost_per_output_1m": 1.50,
+      "cost_per_input_1m": 0.3,
+      "cost_per_output_1m": 1.5,
       "token_cost_bands": [
-        {"max_input_tokens": 32000, "input_per_1m": 0.30, "output_per_1m": 1.50},
-        {"max_input_tokens": 128000, "input_per_1m": 0.50, "output_per_1m": 2.50},
-        {"max_input_tokens": 256000, "input_per_1m": 0.80, "output_per_1m": 4.00},
-        {"max_input_tokens": 1000000, "input_per_1m": 1.60, "output_per_1m": 9.60}
+        {
+          "max_input_tokens": 32000,
+          "input_per_1m": 0.3,
+          "output_per_1m": 1.5
+        },
+        {
+          "max_input_tokens": 128000,
+          "input_per_1m": 0.5,
+          "output_per_1m": 2.5
+        },
+        {
+          "max_input_tokens": 256000,
+          "input_per_1m": 0.8,
+          "output_per_1m": 4.0
+        },
+        {
+          "max_input_tokens": 1000000,
+          "input_per_1m": 1.6,
+          "output_per_1m": 9.6
+        }
       ],
       "mean_output_tokens": 768,
       "progress_score": 0.15,
       "latency_ms": 500,
-      "progress_prior": {"localization": 0.50, "repair": 0.38, "validation": 0.45},
+      "progress_prior": {
+        "localization": 0.5,
+        "repair": 0.38,
+        "validation": 0.45
+      },
       "escalation_patience": 4,
       "max_turns": 20,
       "protocol": "tool_call",
-      "cost_source": "Alibaba Cloud Model Studio pricing, qwen3-coder-flash series",
-      "cost_updated": "2026-06-07",
-      "cost_notes": "USD per 1M tokens, input-length tiered; cache discounts intentionally not assumed.",
-      "progress_source": "BudgetFlow heuristic prior, not yet empirically calibrated",
+      "cost_source": "BudgetFlow normalized experimental cost unit for Qwen3-Coder-Flash T1",
+      "cost_updated": "2026-06-16",
+      "cost_notes": "Virtual experiment units, not public Alibaba Cloud billing. T1 is the cheap reference tier; active mainline currently uses T2/T3, with T1 reserved for diagnostics and future low-cost routing.",
+      "progress_source": "BudgetFlow heuristic prior for cheap reference tier; not outcome-calibrated",
       "progress_updated": "2026-06-07",
-      "progress_notes": "Must be sensitivity-checked before paper-scale paid runs."
+      "progress_notes": "Protocol-compatible in small checks, but T1 is diagnostic only for current mainline."
     },
     {
       "tier": 2,
@@ -43,25 +63,32 @@
       "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
       "api_key_env": "DASHSCOPE_API_KEY",
       "display": "qwen3.7-plus",
-      "cost_per_input_1m": 0.28,
-      "cost_per_output_1m": 1.12,
+      "cost_per_input_1m": 0.9,
+      "cost_per_output_1m": 4.5,
       "token_cost_bands": [
-        {"max_input_tokens": 256000, "input_per_1m": 0.28, "output_per_1m": 1.12},
-        {"max_input_tokens": 1000000, "input_per_1m": 0.84, "output_per_1m": 3.36}
+        {
+          "max_input_tokens": 1000000,
+          "input_per_1m": 0.9,
+          "output_per_1m": 4.5
+        }
       ],
       "mean_output_tokens": 1024,
       "progress_score": 0.24,
       "latency_ms": 1100,
-      "progress_prior": {"localization": 0.67, "repair": 0.65, "validation": 0.63},
+      "progress_prior": {
+        "localization": 0.67,
+        "repair": 0.65,
+        "validation": 0.63
+      },
       "escalation_patience": 5,
       "max_turns": 35,
       "protocol": "tool_call",
-      "cost_source": "Alibaba Cloud Model Studio pricing, qwen3.7-plus",
-      "cost_updated": "2026-06-09",
-      "cost_notes": "Canonical USD estimate converted from public mainland/global CNY pricing: ¥2 input / ¥8 output per 1M tokens for <=256K input, ¥6 input / ¥24 output for 256K-1M, at ~7.14 CNY/USD; cache discounts and promotions intentionally not assumed. Verify against DashScope billing before paper-scale paid runs.",
-      "progress_source": "BudgetFlow heuristic prior after catalog swap from qwen3.7-max to qwen3.7-plus; public benchmarks are close to Max but local BudgetFlow calibration is not yet established",
-      "progress_updated": "2026-06-09",
-      "progress_notes": "Treat first paid run after swap as a model-tier diagnostic; do not use as paper-scale evidence until sympy/mini-swe-agent behavior is inspected."
+      "cost_source": "BudgetFlow normalized experimental cost unit for Qwen3.7-Plus T2",
+      "cost_updated": "2026-06-16",
+      "cost_notes": "Virtual experiment units, not public Alibaba Cloud billing. T2 is fixed at approximately 3x T1; real invoices are spend-accounting evidence only.",
+      "progress_source": "BudgetFlow tier-level heuristic prior after Qwen3.7-Plus protocol fix; not outcome-calibrated",
+      "progress_updated": "2026-06-16",
+      "progress_notes": "Small check established native tool-call compatibility after protocol unification. Do not treat as paper-scale ModelFit calibration."
     },
     {
       "tier": 3,
@@ -73,18 +100,22 @@
       "api_base_env": "AICODE007_BASE_URL",
       "proxy_env": "AICODE007_HTTP_PROXY",
       "display": "GPT-5.4",
-      "cost_per_input_1m": 0.294,
-      "cost_per_output_1m": 1.793,
+      "cost_per_input_1m": 2.7,
+      "cost_per_output_1m": 13.5,
       "mean_output_tokens": 1024,
       "progress_score": 0.25,
       "latency_ms": 1200,
-      "progress_prior": {"localization": 0.68, "repair": 0.68, "validation": 0.66},
+      "progress_prior": {
+        "localization": 0.68,
+        "repair": 0.68,
+        "validation": 0.66
+      },
       "escalation_patience": 5,
       "max_turns": null,
       "protocol": "tool_call",
-      "cost_source": "AICode007 GPT-5.4 transaction price (¥2.1/¥12.8 per 1M tokens at ~7.14 CNY/USD)",
-      "cost_updated": "2026-06-10",
-      "cost_notes": "Actual transaction price in CNY converted to USD at ~7.14 CNY/USD. T2/T3 input costs are near-identical ($0.28 vs $0.29/1M); output is ~1.6x, not 10x. Verify against account billing before paper-scale paid runs.",
+      "cost_source": "BudgetFlow normalized experimental cost unit for GPT-5.4 T3",
+      "cost_updated": "2026-06-16",
+      "cost_notes": "Virtual experiment units, not public provider billing. Active mainline fixes T1:T2:T3 at approximately 1:3:9.",
       "progress_source": "BudgetFlow heuristic prior, not yet empirically calibrated",
       "progress_updated": "2026-06-07",
       "progress_notes": "Must be sensitivity-checked before paper-scale paid runs."

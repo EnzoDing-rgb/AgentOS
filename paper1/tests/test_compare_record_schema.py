@@ -94,6 +94,10 @@ def test_compare_runner_records_turns_value_and_task_features(monkeypatch) -> No
             agent_submitted=True,
             prompt_tokens_total=10,
             completion_tokens_total=2,
+            provider_usage_turns=2,
+            estimated_usage_turns=0,
+            usage_source="provider",
+            cost_mode="catalog_provider_usage",
             turn_trace_count=2,
             turn_traces=[],
             protocol_retry_used=False,
@@ -101,6 +105,10 @@ def test_compare_runner_records_turns_value_and_task_features(monkeypatch) -> No
             protocol_retry_reason="",
             protocol_retry_attempts=0,
             protocol_retry_limit=4,
+            protocol="tool_call",
+            parser="parse_toolcall_actions",
+            provider_error_kind="",
+            provider_retryable=None,
         )
 
     monkeypatch.setattr(runner, "run_mini_swe_task", fake_run_mini_swe_task)
@@ -158,6 +166,10 @@ def test_auto_budget_records_dynamic_task_cap_mode(monkeypatch) -> None:
             agent_submitted=False,
             prompt_tokens_total=10,
             completion_tokens_total=2,
+            provider_usage_turns=1,
+            estimated_usage_turns=0,
+            usage_source="provider",
+            cost_mode="catalog_provider_usage",
             turn_trace_count=1,
             turn_traces=[],
             protocol_retry_used=False,
@@ -165,6 +177,10 @@ def test_auto_budget_records_dynamic_task_cap_mode(monkeypatch) -> None:
             protocol_retry_reason="",
             protocol_retry_attempts=0,
             protocol_retry_limit=4,
+            protocol="tool_call",
+            parser="parse_toolcall_actions",
+            provider_error_kind="",
+            provider_retryable=None,
         )
 
     monkeypatch.setattr(runner, "run_mini_swe_task", fake_run_mini_swe_task)

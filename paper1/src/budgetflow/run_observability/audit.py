@@ -40,12 +40,24 @@ def _pick_tier(pick) -> int:
 
 
 def _has_invoice_accurate_cost(record: dict) -> bool:
-    """Check if the record has provider-level actual cost data."""
+    """Check if the record has provider usage for every settled turn."""
+    if record.get("usage_source") == "provider":
+        return True
     traces = record.get("turn_traces")
     if not isinstance(traces, list) or not traces:
         return False
-    sample = traces[0]
-    return "cache_hit" in sample or "provider_actual_cost" in sample
+    settled = [trace for trace in traces if isinstance(trace, dict) and trace.get("reservation_settled")]
+    if not settled:
+        return False
+    return all(trace.get("usage_source") == "provider" for trace in settled)
+
+
+def _cost_mode_counts(records: list[dict]) -> dict[str, int]:
+    counts: Counter[str] = Counter()
+    for record in records:
+        mode = str(record.get("cost_mode") or record.get("usage_source") or "unknown")
+        counts[mode] += 1
+    return dict(counts)
 
 
 def _t3_id(records: list[dict]) -> int:
@@ -518,7 +530,6 @@ def _per_task_comparison(records: list[dict], t3_tier: int) -> list[dict]:
             "parser_error_type": _first_non_empty_trace_value(record, "parser_error_type"),
             "protocol": _first_non_empty_trace_value(record, "protocol"),
             "parser": _first_non_empty_trace_value(record, "parser"),
-            "text_mode": _first_non_empty_trace_value(record, "text_mode"),
             "first_t3_turn": _first_t3_turn(record, t3_tier),
             "first_useful_action": _first_useful_action_turn(record),
             "max_no_progress_streak": _max_no_progress_streak(record),
@@ -772,6 +783,7 @@ def build_compact_audit(records: list[dict]) -> dict:
         "fail_subtypes": dict(fail_subtypes.most_common()),
         "stored_verdict_mismatches": stored_verdict_mismatches,
         "invoice_accurate": invoice_accurate,
+        "cost_modes": _cost_mode_counts(records),
         "canonical_cost_available": total > 0,
         "policy_memory_used": policy_memory_used,
         "policy_memory_source": policy_memory_source,
@@ -910,7 +922,7 @@ def _parser_abort_breakdown(records: list[dict]) -> dict:
                     elif "found_0" in reason:
                         breakdown["found_0_actions"] += 1
                     elif "empty" in reason:
-                        breakdown["empty_response"] += 1
+                        breakdown["found_0_actions"] += 1
                     else:
                         breakdown["unknown"] += 1
             continue
@@ -926,9 +938,7 @@ def _parser_abort_breakdown(records: list[dict]) -> dict:
                 if "found_2" in reason:
                     breakdown["found_2_actions"] = breakdown.get("found_2_actions", 0) + 1
                 elif "found_0" in reason or "empty" in reason:
-                    breakdown["found_0_actions" if "found_0" in reason else "empty_response"] = (
-                        breakdown.get("found_0_actions" if "found_0" in reason else "empty_response", 0) + 1
-                    )
+                    breakdown["found_0_actions"] = breakdown.get("found_0_actions", 0) + 1
                 else:
                     breakdown["unknown"] = breakdown.get("unknown", 0) + 1
             continue

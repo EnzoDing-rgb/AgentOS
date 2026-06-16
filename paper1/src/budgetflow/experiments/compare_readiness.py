@@ -51,7 +51,7 @@ def _compute_protocol_health(jsonl_path: Path) -> dict:
     total_rows = 0
     protocol_abort_rows = 0
     failed_protocol_retry_rows = 0
-    empty_response_rows = 0
+    no_tool_call_rows = 0
 
     with jsonl_path.open() as fh:
         for line in fh:
@@ -85,22 +85,22 @@ def _compute_protocol_health(jsonl_path: Path) -> dict:
             retry_reason = str(row.get("protocol_retry_reason") or "")
             if retry_used and not retry_success:
                 failed_protocol_retry_rows += 1
-            if retry_reason == "empty_response":
-                empty_response_rows += 1
+            if retry_reason in {"found_0_actions", "no_tool_calls"}:
+                no_tool_call_rows += 1
 
     if total_rows == 0:
         return {
             "total_rows": 0,
             "protocol_abort_rate": 0.0,
             "failed_protocol_retry_rate": 0.0,
-            "empty_response_rate": 0.0,
+            "no_tool_call_rate": 0.0,
         }
 
     return {
         "total_rows": total_rows,
         "protocol_abort_rate": protocol_abort_rows / total_rows,
         "failed_protocol_retry_rate": failed_protocol_retry_rows / total_rows,
-        "empty_response_rate": empty_response_rows / total_rows,
+        "no_tool_call_rate": no_tool_call_rows / total_rows,
     }
 
 
@@ -404,19 +404,28 @@ def build_compare_readiness_report(
                 )
             bp_task_ids = bp.get("task_ids")
             if isinstance(bp_task_ids, list) and bp_task_ids:
-                bp_task_set = {str(task_id) for task_id in bp_task_ids}
-                facts.append(f"budget_plan_task_ids={len(bp_task_set)}")
-                missing_budget_tasks = [task_id for task_id in task_ids if task_id not in bp_task_set]
-                if missing_budget_tasks:
-                    preview = ", ".join(missing_budget_tasks[:8])
-                    suffix = "" if len(missing_budget_tasks) <= 8 else f", ... +{len(missing_budget_tasks) - 8} more"
+                bp_task_list = [str(task_id) for task_id in bp_task_ids]
+                facts.append(f"budget_plan_task_ids={len(bp_task_list)}")
+                if bp_task_list != task_ids:
+                    missing_budget_tasks = [task_id for task_id in task_ids if task_id not in set(bp_task_list)]
+                    extra_budget_tasks = [task_id for task_id in bp_task_list if task_id not in set(task_ids)]
+                    detail_parts: list[str] = []
+                    if missing_budget_tasks:
+                        preview = ", ".join(missing_budget_tasks[:8])
+                        suffix = "" if len(missing_budget_tasks) <= 8 else f", ... +{len(missing_budget_tasks) - 8} more"
+                        detail_parts.append(f"missing selected tasks: {preview}{suffix}")
+                    if extra_budget_tasks:
+                        preview = ", ".join(extra_budget_tasks[:8])
+                        suffix = "" if len(extra_budget_tasks) <= 8 else f", ... +{len(extra_budget_tasks) - 8} more"
+                        detail_parts.append(f"extra budget-plan tasks: {preview}{suffix}")
+                    if not detail_parts:
+                        detail_parts.append("same task set but different order")
                     blocking.append(
-                        f"budget plan is missing {len(missing_budget_tasks)} selected tasks: "
-                        f"{preview}{suffix}"
+                        "budget plan task_ids must exactly match selected tasks/order; "
+                        + "; ".join(detail_parts)
                     )
                 bp_generation_mode = str(bp.get("generation_mode", "") or "")
                 if frozen_plan is not None and bp_generation_mode == "frozen_plan_cap_sum":
-                    bp_task_list = [str(task_id) for task_id in bp_task_ids]
                     missing_frozen_tasks = [
                         task_id for task_id in bp_task_list if frozen_plan.lookup(task_id) is None
                     ]
@@ -534,7 +543,7 @@ def build_compare_readiness_report(
             facts.append(f"protocol_health_rows={protocol_stats['total_rows']}")
             facts.append(f"protocol_health_abort_rate={protocol_stats['protocol_abort_rate']:.1%}")
             facts.append(f"protocol_health_failed_retry_rate={protocol_stats['failed_protocol_retry_rate']:.1%}")
-            facts.append(f"protocol_health_empty_response_rate={protocol_stats['empty_response_rate']:.1%}")
+            facts.append(f"protocol_health_no_tool_call_rate={protocol_stats['no_tool_call_rate']:.1%}")
             if protocol_stats["protocol_abort_rate"] > 0.05:
                 blocking.append(
                     f"protocol-owner abort rate {protocol_stats['protocol_abort_rate']:.1%} > 5%; "
@@ -545,9 +554,9 @@ def build_compare_readiness_report(
                     f"failed protocol retry rate {protocol_stats['failed_protocol_retry_rate']:.1%} > 10%; "
                     f"excessive format failures — fix catalog protocol before paid run"
                 )
-            if protocol_stats["empty_response_rate"] > 0.10:
+            if protocol_stats["no_tool_call_rate"] > 0.10:
                 blocking.append(
-                    f"parser empty_response rate {protocol_stats['empty_response_rate']:.1%} > 10%; "
+                    f"parser no-tool-call rate {protocol_stats['no_tool_call_rate']:.1%} > 10%; "
                     f"model/action protocol is unstable before paid run"
                 )
         except (OSError, ValueError, TypeError) as exc:

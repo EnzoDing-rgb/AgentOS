@@ -103,8 +103,62 @@ def _is_provider_unavailable(exc: Exception) -> bool:
     return any(marker in text for marker in _PROVIDER_UNAVAILABLE_MARKERS)
 
 
+def _provider_error_kind(exc: Exception) -> str:
+    status_code = getattr(exc, "status_code", None)
+    text = f"{type(exc).__name__} {exc}".lower()
+    if is_fatal_billing_error(text):
+        return "billing"
+    if status_code in {401, 403} or "unauthorized" in text or "forbidden" in text or "api key" in text:
+        return "auth"
+    if status_code == 429 or "rate limit" in text or "too many requests" in text:
+        return "rate_limit"
+    if status_code in {404} or "model_not_found" in text or "model not found" in text or "no such model" in text:
+        return "model_unavailable"
+    if status_code == 400 or "badrequest" in text:
+        return "bad_request"
+    if "timeout" in text or "timed out" in text:
+        return "timeout"
+    if status_code in {500, 502, 503, 504} or _is_provider_unavailable(exc):
+        return "transient_provider"
+    return "unknown_provider"
+
+
+def _provider_error_retryable(kind: str) -> bool:
+    return kind in {"timeout", "rate_limit", "model_unavailable", "transient_provider"}
+
+
 def _backend_by_configured_tier(backends: list[Backend], tier: int) -> Backend | None:
     return next((backend for backend in backends if backend.tier == tier), None)
+
+
+def _usage_accounting(response, *, input_tokens: int, fallback_output_tokens: int) -> dict[str, Any]:
+    usage = getattr(response, "usage", None)
+    provider_prompt = getattr(usage, "prompt_tokens", None) if usage is not None else None
+    provider_completion = getattr(usage, "completion_tokens", None) if usage is not None else None
+    prompt_tokens_source = "provider" if provider_prompt is not None else "estimated_input"
+    completion_tokens_source = "provider" if provider_completion is not None else "estimated_output_mean"
+    reasons: list[str] = []
+    if provider_prompt is None:
+        reasons.append("missing_prompt_tokens")
+    if provider_completion is None:
+        reasons.append("missing_completion_tokens")
+    return {
+        "prompt_tokens": int(provider_prompt if provider_prompt is not None else input_tokens),
+        "completion_tokens": int(provider_completion if provider_completion is not None else fallback_output_tokens),
+        "prompt_tokens_source": prompt_tokens_source,
+        "completion_tokens_source": completion_tokens_source,
+        "usage_source": (
+            "provider"
+            if prompt_tokens_source == "provider" and completion_tokens_source == "provider"
+            else "estimated"
+        ),
+        "cost_mode": (
+            "catalog_provider_usage"
+            if prompt_tokens_source == "provider" and completion_tokens_source == "provider"
+            else "catalog_estimated_usage"
+        ),
+        "cost_fallback_reason": ",".join(reasons),
+    }
 
 
 class FatalProviderBillingError(RuntimeError):
@@ -127,7 +181,7 @@ class _ProviderTimeoutError(RuntimeError):
 
 _FORMAT_RETRY_PROMPT = (
     "Your previous response had invalid action format. "
-    "Reply with exactly one fenced action block and no second action."
+    "Call exactly one bash tool. Do not answer with a fenced text command."
 )
 
 
@@ -239,6 +293,8 @@ class BudgetFlowLitellmModel:
         self._last_reservation_id: str | None = None
         self._last_reserve_out: int = 0
         self._format_error_streak: int = 0
+        self._provider_usage_turns: int = 0
+        self._estimated_usage_turns: int = 0
         self._protocol_retry_used: bool = False
         self._protocol_retry_success: bool = False
         self._protocol_retry_reason: str = ""
@@ -475,6 +531,8 @@ class BudgetFlowLitellmModel:
                 break
             except Exception as exc:
                 error_type = type(exc).__name__
+                provider_error_kind = _provider_error_kind(exc)
+                failed_reservation_id = self._last_reservation_id
                 self._release_last_reservation()
                 if self._enable_turn_trace:
                     self.turn_traces.append(build_turn_trace(
@@ -515,7 +573,9 @@ class BudgetFlowLitellmModel:
                         **self._gold_edit_guard_trace_fields(),
                         provider_status_code=getattr(exc, "status_code", None),
                         provider_error_body=str(exc)[:500],
-                        reservation_id=self._last_reservation_id,
+                        provider_error_kind=provider_error_kind,
+                        provider_retryable=_provider_error_retryable(provider_error_kind),
+                        reservation_id=failed_reservation_id,
                         reservation_released=True,
                     ))
                 if not _is_provider_unavailable(exc):
@@ -539,8 +599,17 @@ class BudgetFlowLitellmModel:
                 sample="all configured backends unavailable",
             )
         message = response.choices[0].message.model_dump()
-        prompt_tokens = getattr(response.usage, "prompt_tokens", None) or input_tokens
-        completion_tokens = getattr(response.usage, "completion_tokens", None) or backend.mean_output_tokens
+        usage = _usage_accounting(
+            response,
+            input_tokens=input_tokens,
+            fallback_output_tokens=backend.mean_output_tokens,
+        )
+        prompt_tokens = usage["prompt_tokens"]
+        completion_tokens = usage["completion_tokens"]
+        if usage["usage_source"] == "provider":
+            self._provider_usage_turns += 1
+        else:
+            self._estimated_usage_turns += 1
         self._total_prompt_tokens += prompt_tokens
         self._total_completion_tokens += completion_tokens
         actual_cost = estimate_token_cost(
@@ -608,6 +677,10 @@ class BudgetFlowLitellmModel:
                         action_progress_reason=None,
                         prompt_tokens=prompt_tokens,
                         completion_tokens=completion_tokens,
+                        prompt_tokens_source=usage["prompt_tokens_source"],
+                        completion_tokens_source=usage["completion_tokens_source"],
+                        cost_mode=usage["cost_mode"],
+                        cost_fallback_reason=usage["cost_fallback_reason"],
                         actual_cost=actual_cost,
                         billable=billable,
                         response_ok=True,
@@ -661,8 +734,17 @@ class BudgetFlowLitellmModel:
                         **kwargs,
                     )
                     # Settle retry reservation
-                    retry_prompt_tokens = getattr(retry_response.usage, "prompt_tokens", None) or retry_input_tokens
-                    retry_completion_tokens = getattr(retry_response.usage, "completion_tokens", None) or backend.mean_output_tokens
+                    retry_usage = _usage_accounting(
+                        retry_response,
+                        input_tokens=retry_input_tokens,
+                        fallback_output_tokens=backend.mean_output_tokens,
+                    )
+                    retry_prompt_tokens = retry_usage["prompt_tokens"]
+                    retry_completion_tokens = retry_usage["completion_tokens"]
+                    if retry_usage["usage_source"] == "provider":
+                        self._provider_usage_turns += 1
+                    else:
+                        self._estimated_usage_turns += 1
                     retry_actual_cost = estimate_token_cost(
                         backend.name,
                         input_tokens=retry_prompt_tokens,
@@ -684,6 +766,25 @@ class BudgetFlowLitellmModel:
                     completion_tokens += retry_completion_tokens
                     actual_cost += retry_actual_cost
                     billable += min(retry_actual_cost, max(0.0, snap["total_budget"] - snap["spent_budget"] - billable))
+                    if usage["usage_source"] == "provider" and retry_usage["usage_source"] == "provider":
+                        usage["prompt_tokens_source"] = "provider"
+                        usage["completion_tokens_source"] = "provider"
+                        usage["usage_source"] = "provider"
+                        usage["cost_mode"] = "catalog_provider_usage"
+                        usage["cost_fallback_reason"] = ""
+                    else:
+                        usage["prompt_tokens_source"] = "mixed_or_estimated"
+                        usage["completion_tokens_source"] = "mixed_or_estimated"
+                        usage["usage_source"] = "estimated"
+                        usage["cost_mode"] = "catalog_estimated_usage"
+                        usage["cost_fallback_reason"] = ",".join(
+                            reason
+                            for reason in (
+                                usage.get("cost_fallback_reason"),
+                                retry_usage.get("cost_fallback_reason"),
+                            )
+                            if reason
+                        )
                 except Exception as _retry_exc:
                     if self._last_reservation_id is not None:
                         self._release_last_reservation()
@@ -729,6 +830,10 @@ class BudgetFlowLitellmModel:
                             action_progress_reason=None,
                             prompt_tokens=prompt_tokens,
                             completion_tokens=completion_tokens,
+                            prompt_tokens_source=usage["prompt_tokens_source"],
+                            completion_tokens_source=usage["completion_tokens_source"],
+                            cost_mode=usage["cost_mode"],
+                            cost_fallback_reason=usage["cost_fallback_reason"],
                             actual_cost=actual_cost,
                             billable=billable,
                             response_ok=True,
@@ -797,6 +902,10 @@ class BudgetFlowLitellmModel:
                     action_progress_reason=None,
                     prompt_tokens=prompt_tokens,
                     completion_tokens=completion_tokens,
+                    prompt_tokens_source=usage["prompt_tokens_source"],
+                    completion_tokens_source=usage["completion_tokens_source"],
+                    cost_mode=usage["cost_mode"],
+                    cost_fallback_reason=usage["cost_fallback_reason"],
                     actual_cost=actual_cost,
                     billable=billable,
                     response_ok=True,
@@ -831,7 +940,6 @@ class BudgetFlowLitellmModel:
             "cost": billable,
             "backend": backend.name,
             "stage": stage.value,
-            "text_mode": False,
         }
         if self._enable_turn_trace:
             content_head = safe_content_head(response)
@@ -870,6 +978,10 @@ class BudgetFlowLitellmModel:
                 **action_fields,
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
+                prompt_tokens_source=usage["prompt_tokens_source"],
+                completion_tokens_source=usage["completion_tokens_source"],
+                cost_mode=usage["cost_mode"],
+                cost_fallback_reason=usage["cost_fallback_reason"],
                 actual_cost=actual_cost,
                 billable=billable,
                 response_ok=True,

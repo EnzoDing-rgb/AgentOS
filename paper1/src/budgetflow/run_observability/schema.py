@@ -10,6 +10,9 @@ REQUIRED_FIELDS = frozenset({
     "instance_id", "strategy", "routing", "harness_resolved",
     "exit_status", "exit_reason", "total_cost", "llm_turns",
     "elapsed_s", "detail", "turn_trace_count",
+    "prompt_tokens_total", "completion_tokens_total",
+    "usage_source", "cost_mode",
+    "protocol", "parser",
     "run_series", "policy_lane", "task_order_index",
     "row_started_at", "row_finished_at",
     "harness_evidence", "observability_status",
@@ -78,7 +81,17 @@ def _check_trace_coverage(records: list[dict]) -> list[str]:
             if not isinstance(trace, dict):
                 continue
             if trace.get("response_ok") is not True:
+                if trace.get("error_type") and not trace.get("provider_error_kind"):
+                    issues.append(
+                        f"PROVIDER_ERROR_OPAQUE row {i} trace {j}: {rec.get('instance_id', '?')} "
+                        f"{rec.get('strategy', '?')} — provider error lacks provider_error_kind"
+                    )
                 continue
+            if not trace.get("usage_source") or not trace.get("cost_mode"):
+                issues.append(
+                    f"COST_MODE_MISSING row {i} trace {j}: {rec.get('instance_id', '?')} "
+                    f"{rec.get('strategy', '?')} — successful trace lacks usage_source/cost_mode"
+                )
             if trace.get("parser_error_type"):
                 if not trace.get("parser_error_message") and trace.get("parser_error_action_count") is None:
                     issues.append(

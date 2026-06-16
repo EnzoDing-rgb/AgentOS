@@ -58,7 +58,7 @@ def test_classify_found_0_actions_from_payload():
 
 @requires_minisweagent
 @requires_minisweagent
-def test_classify_empty_response_tool_mode():
+def test_classify_no_tool_call_tool_mode():
     from budgetflow.adapter.mini_swe_proxy import _classify_format_reason
     exc = _FakeFormatError()
     resp = _FakeResponse(content="", tool_calls=[])
@@ -106,7 +106,7 @@ def test_parser_abort_breakdown_with_retry_fields():
         {
             "protocol_retry_used": True,
             "protocol_retry_success": False,
-            "protocol_retry_reason": "empty_response",
+            "protocol_retry_reason": "found_0_actions",
             "exit_status": "FormatError",
             "exit_reason": "format_error_text_action",
         },
@@ -122,7 +122,7 @@ def test_parser_abort_breakdown_with_retry_fields():
     assert result["retry_success"] == 2
     assert result["retry_failed"] == 1
     assert result["found_2_actions"] == 0
-    assert result["found_0_actions"] == 0
+    assert result["found_0_actions"] == 1
 
 
 def test_parser_abort_breakdown_prefers_per_turn_retry_fields():
@@ -144,7 +144,7 @@ def test_parser_abort_breakdown_prefers_per_turn_retry_fields():
                 {
                     "protocol_retry_used": True,
                     "protocol_retry_success": False,
-                    "protocol_retry_reason": "empty_response",
+                    "protocol_retry_reason": "found_0_actions",
                     "protocol_retry_attempts": 1,
                 },
             ],
@@ -154,7 +154,7 @@ def test_parser_abort_breakdown_prefers_per_turn_retry_fields():
     result = _parser_abort_breakdown(records)
     assert result["retry_success"] == 1
     assert result["retry_failed"] == 1
-    assert result["empty_response"] == 1
+    assert result["found_0_actions"] == 1
 
 
 def test_parser_abort_breakdown_empty():
@@ -202,11 +202,10 @@ def test_format_error_stop_after_found_2_actions():
 
 
 @requires_minisweagent
-def test_format_error_stop_after_found_0_or_empty():
+def test_format_error_stop_after_found_0():
     from budgetflow.adapter.action_parsing import format_error_stop_after
 
     assert format_error_stop_after(error_reason="found_0_actions") == 3
-    assert format_error_stop_after(error_reason="empty_response") == 3
     assert format_error_stop_after(error_reason="invalid_tool_call") == 3
 
 
@@ -245,7 +244,7 @@ def test_parse_actions_invalid_tool_call_accumulates_streak():
     model.step_index = 8
     model.format_error_template = "{{ error }}"
     model._format_error_streak = 2
-    model._protocol_retry_reason = "empty_response"
+    model._protocol_retry_reason = "found_0_actions"
     model._protocol_retry_limit = 3
 
     resp = _FakeResponse(content="", tool_calls=[MagicMock(), MagicMock()])

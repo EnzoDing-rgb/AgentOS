@@ -610,7 +610,7 @@ def test_readiness_accepts_pass_with_diagnostic_override_with_warning(tmp_path) 
 
 
 def test_readiness_blocks_budget_plan_missing_selected_tasks(tmp_path) -> None:
-    """Budget plans may cover a staged superset, but must cover every selected task."""
+    """Budget plans must be generated for exactly the selected task list."""
     bp = tmp_path / "budget_plan.json"
     bp.write_text(
         '{"hard_cap_usd":1.0,"source":"budget_binding_calibrator",'
@@ -637,7 +637,8 @@ def test_readiness_blocks_budget_plan_missing_selected_tasks(tmp_path) -> None:
     )
 
     assert not report.ok
-    assert any("budget plan is missing 1 selected tasks" in issue for issue in report.blocking)
+    assert any("budget plan task_ids must exactly match selected tasks/order" in issue for issue in report.blocking)
+    assert any("missing selected tasks: task-b" in issue for issue in report.blocking)
 
 
 def test_readiness_blocks_budget_plan_strategy_set_drift(tmp_path) -> None:
@@ -698,7 +699,7 @@ def test_readiness_blocks_budget_plan_with_retired_dynamic_caps(tmp_path) -> Non
     assert any("retired dynamic per-task caps" in issue for issue in report.blocking)
 
 
-def test_readiness_accepts_budget_plan_superset_for_staged_resume(tmp_path) -> None:
+def test_readiness_blocks_budget_plan_superset_for_short_run(tmp_path) -> None:
     bp = tmp_path / "budget_plan.json"
     bp.write_text(
         '{"hard_cap_usd":1.0,"source":"budget_binding_calibrator",'
@@ -724,8 +725,39 @@ def test_readiness_accepts_budget_plan_superset_for_staged_resume(tmp_path) -> N
         budget_plan_path=bp,
     )
 
-    assert report.ok
+    assert not report.ok
     assert "budget_plan_task_ids=3" in report.facts
+    assert any("extra budget-plan tasks: task-c" in issue for issue in report.blocking)
+
+
+def test_readiness_blocks_budget_plan_task_order_drift(tmp_path) -> None:
+    bp = tmp_path / "budget_plan.json"
+    bp.write_text(
+        '{"hard_cap_usd":1.0,"source":"budget_binding_calibrator",'
+        '"generation_mode":"target_utilization","decision":"PASS",'
+        '"task_ids":["task-b","task-a"]}'
+    )
+    value_context = ValueEfficiencyContext()
+    value_context.init(value_profile="equal")
+
+    report = build_compare_readiness_report(
+        args=_args(),
+        tasks=[
+            SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",)),
+            SimpleNamespace(instance_id="task-b", test_patch="diff", fail_to_pass=("test_b",)),
+        ],
+        strategies=(CompareStrategy("budgetflow_segment", "segment_value_aware"),),
+        policy_jobs=1,
+        value_context=value_context,
+        catalog_issues=[],
+        runtime_root=Path("/tmp/budgetflow-runtime"),
+        auto_budget_enabled=False,
+        auto_budget_caps=None,
+        budget_plan_path=bp,
+    )
+
+    assert not report.ok
+    assert any("same task set but different order" in issue for issue in report.blocking)
 
 
 def test_readiness_checks_budget_plan_hard_cap_against_full_frozen_plan(tmp_path) -> None:
@@ -754,6 +786,7 @@ def test_readiness_checks_budget_plan_hard_cap_against_full_frozen_plan(tmp_path
         tasks=[
             SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",)),
             SimpleNamespace(instance_id="task-b", test_patch="diff", fail_to_pass=("test_b",)),
+            SimpleNamespace(instance_id="task-c", test_patch="diff", fail_to_pass=("test_c",)),
         ],
         strategies=(CompareStrategy("budgetflow_same_enterprise_router", "budgetflow_same_router"),),
         policy_jobs=1,
@@ -766,7 +799,7 @@ def test_readiness_checks_budget_plan_hard_cap_against_full_frozen_plan(tmp_path
     )
 
     assert report.ok
-    assert "frozen_plan_selected_cap_sum=1.0000" in report.facts
+    assert "frozen_plan_selected_cap_sum=1.5000" in report.facts
     assert "budget_plan_frozen_cap_sum=1.5000" in report.facts
 
 
@@ -793,7 +826,11 @@ def test_readiness_blocks_budget_plan_hard_cap_drift_from_frozen_plan(tmp_path) 
 
     report = build_compare_readiness_report(
         args=_args(frozen_plan=str(frozen)),
-        tasks=[SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",))],
+        tasks=[
+            SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",)),
+            SimpleNamespace(instance_id="task-b", test_patch="diff", fail_to_pass=("test_b",)),
+            SimpleNamespace(instance_id="task-c", test_patch="diff", fail_to_pass=("test_c",)),
+        ],
         strategies=(CompareStrategy("budgetflow_same_enterprise_router", "budgetflow_same_router"),),
         policy_jobs=1,
         value_context=value_context,

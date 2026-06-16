@@ -224,10 +224,14 @@ def format_compact_audit(audit: dict) -> str:
     # Cost口径
     lines.append(banner)
     canonical_available = audit["total"] > 0
-    lines.append(f"COST: canonical_cost_available={canonical_available}, provider_invoice_accurate={audit['invoice_accurate']}")
+    cost_modes = audit.get("cost_modes") or {}
+    mode_text = " | ".join(f"{k}={v}" for k, v in sorted(cost_modes.items())) or "unknown"
+    lines.append(
+        f"COST: normalized_catalog_cost_available={canonical_available}, "
+        f"provider_usage_all_settled={audit['invoice_accurate']}  modes={mode_text}"
+    )
     if not audit["invoice_accurate"]:
-        lines.append("   canonical_estimated_cost uses official API list price (paper's primary claim).")
-        lines.append("   provider_actual_cost unavailable — no cache_hit/provider_actual_cost in trace data.")
+        lines.append("   Some rows used estimated token usage. Keep them separate in paid-run analysis.")
 
     # Harness trust
     if audit.get("harness_trust"):

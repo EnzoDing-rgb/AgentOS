@@ -53,6 +53,9 @@ def test_turn_trace_has_fields_needed_to_debug_value_routing_and_provider_failur
         action_touched_file_paths=["src/file.py"],
         prompt_tokens=100,
         completion_tokens=50,
+        prompt_tokens_source="provider",
+        completion_tokens_source="provider",
+        cost_mode="catalog_provider_usage",
         actual_cost=0.02,
         billable=0.02,
         response_ok=False,
@@ -61,10 +64,11 @@ def test_turn_trace_has_fields_needed_to_debug_value_routing_and_provider_failur
         model="openai/gpt-5.4",
         cost_estimate_source="tier_catalog:test",
         cost_estimate_confidence={"backend": "tier3"},
-        text_mode=False,
         protocol="tool_call",
         parser="parse_toolcall_actions",
         provider_status_code=503,
+        provider_error_kind="transient_provider",
+        provider_retryable=True,
         router_reason="value_triggered_escalation",
         router_branch="segment_value_aware",
         task_value=2.0,
@@ -87,10 +91,14 @@ def test_turn_trace_has_fields_needed_to_debug_value_routing_and_provider_failur
     assert trace["action_touched_file_paths"] == ["src/file.py"]
     assert trace["touched_file_paths"] == ["src/file.py"]
     assert trace["provider"] == "openai_compatible"
+    assert trace["usage_source"] == "provider"
+    assert trace["cost_mode"] == "catalog_provider_usage"
     assert trace["cost_estimate_source"] == "tier_catalog:test"
     assert trace["cost_estimate_confidence"]["backend"] == "tier3"
     assert trace["protocol"] == "tool_call"
     assert trace["provider_status_code"] == 503
+    assert trace["provider_error_kind"] == "transient_provider"
+    assert trace["provider_retryable"] is True
     assert trace["router_branch"] == "segment_value_aware"
     assert trace["task_value_multiplier"] == 1.5
     assert trace["value_triggered_escalation_active"] is True
