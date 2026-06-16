@@ -62,9 +62,14 @@ def test_calibrate_target_utilization_produces_p75_reference(tmp_path: Path) -> 
 def test_calibrate_target_utilization_has_no_frozen_plan_input(tmp_path: Path) -> None:
     """Budget Compiler does not accept frozen caps as a budget input."""
     vm = tmp_path / "vm.json"
-    vm.write_text(json.dumps({"tasks": {"task-a": {"bootstrap_difficulty": 50.0}}}))
+    vm.write_text(json.dumps({
+        "tasks": {
+            "task-a": {"bootstrap_difficulty": 50.0},
+            "task-b": {"bootstrap_difficulty": 50.0},
+        }
+    }))
     plan = calibrate_budget(
-        ["task-a"],
+        ["task-a", "task-b"],
         value_matrix_path=vm,
         target_utilization=0.80,
         output_path=tmp_path / "bp.json",
@@ -193,9 +198,98 @@ def test_calibrate_uses_budget_exhausted_rows_as_floor_not_observed_sample(tmp_p
         target_utilization=0.75,
     )
 
-    assert plan.projected_spend_by_strategy == {"budgetflow_task_level": 0.75}
+    assert plan.projected_spend_by_strategy == {"budgetflow_task_level": 0.76}
     assert plan.censored_spend_floor_by_strategy == {"budgetflow_task_level": 0.75}
     assert any("censored spend floors" in reason for reason in plan.reasons)
+
+
+def test_calibrate_projects_censored_task_with_remaining_runway(tmp_path: Path) -> None:
+    catalog = catalog_source_info()
+    jsonl = tmp_path / "hist.jsonl"
+    jsonl.write_text(
+        "\n".join([
+            json.dumps({
+                "strategy": "bare_t3_baseline",
+                "instance_id": "task-a",
+                "total_cost": 0.10,
+                "budget_mode": "shared_batch_hard_budget",
+                "catalog": catalog,
+                "score_status": "pass",
+                "exit_status": "HarnessResolved",
+                "row_finished_at": 1,
+            }),
+            json.dumps({
+                "strategy": "bare_t3_baseline",
+                "instance_id": "task-b",
+                "total_cost": 0.20,
+                "budget_mode": "shared_batch_hard_budget",
+                "catalog": catalog,
+                "score_status": "true_fail",
+                "exit_status": "BudgetFlowBudgetError",
+                "exit_reason": "budget_exhausted",
+                "row_finished_at": 1,
+            }),
+        ])
+        + "\n"
+    )
+    vm = tmp_path / "vm.json"
+    vm.write_text(json.dumps({
+        "tasks": {
+            "task-a": {"task_effort": {"bootstrap_heuristic": 100.0}},
+            "task-b": {"task_effort": {"bootstrap_heuristic": 100.0}},
+        }
+    }))
+
+    plan = calibrate_budget(
+        ["task-a", "task-b"],
+        historical_jsonl=jsonl,
+        value_matrix_path=vm,
+        strategies=("bare_t3_baseline",),
+        target_utilization=0.50,
+    )
+
+    per_task = plan.projected_task_cost_by_strategy["bare_t3_baseline"]
+    assert per_task["task-a"] == 0.10
+    assert per_task["task-b"] > 0.20
+    assert plan.projected_spend_by_strategy["bare_t3_baseline"] > 0.30
+
+
+def test_calibrate_cap_allows_strongest_model_to_reach_final_task(tmp_path: Path) -> None:
+    catalog = catalog_source_info()
+    jsonl = tmp_path / "hist.jsonl"
+    rows = []
+    for task_id, cost in (("task-a", 0.10), ("task-b", 0.12), ("task-c", 0.14)):
+        rows.append({
+            "strategy": "bare_t3_baseline",
+            "instance_id": task_id,
+            "total_cost": cost,
+            "budget_mode": "shared_batch_hard_budget",
+            "catalog": catalog,
+            "score_status": "pass",
+            "exit_status": "HarnessResolved",
+            "row_finished_at": 1,
+        })
+    jsonl.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
+    vm = tmp_path / "vm.json"
+    vm.write_text(json.dumps({
+        "tasks": {
+            "task-a": {"task_effort": {"bootstrap_heuristic": 100.0}},
+            "task-b": {"task_effort": {"bootstrap_heuristic": 100.0}},
+            "task-c": {"task_effort": {"bootstrap_heuristic": 100.0}},
+        }
+    }))
+
+    plan = calibrate_budget(
+        ["task-a", "task-b", "task-c"],
+        historical_jsonl=jsonl,
+        value_matrix_path=vm,
+        strategies=("bare_t3_baseline",),
+        target_utilization=0.20,
+    )
+
+    assert plan.hard_cap_usd >= 0.22
+    assert plan.hard_cap_usd <= 0.36
+    assert any("strongest_runway_floor" in reason for reason in plan.reasons)
 
 
 def test_target_utilization_below_zero_raises() -> None:
@@ -213,8 +307,7 @@ def test_target_utilization_above_one_raises() -> None:
 # ── pressure-shape audit ────────────────────────────────────────────────
 
 
-def test_pressure_contract_is_passive_only() -> None:
-    """Pressure contract writes into plan but never changes plan.decision."""
+def test_pressure_contract_flags_weak_strongest_pressure() -> None:
     plan = BudgetBindingPlan(
         hard_cap_usd=10.0,
         generation_mode="target_utilization",
@@ -231,12 +324,12 @@ def test_pressure_contract_is_passive_only() -> None:
     original_decision = plan.decision
     _build_pressure_contract(plan, ("bare_t2_baseline", "bare_t3_baseline", "budgetflow_segment"))
     assert plan.decision == original_decision
-    assert plan.pressure_contract["grade"] == "fail"  # T3 < T2 → inverted pressure = fail
-    assert any("inverted" in v for v in plan.pressure_contract["violations"])
+    assert plan.pressure_contract["grade"] == "warn"
+    assert any("t3_loose" in v for v in plan.pressure_contract["violations"])
 
 
 def test_pressure_contract_healthy_shape_grade_pass() -> None:
-    """T3 tight > T2 loose = expected shape, grade pass."""
+    """T3 tight and BudgetFlow pressure-ready = expected shape, grade pass."""
     plan = BudgetBindingPlan(
         hard_cap_usd=5.0,
         generation_mode="target_utilization",
@@ -252,9 +345,9 @@ def test_pressure_contract_healthy_shape_grade_pass() -> None:
     _build_pressure_contract(plan, ("bare_t2_baseline", "bare_t3_baseline", "budgetflow_segment"))
     assert plan.pressure_contract["grade"] == "pass"
     assert len(plan.pressure_contract["violations"]) == 0
-    assert any("t2_loose" in a for a in plan.pressure_contract["assertions"])
+    assert any("t2_diagnostic" in a for a in plan.pressure_contract["assertions"])
     assert any("t3_tight" in a for a in plan.pressure_contract["assertions"])
-    assert any("budgetflow_task_level" in a for a in plan.pressure_contract["assertions"])
+    assert any("budgetflow_pressure_ready" in a for a in plan.pressure_contract["assertions"])
 
 
 def test_calibrate_requires_target_utilization() -> None:
@@ -642,7 +735,7 @@ def test_cli_calibrate_accepts_calibration_evidence_audit(tmp_path: Path) -> Non
     rc = budget_binding_main([
         "calibrate",
         "--task-ids",
-        "task-a",
+        "task-a,task-b",
         "--target-utilization",
         "0.8",
         "--calibration-evidence",

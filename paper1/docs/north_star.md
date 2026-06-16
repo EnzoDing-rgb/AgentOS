@@ -113,6 +113,10 @@ hand-picked.
 - Compile the shared hard budget from frozen task IDs, ValueSource, Task Effort,
   model-tier catalog, Cost Memory when available, and a predeclared target
   pressure such as roughly 80%-90% expected utilization.
+- Apply a Strongest Model runway floor: the compiled cap should let the pure
+  Strongest Model baseline reach the final task before budget pressure
+  dominates. A cap that starves the strongest baseline midway through the batch
+  is too tight to diagnose value allocation.
 - Keep the compiled cap tight enough that a pure Strongest Model baseline is
   budget-constrained or exhausts the cap. If the strongest baseline can solve the
   workload without pressure, the budget regime is too loose to test allocation.
@@ -127,9 +131,10 @@ hand-picked.
   tight.
 - Active Cost Memory for the compiler must consume only current-schema,
   same-catalog, scoreable rows. Budget-exhausted rows may enter only as censored
-  spend floors, never as complete cost observations. Provider, parser, infra, old
-  schema, or catalog-mismatched rows are forensic evidence, not calibration
-  samples.
+  spend floors and must include remaining-runway estimates before the next cap
+  is compiled; they are never complete cost observations. Provider, parser,
+  infra, old schema, or catalog-mismatched rows are forensic evidence, not
+  calibration samples.
 - Frozen router plans are never a budget source. Retired frozen-cap fields such
   as per-task ``base_cap`` or meta ``hard_cap_usd`` must be regenerated out of
   active router-plan artifacts before paid runs.
