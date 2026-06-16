@@ -13,19 +13,15 @@ from pathlib import Path
 from .lite_tasks import LiteTaskRecord
 from .console_log import (
     _BOLD,
-    _BRIGHT_BLUE,
     _BRIGHT_CYAN,
     _BRIGHT_GREEN,
-    _BRIGHT_YELLOW,
-    dim,
     paint,
     tag,
 )
 from .runtime import (
     get_locks_dir,
     get_repo_cache_dir,
-    get_runtime_root,
-    get_worktree_root as _runtime_worktree_root,
+    get_worktree_root,
     resolve_runtime_root,
 )
 from .local_harness_adapters import (
@@ -36,55 +32,13 @@ from .local_harness_adapters import (
     SymPyHAdapter,
     apply_python_compat,
     build_pytest_node_ids,
-    harness_python,
     run_pytest,
 )
 
 PAPER1_ROOT = Path(__file__).resolve().parents[2]
 
-# Legacy repo cache locations (read-only fallback for existing clones).
-_LEGACY_REPO_CACHE = PAPER1_ROOT / "data" / "repo_cache"
-_LEGACY_REPO_CACHE_ALT = PAPER1_ROOT / "src" / "data" / "repo_cache"
-
-# ── Configurable worktree root ──────────────────────────────────────────────
-# --worktree-root overrides the runtime-derived worktree root.
-# Prefer --runtime-root for new code; --worktree-root is a deprecated escape hatch.
-
-_worktree_root_override: Path | None = None
-_worktree_root_source = "default"
-
-
-def set_worktree_root(path: Path | str | None) -> None:
-    """Override worktree root (deprecated — prefer --runtime-root)."""
-    global _worktree_root_override, _worktree_root_source
-    if path is None:
-        _worktree_root_override = None
-        _worktree_root_source = "default"
-        return
-    p = Path(path)
-    p.mkdir(parents=True, exist_ok=True)
-    _worktree_root_override = p
-    _worktree_root_source = "cli"
-
-
-def get_worktree_root() -> Path:
-    """Current worktree root: explicit override > runtime-derived."""
-    if _worktree_root_override is not None:
-        return _worktree_root_override
-    return _runtime_worktree_root()
-
-
 def get_worktree_root_source() -> str:
-    if _worktree_root_override is not None:
-        return _worktree_root_source
     return f"runtime:{resolve_runtime_root()[1]}"
-
-
-# ── Repo cache (mirror clones) ──────────────────────────────────────────────
-
-def _active_repo_cache_dir() -> Path:
-    """Active repo cache: runtime root (preferred) with legacy fallback for reads."""
-    return get_repo_cache_dir()
 
 
 # ── Cross-process file lock for git metadata ────────────────────────────────
@@ -115,11 +69,6 @@ def _repo_git_lock(slug: str):
     finally:
         pass  # flock released on close
 
-_LAST_COMPAT_FILES: tuple[str, ...] = ()
-def get_last_compat_files() -> tuple[str, ...]:
-    return _LAST_COMPAT_FILES
-
-
 @dataclass(frozen=True)
 class HarnessResult:
     instance_id: str
@@ -143,18 +92,7 @@ def repo_slug(repo: str) -> str:
 
 def repo_dir_for(task: LiteTaskRecord) -> Path:
     slug = repo_slug(task.repo)
-    primary = get_repo_cache_dir() / slug
-    # Legacy fallback only when explicitly enabled via env var.
-    # Default: always use runtime repo cache, even if a legacy clone exists.
-    if os.environ.get("BUDGETFLOW_USE_LEGACY_REPO_CACHE") == "1":
-        for legacy in (_LEGACY_REPO_CACHE / slug, _LEGACY_REPO_CACHE_ALT / slug):
-            if legacy.exists():
-                return legacy
-    return primary
-
-
-def _pip_marker_path(repo_dir: Path) -> Path:
-    return repo_dir / ".budgetflow_pip_ok"
+    return get_repo_cache_dir() / slug
 
 
 def _ensure_commit_available(repo_dir: Path, commit: str) -> None:
@@ -179,40 +117,6 @@ def _ensure_commit_available(repo_dir: Path, commit: str) -> None:
             return
         last_error = (result.stderr or result.stdout or "").strip()
     raise subprocess.CalledProcessError(1, fetch_attempts[-1], last_error)
-
-
-def _pip_install_editable(repo_dir: Path, *, task: LiteTaskRecord) -> subprocess.CompletedProcess:
-    cmd = [harness_python(), "-m", "pip", "install", "-e", "."]
-    print(f"{tag('prep')} pip install -e . {dim('(sympy ~3-8 min, streaming below)')}", flush=True)
-    started = time.time()
-    last_pulse = started
-    proc = subprocess.Popen(
-        cmd,
-        cwd=repo_dir,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-    )
-    assert proc.stdout is not None
-    for raw in proc.stdout:
-        line = raw.rstrip()
-        if not line:
-            continue
-        # pip progress: "Collecting...", "Installing...", "Building wheel..."
-        if any(token in line for token in ("Collecting", "Installing", "Building", "Preparing", "Successfully")):
-            print(f"  {tag('pip', color=_BRIGHT_BLUE)} {line[:140]}", flush=True)
-        now = time.time()
-        if now - last_pulse >= 20:
-            elapsed = paint(f"{now - started:.0f}s", _BRIGHT_YELLOW, _BOLD)
-            print(f"{tag('prep')} pip running elapsed={elapsed} ...", flush=True)
-            last_pulse = now
-    proc.wait()
-    elapsed = time.time() - started
-    rc = proc.returncode if proc.returncode is not None else 1
-    print(f"{tag('prep')} pip finished rc={rc} elapsed={elapsed:.0f}s", flush=True)
-    return subprocess.CompletedProcess(cmd, rc, "", "")
-
 
 def _ensure_main_repo(task: LiteTaskRecord) -> Path:
     repo_dir = repo_dir_for(task)
@@ -450,38 +354,15 @@ def _prepare_worktree(task: LiteTaskRecord, workspace_key: str) -> Path:
 
 
 def _finalize_repo_workspace(repo_dir: Path, task: LiteTaskRecord) -> Path:
-    global _LAST_COMPAT_FILES
-
     def _do_compat():
         return apply_python_compat(repo_dir)
 
-    _LAST_COMPAT_FILES, _elapsed = _timed_step(f"compat_patch {task.instance_id}", _do_compat)
-    n = len(_LAST_COMPAT_FILES)
+    compat_files, _elapsed = _timed_step(f"compat_patch {task.instance_id}", _do_compat)
+    n = len(compat_files)
     print(
         f"{tag('prep')} py3.11 collections compat {paint(str(n), _BRIGHT_GREEN)} files",
         flush=True,
     )
-
-    marker = _pip_marker_path(repo_dir)
-    if marker.exists() and marker.read_text().strip() == task.base_commit:
-        print(f"{tag('prep')} pip skip {dim('(cached)')}", flush=True)
-        return repo_dir
-
-    install_result: subprocess.CompletedProcess | None = None
-
-    def _pip():
-        nonlocal install_result
-        install_result = _pip_install_editable(repo_dir, task=task)
-
-    _timed_step(f"pip_install {task.instance_id}", _pip)
-
-    if install_result is not None and install_result.returncode == 0:
-        marker.parent.mkdir(parents=True, exist_ok=True)
-        marker.write_text(task.base_commit)
-        print(f"{tag('prep')} pip {paint('done', _BRIGHT_GREEN)}", flush=True)
-    else:
-        rc = install_result.returncode if install_result else -1
-        print(f"{tag('prep')} pip failed (rc={rc}), continuing anyway", flush=True)
     return repo_dir
 
 
@@ -492,7 +373,6 @@ def clone_or_checkout(task: LiteTaskRecord, *, workspace_key: str | None = None)
 
     slug = repo_slug(task.repo)
     with _repo_git_lock(slug):
-        global _LAST_COMPAT_FILES
         repo_dir = _ensure_main_repo(task)
         inst = paint(task.instance_id, _BOLD, _BRIGHT_CYAN)
         print(f"{tag('prep')} checkout {inst} @ {task.base_commit[:8]} ...", flush=True)

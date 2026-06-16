@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 
+from budgetflow.failure_classification import build_verdict
 from budgetflow.observability import build_harness_trust, parse_harness_evidence
 
 REQUIRED_FIELDS = frozenset({
@@ -69,6 +70,9 @@ def _check_trace_coverage(records: list[dict]) -> list[str]:
     for i, rec in enumerate(records):
         trace_count = int(rec.get("turn_trace_count") or 0)
         if trace_count <= 0:
+            verdict = build_verdict(rec)
+            if verdict.get("verdict_axis") == "budget_fail":
+                continue
             inst = rec.get("instance_id", "?")
             strat = rec.get("strategy", "?")
             issues.append(f"NO_TRACE row {i}: {inst} {strat} — turn_trace_count={trace_count}")
@@ -158,6 +162,12 @@ def _check_observability_schema(records: list[dict]) -> list[str]:
         if score_status == "true_fail" and rec.get("harness_resolved"):
             issues.append(
                 f"SCORE_FAIL_MISMATCH row {i}: {inst} {strat} — score_status=true_fail but harness_resolved=true"
+            )
+        patch_source = str(rec.get("patch_source") or "none")
+        if patch_source not in {"submission", "none"}:
+            issues.append(
+                f"PATCH_SOURCE_INVALID row {i}: {inst} {strat} — "
+                f"patch_source={patch_source!r}; current runs only allow 'submission' or 'none'"
             )
     return issues
 

@@ -1,8 +1,13 @@
 from budgetflow.run_observability.audit import build_compact_audit
 from budgetflow.run_observability.checker import check_jsonl
 from budgetflow.observability import build_harness_trust
-from budgetflow.run_observability.checks import _check_cost_accounting, _check_value_profile_fallback
+from budgetflow.run_observability.checks import (
+    _check_cost_accounting,
+    _check_shared_cap_starvation,
+    _check_value_profile_fallback,
+)
 from budgetflow.run_observability.report import format_compact_audit
+from budgetflow.run_observability.schema import _check_trace_coverage
 import pytest
 
 
@@ -24,6 +29,78 @@ def test_compact_audit_preserves_generic_tier_counts() -> None:
 
     assert stats["tier_turns"] == {2: 1, 4: 1, 5: 2}
     assert stats["t3_turns"] == 0
+
+
+def test_trace_coverage_allows_pre_provider_budget_exhaustion() -> None:
+    issues = _check_trace_coverage([
+        {
+            "instance_id": "repo__task",
+            "strategy": "budgetflow_task_level",
+            "harness_resolved": False,
+            "exit_status": "BudgetFlowBudgetError",
+            "exit_reason": "budget_exhausted",
+            "patch_extracted": False,
+            "agent_gold_edited": False,
+            "turn_trace_count": 0,
+        }
+    ])
+
+    assert issues == []
+
+
+def test_trace_coverage_still_flags_non_budget_missing_trace() -> None:
+    issues = _check_trace_coverage([
+        {
+            "instance_id": "repo__task",
+            "strategy": "budgetflow_task_level",
+            "harness_resolved": False,
+            "exit_status": "HarnessFailed",
+            "exit_reason": "harness_failed",
+            "patch_extracted": False,
+            "agent_gold_edited": False,
+            "turn_trace_count": 0,
+        }
+    ])
+
+    assert issues
+    assert issues[0].startswith("NO_TRACE")
+
+
+def test_shared_cap_starvation_uses_agent_exit_reason() -> None:
+    issues = _check_shared_cap_starvation([
+        {
+            "run_series": "small_check",
+            "instance_id": "repo__task",
+            "strategy": "budgetflow_task_level",
+            "budget_mode": "shared",
+            "exit_status": "HarnessFailed",
+            "exit_reason": "harness_failed",
+            "agent_exit_status": "BudgetFlowBudgetError",
+            "agent_exit_reason": "budget_exhausted",
+        }
+    ])
+
+    assert issues
+    assert "1 rows exited" in issues[0]
+
+
+def test_shared_cap_starvation_ignores_resolved_agent_budget_exit() -> None:
+    issues = _check_shared_cap_starvation([
+        {
+            "run_series": "small_check",
+            "instance_id": "repo__task",
+            "strategy": "budgetflow_task_level",
+            "budget_mode": "shared",
+            "harness_resolved": True,
+            "score_status": "pass",
+            "exit_status": "HarnessResolved",
+            "exit_reason": "harness_resolved",
+            "agent_exit_status": "BudgetFlowBudgetError",
+            "agent_exit_reason": "budget_exhausted",
+        }
+    ])
+
+    assert issues == []
 
 
 def test_compact_audit_reports_value_metrics() -> None:
@@ -146,6 +223,30 @@ def test_compact_audit_accepts_trace_cost_confidence() -> None:
                     "cost_estimate_confidence": {"backend": "tier2"},
                 },
             ],
+        }
+    ])
+
+    assert "missing_cost_confidence" not in audit["decision_issue_counts"]
+
+
+def test_compact_audit_accepts_pre_provider_budget_block_cost_confidence() -> None:
+    audit = build_compact_audit([
+        {
+            "instance_id": "repo__task-a",
+            "strategy": "budgetflow_task_level",
+            "harness_resolved": False,
+            "harness_evidence": {"evidence_complete": False},
+            "task_value": 1.0,
+            "value_source": "manual_value",
+            "total_cost": 0.0,
+            "usage_source": "none",
+            "cost_mode": "no_provider_call",
+            "llm_turns": 1,
+            "turn_trace_count": 0,
+            "exit_status": "BudgetFlowBudgetError",
+            "exit_reason": "budget_exhausted",
+            "agent_exit_status": "BudgetFlowBudgetError",
+            "agent_exit_reason": "budget_exhausted",
         }
     ])
 

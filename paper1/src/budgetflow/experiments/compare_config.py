@@ -144,7 +144,15 @@ def required_backends_for_strategies(strategies: tuple[CompareStrategy, ...]) ->
         elif cfg.routing in {"all_pro", "all_t3", "bare_t3"}:
             required.add(TIER3_BACKEND)
         else:
-            required.update({backend.name for backend in MODEL_CATALOG.backends()})
+            # Active compare runs exclude T1 unless the strategy explicitly asks
+            # for all_flash/all_t1. Keep provider preflight aligned with the
+            # runtime backend pool so an unused cheap-tier diagnostic model
+            # cannot block or contaminate a T2/T3 mainline run.
+            required.update(
+                backend.name
+                for backend in MODEL_CATALOG.backends()
+                if backend.name != TIER1_BACKEND
+            )
     return [backend.name for backend in MODEL_CATALOG.backends() if backend.name in required]
 
 

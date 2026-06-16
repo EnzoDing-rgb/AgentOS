@@ -186,7 +186,7 @@ _MEMORY_ROUTINGS = frozenset({
 })
 
 # Harness trust values that are acceptable for memory.
-_MEMORY_HARNESS_TRUST = frozenset({"trusted", "trusted_fallback"})
+_MEMORY_HARNESS_TRUST = frozenset({"trusted"})
 
 
 def _memory_skip_reason(record: dict) -> str:

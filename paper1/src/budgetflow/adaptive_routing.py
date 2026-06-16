@@ -29,8 +29,6 @@ _STAGNATION_EXITS = frozenset(
     {
         "stagnation_no_progress",
         "stagnation_repeat_command",
-        "stagnation_no_progress_worktree_patch",
-        "stagnation_repeat_command_worktree_patch",
     }
 )
 

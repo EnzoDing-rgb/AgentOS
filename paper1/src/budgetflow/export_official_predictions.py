@@ -22,9 +22,6 @@ def _patch_from_record(record: dict) -> str | None:
         path = Path(trace_dir) / "submitted.patch"
         if path.is_file():
             return path.read_text()
-        path = Path(trace_dir) / "worktree.patch"
-        if path.is_file():
-            return path.read_text()
     return None
 
 

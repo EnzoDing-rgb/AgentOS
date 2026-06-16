@@ -174,7 +174,7 @@ def test_forensic_summary_budget_after_patch() -> None:
         {
             "harness_resolved": False,
             "patch_extracted": True,
-            "patch_source": "worktree",
+            "patch_source": "submission",
             "agent_gold_edited": True,
             "agent_attempted_submit": False,
             "agent_submitted": False,
@@ -189,7 +189,7 @@ def test_forensic_summary_budget_after_patch() -> None:
 
     assert summary["primary_axis"] == "budget"
     assert summary["budget"]["exhausted_after_patch"] is True
-    assert summary["patch"]["source"] == "worktree"
+    assert summary["patch"]["source"] == "submission"
     assert summary["harness"]["fail_after"] == "fail"
     assert "budget_exhausted" in summary["failure_chain"]
 
@@ -445,6 +445,52 @@ def test_score_status_budget_exhaustion_with_trace_is_true_fail() -> None:
     assert score["true_fail_reason"] == "budget_fail"
 
 
+def test_score_status_budget_exhaustion_without_trace_is_true_fail() -> None:
+    rec = {
+        "harness_resolved": False,
+        "patch_extracted": False,
+        "agent_gold_edited": False,
+        "exit_status": "BudgetFlowBudgetError",
+        "exit_reason": "budget_exhausted",
+        "detail": "no model patch extracted",
+        "turn_trace_count": 0,
+        "turn_traces": None,
+    }
+
+    score = build_score_status(rec)
+
+    assert score["score_status"] == "true_fail"
+    assert score["scoreable"] is True
+    assert score["true_fail_reason"] == "budget_fail"
+    assert score["abort_reason"] == ""
+
+
+def test_agent_budget_exhaustion_under_harness_failed_is_budget_true_fail() -> None:
+    rec = {
+        "harness_resolved": False,
+        "patch_extracted": True,
+        "patch_source": "submission",
+        "submitted_patch": "/tmp/submitted.patch",
+        "agent_gold_edited": False,
+        "exit_status": "HarnessFailed",
+        "exit_reason": "harness_failed",
+        "agent_exit_status": "BudgetFlowBudgetError",
+        "agent_exit_reason": "budget_exhausted",
+        "detail": "test_patch=ok; fail_before=fail; model_patch=error: corrupt patch at line 194",
+        "turn_trace_count": 0,
+        "turn_traces": None,
+    }
+
+    assert classify_failure(rec) == "budget_fail"
+    verdict = build_verdict(rec)
+    assert verdict["verdict_axis"] == "budget_fail"
+
+    score = build_score_status(rec)
+    assert score["score_status"] == "true_fail"
+    assert score["true_fail_reason"] == "budget_fail"
+    assert score["abort_reason"] == ""
+
+
 # ── Score status: model_fail/repair not aborted by harness trust ──────────
 
 def _model_fail_repair_nameerror_record(**overrides):
@@ -593,12 +639,12 @@ def test_model_patch_apply_failure_is_scoreable_model_true_fail() -> None:
     assert score["abort_reason"] == ""
 
 
-def test_budget_exhausted_kept_as_abort_when_severity_blocking() -> None:
-    """budget_exhausted with blocking harness evidence stays abort.
+def test_budget_exhausted_with_blocking_harness_gap_is_budget_true_fail() -> None:
+    """budget_exhausted is a scoreable strategy outcome.
 
-    The model exhausted budget before resolving — current design keeps this
-    as abort rather than true_fail. Ensure no regression from the model_fail
-    repair fix.
+    Missing harness evidence matters for provider/protocol/harness failures, but
+    shared-budget exhaustion is the policy outcome itself. Otherwise a policy
+    can spend the cap and have the unresolved tail silently removed from Yield.
     """
     rec = _model_fail_repair_nameerror_record(
         exit_status="BudgetFlowBudgetError",
@@ -611,10 +657,10 @@ def test_budget_exhausted_kept_as_abort_when_severity_blocking() -> None:
     assert verdict["verdict_axis"] == "budget_fail"
 
     score = build_score_status(rec)
-    # budget_exhausted with blocking severity + no gold_edit stays abort
-    assert score["score_status"] == "abort", (
-        f"budget_exhausted with blocking trust must stay abort, got {score['score_status']}"
-    )
+    assert score["score_status"] == "true_fail"
+    assert score["scoreable"] is True
+    assert score["true_fail_reason"] == "budget_fail"
+    assert score["abort_reason"] == ""
 
 
 def test_model_fail_localization_stagnation_is_true_fail() -> None:
@@ -641,42 +687,6 @@ def test_model_fail_localization_stagnation_is_true_fail() -> None:
     score = build_score_status(rec)
     assert score["score_status"] == "true_fail"
     assert score["scoreable"] is True
-
-
-def test_legacy_aborts_reclassify_by_owner_not_stored_status() -> None:
-    """Historical abort rows are forensic input; current taxonomy owns scoring."""
-    import json
-    from pathlib import Path
-
-    jsonl = Path("paper1/data/runs/compare_14x5-0.jsonl")
-    if not jsonl.exists():
-        import pytest
-        pytest.skip("5×14 JSONL not available")
-
-    with jsonl.open() as f:
-        records = [json.loads(l) for l in f if l.strip()]
-
-    protocol_aborts = []
-    true_fails_from_abort = []
-    for r in records:
-        score = build_score_status(r)
-        stored = r.get("score_status")
-        if score["score_status"] == "abort":
-            protocol_aborts.append(r)
-        elif stored == "abort" and score["score_status"] == "true_fail":
-            true_fails_from_abort.append(r)
-
-    assert true_fails_from_abort
-    for r in true_fails_from_abort:
-        score = build_score_status(r)
-        assert score["score_status"] == "true_fail"
-        assert score["abort_reason"] == ""
-        assert build_verdict(r)["failure_owner"] in {"model", "budget"}
-
-    assert protocol_aborts
-    for r in protocol_aborts:
-        score = build_score_status(r)
-        assert score["abort_owner"] in {"protocol", "harness", "infra"}
 
 
 # ── Exit owner classification tests ─────────────────────────────────────

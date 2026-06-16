@@ -41,6 +41,12 @@ def _pick_tier(pick) -> int:
 
 def _has_invoice_accurate_cost(record: dict) -> bool:
     """Check if the record has provider usage for every settled turn."""
+    if (
+        record.get("usage_source") == "none"
+        and record.get("cost_mode") == "no_provider_call"
+        and float(record.get("total_cost") or 0.0) == 0.0
+    ):
+        return True
     if record.get("usage_source") == "provider":
         return True
     traces = record.get("turn_traces")
@@ -269,8 +275,14 @@ def _decision_issues(record: dict) -> list[str]:
         issues.append("missing_value_source")
     if record.get("total_cost") is None:
         issues.append("missing_cost")
+    has_row_cost_confidence = (
+        record.get("usage_source") == "none"
+        and record.get("cost_mode") == "no_provider_call"
+        and float(record.get("total_cost") or 0.0) == 0.0
+    )
     if not (
-        record.get("budget_prior_confidence")
+        has_row_cost_confidence
+        or record.get("budget_prior_confidence")
         or record.get("cost_source")
         or _trace_has_field(record, "cost_estimate_confidence")
         or _trace_has_field(record, "cost_source")

@@ -91,7 +91,6 @@ from budgetflow.observability import (  # noqa: E402
 )
 from budgetflow.learning_context import load_policy_memory_context  # noqa: E402
 from budgetflow.learn_policy import combine_learn_policy_inputs  # noqa: E402
-from budgetflow.local_harness import set_worktree_root  # noqa: E402
 from budgetflow.adaptive_routing import AdaptiveRoutingRegistry  # noqa: E402
 from budgetflow.run_guards import CompareRunGuards, set_active_guard  # noqa: E402
 from budgetflow.run_series import release_run_identity, resolve_run_identity  # noqa: E402
@@ -175,13 +174,6 @@ def main() -> None:
             )
 
     check_cwd()
-
-    # --worktree-root: set before any task execution so runtime worktrees
-    # go to the correct scratch location.
-    if args.worktree_root:
-        set_worktree_root(args.worktree_root)
-    elif os.environ.get("BUDGETFLOW_WORKTREE_ROOT"):
-        set_worktree_root(os.environ["BUDGETFLOW_WORKTREE_ROOT"])
 
     if args.w_profile:
         os.environ["BF_W_PROFILE"] = args.w_profile

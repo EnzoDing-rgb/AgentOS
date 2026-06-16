@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import defaultdict
 from pathlib import Path
 
+from budgetflow.failure_classification import is_score_pass
 from budgetflow.observability import load_heartbeat
 
 def _check_cross_series_duplicates(records: list[dict]) -> list[str]:
@@ -108,12 +109,16 @@ def _check_shared_cap_starvation(records: list[dict]) -> list[str]:
         if rs not in by_series:
             by_series[rs] = {"ran": {}, "rows": []}
         by_series[rs]["rows"].append(rec)
+        if is_score_pass(rec):
+            continue
         iid = str(rec.get("instance_id", ""))
         strat = str(rec.get("strategy", ""))
         tv = rec.get("task_value")
         exit_reason = str(rec.get("exit_reason", ""))
+        agent_exit_reason = str(rec.get("agent_exit_reason", ""))
+        exit_label = agent_exit_reason if "budget_exhausted" in agent_exit_reason.lower() else exit_reason
         key = (iid, strat)
-        by_series[rs]["ran"][key] = {"value": tv, "exit": exit_reason}
+        by_series[rs]["ran"][key] = {"value": tv, "exit": exit_label}
     for rs, data in sorted(by_series.items()):
         if _is_per_task_budget_series(data["rows"]):
             continue

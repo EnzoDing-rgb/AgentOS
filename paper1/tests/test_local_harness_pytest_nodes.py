@@ -110,12 +110,28 @@ def test_evaluate_local_harness_runs_all_pass_to_pass_tests(tmp_path: Path, monk
     assert calls[-1] == task.pass_to_pass
 
 
-def test_pip_marker_lives_inside_current_worktree(tmp_path: Path) -> None:
-    worktree = tmp_path / "worktrees" / "repo__task"
+def test_finalize_repo_workspace_never_installs_into_global_python(tmp_path: Path, monkeypatch) -> None:
+    task = SimpleNamespace(instance_id="sympy__sympy-22714", base_commit="abc123")
 
-    marker = local_harness._pip_marker_path(worktree)
+    monkeypatch.setattr(local_harness, "apply_python_compat", lambda repo_dir: ())
+    monkeypatch.setattr(
+        local_harness.subprocess,
+        "run",
+        lambda cmd, *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError(f"finalize must not run subprocesses: {cmd!r}")
+        ),
+    )
+    monkeypatch.setattr(
+        local_harness.subprocess,
+        "Popen",
+        lambda cmd, *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError(f"finalize must not spawn subprocesses: {cmd!r}")
+        ),
+    )
 
-    assert marker == worktree / ".budgetflow_pip_ok"
+    result = local_harness._finalize_repo_workspace(tmp_path, task)
+
+    assert result == tmp_path
 
 
 # ---- RepoHarnessAdapter tests ----

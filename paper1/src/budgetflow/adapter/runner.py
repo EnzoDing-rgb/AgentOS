@@ -23,13 +23,12 @@ from ..governor import BudgetGovernor, GovernorConfig
 from ..heartbeat import run_with_heartbeat
 from ..ledger import WorkflowLedgerStore
 from ..lite_tasks import LiteTaskRecord
-from ..local_harness import clone_or_checkout, evaluate_local_harness, get_last_compat_files
+from ..local_harness import clone_or_checkout, evaluate_local_harness
 from ..observability import parse_harness_evidence
 from ..run_trace import (
     RunTraceLogger,
     TracedDefaultAgent,
     TraceConsoleLevel,
-    extract_worktree_patch,
     patch_local_swebench_config,
 )
 from .backends import build_backends_for_strategy
@@ -91,6 +90,16 @@ class MiniSweRunResult:
     provider_retryable: bool | None = None
 
 
+def _row_cost_observability(model: BudgetFlowLitellmModel, total_cost: float) -> tuple[str, str]:
+    if model._estimated_usage_turns == 0 and model._provider_usage_turns > 0:
+        return "provider", "catalog_provider_usage"
+    if model._estimated_usage_turns > 0:
+        return "estimated", "catalog_estimated_usage"
+    if float(total_cost or 0.0) == 0.0:
+        return "none", "no_provider_call"
+    return "unknown", "cost_unattributed"
+
+
 def _load_agent_config(*, step_limit: int = 250) -> dict:
     # Keep one action contract across all routed tiers. BudgetFlow experiments
     # should isolate model/routing decisions, not switch the mini-SWE protocol
@@ -145,7 +154,6 @@ def run_mini_swe_task(
     else:
         cap = governor.config.total_budget
     repo_dir = clone_or_checkout(task, workspace_key=workspace_key)
-    compat_files = get_last_compat_files()
     trace_dir = get_trace_dir(task.instance_id, label)
     trace = RunTraceLogger(
         instance_id=task.instance_id,
@@ -153,7 +161,6 @@ def run_mini_swe_task(
         trace_dir=trace_dir,
         target_files=task.gold_files,
         strategy_label=label,
-        ignore_changed_files=compat_files,
         console_level=trace_console,
         progress_box=progress_box,
     )
@@ -235,29 +242,7 @@ def run_mini_swe_task(
     if exit_reason is None and model.last_exit_reason:
         exit_reason = model.last_exit_reason
 
-    patch_source = "submission"
-    # Use model-reported submission text as primary source.
-    # Fallback to worktree git diff only when agent didn't submit any text.
-    # (worktree diff can include non-gold file changes that break harness git apply.)
-    patch_from_worktree = False
-    if not patch_text:
-        agent_summary_early = trace.agent_summary()
-        prefer = tuple(task.gold_files) if agent_summary_early.get("gold_edited") else ()
-        fallback = extract_worktree_patch(
-            repo_dir,
-            ignore_paths=trace.ignore_changed_files,
-            prefer_paths=prefer,
-        )
-        if fallback:
-            patch_text = fallback
-            patch_source = "worktree"
-            patch_from_worktree = True
-            (trace_dir / "worktree.patch").write_text(patch_text)
-            print(
-                f"{tag('patch', bold=False)} {task.instance_id} {label} "
-                f"worktree git diff (no submit marker)",
-                flush=True,
-            )
+    patch_source = "submission" if patch_text else "none"
 
     trace.finalize_agent(submitted=exit_reason == "submitted", patch_extracted=bool(patch_text))
     if patch_text:
@@ -277,8 +262,6 @@ def run_mini_swe_task(
         patch_extracted=bool(patch_text),
     )
     agent_summary = trace.agent_summary()
-    if patch_from_worktree and exit_reason in {"stagnation_no_progress", "stagnation_repeat_command"}:
-        exit_reason = f"{exit_reason}_worktree_patch"
     agent_exit_status = exit_status
     agent_exit_reason = exit_reason
     if harness.harness_resolved and exit_status.lower() not in {"submitted", "complete"}:
@@ -292,6 +275,7 @@ def run_mini_swe_task(
         violations.append("budget_violation")
     snapshot = model.last_budget_snapshot or governor.budget_snapshot()
     task_cost = ledger.get(task.instance_id).actual_cost
+    usage_source, cost_mode = _row_cost_observability(model, task_cost)
     trace_rows = list(model.turn_traces)
     first_trace = next((t for t in trace_rows if isinstance(t, dict)), {})
     first_provider_error = next(
@@ -324,20 +308,8 @@ def run_mini_swe_task(
         completion_tokens_total=model._total_completion_tokens,
         provider_usage_turns=model._provider_usage_turns,
         estimated_usage_turns=model._estimated_usage_turns,
-        cost_mode=(
-            "catalog_provider_usage"
-            if model._estimated_usage_turns == 0 and model._provider_usage_turns > 0
-            else "catalog_estimated_usage"
-            if model._estimated_usage_turns > 0
-            else ""
-        ),
-        usage_source=(
-            "provider"
-            if model._estimated_usage_turns == 0 and model._provider_usage_turns > 0
-            else "estimated"
-            if model._estimated_usage_turns > 0
-            else ""
-        ),
+        cost_mode=cost_mode,
+        usage_source=usage_source,
         turn_trace_count=len(model.turn_traces),
         turn_traces=trace_rows if trace_rows else None,
         submitted_patch_path=str(submitted_patch) if submitted_patch is not None else None,

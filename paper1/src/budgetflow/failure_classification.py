@@ -90,6 +90,14 @@ def _is_budget_exit(status: str, reason: str) -> bool:
     )
 
 
+def _record_is_budget_exit(record: dict[str, Any]) -> bool:
+    """Return True when either the row or underlying agent exhausted budget."""
+    return (
+        _is_budget_exit(str(record.get("exit_status") or ""), str(record.get("exit_reason") or ""))
+        or _is_budget_exit(str(record.get("agent_exit_status") or ""), str(record.get("agent_exit_reason") or ""))
+    )
+
+
 def _is_infra_exit(status: str) -> bool:
     status_l = status.lower()
     if status in _PROTOCOL_STATUSES or "format" in status_l:
@@ -201,7 +209,7 @@ def compute_exit_owner(record: dict[str, Any]) -> str:
         return EXIT_OWNER_PARSER_PROTOCOL
 
     # Budget exhaustion.
-    if _is_budget_exit(status, reason):
+    if _record_is_budget_exit(record):
         return EXIT_OWNER_BUDGET_EXHAUSTED
 
     # Provider / infra errors.
@@ -301,12 +309,13 @@ def build_score_status(record: dict[str, Any]) -> dict[str, Any]:
     elif axis == "harness_fail" or (
         severity == "blocking"
         and trust_level in {"invalid", "incomplete"}
+        and axis != "budget_fail"
         and not (axis == "model_fail" and stage == "repair")
     ):
         abort_reason = "untrusted_harness_evidence"
         abort_owner = str(trust.get("harness_owner") or "harness")
         abort_stage = stage if stage else "harness"
-    elif int(record.get("turn_trace_count") or 0) <= 0:
+    elif axis != "budget_fail" and int(record.get("turn_trace_count") or 0) <= 0:
         abort_reason = "missing_turn_trace"
         abort_owner = "infra"
         abort_stage = "runtime"
@@ -339,7 +348,7 @@ def _failure_chain(record: dict[str, Any], harness: dict[str, str]) -> list[str]
     reason = str(record.get("exit_reason") or "")
     errors = _turn_error_types(record)
 
-    if _is_budget_exit(status, reason):
+    if _record_is_budget_exit(record):
         chain.append("budget_exhausted")
     if reason.startswith("stagnation_"):
         chain.append(reason)
@@ -400,7 +409,7 @@ def build_forensic_summary(record: dict[str, Any]) -> dict[str, Any]:
     harness = _parse_harness_detail(str(record.get("detail") or ""))
     status = str(record.get("exit_status") or "")
     reason = str(record.get("exit_reason") or "")
-    budget_exhausted = _is_budget_exit(status, reason)
+    budget_exhausted = _record_is_budget_exit(record)
     patch_extracted = bool(record.get("patch_extracted"))
     gold_edited = bool(record.get("agent_gold_edited"))
     primary_axis, confidence = _primary_axis(record, harness)
@@ -454,7 +463,7 @@ def classify_failure(record: dict[str, Any]) -> str:
     if has_host_dependency_contamination(str(record.get("detail") or "")):
         return "infra_fail"
 
-    if _is_budget_exit(status, reason):
+    if _record_is_budget_exit(record):
         return "budget_fail"
 
     if _is_conservation_lockout(record):
@@ -548,7 +557,7 @@ def build_verdict(record: dict[str, Any]) -> dict[str, Any]:
         axis = "pass"
     elif has_host_dependency_contamination(detail):
         axis = "infra_fail"
-    elif _is_budget_exit(status, reason):
+    elif _record_is_budget_exit(record):
         axis = "budget_fail"
     elif _is_conservation_lockout(record):
         axis = "budget_fail"

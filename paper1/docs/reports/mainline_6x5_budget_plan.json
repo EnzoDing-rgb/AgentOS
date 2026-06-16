@@ -2,9 +2,9 @@
   "hard_cap_usd": 0.3321,
   "source": "budget_binding_calibrator",
   "generation_mode": "target_utilization",
-  "catalog_revision": "2026-06-16-qwen37plus-t2-t3x3",
-  "catalog_path": "/root/.dev/AgentOS/paper1/docs/config/model_tiers.t3x3.json",
-  "catalog_content_hash": "edd5cb2e038e",
+  "catalog_revision": "2026-06-16-qwen37plus-t2-normalized",
+  "catalog_path": "/root/.dev/AgentOS/paper1/docs/config/model_tiers.default.json",
+  "catalog_content_hash": "f7dd3820d517",
   "historical_source": "cold_start_pressure_prior:frozen_plan=docs/reports/mainline_6x30_frozen_router_plan.json",
   "task_ids": [
     "sympy__sympy-22714",

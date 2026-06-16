@@ -136,7 +136,6 @@ def parse_compare_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--runtime-root", type=str, default=None, help="runtime scratch root")
     parser.add_argument("--allow-nfs-runtime", action="store_true", default=False, help="allow NFS runtime root")
-    parser.add_argument("--worktree-root", type=str, default=None, help="override worktree dir")
     parser.add_argument("--soft-budget", type=float, default=None, help="optional soft budget for shared mode")
     parser.add_argument("--max-overrun", type=float, default=0.0, help="bounded overrun above cap")
     parser.add_argument(

@@ -141,6 +141,17 @@ def test_compare_runner_records_turns_value_and_task_features(monkeypatch) -> No
     assert record["task_set_kind"] == "familiar"
 
 
+def test_runner_marks_pre_provider_budget_block_cost_source() -> None:
+    import budgetflow.adapter.runner as runner
+
+    model = SimpleNamespace(_provider_usage_turns=0, _estimated_usage_turns=0)
+
+    usage_source, cost_mode = runner._row_cost_observability(model, 0.0)
+
+    assert usage_source == "none"
+    assert cost_mode == "no_provider_call"
+
+
 def test_auto_budget_records_dynamic_task_cap_mode(monkeypatch) -> None:
     import budgetflow.adapter.runner as runner
 

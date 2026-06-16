@@ -5,7 +5,11 @@ from argparse import Namespace
 import pytest
 
 from budgetflow.experiments.compare_cli import parse_compare_args
-from budgetflow.experiments.compare_config import CompareStrategy, task_set_kind
+from budgetflow.experiments.compare_config import (
+    CompareStrategy,
+    required_backends_for_strategies,
+    task_set_kind,
+)
 from budgetflow.experiments.compare_setup import (
     build_batch_budget_modes,
     load_tasks_for_compare,
@@ -101,6 +105,12 @@ def test_custom_ids_default_to_paper_mainline_six_policy_set() -> None:
     ]
     assert selection.policy_jobs == 6
     assert selection.jobs_upgraded is True
+
+
+def test_mainline_provider_preflight_matches_t2_t3_runtime_pool() -> None:
+    selection = select_strategies(_args(ids="sympy__sympy-22714"))
+
+    assert required_backends_for_strategies(selection.strategies) == ["tier2", "tier3"]
 
 
 def test_non_3x3_preset_defaults_to_paper_mainline_not_full_catalog() -> None:

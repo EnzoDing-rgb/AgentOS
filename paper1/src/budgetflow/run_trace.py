@@ -156,46 +156,6 @@ def git_diff_digest(
     return hashlib.sha256(result.stdout.encode("utf-8", errors="replace")).hexdigest()
 
 
-def extract_worktree_patch(
-    repo_dir: Path,
-    *,
-    ignore_paths: frozenset[str] | set[str] = frozenset(),
-    prefer_paths: tuple[str, ...] = (),
-    timeout_s: int = 15,
-) -> str | None:
-    """Build unified diff from agent worktree when mini-SWE submit marker never fired."""
-    changed = [f for f in git_changed_files(repo_dir, timeout_s=timeout_s) if f not in ignore_paths]
-    if not changed:
-        return None
-    if prefer_paths:
-        preferred = frozenset(prefer_paths)
-        if not any(path in preferred for path in changed):
-            return None
-    try:
-        # Diff ONLY the agent's real changed files (pathspec). Without this,
-        # `git diff` also dumps apply_python_compat edits (collections.abc
-        # rewrites across dozens of files). The harness re-applies compat on a
-        # fresh checkout, so a patch carrying those edits hits "corrupt patch"
-        # / already-applied context mismatches and fails spuriously.
-        result = subprocess.run(
-            ["git", "diff", "--no-color", "--", *changed],
-            cwd=repo_dir,
-            capture_output=True,
-            text=True,
-            timeout=timeout_s,
-        )
-    except (subprocess.TimeoutExpired, OSError):
-        return None
-    if result.returncode != 0:
-        return None
-    diff = result.stdout.strip()
-    if not diff:
-        return None
-    if not diff.endswith("\n"):
-        diff += "\n"
-    return diff
-
-
 def _model_routing(agent: DefaultAgent) -> tuple[str, str]:
     model = getattr(agent, "model", None)
     if model is None:
