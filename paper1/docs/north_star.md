@@ -12,11 +12,11 @@ tiers only.
 |---|---|
 | BudgetFlow | Value-aware budget governance for multi-step agent workflows under shared hard budgets. |
 | Claim 1 | Under one shared hard budget, BudgetFlow maximizes normalized verified resolved value, called Yield. |
-| Claim 2 | BudgetFlow's value-aware budget allocation, routing, escalation, stop, and learning mechanisms explain how Claim 1 is achieved and must improve or preserve value/cost efficiency against strong diagnostic controls. |
+| Claim 2 | BudgetFlow's budget-aware allocation policy explains how Claim 1 is achieved: it chooses when to spend, stop, continue, route, or escalate under the compiled budget, and must improve or preserve value/cost efficiency against strong diagnostic controls. The policy may be task-level, stage/segment-aware, learned from memory, or a hybrid; no single source is assumed correct by definition. |
 | Yield | Total resolved task value within a shared budget window. It is not raw task count. |
 | Yield per Dollar | Total resolved task value divided by model spend. It is the main efficiency diagnostic. |
 | Value-Driven Budget Allocation | Two-layer mechanism: first compile a shared hard-budget regime for a fixed task sequence; then allocate model opportunities, turns, continue/stop decisions, and spend within that regime. |
-| Budget Regime Compiler | Pre-run mechanism that turns a fixed task set, fixed task order, ValueSource, Task Effort, reference cost scale, clean Cost Memory when available, and target pressure into a pre-registered shared hard budget plan with confidence and audit fields. It is part of Claim 1, not a separate claim, and it must not assign model tiers to individual tasks. |
+| Budget Regime Compiler | Pre-run mechanism that turns a fixed task set, fixed task order, ValueSource, Task Effort, reference cost scale, clean frozen calibration evidence when available, and target pressure into a pre-registered shared hard budget plan with confidence and audit fields. It is part of Claim 1, not a separate claim, and it must not assign model tiers to individual tasks. |
 | BudgetFlow Runtime | Runtime policy that executes the same task order as every control and allocates scarce model opportunities within the compiled shared budget. It decides when to spend, continue, stop, or use a stronger tier; it does not reorder tasks to chase value. |
 | Task Value | Estimated utility of a verified resolved outcome. It answers "what is this task worth if solved?" |
 | Task Effort | Estimated work, runway, or expected cost needed to resolve a task. It answers "how much budget should this task need?" |
@@ -31,9 +31,9 @@ tiers only.
 | CostAdapter | Adapter that turns public price catalogs, provider estimates, invoices, enterprise rate cards, or manual overrides into a standard cost signal. |
 | ProgressAdapter | Adapter that turns process evidence and final acceptance into standard progress/outcome signals. Intermediate progress can be unknown; final acceptance defines resolved. |
 | Policy Backend | Pluggable strategy that recommends cap, model tier, escalation, de-escalation, stop, and continue decisions. |
-| Cost Memory | Memory for cost, cap sufficiency, task value, and Yield per Dollar evidence. |
-| Routing Memory | Memory for backend choices, stage/segment outcomes, failure axes, and route effectiveness. |
-| Escalation Memory | Memory for whether Strongest Model turns were productive. |
+| Cost Memory | Optional learning input for cost, cap sufficiency, task value, and Yield per Dollar evidence. It is not a required Claim 1 input and should be enabled only in an explicit learning configuration. |
+| Routing Memory | Optional learning input for backend choices, stage/segment outcomes, failure axes, and route effectiveness. It can inform a learned or hybrid Claim 2 policy, but it is not synonymous with Claim 2. |
+| Escalation Memory | Optional learning input for whether Strongest Model turns were productive. It mainly applies to policies with escalation windows; task-level policies may not use it. |
 | Value-Triggered Escalation | Bounded use of a stronger model tier for high-value tasks when expected marginal value justifies it. |
 | Strongest Model | The strongest configured model tier. It is one model-tier option, not the system claim. |
 | Infra | Runtime, provider, parser, harness, filesystem, worktree, and environment health. |
@@ -80,15 +80,27 @@ models, where should the next model opportunity go?"
 | Claim | Main question | Primary evidence |
 |---|---|---|
 | Claim 1 | Under the same compiled shared hard-budget regime, does BudgetFlow resolve more normalized task value? | Yield and Yield per Dollar at fixed budget, with budget-plan confidence and actual utilization reported. |
-| Claim 2 | Why did that happen, and are the mechanisms reusable? | Resolution-cost frontier, Strongest Model productive use, Tier Boundary Selection, stop-loss behavior, stage/task routing controls, memory effect, and failure attribution. |
+| Claim 2 | Which budget-aware allocation policy explains the Claim 1 result, and is that policy reusable? | Resolution-cost frontier, Strongest Model productive use, Tier Boundary Selection, stop-loss behavior, task-level vs stage/segment-aware controls, optional memory effect when enabled, and failure attribution. |
 
 Claim 1 is the objective. The Budget Regime Compiler is the pre-run part of
 Value-Driven Budget Allocation: it defines the shared budget regime before any
 policy comparison. The Runtime is the execution part: it allocates model
 opportunities within that regime while preserving the pre-registered task
-order. Claim 2 is mechanism analysis, not a second independent product claim.
+order.
+
+Claim 2 is mechanism analysis about the allocation policy that produced the
+Claim 1 outcome. That policy can come from a task-level tier choice, a
+stage/segment-aware router, a learned memory input, or a hybrid. BudgetFlow
+Segment Routing is therefore a Claim 2 policy variant: it is useful evidence
+only if its stage/segment signals improve or preserve Yield and Yield per
+Dollar against task-level or per-request controls under the same budget.
+Memory-based continual learning is another possible Claim 2 variant, not a
+requirement for every Claim 1 run.
+
 Routing savings, stage-aware routing, Tier Boundary Selection, stop-loss,
-escalation, and memory are useful only when they protect or improve Claim 1.
+escalation, and learning inputs are useful only when they protect or improve
+Claim 1. Do not optimize mechanism diagnostics in a way that reduces
+value-weighted outcomes.
 
 Resolved task count, pass rate, Pass per Dollar, average turns, and no-patch
 rate are diagnostics. They must not replace Yield or Yield per Dollar as the
@@ -133,9 +145,9 @@ The Budget Regime Compiler makes the fixed budget auditable rather than
 hand-picked.
 
 - Compile the shared hard budget from frozen task IDs, frozen task order,
-  ValueSource, Task Effort, a reference service/cost scale, clean Cost Memory
-  when available, and a predeclared target pressure such as roughly 80%-90%
-  expected utilization.
+  ValueSource, Task Effort, a reference service/cost scale, clean frozen
+  calibration evidence when available, and a predeclared target pressure such
+  as roughly 80%-90% expected utilization.
 - The compiler may use a model catalog or invoice data to convert expected
   effort into dollars, but only as a reference cost scale. It must not decide
   that a particular task should use T2, T3, or any future model tier. That is a
@@ -156,12 +168,16 @@ hand-picked.
 - Do not claim the compiler guarantees exact utilization. It targets a pressure
   regime and must expose projection error when actual spend is too loose or too
   tight.
-- Active Cost Memory for the compiler must consume only current-schema,
+- Frozen cost calibration for the compiler must consume only current-schema,
   same-catalog, scoreable rows. Budget-exhausted rows may enter only as censored
   spend floors and must include remaining-runway estimates before the next cap
   is compiled; they are never complete cost observations. Provider, parser,
   infra, old schema, or catalog-mismatched rows are forensic evidence, not
   calibration samples.
+- Continual Cost Memory is optional and must be evaluated separately from
+  frozen calibration. If enabled, the memory source, schema filter, and effect
+  on the next cap must be explicit and auditable; otherwise it should be
+  disabled for clean Claim 1 evidence runs.
 - Frozen router plans are never a budget source. Retired frozen-cap fields such
   as per-task ``base_cap`` or meta ``hard_cap_usd`` must be regenerated out of
   active router-plan artifacts before paid runs.
@@ -203,8 +219,16 @@ estimate the scale that cannot be known a priori: whether the compiled budget
 is too tight or too loose, whether Task Effort predicts runway, whether Model
 Fit differentiates model tiers, and whether budget pressure reaches the
 intended regime. After that calibration pass, the compiler, model catalog,
-ValueSource, task list, and policy configuration must be frozen before the
-held-out evidence run.
+ValueSource, task list, task order, and policy configuration must be frozen
+before the held-out evidence run.
+
+Frozen calibration and continual learning are different experimental modes.
+Frozen calibration is a pre-run procedure that produces a budget plan and
+abstract inputs such as workload-level Model Fit; the evidence run consumes
+those inputs without updating them. Continual learning consumes memory records
+to alter a future cap, route, stop/continue decision, or escalation window. It
+should be treated as an optional Claim 2 policy variant, not as a hidden
+requirement for Claim 1.
 
 That calibration is part of the enterprise mechanism, not a benchmark trick,
 when it follows these rules:
@@ -219,9 +243,9 @@ when it follows these rules:
   patience, and escalation confidence.
 - Do not tune on SWE-bench task IDs, repo names, pytest names, known patches,
   historical pass/fail labels for the evaluation set, or harness quirks.
-- Report the calibration source and whether learning inputs were enabled. A
-  small diagnostic run can justify the next frozen configuration, but it is not
-  paper-level evidence by itself.
+- Report the calibration source and whether continual learning inputs were
+  enabled. A small diagnostic run can justify the next frozen configuration,
+  but it is not paper-level evidence by itself.
 - Treat calibration as reusable only if the same procedure could be repeated on
   another enterprise workload with different tasks, values, models, and prices.
 - Interpret a repeated failure of the compiled cap, such as starving most
@@ -230,11 +254,14 @@ when it follows these rules:
   compiler procedure rather than by hand-editing the cap.
 
 The main generalization claim is procedural, not parametric. BudgetFlow should
-not argue that a particular target utilization, Model Fit prior, or stop-loss
-constant is universally correct. It should argue that a customer can provide or
-learn ValueSource, Task Effort, Model Fit, and CostSource for its own workload,
-and BudgetFlow turns those inputs into an auditable shared-budget allocation
-problem whose evidence is measured by verified Yield and Yield per Dollar.
+not argue that a particular target utilization, Model Fit prior, stop-loss
+constant, segment signal, or memory rule is universally correct. It should argue
+that a customer can provide or calibrate ValueSource, Task Effort, Model Fit,
+and CostSource for its own workload, and BudgetFlow turns those inputs into an
+auditable shared-budget allocation problem whose evidence is measured by
+verified Yield and Yield per Dollar. Continual learning can be added as a
+separate policy source when its memory effect is cleanly isolated and improves
+the same objective.
 
 The clean policy semantics are:
 
