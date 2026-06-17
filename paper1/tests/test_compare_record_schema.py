@@ -152,6 +152,51 @@ def test_runner_marks_pre_provider_budget_block_cost_source() -> None:
     assert cost_mode == "no_provider_call"
 
 
+def test_runner_labels_resolved_harness_as_resolved_even_after_submission() -> None:
+    import budgetflow.adapter.runner as runner
+
+    status, reason = runner._harness_exit_label(
+        agent_exit_status="Submitted",
+        agent_exit_reason="submitted",
+        harness_resolved=True,
+        patch_text="diff --git a/x b/x\n",
+        harness_detail="test_patch=ok; fail_before=fail; model_patch=ok; fail_after=pass; pass_to_pass=pass",
+    )
+
+    assert status == "HarnessResolved"
+    assert reason == "harness_resolved"
+
+
+def test_runner_labels_complete_unresolved_patch_as_harness_failed() -> None:
+    import budgetflow.adapter.runner as runner
+
+    status, reason = runner._harness_exit_label(
+        agent_exit_status="Submitted",
+        agent_exit_reason="submitted",
+        harness_resolved=False,
+        patch_text="diff --git a/x b/x\n",
+        harness_detail="test_patch=ok; fail_before=fail; model_patch=ok; fail_after=fail; pass_to_pass=pass",
+    )
+
+    assert status == "HarnessFailed"
+    assert reason == "harness_failed"
+
+
+def test_runner_preserves_agent_exit_when_harness_did_not_complete() -> None:
+    import budgetflow.adapter.runner as runner
+
+    status, reason = runner._harness_exit_label(
+        agent_exit_status="BudgetFlowBudgetError",
+        agent_exit_reason="budget_exhausted",
+        harness_resolved=False,
+        patch_text=None,
+        harness_detail="",
+    )
+
+    assert status == "BudgetFlowBudgetError"
+    assert reason == "budget_exhausted"
+
+
 def test_auto_budget_records_dynamic_task_cap_mode(monkeypatch) -> None:
     import budgetflow.adapter.runner as runner
 

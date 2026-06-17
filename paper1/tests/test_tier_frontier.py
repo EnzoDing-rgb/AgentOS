@@ -56,9 +56,9 @@ class TestTierFrontierCalibration:
         assert frontier.reference_tier == 2
         assert frontier.strongest_tier == 3
         # Default mainline catalog uses normalized experimental units:
-        # T3 is fixed at approximately 3x the T2 reference.
+        # T3 is fixed at approximately 5x the T2 reference.
         assert frontier.reference_display == "qwen3.7-plus"
-        assert frontier.strongest_output_ratio == pytest.approx(3.0)
+        assert frontier.strongest_output_ratio == pytest.approx(5.0)
         assert "strongest_vs_reference" in frontier.reason or "cost_ratio" in frontier.reason
         assert "cheapest" not in frontier.reason
 
@@ -293,6 +293,7 @@ class TestMaxTierWithFrontier:
     def test_budget_depletion_alone_does_not_open_strongest_tier(self):
         """Budget pressure is scarcity, not an unconditional strongest-tier trigger."""
         from budgetflow.adapter.strategies import build_routing_context, choose_backend
+        from budgetflow.allocation import AllocationContext
         from budgetflow.tier_frontier import TierFrontier
         from budgetflow.types import Stage, TurnInfo
 
@@ -319,15 +320,23 @@ class TestMaxTierWithFrontier:
             w_i=3.0,
             context_len=1000,
         )
-        expected = {b.name: 0.01 for b in _backends()}
+        # Use realistic per-turn costs reflecting actual ~5x T3/T2 price ratio.
+        # When T3 per-turn cost is 5x T2, the tiny 0.24→0.25 catalog fit delta
+        # does NOT make T3 cheaper in total — T2 is correctly cheaper.
+        # This verifies budget pressure is not by itself a strongest-tier trigger.
+        expected = {
+            "tier2": 0.0009 * 2000 + 0.0045 * 1024,
+            "tier3": 0.0045 * 2000 + 0.0225 * 1024,
+        }
 
         backend = choose_backend(ctx, turn, expected)
 
         assert ctx.max_tier == 2
         assert backend.tier <= 2
 
-    def test_frontier_allows_strongest_only_when_budget_slack_supports_it(self):
+    def test_task_level_frontier_uses_task_aggregate_not_current_stage(self):
         from budgetflow.adapter.strategies import build_routing_context, choose_backend
+        from budgetflow.allocation import AllocationContext
         from budgetflow.tier_frontier import TierFrontier
         from budgetflow.types import Stage, TurnInfo
 
@@ -355,11 +364,25 @@ class TestMaxTierWithFrontier:
         )
         expected = {b.name: b.cost_per_output_token * b.mean_output_tokens for b in _backends()}
 
-        loose = build_routing_context("value_aware_task_level", _backends(), budget_pressure=0.01)
+        loose = build_routing_context(
+            "value_aware_task_level",
+            _backends(),
+            budget_pressure=0.01,
+            task_value=2.0,
+            median_task_value=1.0,
+            allocation=AllocationContext(task_value=2.0, model_fit={"tier2": 0.50, "tier3": 0.518}),
+        )
         loose.tier_frontier = frontier
         choose_backend(loose, turn, expected)
 
-        tight = build_routing_context("value_aware_task_level", _backends(), budget_pressure=0.80)
+        tight = build_routing_context(
+            "value_aware_task_level",
+            _backends(),
+            budget_pressure=0.80,
+            task_value=2.0,
+            median_task_value=1.0,
+            allocation=AllocationContext(task_value=2.0, model_fit={"tier2": 0.50, "tier3": 0.518}),
+        )
         tight.tier_frontier = frontier
         choose_backend(tight, turn, expected)
 
@@ -367,6 +390,36 @@ class TestMaxTierWithFrontier:
         assert loose.max_tier == 3
         assert tight.tier_frontier_score is not None and tight.tier_frontier_score > 2.0
         assert tight.max_tier == 2
+
+    def test_task_level_frontier_score_stays_finite_for_bad_catalog_values(self):
+        from budgetflow.adapter.strategies import build_routing_context, choose_backend
+        from budgetflow.tier_frontier import TierFrontier
+        from budgetflow.types import Stage, TurnInfo
+
+        ctx = build_routing_context("value_aware_task_level", _backends(), budget_pressure=0.5)
+        ctx.tier_frontier = TierFrontier(
+            reference_tier=2,
+            strongest_tier=3,
+            reference_display="T2",
+            strongest_display="T3",
+            strongest_input_ratio=float("inf"),
+            strongest_output_ratio=float("inf"),
+            strongest_progress_delta={"localization": 0.0, "repair": 0.0, "validation": 0.0},
+            reference_runway_turns=35,
+            reason="bad catalog",
+        )
+        turn = TurnInfo(
+            workflow_id="test",
+            step_index=0,
+            stage=Stage.REPAIR,
+            w_i=3.0,
+            context_len=1000,
+        )
+
+        choose_backend(ctx, turn, {b.name: 0.01 for b in _backends()})
+
+        assert ctx.tier_frontier_score is not None
+        assert math.isfinite(ctx.tier_frontier_score)
 
     def test_max_tier_fields_in_turn_trace_use_reference_naming(self):
         """Router trace fields include reference-named frontier fields."""

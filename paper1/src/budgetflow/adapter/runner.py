@@ -100,6 +100,21 @@ def _row_cost_observability(model: BudgetFlowLitellmModel, total_cost: float) ->
     return "unknown", "cost_unattributed"
 
 
+def _harness_exit_label(
+    *,
+    agent_exit_status: str,
+    agent_exit_reason: str | None,
+    harness_resolved: bool,
+    patch_text: str | None,
+    harness_detail: str,
+) -> tuple[str, str | None]:
+    if harness_resolved:
+        return "HarnessResolved", "harness_resolved"
+    if patch_text and parse_harness_evidence(harness_detail).evaluated_complete:
+        return "HarnessFailed", "harness_failed"
+    return agent_exit_status, agent_exit_reason
+
+
 def _load_agent_config(*, step_limit: int = 250) -> dict:
     # Keep one action contract across all routed tiers. BudgetFlow experiments
     # should isolate model/routing decisions, not switch the mini-SWE protocol
@@ -264,12 +279,13 @@ def run_mini_swe_task(
     agent_summary = trace.agent_summary()
     agent_exit_status = exit_status
     agent_exit_reason = exit_reason
-    if harness.harness_resolved and exit_status.lower() not in {"submitted", "complete"}:
-        exit_status = "HarnessResolved"
-        exit_reason = "harness_resolved"
-    elif patch_text and parse_harness_evidence(harness.detail).evaluated_complete:
-        exit_status = "HarnessFailed"
-        exit_reason = "harness_failed"
+    exit_status, exit_reason = _harness_exit_label(
+        agent_exit_status=agent_exit_status,
+        agent_exit_reason=agent_exit_reason,
+        harness_resolved=harness.harness_resolved,
+        patch_text=patch_text,
+        harness_detail=harness.detail,
+    )
     violations: list[str] = []
     if governor.state.available_budget < 0:
         violations.append("budget_violation")

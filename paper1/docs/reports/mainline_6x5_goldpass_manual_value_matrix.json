@@ -1,0 +1,214 @@
+{
+  "meta": {
+    "name": "mainline_6x5_goldpass_manual_value_matrix",
+    "created": "2026-06-16",
+    "task_count": 5,
+    "profiles": [
+      "equal",
+      "manual_value"
+    ],
+    "value_source_kind": "pre_registered_manual",
+    "source_class": "subset_of_pre_registered_5x14_manual_matrix",
+    "outcome_free_for_this_run": true,
+    "selection_rule": "historical T3/BudgetFlow smoke-stable tasks selected before this rerun; values copied from pre-registered 5x14 matrix, not fitted to this run",
+    "note": "Current schema: task_value carries Claim 1 values; task_effort carries bootstrap effort for Budget Compiler only."
+  },
+  "tasks": {
+    "sympy__sympy-13480": {
+      "instance_id": "sympy__sympy-13480",
+      "repo": "sympy/sympy",
+      "features": {
+        "patch_lines": 12,
+        "f2p_count": 1,
+        "p2p_count": 43,
+        "problem_words": 56,
+        "gold_file_count": 1
+      },
+      "task_value": {
+        "equal": 1.0,
+        "manual_value": 1.0
+      },
+      "task_effort": {
+        "bootstrap_heuristic": 20.8442,
+        "source": "pre_registered_task_metadata_formula_from_5x14_matrix",
+        "features": {
+          "patch_lines": 12,
+          "f2p_count": 1,
+          "p2p_count": 43,
+          "problem_words": 56,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
+      "rationale": "Prior calibrated SymPy task; retained as low-to-medium value anchor."
+    },
+    "sympy__sympy-14774": {
+      "instance_id": "sympy__sympy-14774",
+      "repo": "sympy/sympy",
+      "features": {
+        "patch_lines": 12,
+        "f2p_count": 1,
+        "p2p_count": 114,
+        "problem_words": 67,
+        "gold_file_count": 1
+      },
+      "task_value": {
+        "equal": 1.0,
+        "manual_value": 0.8
+      },
+      "task_effort": {
+        "bootstrap_heuristic": 21.9149,
+        "source": "pre_registered_task_metadata_formula_from_5x14_matrix",
+        "features": {
+          "patch_lines": 12,
+          "f2p_count": 1,
+          "p2p_count": 114,
+          "problem_words": 67,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
+      "rationale": "Prior calibrated lower-value SymPy sanity task."
+    },
+    "sympy__sympy-16988": {
+      "instance_id": "sympy__sympy-16988",
+      "repo": "sympy/sympy",
+      "features": {
+        "patch_lines": 12,
+        "f2p_count": 2,
+        "p2p_count": 72,
+        "problem_words": 56,
+        "gold_file_count": 1
+      },
+      "task_value": {
+        "equal": 1.0,
+        "manual_value": 2.0
+      },
+      "task_effort": {
+        "bootstrap_heuristic": 23.3505,
+        "source": "pre_registered_task_metadata_formula_from_5x14_matrix",
+        "features": {
+          "patch_lines": 12,
+          "f2p_count": 2,
+          "p2p_count": 72,
+          "problem_words": 56,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
+      "rationale": "Prior calibrated high-value hard SymPy task; retained as top-priority anchor."
+    },
+    "sympy__sympy-21055": {
+      "instance_id": "sympy__sympy-21055",
+      "repo": "sympy/sympy",
+      "features": {
+        "patch_lines": 40,
+        "f2p_count": 1,
+        "p2p_count": 13,
+        "problem_words": 91,
+        "gold_file_count": 1
+      },
+      "task_value": {
+        "equal": 1.0,
+        "manual_value": 1.0
+      },
+      "task_effort": {
+        "bootstrap_heuristic": 48.0491,
+        "source": "pre_registered_task_metadata_formula_from_5x14_matrix",
+        "features": {
+          "patch_lines": 40,
+          "f2p_count": 1,
+          "p2p_count": 13,
+          "problem_words": 91,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
+      "rationale": "New zero-history SymPy task; lowest bootstrap difficulty of the four additions with moderate scope."
+    },
+    "sympy__sympy-23117": {
+      "instance_id": "sympy__sympy-23117",
+      "repo": "sympy/sympy",
+      "features": {
+        "patch_lines": 43,
+        "f2p_count": 1,
+        "p2p_count": 3,
+        "problem_words": 119,
+        "gold_file_count": 1
+      },
+      "task_value": {
+        "equal": 1.0,
+        "manual_value": 0.9
+      },
+      "task_effort": {
+        "bootstrap_heuristic": 50.0763,
+        "source": "pre_registered_task_metadata_formula_from_5x14_matrix",
+        "features": {
+          "patch_lines": 43,
+          "f2p_count": 1,
+          "p2p_count": 3,
+          "problem_words": 119,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
+      "rationale": "New zero-history SymPy task; narrow test scope (3 pass-to-pass) suggests focused fix with limited regression risk."
+    }
+  },
+  "rankings": {
+    "equal": [
+      {
+        "rank": 1,
+        "instance_id": "sympy__sympy-13480",
+        "value": 1.0
+      },
+      {
+        "rank": 2,
+        "instance_id": "sympy__sympy-14774",
+        "value": 1.0
+      },
+      {
+        "rank": 3,
+        "instance_id": "sympy__sympy-16988",
+        "value": 1.0
+      },
+      {
+        "rank": 4,
+        "instance_id": "sympy__sympy-21055",
+        "value": 1.0
+      },
+      {
+        "rank": 5,
+        "instance_id": "sympy__sympy-23117",
+        "value": 1.0
+      }
+    ],
+    "manual_value": [
+      {
+        "rank": 1,
+        "instance_id": "sympy__sympy-16988",
+        "value": 2.0
+      },
+      {
+        "rank": 2,
+        "instance_id": "sympy__sympy-13480",
+        "value": 1.0
+      },
+      {
+        "rank": 3,
+        "instance_id": "sympy__sympy-21055",
+        "value": 1.0
+      },
+      {
+        "rank": 4,
+        "instance_id": "sympy__sympy-23117",
+        "value": 0.9
+      },
+      {
+        "rank": 5,
+        "instance_id": "sympy__sympy-14774",
+        "value": 0.8
+      }
+    ]
+  }
+}

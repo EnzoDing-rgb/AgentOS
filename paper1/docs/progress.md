@@ -2,6 +2,34 @@
 
 > 单一入口：进度、跑法、历史结果。
 
+## 2026-06-17 — Current Decision: Calibration Is Mechanism, Not Benchmark Tuning
+
+The current priority is to prevent local 6x5 overfitting while keeping the
+BudgetFlow mechanism moving.
+
+- **Claim anchor unchanged:** Claim 1 is still shared-hard-budget Yield. Claim 2
+  mechanisms, including Budget Regime Compiler, task-level tier choice,
+  segment-aware routing, escalation, stop, and learning, serve Claim 1.
+- **Calibration stance:** calibration is necessary because a real enterprise
+  does not know in advance how much budget a new workload deserves or which
+  model tier will fit each task. The generalizable object is the calibration
+  procedure over Task Value, Task Effort, Model Fit, CostSource, and budget
+  pressure, not a constant tuned to SymPy or one SWE-bench task.
+- **6x5 role:** the current 6x5 line is a calibration/debug panel. It can expose
+  infra bugs, compiler scale errors, task-level over-conservatism, or missing
+  Model Fit signals. It must not be treated as paper-level evidence after being
+  used to adjust the mechanism.
+- **Held-out evidence requirement:** after one calibration pass, freeze the
+  compiler, value matrix, model catalog, task list, and policy config. The next
+  meaningful evidence should come from held-out 6x10/6x30-style runs, not from
+  repeatedly optimizing the same five tasks.
+- **Current mechanism risk:** the expected-total-cost task-level patch is
+  directionally correct but incomplete. With `model_fit=null` in the current
+  6x5 value matrix, runtime falls back to near-equal catalog priors (`0.24` vs
+  `0.25`), so task-level can remain too conservative. The next code slice, if
+  pursued, should make Model Fit a clean learned/pre-registered input consumed
+  by both the Budget Regime Compiler and task-level tier choice.
+
 ## 2026-06-15 — Current Handoff: Three Blocking Paper Risks
 
 The current paper direction is Claim 1/Claim 2:

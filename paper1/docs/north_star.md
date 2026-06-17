@@ -15,8 +15,9 @@ tiers only.
 | Claim 2 | BudgetFlow's value-aware budget allocation, routing, escalation, stop, and learning mechanisms explain how Claim 1 is achieved and must improve or preserve value/cost efficiency against strong diagnostic controls. |
 | Yield | Total resolved task value within a shared budget window. It is not raw task count. |
 | Yield per Dollar | Total resolved task value divided by model spend. It is the main efficiency diagnostic. |
-| Value-Driven Budget Allocation | Compilation of a shared hard-budget regime, then allocation of task caps and spend from Task Value, Task Effort, Model Fit, expected payoff, cost, and budget pressure. |
-| Budget Regime Compiler | Pre-run mechanism that turns a task set, ValueSource, Task Effort, model-tier catalog, Cost Memory, and target pressure into a pre-registered shared hard budget plan with confidence and audit fields. It is part of Claim 1, not a separate claim. |
+| Value-Driven Budget Allocation | Two-layer mechanism: first compile a shared hard-budget regime for a fixed task sequence; then allocate model opportunities, turns, continue/stop decisions, and spend within that regime. |
+| Budget Regime Compiler | Pre-run mechanism that turns a fixed task set, fixed task order, ValueSource, Task Effort, reference cost scale, clean Cost Memory when available, and target pressure into a pre-registered shared hard budget plan with confidence and audit fields. It is part of Claim 1, not a separate claim, and it must not assign model tiers to individual tasks. |
+| BudgetFlow Runtime | Runtime policy that executes the same task order as every control and allocates scarce model opportunities within the compiled shared budget. It decides when to spend, continue, stop, or use a stronger tier; it does not reorder tasks to chase value. |
 | Task Value | Estimated utility of a verified resolved outcome. It answers "what is this task worth if solved?" |
 | Task Effort | Estimated work, runway, or expected cost needed to resolve a task. It answers "how much budget should this task need?" |
 | Model Fit | Estimated suitability of each model tier for a task, repo, or workflow stage. It answers "which tier is likely to make verified progress here?" |
@@ -50,10 +51,29 @@ as fail-to-pass tests, pass-to-pass tests, patch extraction, worktree diffs, and
 repo-specific runners belong behind adapters.
 
 The product goal is simple: every dollar of model spend should create more
-verified task value. BudgetFlow allocates spend from an AllocationContext:
-Task Value sets the utility target, Task Effort estimates required runway, and
-Model Fit estimates which model tier is likely to make verified progress. This
-keeps the system broader than a routing heuristic.
+verified task value. BudgetFlow should not be described as making models better
+at coding. Verified resolution is primarily evidence of model capability under
+a valid harness. BudgetFlow's contribution is to govern which tasks receive
+scarce model opportunities, runway, retry chances, and stronger-tier access
+under one shared budget.
+
+The system has two decision layers.
+
+- **Budget Regime Compiler:** establishes the budget regime before execution.
+  It estimates how much shared budget a fixed workload deserves from Task
+  Value, Task Effort, a reference cost scale, and clean calibration evidence.
+  It does not solve the routing problem and must not pre-assign model tiers to
+  specific tasks.
+- **BudgetFlow Runtime:** executes the fixed task order under that compiled
+  budget. It uses AllocationContext, remaining budget, progress evidence,
+  Model Fit, and model costs to decide whether to continue spending, stop,
+  retry, or use a stronger model tier. It may change how budget is spent inside
+  a task, but not the task sequence being compared.
+
+This boundary avoids circular reasoning. The compiler answers the budget-owner
+question: "How tight should this shared budget be for this workload?" The
+runtime answers the scheduler question: "Given that budget and the available
+models, where should the next model opportunity go?"
 
 ## Claims And Metrics
 
@@ -64,9 +84,11 @@ keeps the system broader than a routing heuristic.
 
 Claim 1 is the objective. The Budget Regime Compiler is the pre-run part of
 Value-Driven Budget Allocation: it defines the shared budget regime before any
-policy comparison. Claim 2 explains the runtime mechanism. Routing savings,
-stage-aware routing, Tier Boundary Selection, stop-loss, escalation, and memory
-are useful only when they protect or improve Claim 1.
+policy comparison. The Runtime is the execution part: it allocates model
+opportunities within that regime while preserving the pre-registered task
+order. Claim 2 is mechanism analysis, not a second independent product claim.
+Routing savings, stage-aware routing, Tier Boundary Selection, stop-loss,
+escalation, and memory are useful only when they protect or improve Claim 1.
 
 Resolved task count, pass rate, Pass per Dollar, average turns, and no-patch
 rate are diagnostics. They must not replace Yield or Yield per Dollar as the
@@ -110,9 +132,14 @@ Task Effort and cost follow the same rule.
 The Budget Regime Compiler makes the fixed budget auditable rather than
 hand-picked.
 
-- Compile the shared hard budget from frozen task IDs, ValueSource, Task Effort,
-  model-tier catalog, Cost Memory when available, and a predeclared target
-  pressure such as roughly 80%-90% expected utilization.
+- Compile the shared hard budget from frozen task IDs, frozen task order,
+  ValueSource, Task Effort, a reference service/cost scale, clean Cost Memory
+  when available, and a predeclared target pressure such as roughly 80%-90%
+  expected utilization.
+- The compiler may use a model catalog or invoice data to convert expected
+  effort into dollars, but only as a reference cost scale. It must not decide
+  that a particular task should use T2, T3, or any future model tier. That is a
+  runtime allocation decision.
 - Apply a Strongest Model runway floor: the compiled cap should let the pure
   Strongest Model baseline reach the final task before budget pressure
   dominates. A cap that starves the strongest baseline midway through the batch
@@ -144,11 +171,41 @@ The runtime BudgetFlow policy should then win by allocating that already-tight
 budget toward higher verified value, not by claiming savings from an overly
 generous cap.
 
+The Runtime must not win by changing task order. For policy comparisons, every
+strategy executes the same pre-registered task sequence. Otherwise a high-value
+first ordering could inflate Yield under early budget exhaustion and confound
+the allocation claim. Value awareness is allowed inside routing, continue/stop,
+retry, and stronger-tier access decisions; it is not allowed to reorder the
+batch unless task ordering itself is the declared experimental intervention.
+
 ## Calibration Discipline
 
 BudgetFlow is not claiming that one fixed set of constants is universally
-optimal. Real deployments must calibrate budgets, model prices, Task Value,
-Task Effort, Model Fit, and policy thresholds against their own workload.
+optimal. Real deployments differ in task mix, customer value, model prices,
+model access, and model-task fit. A customer usually does not know, before
+running the system, how much budget a workload deserves or which model tier
+will be productive on each task. Calibration is therefore a necessary part of
+deployment: it maps local value, effort, cost, and model-fit evidence into a
+shared hard-budget regime.
+
+This calibration is generalizable when it calibrates the mechanism, not the
+benchmark. The reusable object is the procedure: pre-register task value and
+task features, compile a budget from ValueSource, Task Effort, model catalog,
+and clean calibration evidence, run under the compiled cap, audit projection
+error and verified value, then freeze the next configuration before evaluation.
+The same procedure can be repeated for a different enterprise workload with
+different tasks, prices, models, and priorities. What must not transfer is any
+task identity, repo-specific exception, known patch, or post-hoc outcome label.
+
+Small diagnostic runs can serve as a cold-start pass for a new workload/model
+catalog. They are not paper-level evidence by themselves. Their role is to
+estimate the scale that cannot be known a priori: whether the compiled budget
+is too tight or too loose, whether Task Effort predicts runway, whether Model
+Fit differentiates model tiers, and whether budget pressure reaches the
+intended regime. After that calibration pass, the compiler, model catalog,
+ValueSource, task list, and policy configuration must be frozen before the
+held-out evidence run.
+
 That calibration is part of the enterprise mechanism, not a benchmark trick,
 when it follows these rules:
 
@@ -167,6 +224,17 @@ when it follows these rules:
   paper-level evidence by itself.
 - Treat calibration as reusable only if the same procedure could be repeated on
   another enterprise workload with different tasks, values, models, and prices.
+- Interpret a repeated failure of the compiled cap, such as starving most
+  policies midway through a batch or leaving every strongest-tier baseline
+  unconstrained, as a Budget Regime Compiler defect to fix through the abstract
+  compiler procedure rather than by hand-editing the cap.
+
+The main generalization claim is procedural, not parametric. BudgetFlow should
+not argue that a particular target utilization, Model Fit prior, or stop-loss
+constant is universally correct. It should argue that a customer can provide or
+learn ValueSource, Task Effort, Model Fit, and CostSource for its own workload,
+and BudgetFlow turns those inputs into an auditable shared-budget allocation
+problem whose evidence is measured by verified Yield and Yield per Dollar.
 
 The clean policy semantics are:
 
@@ -181,6 +249,15 @@ The clean policy semantics are:
 These signals must stay separate in code and traces. A variable named budget
 pressure must not simultaneously mean "budget is scarce" and "upgrade because
 the agent is stuck."
+
+Do not over-attribute verified passes to individual BudgetFlow mechanisms.
+Passing a task means the model, prompt, tools, and harness produced a verified
+patch. BudgetFlow mechanisms should be credited for opportunity allocation:
+whether they gave the model enough runway, avoided wasting scarce budget,
+prevented premature stopping, or chose an appropriate tier under pressure.
+Harness and infra diagnostics are validity gates and opportunity boundaries;
+they do not become paper mechanisms merely because fixing them increases pass
+rate.
 
 ## Mechanism Layers
 
@@ -199,7 +276,8 @@ works for SWE-bench, benchmark detail has leaked into the mechanism.
 ## Evaluation Controls
 
 Use these controls to evaluate the claims. Keep tasks, value source, cost
-source, budget, model catalog, and harness fixed within one comparison.
+source, budget, model catalog, harness, and task execution order fixed within
+one comparison.
 
 | Control | Role |
 |---|---|
@@ -245,9 +323,11 @@ Run this audit before writing conclusions:
    Memory actually affect the next cap, route, stop/continue, or escalation
    decision? If memory is disabled for a clean Claim 1 run, say so explicitly.
 5. Mechanism Diagnosis: explain whether outcomes came from model capability,
-   Task Value, Task Effort, Model Fit, routing, budget caps,
-   Tier Boundary Selection, Value-Triggered Escalation, evaluation,
-   observability, parser/harness failures, or model-price boundary.
+   task difficulty, budget opportunity allocation, insufficient runway,
+   premature stop, tier choice, evaluation validity, parser/harness failures,
+   or model-price boundary. Do not claim that stop-loss, routing, or compiler
+   logic directly created code-solving ability; they shape whether model
+   capability had a fair and budget-aware opportunity to act.
 
 The point of each experiment is not to "get a good result." The point is to
 identify which layer currently limits paper value: claim, metric, harness,

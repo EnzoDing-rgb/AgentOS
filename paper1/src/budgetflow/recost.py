@@ -23,8 +23,8 @@ from typing import Any
 # These are routing/cost-sensitivity units, not provider billing rates.
 _REF_T2_INPUT = 0.90 / 1_000_000
 _REF_T2_OUTPUT = 4.50 / 1_000_000
-_REF_T3_INPUT = 2.70 / 1_000_000
-_REF_T3_OUTPUT = 13.50 / 1_000_000
+_REF_T3_INPUT = 4.50 / 1_000_000
+_REF_T3_OUTPUT = 22.50 / 1_000_000
 
 # Default T3/T2 ratios to test (diagnostic sweep).
 DEFAULT_RATIOS = (1.5, 2.0, 3.0, 5.0, 10.0)

@@ -92,6 +92,7 @@ STRONGEST_DOWNGRADE_TIER = 2
 # usually expensive noise. Give the second-cheapest tier a short runway, then
 # force a stronger tier when one exists.
 GOLD_EDIT_MID_TIER_REPAIR_TURN_LIMIT = 12
+GOLD_EDIT_SUBMIT_GRACE_TURNS = 2
 
 # Adaptive routing (budgetflow_segment only): rolling task feedback + in-run recovery.
 ADAPTIVE_WINDOW = 5

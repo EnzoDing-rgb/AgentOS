@@ -19,7 +19,21 @@ from typing import Any
 
 from budgetflow.experiments.compare_config import load_strategy_set, paper_mainline_strategy_names
 
-from ..model_tiers import catalog_path, catalog_revision, catalog_source_info, init_catalog
+from ..model_fit_estimator import ModelFitEvidence, estimate_model_fit_from_jsonl
+from ..model_tiers import (
+    MODEL_CATALOG,
+    TIER2_BACKEND,
+    TIER3_BACKEND,
+    catalog_path,
+    catalog_revision,
+    catalog_source_info,
+    estimate_token_cost,
+    init_catalog,
+)
+
+
+COLD_START_INPUT_TOKENS_PER_EFFORT = 4_500
+COLD_START_OUTPUT_TOKENS_PER_EFFORT = 150
 
 
 @dataclass
@@ -50,6 +64,7 @@ class BudgetBindingPlan:
     calibration_error: dict[str, float] = field(default_factory=dict)
     calibration_excluded: dict[str, int] = field(default_factory=dict)
     censored_spend_floor_by_strategy: dict[str, float] = field(default_factory=dict)
+    model_fit_evidence: dict | None = None
 
     def to_dict(self) -> dict:
         d: dict = {
@@ -93,6 +108,8 @@ class BudgetBindingPlan:
             d["censored_spend_floor_by_strategy"] = {
                 k: round(v, 4) for k, v in self.censored_spend_floor_by_strategy.items()
             }
+        if self.model_fit_evidence:
+            d["model_fit_evidence"] = self.model_fit_evidence
         return d
 
     @classmethod
@@ -279,6 +296,46 @@ def calibrate_budget(
     if value_matrix_path and value_matrix_path.exists():
         value_features = _load_value_features(value_matrix_path)
 
+    # ── Derive ModelFit from clean historical evidence ──────────────────
+    fit_overrides: dict[int, float] | None = None
+    if historical_jsonl and historical_jsonl.exists() and value_features:
+        try:
+            evidence = estimate_model_fit_from_jsonl(
+                historical_jsonl,
+                task_ids,
+                value_features,
+            )
+            fit_overrides = evidence.tier_fit
+            plan.model_fit_evidence = {
+                "tier_fit": {str(k): v for k, v in evidence.tier_fit.items()},
+                "source": evidence.source,
+                "confidence": evidence.confidence,
+                "evidence_tasks": evidence.evidence_tasks,
+                "censored_tiers": sorted(evidence.censored_tiers),
+                "reasons": evidence.reasons,
+            }
+            plan.reasons.append(
+                f"calibration:model_fit_evidence confidence={evidence.confidence} "
+                f"from {evidence.evidence_tasks} tasks: "
+                + ", ".join(
+                    f"tier{t}={evidence.tier_fit[t]:.4f}" for t in sorted(evidence.tier_fit)
+                )
+            )
+            if evidence.censored_tiers:
+                plan.reasons.append(
+                    f"calibration:model_fit_censored tiers={sorted(evidence.censored_tiers)} "
+                    "have budget-exhausted evidence → fit penalised"
+                )
+            if evidence.confidence in ("low", "medium"):
+                plan.reasons.append(
+                    f"calibration:model_fit_confidence={evidence.confidence}; "
+                    "cold-start projections use derived fit but are not paper-ready. "
+                    "Run more diagnostic calibration before treating as paper evidence."
+                )
+        except Exception:
+            # ModelFit estimation is advisory; never block budget generation.
+            pass
+
     strategy_cal_n: dict[str, int] = {}
     for strategy in strategies:
         observed = 0
@@ -299,6 +356,7 @@ def calibrate_budget(
             value_features,
             historical.get(strategy, {}),
             censored_task_costs_by_strategy.get(strategy, {}),
+            fit_overrides=fit_overrides,
         )
         projected_task_costs[strategy] = task_costs
         projected[strategy] = sum(task_costs.values())
@@ -343,11 +401,7 @@ def calibrate_budget(
             projected_task_costs.get("bare_t3_baseline", {}),
             task_ids,
         )
-        if t3_boundary > 0:
-            bounded_cap = min(target_cap, t3_boundary)
-            plan.hard_cap_usd = max(bounded_cap, strongest_runway_floor)
-        else:
-            plan.hard_cap_usd = target_cap
+        plan.hard_cap_usd = max(target_cap, strongest_runway_floor)
         plan.reasons.append(
             f"hard_cap = p75_ref(${ref_spend:.4f}) / "
             f"target_utilization({target_utilization}) = ${target_cap:.4f}"
@@ -358,16 +412,10 @@ def calibrate_budget(
                 f"${strongest_runway_floor:.4f} so the Strongest Model baseline "
                 "reaches the final task before budget pressure dominates"
             )
-        if t3_boundary > 0 and plan.hard_cap_usd == t3_boundary:
+        if t3_boundary > 0:
             plan.reasons.append(
-                f"strongest_boundary: hard_cap clipped to bare_t3_baseline projected "
-                f"spend ${t3_boundary:.4f} so the Strongest Model baseline remains "
-                "budget-constrained"
-            )
-        elif t3_boundary > 0 and plan.hard_cap_usd == strongest_runway_floor:
-            plan.reasons.append(
-                f"strongest_runway_floor_applied: target cap ${target_cap:.4f} "
-                f"would likely starve the Strongest Model before the final task"
+                f"strongest_boundary: bare_t3_baseline projected spend ${t3_boundary:.4f}; "
+                "recorded for pressure audit, not a hard cap"
             )
 
     for strategy in strategies:
@@ -713,11 +761,10 @@ def _apply_pressure_contract_gate(plan: BudgetBindingPlan) -> None:
             "the budget plan before a paid run"
         )
     elif any("budgetflow_under_target" in violation for violation in violations):
-        if plan.decision != "BLOCK":
-            plan.decision = "BLOCK"
         plan.reasons.append(
-            "PRESSURE_GATE BLOCK: BudgetFlow projected utilization is far from "
-            "the target pressure regime"
+            "PRESSURE_GATE WARNING: BudgetFlow projected utilization is below "
+            "the target pressure regime; treat the next run as calibration, "
+            "not paper evidence"
         )
 
 
@@ -957,6 +1004,8 @@ def _bootstrap_cost_estimate(
     task_id: str,
     strategy: str,
     value_features: dict[str, dict],
+    *,
+    fit_overrides: dict[int, float] | None = None,
 ) -> float:
     """Project cold-start spend pressure for a task with no historical data.
 
@@ -969,7 +1018,7 @@ def _bootstrap_cost_estimate(
         if features else 30.0
     )
 
-    return _fallback_cost_estimate(strategy, difficulty)
+    return _cold_start_cost_estimate(strategy, difficulty, fit_overrides=fit_overrides)
 
 
 def _project_strategy_task_costs(
@@ -978,11 +1027,13 @@ def _project_strategy_task_costs(
     value_features: dict[str, dict],
     observed_costs: dict[str, float],
     censored_costs: dict[str, float],
+    *,
+    fit_overrides: dict[int, float] | None = None,
 ) -> dict[str, float]:
-    scale = _strategy_effort_scale(strategy, observed_costs, value_features)
+    scale = _strategy_effort_scale(strategy, observed_costs, value_features, fit_overrides=fit_overrides)
     projected: dict[str, float] = {}
     for task_id in task_ids:
-        baseline = _bootstrap_cost_estimate(task_id, strategy, value_features) * scale
+        baseline = _bootstrap_cost_estimate(task_id, strategy, value_features, fit_overrides=fit_overrides) * scale
         observed = observed_costs.get(task_id)
         if observed is not None and observed > 0:
             projected[task_id] = observed
@@ -1002,10 +1053,12 @@ def _strategy_effort_scale(
     strategy: str,
     observed_costs: dict[str, float],
     value_features: dict[str, dict],
+    *,
+    fit_overrides: dict[int, float] | None = None,
 ) -> float:
     ratios: list[float] = []
     for task_id, cost in observed_costs.items():
-        baseline = _bootstrap_cost_estimate(task_id, strategy, value_features)
+        baseline = _bootstrap_cost_estimate(task_id, strategy, value_features, fit_overrides=fit_overrides)
         if cost > 0 and baseline > 0:
             ratios.append(cost / baseline)
     if not ratios:
@@ -1023,14 +1076,58 @@ def _prefix_cost_before_final_task(
     return sum(float(task_costs.get(task_id, 0.0) or 0.0) for task_id in task_ids[:-1])
 
 
-def _fallback_cost_estimate(
+def _cold_start_cost_estimate(
     strategy: str,
     difficulty: float,
+    *,
+    fit_overrides: dict[int, float] | None = None,
 ) -> float:
-    """Conservative cost estimate when no historical data is available."""
-    # Base: ~$0.001 per difficulty unit (calibrated from SymPy data)
-    base_rate = 0.001
-    return difficulty * base_rate
+    """Catalog-based cold-start estimate when no task-level cost data exists.
+
+    Scales by the ratio of strongest-tier fit to this tier's fit so that
+    weaker-model long-tail cost is represented: a tier with lower fit
+    is projected to need more turns for the same task.
+
+    When *fit_overrides* (tier → fit_rate) is provided from historical
+    ModelFit estimation, those rates replace catalog progress_score for
+    the fit_ratio computation. This lets the compiler learn from clean
+    historical evidence instead of staying flat at 0.25/0.24.
+    """
+    backend_name = _cold_start_backend(strategy)
+    input_tokens = max(1, round(difficulty * COLD_START_INPUT_TOKENS_PER_EFFORT))
+    output_tokens = max(1, round(difficulty * COLD_START_OUTPUT_TOKENS_PER_EFFORT))
+    base_cost = estimate_token_cost(
+        backend_name,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+    )
+    config = MODEL_CATALOG.config_for(backend_name)
+    if config is None:
+        return base_cost
+
+    def _tier_fit(tier: int, fallback: float) -> float:
+        if fit_overrides and tier in fit_overrides:
+            return max(0.001, fit_overrides[tier])
+        return max(0.001, fallback)
+
+    strongest = max(MODEL_CATALOG.configs, key=lambda c: c.tier, default=config)
+    strongest_fit = _tier_fit(strongest.tier, getattr(strongest, "progress_score", 0.001))
+    this_fit = _tier_fit(config.tier, getattr(config, "progress_score", 0.001))
+    fit_ratio = strongest_fit / max(this_fit, 0.001)
+    turns_multiplier = max(1.0, fit_ratio)
+    return base_cost * turns_multiplier
+
+
+def _cold_start_backend(strategy: str) -> str:
+    if strategy == "bare_t3_baseline":
+        if MODEL_CATALOG.config_for(TIER3_BACKEND):
+            return TIER3_BACKEND
+    if MODEL_CATALOG.config_for(TIER2_BACKEND):
+        return TIER2_BACKEND
+    configs = tuple(MODEL_CATALOG.configs)
+    if not configs:
+        raise ValueError("model catalog is empty; cannot compile cold-start budget")
+    return sorted(configs, key=lambda cfg: cfg.tier)[0].backend
 
 
 def _parse_task_ids(raw: str) -> list[str]:

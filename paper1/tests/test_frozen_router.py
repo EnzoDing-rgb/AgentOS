@@ -238,9 +238,9 @@ class TestFrozenPlanRouting:
         assert ctx.last_decision.branch == "budgetflow_same_router"
         assert backend.tier == 3
 
-    def test_frozen_plan_missing_entry_falls_back_to_cheapest(self):
+    def test_frozen_plan_missing_entry_fails_fast(self):
         from budgetflow.adapter.strategies import build_routing_context, choose_backend
-        from budgetflow.frozen_router import FrozenPlanEntry, FrozenRouterPlan
+        from budgetflow.frozen_router import FrozenRouterPlan
         from budgetflow.types import Stage, TurnInfo
 
         plan = FrozenRouterPlan(name="test", plan={})
@@ -254,8 +254,30 @@ class TestFrozenPlanRouting:
             workflow_id="unknown_task", step_index=1,
             stage=Stage.REPAIR, w_i=1.0, context_len=1000,
         )
-        backend = choose_backend(ctx, turn, {"tier2": 0.01, "tier3": 0.05})
-        assert backend.tier == 2  # cheapest
+        with pytest.raises(ValueError, match="missing frozen plan entry"):
+            choose_backend(ctx, turn, {"tier2": 0.01, "tier3": 0.05})
+
+    def test_frozen_plan_unknown_model_fails_fast(self):
+        from budgetflow.adapter.strategies import build_routing_context, choose_backend
+        from budgetflow.frozen_router import FrozenPlanEntry, FrozenRouterPlan
+        from budgetflow.types import Stage, TurnInfo
+
+        plan = FrozenRouterPlan(
+            name="test",
+            plan={"test_task": FrozenPlanEntry("test_task", "missing-tier", 1)},
+        )
+        ctx = build_routing_context(
+            "enterprise_router",
+            self._backends(),
+            budget_pressure=0.1,
+            frozen_plan=plan,
+        )
+        turn = TurnInfo(
+            workflow_id="test_task", step_index=1,
+            stage=Stage.REPAIR, w_i=1.0, context_len=1000,
+        )
+        with pytest.raises(ValueError, match="unknown preferred_model"):
+            choose_backend(ctx, turn, {"tier2": 0.01, "tier3": 0.05})
 
     def test_observability_policy_kind_for_new_strategies(self):
         from budgetflow.experiment_observability import enrich_routing_observability

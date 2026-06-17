@@ -7,13 +7,13 @@ from pathlib import Path
 
 
 HOST_DEPENDENCY_CONTAMINATION_MARKERS = (
+    "host_dependency_contamination:",
     "numpy.dtype size changed",
     "_ARRAY_API not found",
     "opik/evaluation/metrics",
     "site-packages/tensorflow",
     "site-packages/keras",
     "site-packages/pandas",
-    "budgetflow-runtime/worktrees",
     "runtime worktree paths",
 )
 

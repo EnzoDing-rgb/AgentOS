@@ -125,15 +125,9 @@ class MinimalAgentLoop:
                 self.budget_pressure,
                 expected_costs,
             )
-        fallback = self._fallback_backend(backend)
         scheduler_decision = self.scheduler.decide(
-            preferred=backend,
-            fallback=fallback,
             can_dispatch_preferred=self.governor.can_dispatch(backend),
-            can_dispatch_fallback=fallback is not None and self.governor.can_dispatch(fallback),
         )
-        if scheduler_decision is SchedulerDecision.DOWNGRADE and fallback is not None:
-            backend = fallback
         if scheduler_decision is SchedulerDecision.REJECT:
             return StepTrace(
                 workflow_id=turn.workflow_id,
@@ -194,13 +188,6 @@ class MinimalAgentLoop:
             status=WorkflowStatus.COMPLETED.value,
             response_text=result.response_text,
         )
-
-    def _fallback_backend(self, backend: Backend) -> Backend | None:
-        lower_tiers = [candidate for candidate in self.backends if candidate.tier < backend.tier]
-        if not lower_tiers:
-            return None
-        return lower_tiers[-1]
-
 
 def build_default_loop(
     backends: list[Backend],

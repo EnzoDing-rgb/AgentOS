@@ -71,6 +71,7 @@ class EvidenceRescueState:
     evidence_turns: int = 0
     window_remaining: int = 0
     window_opened: bool = False
+    rescue_turn_served: bool = False
 
     def forced_min_tier(
         self,
@@ -81,6 +82,7 @@ class EvidenceRescueState:
         remaining_budget: float,
         total_budget: float,
     ) -> int | None:
+        self.rescue_turn_served = False
         segment_name = _segment_name(segment)
         has_evidence = gold_edited and segment_name in (WorkflowSegment.ACTION, WorkflowSegment.VERIFICATION)
         if not has_evidence:
@@ -89,6 +91,7 @@ class EvidenceRescueState:
         self.evidence_turns += 1
         if self.window_remaining > 0:
             self.window_remaining -= 1
+            self.rescue_turn_served = True
             return self.rescue_tier
 
         if self.window_opened:
@@ -105,10 +108,11 @@ class EvidenceRescueState:
 
         self.window_opened = True
         self.window_remaining = max(0, self.window_turns - 1)
+        self.rescue_turn_served = True
         return self.rescue_tier
 
     def should_stop_loss(self, *, gold_edited: bool) -> bool:
-        if not gold_edited or not self.window_opened or self.window_remaining > 0:
+        if not gold_edited or not self.window_opened or self.window_remaining > 0 or self.rescue_turn_served:
             return False
         return self.evidence_turns >= self.stop_loss_turns
 

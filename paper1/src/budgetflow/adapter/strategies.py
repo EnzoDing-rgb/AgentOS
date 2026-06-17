@@ -17,7 +17,7 @@ from ..frozen_router import FrozenRouterPlan
 from ..policies import BudgetOnlyStepRouter, BudgetOnlyT2Router, WorkflowLevelRouter
 from ..policy_backend import BootstrapPolicy, PolicyDecision
 from ..selector import BudgetFlowSelector, ConservativeSelector, RouterDecision, ValueAwareSelector
-from ..tier_frontier import TierFrontier
+from ..tier_frontier import TierFrontier, finite_frontier_score
 from ..types import Backend, ProgressTable, Stage, TurnInfo
 
 
@@ -42,6 +42,7 @@ class RoutingContext:
     max_tier: int | None = None
     max_tier_before_frontier: int | None = None
     tier_frontier_score: float | None = None
+    task_level_backend: Backend | None = None
     task_value: float = 1.0
     median_task_value: float = 1.0
     allocation: AllocationContext | None = None
@@ -79,11 +80,30 @@ def build_routing_context(
     median_task_value: float = 1.0,
     frozen_plan: FrozenRouterPlan | None = None,
     allocation: AllocationContext | None = None,
+    model_fit_override: dict[int, float] | None = None,
 ) -> RoutingContext:
     ordered = sorted(backends, key=lambda backend: backend.tier)
     pressure = BUDGET_PRESSURE_INIT if budget_pressure is None else budget_pressure
     selector = BudgetFlowSelector(build_progress_table_from_defaults(backends))
     frontier = TierFrontier.from_catalog()
+
+    # Merge externally-derived ModelFit into AllocationContext so task-level
+    # selection consumes it without every caller having to synthesise the
+    # keyed dict form.
+    if model_fit_override and allocation is not None:
+        merged_fit = dict(allocation.model_fit) if allocation.model_fit else {}
+        for tier, fit in model_fit_override.items():
+            merged_fit.setdefault(f"tier{tier}", fit)
+        allocation = AllocationContext(
+            task_value=allocation.task_value,
+            task_effort=allocation.task_effort,
+            model_fit=merged_fit,
+            value_source=allocation.value_source,
+            effort_source=allocation.effort_source,
+            model_fit_source="historical_jsonl" if model_fit_override else allocation.model_fit_source,
+            confidence=dict(allocation.confidence),
+        )
+
     ctx = RoutingContext(
         strategy=strategy,
         backends=ordered,
@@ -114,8 +134,8 @@ def build_routing_context(
     if strategy == "segment_value_aware":
         ctx.selector = ValueAwareSelector(build_progress_table_from_defaults(backends), median_task_value=median_task_value)
         ctx.bootstrap_policy = BootstrapPolicy(ctx.selector, name=strategy)
-    # value_aware_task_level: per-turn ValueAwareSelector with segment=None.
-    # Re-selects backend every turn — does NOT pre-compute at init.
+    # value_aware_task_level: task-boundary ValueAwareSelector. It chooses one
+    # backend for the whole task; stage/segment signals stay out of this policy.
     if strategy == "value_aware_task_level":
         ctx.selector = ValueAwareSelector(build_progress_table_from_defaults(backends), median_task_value=median_task_value)
         ctx.bootstrap_policy = BootstrapPolicy(ctx.selector, name=strategy)
@@ -173,6 +193,185 @@ def _budgetflow_max_tier(ctx: RoutingContext, stage: Stage) -> int:
     return max_tier
 
 
+def _task_level_max_tier(ctx: RoutingContext) -> int:
+    """Budget-safety tier cap for task-level selection.
+
+    This is a budget-safety guardrail, NOT the primary value decision.
+    Expected-total-cost dominance in ``_choose_task_level_backend`` can
+    override this cap when a stronger tier is cheaper in total expected cost.
+    """
+    cheapest = ModelCatalog.cheapest(ctx.backends)
+    strongest = ModelCatalog.strongest(ctx.backends)
+    second = ModelCatalog.second_cheapest(ctx.backends)
+    frontier = ctx.tier_frontier
+
+    default_cap = second.tier
+    ctx.max_tier_before_frontier = max(cheapest.tier, min(second.tier, strongest.tier))
+    if frontier is None:
+        ctx.tier_frontier_score = None
+    else:
+        reference = _backend_by_tier(ctx.backends, frontier.reference_tier)
+        progress_delta = max(0.0, strongest.progress_score - reference.progress_score)
+        fit_delta = None
+        allocation = ctx.allocation
+        if allocation is not None and allocation.has_model_fit:
+            fit_delta = allocation.strongest_delta(
+                reference_tier=frontier.reference_tier,
+                strongest_tier=frontier.strongest_tier,
+            )
+        if fit_delta is not None and fit_delta > progress_delta:
+            progress_delta = fit_delta
+        task_value = float(getattr(allocation, "task_value", ctx.task_value) if allocation is not None else ctx.task_value)
+        value_gain = progress_delta * max(0.001, task_value) * max(1, frontier.reference_runway_turns)
+        incremental_cost_ratio = max(
+            max(frontier.strongest_input_ratio, frontier.strongest_output_ratio) - 1.0,
+            0.0,
+        )
+        cost_ratio = max(frontier.strongest_input_ratio, frontier.strongest_output_ratio)
+        if value_gain <= 0:
+            raw_score = cost_ratio * (1.0 + ctx.budget_pressure)
+        else:
+            raw_score = incremental_cost_ratio * (1.0 + ctx.budget_pressure * 0.5) / value_gain
+        ctx.tier_frontier_score = finite_frontier_score(raw_score, cost_ratio, ctx.budget_pressure)
+        if ctx.tier_frontier_score < 2.0:
+            default_cap = strongest.tier
+    ctx.max_tier = max(cheapest.tier, min(default_cap, strongest.tier))
+    return ctx.max_tier
+
+
+def _tier_model_fit_rate(ctx: RoutingContext, tier: int, backend_name: str) -> float:
+    """Return per-tier ModelFit rate for task-level expected-cost calculation.
+
+    Prefers task-specific model_fit from AllocationContext (per-task priors).
+    Falls back to the catalog progress_score for the backend.
+    """
+    allocation = ctx.allocation
+    if allocation is not None and allocation.has_model_fit:
+        key = f"tier{tier}"
+        fit = allocation.model_fit.get(key) if allocation.model_fit else None
+        if fit is not None and fit > 0:
+            return float(fit)
+    for backend in ctx.backends:
+        if backend.name == backend_name:
+            return max(backend.progress_score, 0.001)
+    return 0.001
+
+
+def _expected_total_cost(
+    ctx: RoutingContext,
+    backend_name: str,
+    tier: int,
+    per_turn_cost: float,
+) -> float:
+    """Expected total cost = expected turns * per-turn cost.
+
+    expected_turns = task_effort / model_fit_rate, where task_effort is the
+    estimated runway needed and model_fit_rate is the tier's progress rate.
+
+    When task_effort is unavailable, defaults to the tier frontier reference
+    runway so the formula still produces a meaningful comparison.
+    """
+    fit = _tier_model_fit_rate(ctx, tier, backend_name)
+    effort = 1.0
+    allocation = ctx.allocation
+    if allocation is not None and allocation.has_effort and allocation.task_effort is not None:
+        effort = max(1.0, float(allocation.task_effort))
+    elif ctx.tier_frontier is not None:
+        effort = float(ctx.tier_frontier.reference_runway_turns)
+    expected_turns = effort / max(fit, 0.001)
+    return expected_turns * per_turn_cost
+
+
+def _choose_task_level_backend(ctx: RoutingContext, expected_costs: dict[str, float]) -> Backend:
+    """Choose one backend for the whole task using expected total cost.
+
+    Compares expected total cost (not per-step cost) across tiers so a
+    cheaper-per-step tier that needs many more turns is correctly seen as
+    more expensive in total.  Budget slack still gates stronger-tier access.
+    """
+    if ctx.task_level_backend is not None:
+        backend = ctx.task_level_backend
+        ctx.last_decision = RouterDecision(
+            backend=backend,
+            reason=f"bf_task_fixed_{backend.name}",
+            scores={backend.name: ctx.tier_frontier_score or 0.0},
+            pressure=ctx.budget_pressure,
+            branch="value_aware_task_level",
+        )
+        return backend
+
+    max_tier = _task_level_max_tier(ctx)
+    median = max(0.001, float(ctx.median_task_value or 1.0))
+    value_multiplier = max(0.5, min(2.0, float(ctx.task_value or median) / median))
+    if hasattr(ctx.selector, "_last_multiplier"):
+        ctx.selector._last_multiplier = value_multiplier
+    ordered = sorted(ctx.backends, key=lambda backend: backend.tier)
+    current = ordered[0]
+    current_score = 0.0
+
+    # Pre-compute expected total cost for each tier.
+    total_costs: dict[str, float] = {}
+    for backend in ordered:
+        per_turn = expected_costs.get(backend.name, 0.0)
+        total_costs[backend.name] = _expected_total_cost(ctx, backend.name, backend.tier, per_turn)
+
+    for next_backend in ordered[1:]:
+        # Compare expected total cost, not per-step cost.
+        delta_total_cost = total_costs.get(next_backend.name, 0.0) - total_costs.get(current.name, 0.0)
+
+        if next_backend.tier > max_tier and delta_total_cost > 0:
+            # Above max_tier cap AND costs more in total: budget-safety block.
+            # When the stronger tier is cheaper in total (delta_total_cost <= 0),
+            # expected-cost dominance overrides the cap — the cap is budget safety,
+            # not the primary value decision.
+            break
+
+        if delta_total_cost <= 0:
+            # Stronger tier is cheaper in total expected cost — dominate.
+            current = next_backend
+            current_score = 0.0
+            continue
+
+        current_fit = _tier_model_fit_rate(ctx, current.tier, current.name)
+        next_fit = _tier_model_fit_rate(ctx, next_backend.tier, next_backend.name)
+        fit_gain = max(0.0, next_fit - current_fit) * value_multiplier
+
+        if fit_gain <= 0:
+            # Fit is monotonic with tier: if this tier has no gain over current,
+            # higher tiers won't either (catalog invariant).
+            break
+        upgrade_score = delta_total_cost / fit_gain
+        budget_slack = max(0.0, 1.0 - min(1.0, ctx.budget_pressure))
+        if budget_slack >= upgrade_score:
+            current = next_backend
+            current_score = upgrade_score
+            continue
+        # This tier doesn't justify its total-cost increment. A higher tier
+        # might still dominate (higher fit gain may outweigh the cost jump).
+        # Continue scanning — don't break here.
+
+    ctx.task_level_backend = current
+    strongest_tier = ModelCatalog.strongest(ctx.backends).tier
+    ctx.last_decision = RouterDecision(
+        backend=current,
+        reason=(
+            f"bf_task_fixed_max_tier={max_tier}"
+            if max_tier < strongest_tier
+            else "bf_task_fixed_strongest_allowed"
+        ),
+        scores={current.name: current_score},
+        pressure=ctx.budget_pressure,
+        branch="value_aware_task_level",
+    )
+    if ctx.bootstrap_policy is not None:
+        ctx.last_policy_decision = PolicyDecision(
+            backend=current.name,
+            reason="task_level_fixed",
+            scores={"selection_score": current_score},
+        )
+    return current
+
+
 def choose_backend(ctx: RoutingContext, turn: TurnInfo, expected_costs: dict[str, float]) -> Backend:
     ctx.expected_costs = expected_costs
     if ctx.strategy in {"budgetflow_equal_weight"}:
@@ -224,9 +423,10 @@ def choose_backend(ctx: RoutingContext, turn: TurnInfo, expected_costs: dict[str
         decision = ctx.budget_only_router.choose_backend(turn, ctx.backends, ctx.budget_pressure)
         ctx.last_decision = decision
         return decision.backend
-    # value_aware_task_level: per-turn selection through BootstrapPolicy
-    # (segment=None, no segment signal — Claim 1 main policy)
-    if ctx.strategy in {"budgetflow_segment", "budgetflow_conservative", "segment_value_aware", "value_aware_task_level"}:
+    if ctx.strategy == "value_aware_task_level":
+        return _choose_task_level_backend(ctx, expected_costs)
+
+    if ctx.strategy in {"budgetflow_segment", "budgetflow_conservative", "segment_value_aware"}:
         max_tier = _budgetflow_max_tier(ctx, turn.stage)
         policy = ctx.bootstrap_policy
         if policy is None:
@@ -320,15 +520,25 @@ def choose_backend(ctx: RoutingContext, turn: TurnInfo, expected_costs: dict[str
 
 def _backend_from_frozen_plan(ctx: RoutingContext, turn: TurnInfo) -> Backend:
     if ctx.frozen_plan is None:
-        return ModelCatalog.cheapest(ctx.backends)
+        raise ValueError(
+            f"{ctx.strategy} requires a frozen router plan; workflow={turn.workflow_id}"
+        )
     entry = ctx.frozen_plan.lookup(turn.workflow_id)
     if entry is None:
-        return ModelCatalog.cheapest(ctx.backends)
+        raise ValueError(
+            f"missing frozen plan entry for workflow={turn.workflow_id} "
+            f"strategy={ctx.strategy}"
+        )
     preferred = next(
         (b for b in ctx.backends if b.name == entry.preferred_model),
         None,
     )
-    return preferred if preferred is not None else ModelCatalog.cheapest(ctx.backends)
+    if preferred is None:
+        raise ValueError(
+            f"unknown preferred_model={entry.preferred_model!r} "
+            f"for workflow={turn.workflow_id} strategy={ctx.strategy}"
+        )
+    return preferred
 
 
 def stage_weight(stage: Stage) -> float:

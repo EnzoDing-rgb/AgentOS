@@ -1,0 +1,105 @@
+{
+  "strategy_errors": {
+    "bare_t2_baseline": {
+      "projected": 0.776,
+      "actual": 2.697,
+      "error_pct": 2.4755,
+      "strategy_cap": 2.697,
+      "projected_utilization": 0.2877,
+      "raw_projected_utilization": 0.2877,
+      "actual_utilization": 1.0,
+      "raw_actual_utilization": 1.0,
+      "budget_exhausted_rows": 3,
+      "task_count": 5
+    },
+    "bare_t3_baseline": {
+      "projected": 3.88,
+      "actual": 0.9489,
+      "error_pct": 0.7554,
+      "strategy_cap": 2.697,
+      "projected_utilization": 1.0,
+      "raw_projected_utilization": 1.4387,
+      "actual_utilization": 0.3518,
+      "raw_actual_utilization": 0.3518,
+      "budget_exhausted_rows": 0,
+      "task_count": 5
+    },
+    "enterprise_router_baseline": {
+      "projected": 0.776,
+      "actual": 2.0122,
+      "error_pct": 1.593,
+      "strategy_cap": 2.697,
+      "projected_utilization": 0.2877,
+      "raw_projected_utilization": 0.2877,
+      "actual_utilization": 0.7461,
+      "raw_actual_utilization": 0.7461,
+      "budget_exhausted_rows": 0,
+      "task_count": 5
+    },
+    "budgetflow_same_enterprise_router": {
+      "projected": 0.776,
+      "actual": 1.47,
+      "error_pct": 0.8944,
+      "strategy_cap": 2.697,
+      "projected_utilization": 0.2877,
+      "raw_projected_utilization": 0.2877,
+      "actual_utilization": 0.5451,
+      "raw_actual_utilization": 0.5451,
+      "budget_exhausted_rows": 0,
+      "task_count": 5
+    },
+    "budgetflow_task_level": {
+      "projected": 0.776,
+      "actual": 1.1536,
+      "error_pct": 0.4866,
+      "strategy_cap": 2.697,
+      "projected_utilization": 0.2877,
+      "raw_projected_utilization": 0.2877,
+      "actual_utilization": 0.4277,
+      "raw_actual_utilization": 0.4277,
+      "budget_exhausted_rows": 0,
+      "task_count": 5
+    },
+    "budgetflow_segment": {
+      "projected": 0.776,
+      "actual": 1.1325,
+      "error_pct": 0.4594,
+      "strategy_cap": 2.697,
+      "projected_utilization": 0.2877,
+      "raw_projected_utilization": 0.2877,
+      "actual_utilization": 0.4199,
+      "raw_actual_utilization": 0.4199,
+      "budget_exhausted_rows": 0,
+      "task_count": 5
+    }
+  },
+  "overall_mape": 1.1107,
+  "max_error_strategy": "bare_t2_baseline",
+  "max_error_pct": 2.4755,
+  "projection_confidence": "unvalidated",
+  "recommendations": [
+    "BLOCK next paid run until projection model is recalibrated. Overall MAPE 111.1% exceeds 60% threshold.",
+    "CRITICAL: bare_t2_baseline projection error 247.5% \u2014 this strategy's spend estimate is off by more than 2x."
+  ],
+  "generation_mode": "target_utilization",
+  "target_utilization": 0.95,
+  "actual_utilization_by_strategy": {
+    "bare_t3_baseline": 0.3518,
+    "budgetflow_segment": 0.4199,
+    "enterprise_router_baseline": 0.7461,
+    "budgetflow_same_enterprise_router": 0.5451,
+    "budgetflow_task_level": 0.4277,
+    "bare_t2_baseline": 1.0
+  },
+  "raw_actual_utilization_by_strategy": {
+    "bare_t3_baseline": 0.3518,
+    "budgetflow_segment": 0.4199,
+    "enterprise_router_baseline": 0.7461,
+    "budgetflow_same_enterprise_router": 0.5451,
+    "budgetflow_task_level": 0.4277,
+    "bare_t2_baseline": 1.0
+  },
+  "budget_exhausted_by_strategy": {
+    "bare_t2_baseline": 3
+  }
+}

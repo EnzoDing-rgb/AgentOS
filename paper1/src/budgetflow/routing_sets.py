@@ -13,9 +13,13 @@ ADAPTIVE_ROUTINGS = frozenset(
 
 VALUE_AWARE_ROUTINGS = frozenset({"segment_value_aware", "value_aware_task_level"})
 
-VALUE_TRIGGERED_ESCALATION_ROUTINGS = VALUE_AWARE_ROUTINGS
+IN_TASK_SWITCHING_ROUTINGS = ADAPTIVE_ROUTINGS - frozenset({"value_aware_task_level"})
 
-GOLD_EDIT_REPAIR_GUARD_ROUTINGS = ADAPTIVE_ROUTINGS | frozenset({"budget_only"})
+VALUE_TRIGGERED_ESCALATION_ROUTINGS = frozenset({"segment_value_aware"})
+
+GOLD_EDIT_REPAIR_GUARD_ROUTINGS = (ADAPTIVE_ROUTINGS | frozenset({"budget_only"})) - frozenset(
+    {"value_aware_task_level"}
+)
 
 
 def is_adaptive_routing(routing: str) -> bool:

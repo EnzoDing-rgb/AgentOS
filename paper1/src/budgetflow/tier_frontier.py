@@ -132,10 +132,10 @@ class TierFrontier:
         )
         value_gain = max(delta, 0.0) * task_value * max(1, self.reference_runway_turns)
         if value_gain <= 0:
-            return _finite_score(cost_ratio * (1.0 + budget_pressure), cost_ratio, budget_pressure)
+            return finite_frontier_score(cost_ratio * (1.0 + budget_pressure), cost_ratio, budget_pressure)
 
         effective_incremental_cost = incremental_cost_ratio * (1.0 + budget_pressure * 0.5)
-        return _finite_score(effective_incremental_cost / value_gain, cost_ratio, budget_pressure)
+        return finite_frontier_score(effective_incremental_cost / value_gain, cost_ratio, budget_pressure)
 
     def to_dict(self) -> dict:
         return {
@@ -157,7 +157,7 @@ def _safe_ratio(numerator: float, denominator: float) -> float:
     return numerator / denominator
 
 
-def _finite_score(score: float, cost_ratio: float, budget_pressure: float) -> float:
+def finite_frontier_score(score: float, cost_ratio: float, budget_pressure: float) -> float:
     """Keep bad catalog edits from leaking NaN/inf into traces."""
     if math.isfinite(score):
         return score

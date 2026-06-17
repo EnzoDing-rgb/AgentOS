@@ -670,6 +670,23 @@ def test_harness_trust_treats_failed_patch_as_trusted_failure() -> None:
     assert trust["severity"] == "none"
 
 
+def test_harness_trust_allows_runtime_worktree_pytest_rootdir() -> None:
+    trust = build_harness_trust({
+        "harness_resolved": False,
+        "patch_extracted": True,
+        "patch_source": "submission",
+        "submitted_patch": "/tmp/submitted.patch",
+        "detail": (
+            "test_patch=ok; fail_before=fail; model_patch=ok; fail_after=fail; "
+            "rootdir: /tmp/budgetflow-runtime/worktrees/sympy__sympy/"
+            "bare_t3_baseline_sympy__sympy-12171"
+        ),
+    })
+
+    assert trust["harness_trust"] == "trusted"
+    assert trust["severity"] == "none"
+
+
 def test_harness_trust_blocks_host_dependency_contamination() -> None:
     trust = build_harness_trust({
         "harness_resolved": False,

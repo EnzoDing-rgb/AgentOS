@@ -27,6 +27,7 @@ EXIT_OWNER_UNKNOWN = "unknown"
 _BUDGETFLOW_ONLY_STAGNATION = frozenset({
     "post_patch_verified_stable",
     "rescue_timeout_gold_edited",
+    "submit_timeout_after_gold_edit",
     "gold_edit_mid_tier_repair_limit",
 })
 
@@ -59,7 +60,7 @@ _PROTOCOL_STATUSES = {
 
 _PROVIDER_UNAVAILABLE = {
     "ServiceUnavailableError",
-    "provider_all_unavailable",
+    "provider_unavailable",
     "model_unavailable",
     "upstream_guard",
 }
@@ -113,7 +114,7 @@ def _is_provider_unavailable(status: str, reason: str, errors: set[str]) -> bool
         for marker in (
             "serviceunavailableerror",
             "service unavailable",
-            "provider_all_unavailable",
+            "provider_unavailable",
             "model unavailable",
             "model_not_found",
             "model is not supported",
@@ -291,6 +292,17 @@ def build_score_status(record: dict[str, Any]) -> dict[str, Any]:
             "exit_owner": exit_owner,
         }
 
+    if exit_owner == EXIT_OWNER_BUDGETFLOW_STOPLOSS:
+        return {
+            "score_status": SCORE_TRUE_FAIL,
+            "scoreable": True,
+            "abort_reason": "",
+            "abort_owner": "",
+            "abort_stage": "",
+            "true_fail_reason": "budgetflow_stoploss",
+            "exit_owner": exit_owner,
+        }
+
     abort_reason = ""
     abort_owner = owner
     abort_stage = stage
@@ -350,7 +362,10 @@ def _failure_chain(record: dict[str, Any], harness: dict[str, str]) -> list[str]
 
     if _record_is_budget_exit(record):
         chain.append("budget_exhausted")
-    if reason.startswith("stagnation_"):
+    if reason.startswith("stagnation_") or reason in {
+        "rescue_timeout_gold_edited",
+        "submit_timeout_after_gold_edit",
+    }:
         chain.append(reason)
     for error in sorted(errors):
         chain.append(error)

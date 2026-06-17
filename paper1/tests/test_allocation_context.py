@@ -275,17 +275,16 @@ def test_tier_frontier_no_progress_delta_returns_cost_ratio() -> None:
     assert score > 2.0
 
 
-def test_value_aware_task_level_uses_bootstrap_policy_not_precomputed() -> None:
-    """value_aware_task_level must use per-turn BootstrapPolicy, not pre-select."""
+def test_value_aware_task_level_has_task_fixed_backend_slot() -> None:
+    """value_aware_task_level owns a task-fixed backend slot."""
     from budgetflow.adapter.strategies import build_routing_context
 
     ctx = build_routing_context(
         "value_aware_task_level",
         backends=[],
     )
-    # Must have bootstrap_policy set (per-turn), not task_level_backend (pre-computed)
     assert ctx.bootstrap_policy is not None
-    assert getattr(ctx, "task_level_backend", None) is None
+    assert getattr(ctx, "task_level_backend", "missing") is None
 
 
 def test_budgetflow_segment_uses_segment_signal() -> None:

@@ -89,3 +89,22 @@ def test_host_dependency_contamination_halts_all() -> None:
     assert action.halt_all
     assert "host_dependency_contamination" in action.reason
     assert g.is_aborted()
+
+
+def test_pytest_rootdir_under_runtime_worktree_does_not_halt_all() -> None:
+    g = CompareRunGuards()
+    action = g.record_task(
+        {
+            "strategy": "bare_t3_baseline",
+            "instance_id": "sympy__sympy-12171",
+            "detail": (
+                "test_patch=ok; fail_before=fail; model_patch=ok; fail_after=fail; "
+                "rootdir: /tmp/budgetflow-runtime/worktrees/sympy__sympy/"
+                "bare_t3_baseline_sympy__sympy-12171"
+            ),
+            "score_status": "true_fail",
+        }
+    )
+
+    assert not action.halt_all
+    assert not g.is_aborted()

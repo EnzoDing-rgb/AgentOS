@@ -127,6 +127,32 @@ def test_budget_violation_is_blocked() -> None:
     assert governor.state.spent_budget <= governor.state.total_budget
 
 
+def test_minimal_loop_does_not_downgrade_when_selected_backend_cannot_dispatch() -> None:
+    backends = build_backends()
+    selected = backends[-1]
+    ledger = WorkflowLedgerStore()
+    governor = BudgetGovernor(GovernorConfig(total_budget=0.2, default_max_output_tokens=100), ledger)
+
+    def pick_strongest(*_args) -> Backend:
+        return selected
+
+    loop = build_default_loop(
+        backends,
+        governor,
+        ledger,
+        budget_pressure=0.55,
+        backend_picker=pick_strongest,
+    )
+
+    result = loop.run_workflow(build_workflows()[0])
+
+    assert result.resolved is False
+    assert result.traces[0].chosen_backend == selected.name
+    assert result.traces[0].scheduler_decision == "reject"
+    assert result.traces[0].status == "failed"
+    assert governor.state.spent_budget == 0.0
+
+
 def test_settle_never_exceeds_total_budget() -> None:
     backends = build_backends()
     ledger = WorkflowLedgerStore()

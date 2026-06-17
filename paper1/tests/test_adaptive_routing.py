@@ -105,6 +105,29 @@ def test_rescue_window_stop_loss_prevents_expensive_spinning() -> None:
     assert rescue.should_stop_loss(gold_edited=True)
 
 
+def test_rescue_stop_loss_waits_until_after_last_rescue_turn() -> None:
+    rescue = EvidenceRescueState(trigger_turns=1, window_turns=3, stop_loss_turns=1)
+
+    for _ in range(3):
+        assert rescue.forced_min_tier(
+            segment=WorkflowSegment.ACTION,
+            gold_edited=True,
+            current_tier=2,
+            remaining_budget=100,
+            total_budget=100,
+        ) == 3
+        assert not rescue.should_stop_loss(gold_edited=True)
+
+    assert rescue.forced_min_tier(
+        segment=WorkflowSegment.ACTION,
+        gold_edited=True,
+        current_tier=2,
+        remaining_budget=100,
+        total_budget=100,
+    ) is None
+    assert rescue.should_stop_loss(gold_edited=True)
+
+
 def test_value_aware_default_rescue_is_bounded() -> None:
     rescue = rescue_state_for_strategy("segment_value_aware")
 
@@ -113,8 +136,13 @@ def test_value_aware_default_rescue_is_bounded() -> None:
     assert rescue.stop_loss_turns <= 6
 
 
-def test_value_aware_task_level_is_an_adaptive_routing() -> None:
-    from budgetflow.routing_sets import ADAPTIVE_ROUTINGS, VALUE_TRIGGERED_ESCALATION_ROUTINGS
+def test_value_aware_task_level_learns_but_does_not_switch_in_task() -> None:
+    from budgetflow.routing_sets import (
+        ADAPTIVE_ROUTINGS,
+        IN_TASK_SWITCHING_ROUTINGS,
+        VALUE_TRIGGERED_ESCALATION_ROUTINGS,
+    )
 
     assert "value_aware_task_level" in ADAPTIVE_ROUTINGS
-    assert "value_aware_task_level" in VALUE_TRIGGERED_ESCALATION_ROUTINGS
+    assert "value_aware_task_level" not in IN_TASK_SWITCHING_ROUTINGS
+    assert "value_aware_task_level" not in VALUE_TRIGGERED_ESCALATION_ROUTINGS

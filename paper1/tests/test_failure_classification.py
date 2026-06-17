@@ -87,6 +87,26 @@ def test_host_dependency_contamination_is_infra_not_model() -> None:
     assert verdict["failure_subtype"] == "provider_or_parser_error"
 
 
+def test_runtime_worktree_rootdir_is_not_host_dependency_contamination() -> None:
+    record = {
+        "harness_resolved": False,
+        "patch_extracted": True,
+        "agent_gold_edited": True,
+        "exit_status": "Submitted",
+        "detail": (
+            "test_patch=ok; fail_before=fail; model_patch=ok; fail_after=fail; "
+            "rootdir: /tmp/budgetflow-runtime/worktrees/sympy__sympy/"
+            "bare_t3_baseline_sympy__sympy-12171"
+        ),
+        "turn_trace_count": 1,
+    }
+
+    assert classify_failure(record) == "repair_fail"
+    verdict = build_verdict(record)
+    assert verdict["verdict_axis"] == "model_fail"
+    assert verdict["failure_owner"] == "model"
+
+
 def test_forensic_summary_provider_unavailable_axis() -> None:
     summary = build_forensic_summary(
         {
@@ -739,6 +759,38 @@ def test_exit_owner_rescue_timeout_is_stoploss() -> None:
         "routing": "budgetflow_segment",
     }
     assert compute_exit_owner(rec) == EXIT_OWNER_BUDGETFLOW_STOPLOSS
+
+
+def test_forensic_summary_keeps_rescue_timeout_in_failure_chain() -> None:
+    summary = build_forensic_summary(
+        {
+            "exit_reason": "rescue_timeout_gold_edited",
+            "exit_status": "StagnationExit",
+            "patch_extracted": False,
+            "agent_gold_edited": True,
+        }
+    )
+
+    assert "rescue_timeout_gold_edited" in summary["failure_chain"]
+
+
+def test_submit_timeout_after_gold_edit_is_budgetflow_stoploss() -> None:
+    rec = {
+        "exit_reason": "submit_timeout_after_gold_edit",
+        "exit_status": "StagnationExit",
+        "routing": "segment_value_aware",
+        "patch_extracted": False,
+        "agent_gold_edited": True,
+        "turn_trace_count": 20,
+    }
+
+    assert compute_exit_owner(rec) == EXIT_OWNER_BUDGETFLOW_STOPLOSS
+    assert "submit_timeout_after_gold_edit" in build_forensic_summary(rec)["failure_chain"]
+    score = build_score_status(rec)
+    assert score["score_status"] == "true_fail"
+    assert score["scoreable"] is True
+    assert score["true_fail_reason"] == "budgetflow_stoploss"
+    assert score["abort_reason"] == ""
 
 
 def test_exit_owner_format_error_is_parser_protocol() -> None:

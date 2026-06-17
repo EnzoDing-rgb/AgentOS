@@ -4,6 +4,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from budgetflow.experiments.budget_binding import (
     _load_historical_costs,
     _load_historical_cost_signals,
@@ -163,11 +165,12 @@ def test_calibrate_reuses_current_catalog_historical_cost_without_repricing(tmp_
     )
 
     assert plan.projected_spend_by_strategy == {"bare_t3_baseline": 0.25}
-    assert plan.hard_cap_usd == 0.25
+    assert plan.hard_cap_usd == 0.50
     assert plan.reference_spend_usd == 0.25
     assert plan.strongest_boundary_usd == 0.25
     assert plan.max_projected_spend_usd == 0.25
     assert any("strongest_boundary" in reason for reason in plan.reasons)
+    assert not any("clipped" in reason for reason in plan.reasons)
 
 
 def test_calibrate_uses_budget_exhausted_rows_as_floor_not_observed_sample(tmp_path: Path) -> None:
@@ -198,7 +201,9 @@ def test_calibrate_uses_budget_exhausted_rows_as_floor_not_observed_sample(tmp_p
         target_utilization=0.75,
     )
 
-    assert plan.projected_spend_by_strategy == {"budgetflow_task_level": 0.76}
+    # baseline now includes model-fit turn scaling (fit_ratio ≈ 1.04x for default catalog)
+    assert plan.projected_spend_by_strategy["budgetflow_task_level"] == pytest.approx(0.79922, rel=1e-3)
+    assert plan.projected_spend_by_strategy["budgetflow_task_level"] > 0.75
     assert plan.censored_spend_floor_by_strategy == {"budgetflow_task_level": 0.75}
     assert any("censored spend floors" in reason for reason in plan.reasons)
 
@@ -287,9 +292,53 @@ def test_calibrate_cap_allows_strongest_model_to_reach_final_task(tmp_path: Path
         target_utilization=0.20,
     )
 
-    assert plan.hard_cap_usd >= 0.22
-    assert plan.hard_cap_usd <= 0.36
+    assert plan.hard_cap_usd == pytest.approx(1.80)
     assert any("strongest_runway_floor" in reason for reason in plan.reasons)
+    assert not any("clipped" in reason for reason in plan.reasons)
+
+
+def test_calibrate_does_not_clip_cap_to_underestimated_strongest_projection(tmp_path: Path) -> None:
+    catalog = catalog_source_info()
+    jsonl = tmp_path / "hist.jsonl"
+    rows = [
+        {
+            "strategy": "bare_t3_baseline",
+            "instance_id": "task-a",
+            "total_cost": 0.40,
+            "budget_mode": "shared_batch_hard_budget",
+            "catalog": catalog,
+            "score_status": "pass",
+            "exit_status": "HarnessResolved",
+            "row_finished_at": 1,
+        },
+        {
+            "strategy": "budgetflow_task_level",
+            "instance_id": "task-a",
+            "total_cost": 1.80,
+            "budget_mode": "shared_batch_hard_budget",
+            "catalog": catalog,
+            "score_status": "pass",
+            "exit_status": "HarnessResolved",
+            "row_finished_at": 1,
+        },
+    ]
+    jsonl.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
+    vm = tmp_path / "vm.json"
+    vm.write_text(json.dumps({"tasks": {"task-a": {"task_effort": {"bootstrap_heuristic": 100.0}}}}))
+
+    plan = calibrate_budget(
+        ["task-a"],
+        historical_jsonl=jsonl,
+        value_matrix_path=vm,
+        strategies=("bare_t3_baseline", "budgetflow_task_level"),
+        target_utilization=0.90,
+    )
+
+    assert plan.reference_spend_usd == 1.80
+    assert plan.strongest_boundary_usd == 0.40
+    assert plan.hard_cap_usd == 2.00
+    assert plan.hard_cap_usd > plan.strongest_boundary_usd
+    assert any("not a hard cap" in reason for reason in plan.reasons)
 
 
 def test_target_utilization_below_zero_raises() -> None:
@@ -622,7 +671,7 @@ def test_calibration_excludes_score_abort_rows(tmp_path: Path) -> None:
         "score_status": "abort",
         "abort_reason": "provider_or_infra_error",
         "exit_status": "ServiceUnavailableError",
-        "exit_reason": "provider_all_unavailable",
+        "exit_reason": "provider_unavailable",
     }
     eligible, reason = _row_is_calibration_eligible(row)
     assert eligible is False
@@ -637,7 +686,7 @@ def test_calibration_excludes_provider_and_parser_aborts_without_score_status() 
         "budget_mode": "shared_batch_hard_budget",
         "catalog": catalog_source_info(),
         "exit_status": "ServiceUnavailableError",
-        "exit_reason": "provider_all_unavailable",
+        "exit_reason": "provider_unavailable",
         "failure_class": "infra_fail",
         "score_status": "true_fail",
     }

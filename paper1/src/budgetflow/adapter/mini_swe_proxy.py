@@ -18,6 +18,7 @@ from ..litellm_quiet import configure_litellm_quiet
 from ..budget_pressure import live_budget_pressure
 from ..defaults import (
     GOLD_EDIT_MID_TIER_REPAIR_TURN_LIMIT,
+    GOLD_EDIT_SUBMIT_GRACE_TURNS,
     PRESSURE_MAX,
     STRONGEST_DOWNGRADE_TIER,
     VALUE_TRIGGERED_ESCALATION_DEFAULT_WINDOW_TURNS,
@@ -36,6 +37,7 @@ from ..adapters import SwebenchProgressAdapter
 from ..routing_sets import (
     ADAPTIVE_ROUTINGS,
     GOLD_EDIT_REPAIR_GUARD_ROUTINGS,
+    IN_TASK_SWITCHING_ROUTINGS,
     VALUE_TRIGGERED_ESCALATION_ROUTINGS,
 )
 from .action_parsing import format_error_stop_after, parse_tool_actions
@@ -174,7 +176,7 @@ class FatalProviderBillingError(RuntimeError):
 
 
 class _ProviderTimeoutError(RuntimeError):
-    """Timeout errors should skip tenacity retry to enable provider fallback."""
+    """Timeout errors should skip tenacity retry and surface as provider failures."""
 
     def __init__(self, original: Exception) -> None:
         self.original = original
@@ -277,6 +279,7 @@ class BudgetFlowLitellmModel:
         self._no_progress_on_current_tier = 0  # consecutive non-progress steps on current tier
         self._turns_on_current_tier = 0  # total turns on current tier (for turn cap)
         self._gold_edit_mid_tier_repair_turns = 0
+        self._gold_edit_stop_loss_grace_turns = 0
         self._last_backend_tier: int = 0  # track tier changes to reset patience
         self._total_prompt_tokens = 0
         self._total_completion_tokens = 0
@@ -304,7 +307,6 @@ class BudgetFlowLitellmModel:
         self._protocol_retry_reason: str = ""
         self._protocol_retry_attempts: int = 0
         self._protocol_retry_limit: int = 4
-        self._unavailable_backends: set[str] = set()
         self._value_triggered_escalation_turns_remaining = 0
         self._value_triggered_escalation_opened = False
         self._value_triggered_escalation_reason: str | None = None
@@ -429,7 +431,7 @@ class BudgetFlowLitellmModel:
                     f"starting_tier={min_start} ({backend_tier_label(backend.name)})",
                     flush=True,
                 )
-        if self.routing.adaptive is not None and self.routing.strategy in ADAPTIVE_ROUTINGS:
+        if self.routing.adaptive is not None and self.routing.strategy in IN_TASK_SWITCHING_ROUTINGS:
             forced_start = self.routing.adaptive.consume_strongest_starter_tier(
                 ModelCatalog.strongest(self.routing.backends).tier
             )
@@ -442,7 +444,8 @@ class BudgetFlowLitellmModel:
                     flush=True,
                 )
                 backend = candidate
-        if self.routing.adaptive is not None and self.routing.strategy in ADAPTIVE_ROUTINGS:
+        protect_strongest_this_turn = False
+        if self.routing.adaptive is not None and self.routing.strategy in IN_TASK_SWITCHING_ROUTINGS:
             forced_tier = self.routing.adaptive.rescue.forced_min_tier(
                 segment=progress_signal.segment,
                 gold_edited=self.agent_gold_edited,
@@ -460,136 +463,137 @@ class BudgetFlowLitellmModel:
                     flush=True,
                 )
                 backend = candidate
-            if self.routing.adaptive.rescue.should_stop_loss(gold_edited=self.agent_gold_edited):
+                strongest_tier = ModelCatalog.strongest(self.routing.backends).tier
+                protect_strongest_this_turn = candidate.tier >= strongest_tier
+            stop_loss = self._defer_gold_edit_stop_loss(
+                self.routing.adaptive.rescue.should_stop_loss(gold_edited=self.agent_gold_edited)
+            )
+            if stop_loss:
+                exit_reason = "submit_timeout_after_gold_edit"
                 print(
                     f"{tag('stop', bold=False)} #{self.step_index} "
-                    f"rescue_timeout_gold_edited evidence_turns="
+                    f"{exit_reason} evidence_turns="
                     f"{self.routing.adaptive.rescue.evidence_turns}",
                     flush=True,
                 )
                 raise BudgetFlowStagnationError(
                     self.workflow_id,
-                    exit_reason="rescue_timeout_gold_edited",
+                    exit_reason=exit_reason,
                     step_index=self.step_index,
                     no_progress_streak=self._no_progress_streak,
                 )
         prev_tier = self._last_backend_tier
         backend = self._apply_value_triggered_escalation(backend, stage)
-        backend = self._apply_progress_escalation(backend)
+        backend = self._apply_progress_escalation(
+            backend,
+            protect_strongest_this_turn=protect_strongest_this_turn,
+        )
         backend = self._apply_gold_edit_repair_guard(backend, progress_signal.segment)
         escalated_backend = backend.name
-        response = None
-        attempted_unavailable: list[str] = []
-        for candidate in self._provider_candidates(backend):
-            backend = self._reserve_with_downgrade(candidate, input_tokens)
-            reserve_out = self._last_reserve_out
-            if backend.tier != prev_tier and prev_tier > 0:
-                self._no_progress_on_current_tier = 0
-                self._turns_on_current_tier = 0
-            self._last_backend_tier = backend.tier
-            self._turns_on_current_tier += 1
-            guarded_tier = ModelCatalog.second_cheapest(self.routing.backends).tier
-            if (
-                self.agent_gold_edited
-                and progress_signal.segment.name in (WorkflowSegment.ACTION, WorkflowSegment.VERIFICATION)
-                and backend.tier == guarded_tier
-            ):
-                self._gold_edit_mid_tier_repair_turns += 1
-            if backend.tier >= ModelCatalog.strongest(self.routing.backends).tier and self._value_triggered_escalation_turns_remaining > 0:
-                self._value_triggered_escalation_turns_remaining -= 1
-            self.routing.last_backend = backend
-            self.backend_picks.append(backend.name)
-            self.last_routing_stage = stage.value
-            self.last_backend_name = backend.name
+        backend = self._reserve_backend(backend, input_tokens)
+        reserve_out = self._last_reserve_out
+        if backend.tier != prev_tier and prev_tier > 0:
+            self._no_progress_on_current_tier = 0
+            self._turns_on_current_tier = 0
+        self._last_backend_tier = backend.tier
+        self._turns_on_current_tier += 1
+        guarded_tier = ModelCatalog.second_cheapest(self.routing.backends).tier
+        if (
+            self.agent_gold_edited
+            and progress_signal.segment.name in (WorkflowSegment.ACTION, WorkflowSegment.VERIFICATION)
+            and backend.tier == guarded_tier
+        ):
+            self._gold_edit_mid_tier_repair_turns += 1
+        if backend.tier >= ModelCatalog.strongest(self.routing.backends).tier and self._value_triggered_escalation_turns_remaining > 0:
+            self._value_triggered_escalation_turns_remaining -= 1
+        self.routing.last_backend = backend
+        self.backend_picks.append(backend.name)
+        self.last_routing_stage = stage.value
+        self.last_backend_name = backend.name
+        print(
+            f"{tag('route', bold=False)} #{self.step_index} "
+            f"{dim(self.workflow_id)} "
+            f"strategy={bold(self.routing.strategy)} "
+            f"model={backend_tier_label(backend.name)} "
+            f"stage={routing_stage_label(stage.value)}",
+            flush=True,
+        )
+        self._refresh_progress()
+
+        model_name, model_kwargs = self._model_config_for(backend)
+        try:
+            response = self._completion(
+                messages,
+                backend_name=backend.name,
+                model_name=model_name,
+                model_kwargs=model_kwargs,
+                **kwargs,
+            )
+        except Exception as exc:
+            error_type = type(exc).__name__
+            provider_error_kind = _provider_error_kind(exc)
+            failed_reservation_id = self._last_reservation_id
+            self._release_last_reservation()
+            if self._enable_turn_trace:
+                self.turn_traces.append(build_turn_trace(
+                    step_index=self.step_index,
+                    agent_phase=self.agent_phase,
+                    stage=stage,
+                    workflow_segment=progress_signal.segment,
+                    bash_command=bash_command,
+                    touched_file_paths=progress_signal.touched_file_paths,
+                    input_tokens=input_tokens,
+                    expected_costs=expected_costs,
+                    base_pressure=base_pressure,
+                    effective_pressure=self.routing.budget_pressure,
+                    backend_chosen=backend_chosen,
+                    escalated_backend=escalated_backend,
+                    final_backend=backend.name,
+                    backend_tier=backend.tier,
+                    reserve_out=reserve_out,
+                    adaptive=self.routing.adaptive,
+                    no_progress_streak=self._no_progress_streak,
+                    no_progress_on_tier=self._no_progress_on_current_tier,
+                    turns_on_tier=self._turns_on_current_tier,
+                    has_progress=has_progress,
+                    progress_reason=progress_reason,
+                    action_has_progress=None,
+                    action_progress_reason=None,
+                    prompt_tokens=0,
+                    completion_tokens=0,
+                    actual_cost=0.0,
+                    billable=0.0,
+                    response_ok=False,
+                    error_type=error_type,
+                    **provider_trace_fields(backend.name),
+                    **cost_basis_trace_fields(backend.name, input_tokens),
+                    **protocol_trace_fields(backend.name),
+                    **router_trace_fields(self.routing),
+                    **value_aware_trace_fields(self.routing),
+                    **self._gold_edit_guard_trace_fields(),
+                    provider_status_code=getattr(exc, "status_code", None),
+                    provider_error_body=str(exc)[:500],
+                    provider_error_kind=provider_error_kind,
+                    provider_retryable=_provider_error_retryable(provider_error_kind),
+                    reservation_id=failed_reservation_id,
+                    reservation_released=True,
+                ))
+            if not _is_provider_unavailable(exc):
+                raise
+            self.last_exit_reason = "provider_unavailable"
+            self.last_budget_snapshot = self.governor.budget_snapshot()
             print(
-                f"{tag('route', bold=False)} #{self.step_index} "
-                f"{dim(self.workflow_id)} "
-                f"strategy={bold(self.routing.strategy)} "
-                f"model={backend_tier_label(backend.name)} "
-                f"stage={routing_stage_label(stage.value)}",
+                f"{tag('provider', bold=False)} #{self.step_index} unavailable "
+                f"{backend_tier_label(backend.name)} fail_fast",
                 flush=True,
             )
-            self._refresh_progress()
-
-            model_name, model_kwargs = self._model_config_for(backend)
-            try:
-                response = self._completion(
-                    messages,
-                    backend_name=backend.name,
-                    model_name=model_name,
-                    model_kwargs=model_kwargs,
-                    **kwargs,
-                )
-                break
-            except Exception as exc:
-                error_type = type(exc).__name__
-                provider_error_kind = _provider_error_kind(exc)
-                failed_reservation_id = self._last_reservation_id
-                self._release_last_reservation()
-                if self._enable_turn_trace:
-                    self.turn_traces.append(build_turn_trace(
-                        step_index=self.step_index,
-                        agent_phase=self.agent_phase,
-                        stage=stage,
-                        workflow_segment=progress_signal.segment,
-                        bash_command=bash_command,
-                        touched_file_paths=progress_signal.touched_file_paths,
-                        input_tokens=input_tokens,
-                        expected_costs=expected_costs,
-                        base_pressure=base_pressure,
-                        effective_pressure=self.routing.budget_pressure,
-                        backend_chosen=backend_chosen,
-                        escalated_backend=escalated_backend,
-                        final_backend=backend.name,
-                        backend_tier=backend.tier,
-                        reserve_out=reserve_out,
-                        adaptive=self.routing.adaptive,
-                        no_progress_streak=self._no_progress_streak,
-                        no_progress_on_tier=self._no_progress_on_current_tier,
-                        turns_on_tier=self._turns_on_current_tier,
-                        has_progress=has_progress,
-                        progress_reason=progress_reason,
-                        action_has_progress=None,
-                        action_progress_reason=None,
-                        prompt_tokens=0,
-                        completion_tokens=0,
-                        actual_cost=0.0,
-                        billable=0.0,
-                        response_ok=False,
-                        error_type=error_type,
-                        **provider_trace_fields(backend.name),
-                        **cost_basis_trace_fields(backend.name, input_tokens),
-                        **protocol_trace_fields(backend.name),
-                        **router_trace_fields(self.routing),
-                        **value_aware_trace_fields(self.routing),
-                        **self._gold_edit_guard_trace_fields(),
-                        provider_status_code=getattr(exc, "status_code", None),
-                        provider_error_body=str(exc)[:500],
-                        provider_error_kind=provider_error_kind,
-                        provider_retryable=_provider_error_retryable(provider_error_kind),
-                        reservation_id=failed_reservation_id,
-                        reservation_released=True,
-                    ))
-                if not _is_provider_unavailable(exc):
-                    raise
-                self._unavailable_backends.add(backend.name)
-                attempted_unavailable.append(backend.name)
-                print(
-                    f"{tag('provider', bold=False)} #{self.step_index} unavailable "
-                    f"{backend_tier_label(backend.name)} -> fallback",
-                    flush=True,
-                )
-                continue
-        if response is None:
-            self.last_exit_reason = "provider_all_unavailable"
-            self.last_budget_snapshot = self.governor.budget_snapshot()
             raise BudgetFlowUpstreamError(
                 self.workflow_id,
-                exit_reason="provider_all_unavailable",
+                exit_reason="provider_unavailable",
                 step_index=self.step_index,
-                backend=",".join(attempted_unavailable) or backend.name,
-                sample="all configured backends unavailable",
-            )
+                backend=backend.name,
+                sample=str(exc),
+            ) from exc
         message = response.choices[0].message.model_dump()
         usage = _usage_accounting(
             response,
@@ -998,28 +1002,19 @@ class BudgetFlowLitellmModel:
             ))
         return message
 
+    def _defer_gold_edit_stop_loss(self, stop_loss: bool) -> bool:
+        if not stop_loss:
+            return False
+        if not self.agent_gold_edited:
+            return True
+        if self._gold_edit_stop_loss_grace_turns < GOLD_EDIT_SUBMIT_GRACE_TURNS:
+            self._gold_edit_stop_loss_grace_turns += 1
+            return False
+        return True
+
     def _refresh_progress(self) -> None:
         if self._progress_refresh is not None:
             self._progress_refresh()
-
-    def _provider_candidates(self, backend: Backend) -> list[Backend]:
-        ordered = [b for b in self.routing.backends if b.name not in self._unavailable_backends]
-        if backend.name in self._unavailable_backends:
-            primary = []
-        else:
-            primary = [backend]
-        if self._gold_edit_mid_tier_repair_turns >= GOLD_EDIT_MID_TIER_REPAIR_TURN_LIMIT:
-            lower = []
-        else:
-            lower = [b for b in reversed(ordered) if b.tier < backend.tier]
-        higher = [b for b in ordered if b.tier > backend.tier]
-        seen: set[str] = set()
-        candidates: list[Backend] = []
-        for candidate in primary + lower + higher:
-            if candidate.name not in seen:
-                seen.add(candidate.name)
-                candidates.append(candidate)
-        return candidates
 
     def _release_last_reservation(self) -> None:
         reservation_id = self._last_reservation_id
@@ -1132,7 +1127,12 @@ class BudgetFlowLitellmModel:
         headroom = min(1024, max(backend.mean_output_tokens * 2, 256))
         return max(64, min(headroom, int(affordable_tokens * 0.95)))
 
-    def _apply_progress_escalation(self, backend: Backend) -> Backend:
+    def _apply_progress_escalation(
+        self,
+        backend: Backend,
+        *,
+        protect_strongest_this_turn: bool = False,
+    ) -> Backend:
         """Per-tier escalation + turn cap + strongest-tier stop-loss.
 
         Escalation (no-progress streak): "stuck → try better model."
@@ -1140,11 +1140,15 @@ class BudgetFlowLitellmModel:
         - strongest tier downgrades as stop-loss when it cannot make progress
         - Resets when progress is made.
         """
-        if self.routing.strategy not in ADAPTIVE_ROUTINGS:
+        if self.routing.strategy not in IN_TASK_SWITCHING_ROUTINGS:
             return backend
         ordered = self.routing.backends
         strongest = ModelCatalog.strongest(ordered)
         if len(ordered) < 2:
+            return backend
+        if protect_strongest_this_turn and backend.tier >= strongest.tier:
+            self._no_progress_on_current_tier = 0
+            self._turns_on_current_tier = 0
             return backend
 
         reason = None
@@ -1225,34 +1229,21 @@ class BudgetFlowLitellmModel:
         self._turns_on_current_tier = 0
         return next_backend
 
-    def _reserve_with_downgrade(self, backend: Backend, input_tokens: int) -> Backend:
-        ordered = self.routing.backends
-        start_index = ordered.index(backend)
-        min_tier = 1
-        adaptive = self.routing.adaptive
-        if adaptive is not None and self.routing.strategy in ADAPTIVE_ROUTINGS:
-            min_tier = adaptive.min_tier_for_reserve()
-        reserve_out = None
-        last_reason: str | None = None
-        candidates = [c for c in ordered[start_index::-1] if c.tier >= min_tier]
-        if not candidates:
-            candidates = [c for c in ordered if c.tier >= min_tier]
-        for candidate in candidates:
-            reserve_out = self._reserve_output_tokens(candidate, input_tokens)
-            estimate = self.governor.estimate_cost(
-                candidate,
-                input_tokens=input_tokens,
-                expected_output_tokens=candidate.mean_output_tokens,
-                reserve_output_tokens=reserve_out,
-            )
-            reservation = self.governor.reserve(self.workflow_id, candidate, estimate)
-            if reservation is not None:
-                self._last_reservation_id = reservation.reservation_id
-                self._last_reserve_out = reserve_out
-                return candidate
-            last_reason = self.governor.last_reserve_failure
+    def _reserve_backend(self, backend: Backend, input_tokens: int) -> Backend:
+        reserve_out = self._reserve_output_tokens(backend, input_tokens)
+        estimate = self.governor.estimate_cost(
+            backend,
+            input_tokens=input_tokens,
+            expected_output_tokens=backend.mean_output_tokens,
+            reserve_output_tokens=reserve_out,
+        )
+        reservation = self.governor.reserve(self.workflow_id, backend, estimate)
+        if reservation is not None:
+            self._last_reservation_id = reservation.reservation_id
+            self._last_reserve_out = reserve_out
+            return backend
         snapshot = self.governor.budget_snapshot()
-        exit_reason = last_reason or "budget_exhausted"
+        exit_reason = self.governor.last_reserve_failure or "budget_exhausted"
         self.last_exit_reason = exit_reason
         self.last_budget_snapshot = snapshot
         raise BudgetFlowBudgetError(
