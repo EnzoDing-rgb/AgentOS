@@ -772,6 +772,52 @@ def test_flask_adapter_dispatch() -> None:
     assert isinstance(adapter, FlaskHAdapter)
 
 
+def test_flask_agent_shell_env_prefers_repo_src_package(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("PYTHONPATH", "/shared")
+    repo_dir = tmp_path / "flask"
+    (repo_dir / "src" / "flask").mkdir(parents=True)
+    (repo_dir / "src" / "flask" / "__init__.py").write_text("")
+
+    env = build_agent_shell_env(repo_dir, FlaskHAdapter())
+    pythonpath = env["PYTHONPATH"].split(":")
+
+    assert pythonpath[:2] == [str(repo_dir / "src"), str(repo_dir)]
+    assert "/shared" in pythonpath
+
+
+def test_run_pytest_uses_adapter_pythonpath_prefixes(tmp_path: Path, monkeypatch) -> None:
+    test_file = tmp_path / "tests" / "test_x.py"
+    test_file.parent.mkdir()
+    test_file.write_text("def test_regression():\n    pass\n")
+    (tmp_path / "src" / "flask").mkdir(parents=True)
+    (tmp_path / "src" / "flask" / "__init__.py").write_text("")
+    captured: dict[str, dict[str, str]] = {}
+
+    class Result:
+        returncode = 0
+        stdout = "ok"
+        stderr = ""
+
+    def fake_run(cmd, *, cwd, capture_output, text, env):
+        captured["env"] = env
+        return Result()
+
+    monkeypatch.setattr("budgetflow.local_harness_adapters.subprocess.run", fake_run)
+
+    ok, _ = local_harness.run_pytest(
+        tmp_path,
+        ("tests/test_x.py::test_regression",),
+        ["tests/test_x.py"],
+        adapter=FlaskHAdapter(),
+    )
+
+    assert ok is True
+    assert captured["env"]["PYTHONPATH"].split(":")[:2] == [
+        str(tmp_path / "src"),
+        str(tmp_path),
+    ]
+
+
 def test_flask_adapter_injects_notset_alias(tmp_path: Path) -> None:
     tests_dir = tmp_path / "tests"
     tests_dir.mkdir()

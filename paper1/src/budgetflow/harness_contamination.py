@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import site
 import sys
 from pathlib import Path
@@ -10,15 +11,37 @@ HOST_DEPENDENCY_CONTAMINATION_MARKERS = (
     "host_dependency_contamination:",
     "numpy.dtype size changed",
     "_ARRAY_API not found",
-    "ConftestImportFailure",
-    "ImportError while loading conftest",
-    "ModuleNotFoundError: No module named",
     "opik/evaluation/metrics",
     "site-packages/tensorflow",
     "site-packages/keras",
     "site-packages/pandas",
     "/tmp/budgetflow-task-scout/runtime/worktrees/",
     "runtime worktree paths",
+)
+
+KNOWN_HOST_MISSING_MODULES = frozenset(
+    {
+        "matplotlib",
+        "requests",
+        "tests.test_sqlite",
+        "test_sqlite",
+        "django",
+        "astroid.nodes._base_nodes",
+    }
+)
+
+KNOWN_HOST_IMPORT_ERRORS = (
+    "ImportError: cannot import name 'environmentfilter' from 'jinja2'",
+    'ImportError: cannot import name "environmentfilter" from "jinja2"',
+    "ImportError: cannot import name 'contextfilter' from 'jinja2'",
+    'ImportError: cannot import name "contextfilter" from "jinja2"',
+    "ImportError: cannot import name 'contextfunction' from 'jinja2'",
+    'ImportError: cannot import name "contextfunction" from "jinja2"',
+    "ImportError: cannot import name 'evalcontextfilter' from 'jinja2'",
+    'ImportError: cannot import name "evalcontextfilter" from "jinja2"',
+    "ImportError: cannot import name 'evalcontextfunction' from 'jinja2'",
+    'ImportError: cannot import name "evalcontextfunction" from "jinja2"',
+    "Django module not found",
 )
 
 GLOBAL_PYTHON_PATH_CONTAMINATION_MARKERS = (
@@ -29,7 +52,12 @@ GLOBAL_PYTHON_PATH_CONTAMINATION_MARKERS = (
 
 
 def has_host_dependency_contamination(detail: str) -> bool:
-    return any(marker in detail for marker in HOST_DEPENDENCY_CONTAMINATION_MARKERS)
+    if any(marker in detail for marker in HOST_DEPENDENCY_CONTAMINATION_MARKERS):
+        return True
+    if any(marker in detail for marker in KNOWN_HOST_IMPORT_ERRORS):
+        return True
+    missing_modules = set(re.findall(r"ModuleNotFoundError: No module named ['\"]([^'\"]+)['\"]", detail))
+    return bool(missing_modules & KNOWN_HOST_MISSING_MODULES)
 
 
 def _python_path_contamination_marker(text: str, runtime_root: Path) -> str:
@@ -131,9 +159,14 @@ def format_runtime_worktree_contamination(contamination: list[str], *, limit: in
 
 def isolated_repo_pythonpath(repo_dir: Path, runtime_root: Path, existing: str | None = None) -> str:
     """Build a PYTHONPATH where the active repo is first and old worktrees are absent."""
-    entries = [str(repo_dir)]
+    return isolated_pythonpath((repo_dir,), runtime_root, existing)
+
+
+def isolated_pythonpath(prefixes: tuple[Path, ...], runtime_root: Path, existing: str | None = None) -> str:
+    """Build a PYTHONPATH from active prefixes while removing old worktrees."""
+    entries = [str(path) for path in prefixes if str(path)]
     for entry in (existing or "").split(os.pathsep):
-        if not entry or entry == str(repo_dir):
+        if not entry or entry in entries:
             continue
         if is_runtime_worktree_path(entry, runtime_root):
             continue

@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from .console_log import _BRIGHT_GREEN, paint, tag
-from .harness_contamination import isolated_repo_pythonpath, is_runtime_worktree_path
+from .harness_contamination import isolated_pythonpath, isolated_repo_pythonpath, is_runtime_worktree_path
 from .runtime import get_runtime_root
 
 
@@ -321,6 +321,12 @@ class SphinxHAdapter(RepoHarnessAdapter):
 class FlaskHAdapter(RepoHarnessAdapter):
     repo_slug = "pallets__flask"
 
+    def agent_pythonpath_prefixes(self, repo_dir: Path) -> list[Path]:
+        src_dir = repo_dir / "src"
+        if (src_dir / "flask").is_dir():
+            return [src_dir, repo_dir]
+        return super().agent_pythonpath_prefixes(repo_dir)
+
     def apply_compat(self, repo_dir: Path) -> list[str]:
         """Patch Flask tests for pytest >= 7.2 compatibility.
 
@@ -591,17 +597,23 @@ def run_pytest(
     # Ensure repo root is on PYTHONPATH so test-directory packages
     # (e.g. Django's ``tests.test_sqlite``) are importable regardless of
     # which test command the adapter produces.
-    env["PYTHONPATH"] = isolated_repo_pythonpath(
-        repo_dir,
-        get_runtime_root(),
-        os.environ.get("PYTHONPATH", ""),
-    )
     if adapter:
+        prefixes = tuple(adapter.agent_pythonpath_prefixes(repo_dir))
+        env["PYTHONPATH"] = isolated_pythonpath(
+            prefixes,
+            get_runtime_root(),
+            os.environ.get("PYTHONPATH", ""),
+        )
         extra_env = adapter.pytest_env()
         if extra_env:
             env.update(extra_env)
         cmd = adapter.build_test_command(repo_dir, node_ids)
     else:
+        env["PYTHONPATH"] = isolated_repo_pythonpath(
+            repo_dir,
+            get_runtime_root(),
+            os.environ.get("PYTHONPATH", ""),
+        )
         cmd = [harness_python(), "-m", "pytest", "-x"] + node_ids
     result = subprocess.run(
         cmd,

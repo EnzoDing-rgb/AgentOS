@@ -41,6 +41,26 @@ def test_local_swebench_config_isolates_agent_shell_from_global_python(tmp_path)
     assert env["PIP_REQUIRE_VIRTUALENV"] == "1"
 
 
+def test_agent_environment_issue_scans_beyond_observation_preview() -> None:
+    from budgetflow.run_trace import _agent_environment_issue, _last_observation_summary
+
+    long_prefix = "x" * 260
+    messages = [
+        {
+            "role": "user",
+            "content": (
+                "<returncode>1</returncode>"
+                f"<output>{long_prefix} ImportError: cannot import name 'environmentfilter' "
+                "from 'jinja2'</output>"
+            ),
+        }
+    ]
+
+    observation = _last_observation_summary(messages)
+
+    assert _agent_environment_issue(observation) == "ImportError: cannot import name"
+
+
 def test_runner_aborts_before_provider_calls_on_global_runtime_worktree_contamination(monkeypatch) -> None:
     import budgetflow.adapter.runner as runner
 

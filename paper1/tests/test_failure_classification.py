@@ -117,6 +117,37 @@ def test_missing_harness_dependency_is_infra_abort_not_model_fail() -> None:
     assert score["abort_reason"] == "host_dependency_contamination"
 
 
+def test_model_introduced_missing_module_is_model_fail_not_infra_abort() -> None:
+    record = {
+        "instance_id": "sympy__sympy-99999",
+        "harness_resolved": False,
+        "patch_extracted": True,
+        "patch_source": "submission",
+        "submitted_patch": "/tmp/submitted.patch",
+        "agent_gold_edited": True,
+        "agent_gold_files": ["sympy/core/basic.py"],
+        "agent_submitted": True,
+        "exit_status": "HarnessFailed",
+        "exit_reason": "harness_failed",
+        "detail": (
+            "test_patch=ok; fail_before=fail; model_patch=ok; fail_after=fail; "
+            "ModuleNotFoundError: No module named 'model_added_dependency'; "
+            "pass_to_pass=fail"
+        ),
+        "turn_trace_count": 1,
+        "turn_traces": [{}],
+    }
+
+    assert classify_failure(record) == "repair_fail"
+    verdict = build_verdict(record)
+    assert verdict["verdict_axis"] == "model_fail"
+    assert verdict["failure_owner"] == "model"
+
+    score = build_score_status(record)
+    assert score["score_status"] == "true_fail"
+    assert score["abort_reason"] == ""
+
+
 def test_agent_shell_environment_issue_is_infra_abort_not_model_fail() -> None:
     record = {
         "harness_resolved": False,

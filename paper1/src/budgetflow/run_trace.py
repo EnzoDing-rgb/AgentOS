@@ -99,8 +99,9 @@ def _last_observation_summary(messages: list[dict]) -> dict:
         end = content.find("</returncode>", start)
         if end > start:
             rc = content[start:end].strip()
-        preview = content.replace("\n", " ")[:200]
-        return {"returncode": rc, "observation_preview": preview}
+        normalized = content.replace("\n", " ")
+        preview = normalized[:200]
+        return {"returncode": rc, "observation_preview": preview, "observation_text": normalized}
     return {}
 
 
@@ -129,7 +130,7 @@ _AGENT_ENVIRONMENT_ERROR_MARKERS = (
 
 
 def _agent_environment_issue(observation: dict) -> str:
-    preview = str(observation.get("observation_preview") or "")
+    preview = str(observation.get("observation_text") or observation.get("observation_preview") or "")
     for marker in _AGENT_ENVIRONMENT_ERROR_MARKERS:
         if marker in preview:
             return marker
