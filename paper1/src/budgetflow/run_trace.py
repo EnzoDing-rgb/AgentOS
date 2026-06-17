@@ -523,6 +523,10 @@ class TracedDefaultAgent(DefaultAgent):
             self.model.agent_patch_digest = self._trace._last_patch_digest
         if hasattr(self.model, "agent_patch_stable_steps"):
             self.model.agent_patch_stable_steps = self._trace._patch_stable_steps
+        if hasattr(self.model, "agent_attempted_submit"):
+            self.model.agent_attempted_submit = self._trace._attempted_submit
+        if hasattr(self.model, "agent_submitted"):
+            self.model.agent_submitted = self._trace._submitted
         result = super().step()
         self._trace.log_step(self, elapsed_s=time.time() - self._run_started)
         if hasattr(self.model, "agent_gold_edited"):
@@ -533,4 +537,8 @@ class TracedDefaultAgent(DefaultAgent):
             self.model.agent_patch_digest = self._trace._last_patch_digest
         if hasattr(self.model, "agent_patch_stable_steps"):
             self.model.agent_patch_stable_steps = self._trace._patch_stable_steps
+        if hasattr(self.model, "agent_attempted_submit"):
+            self.model.agent_attempted_submit = self._trace._attempted_submit
+        if hasattr(self.model, "agent_submitted"):
+            self.model.agent_submitted = self._trace._submitted
         return result

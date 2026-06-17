@@ -8,6 +8,8 @@ import math
 from ..defaults import STAGNATION_NO_PROGRESS_STEPS, STAGNATION_REPEAT_CMD_LIMIT
 
 POST_PATCH_STABLE_PASS_STEPS = 4
+POST_PATCH_STABLE_NO_SUBMIT_STEPS = 16
+POST_PATCH_NO_SUBMIT_PHASES = frozenset({"test", "patch_prep"})
 _POST_PATCH_STOP_STRATEGIES = frozenset(
     {
         "budgetflow_segment",
@@ -101,7 +103,12 @@ def check_post_patch_stop(
     patch_digest: str | None,
     patch_stable_steps: int,
     agent_pytest: str | None,
+    agent_phase: str | None = None,
+    agent_gold_edited: bool = False,
+    agent_attempted_submit: bool = False,
+    agent_submitted: bool = False,
     stable_pass_limit: int = POST_PATCH_STABLE_PASS_STEPS,
+    stable_no_submit_limit: int = POST_PATCH_STABLE_NO_SUBMIT_STEPS,
 ) -> tuple[bool, str]:
     """Stop BudgetFlow-only spend after a verified patch stops changing.
 
@@ -112,6 +119,14 @@ def check_post_patch_stop(
         return False, ""
     if not patch_digest:
         return False, ""
+    if (
+        agent_gold_edited
+        and not agent_attempted_submit
+        and not agent_submitted
+        and agent_phase in POST_PATCH_NO_SUBMIT_PHASES
+        and patch_stable_steps >= stable_no_submit_limit
+    ):
+        return True, "post_patch_stable_no_submit"
     if agent_pytest != "pass":
         return False, ""
     if patch_stable_steps < stable_pass_limit:

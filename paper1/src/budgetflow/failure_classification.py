@@ -33,9 +33,15 @@ EXIT_OWNER_UNKNOWN = "unknown"
 # Exit reasons that are exclusive to BudgetFlow mechanisms.
 _BUDGETFLOW_ONLY_STAGNATION = frozenset({
     "post_patch_verified_stable",
+    "post_patch_stable_no_submit",
     "rescue_timeout_gold_edited",
     "submit_timeout_after_gold_edit",
     "gold_edit_mid_tier_repair_limit",
+})
+
+_POST_PATCH_STOPLOSS_REASONS = frozenset({
+    "post_patch_verified_stable",
+    "post_patch_stable_no_submit",
 })
 
 # Strategies whose stagnation is attributed to agent_harness (NOT budgetflow).
@@ -355,6 +361,8 @@ def _failure_chain(record: dict[str, Any], harness: dict[str, str]) -> list[str]
     if _record_is_budget_exit(record):
         chain.append("budget_exhausted")
     if reason.startswith("stagnation_") or is_fixed_tier_turn_cap_reason(reason) or reason in {
+        "post_patch_verified_stable",
+        "post_patch_stable_no_submit",
         "rescue_timeout_gold_edited",
         "submit_timeout_after_gold_edit",
     }:
@@ -470,6 +478,9 @@ def classify_failure(record: dict[str, Any]) -> str:
     if has_host_dependency_contamination(str(record.get("detail") or "")):
         return "infra_fail"
 
+    if reason in _POST_PATCH_STOPLOSS_REASONS:
+        return "repair_fail"
+
     if _record_is_budget_exit(record):
         return "budget_fail"
 
@@ -571,6 +582,8 @@ def build_verdict(record: dict[str, Any]) -> dict[str, Any]:
         axis = "budget_fail"
     elif _is_conservation_lockout(record):
         axis = "budget_fail"
+    elif reason in _POST_PATCH_STOPLOSS_REASONS:
+        axis = "model_fail"
     elif not patch_extracted and _is_protocol_error(status, reason):
         axis = "protocol_fail"
     elif _is_infra_exit(status) or _is_provider_unavailable(status, reason, errors):
@@ -623,6 +636,10 @@ def build_verdict(record: dict[str, Any]) -> dict[str, Any]:
         stage = "extraction"
     elif evidence.model_patch_status and not evidence.model_patch_ok:
         stage = "repair"
+    elif reason == "post_patch_stable_no_submit":
+        stage = "repair"
+    elif reason == "post_patch_verified_stable":
+        stage = "validation"
     elif not gold_edited:
         stage = "localization"
     elif harness.get("model_patch") == "fail":

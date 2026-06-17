@@ -140,6 +140,42 @@ def test_post_patch_stop_only_for_verified_stable_budgetflow_patch() -> None:
     ) == (False, "")
 
 
+def test_post_patch_stop_for_stable_patch_without_submit_after_validation_runway() -> None:
+    """BudgetFlow should not keep spending after a stable unsubmitted patch."""
+    assert check_post_patch_stop(
+        strategy="value_aware_task_level",
+        patch_digest="abc123",
+        patch_stable_steps=16,
+        agent_pytest=None,
+        agent_phase="patch_prep",
+        agent_gold_edited=True,
+        agent_attempted_submit=False,
+        agent_submitted=False,
+    ) == (True, "post_patch_stable_no_submit")
+
+    assert check_post_patch_stop(
+        strategy="value_aware_task_level",
+        patch_digest="abc123",
+        patch_stable_steps=16,
+        agent_pytest=None,
+        agent_phase="edit_gold",
+        agent_gold_edited=True,
+        agent_attempted_submit=False,
+        agent_submitted=False,
+    ) == (False, "")
+
+    assert check_post_patch_stop(
+        strategy="value_aware_task_level",
+        patch_digest="abc123",
+        patch_stable_steps=16,
+        agent_pytest=None,
+        agent_phase="patch_prep",
+        agent_gold_edited=True,
+        agent_attempted_submit=True,
+        agent_submitted=False,
+    ) == (False, "")
+
+
 def test_git_diff_digest_tracks_stable_patch(tmp_path: Path) -> None:
     from budgetflow.run_trace import git_diff_digest
 

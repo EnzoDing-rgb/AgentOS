@@ -751,6 +751,35 @@ def test_exit_owner_post_patch_verified_stable_is_stoploss() -> None:
     assert compute_exit_owner(rec) == EXIT_OWNER_BUDGETFLOW_STOPLOSS
 
 
+def test_post_patch_stable_no_submit_is_budgetflow_stoploss_true_fail() -> None:
+    rec = {
+        "harness_resolved": False,
+        "exit_status": "StagnationExit",
+        "exit_reason": "post_patch_stable_no_submit",
+        "routing": "value_aware_task_level",
+        "patch_extracted": False,
+        "agent_gold_edited": True,
+        "agent_attempted_submit": False,
+        "agent_submitted": False,
+        "detail": "",
+        "turn_trace_count": 16,
+        "turn_traces": [{"patch_stable_steps": 16, "agent_phase": "patch_prep"}],
+    }
+
+    assert compute_exit_owner(rec) == EXIT_OWNER_BUDGETFLOW_STOPLOSS
+    assert classify_failure(rec) == "repair_fail"
+    verdict = build_verdict(rec)
+    assert verdict["verdict_axis"] == "model_fail"
+    assert verdict["failure_owner"] == "model"
+    assert verdict["failure_stage"] == "repair"
+    assert "post_patch_stable_no_submit" in build_forensic_summary(rec)["failure_chain"]
+    score = build_score_status(rec)
+    assert score["score_status"] == "true_fail"
+    assert score["scoreable"] is True
+    assert score["true_fail_reason"] == "budgetflow_stoploss"
+    assert score["abort_reason"] == ""
+
+
 def test_exit_owner_rescue_timeout_is_stoploss() -> None:
     """rescue_timeout_gold_edited is exclusive to BudgetFlow."""
     rec = {
