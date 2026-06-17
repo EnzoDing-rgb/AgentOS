@@ -24,6 +24,7 @@ from ..heartbeat import run_with_heartbeat
 from ..ledger import WorkflowLedgerStore
 from ..lite_tasks import LiteTaskRecord
 from ..local_harness import clone_or_checkout, evaluate_local_harness
+from ..local_harness_adapters import RepoHarnessAdapter, build_agent_shell_env
 from ..harness_contamination import (
     find_runtime_worktree_python_contamination,
     format_runtime_worktree_contamination,
@@ -93,6 +94,7 @@ class MiniSweRunResult:
     parser: str = ""
     provider_error_kind: str = ""
     provider_retryable: bool | None = None
+    agent_environment_issues: tuple[str, ...] = ()
 
 
 def _row_cost_observability(model: BudgetFlowLitellmModel, total_cost: float) -> tuple[str, str]:
@@ -204,8 +206,10 @@ def run_mini_swe_task(
             violations=(),
             cost_mode="no_provider_call",
             usage_source="none",
+            agent_environment_issues=(),
         )
     repo_dir = clone_or_checkout(task, workspace_key=workspace_key)
+    harness_adapter = RepoHarnessAdapter.for_task(task)
     trace_dir = get_trace_dir(task.instance_id, label, run_series=run_series)
     trace = RunTraceLogger(
         instance_id=task.instance_id,
@@ -239,9 +243,14 @@ def run_mini_swe_task(
         enable_turn_trace=enable_turn_trace,
     )
     env_cfg = dict(config.get("environment", {}))
+    env_vars = build_agent_shell_env(
+        repo_dir,
+        harness_adapter,
+        base_env=dict(env_cfg.get("env") or {}),
+    )
     env = LocalEnvironment(
         cwd=str(env_cfg.get("cwd") or repo_dir),
-        env=dict(env_cfg.get("env") or {}),
+        env=env_vars,
         timeout=env_cfg.get("timeout", 120),
     )
     agent_cfg = dict(config.get("agent", {}))
@@ -380,4 +389,5 @@ def run_mini_swe_task(
         parser=str(first_trace.get("parser") or ""),
         provider_error_kind=str(first_provider_error.get("provider_error_kind") or ""),
         provider_retryable=first_provider_error.get("provider_retryable"),
+        agent_environment_issues=tuple(str(i) for i in (agent_summary.get("agent_environment_issues") or ())),
     )

@@ -148,6 +148,13 @@ def _turn_error_types(record: dict[str, Any]) -> set[str]:
     return errors
 
 
+def _agent_environment_issues(record: dict[str, Any]) -> tuple[str, ...]:
+    issues = record.get("agent_environment_issues") or []
+    if not isinstance(issues, list):
+        return ()
+    return tuple(str(issue) for issue in issues if issue)
+
+
 def score_status(record: dict[str, Any]) -> str:
     status = str(record.get("score_status") or "")
     if status in (SCORE_PASS, SCORE_TRUE_FAIL, SCORE_ABORT):
@@ -258,6 +265,7 @@ def build_score_status(record: dict[str, Any]) -> dict[str, Any]:
     reason = str(record.get("exit_reason") or "")
     errors = _turn_error_types(record)
     detail = str(record.get("detail") or "")
+    agent_env_issues = _agent_environment_issues(record)
     trust = build_harness_trust(record)
     trust_level = str(trust.get("harness_trust") or "")
     severity = str(trust.get("severity") or "")
@@ -290,21 +298,14 @@ def build_score_status(record: dict[str, Any]) -> dict[str, Any]:
             "exit_owner": exit_owner,
         }
 
-    if exit_owner == EXIT_OWNER_BUDGETFLOW_STOPLOSS:
-        return {
-            "score_status": SCORE_TRUE_FAIL,
-            "scoreable": True,
-            "abort_reason": "",
-            "abort_owner": "",
-            "abort_stage": "",
-            "true_fail_reason": "budgetflow_stoploss",
-            "exit_owner": exit_owner,
-        }
-
     abort_reason = ""
     abort_owner = owner
     abort_stage = stage
-    if has_host_dependency_contamination(detail):
+    if agent_env_issues:
+        abort_reason = "agent_environment_issue"
+        abort_owner = "infra"
+        abort_stage = "runtime"
+    elif has_host_dependency_contamination(detail):
         abort_reason = "host_dependency_contamination"
         abort_owner = "infra"
         abort_stage = "runtime"
@@ -312,23 +313,35 @@ def build_score_status(record: dict[str, Any]) -> dict[str, Any]:
         abort_reason = "provider_or_infra_error"
         abort_owner = "infra"
         abort_stage = "runtime"
-    elif axis == "protocol_fail":
-        abort_reason = "protocol_or_parser_error"
-        abort_owner = "protocol"
-        abort_stage = "extraction"
-    elif axis == "harness_fail" or (
-        severity == "blocking"
-        and trust_level in {"invalid", "incomplete"}
-        and axis != "budget_fail"
-        and not (axis == "model_fail" and stage == "repair")
-    ):
-        abort_reason = "untrusted_harness_evidence"
-        abort_owner = str(trust.get("harness_owner") or "harness")
-        abort_stage = stage if stage else "harness"
-    elif axis != "budget_fail" and int(record.get("turn_trace_count") or 0) <= 0:
-        abort_reason = "missing_turn_trace"
-        abort_owner = "infra"
-        abort_stage = "runtime"
+
+    if not abort_reason:
+        if exit_owner == EXIT_OWNER_BUDGETFLOW_STOPLOSS:
+            return {
+                "score_status": SCORE_TRUE_FAIL,
+                "scoreable": True,
+                "abort_reason": "",
+                "abort_owner": "",
+                "abort_stage": "",
+                "true_fail_reason": "budgetflow_stoploss",
+                "exit_owner": exit_owner,
+            }
+        if axis == "protocol_fail":
+            abort_reason = "protocol_or_parser_error"
+            abort_owner = "protocol"
+            abort_stage = "extraction"
+        elif axis == "harness_fail" or (
+            severity == "blocking"
+            and trust_level in {"invalid", "incomplete"}
+            and axis != "budget_fail"
+            and not (axis == "model_fail" and stage == "repair")
+        ):
+            abort_reason = "untrusted_harness_evidence"
+            abort_owner = str(trust.get("harness_owner") or "harness")
+            abort_stage = stage if stage else "harness"
+        elif axis != "budget_fail" and int(record.get("turn_trace_count") or 0) <= 0:
+            abort_reason = "missing_turn_trace"
+            abort_owner = "infra"
+            abort_stage = "runtime"
 
     if abort_reason:
         return {
@@ -369,6 +382,8 @@ def _failure_chain(record: dict[str, Any], harness: dict[str, str]) -> list[str]
         chain.append(reason)
     for error in sorted(errors):
         chain.append(error)
+    for issue in _agent_environment_issues(record):
+        chain.append(f"agent_environment_issue:{issue}")
     if record.get("patch_extracted"):
         chain.append("patch_extracted")
         source = str(record.get("patch_source") or "unknown")
@@ -478,6 +493,9 @@ def classify_failure(record: dict[str, Any]) -> str:
     if has_host_dependency_contamination(str(record.get("detail") or "")):
         return "infra_fail"
 
+    if _agent_environment_issues(record):
+        return "infra_fail"
+
     if reason in _POST_PATCH_STOPLOSS_REASONS:
         return "repair_fail"
 
@@ -576,6 +594,8 @@ def build_verdict(record: dict[str, Any]) -> dict[str, Any]:
     # Determine verdict axis
     if resolved:
         axis = "pass"
+    elif _agent_environment_issues(record):
+        axis = "infra_fail"
     elif has_host_dependency_contamination(detail):
         axis = "infra_fail"
     elif _record_is_budget_exit(record):

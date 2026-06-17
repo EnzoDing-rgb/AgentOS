@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from .console_log import _BRIGHT_GREEN, paint, tag
-from .harness_contamination import isolated_repo_pythonpath
+from .harness_contamination import isolated_repo_pythonpath, is_runtime_worktree_path
 from .runtime import get_runtime_root
 
 
@@ -29,6 +29,9 @@ class RepoHarnessAdapter:
 
     def pytest_env(self) -> dict[str, str]:
         return {}
+
+    def agent_pythonpath_prefixes(self, repo_dir: Path) -> list[Path]:
+        return [repo_dir]
 
     def build_test_command(self, repo_dir: Path, test_node_ids: list[str]) -> list[str]:
         """Return the shell command to run *test_node_ids*.
@@ -186,6 +189,9 @@ class DjangoHAdapter(RepoHarnessAdapter):
     def pytest_env(self) -> dict[str, str]:
         return {"DJANGO_SETTINGS_MODULE": "tests.test_sqlite"}
 
+    def agent_pythonpath_prefixes(self, repo_dir: Path) -> list[Path]:
+        return [repo_dir, repo_dir / "tests"]
+
     def map_test_name(self, raw_name: str) -> str | None:
         match = _DJANGO_TEST_NAME_RE.match(raw_name)
         if match:
@@ -296,6 +302,9 @@ def _patch_jinja2_imports(text: str) -> str:
 class SphinxHAdapter(RepoHarnessAdapter):
     repo_slug = "sphinx-doc__sphinx"
 
+    def agent_pythonpath_prefixes(self, repo_dir: Path) -> list[Path]:
+        return [_ensure_sphinx_jinja2_sitecustomize(), repo_dir]
+
     def apply_compat(self, repo_dir: Path) -> list[str]:
         changed: list[str] = []
         sphinx_pkg = repo_dir / "sphinx"
@@ -352,6 +361,68 @@ class FlaskHAdapter(RepoHarnessAdapter):
 
 class DefaultHAdapter(RepoHarnessAdapter):
     repo_slug = ""
+
+
+def _ensure_sphinx_jinja2_sitecustomize() -> Path:
+    shim_dir = get_runtime_root() / "agent_shell_shims" / "sphinx_jinja2_compat"
+    shim_dir.mkdir(parents=True, exist_ok=True)
+    sitecustomize = shim_dir / "sitecustomize.py"
+    sitecustomize.write_text(
+        "try:\n"
+        "    import jinja2\n"
+        "    _aliases = {\n"
+        "        'environmentfilter': 'pass_environment',\n"
+        "        'contextfunction': 'pass_context',\n"
+        "        'contextfilter': 'pass_context',\n"
+        "        'evalcontextfilter': 'pass_eval_context',\n"
+        "        'evalcontextfunction': 'pass_eval_context',\n"
+        "    }\n"
+        "    for _old, _new in _aliases.items():\n"
+        "        if not hasattr(jinja2, _old) and hasattr(jinja2, _new):\n"
+        "            setattr(jinja2, _old, getattr(jinja2, _new))\n"
+        "except Exception:\n"
+        "    pass\n"
+    )
+    return shim_dir
+
+
+def _merge_agent_pythonpath(prefixes: list[Path], existing: str) -> str:
+    runtime_root = get_runtime_root()
+    entries: list[str] = []
+    for path in prefixes:
+        text = str(path)
+        if text and text not in entries:
+            entries.append(text)
+    for entry in existing.split(os.pathsep):
+        if not entry or entry in entries:
+            continue
+        if is_runtime_worktree_path(entry, runtime_root):
+            continue
+        entries.append(entry)
+    return os.pathsep.join(entries)
+
+
+def build_agent_shell_env(
+    repo_dir: Path,
+    adapter: RepoHarnessAdapter | None = None,
+    base_env: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Environment for agent-run shell commands inside an ephemeral worktree.
+
+    Final evaluation already uses repo adapters. The agent's own diagnostic
+    commands need the same import baseline, without mutating the worktree and
+    without letting stale runtime worktrees leak through global PYTHONPATH.
+    """
+    adapter = adapter or DefaultHAdapter()
+    env = dict(base_env or {})
+    existing_pythonpath = env.get("PYTHONPATH") or os.environ.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = _merge_agent_pythonpath(
+        adapter.agent_pythonpath_prefixes(repo_dir),
+        existing_pythonpath,
+    )
+    env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
+    env.update(adapter.pytest_env())
+    return env
 
 
 _COLLECTIONS_ABC = frozenset(

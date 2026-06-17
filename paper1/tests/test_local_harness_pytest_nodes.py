@@ -17,6 +17,7 @@ from budgetflow.local_harness import (
 )
 from budgetflow.local_harness_adapters import (
     SphinxHAdapter,
+    build_agent_shell_env,
     _patch_jinja2_imports,
 )
 
@@ -588,6 +589,21 @@ def test_django_build_test_command_falls_back_when_runtests_missing(tmp_path: Pa
     assert "pytest" in cmd
 
 
+def test_django_agent_shell_env_exposes_repo_and_test_settings(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("PYTHONPATH", "/tmp/budgetflow-runtime/worktrees/stale:/shared")
+    repo_dir = tmp_path / "django"
+    repo_dir.mkdir()
+
+    env = build_agent_shell_env(repo_dir, DjangoHAdapter())
+    pythonpath = env["PYTHONPATH"].split(":")
+
+    assert pythonpath[:2] == [str(repo_dir), str(repo_dir / "tests")]
+    assert "/tmp/budgetflow-runtime/worktrees/stale" not in pythonpath
+    assert "/shared" in pythonpath
+    assert env["DJANGO_SETTINGS_MODULE"] == "tests.test_sqlite"
+    assert env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] == "1"
+
+
 def test_run_pytest_uses_adapter_build_test_command(tmp_path: Path, monkeypatch) -> None:
     """When an adapter is passed, run_pytest calls adapter.build_test_command."""
     from budgetflow import local_harness
@@ -706,6 +722,20 @@ def test_sphinx_adapter_patches_rst_and_jinja2glue(tmp_path: Path) -> None:
     assert len(changed) == 2
     assert "pass_environment as environmentfilter" in rst_py.read_text()
     assert "pass_context as contextfunction" in glue_py.read_text()
+
+
+def test_sphinx_agent_shell_env_uses_jinja2_compat_shim(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.delenv("PYTHONPATH", raising=False)
+    repo_dir = tmp_path / "sphinx"
+    repo_dir.mkdir()
+
+    env = build_agent_shell_env(repo_dir, SphinxHAdapter())
+    pythonpath = env["PYTHONPATH"].split(":")
+
+    assert pythonpath[0] != str(repo_dir)
+    assert (Path(pythonpath[0]) / "sitecustomize.py").is_file()
+    assert pythonpath[1] == str(repo_dir)
+    assert env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] == "1"
 
 
 def test_sphinx_adapter_idempotent_apply_compat(tmp_path: Path) -> None:

@@ -117,6 +117,30 @@ def test_missing_harness_dependency_is_infra_abort_not_model_fail() -> None:
     assert score["abort_reason"] == "host_dependency_contamination"
 
 
+def test_agent_shell_environment_issue_is_infra_abort_not_model_fail() -> None:
+    record = {
+        "harness_resolved": False,
+        "patch_extracted": False,
+        "agent_gold_edited": False,
+        "exit_status": "StagnationExit",
+        "exit_reason": "stagnation_no_progress",
+        "routing": "value_aware_task_level",
+        "detail": "no model patch extracted",
+        "turn_trace_count": 5,
+        "agent_environment_issues": ["ModuleNotFoundError: No module named"],
+    }
+
+    assert classify_failure(record) == "infra_fail"
+    verdict = build_verdict(record)
+    assert verdict["verdict_axis"] == "infra_fail"
+    assert verdict["failure_owner"] == "infra"
+
+    score = build_score_status(record)
+    assert score["score_status"] == "abort"
+    assert score["abort_owner"] == "infra"
+    assert score["abort_reason"] == "agent_environment_issue"
+
+
 def test_runtime_worktree_rootdir_is_not_host_dependency_contamination() -> None:
     record = {
         "harness_resolved": False,

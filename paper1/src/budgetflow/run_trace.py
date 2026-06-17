@@ -117,6 +117,25 @@ def _format_agent_pytest(last: str | None) -> str:
     return status_pending("none")
 
 
+_AGENT_ENVIRONMENT_ERROR_MARKERS = (
+    "ModuleNotFoundError: No module named",
+    "ImportError: cannot import name",
+    "ImportError while loading conftest",
+    "ConftestImportFailure",
+    "Django module not found",
+    "numpy.dtype size changed",
+    "_ARRAY_API not found",
+)
+
+
+def _agent_environment_issue(observation: dict) -> str:
+    preview = str(observation.get("observation_preview") or "")
+    for marker in _AGENT_ENVIRONMENT_ERROR_MARKERS:
+        if marker in preview:
+            return marker
+    return ""
+
+
 def git_changed_files(repo_dir: Path, *, timeout_s: int = 8) -> list[str]:
     try:
         result = subprocess.run(
@@ -216,6 +235,7 @@ class RunTraceLogger:
         self._last_agent_pytest: str | None = None
         self._last_patch_digest: str | None = None
         self._patch_stable_steps = 0
+        self._agent_environment_issues: set[str] = set()
         self._harness_resolved: bool | None = None
         self._harness_detail: str = ""
         self._patch_extracted: bool | None = None
@@ -421,6 +441,9 @@ class RunTraceLogger:
         self._gold_files_edited.update(gold_edited)
         observation = _last_observation_summary(messages)
         pytest_changed = self._update_agent_pytest(commands, observation)
+        env_issue = _agent_environment_issue(observation)
+        if env_issue:
+            self._agent_environment_issues.add(env_issue)
         phase = self._classify_phase(commands=commands, changed=agent_changed, gold_edited=gold_edited)
 
         repeat_score = 0
@@ -447,6 +470,7 @@ class RunTraceLogger:
             "attempted_submit": self._attempted_submit,
             "submitted": self._submitted,
             "agent_pytest": self._last_agent_pytest,
+            "agent_environment_issue": env_issue,
             "harness_resolved": self._harness_resolved,
             "repeat_last_cmd": repeat_score,
             "observation": observation,
@@ -505,6 +529,7 @@ class RunTraceLogger:
             "agent_pytest": self._last_agent_pytest,
             "patch_digest": self._last_patch_digest,
             "patch_stable_steps": self._patch_stable_steps,
+            "agent_environment_issues": sorted(self._agent_environment_issues),
         }
 
 

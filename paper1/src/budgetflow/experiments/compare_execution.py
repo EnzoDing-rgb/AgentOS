@@ -207,6 +207,7 @@ def run_task_record(
         "agent_gold_files": list(result.agent_gold_files),
         "agent_attempted_submit": result.agent_attempted_submit,
         "agent_submitted": result.agent_submitted,
+        "agent_environment_issues": list(getattr(result, "agent_environment_issues", ()) or ()),
         "prompt_tokens_total": result.prompt_tokens_total,
         "completion_tokens_total": result.completion_tokens_total,
         "provider_usage_turns": result.provider_usage_turns,
@@ -219,6 +220,7 @@ def run_task_record(
             "gold_files": list(result.agent_gold_files),
             "attempted_submit": result.agent_attempted_submit,
             "submitted": result.agent_submitted,
+            "agent_environment_issues": list(getattr(result, "agent_environment_issues", ()) or ()),
         },
         "turn_trace_count": result.turn_trace_count,
         "turn_traces": truncate_turn_traces(result.turn_traces, trace_max_turns, trace_truncate_chars)
