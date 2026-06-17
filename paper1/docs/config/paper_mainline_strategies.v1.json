@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "name": "paper_mainline_5_policy",
-  "objective": "Claim 1 main comparison with a strong static-router diagnostic and Claim 2 segment-aware enhancement",
+  "name": "paper_mainline_4_policy_task_level",
+  "objective": "Claim 1 task-level diagnostic comparison with pure-tier boundaries and a strong static-router diagnostic",
   "strategies": [
     {
       "name": "bare_t2_baseline",
@@ -18,10 +18,6 @@
     {
       "name": "budgetflow_task_level",
       "role": "Claim 1 main policy: value-aware task-level BudgetFlow"
-    },
-    {
-      "name": "budgetflow_segment",
-      "role": "Claim 2 enhancement: value-aware segment-level BudgetFlow"
     }
   ]
 }

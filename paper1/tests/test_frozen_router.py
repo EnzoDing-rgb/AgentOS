@@ -148,7 +148,6 @@ class TestMechanismStrategiesRegistered:
             "bare_t3_baseline",
             "enterprise_router_baseline",
             "budgetflow_task_level",
-            "budgetflow_segment",
         }
 
 

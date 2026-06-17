@@ -104,7 +104,7 @@ def test_calibrate_target_utilization_reference_is_not_budgetflow_specific(tmp_p
     assert "max_projected" not in all_reasons
 
 
-def test_calibrate_defaults_to_paper_mainline_five_policy_set(tmp_path: Path) -> None:
+def test_calibrate_defaults_to_paper_mainline_policy_set(tmp_path: Path) -> None:
     vm = tmp_path / "vm.json"
     vm.write_text(json.dumps({"tasks": {}}))
     plan = calibrate_budget(
@@ -119,7 +119,6 @@ def test_calibrate_defaults_to_paper_mainline_five_policy_set(tmp_path: Path) ->
         "bare_t3_baseline",
         "enterprise_router_baseline",
         "budgetflow_task_level",
-        "budgetflow_segment",
     ]
     assert plan.strategy_names == list(plan.projected_spend_by_strategy)
     written = json.loads((tmp_path / "bp.json").read_text())
@@ -207,6 +206,53 @@ def test_budget_plan_round_trip_preserves_model_fit_evidence() -> None:
     restored = BudgetBindingPlan.from_dict(plan.to_dict())
 
     assert restored.model_fit_evidence == plan.model_fit_evidence
+
+
+def test_budget_plan_round_trips_budgetflow_planned_task_budgets() -> None:
+    plan = BudgetBindingPlan(
+        hard_cap_usd=1.25,
+        generation_mode="target_utilization",
+        planned_task_budget_by_strategy={
+            "budgetflow_task_level": {
+                "task-a": 0.40,
+                "task-b": 0.70,
+            }
+        },
+        planned_task_budget_policy={
+            "mode": "budgetflow_loose_task_budget",
+            "sum_can_exceed_hard_cap": True,
+        },
+    )
+
+    restored = BudgetBindingPlan.from_dict(plan.to_dict())
+
+    assert restored.planned_task_budget_by_strategy == {
+        "budgetflow_task_level": {"task-a": 0.4, "task-b": 0.7}
+    }
+    assert restored.planned_task_budget_policy["sum_can_exceed_hard_cap"] is True
+
+
+def test_calibrate_emits_loose_budgetflow_task_budgets(tmp_path: Path) -> None:
+    vm = tmp_path / "vm.json"
+    vm.write_text(json.dumps({
+        "tasks": {
+            "task-a": {"task_effort": {"bootstrap_heuristic": 10.0}},
+            "task-b": {"task_effort": {"bootstrap_heuristic": 80.0}},
+        }
+    }))
+
+    plan = calibrate_budget(
+        ["task-a", "task-b"],
+        value_matrix_path=vm,
+        strategies=("bare_t2_baseline", "bare_t3_baseline", "budgetflow_task_level"),
+        target_utilization=0.90,
+    )
+
+    caps = plan.planned_task_budget_by_strategy["budgetflow_task_level"]
+    assert set(caps) == {"task-a", "task-b"}
+    assert caps["task-b"] > caps["task-a"]
+    assert sum(caps.values()) > plan.hard_cap_usd
+    assert "enterprise_router_baseline" not in plan.planned_task_budget_by_strategy
 
 
 def test_calibrate_reuses_current_catalog_historical_cost_without_repricing(tmp_path: Path) -> None:

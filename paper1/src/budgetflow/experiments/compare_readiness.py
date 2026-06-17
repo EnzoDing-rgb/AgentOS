@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from budgetflow.experiments.compare_config import CompareStrategy, paper_mainline_strategy_names
+from budgetflow.experiments.compare_setup import BUDGETFLOW_ACTIVE_ROUTINGS
 from budgetflow.frozen_router import load_frozen_plan
 from budgetflow.harness_contamination import (
     find_runtime_worktree_python_contamination,
@@ -398,6 +399,35 @@ def build_compare_readiness_report(
                         "budget plan is missing strategy_names; regenerate it with the Budget Regime Compiler "
                         "before a paper-mainline paid run"
                     )
+
+            active_budgetflow_names = [
+                strategy.name for strategy in strategies if strategy.routing in BUDGETFLOW_ACTIVE_ROUTINGS
+            ]
+            planned_caps = bp.get("planned_task_budget_by_strategy")
+            if active_budgetflow_names:
+                if not isinstance(planned_caps, dict) or not planned_caps:
+                    blocking.append(
+                        "budget plan is missing planned_task_budget_by_strategy for "
+                        f"BudgetFlow active policies {active_budgetflow_names}; "
+                        "regenerate it with the current Budget Regime Compiler"
+                    )
+                else:
+                    for strategy_name in active_budgetflow_names:
+                        strategy_caps = planned_caps.get(strategy_name)
+                        if not isinstance(strategy_caps, dict) or not strategy_caps:
+                            blocking.append(
+                                f"budget plan is missing planned task budgets for {strategy_name}; "
+                                "regenerate it with the current Budget Regime Compiler"
+                            )
+                            continue
+                        missing_caps = [task_id for task_id in task_ids if task_id not in strategy_caps]
+                        if missing_caps:
+                            preview = ", ".join(missing_caps[:8])
+                            suffix = "" if len(missing_caps) <= 8 else f", ... +{len(missing_caps) - 8} more"
+                            blocking.append(
+                                f"budget plan planned task budgets for {strategy_name} "
+                                f"are missing selected tasks: {preview}{suffix}"
+                            )
 
             active_revision = active_catalog_revision
             if active_catalog_path is None:

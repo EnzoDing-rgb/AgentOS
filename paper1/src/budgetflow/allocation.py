@@ -38,6 +38,10 @@ class AllocationContext:
     value_source: str = "equal_sanity"
     effort_source: str = "none"
     model_fit_source: str = "catalog_progress_prior"
+    budget_source: str = "shared_batch_hard_budget"
+
+    planned_task_budget: float | None = None
+    """Optional BudgetFlow-only task spend boundary compiled before runtime."""
 
     # Confidence per input
     confidence: dict[str, str] = field(default_factory=dict)
@@ -75,6 +79,8 @@ class AllocationContext:
             "model_fit_source": self.model_fit_source,
             "value_source": self.value_source,
             "effort_source": self.effort_source,
+            "budget_source": self.budget_source,
+            "planned_task_budget": self.planned_task_budget,
             "has_model_fit": self.has_model_fit,
             "has_trusted_model_fit": self.has_trusted_model_fit,
             "model_fit_confidence": self.confidence.get("model_fit", "none"),

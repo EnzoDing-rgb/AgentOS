@@ -443,6 +443,75 @@ class TestChooseTaskLevelBackend:
         backend = choose_backend(ctx, _turn(), per_turn)
         assert backend.tier == 2
 
+    def test_high_value_high_effort_can_start_t3_without_fit_gap(self):
+        """Task-start routing uses value and effort, not only Model Fit gaps."""
+        from budgetflow.adapter.strategies import choose_backend
+
+        alloc = _trusted_allocation(
+            task_value=2.0,
+            task_effort=80.0,
+            model_fit={"tier2": 1.0, "tier3": 1.0},
+        )
+        backends = _backends(t2_progress=0.60, t3_progress=0.65)
+        ctx = _task_level_ctx(backends, budget_pressure=0.35, allocation=alloc)
+        per_turn = _per_turn_costs(backends)
+
+        backend = choose_backend(ctx, _turn(), per_turn)
+
+        assert backend.tier == 3
+        assert ctx.last_decision is not None
+        assert "task_start" in ctx.last_decision.reason
+        assert ctx.last_policy_decision is not None
+        assert ctx.last_policy_decision.scores["task_value"] == pytest.approx(2.0)
+        assert ctx.last_policy_decision.scores["task_effort"] == pytest.approx(80.0)
+
+    def test_initial_task_router_does_not_depend_on_task_identity(self):
+        """The same abstract signals give the same tier for different workflow IDs."""
+        from budgetflow.adapter.strategies import choose_backend
+
+        alloc_a = _trusted_allocation(
+            task_value=2.0,
+            task_effort=80.0,
+            model_fit={"tier2": 1.0, "tier3": 1.0},
+        )
+        alloc_b = _trusted_allocation(
+            task_value=2.0,
+            task_effort=80.0,
+            model_fit={"tier2": 1.0, "tier3": 1.0},
+        )
+        backends = _backends(t2_progress=0.60, t3_progress=0.65)
+        ctx_a = _task_level_ctx(backends, budget_pressure=0.35, allocation=alloc_a)
+        ctx_b = _task_level_ctx(backends, budget_pressure=0.35, allocation=alloc_b)
+        per_turn = _per_turn_costs(backends)
+
+        backend_a = choose_backend(ctx_a, _turn(), per_turn)
+        other_task = _turn()
+        object.__setattr__(other_task, "workflow_id", "different__task-999")
+        backend_b = choose_backend(ctx_b, other_task, per_turn)
+
+        assert backend_a.tier == backend_b.tier == 3
+        assert ctx_a.last_policy_decision.scores == ctx_b.last_policy_decision.scores
+
+    def test_task_budget_pressure_blocks_t3_when_budget_is_too_tight(self):
+        """A planned task budget can veto T3 while preserving task-level fixed routing."""
+        from budgetflow.adapter.strategies import choose_backend
+
+        alloc = _trusted_allocation(
+            task_value=2.0,
+            task_effort=80.0,
+            planned_task_budget=0.05,
+            model_fit={"tier2": 1.0, "tier3": 1.0},
+        )
+        backends = _backends(t2_progress=0.60, t3_progress=0.65)
+        ctx = _task_level_ctx(backends, budget_pressure=0.35, allocation=alloc)
+        per_turn = _per_turn_costs(backends)
+        assert per_turn["tier3"] > alloc.planned_task_budget
+
+        backend = choose_backend(ctx, _turn(), per_turn)
+
+        assert backend.tier == 2
+        assert ctx.last_policy_decision.scores["budget_allows_strongest"] == 0.0
+
 
 # ── budget compiler cold-start with model-fit scaling ──────────────────────
 

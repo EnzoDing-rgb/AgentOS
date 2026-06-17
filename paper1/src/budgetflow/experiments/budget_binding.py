@@ -32,6 +32,14 @@ from ..model_tiers import (
 
 COLD_START_INPUT_TOKENS_PER_EFFORT = 4_500
 COLD_START_OUTPUT_TOKENS_PER_EFFORT = 150
+BUDGETFLOW_PLANNED_TASK_BUDGET_MODE = "budgetflow_loose_task_budget"
+BUDGETFLOW_PLANNED_TASK_BUDGET_MULTIPLIER = 2.0
+BUDGETFLOW_PLANNED_TASK_BUDGET_MIN_USD = 0.05
+BUDGETFLOW_PLANNED_TASK_BUDGET_BATCH_FLOOR_RULE = "hard_cap_usd/sqrt(task_count)+projected_cost_multiplier"
+BUDGETFLOW_PLANNED_TASK_BUDGET_STRATEGIES = frozenset({
+    "budgetflow_task_level",
+    "budgetflow_segment",
+})
 
 
 @dataclass
@@ -63,6 +71,8 @@ class BudgetBindingPlan:
     calibration_excluded: dict[str, int] = field(default_factory=dict)
     censored_spend_floor_by_strategy: dict[str, float] = field(default_factory=dict)
     model_fit_evidence: dict | None = None
+    planned_task_budget_by_strategy: dict[str, dict[str, float]] = field(default_factory=dict)
+    planned_task_budget_policy: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         d: dict = {
@@ -108,6 +118,12 @@ class BudgetBindingPlan:
             }
         if self.model_fit_evidence:
             d["model_fit_evidence"] = self.model_fit_evidence
+        if self.planned_task_budget_by_strategy:
+            d["planned_task_budget_by_strategy"] = {
+                strategy: {task_id: round(cap, 4) for task_id, cap in caps.items()}
+                for strategy, caps in self.planned_task_budget_by_strategy.items()
+            }
+            d["planned_task_budget_policy"] = dict(self.planned_task_budget_policy)
         return d
 
     @classmethod
@@ -138,6 +154,8 @@ class BudgetBindingPlan:
             calibration_excluded=d.get("calibration_excluded", {}),
             censored_spend_floor_by_strategy=d.get("censored_spend_floor_by_strategy", {}),
             model_fit_evidence=d.get("model_fit_evidence"),
+            planned_task_budget_by_strategy=d.get("planned_task_budget_by_strategy", {}),
+            planned_task_budget_policy=d.get("planned_task_budget_policy", {}),
         )
 
 
@@ -414,6 +432,28 @@ def calibrate_budget(
                 "recorded for pressure audit, not a hard cap"
             )
 
+    plan.planned_task_budget_by_strategy = _build_budgetflow_planned_task_budgets(
+        strategies,
+        task_ids,
+        projected_task_costs,
+        hard_cap_usd=plan.hard_cap_usd,
+    )
+    if plan.planned_task_budget_by_strategy:
+        plan.planned_task_budget_policy = {
+            "mode": BUDGETFLOW_PLANNED_TASK_BUDGET_MODE,
+            "source": "projected_task_cost_by_strategy",
+            "multiplier": BUDGETFLOW_PLANNED_TASK_BUDGET_MULTIPLIER,
+            "min_usd": BUDGETFLOW_PLANNED_TASK_BUDGET_MIN_USD,
+            "batch_floor_rule": BUDGETFLOW_PLANNED_TASK_BUDGET_BATCH_FLOOR_RULE,
+            "sum_can_exceed_hard_cap": True,
+            "applies_to": sorted(plan.planned_task_budget_by_strategy),
+        }
+        plan.reasons.append(
+            "planned_task_budget: BudgetFlow active policies get loose task budgets "
+            "derived from projected task costs; sums may exceed hard_cap and runtime "
+            "still enforces the shared batch hard cap"
+        )
+
     for strategy in strategies:
         spend = projected.get(strategy, 0.0)
         raw_util = spend / plan.hard_cap_usd if plan.hard_cap_usd > 0 else 0.0
@@ -660,6 +700,33 @@ def _distribution_p75(values: list[float]) -> float:
     n = len(sorted_v)
     idx = min(int(math.ceil(0.75 * n)) - 1, n - 1)
     return sorted_v[max(idx, 0)]
+
+
+def _build_budgetflow_planned_task_budgets(
+    strategies: tuple[str, ...],
+    task_ids: list[str],
+    projected_task_costs: dict[str, dict[str, float]],
+    *,
+    hard_cap_usd: float,
+) -> dict[str, dict[str, float]]:
+    planned: dict[str, dict[str, float]] = {}
+    task_count = max(1, len(task_ids))
+    batch_floor = max(0.0, float(hard_cap_usd or 0.0)) / (task_count ** 0.5)
+    for strategy in strategies:
+        if strategy not in BUDGETFLOW_PLANNED_TASK_BUDGET_STRATEGIES:
+            continue
+        costs = projected_task_costs.get(strategy, {})
+        if not costs:
+            continue
+        planned[strategy] = {
+            task_id: max(
+                BUDGETFLOW_PLANNED_TASK_BUDGET_MIN_USD,
+                batch_floor
+                + float(costs.get(task_id, 0.0)) * BUDGETFLOW_PLANNED_TASK_BUDGET_MULTIPLIER,
+            )
+            for task_id in task_ids
+        }
+    return planned
 
 
 def _build_pressure_contract(

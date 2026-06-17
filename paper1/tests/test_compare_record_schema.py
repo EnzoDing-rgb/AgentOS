@@ -215,6 +215,191 @@ def test_runner_threads_budget_plan_model_fit_into_allocation_context(monkeypatc
     assert record["budget_exhausted"] is True
 
 
+def test_runner_threads_planned_task_budget_into_allocation_context(monkeypatch) -> None:
+    import budgetflow.adapter.runner as runner
+
+    seen = {}
+
+    def fake_run_mini_swe_task(*args, **kwargs):
+        seen["allocation"] = kwargs["allocation"]
+        return SimpleNamespace(
+            instance_id="sympy__sympy-13480",
+            total_cost=0.02,
+            harness_resolved=False,
+            patch_text="",
+            patch_source="none",
+            submitted_patch_path="",
+            exit_status="Stopped",
+            exit_reason="stopped",
+            agent_exit_status="Stopped",
+            agent_exit_reason="stopped",
+            backend_picks=["tier2"],
+            llm_turns=1,
+            violations=[],
+            harness_detail="",
+            agent_gold_edited=False,
+            agent_gold_files=[],
+            agent_attempted_submit=False,
+            agent_submitted=False,
+            prompt_tokens_total=10,
+            completion_tokens_total=2,
+            provider_usage_turns=1,
+            estimated_usage_turns=0,
+            usage_source="provider",
+            cost_mode="catalog_provider_usage",
+            turn_trace_count=1,
+            turn_traces=[],
+            protocol_retry_used=False,
+            protocol_retry_success=False,
+            protocol_retry_reason="",
+            protocol_retry_attempts=0,
+            protocol_retry_limit=4,
+            protocol="tool_call",
+            parser="parse_toolcall_actions",
+            provider_error_kind="",
+            provider_retryable=None,
+        )
+
+    monkeypatch.setattr(runner, "run_mini_swe_task", fake_run_mini_swe_task)
+    governor = BudgetGovernor(GovernorConfig(total_budget=1.0, default_max_output_tokens=4096), WorkflowLedgerStore())
+    task = SimpleNamespace(
+        instance_id="sympy__sympy-13480",
+        patch="diff --git a/x b/x\n",
+        fail_to_pass=("tests/test_x.py::test_y",),
+        pass_to_pass=(),
+    )
+
+    record = run_task_record(
+        task,
+        cfg=CompareStrategy("budgetflow_task_level", "value_aware_task_level"),
+        batch_budget_cap=1.0,
+        governor=governor,
+        ledger=WorkflowLedgerStore(),
+        task_index=1,
+        step_limit=1,
+        value_context=_value_context(),
+        budget_mode="budgetflow_planned_task_budget",
+        per_task_cap=0.4,
+        planned_task_budget_source="budget_plan:planned_task_budget_by_strategy",
+    )
+
+    assert seen["allocation"].planned_task_budget == 0.4
+    assert seen["allocation"].budget_source == "budget_plan:planned_task_budget_by_strategy"
+    assert record["budget_mode"] == "budgetflow_planned_task_budget"
+    assert record["per_task_cap"] == 0.4
+    assert record["planned_task_budget_source"] == "budget_plan:planned_task_budget_by_strategy"
+
+
+def test_run_strategy_batch_planned_caps_keep_shared_batch_cap(monkeypatch) -> None:
+    import pytest
+    from budgetflow.experiments import compare_execution
+
+    seen_caps: list[float] = []
+
+    def fake_run_task_record(task, **kwargs):
+        task_cap = float(kwargs["per_task_cap"])
+        seen_caps.append(task_cap)
+        return {
+            "instance_id": task.instance_id,
+            "strategy": kwargs["cfg"].name,
+            "routing": kwargs["cfg"].routing,
+            "harness_resolved": False,
+            "score_status": "true_fail",
+            "patch_extracted": False,
+            "agent_gold_edited": False,
+            "agent_gold_files": [],
+            "detail": "",
+            "exit_status": "Stopped",
+            "exit_reason": "test",
+            "elapsed_s": 0.0,
+            "backend_picks": ["tier2"],
+            "llm_turns": 1,
+            "total_cost": task_cap,
+            "batch_available": None,
+        }
+
+    monkeypatch.setattr(compare_execution, "run_task_record", fake_run_task_record)
+
+    records, spent = run_strategy_batch(
+        CompareStrategy("budgetflow_task_level", "value_aware_task_level"),
+        [SimpleNamespace(instance_id="task-a"), SimpleNamespace(instance_id="task-b")],
+        batch_budget_cap=1.0,
+        value_context=_value_context(),
+        planned_task_caps={"task-a": 0.8, "task-b": 0.8},
+        budget_mode="budgetflow_planned_task_budget",
+        step_limit=1,
+        trace_console="quiet",
+        heartbeat=0,
+        global_progress=SimpleNamespace(
+            total=2,
+            start_task=lambda: None,
+            finish_task=lambda: len(seen_caps),
+            format_banner=lambda scoreboard=None: "test",
+            format_global=lambda scoreboard=None: "test",
+        ),
+        scoreboard=None,
+        print_lock=None,
+    )
+
+    assert seen_caps == pytest.approx([0.8, 0.2])
+    assert spent == pytest.approx(1.0)
+    assert records[0]["batch_spent"] == pytest.approx(0.8)
+    assert records[1]["batch_spent"] == pytest.approx(1.0)
+    assert records[1]["batch_available"] == pytest.approx(0.0)
+
+
+def test_run_strategy_batch_planned_caps_require_all_selected_tasks() -> None:
+    import pytest
+
+    with pytest.raises(SystemExit, match="missing planned task budgets"):
+        run_strategy_batch(
+            CompareStrategy("budgetflow_task_level", "value_aware_task_level"),
+            [SimpleNamespace(instance_id="task-a"), SimpleNamespace(instance_id="task-b")],
+            batch_budget_cap=1.0,
+            value_context=_value_context(),
+            planned_task_caps={"task-a": 0.8},
+            budget_mode="budgetflow_planned_task_budget",
+            step_limit=1,
+            trace_console="quiet",
+            heartbeat=0,
+            global_progress=SimpleNamespace(
+                total=2,
+                start_task=lambda: None,
+                finish_task=lambda: 0,
+                format_banner=lambda scoreboard=None: "test",
+                format_global=lambda scoreboard=None: "test",
+            ),
+            scoreboard=None,
+            print_lock=None,
+        )
+
+
+def test_run_strategy_batch_planned_mode_requires_cap_map() -> None:
+    import pytest
+
+    with pytest.raises(SystemExit, match="no planned task budgets"):
+        run_strategy_batch(
+            CompareStrategy("budgetflow_task_level", "value_aware_task_level"),
+            [SimpleNamespace(instance_id="task-a")],
+            batch_budget_cap=1.0,
+            value_context=_value_context(),
+            planned_task_caps={},
+            budget_mode="budgetflow_planned_task_budget",
+            step_limit=1,
+            trace_console="quiet",
+            heartbeat=0,
+            global_progress=SimpleNamespace(
+                total=1,
+                start_task=lambda: None,
+                finish_task=lambda: 0,
+                format_banner=lambda scoreboard=None: "test",
+                format_global=lambda scoreboard=None: "test",
+            ),
+            scoreboard=None,
+            print_lock=None,
+        )
+
+
 def test_runner_does_not_use_repo_policy_memory_as_model_fit(monkeypatch) -> None:
     import budgetflow.adapter.runner as runner
 

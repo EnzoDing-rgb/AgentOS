@@ -34,13 +34,12 @@ class TestStrategyCatalog:
             "bare_t3_baseline",
             "enterprise_router_baseline",
             "budgetflow_task_level",
-            "budgetflow_segment",
         ]
         assert set(ordered) == names
 
-    def test_budgetflow_segment_routing_is_value_aware(self):
-        from budgetflow.experiments.compare_config import DEFAULT_STRATEGIES
-        strategy = next(s for s in DEFAULT_STRATEGIES if s.name == "budgetflow_segment")
+    def test_budgetflow_segment_available_as_diagnostic(self):
+        from budgetflow.experiments.compare_config import strategy_catalog
+        strategy = next(s for s in strategy_catalog() if s.name == "budgetflow_segment")
         assert strategy.routing == "segment_value_aware"
         assert strategy.budgeted is True
 

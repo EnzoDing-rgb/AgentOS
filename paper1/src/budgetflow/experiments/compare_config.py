@@ -101,10 +101,8 @@ def paper_mainline_strategy_names() -> tuple[str, ...]:
     return tuple(strategy.name for strategy in paper_mainline_strategies())
 
 
-# Default paid comparison: Claim 1 task-level BudgetFlow plus Claim 2 segment
-# enhancement and one strong static-router mirror, all under the same hard
-# budget. budgetflow_same_enterprise_router remains an explicit diagnostic for
-# isolating BudgetFlow runtime machinery on the frozen router plan.
+# Default paid comparison: task-level BudgetFlow against pure-tier boundaries
+# and one strong static-router mirror, all under the same shared hard budget.
 DEFAULT_STRATEGIES: tuple[CompareStrategy, ...] = paper_mainline_strategies()
 
 

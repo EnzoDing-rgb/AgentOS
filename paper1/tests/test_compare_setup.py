@@ -121,7 +121,7 @@ def test_3x3_selects_mechanism_isolation_strategies_and_parallel_jobs() -> None:
     assert selection.jobs_upgraded is True
 
 
-def test_custom_ids_default_to_paper_mainline_five_policy_set() -> None:
+def test_custom_ids_default_to_paper_mainline_policy_set() -> None:
     selection = select_strategies(_args(ids="sympy__sympy-22714", jobs=1))
     names = [s.name for s in selection.strategies]
 
@@ -130,9 +130,8 @@ def test_custom_ids_default_to_paper_mainline_five_policy_set() -> None:
         "bare_t3_baseline",
         "enterprise_router_baseline",
         "budgetflow_task_level",
-        "budgetflow_segment",
     ]
-    assert selection.policy_jobs == 5
+    assert selection.policy_jobs == 4
     assert selection.jobs_upgraded is True
 
 
@@ -151,7 +150,6 @@ def test_non_3x3_preset_defaults_to_paper_mainline_not_full_catalog() -> None:
         "bare_t3_baseline",
         "enterprise_router_baseline",
         "budgetflow_task_level",
-        "budgetflow_segment",
     ]
 
 
@@ -234,24 +232,32 @@ def test_resolve_budget_plan_explicit_budget_overrides_budget_plan(tmp_path) -> 
     assert plan.source == "cli"
 
 
-def test_frozen_router_plan_does_not_create_separate_batch_caps() -> None:
-    """Frozen router plans are passed to routing, not batch budget setup."""
+def test_budget_plan_task_caps_apply_only_to_budgetflow_active_policies() -> None:
+    """Controls keep shared caps; BudgetFlow policies can use planned task caps."""
     strategies = (
         CompareStrategy("enterprise_router_baseline", "enterprise_router"),
-        CompareStrategy("budgetflow_same_enterprise_router", "budgetflow_same_router"),
         CompareStrategy("bare_t3_baseline", "bare_t3"),
+        CompareStrategy("budgetflow_task_level", "value_aware_task_level"),
         CompareStrategy("budgetflow_segment", "segment_value_aware"),
     )
     modes = build_batch_budget_modes(
         strategies=strategies,
         per_task_cap=None,
         constrained_budget=2.0,
+        planned_task_caps_by_strategy={
+            "budgetflow_task_level": {"task-a": 0.6},
+            "budgetflow_segment": {"task-a": 0.8},
+            "enterprise_router_baseline": {"task-a": 0.4},
+        },
     )
 
-    for name in ("enterprise_router_baseline", "budgetflow_same_enterprise_router",
-                 "bare_t3_baseline", "budgetflow_segment"):
+    for name in ("enterprise_router_baseline", "bare_t3_baseline"):
         assert modes.batch_caps[name] == pytest.approx(2.0)
         assert modes.budget_modes[name] == "shared_batch_hard_budget"
+    assert modes.batch_caps["budgetflow_task_level"] == pytest.approx(2.0)
+    assert modes.batch_caps["budgetflow_segment"] == pytest.approx(2.0)
+    assert modes.budget_modes["budgetflow_task_level"] == "budgetflow_planned_task_budget"
+    assert modes.budget_modes["budgetflow_segment"] == "budgetflow_planned_task_budget"
 
 
 def test_unbudgeted_strategy_gets_no_cap() -> None:
@@ -268,13 +274,26 @@ def test_unbudgeted_strategy_gets_no_cap() -> None:
     assert modes.budget_modes["all_pro"] == "unconstrained"
 
 
-def test_paper_mainline_budget_contract_blocks_mixed_cap_modes() -> None:
+def test_paper_mainline_budget_contract_allows_budgetflow_planned_caps() -> None:
     selection = select_strategies(_args(ids="sympy__sympy-22714"))
     batch_caps = {strategy.name: 1.0 for strategy in selection.strategies}
     budget_modes = {strategy.name: "shared_batch_hard_budget" for strategy in selection.strategies}
-    budget_modes["enterprise_router_baseline"] = "per_task_cap"
+    budget_modes["budgetflow_task_level"] = "budgetflow_planned_task_budget"
 
-    with pytest.raises(SystemExit, match="paper mainline requires shared_batch_hard_budget"):
+    validate_paper_mainline_budget_contract(
+        strategies=selection.strategies,
+        batch_caps=batch_caps,
+        budget_modes=budget_modes,
+    )
+
+
+def test_paper_mainline_budget_contract_blocks_control_task_caps() -> None:
+    selection = select_strategies(_args(ids="sympy__sympy-22714"))
+    batch_caps = {strategy.name: 1.0 for strategy in selection.strategies}
+    budget_modes = {strategy.name: "shared_batch_hard_budget" for strategy in selection.strategies}
+    budget_modes["enterprise_router_baseline"] = "budgetflow_planned_task_budget"
+
+    with pytest.raises(SystemExit, match="diagnostic controls require shared_batch_hard_budget"):
         validate_paper_mainline_budget_contract(
             strategies=selection.strategies,
             batch_caps=batch_caps,

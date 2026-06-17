@@ -23,6 +23,7 @@ from budgetflow.experiments.compare_config import (
     w_i_profile_for_record,
     workspace_key,
 )
+from budgetflow.experiments.compare_setup import BUDGETFLOW_ACTIVE_ROUTINGS, PLANNED_TASK_BUDGET_MODE
 from budgetflow.experiments.compare_summary import _print_run_done
 from budgetflow.failure_classification import (
     EXIT_OWNER_BUDGET_EXHAUSTED,
@@ -81,6 +82,7 @@ def run_task_record(
     policy_lane: str = "",
     budget_mode: str = "shared",
     per_task_cap: float | None = None,
+    planned_task_budget_source: str | None = None,
     budget_input: dict[str, Any] | None = None,
     task_set: str = "",
     task_set_kind: str = "",
@@ -111,6 +113,11 @@ def run_task_record(
     model_fit_source = (
         calibrated_model_fit_source if calibrated_model_fit else "catalog_progress_prior"
     )
+    budget_source = (
+        planned_task_budget_source
+        if planned_task_budget_source
+        else "shared_batch_hard_budget"
+    )
 
     allocation = AllocationContext(
         task_value=task_value,
@@ -119,6 +126,8 @@ def run_task_record(
         value_source=value_source,
         effort_source=effort_source,
         model_fit_source=model_fit_source,
+        budget_source=budget_source,
+        planned_task_budget=per_task_cap if per_task_cap is not None and per_task_cap >= 0 else None,
         confidence={"model_fit": calibrated_model_fit_confidence},
     )
     result = mini_swe_runner.run_mini_swe_task(
@@ -191,6 +200,7 @@ def run_task_record(
         "policy_lane": policy_lane,
         "budget_mode": budget_mode,
         "per_task_cap": per_task_cap,
+        "planned_task_budget_source": planned_task_budget_source,
         "task_order_index": task_index,
         "task_features": task_features,
         "task_set": task_set,
@@ -278,6 +288,8 @@ def run_strategy_batch(
     batch_budget_cap: float,
     value_context: ValueEfficiencyContext,
     per_task_cap: float | None = None,
+    planned_task_caps: dict[str, float] | None = None,
+    planned_task_budget_source: str = "budget_plan:planned_task_budget_by_strategy",
     soft_budget: float | None = None,
     max_overrun: float = 0.0,
     step_limit: int,
@@ -314,10 +326,38 @@ def run_strategy_batch(
         else:
             print(msg, flush=True)
 
-    use_per_task = cfg.budgeted and per_task_cap is not None and per_task_cap > 0
+    planned_task_caps = {
+        str(task_id): float(cap)
+        for task_id, cap in (planned_task_caps or {}).items()
+        if cap is not None and float(cap) > 0
+    }
+    use_planned_task_caps = (
+        cfg.budgeted
+        and cfg.routing in BUDGETFLOW_ACTIVE_ROUTINGS
+        and budget_mode == PLANNED_TASK_BUDGET_MODE
+    )
+    if (
+        cfg.budgeted
+        and budget_mode == PLANNED_TASK_BUDGET_MODE
+        and cfg.routing not in BUDGETFLOW_ACTIVE_ROUTINGS
+    ):
+        raise SystemExit(f"{PLANNED_TASK_BUDGET_MODE} is only valid for BudgetFlow active policies")
+    if use_planned_task_caps and not planned_task_caps:
+        raise SystemExit(f"{cfg.name} uses {PLANNED_TASK_BUDGET_MODE} but no planned task budgets were provided")
+    use_planned_task_caps = (
+        use_planned_task_caps
+        and bool(planned_task_caps)
+    )
+    use_per_task = (
+        cfg.budgeted
+        and not use_planned_task_caps
+        and per_task_cap is not None
+        and per_task_cap > 0
+    )
+    shared_spent = max(0.0, float(initial_spent or 0.0))
     ledger = WorkflowLedgerStore()
     governor: BudgetGovernor | None = None
-    if not use_per_task:
+    if not use_per_task and not use_planned_task_caps:
         governor = BudgetGovernor(
             GovernorConfig(
                 total_budget=batch_budget_cap,
@@ -331,7 +371,9 @@ def run_strategy_batch(
             governor.state.spent_budget = initial_spent
             governor.state.available_budget = max(0.0, governor.state.total_budget - initial_spent)
 
-    if use_per_task:
+    if use_planned_task_caps:
+        cap_label = f"planned_task_budget tasks={len(planned_task_caps)} shared_cap={fmt_usd(batch_budget_cap)}"
+    elif use_per_task:
         cap_label = f"per_task_cap={fmt_usd(per_task_cap)}" if per_task_cap else "per_task"
         if max_overrun > 0:
             cap_label += f"+overrun={fmt_usd(max_overrun)}"
@@ -345,6 +387,16 @@ def run_strategy_batch(
     )
 
     records: list[dict] = []
+    if use_planned_task_caps:
+        selected_task_ids = [str(task.instance_id) for task in tasks]
+        missing_caps = [task_id for task_id in selected_task_ids if task_id not in planned_task_caps]
+        if missing_caps:
+            preview = ", ".join(missing_caps[:8])
+            suffix = "" if len(missing_caps) <= 8 else f", ... +{len(missing_caps) - 8} more"
+            raise SystemExit(
+                f"{cfg.name} uses {PLANNED_TASK_BUDGET_MODE} but budget plan is missing "
+                f"planned task budgets for: {preview}{suffix}"
+            )
     for task_index, task in enumerate(tasks, start=1):
         if run_guards is not None and run_guards.is_strategy_halted(cfg.name):
             log(f"[guard] skip strategy={cfg.name} task={task.instance_id} (policy halted)")
@@ -355,7 +407,12 @@ def run_strategy_batch(
 
         global_progress.start_task()
         if checkpoint is not None:
-            cap_for_ckpt = per_task_cap if use_per_task and per_task_cap else batch_budget_cap
+            cap_for_ckpt = (
+                float(planned_task_caps.get(str(task.instance_id), 0.0) or batch_budget_cap)
+                if use_planned_task_caps
+                else per_task_cap if use_per_task and per_task_cap
+                else batch_budget_cap
+            )
             checkpoint.mark_in_flight(cfg.name, task.instance_id, cap_for_ckpt)
         banner = global_progress.format_banner(scoreboard)
         log(f"\n======== {banner} ========\n[start] task={task.instance_id} strategy={cfg.name}")
@@ -393,7 +450,12 @@ def run_strategy_batch(
             effective_batch_cap = batch_budget_cap
             task_cap: float | None = None
             if cfg.budgeted:
-                if per_task_cap is not None and per_task_cap > 0:
+                if use_planned_task_caps:
+                    planned_cap = planned_task_caps.get(str(task.instance_id))
+                    if planned_cap is not None and planned_cap > 0:
+                        shared_remaining = max(0.0, float(batch_budget_cap) - shared_spent)
+                        task_cap = min(float(planned_cap), shared_remaining)
+                elif per_task_cap is not None and per_task_cap > 0:
                     task_cap = per_task_cap
             if task_cap is not None:
                 task_ledger = WorkflowLedgerStore()
@@ -406,7 +468,7 @@ def run_strategy_batch(
                     ),
                     task_ledger,
                 )
-                effective_batch_cap = task_governor.state.total_budget
+                effective_batch_cap = batch_budget_cap
             assert task_governor is not None
             return run_task_record(
                 task,
@@ -434,6 +496,11 @@ def run_strategy_batch(
                     else "shared"
                 ),
                 per_task_cap=task_cap,
+                planned_task_budget_source=(
+                    planned_task_budget_source
+                    if use_planned_task_caps and task_cap is not None
+                    else None
+                ),
                 task_set=task_set,
                 task_set_kind=task_set_kind,
                 frozen_plan=frozen_plan,
@@ -471,14 +538,38 @@ def run_strategy_batch(
                 _print_run_done(record, done=done_n, total=global_progress.total, strategy=cfg.name)
         else:
             _print_run_done(record, done=done_n, total=global_progress.total, strategy=cfg.name)
+        if use_planned_task_caps:
+            task_spent = float(record.get("total_cost") or 0.0)
+            shared_spent = min(float(batch_budget_cap), shared_spent + task_spent)
+            record["batch_budget_cap"] = batch_budget_cap
+            record["batch_spent"] = shared_spent
+            record["batch_available"] = max(0.0, float(batch_budget_cap) - shared_spent)
+            record["batch_snapshot"] = {
+                "total_budget": batch_budget_cap,
+                "soft_budget": batch_budget_cap,
+                "absolute_budget": batch_budget_cap,
+                "max_overrun": 0.0,
+                "available_budget": record["batch_available"],
+                "reserved_budget": 0.0,
+                "spent_budget": shared_spent,
+            }
         records.append(record)
         if checkpoint is not None:
             task_spent = float(record.get("total_cost") or 0)
             checkpoint.mark_task_done(
                 cfg.name,
                 task.instance_id,
-                batch_spent=task_spent if use_per_task else float(governor.state.spent_budget),
-                batch_cap=float(record.get("per_task_cap") or batch_budget_cap) if use_per_task else batch_budget_cap,
+                batch_spent=(
+                    shared_spent
+                    if use_planned_task_caps
+                    else task_spent if use_per_task
+                    else float(governor.state.spent_budget)
+                ),
+                batch_cap=(
+                    float(record.get("per_task_cap") or batch_budget_cap)
+                    if use_per_task or use_planned_task_caps
+                    else batch_budget_cap
+                ),
             )
         if on_task_complete is not None:
             on_task_complete(record)
@@ -491,7 +582,9 @@ def run_strategy_batch(
             if action.halt_all or action.halt_strategy:
                 break
 
-    if use_per_task:
+    if use_planned_task_caps:
+        batch_spent_total = shared_spent
+    elif use_per_task:
         batch_spent_total = sum(float(r.get("total_cost") or 0) for r in records)
     else:
         assert governor is not None

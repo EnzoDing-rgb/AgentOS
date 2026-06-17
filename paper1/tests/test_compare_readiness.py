@@ -500,6 +500,62 @@ def test_readiness_blocks_budget_plan_strategy_set_drift(tmp_path) -> None:
     assert any("strategy set/order" in issue for issue in report.blocking)
 
 
+def test_readiness_blocks_budgetflow_plan_without_planned_task_budgets(tmp_path) -> None:
+    bp = tmp_path / "budget_plan.json"
+    bp.write_text(
+        '{"hard_cap_usd":1.0,"source":"budget_binding_calibrator","decision":"PASS",'
+        '"generation_mode":"target_utilization",'
+        '"task_ids":["task-a"],'
+        '"strategy_names":["budgetflow_task_level"]}'
+    )
+    value_context = ValueEfficiencyContext()
+    value_context.init(value_profile="equal")
+
+    report = build_compare_readiness_report(
+        args=_args(),
+        tasks=[SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",))],
+        strategies=(CompareStrategy("budgetflow_task_level", "value_aware_task_level"),),
+        policy_jobs=1,
+        value_context=value_context,
+        catalog_issues=[],
+        runtime_root=Path("/tmp/budgetflow-runtime"),
+        budget_plan_path=bp,
+    )
+
+    assert not report.ok
+    assert any("missing planned_task_budget_by_strategy" in issue for issue in report.blocking)
+
+
+def test_readiness_blocks_budgetflow_plan_missing_planned_task_cap(tmp_path) -> None:
+    bp = tmp_path / "budget_plan.json"
+    bp.write_text(
+        '{"hard_cap_usd":1.0,"source":"budget_binding_calibrator","decision":"PASS",'
+        '"generation_mode":"target_utilization",'
+        '"task_ids":["task-a","task-b"],'
+        '"strategy_names":["budgetflow_task_level"],'
+        '"planned_task_budget_by_strategy":{"budgetflow_task_level":{"task-a":0.8}}}'
+    )
+    value_context = ValueEfficiencyContext()
+    value_context.init(value_profile="equal")
+
+    report = build_compare_readiness_report(
+        args=_args(),
+        tasks=[
+            SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",)),
+            SimpleNamespace(instance_id="task-b", test_patch="diff", fail_to_pass=("test_b",)),
+        ],
+        strategies=(CompareStrategy("budgetflow_task_level", "value_aware_task_level"),),
+        policy_jobs=1,
+        value_context=value_context,
+        catalog_issues=[],
+        runtime_root=Path("/tmp/budgetflow-runtime"),
+        budget_plan_path=bp,
+    )
+
+    assert not report.ok
+    assert any("missing selected tasks: task-b" in issue for issue in report.blocking)
+
+
 def test_readiness_blocks_budget_plan_superset_for_short_run(tmp_path) -> None:
     bp = tmp_path / "budget_plan.json"
     bp.write_text(

@@ -208,10 +208,22 @@ def main() -> None:
 
     _frontier = TierFrontier.from_catalog()
     _budget_plan_data: dict | None = None
+    planned_task_caps_by_strategy: dict[str, dict[str, float]] = {}
     budget_plan_path = Path(args.budget_plan) if getattr(args, "budget_plan", None) else None
     if budget_plan_path is not None and budget_plan_path.exists():
         import json as _json
         _budget_plan_data = _json.loads(budget_plan_path.read_text())
+        raw_planned_caps = _budget_plan_data.get("planned_task_budget_by_strategy") or {}
+        if isinstance(raw_planned_caps, dict):
+            planned_task_caps_by_strategy = {
+                str(strategy): {
+                    str(task_id): float(cap)
+                    for task_id, cap in caps.items()
+                    if cap is not None and float(cap) > 0
+                }
+                for strategy, caps in raw_planned_caps.items()
+                if isinstance(caps, dict)
+            }
     calibrated_model_fit, calibrated_model_fit_source, calibrated_model_fit_confidence = calibrated_model_fit_from_budget_plan(
         budget_plan_path
     )
@@ -320,6 +332,7 @@ def main() -> None:
         strategies=strategies,
         per_task_cap=args.per_task_cap,
         constrained_budget=budget_input["hard_cap_usd"],
+        planned_task_caps_by_strategy=planned_task_caps_by_strategy,
     )
     batch_caps = budget_modes_plan.batch_caps
     budget_modes = budget_modes_plan.budget_modes
@@ -332,7 +345,6 @@ def main() -> None:
         bp_task_ids = tuple(str(task_id) for task_id in ((_budget_plan_data or {}).get("task_ids") or ()))
         bp_strategy_names = tuple(str(name) for name in ((_budget_plan_data or {}).get("strategy_names") or ()))
         expected_contract = {
-            "budget_mode": "shared_batch_hard_budget",
             "batch_budget_cap": budget_input["hard_cap_usd"],
             "budget_plan_hard_cap_usd": (_budget_plan_data or {}).get("hard_cap_usd"),
             "budget_plan_generation_mode": (_budget_plan_data or {}).get("generation_mode"),
@@ -372,6 +384,9 @@ def main() -> None:
     print(f"{dim('strategies=' + ','.join(strategy_names))}", flush=True)
     if any(mode == "per_task_cap" for mode in budget_modes.values()):
         budget_mode = f"per_task_cap={args.per_task_cap}" + (f"+overrun={max_overrun}" if max_overrun else "")
+    elif any(mode == "budgetflow_planned_task_budget" for mode in budget_modes.values()):
+        planned_names = [name for name, mode in budget_modes.items() if mode == "budgetflow_planned_task_budget"]
+        budget_mode = "shared_batch_hard_budget + budgetflow_planned_task_budget(" + ",".join(planned_names) + ")"
     else:
         budget_mode = "shared_batch_hard_budget" + (
             f" soft_budget={args.soft_budget}+overrun={max_overrun}" if args.soft_budget is not None else ""
@@ -532,6 +547,7 @@ def main() -> None:
             batch_budget_cap=batch_cap,
             value_context=value_context,
             per_task_cap=args.per_task_cap if args.per_task_cap and args.per_task_cap > 0 else None,
+            planned_task_caps=planned_task_caps_by_strategy.get(cfg.name),
             soft_budget=args.soft_budget,
             max_overrun=max_overrun,
             step_limit=args.step_limit,

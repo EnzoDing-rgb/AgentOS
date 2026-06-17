@@ -20,6 +20,10 @@ from ..selector import BudgetFlowSelector, ConservativeSelector, RouterDecision,
 from ..tier_frontier import TierFrontier, finite_frontier_score
 from ..types import Backend, ProgressTable, Stage, TurnInfo
 
+EFFORT_T3_START_THRESHOLD = 60.0
+VALUE_T3_START_THRESHOLD = 1.5
+TASK_BUDGET_STRONGEST_FIT_FRACTION = 0.75
+
 @dataclass
 class RoutingContext:
     strategy: str
@@ -265,6 +269,60 @@ def _expected_total_cost(
     return expected_turns * per_turn_cost
 
 
+def _expected_cost_fits_task_budget(
+    allocation: AllocationContext | None,
+    cost: float,
+    *,
+    fraction: float = TASK_BUDGET_STRONGEST_FIT_FRACTION,
+) -> bool:
+    if allocation is None or allocation.planned_task_budget is None:
+        return True
+    budget = max(0.0, float(allocation.planned_task_budget))
+    if budget <= 0:
+        return False
+    return cost <= budget * max(0.0, min(1.0, fraction))
+
+
+def _task_start_t3_score(
+    ctx: RoutingContext,
+    strongest_total_cost: float,
+) -> tuple[float, dict[str, float | str | bool]]:
+    allocation = ctx.allocation
+    has_trusted_fit = bool(allocation is not None and allocation.has_trusted_model_fit)
+    task_value = float(getattr(allocation, "task_value", ctx.task_value) if allocation is not None else ctx.task_value)
+    task_effort = (
+        float(allocation.task_effort)
+        if allocation is not None and allocation.has_effort and allocation.task_effort is not None
+        else 0.0
+    )
+    median = max(0.001, float(ctx.median_task_value or 1.0))
+    value_ratio = task_value / median
+    effort_ratio = task_effort / EFFORT_T3_START_THRESHOLD if task_effort > 0 else 0.0
+    pressure_penalty = max(0.0, min(1.5, float(ctx.budget_pressure or 0.0)))
+    budget_allows = _expected_cost_fits_task_budget(
+        allocation,
+        strongest_total_cost,
+        fraction=TASK_BUDGET_STRONGEST_FIT_FRACTION,
+    )
+    score = min(value_ratio, effort_ratio) - 0.5 * pressure_penalty
+    details: dict[str, float | str | bool] = {
+        "task_value": task_value,
+        "task_effort": task_effort,
+        "value_ratio": value_ratio,
+        "effort_ratio": effort_ratio,
+        "budget_pressure": float(ctx.budget_pressure or 0.0),
+        "budget_allows_strongest": 1.0 if budget_allows else 0.0,
+        "has_trusted_model_fit": 1.0 if has_trusted_fit else 0.0,
+        "planned_task_budget": (
+            float(allocation.planned_task_budget)
+            if allocation is not None and allocation.planned_task_budget is not None
+            else 0.0
+        ),
+        "rule": "value_and_effort_task_start",
+    }
+    return score if budget_allows and has_trusted_fit else -1.0, details
+
+
 def _choose_task_level_backend(ctx: RoutingContext, expected_costs: dict[str, float]) -> Backend:
     """Choose one backend for the whole task using expected total cost.
 
@@ -297,6 +355,34 @@ def _choose_task_level_backend(ctx: RoutingContext, expected_costs: dict[str, fl
     for backend in ordered:
         per_turn = expected_costs.get(backend.name, 0.0)
         total_costs[backend.name] = _expected_total_cost(ctx, backend.name, backend.tier, per_turn)
+
+    strongest = ModelCatalog.strongest(ctx.backends)
+    task_start_score, task_start_details = _task_start_t3_score(
+        ctx,
+        total_costs.get(strongest.name, 0.0),
+    )
+    if (
+        strongest.tier <= max_tier
+        and task_start_score >= 1.0
+        and float(task_start_details["value_ratio"]) >= VALUE_T3_START_THRESHOLD
+    ):
+        current = strongest
+        current_score = task_start_score
+        ctx.task_level_backend = current
+        ctx.last_decision = RouterDecision(
+            backend=current,
+            reason="bf_task_start_value_effort_t3",
+            scores={current.name: current_score},
+            pressure=ctx.budget_pressure,
+            branch="value_aware_task_level",
+        )
+        if ctx.bootstrap_policy is not None:
+            ctx.last_policy_decision = PolicyDecision(
+                backend=current.name,
+                reason="task_level_fixed_task_start",
+                scores={k: float(v) if isinstance(v, (int, float)) else v for k, v in task_start_details.items()},
+            )
+        return current
 
     for next_backend in ordered[1:]:
         # Compare expected total cost, not per-step cost.
@@ -347,10 +433,14 @@ def _choose_task_level_backend(ctx: RoutingContext, expected_costs: dict[str, fl
         branch="value_aware_task_level",
     )
     if ctx.bootstrap_policy is not None:
+        scores: dict[str, float | str | bool] = {
+            "selection_score": current_score,
+            **task_start_details,
+        }
         ctx.last_policy_decision = PolicyDecision(
             backend=current.name,
             reason="task_level_fixed",
-            scores={"selection_score": current_score},
+            scores=scores,
         )
     return current
 

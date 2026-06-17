@@ -22,6 +22,8 @@ from budgetflow.experiments.compare_config import (
 from budgetflow.lite_tasks import load_compare_easy_tasks, load_compare_medium_tasks, load_swebench_lite_tasks
 
 TraceConsole = Literal["quiet", "milestones", "verbose"]
+PLANNED_TASK_BUDGET_MODE = "budgetflow_planned_task_budget"
+BUDGETFLOW_ACTIVE_ROUTINGS = frozenset({"value_aware_task_level", "segment_value_aware"})
 
 DIAGNOSTIC_3X3_IDS = (
     "sympy__sympy-13480",
@@ -211,6 +213,7 @@ def build_batch_budget_modes(
     strategies: tuple[CompareStrategy, ...],
     per_task_cap: float | None,
     constrained_budget: float,
+    planned_task_caps_by_strategy: dict[str, dict[str, float]] | None = None,
 ) -> BatchBudgetModes:
     """Assign equal shared batch caps to all paper mainline strategies.
 
@@ -218,19 +221,22 @@ def build_batch_budget_modes(
     shared batch hard cap. Frozen router plans never provide budget caps.
     """
     use_fixed_per_task_cap = per_task_cap is not None and per_task_cap > 0
+    planned_task_caps_by_strategy = planned_task_caps_by_strategy or {}
 
     def _cap_for(s: CompareStrategy) -> float | None:
         if not s.budgeted:
             return None
-        if use_fixed_per_task_cap:
+        if use_fixed_per_task_cap and s.routing in BUDGETFLOW_ACTIVE_ROUTINGS:
             return per_task_cap
         return constrained_budget
 
     def _mode_for(s: CompareStrategy) -> str:
         if not s.budgeted:
             return "unconstrained"
-        if use_fixed_per_task_cap:
+        if use_fixed_per_task_cap and s.routing in BUDGETFLOW_ACTIVE_ROUTINGS:
             return "per_task_cap"
+        if s.routing in BUDGETFLOW_ACTIVE_ROUTINGS and planned_task_caps_by_strategy.get(s.name):
+            return PLANNED_TASK_BUDGET_MODE
         return "shared_batch_hard_budget"
 
     batch_caps: dict[str, float | None] = {s.name: _cap_for(s) for s in strategies}
@@ -253,11 +259,27 @@ def validate_paper_mainline_budget_contract(
     mainline_names = list(paper_mainline_strategy_names())
     if strategy_names != mainline_names:
         return
-    modes = [budget_modes.get(name) for name in mainline_names]
-    if any(mode != "shared_batch_hard_budget" for mode in modes):
+    allowed_budgetflow = {"shared_batch_hard_budget", PLANNED_TASK_BUDGET_MODE}
+    control_names = {
+        "bare_t2_baseline",
+        "bare_t3_baseline",
+        "enterprise_router_baseline",
+    }
+    control_modes = {name: budget_modes.get(name) for name in mainline_names if name in control_names}
+    if any(mode != "shared_batch_hard_budget" for mode in control_modes.values()):
         raise SystemExit(
-            "paper mainline requires shared_batch_hard_budget for all strategies; "
-            f"got {dict(zip(mainline_names, modes))}"
+            "paper mainline diagnostic controls require shared_batch_hard_budget; "
+            f"got {control_modes}"
+        )
+    unsupported = {
+        name: budget_modes.get(name)
+        for name in mainline_names
+        if name not in control_names and budget_modes.get(name) not in allowed_budgetflow
+    }
+    if unsupported:
+        raise SystemExit(
+            "paper mainline BudgetFlow policies require shared_batch_hard_budget "
+            f"or {PLANNED_TASK_BUDGET_MODE}; got {unsupported}"
         )
     caps = [batch_caps.get(name) for name in mainline_names]
     if any(cap is None for cap in caps) or len({round(float(cap), 8) for cap in caps if cap is not None}) != 1:
