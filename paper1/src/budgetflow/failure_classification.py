@@ -4,6 +4,13 @@ from collections import Counter
 from typing import Any
 
 from .harness_contamination import has_host_dependency_contamination
+from .exit_reasons import (
+    BUDGET_EXIT_REASONS,
+    BUDGET_EXIT_STATUSES,
+    is_budget_exit,
+    is_fixed_tier_turn_cap_reason,
+    record_is_budget_exhausted,
+)
 from .model_tiers import MODEL_CATALOG, parse_tier_label
 from .observability import build_harness_trust, parse_harness_evidence
 
@@ -65,38 +72,19 @@ _PROVIDER_UNAVAILABLE = {
     "upstream_guard",
 }
 
-_BUDGET_REASONS = {
-    "budget_exhausted",
-    "cap_exhausted",
-    "reserve_failed_budget",
-}
-
-_BUDGET_STATUSES = {
-    "BudgetFlowBudgetError",
-}
+_BUDGET_REASONS = BUDGET_EXIT_REASONS
+_BUDGET_STATUSES = BUDGET_EXIT_STATUSES
 
 _HARNESS_STAGES = ("test_patch", "fail_before", "model_patch", "fail_after", "pass_to_pass")
 
 
 def _is_budget_exit(status: str, reason: str) -> bool:
-    status_l = status.lower()
-    reason_l = reason.lower()
-    return (
-        status in _BUDGET_STATUSES
-        or reason in _BUDGET_REASONS
-        or "budget" in status_l
-        or "budget" in reason_l
-        or "cap" in status_l
-        or "cap" in reason_l
-    )
+    return is_budget_exit(status, reason)
 
 
 def _record_is_budget_exit(record: dict[str, Any]) -> bool:
     """Return True when either the row or underlying agent exhausted budget."""
-    return (
-        _is_budget_exit(str(record.get("exit_status") or ""), str(record.get("exit_reason") or ""))
-        or _is_budget_exit(str(record.get("agent_exit_status") or ""), str(record.get("agent_exit_reason") or ""))
-    )
+    return record_is_budget_exhausted(record)
 
 
 def _is_infra_exit(status: str) -> bool:
@@ -228,7 +216,11 @@ def compute_exit_owner(record: dict[str, Any]) -> str:
         return EXIT_OWNER_AGENT_EXIT
 
     # Stagnation — the key distinction.
-    if reason.startswith("stagnation_") or reason in _BUDGETFLOW_ONLY_STAGNATION:
+    if (
+        reason.startswith("stagnation_")
+        or is_fixed_tier_turn_cap_reason(reason)
+        or reason in _BUDGETFLOW_ONLY_STAGNATION
+    ):
         if reason in _BUDGETFLOW_ONLY_STAGNATION:
             return EXIT_OWNER_BUDGETFLOW_STOPLOSS
         # shared stagnation guard (check_stagnation) fires for ALL strategies.
@@ -362,7 +354,7 @@ def _failure_chain(record: dict[str, Any], harness: dict[str, str]) -> list[str]
 
     if _record_is_budget_exit(record):
         chain.append("budget_exhausted")
-    if reason.startswith("stagnation_") or reason in {
+    if reason.startswith("stagnation_") or is_fixed_tier_turn_cap_reason(reason) or reason in {
         "rescue_timeout_gold_edited",
         "submit_timeout_after_gold_edit",
     }:
@@ -406,7 +398,7 @@ def _primary_axis(record: dict[str, Any], harness: dict[str, str]) -> tuple[str,
     if not record.get("patch_extracted"):
         if errors or "format" in status.lower() or "format" in reason.lower():
             return "protocol", "high"
-        if reason.startswith("stagnation_"):
+        if reason.startswith("stagnation_") or is_fixed_tier_turn_cap_reason(reason):
             return "model_behavior", "medium"
         return "protocol", "medium"
     if not record.get("agent_gold_edited"):
@@ -494,7 +486,10 @@ def classify_failure(record: dict[str, Any]) -> str:
     if record.get("patch_extracted") and evidence.model_patch_status and not evidence.model_patch_ok:
         return "repair_fail"
 
-    if not record.get("patch_extracted") and reason.startswith("stagnation_"):
+    if (
+        not record.get("patch_extracted")
+        and (reason.startswith("stagnation_") or is_fixed_tier_turn_cap_reason(reason))
+    ):
         return "loc_fail"
 
     if not record.get("patch_extracted"):
@@ -580,7 +575,10 @@ def build_verdict(record: dict[str, Any]) -> dict[str, Any]:
         axis = "protocol_fail"
     elif _is_infra_exit(status) or _is_provider_unavailable(status, reason, errors):
         axis = "infra_fail"
-    elif not patch_extracted and reason.startswith("stagnation_"):
+    elif (
+        not patch_extracted
+        and (reason.startswith("stagnation_") or is_fixed_tier_turn_cap_reason(reason))
+    ):
         axis = "model_fail"
     elif not evidence.evidence_complete and not resolved:
         # Harness couldn't verify the result properly

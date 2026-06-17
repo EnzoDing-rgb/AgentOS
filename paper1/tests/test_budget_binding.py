@@ -358,6 +358,32 @@ def test_calibrate_uses_budget_exhausted_rows_as_floor_not_observed_sample(tmp_p
     assert any("censored spend floors" in reason for reason in plan.reasons)
 
 
+def test_fixed_tier_turn_cap_is_not_censored_budget_floor(tmp_path: Path) -> None:
+    jsonl = tmp_path / "hist.jsonl"
+    jsonl.write_text(json.dumps({
+        "strategy": "bare_t2_baseline",
+        "instance_id": "task-a",
+        "total_cost": 0.75,
+        "budget_mode": "shared_batch_hard_budget",
+        "catalog": catalog_source_info(),
+        "score_status": "true_fail",
+        "exit_status": "StagnationExit",
+        "exit_reason": "tier2_turn_cap",
+        "agent_exit_status": "StagnationExit",
+        "agent_exit_reason": "tier2_turn_cap",
+        "failure_class": "extract_fail",
+        "harness_trust": "incomplete",
+        "row_finished_at": 1,
+    }) + "\n")
+
+    signals = _load_historical_cost_signals(jsonl)
+
+    assert signals.observed_costs == {}
+    assert signals.censored_spend_floor_by_strategy == {}
+    assert signals.censored_task_costs_by_strategy == {}
+    assert signals.excluded == {"harness_trust:incomplete": 1}
+
+
 def test_budget_exhausted_floor_requires_trusted_harness_row(tmp_path: Path) -> None:
     jsonl = tmp_path / "hist.jsonl"
     jsonl.write_text(json.dumps({

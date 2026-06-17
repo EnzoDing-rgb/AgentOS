@@ -14,6 +14,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .exit_reasons import record_is_budget_exhausted
 from .model_tiers import MODEL_CATALOG
 
 
@@ -364,22 +365,7 @@ def _is_clean_run(rec: dict) -> bool:
 
 
 def _row_is_budget_exhausted(row: dict) -> bool:
-    if row.get("budget_exhausted") is True:
-        return True
-    fields = (
-        row.get("exit_status"),
-        row.get("exit_reason"),
-        row.get("agent_exit_status"),
-        row.get("agent_exit_reason"),
-        row.get("failure_class"),
-        row.get("exit_owner"),
-        row.get("abort_owner"),
-    )
-    if any("budget" in str(v).lower() and "exhaust" in str(v).lower() for v in fields):
-        return True
-    failure_class = str(row.get("failure_class") or "").lower()
-    exit_reason = str(row.get("exit_reason") or "").lower()
-    return failure_class == "budget_fail" and ("turn_cap" in exit_reason or "cap" in exit_reason)
+    return record_is_budget_exhausted(row)
 
 
 def _median(values: list[float]) -> float:

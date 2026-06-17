@@ -19,6 +19,7 @@ from typing import Any
 
 from budgetflow.experiments.compare_config import load_strategy_set, paper_mainline_strategy_names
 
+from ..exit_reasons import record_is_budget_exhausted
 from ..model_fit_estimator import ModelFitEvidence, estimate_model_fit_from_jsonl
 from ..model_tiers import (
     MODEL_CATALOG,
@@ -1036,22 +1037,7 @@ def _latest_records_by_strategy_task(jsonl_path: Path) -> dict[tuple[str, str], 
 
 
 def _row_is_budget_exhausted(row: dict) -> bool:
-    if row.get("budget_exhausted") is True:
-        return True
-    fields = (
-        row.get("exit_status"),
-        row.get("exit_reason"),
-        row.get("agent_exit_status"),
-        row.get("agent_exit_reason"),
-        row.get("failure_class"),
-        row.get("exit_owner"),
-        row.get("abort_owner"),
-    )
-    if any("budget" in str(value).lower() and "exhaust" in str(value).lower() for value in fields):
-        return True
-    failure_class = str(row.get("failure_class") or "").lower()
-    exit_reason = str(row.get("exit_reason") or "").lower()
-    return failure_class == "budget_fail" and ("turn_cap" in exit_reason or "cap" in exit_reason)
+    return record_is_budget_exhausted(row)
 
 
 def _row_catalog_compatible(row_catalog: dict) -> tuple[bool, str]:

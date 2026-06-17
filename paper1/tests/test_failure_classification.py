@@ -812,6 +812,28 @@ def test_exit_owner_budget_exhausted() -> None:
     assert compute_exit_owner(rec) == EXIT_OWNER_BUDGET_EXHAUSTED
 
 
+def test_fixed_tier_turn_cap_is_not_budget_exhausted() -> None:
+    rec = {
+        "harness_resolved": False,
+        "patch_extracted": False,
+        "agent_gold_edited": False,
+        "exit_status": "StagnationExit",
+        "exit_reason": "tier2_turn_cap",
+        "agent_exit_status": "StagnationExit",
+        "agent_exit_reason": "tier2_turn_cap",
+        "routing": "all_tier2",
+        "turn_trace_count": 1,
+        "turn_traces": [{}],
+        "detail": "",
+    }
+
+    assert compute_exit_owner(rec) == EXIT_OWNER_AGENT_HARNESS
+    assert classify_failure(rec) == "loc_fail"
+    verdict = build_verdict(rec)
+    assert verdict["verdict_axis"] == "model_fail"
+    assert verdict["failure_stage"] == "localization"
+
+
 def test_exit_owner_provider_error() -> None:
     rec = {
         "exit_reason": "ServiceUnavailableError",

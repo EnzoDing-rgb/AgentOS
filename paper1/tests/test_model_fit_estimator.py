@@ -421,8 +421,8 @@ class TestModelFitEstimation:
                 "total_cost": 0.75,
                 "catalog": cat,
                 "score_status": "true_fail",
-                "exit_status": "StagnationExit",
-                "exit_reason": "tier2_turn_cap",
+                "exit_status": "BudgetFlowBudgetError",
+                "exit_reason": "budget_exhausted",
                 "exit_owner": "budget_exhausted",
                 "budget_exhausted": True,
                 "failure_class": "budget_fail",
@@ -850,6 +850,47 @@ class TestSixByFiveLikeScenario:
         finally:
             _restore_catalog(catalog_orig)
 
+    def test_fixed_tier_turn_cap_is_not_model_fit_censored_evidence(self):
+        """Turn caps are runtime truncation, not spend floors for ModelFit."""
+        from budgetflow.model_fit_estimator import estimate_model_fit_from_jsonl
+
+        cat = _catalog()
+        records = [
+            {
+                "strategy": "bare_t2_baseline",
+                "instance_id": "task-a",
+                "total_cost": 0.75,
+                "catalog": cat,
+                "score_status": "true_fail",
+                "exit_status": "StagnationExit",
+                "exit_reason": "tier2_turn_cap",
+                "agent_exit_status": "StagnationExit",
+                "agent_exit_reason": "tier2_turn_cap",
+                "failure_class": "extract_fail",
+                "harness_trust": "incomplete",
+                "row_finished_at": 1,
+            },
+        ]
+        catalog_orig = _setup_catalog_test()
+        try:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+                path = Path(f.name)
+            _write_jsonl(path, records)
+
+            evidence = estimate_model_fit_from_jsonl(
+                path,
+                ["task-a"],
+                {"task-a": {"bootstrap_difficulty": 30.0}},
+            )
+
+            assert evidence.evidence_tasks == 0
+            assert evidence.censored_tiers == set()
+            assert evidence.tier_censored_counts.get(2, 0) == 0
+
+            path.unlink()
+        finally:
+            _restore_catalog(catalog_orig)
+
     def test_budget_compiler_uses_workload_level_model_fit_without_task_overlap(self):
         """Historical calibration JSONL is workload-level evidence, not target-id overlap only."""
         from budgetflow.experiments.budget_binding import calibrate_budget
@@ -865,7 +906,7 @@ class TestSixByFiveLikeScenario:
                 "score_status": "true_fail",
                 "failure_class": "budget_fail",
                 "exit_status": "BudgetFlowBudgetError",
-                "exit_reason": "tier2_turn_cap",
+                "exit_reason": "budget_exhausted",
                 "row_finished_at": 1,
                 "harness_trust": "incomplete",
                 "budget_exhausted": True,
@@ -951,7 +992,7 @@ class TestSixByFiveLikeScenario:
                 "score_status": "true_fail",
                 "failure_class": "budget_fail",
                 "exit_status": "BudgetFlowBudgetError",
-                "exit_reason": "tier2_turn_cap",
+                "exit_reason": "budget_exhausted",
                 "row_finished_at": 1,
                 "harness_trust": "incomplete",
                 "budget_exhausted": True,
@@ -965,7 +1006,7 @@ class TestSixByFiveLikeScenario:
                 "score_status": "true_fail",
                 "failure_class": "budget_fail",
                 "exit_status": "BudgetFlowBudgetError",
-                "exit_reason": "tier2_turn_cap",
+                "exit_reason": "budget_exhausted",
                 "row_finished_at": 1,
                 "harness_trust": "incomplete",
                 "budget_exhausted": True,
