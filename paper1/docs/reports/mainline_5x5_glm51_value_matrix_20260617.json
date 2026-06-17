@@ -1,0 +1,202 @@
+{
+  "meta": {
+    "task_count": 5,
+    "task_value_profiles": [
+      "equal"
+    ],
+    "task_effort_source": "task_metadata_formula",
+    "source": "bootstrap_ids:sympy__sympy-13480,sympy__sympy-14774,sympy__sympy-16988,sympy__sympy-21055,sympy__sympy-23117",
+    "source_class": "bootstrap_pre_registered_metadata",
+    "outcome_free": true,
+    "note": "Task Value profiles use only 'equal' (1.0 per task). Task Effort uses a bootstrap heuristic from pre-registered SWE-bench task metadata: patch lines, fail/pass test counts, problem words, and gold file count. No strategy outcome, cost, solve rarity, or BudgetFlow signal is used.",
+    "effort_formula": "bootstrap_heuristic = 1 + patch_lines + 2*f2p_count + log1p(p2p_count) + 0.01*problem_words + 1.5*gold_file_count"
+  },
+  "tasks": {
+    "sympy__sympy-13480": {
+      "instance_id": "sympy__sympy-13480",
+      "repo": "sympy/sympy",
+      "task_value": {
+        "equal": 1.0
+      },
+      "task_effort": {
+        "bootstrap_heuristic": 20.8442,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 12,
+          "f2p_count": 1,
+          "p2p_count": 43,
+          "problem_words": 56,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
+      "features": {
+        "patch_lines": 12,
+        "f2p_count": 1,
+        "p2p_count": 43,
+        "problem_words": 56,
+        "gold_file_count": 1
+      }
+    },
+    "sympy__sympy-14774": {
+      "instance_id": "sympy__sympy-14774",
+      "repo": "sympy/sympy",
+      "task_value": {
+        "equal": 1.0
+      },
+      "task_effort": {
+        "bootstrap_heuristic": 21.9149,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 12,
+          "f2p_count": 1,
+          "p2p_count": 114,
+          "problem_words": 67,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
+      "features": {
+        "patch_lines": 12,
+        "f2p_count": 1,
+        "p2p_count": 114,
+        "problem_words": 67,
+        "gold_file_count": 1
+      }
+    },
+    "sympy__sympy-16988": {
+      "instance_id": "sympy__sympy-16988",
+      "repo": "sympy/sympy",
+      "task_value": {
+        "equal": 1.0
+      },
+      "task_effort": {
+        "bootstrap_heuristic": 23.3505,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 12,
+          "f2p_count": 2,
+          "p2p_count": 72,
+          "problem_words": 56,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
+      "features": {
+        "patch_lines": 12,
+        "f2p_count": 2,
+        "p2p_count": 72,
+        "problem_words": 56,
+        "gold_file_count": 1
+      }
+    },
+    "sympy__sympy-21055": {
+      "instance_id": "sympy__sympy-21055",
+      "repo": "sympy/sympy",
+      "task_value": {
+        "equal": 1.0
+      },
+      "task_effort": {
+        "bootstrap_heuristic": 48.0491,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 40,
+          "f2p_count": 1,
+          "p2p_count": 13,
+          "problem_words": 91,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
+      "features": {
+        "patch_lines": 40,
+        "f2p_count": 1,
+        "p2p_count": 13,
+        "problem_words": 91,
+        "gold_file_count": 1
+      }
+    },
+    "sympy__sympy-23117": {
+      "instance_id": "sympy__sympy-23117",
+      "repo": "sympy/sympy",
+      "task_value": {
+        "equal": 1.0
+      },
+      "task_effort": {
+        "bootstrap_heuristic": 50.0763,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 43,
+          "f2p_count": 1,
+          "p2p_count": 3,
+          "problem_words": 119,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
+      "features": {
+        "patch_lines": 43,
+        "f2p_count": 1,
+        "p2p_count": 3,
+        "problem_words": 119,
+        "gold_file_count": 1
+      }
+    }
+  },
+  "rankings": {
+    "equal": [
+      {
+        "rank": 1,
+        "instance_id": "sympy__sympy-13480",
+        "value": 1.0
+      },
+      {
+        "rank": 2,
+        "instance_id": "sympy__sympy-14774",
+        "value": 1.0
+      },
+      {
+        "rank": 3,
+        "instance_id": "sympy__sympy-16988",
+        "value": 1.0
+      },
+      {
+        "rank": 4,
+        "instance_id": "sympy__sympy-21055",
+        "value": 1.0
+      },
+      {
+        "rank": 5,
+        "instance_id": "sympy__sympy-23117",
+        "value": 1.0
+      }
+    ],
+    "bootstrap_heuristic": [
+      {
+        "rank": 1,
+        "instance_id": "sympy__sympy-23117",
+        "effort": 50.0763
+      },
+      {
+        "rank": 2,
+        "instance_id": "sympy__sympy-21055",
+        "effort": 48.0491
+      },
+      {
+        "rank": 3,
+        "instance_id": "sympy__sympy-16988",
+        "effort": 23.3505
+      },
+      {
+        "rank": 4,
+        "instance_id": "sympy__sympy-14774",
+        "effort": 21.9149
+      },
+      {
+        "rank": 5,
+        "instance_id": "sympy__sympy-13480",
+        "effort": 20.8442
+      }
+    ]
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "meta": {
+    "name": "mainline_5x10_glm51_frozen_router_plan_20260617",
+    "created": "2026-06-17",
+    "source_class": "router_only_subset_of_pre_registered_5x16_router_plan",
+    "description": "Router-only frozen plan for 5x10 GLM-5.1 diagnostic. No caps, learning, runtime progress, or outcome feedback. Budget comes only from Budget Compiler budget_plan.",
+    "task_order": [
+      "sympy__sympy-13480",
+      "sympy__sympy-14774",
+      "sympy__sympy-16988",
+      "sympy__sympy-21055",
+      "sympy__sympy-23117",
+      "sympy__sympy-20212",
+      "sympy__sympy-12419",
+      "sympy__sympy-19007",
+      "django__django-10924",
+      "django__django-12113"
+    ],
+    "note": "Retired cap fields from older router plans are intentionally omitted."
+  },
+  "plan": {
+    "sympy__sympy-13480": {
+      "preferred_model": "tier2",
+      "priority": 2
+    },
+    "sympy__sympy-14774": {
+      "preferred_model": "tier2",
+      "priority": 1
+    },
+    "sympy__sympy-16988": {
+      "preferred_model": "tier3",
+      "priority": 8
+    },
+    "sympy__sympy-21055": {
+      "preferred_model": "tier2",
+      "priority": 10
+    },
+    "sympy__sympy-23117": {
+      "preferred_model": "tier2",
+      "priority": 11
+    },
+    "sympy__sympy-20212": {
+      "preferred_model": "tier2",
+      "priority": 4
+    },
+    "sympy__sympy-12419": {
+      "preferred_model": "tier2",
+      "priority": 3
+    },
+    "sympy__sympy-19007": {
+      "preferred_model": "tier2",
+      "priority": 5
+    },
+    "django__django-10924": {
+      "preferred_model": "tier2",
+      "priority": 13
+    },
+    "django__django-12113": {
+      "preferred_model": "tier2",
+      "priority": 14
+    }
+  }
+}

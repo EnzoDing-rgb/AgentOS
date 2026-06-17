@@ -64,6 +64,7 @@ logger = logging.getLogger("budgetflow_litellm_model")
 configure_litellm_quiet()
 
 DEFAULT_LLM_TIMEOUT_S = 90.0
+FIXED_TIER_TURN_CAP_ROUTINGS = frozenset({"all_tier2", "enterprise_router"})
 _PROVIDER_UNAVAILABLE_MARKERS = (
     "service temporarily unavailable",
     "serviceunavailableerror",
@@ -495,6 +496,7 @@ class BudgetFlowLitellmModel:
             protect_strongest_this_turn=protect_strongest_this_turn,
         )
         backend = self._apply_gold_edit_repair_guard(backend, progress_signal.segment)
+        self._enforce_fixed_tier_turn_cap(backend)
         escalated_backend = backend.name
         backend = self._reserve_backend(backend, input_tokens)
         reserve_out = self._last_reserve_out
@@ -1020,6 +1022,19 @@ class BudgetFlowLitellmModel:
             self._gold_edit_stop_loss_grace_turns += 1
             return False
         return True
+
+    def _enforce_fixed_tier_turn_cap(self, backend: Backend) -> None:
+        if self.routing.strategy not in FIXED_TIER_TURN_CAP_ROUTINGS:
+            return
+        max_turns = tier_max_turns().get(backend.tier)
+        if max_turns is None or self._turns_on_current_tier < max_turns:
+            return
+        raise BudgetFlowStagnationError(
+            self.workflow_id,
+            exit_reason=f"tier{backend.tier}_turn_cap",
+            step_index=self.step_index,
+            no_progress_streak=self._no_progress_streak,
+        )
 
     def _refresh_progress(self) -> None:
         if self._progress_refresh is not None:
