@@ -57,7 +57,7 @@ class TestTierFrontierCalibration:
         assert frontier.strongest_tier == 3
         # Default mainline catalog uses normalized experimental units:
         # T3 is fixed at approximately 5x the T2 reference.
-        assert frontier.reference_display == "qwen3.7-plus"
+        assert frontier.reference_display == "glm-5.1"
         assert frontier.strongest_output_ratio == pytest.approx(5.0)
         assert "cost_ratio" in frontier.reason
         assert "cheapest" not in frontier.reason
@@ -185,7 +185,7 @@ class TestTierFrontierCalibration:
         frontier = TierFrontier(
             reference_tier=2,
             strongest_tier=3,
-            reference_display="qwen3.7-plus",
+            reference_display="glm-5.1",
             strongest_display="GPT-5.4",
             strongest_input_ratio=1.05,
             strongest_output_ratio=1.60,
@@ -196,7 +196,7 @@ class TestTierFrontierCalibration:
         d = frontier.to_dict()
         assert d["reference_tier"] == 2
         assert d["strongest_tier"] == 3
-        assert d["reference_display"] == "qwen3.7-plus"
+        assert d["reference_display"] == "glm-5.1"
         assert "cheapest" not in str(d)
         assert d["strongest_progress_delta"]["repair"] == 0.03
 

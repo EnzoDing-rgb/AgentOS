@@ -26,6 +26,7 @@ from budgetflow.experiments.compare_config import (
 )
 from budgetflow.experiments.compare_summary import _print_run_done
 from budgetflow.failure_classification import (
+    EXIT_OWNER_BUDGET_EXHAUSTED,
     build_forensic_summary,
     build_score_status,
     build_verdict,
@@ -206,6 +207,7 @@ def run_task_record(
     }
     record["model_fit_source"] = model_fit_source
     record["exit_owner"] = compute_exit_owner(record)
+    record["budget_exhausted"] = record["exit_owner"] == EXIT_OWNER_BUDGET_EXHAUSTED
     record["stall_guard_owner"] = "budgetflow" if stall_guard_enabled(cfg.routing) else "none"
     record["protocol_retry_used"] = result.protocol_retry_used
     record["protocol_retry_success"] = result.protocol_retry_success

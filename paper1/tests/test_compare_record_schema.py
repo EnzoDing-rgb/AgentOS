@@ -139,6 +139,7 @@ def test_compare_runner_records_turns_value_and_task_features(monkeypatch) -> No
     assert record["task_features"] == {"patch_lines": 1, "f2p_count": 1, "p2p_count": 0, "problem_length": 0}
     assert record["task_set"] == "easy"
     assert record["task_set_kind"] == "familiar"
+    assert record["budget_exhausted"] is False
 
 
 def test_runner_threads_budget_plan_model_fit_into_allocation_context(monkeypatch) -> None:
@@ -211,6 +212,8 @@ def test_runner_threads_budget_plan_model_fit_into_allocation_context(monkeypatc
     assert seen["allocation"].model_fit == {"tier2": 0.08, "tier3": 0.65}
     assert seen["allocation"].model_fit_source == "budget_plan:historical_jsonl"
     assert record["model_fit_source"] == "budget_plan:historical_jsonl"
+    assert record["exit_owner"] == "budget_exhausted"
+    assert record["budget_exhausted"] is True
 
 
 def test_runner_does_not_use_repo_policy_memory_as_model_fit(monkeypatch) -> None:
