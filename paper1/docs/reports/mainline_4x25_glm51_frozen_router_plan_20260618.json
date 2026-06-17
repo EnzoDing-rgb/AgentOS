@@ -1,0 +1,141 @@
+{
+  "meta": {
+    "name": "mainline_4x25_glm51_frozen_router_plan_20260618",
+    "created": "2026-06-18",
+    "source_class": "router_only_pre_registered_value_effort_formula",
+    "candidate_manifest": "paper1/docs/reports/mainline_20x25_candidate_manifest_20260617.json",
+    "value_matrix": "paper1/docs/reports/mainline_4x25_glm51_manual_value_matrix_20260618.json",
+    "description": "Router-only frozen plan for 4x25 GLM-5.1 diagnostic. No caps, learning, runtime progress, or outcome feedback. Budget comes only from Budget Compiler budget_plan.",
+    "task_order": [
+      "sympy__sympy-22714",
+      "sympy__sympy-12171",
+      "sympy__sympy-17655",
+      "sympy__sympy-24102",
+      "sympy__sympy-11870",
+      "sympy__sympy-12236",
+      "sympy__sympy-12419",
+      "sympy__sympy-12454",
+      "sympy__sympy-13031",
+      "sympy__sympy-13437",
+      "sympy__sympy-13773",
+      "sympy__sympy-13895",
+      "sympy__sympy-13915",
+      "django__django-13447",
+      "django__django-11179",
+      "django__django-12908",
+      "sphinx-doc__sphinx-8273",
+      "sphinx-doc__sphinx-7686",
+      "sphinx-doc__sphinx-7975",
+      "sphinx-doc__sphinx-8801",
+      "mwaskom__seaborn-3010",
+      "mwaskom__seaborn-2848",
+      "pallets__flask-4045",
+      "pallets__flask-4992",
+      "pylint-dev__pylint-6506"
+    ],
+    "preferred_model_rule": "tier3 if manual_value>=0.95 or bootstrap_effort>=300 else tier2",
+    "note": "Retired cap fields are intentionally omitted."
+  },
+  "plan": {
+    "sympy__sympy-22714": {
+      "preferred_model": "tier2",
+      "priority": 79
+    },
+    "sympy__sympy-12171": {
+      "preferred_model": "tier2",
+      "priority": 78
+    },
+    "sympy__sympy-17655": {
+      "preferred_model": "tier2",
+      "priority": 82
+    },
+    "sympy__sympy-24102": {
+      "preferred_model": "tier2",
+      "priority": 78
+    },
+    "sympy__sympy-11870": {
+      "preferred_model": "tier2",
+      "priority": 82
+    },
+    "sympy__sympy-12236": {
+      "preferred_model": "tier2",
+      "priority": 83
+    },
+    "sympy__sympy-12419": {
+      "preferred_model": "tier2",
+      "priority": 81
+    },
+    "sympy__sympy-12454": {
+      "preferred_model": "tier2",
+      "priority": 90
+    },
+    "sympy__sympy-13031": {
+      "preferred_model": "tier2",
+      "priority": 79
+    },
+    "sympy__sympy-13437": {
+      "preferred_model": "tier2",
+      "priority": 79
+    },
+    "sympy__sympy-13773": {
+      "preferred_model": "tier2",
+      "priority": 83
+    },
+    "sympy__sympy-13895": {
+      "preferred_model": "tier2",
+      "priority": 91
+    },
+    "sympy__sympy-13915": {
+      "preferred_model": "tier2",
+      "priority": 90
+    },
+    "django__django-13447": {
+      "preferred_model": "tier3",
+      "priority": 95
+    },
+    "django__django-11179": {
+      "preferred_model": "tier3",
+      "priority": 99
+    },
+    "django__django-12908": {
+      "preferred_model": "tier3",
+      "priority": 100
+    },
+    "sphinx-doc__sphinx-8273": {
+      "preferred_model": "tier2",
+      "priority": 90
+    },
+    "sphinx-doc__sphinx-7686": {
+      "preferred_model": "tier3",
+      "priority": 98
+    },
+    "sphinx-doc__sphinx-7975": {
+      "preferred_model": "tier2",
+      "priority": 94
+    },
+    "sphinx-doc__sphinx-8801": {
+      "preferred_model": "tier3",
+      "priority": 95
+    },
+    "mwaskom__seaborn-3010": {
+      "preferred_model": "tier2",
+      "priority": 91
+    },
+    "mwaskom__seaborn-2848": {
+      "preferred_model": "tier3",
+      "priority": 97
+    },
+    "pallets__flask-4045": {
+      "preferred_model": "tier3",
+      "priority": 100
+    },
+    "pallets__flask-4992": {
+      "preferred_model": "tier2",
+      "priority": 92
+    },
+    "pylint-dev__pylint-6506": {
+      "preferred_model": "tier3",
+      "priority": 95
+    }
+  }
+}
