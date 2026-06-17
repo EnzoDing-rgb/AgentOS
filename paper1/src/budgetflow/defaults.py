@@ -7,7 +7,6 @@ from .model_tiers import (
     TIER1_BACKEND,
     TIER2_BACKEND,
     TIER3_BACKEND,
-    TIER_CONFIGS,
     ModelCatalog,
     tier_display_name,
     tier_model_id,

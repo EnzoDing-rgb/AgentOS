@@ -27,7 +27,7 @@ from ..defaults import (
     tier_escalation_patience,
     tier_max_turns,
 )
-from ..model_tiers import MODEL_CATALOG, TIER_CONFIGS, ModelCatalog, apply_provider_proxy, estimate_token_cost, load_env_file
+from ..model_tiers import MODEL_CATALOG, ModelCatalog, estimate_token_cost, load_env_file
 from ..console_log import backend_tier_label, bold, dim, routing_stage_label, tag
 from ..governor import BudgetGovernor
 from ..types import Backend, Stage, TurnInfo, WorkflowSegment, WorkflowStatus
@@ -264,12 +264,12 @@ class BudgetFlowLitellmModel:
         self.format_error_template = format_error_template or "{{ error }}"
         self.set_cache_control = set_cache_control
         self.multimodal_regex = multimodal_regex
-        self._api_keys = {config.api_key_env: os.environ.get(config.api_key_env) for config in TIER_CONFIGS.values()}
+        self._api_keys = {config.api_key_env: os.environ.get(config.api_key_env) for config in MODEL_CATALOG.configs}
         missing_keys = sorted(
             {
-                TIER_CONFIGS[b.name].api_key_env
+                MODEL_CATALOG.require_config(b.name).api_key_env
                 for b in routing.backends
-                if b.name in TIER_CONFIGS and not self._api_keys.get(TIER_CONFIGS[b.name].api_key_env)
+                if not self._api_keys.get(MODEL_CATALOG.require_config(b.name).api_key_env)
             }
         )
         if missing_keys:
@@ -1255,16 +1255,7 @@ class BudgetFlowLitellmModel:
         )
 
     def _model_config_for(self, backend: Backend) -> tuple[str, dict[str, Any]]:
-        config = MODEL_CATALOG.require_config(backend.name)
-        apply_provider_proxy(config)
-        api_base = os.environ.get(config.api_base_env or "") or config.api_base
-        return config.model, {
-            "temperature": 0.0,
-            "parallel_tool_calls": True,
-            "drop_params": True,
-            "api_base": api_base,
-            "api_key": self._api_keys.get(config.api_key_env),
-        }
+        return MODEL_CATALOG.litellm_kwargs(backend.name, api_keys=self._api_keys)
 
     def _completion(
         self,
@@ -1280,9 +1271,6 @@ class BudgetFlowLitellmModel:
         prepared = set_cache_control(prepared, mode=self.set_cache_control)
 
         def _query():
-            config = TIER_CONFIGS.get(backend_name)
-            if config is not None:
-                apply_provider_proxy(config)
             kwargs_merged = {**model_kwargs, **kwargs}
             try:
                 return litellm.completion(

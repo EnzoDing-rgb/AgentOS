@@ -342,7 +342,7 @@ def provider_trace_fields(backend_name: str) -> dict[str, Any]:
         "provider": cfg.provider,
         "model": cfg.model,
         "catalog_revision": _catalog_revision(),
-        "catalog_path": str(_catalog_path()) if _catalog_path() else "python_fallback",
+        "catalog_path": str(_catalog_path()) if _catalog_path() else "",
         **confidence,
     }
 

@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import os
 import time
 from dataclasses import dataclass
 
 import litellm
 
-from .model_tiers import MODEL_CATALOG, apply_provider_proxy, load_env_file
+from .model_tiers import MODEL_CATALOG, load_env_file
 
 
 @dataclass(frozen=True)
@@ -22,16 +21,8 @@ class ProviderSignatureResult:
 
 
 def _kwargs_for(backend: str) -> dict:
-    config = MODEL_CATALOG.require_config(backend)
-    apply_provider_proxy(config)
-    api_base = os.environ.get(config.api_base_env or "") or config.api_base
-    return {
-        "api_base": api_base,
-        "api_key": os.environ.get(config.api_key_env),
-        "drop_params": True,
-        "temperature": 0.0,
-        "max_tokens": 8,
-    }
+    _, kwargs = MODEL_CATALOG.litellm_kwargs(backend, max_tokens=8)
+    return kwargs
 
 
 def check_backend_signature(backend: str) -> ProviderSignatureResult:

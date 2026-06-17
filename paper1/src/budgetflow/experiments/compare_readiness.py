@@ -437,7 +437,11 @@ def build_compare_readiness_report(
                     )
 
             active_revision = active_catalog_revision
-            active_path = str(active_catalog_path) if active_catalog_path else "python_fallback"
+            if active_catalog_path is None:
+                blocking.append("active model tier catalog is not initialized")
+                active_path = ""
+            else:
+                active_path = str(active_catalog_path)
             active_hash = str(catalog_source_info().get("catalog_content_hash") or "")
             facts.append(f"active_catalog_revision={active_revision}")
             facts.append(f"active_catalog_path={active_path}")

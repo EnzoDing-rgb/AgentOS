@@ -52,92 +52,6 @@ TIER1_BACKEND = "tier1"
 TIER2_BACKEND = "tier2"
 TIER3_BACKEND = "tier3"
 
-DEFAULT_TIER_CONFIGS: tuple[TierConfig, ...] = (
-    TierConfig(
-        tier=1,
-        backend=TIER1_BACKEND,
-        model="openai/qwen3-coder-flash",
-        provider="openai_compatible",
-        api_base="https://dashscope.aliyuncs.com/compatible-mode/v1",
-        api_key_env="DASHSCOPE_API_KEY",
-        display="qwen3-coder-flash",
-        cost_per_input_token=0.30 / 1_000_000,
-        cost_per_output_token=1.50 / 1_000_000,
-        token_cost_bands=(
-            TokenCostBand(32_000, 0.30, 1.50),
-            TokenCostBand(128_000, 0.50, 2.50),
-            TokenCostBand(256_000, 0.80, 4.00),
-            TokenCostBand(1_000_000, 1.60, 9.60),
-        ),
-        mean_output_tokens=768,
-        progress_score=0.15,
-        latency_ms=500,
-        progress_prior={"localization": 0.50, "repair": 0.38, "validation": 0.45},
-        escalation_patience=4,
-        max_turns=20,
-        protocol="tool_call",
-        cost_source="BudgetFlow normalized experimental cost unit for Qwen3-Coder-Flash T1",
-        cost_updated="2026-06-16",
-        cost_notes="Virtual experiment units, not public Alibaba Cloud billing. T1 is the cheap reference tier; active mainline currently uses T2/T3, with T1 reserved for diagnostics and future low-cost routing.",
-        progress_source="BudgetFlow heuristic prior, not yet empirically calibrated",
-        progress_updated="2026-06-07",
-        progress_notes="Must be sensitivity-checked before paper-scale paid runs.",
-    ),
-    TierConfig(
-        tier=2,
-        backend=TIER2_BACKEND,
-        model="openai/glm-5.1",
-        provider="openai_compatible",
-        api_base="https://dashscope.aliyuncs.com/compatible-mode/v1",
-        api_key_env="DASHSCOPE_API_KEY",
-        display="glm-5.1",
-        cost_per_input_token=0.90 / 1_000_000,
-        cost_per_output_token=4.50 / 1_000_000,
-        token_cost_bands=(
-            TokenCostBand(1_000_000, 0.90, 4.50),
-        ),
-        mean_output_tokens=1024,
-        progress_score=0.24,
-        latency_ms=4200,
-        progress_prior={"localization": 0.67, "repair": 0.65, "validation": 0.63},
-        escalation_patience=5,
-        max_turns=35,
-        protocol="tool_call",
-        cost_source="BudgetFlow normalized experimental cost unit for GLM-5.1 T2",
-        cost_updated="2026-06-17",
-        cost_notes="Virtual experiment units, not public Alibaba Cloud billing. Current mainline fixes T1:T2:T3 at approximately 1:3:15; use real invoices only for spend accounting, not routing semantics.",
-        progress_source="BudgetFlow tier-level heuristic prior for GLM-5.1 T2; not outcome-calibrated",
-        progress_updated="2026-06-17",
-        progress_notes="T2 uses GLM-5.1 while preserving T2 normalized cost semantics. Provider access must pass signature preflight before paid runs.",
-    ),
-    TierConfig(
-        tier=3,
-        backend=TIER3_BACKEND,
-        model="openai/gpt-5.4",
-        provider="openai_compatible",
-        api_base="https://api.aicode007.com/v1",
-        api_key_env="AICODE007_API_KEY",
-        display="GPT-5.4",
-        cost_per_input_token=4.50 / 1_000_000,
-        cost_per_output_token=22.50 / 1_000_000,
-        mean_output_tokens=1024,
-        progress_score=0.25,
-        latency_ms=1200,
-        progress_prior={"localization": 0.68, "repair": 0.68, "validation": 0.66},
-        escalation_patience=5,
-        max_turns=None,
-        protocol="tool_call",
-        api_base_env="AICODE007_BASE_URL",
-        proxy_env="AICODE007_HTTP_PROXY",
-        cost_source="BudgetFlow normalized experimental cost unit for GPT-5.4 T3",
-        cost_updated="2026-06-16",
-        cost_notes="Virtual experiment units, not public provider billing. Current mainline fixes T1:T2:T3 at approximately 1:3:15.",
-        progress_source="BudgetFlow heuristic prior, not yet empirically calibrated",
-        progress_updated="2026-06-07",
-        progress_notes="Must be sensitivity-checked before paper-scale paid runs.",
-    ),
-)
-
 
 def _looks_like_iso_date(value: str) -> bool:
     return bool(re.fullmatch(r"\d{4}-\d{2}-\d{2}", value))
@@ -149,7 +63,7 @@ def validate_tier_catalog(configs: tuple[TierConfig, ...] | None = None) -> list
     The price table is part of the evaluation harness. If it is stale or
     unexplained, T1 value-per-dollar and routing thresholds become suspect.
 
-    Defaults to the currently loaded ``MODEL_CATALOG``, not the Python fallback.
+    Defaults to the currently loaded ``MODEL_CATALOG``.
     """
     if configs is None:
         configs = MODEL_CATALOG.configs
@@ -214,7 +128,7 @@ def apply_provider_proxy(config: TierConfig) -> None:
 class ModelCatalog:
     """Provider-agnostic tier registry for BudgetFlow runtime and experiments."""
 
-    def __init__(self, configs: tuple[TierConfig, ...] = DEFAULT_TIER_CONFIGS) -> None:
+    def __init__(self, configs: tuple[TierConfig, ...]) -> None:
         ordered = tuple(sorted(configs, key=lambda cfg: cfg.tier))
         if not ordered:
             raise ValueError("model tier pool cannot be empty")
@@ -289,17 +203,31 @@ class ModelCatalog:
         lower = [candidate for candidate in sorted(backends, key=lambda b: b.tier) if candidate.tier < backend.tier]
         return lower[-1] if lower else None
 
-    def litellm_kwargs(self, backend_name: str) -> tuple[str, dict]:
+    def litellm_kwargs(
+        self,
+        backend_name: str,
+        *,
+        api_keys: dict[str, str | None] | None = None,
+        max_tokens: int | None = None,
+    ) -> tuple[str, dict]:
         config = self.require_config(backend_name)
         apply_provider_proxy(config)
         api_base = os.environ.get(config.api_base_env or "") or config.api_base
-        return config.model, {
+        api_key = (
+            api_keys.get(config.api_key_env)
+            if api_keys is not None
+            else os.environ.get(config.api_key_env)
+        )
+        kwargs = {
             "temperature": 0.0,
             "parallel_tool_calls": True,
             "drop_params": True,
             "api_base": api_base,
-            "api_key": os.environ.get(config.api_key_env),
+            "api_key": api_key,
         }
+        if max_tokens is not None:
+            kwargs["max_tokens"] = max_tokens
+        return config.model, kwargs
 
 
 def token_cost_rates(backend_name: str, input_tokens: int) -> tuple[float, float]:
@@ -398,38 +326,27 @@ def _compute_content_hash(path: Path) -> str:
 def init_catalog(path: Path | None = None) -> ModelCatalog:
     """Replace the module-level catalog from a JSON file.
 
-    If *path* is None, reloads from the default JSON. Falls back to Python
-    ``DEFAULT_TIER_CONFIGS`` if the JSON file is missing or invalid.
+    If *path* is None, reloads from the default JSON. The catalog is a required
+    experiment input: missing or invalid JSON fails fast.
 
-    Updates ``MODEL_CATALOG`` and ``TIER_CONFIGS`` in-place.
+    Updates ``MODEL_CATALOG`` in-place.
     """
     global _catalog, _catalog_path, _catalog_revision, _catalog_content_hash
     resolved = path or DEFAULT_CATALOG_PATH
     if not resolved.is_file():
-        if path is not None:
-            raise FileNotFoundError(f"catalog not found: {resolved}")
-        _catalog = ModelCatalog(DEFAULT_TIER_CONFIGS)
-        _catalog_path = None
-        _catalog_revision = "python_fallback"
-        _catalog_content_hash = ""
-    else:
-        configs = load_tier_configs_from_json(resolved)
-        _catalog = ModelCatalog(configs)
-        _catalog_path = resolved.resolve()
-        meta_raw = json.loads(resolved.read_text(errors="replace")).get("meta") or {}
-        _catalog_revision = str(meta_raw.get("revision", "unknown"))
-        _catalog_content_hash = _compute_content_hash(resolved)
+        raise FileNotFoundError(f"model tier catalog not found: {resolved}")
+    configs = load_tier_configs_from_json(resolved)
+    _catalog = ModelCatalog(configs)
+    _catalog_path = resolved.resolve()
+    meta_raw = json.loads(resolved.read_text(errors="replace")).get("meta") or {}
+    _catalog_revision = str(meta_raw.get("revision", "unknown"))
+    _catalog_content_hash = _compute_content_hash(resolved)
     MODEL_CATALOG._replace(_catalog)
-    TIER_CONFIGS.clear()
-    TIER_CONFIGS.update({cfg.backend: cfg for cfg in _catalog.configs})
     return _catalog
 
 
 def get_catalog() -> ModelCatalog:
-    """Return the current module-level catalog, initializing from Python defaults if needed."""
-    global _catalog
-    if _catalog is None:
-        _catalog = ModelCatalog(DEFAULT_TIER_CONFIGS)
+    """Return the current module-level catalog."""
     return _catalog
 
 
@@ -439,14 +356,16 @@ def catalog_revision() -> str:
 
 
 def catalog_path() -> Path | None:
-    """Return the path of the loaded catalog, or None if using Python fallback."""
+    """Return the path of the loaded catalog."""
     return _catalog_path
 
 
 def catalog_source_info() -> dict:
     """Return catalog provenance for writing to run records."""
+    if _catalog_path is None:
+        raise RuntimeError("model tier catalog is not initialized")
     return {
-        "catalog_path": str(catalog_path()) if catalog_path() else "python_fallback",
+        "catalog_path": str(_catalog_path),
         "catalog_revision": catalog_revision(),
         "catalog_content_hash": _catalog_content_hash,
     }
@@ -476,33 +395,15 @@ class _CatalogHandle:
         return repr(self._catalog)
 
 
-# Module-level catalog: start from Python defaults, then try JSON.
-_catalog = ModelCatalog(DEFAULT_TIER_CONFIGS)
+# Module-level catalog: required JSON, loaded once and replaced explicitly by
+# init_catalog() when a run selects another versioned catalog.
+_configs = load_tier_configs_from_json(DEFAULT_CATALOG_PATH)
+_catalog = ModelCatalog(_configs)
+_catalog_path = DEFAULT_CATALOG_PATH.resolve()
+_meta_raw = json.loads(DEFAULT_CATALOG_PATH.read_text(errors="replace")).get("meta") or {}
+_catalog_revision = str(_meta_raw.get("revision", "unknown"))
+_catalog_content_hash = _compute_content_hash(DEFAULT_CATALOG_PATH)
 MODEL_CATALOG = _CatalogHandle(_catalog)
-TIER_CONFIGS: dict[str, TierConfig] = {cfg.backend: cfg for cfg in _catalog.configs}
-
-
-def _load_default_json_catalog() -> None:
-    """Try loading the default JSON catalog; non-fatal if missing."""
-    global _catalog, _catalog_path, _catalog_revision, _catalog_content_hash
-    default = DEFAULT_CATALOG_PATH
-    if not default.is_file():
-        return
-    try:
-        configs = load_tier_configs_from_json(default)
-        _catalog = ModelCatalog(configs)
-        _catalog_path = default.resolve()
-        meta_raw = json.loads(default.read_text(errors="replace")).get("meta") or {}
-        _catalog_revision = str(meta_raw.get("revision", "unknown"))
-        _catalog_content_hash = _compute_content_hash(default)
-        MODEL_CATALOG._replace(_catalog)
-        TIER_CONFIGS.clear()
-        TIER_CONFIGS.update({cfg.backend: cfg for cfg in _catalog.configs})
-    except (json.JSONDecodeError, KeyError, ValueError, TypeError):
-        pass
-
-
-_load_default_json_catalog()
 
 
 def tier_display_name(backend_name: str) -> str:

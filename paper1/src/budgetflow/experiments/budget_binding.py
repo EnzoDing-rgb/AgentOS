@@ -242,10 +242,7 @@ def calibrate_budget(
         generation_mode="target_utilization",
         target_projected_utilization=target_utilization,
         catalog_revision=str(catalog_info.get("catalog_revision") or catalog_revision()),
-        catalog_path=str(
-            catalog_info.get("catalog_path")
-            or (str(catalog_path()) if catalog_path() else "python_fallback")
-        ),
+        catalog_path=str(catalog_info.get("catalog_path") or catalog_path()),
         catalog_content_hash=str(catalog_info.get("catalog_content_hash") or ""),
         historical_source=str(historical_jsonl) if historical_jsonl else "bootstrap_estimate",
         task_ids=list(task_ids),
