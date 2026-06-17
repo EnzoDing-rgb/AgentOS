@@ -61,6 +61,8 @@ def patch_local_swebench_config(config: dict, repo_dir: Path) -> dict:
     config["environment"]["env"] = {
         **(config["environment"].get("env") or {}),
         "PATH": f"{_ensure_python_shim_dir()}{os.pathsep}{os.environ.get('PATH', '')}",
+        "PYTHONNOUSERSITE": "1",
+        "PIP_REQUIRE_VIRTUALENV": "1",
     }
     return config
 

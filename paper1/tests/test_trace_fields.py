@@ -24,6 +24,51 @@ def _backend(name: str, tier: int) -> Backend:
     return Backend(name, tier, 0.001 * tier, 0.002 * tier, 60, 1, 1024, 0.5, 100)
 
 
+def test_local_swebench_config_isolates_agent_shell_from_global_python(tmp_path) -> None:
+    from budgetflow.run_trace import patch_local_swebench_config
+
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    config = {"agent": {"instance_template": "work in /testbed"}, "environment": {"env": {"KEEP": "1"}}}
+
+    patched = patch_local_swebench_config(config, repo_dir)
+
+    env = patched["environment"]["env"]
+    assert patched["agent"]["instance_template"] == f"work in {repo_dir}"
+    assert patched["environment"]["cwd"] == str(repo_dir)
+    assert env["KEEP"] == "1"
+    assert env["PYTHONNOUSERSITE"] == "1"
+    assert env["PIP_REQUIRE_VIRTUALENV"] == "1"
+
+
+def test_runner_aborts_before_provider_calls_on_global_runtime_worktree_contamination(monkeypatch) -> None:
+    import budgetflow.adapter.runner as runner
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("provider run should not start when host Python is contaminated")
+
+    monkeypatch.setattr(
+        runner,
+        "find_runtime_worktree_python_contamination",
+        lambda runtime_root: ["site-packages/stale.pth: /tmp/budgetflow-runtime/worktrees/repo/task"],
+    )
+    monkeypatch.setattr(runner, "clone_or_checkout", fail_if_called)
+
+    task = type("Task", (), {"instance_id": "repo__task"})()
+
+    result = runner.run_mini_swe_task(task, strategy="bare_t3", strategy_label="bare_t3_baseline")
+
+    assert result.exit_status == "infra_error"
+    assert result.exit_reason == "host_dependency_contamination"
+    assert result.agent_exit_status == "infra_error"
+    assert result.total_cost == 0.0
+    assert result.llm_turns == 0
+    assert result.backend_picks == ()
+    assert result.usage_source == "none"
+    assert result.cost_mode == "no_provider_call"
+    assert "host_dependency_contamination" in result.harness_detail
+
+
 def test_turn_trace_has_fields_needed_to_debug_value_routing_and_provider_failures() -> None:
     trace = build_turn_trace(
         step_index=1,

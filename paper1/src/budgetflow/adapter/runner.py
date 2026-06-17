@@ -24,6 +24,10 @@ from ..heartbeat import run_with_heartbeat
 from ..ledger import WorkflowLedgerStore
 from ..lite_tasks import LiteTaskRecord
 from ..local_harness import clone_or_checkout, evaluate_local_harness
+from ..harness_contamination import (
+    find_runtime_worktree_python_contamination,
+    format_runtime_worktree_contamination,
+)
 from ..observability import parse_harness_evidence
 from ..run_trace import (
     RunTraceLogger,
@@ -38,6 +42,7 @@ from ..adaptive_routing import AdaptiveRoutingState
 from ..frozen_router import FrozenRouterPlan
 from ..allocation import AllocationContext
 from .strategies import build_routing_context
+from ..runtime import resolve_runtime_root
 
 # Config paths derived from resolved mini-swe-agent src.
 _SWE_AGENT_BASE = MINI_SWE_SRC.parent  # external/mini-swe-agent/
@@ -169,6 +174,37 @@ def run_mini_swe_task(
         )
     else:
         cap = governor.config.total_budget
+    runtime_root, _ = resolve_runtime_root()
+    contamination = find_runtime_worktree_python_contamination(runtime_root)
+    if contamination:
+        detail = (
+            "host_dependency_contamination: runtime worktree paths in Python environment: "
+            f"{format_runtime_worktree_contamination(contamination)}"
+        )
+        return MiniSweRunResult(
+            instance_id=task.instance_id,
+            strategy=strategy,
+            strategy_label=label,
+            patch_text=None,
+            exit_status="infra_error",
+            exit_reason="host_dependency_contamination",
+            agent_exit_status="infra_error",
+            agent_exit_reason="host_dependency_contamination",
+            total_cost=0.0,
+            budget_cap=cap,
+            budget_snapshot=governor.budget_snapshot(),
+            backend_picks=(),
+            llm_turns=0,
+            harness_resolved=False,
+            harness_detail=detail,
+            agent_gold_edited=False,
+            agent_attempted_submit=False,
+            agent_submitted=False,
+            agent_gold_files=(),
+            violations=(),
+            cost_mode="no_provider_call",
+            usage_source="none",
+        )
     repo_dir = clone_or_checkout(task, workspace_key=workspace_key)
     trace_dir = get_trace_dir(task.instance_id, label, run_series=run_series)
     trace = RunTraceLogger(
@@ -202,7 +238,12 @@ def run_mini_swe_task(
         format_error_template=model_cfg.get("format_error_template"),
         enable_turn_trace=enable_turn_trace,
     )
-    env = LocalEnvironment(cwd=str(repo_dir), timeout=config.get("environment", {}).get("timeout", 120))
+    env_cfg = dict(config.get("environment", {}))
+    env = LocalEnvironment(
+        cwd=str(env_cfg.get("cwd") or repo_dir),
+        env=dict(env_cfg.get("env") or {}),
+        timeout=env_cfg.get("timeout", 120),
+    )
     agent_cfg = dict(config.get("agent", {}))
     agent_cfg["output_path"] = trace_dir / "trajectory.json"
     run_started = time.time()
