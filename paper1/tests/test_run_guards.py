@@ -128,3 +128,44 @@ def test_runtime_worktree_contamination_detects_editable_finder(tmp_path, monkey
     contamination = find_runtime_worktree_python_contamination(Path("/tmp/budgetflow-runtime"))
 
     assert any("__editable___sympy_1_12_dev0_finder.py" in item for item in contamination)
+
+
+def test_runtime_worktree_contamination_detects_other_budgetflow_scratch_roots(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    import site
+
+    site_dir = tmp_path / "site-packages"
+    site_dir.mkdir()
+    finder = site_dir / "__editable___requests_0_14_0_finder.py"
+    finder.write_text(
+        "MAPPING = {'requests': '/tmp/budgetflow-task-scout/runtime/worktrees/psf__requests/scout/requests'}\n"
+    )
+
+    monkeypatch.setattr(site, "getsitepackages", lambda: [str(site_dir)])
+    monkeypatch.setattr(site, "getusersitepackages", lambda: str(tmp_path / "user-site"))
+    monkeypatch.delenv("PYTHONPATH", raising=False)
+
+    contamination = find_runtime_worktree_python_contamination(Path("/tmp/budgetflow-runtime"))
+
+    assert any("budgetflow-task-scout" in item for item in contamination)
+
+
+def test_runtime_worktree_contamination_detects_lishun_editables(tmp_path, monkeypatch) -> None:
+    import site
+
+    site_dir = tmp_path / "site-packages"
+    site_dir.mkdir()
+    finder = site_dir / "__editable___swebench_4_1_0_finder.py"
+    finder.write_text(
+        "MAPPING = {'swebench': '/Lishun/_archive/research/AgentOS/paper1/data/SWE-bench/swebench'}\n"
+    )
+
+    monkeypatch.setattr(site, "getsitepackages", lambda: [str(site_dir)])
+    monkeypatch.setattr(site, "getusersitepackages", lambda: str(tmp_path / "user-site"))
+    monkeypatch.delenv("PYTHONPATH", raising=False)
+
+    contamination = find_runtime_worktree_python_contamination(Path("/tmp/budgetflow-runtime"))
+
+    assert any("/Lishun" in item for item in contamination)

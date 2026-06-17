@@ -20,9 +20,25 @@ HOST_DEPENDENCY_CONTAMINATION_MARKERS = (
     "runtime worktree paths",
 )
 
+GLOBAL_PYTHON_PATH_CONTAMINATION_MARKERS = (
+    "/tmp/budgetflow-runtime/worktrees",
+    "/tmp/budgetflow-task-scout/",
+    "/Lishun/",
+)
+
 
 def has_host_dependency_contamination(detail: str) -> bool:
     return any(marker in detail for marker in HOST_DEPENDENCY_CONTAMINATION_MARKERS)
+
+
+def _python_path_contamination_marker(text: str, runtime_root: Path) -> str:
+    runtime_worktrees = str((runtime_root / "worktrees").resolve())
+    if runtime_worktrees in text:
+        return runtime_worktrees
+    for marker in GLOBAL_PYTHON_PATH_CONTAMINATION_MARKERS:
+        if marker in text:
+            return marker
+    return ""
 
 
 def is_runtime_worktree_path(raw: str, runtime_root: Path) -> bool:
@@ -44,7 +60,6 @@ def find_runtime_worktree_python_contamination(runtime_root: Path) -> list[str]:
     therefore inject an old worktree into unrelated repositories.  Paid runs
     must fail before provider calls when this happens.
     """
-    worktrees_root = str((runtime_root / "worktrees").resolve())
     contaminated: list[str] = []
 
     site_dirs: list[str] = []
@@ -66,15 +81,17 @@ def find_runtime_worktree_python_contamination(runtime_root: Path) -> list[str]:
                 text = marker.read_text(errors="ignore")
             except OSError:
                 continue
-            if worktrees_root in text:
-                contaminated.append(f"{marker}: editable finder maps into {worktrees_root}")
+            bad_marker = _python_path_contamination_marker(text, runtime_root)
+            if bad_marker:
+                contaminated.append(f"{marker}: editable finder maps into {bad_marker}")
         for direct_url in sorted(root.glob("*.dist-info/direct_url.json")):
             try:
                 text = direct_url.read_text(errors="ignore")
             except OSError:
                 continue
-            if worktrees_root in text:
-                contaminated.append(f"{direct_url}: editable install from {worktrees_root}")
+            bad_marker = _python_path_contamination_marker(text, runtime_root)
+            if bad_marker:
+                contaminated.append(f"{direct_url}: editable install from {bad_marker}")
         for pth in sorted(root.glob("*.pth")):
             try:
                 lines = pth.read_text(errors="ignore").splitlines()
@@ -85,7 +102,8 @@ def find_runtime_worktree_python_contamination(runtime_root: Path) -> list[str]:
                 stripped = line.strip()
                 if not stripped:
                     continue
-                if worktrees_root in stripped:
+                bad_marker = _python_path_contamination_marker(stripped, runtime_root)
+                if bad_marker:
                     bad_lines.append(stripped)
                 elif not stripped.startswith("import ") and is_runtime_worktree_path(stripped, runtime_root):
                     bad_lines.append(stripped)
