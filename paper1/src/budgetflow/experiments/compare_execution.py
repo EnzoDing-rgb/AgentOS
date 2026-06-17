@@ -60,6 +60,31 @@ def truncate_turn_traces(
     return trimmed
 
 
+def _effective_planned_task_cap(
+    *,
+    planned_task_caps: dict[str, float],
+    remaining_task_ids: list[str],
+    task_id: str,
+    batch_budget_cap: float,
+    shared_spent: float,
+) -> float | None:
+    planned_cap = float(planned_task_caps.get(task_id, 0.0) or 0.0)
+    if planned_cap <= 0:
+        return None
+    shared_remaining = max(0.0, float(batch_budget_cap) - max(0.0, float(shared_spent)))
+    if shared_remaining <= 0:
+        return 0.0
+    remaining_planned = sum(
+        max(0.0, float(planned_task_caps.get(str(remaining_id), 0.0) or 0.0))
+        for remaining_id in remaining_task_ids
+    )
+    if remaining_planned <= 0:
+        return min(planned_cap, shared_remaining)
+    if remaining_planned <= shared_remaining:
+        return min(planned_cap, shared_remaining)
+    return min(planned_cap, shared_remaining * planned_cap / remaining_planned)
+
+
 def run_task_record(
     task,
     *,
@@ -387,8 +412,8 @@ def run_strategy_batch(
     )
 
     records: list[dict] = []
+    selected_task_ids = [str(task.instance_id) for task in tasks]
     if use_planned_task_caps:
-        selected_task_ids = [str(task.instance_id) for task in tasks]
         missing_caps = [task_id for task_id in selected_task_ids if task_id not in planned_task_caps]
         if missing_caps:
             preview = ", ".join(missing_caps[:8])
@@ -451,10 +476,13 @@ def run_strategy_batch(
             task_cap: float | None = None
             if cfg.budgeted:
                 if use_planned_task_caps:
-                    planned_cap = planned_task_caps.get(str(task.instance_id))
-                    if planned_cap is not None and planned_cap > 0:
-                        shared_remaining = max(0.0, float(batch_budget_cap) - shared_spent)
-                        task_cap = min(float(planned_cap), shared_remaining)
+                    task_cap = _effective_planned_task_cap(
+                        planned_task_caps=planned_task_caps,
+                        remaining_task_ids=selected_task_ids[task_index - 1:],
+                        task_id=str(task.instance_id),
+                        batch_budget_cap=batch_budget_cap,
+                        shared_spent=shared_spent,
+                    )
                 elif per_task_cap is not None and per_task_cap > 0:
                     task_cap = per_task_cap
             if task_cap is not None:
