@@ -695,7 +695,7 @@ class TestSixByFiveLikeScenario:
             # plan should have model_fit_evidence
             assert plan.model_fit_evidence is not None, "plan should store model_fit_evidence"
             assert plan.model_fit_evidence["confidence"] in ("medium", "high")
-            assert plan.model_fit_evidence["tier_fit"]["2"] < plan.model_fit_evidence["tier_fit"]["3"]
+            assert plan.model_fit_evidence["tier_fit"]["tier2"] < plan.model_fit_evidence["tier_fit"]["tier3"]
 
             # The compiler publishes global Model Fit and uses it to scale the
             # workload reference budget. It must not copy a bare T2 censored

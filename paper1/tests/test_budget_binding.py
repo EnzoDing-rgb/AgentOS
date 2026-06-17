@@ -187,6 +187,7 @@ def test_budget_plan_model_fit_evidence_is_global_not_per_task_assignment(tmp_pa
     written = json.loads((tmp_path / "bp.json").read_text())
     assert plan.model_fit_evidence is not None
     assert set(written["model_fit_evidence"]) >= {"tier_fit", "source", "confidence"}
+    assert set(written["model_fit_evidence"]["tier_fit"]) >= {"tier2", "tier3"}
     forbidden = ("preferred_model", "model_tier", "assigned_tier", "selected_backend")
     assert not any(key in json.dumps(written["projected_task_cost_by_strategy"]) for key in forbidden)
     assert not any(key in json.dumps(written["model_fit_evidence"]) for key in forbidden)

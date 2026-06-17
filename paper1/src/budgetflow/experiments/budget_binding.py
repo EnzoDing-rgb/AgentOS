@@ -306,7 +306,7 @@ def calibrate_budget(
             )
             fit_overrides = evidence.tier_fit
             plan.model_fit_evidence = {
-                "tier_fit": {str(k): v for k, v in evidence.tier_fit.items()},
+                "tier_fit": evidence.to_allocation_model_fit(),
                 "source": evidence.source,
                 "confidence": evidence.confidence,
                 "evidence_tasks": evidence.evidence_tasks,
