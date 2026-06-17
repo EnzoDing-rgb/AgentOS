@@ -381,6 +381,30 @@ def test_budget_exhausted_floor_requires_trusted_harness_row(tmp_path: Path) -> 
     assert signals.excluded == {"harness_trust:invalid": 1}
 
 
+def test_budget_exhausted_floor_requires_positive_spend(tmp_path: Path) -> None:
+    jsonl = tmp_path / "hist.jsonl"
+    jsonl.write_text(json.dumps(_trusted({
+        "strategy": "budgetflow_task_level",
+        "instance_id": "task-a",
+        "total_cost": 0.0,
+        "budget_mode": "budgetflow_planned_task_budget",
+        "catalog": catalog_source_info(),
+        "score_status": "true_fail",
+        "exit_status": "BudgetFlowBudgetError",
+        "exit_reason": "budget_exhausted",
+        "budget_exhausted": True,
+        "harness_trust": "incomplete",
+        "row_finished_at": 1,
+    })) + "\n")
+
+    signals = _load_historical_cost_signals(jsonl)
+
+    assert signals.observed_costs == {}
+    assert signals.censored_spend_floor_by_strategy == {}
+    assert signals.censored_task_costs_by_strategy == {}
+    assert signals.excluded == {"budget_exhausted_zero_spend": 1}
+
+
 def test_calibrate_projects_censored_task_with_remaining_runway(tmp_path: Path) -> None:
     catalog = catalog_source_info()
     jsonl = tmp_path / "hist.jsonl"

@@ -281,6 +281,7 @@ def test_runner_threads_planned_task_budget_into_allocation_context(monkeypatch)
         value_context=_value_context(),
         budget_mode="budgetflow_planned_task_budget",
         per_task_cap=0.4,
+        budget_plan_task_cap=0.8,
         planned_task_budget_source="budget_plan:planned_task_budget_by_strategy",
     )
 
@@ -288,6 +289,7 @@ def test_runner_threads_planned_task_budget_into_allocation_context(monkeypatch)
     assert seen["allocation"].budget_source == "budget_plan:planned_task_budget_by_strategy"
     assert record["budget_mode"] == "budgetflow_planned_task_budget"
     assert record["per_task_cap"] == 0.4
+    assert record["budget_plan_task_cap"] == 0.8
     assert record["planned_task_budget_source"] == "budget_plan:planned_task_budget_by_strategy"
 
 
@@ -300,6 +302,7 @@ def test_run_strategy_batch_planned_caps_preserve_budget_for_remaining_tasks(mon
     def fake_run_task_record(task, **kwargs):
         task_cap = float(kwargs["per_task_cap"])
         seen_caps.append(task_cap)
+        assert kwargs["budget_plan_task_cap"] == 0.8
         return {
             "instance_id": task.instance_id,
             "strategy": kwargs["cfg"].name,

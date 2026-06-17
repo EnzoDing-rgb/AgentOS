@@ -996,6 +996,10 @@ def _load_historical_cost_signals(jsonl_path: Path) -> HistoricalCostSignals:
             signals.excluded[reason] = signals.excluded.get(reason, 0) + 1
             continue
         if _row_is_budget_exhausted(rec):
+            if total_cost <= 0:
+                reason = "budget_exhausted_zero_spend"
+                signals.excluded[reason] = signals.excluded.get(reason, 0) + 1
+                continue
             signals.censored_task_costs_by_strategy.setdefault(strategy, {})[instance_id] = total_cost
             signals.censored_spend_floor_by_strategy[strategy] = (
                 signals.censored_spend_floor_by_strategy.get(strategy, 0.0) + total_cost

@@ -107,6 +107,7 @@ def run_task_record(
     policy_lane: str = "",
     budget_mode: str = "shared",
     per_task_cap: float | None = None,
+    budget_plan_task_cap: float | None = None,
     planned_task_budget_source: str | None = None,
     budget_input: dict[str, Any] | None = None,
     task_set: str = "",
@@ -225,6 +226,7 @@ def run_task_record(
         "policy_lane": policy_lane,
         "budget_mode": budget_mode,
         "per_task_cap": per_task_cap,
+        "budget_plan_task_cap": budget_plan_task_cap,
         "planned_task_budget_source": planned_task_budget_source,
         "task_order_index": task_index,
         "task_features": task_features,
@@ -474,8 +476,12 @@ def run_strategy_batch(
             task_ledger = ledger
             effective_batch_cap = batch_budget_cap
             task_cap: float | None = None
+            budget_plan_task_cap: float | None = None
             if cfg.budgeted:
                 if use_planned_task_caps:
+                    raw_planned_cap = planned_task_caps.get(str(task.instance_id))
+                    if raw_planned_cap is not None and raw_planned_cap > 0:
+                        budget_plan_task_cap = float(raw_planned_cap)
                     task_cap = _effective_planned_task_cap(
                         planned_task_caps=planned_task_caps,
                         remaining_task_ids=selected_task_ids[task_index - 1:],
@@ -524,6 +530,7 @@ def run_strategy_batch(
                     else "shared"
                 ),
                 per_task_cap=task_cap,
+                budget_plan_task_cap=budget_plan_task_cap,
                 planned_task_budget_source=(
                     planned_task_budget_source
                     if use_planned_task_caps and task_cap is not None
