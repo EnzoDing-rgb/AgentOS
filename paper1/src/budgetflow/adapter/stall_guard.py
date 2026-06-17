@@ -10,6 +10,8 @@ from ..defaults import STAGNATION_NO_PROGRESS_STEPS, STAGNATION_REPEAT_CMD_LIMIT
 POST_PATCH_STABLE_PASS_STEPS = 4
 POST_PATCH_STABLE_NO_SUBMIT_STEPS = 16
 POST_PATCH_NO_SUBMIT_PHASES = frozenset({"test", "patch_prep"})
+AGENT_LOOP_STABLE_PATCH_NO_SUBMIT_STEPS = 32
+AGENT_LOOP_REPEAT_CMD_LIMIT = 6
 _POST_PATCH_STOP_STRATEGIES = frozenset(
     {
         "budgetflow_segment",
@@ -132,3 +134,35 @@ def check_post_patch_stop(
     if patch_stable_steps < stable_pass_limit:
         return False, ""
     return True, "post_patch_verified_stable"
+
+
+def check_agent_loop_stop(
+    *,
+    patch_digest: str | None,
+    patch_stable_steps: int,
+    recent_commands: deque[str],
+    agent_gold_edited: bool = False,
+    agent_attempted_submit: bool = False,
+    agent_submitted: bool = False,
+    stable_no_submit_limit: int = AGENT_LOOP_STABLE_PATCH_NO_SUBMIT_STEPS,
+    repeat_limit: int = AGENT_LOOP_REPEAT_CMD_LIMIT,
+) -> tuple[bool, str, str | None]:
+    """Stop strategy-agnostic agent loops after a stable patch is ignored.
+
+    Unlike BudgetFlow stop-loss, this guard is not a routing mechanism. It
+    catches vanilla agent failures where a target-file patch has stopped
+    changing, the agent repeatedly inspects the same command, and no submit has
+    been attempted.
+    """
+    if not patch_digest:
+        return False, "", None
+    if not agent_gold_edited:
+        return False, "", None
+    if agent_attempted_submit or agent_submitted:
+        return False, "", None
+    if patch_stable_steps < stable_no_submit_limit:
+        return False, "", None
+    repeated, cmd = repeat_command_streak(recent_commands, limit=repeat_limit)
+    if not repeated:
+        return False, "", None
+    return True, "agent_loop_stable_patch_no_submit", cmd

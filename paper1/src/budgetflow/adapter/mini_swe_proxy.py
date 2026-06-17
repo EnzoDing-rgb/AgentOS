@@ -41,7 +41,13 @@ from ..routing_sets import (
     VALUE_TRIGGERED_ESCALATION_ROUTINGS,
 )
 from .action_parsing import format_error_stop_after, parse_tool_actions
-from .stall_guard import check_post_patch_stop, check_stagnation, normalize_bash_command, stall_guard_enabled
+from .stall_guard import (
+    check_agent_loop_stop,
+    check_post_patch_stop,
+    check_stagnation,
+    normalize_bash_command,
+    stall_guard_enabled,
+)
 from .message_utils import estimate_input_tokens, extract_bash_context
 from .protocol_adapter import ActionProtocolAdapter
 from .strategies import RoutingContext, choose_backend, stage_weight
@@ -396,6 +402,28 @@ class BudgetFlowLitellmModel:
         norm_cmd = normalize_bash_command(bash_command)
         if norm_cmd:
             self._recent_commands.append(norm_cmd)
+        should_stop_loop, loop_reason, loop_repeat_cmd = check_agent_loop_stop(
+            patch_digest=self.agent_patch_digest,
+            patch_stable_steps=self.agent_patch_stable_steps,
+            recent_commands=self._recent_commands,
+            agent_gold_edited=self.agent_gold_edited,
+            agent_attempted_submit=self.agent_attempted_submit,
+            agent_submitted=self.agent_submitted,
+        )
+        if should_stop_loop:
+            print(
+                f"{tag('stall', bold=False)} #{self.step_index} "
+                f"reason={loop_reason} stable={self.agent_patch_stable_steps} "
+                f"repeat={loop_repeat_cmd or '-'}",
+                flush=True,
+            )
+            raise BudgetFlowStagnationError(
+                self.workflow_id,
+                exit_reason=loop_reason,
+                step_index=self.step_index,
+                repeat_command=loop_repeat_cmd,
+                no_progress_streak=self.agent_patch_stable_steps,
+            )
         if stall_guard_enabled(self.routing.strategy):
             allocation = self.routing.allocation
             should_stop, stall_reason, repeat_cmd = check_stagnation(

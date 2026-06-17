@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 
 from budgetflow.adapter.stall_guard import (
+    check_agent_loop_stop,
     check_post_patch_stop,
     check_stagnation,
     no_progress_limit,
@@ -174,6 +175,52 @@ def test_post_patch_stop_for_stable_patch_without_submit_after_validation_runway
         agent_attempted_submit=True,
         agent_submitted=False,
     ) == (False, "")
+
+
+def test_agent_loop_stop_for_stable_patch_repeat_without_submit() -> None:
+    """All strategies should stop when the agent loops on a stable patch."""
+    repeated: deque[str] = deque(
+        ['grep -A5 "class DecimalField" django/db/models/fields/__init__.py | head -20'] * 8,
+        maxlen=16,
+    )
+
+    assert check_agent_loop_stop(
+        patch_digest="abc123",
+        patch_stable_steps=32,
+        recent_commands=repeated,
+        agent_gold_edited=True,
+        agent_attempted_submit=False,
+        agent_submitted=False,
+    ) == (True, "agent_loop_stable_patch_no_submit", repeated[-1])
+
+
+def test_agent_loop_stop_requires_stable_patch_and_no_submit() -> None:
+    repeated: deque[str] = deque(["grep -R x"] * 8, maxlen=16)
+
+    assert check_agent_loop_stop(
+        patch_digest="abc123",
+        patch_stable_steps=31,
+        recent_commands=repeated,
+        agent_gold_edited=True,
+        agent_attempted_submit=False,
+        agent_submitted=False,
+    ) == (False, "", None)
+    assert check_agent_loop_stop(
+        patch_digest="abc123",
+        patch_stable_steps=32,
+        recent_commands=repeated,
+        agent_gold_edited=True,
+        agent_attempted_submit=True,
+        agent_submitted=False,
+    ) == (False, "", None)
+    assert check_agent_loop_stop(
+        patch_digest="",
+        patch_stable_steps=32,
+        recent_commands=repeated,
+        agent_gold_edited=True,
+        agent_attempted_submit=False,
+        agent_submitted=False,
+    ) == (False, "", None)
 
 
 def test_git_diff_digest_tracks_stable_patch(tmp_path: Path) -> None:
