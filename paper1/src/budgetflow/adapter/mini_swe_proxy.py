@@ -392,15 +392,14 @@ class BudgetFlowLitellmModel:
         if norm_cmd:
             self._recent_commands.append(norm_cmd)
         if stall_guard_enabled(self.routing.strategy):
+            allocation = self.routing.allocation
             should_stop, stall_reason, repeat_cmd = check_stagnation(
                 strategy=self.routing.strategy,
                 no_progress_streak=self._no_progress_streak,
                 recent_commands=self._recent_commands,
-                task_effort=(
-                    self.routing.allocation.task_effort
-                    if self.routing.allocation is not None
-                    else None
-                ),
+                task_effort=allocation.task_effort if allocation is not None else None,
+                task_spent=self.governor.state.spent_budget,
+                planned_task_budget=allocation.planned_task_budget if allocation is not None else None,
             )
         else:
             should_stop, stall_reason, repeat_cmd = False, "", None

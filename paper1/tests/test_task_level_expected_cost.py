@@ -106,6 +106,10 @@ def _per_turn_costs(backends):
     }
 
 
+def _runtime_like_costs():
+    return {"tier2": 0.00556, "tier3": 0.02788}
+
+
 def _trusted_allocation(**kwargs):
     from budgetflow.allocation import AllocationContext
 
@@ -537,14 +541,14 @@ class TestChooseTaskLevelBackend:
         from budgetflow.adapter.strategies import choose_backend, _expected_total_cost
 
         alloc = _trusted_allocation(
-            task_value=3.0,
+            task_value=4.0,
             task_effort=70.0,
             planned_task_budget=10000.0,
             model_fit={"tier2": 0.24, "tier3": 0.65},
         )
         backends = _backends(t2_progress=0.24, t3_progress=0.65)
         ctx = _task_level_ctx(backends, budget_pressure=0.1, allocation=alloc)
-        per_turn = _per_turn_costs(backends)
+        per_turn = _runtime_like_costs()
 
         t2_total = _expected_total_cost(ctx, "tier2", 2, per_turn["tier2"])
         t3_total = _expected_total_cost(ctx, "tier3", 3, per_turn["tier3"])
@@ -555,8 +559,35 @@ class TestChooseTaskLevelBackend:
         assert backend.tier == 3
         assert ctx.last_policy_decision is not None
         scores = ctx.last_policy_decision.scores
-        assert scores["rule"] == "marginal_yield_per_dollar"
+        assert scores["rule"] == "marginal_expected_value_per_dollar"
         assert scores["marginal_yield_per_dollar"] > scores["budget_pressure_threshold"]
+
+    def test_marginal_yield_uses_extra_cost_not_cost_ratio(self):
+        """Medium-value tasks can choose T3 when extra expected value pays for extra cost."""
+        from budgetflow.adapter.strategies import choose_backend, _expected_total_cost
+
+        alloc = _trusted_allocation(
+            task_value=1.3,
+            task_effort=21.0,
+            planned_task_budget=1.0,
+            model_fit={"tier2": 0.67, "tier3": 1.0},
+        )
+        backends = _backends(t2_progress=0.67, t3_progress=1.0)
+        ctx = _task_level_ctx(backends, budget_pressure=0.01, allocation=alloc)
+        per_turn = _runtime_like_costs()
+
+        t2_total = _expected_total_cost(ctx, "tier2", 2, per_turn["tier2"])
+        t3_total = _expected_total_cost(ctx, "tier3", 3, per_turn["tier3"])
+        assert t3_total > t2_total
+
+        backend = choose_backend(ctx, _turn(), per_turn)
+
+        assert backend.tier == 3
+        assert ctx.last_policy_decision is not None
+        scores = ctx.last_policy_decision.scores
+        assert scores["rule"] == "marginal_expected_value_per_dollar"
+        assert scores["marginal_yield_per_dollar"] > scores["budget_pressure_threshold"]
+        assert scores["extra_expected_cost"] == pytest.approx(t3_total - t2_total)
 
     def test_marginal_yield_per_dollar_stays_t2_when_value_gain_is_small(self):
         """Low-value tasks stay T2 when T3's extra cost buys little expected value."""
@@ -581,7 +612,7 @@ class TestChooseTaskLevelBackend:
         assert backend.tier == 2
         assert ctx.last_policy_decision is not None
         scores = ctx.last_policy_decision.scores
-        assert scores["rule"] == "marginal_yield_per_dollar"
+        assert scores["rule"] == "marginal_expected_value_per_dollar"
         assert scores["marginal_yield_per_dollar"] < scores["budget_pressure_threshold"]
 
     def test_missing_expected_costs_do_not_make_t3_look_free(self):

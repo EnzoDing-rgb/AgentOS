@@ -35,7 +35,7 @@ COLD_START_OUTPUT_TOKENS_PER_EFFORT = 150
 BUDGETFLOW_PLANNED_TASK_BUDGET_MODE = "budgetflow_loose_task_budget"
 BUDGETFLOW_PLANNED_TASK_BUDGET_MULTIPLIER = 2.0
 BUDGETFLOW_PLANNED_TASK_BUDGET_MIN_USD = 0.05
-BUDGETFLOW_PLANNED_TASK_BUDGET_BATCH_FLOOR_RULE = "hard_cap_usd/sqrt(task_count)+projected_cost_multiplier"
+BUDGETFLOW_PLANNED_TASK_BUDGET_BATCH_FLOOR_RULE = "hard_cap_usd/sqrt(task_count)+cross_strategy_task_cost_ceiling_multiplier"
 BUDGETFLOW_PLANNED_TASK_BUDGET_STRATEGIES = frozenset({
     "budgetflow_task_level",
     "budgetflow_segment",
@@ -734,7 +734,11 @@ def _build_budgetflow_planned_task_budgets(
             task_id: max(
                 BUDGETFLOW_PLANNED_TASK_BUDGET_MIN_USD,
                 batch_floor
-                + float(costs.get(task_id, 0.0)) * BUDGETFLOW_PLANNED_TASK_BUDGET_MULTIPLIER,
+                + max(
+                    float(strategy_costs.get(task_id, 0.0))
+                    for strategy_costs in projected_task_costs.values()
+                )
+                * BUDGETFLOW_PLANNED_TASK_BUDGET_MULTIPLIER,
             )
             for task_id in task_ids
         }

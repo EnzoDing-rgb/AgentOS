@@ -184,16 +184,16 @@
   },
   "planned_task_budget_by_strategy": {
     "budgetflow_task_level": {
-      "sympy__sympy-13480": 0.7655,
-      "sympy__sympy-14774": 0.7682,
+      "sympy__sympy-13480": 0.9995,
+      "sympy__sympy-14774": 0.9932,
       "sympy__sympy-16988": 2.2354,
-      "sympy__sympy-21055": 0.8219,
-      "sympy__sympy-23117": 0.8261,
-      "sympy__sympy-20212": 0.7659,
-      "sympy__sympy-12419": 0.8252,
-      "sympy__sympy-19007": 0.8334,
-      "django__django-10924": 0.7608,
-      "django__django-12113": 0.7621
+      "sympy__sympy-21055": 1.7319,
+      "sympy__sympy-23117": 1.4703,
+      "sympy__sympy-20212": 1.2286,
+      "sympy__sympy-12419": 1.8109,
+      "sympy__sympy-19007": 1.434,
+      "django__django-10924": 0.966,
+      "django__django-12113": 0.974
     }
   },
   "planned_task_budget_policy": {
@@ -201,7 +201,7 @@
     "source": "projected_task_cost_by_strategy",
     "multiplier": 2.0,
     "min_usd": 0.05,
-    "batch_floor_rule": "hard_cap_usd/sqrt(task_count)+projected_cost_multiplier",
+    "batch_floor_rule": "hard_cap_usd/sqrt(task_count)+cross_strategy_task_cost_ceiling_multiplier",
     "sum_can_exceed_hard_cap": true,
     "applies_to": [
       "budgetflow_task_level"

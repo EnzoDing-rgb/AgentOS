@@ -21,9 +21,9 @@ from ..tier_frontier import TierFrontier, finite_frontier_score
 from ..types import Backend, ProgressTable, Stage, TurnInfo
 
 TASK_BUDGET_STRONGEST_FIT_FRACTION = 1.0
-# Task-level T3 starts when normalized expected value gain is at least this
-# fraction of the extra expected-cost ratio. Budget pressure adds on top.
-MARGINAL_YIELD_PER_DOLLAR_THRESHOLD = 0.25
+# Task-level T3 starts when each extra expected cost unit buys at least one
+# extra expected value unit. Budget pressure adds on top.
+MARGINAL_YIELD_PER_DOLLAR_THRESHOLD = 1.0
 
 @dataclass
 class RoutingContext:
@@ -323,9 +323,12 @@ def _task_start_t3_score(
     if strongest_total_cost <= reference_total_cost:
         marginal_yield = float("inf") if fit_gain > 0 else 0.0
     else:
-        marginal_yield = task_value * fit_gain / max(extra_cost_ratio, 0.000001)
+        extra_expected_cost = strongest_total_cost - reference_total_cost
+        marginal_yield = task_value * fit_gain / max(extra_expected_cost, 0.000001)
     threshold = MARGINAL_YIELD_PER_DOLLAR_THRESHOLD + pressure_penalty
     score = marginal_yield - threshold
+    extra_expected_cost = max(0.0, strongest_total_cost - reference_total_cost)
+    expected_value_gain = task_value * fit_gain
     details: dict[str, float | str | bool] = {
         "task_value": task_value,
         "task_effort": task_effort,
@@ -339,6 +342,8 @@ def _task_start_t3_score(
         "fit_gain": fit_gain,
         "reference_expected_total_cost": reference_total_cost,
         "strongest_expected_total_cost": strongest_total_cost,
+        "extra_expected_cost": extra_expected_cost,
+        "expected_value_gain": expected_value_gain,
         "extra_cost_ratio": extra_cost_ratio,
         "marginal_yield_per_dollar": marginal_yield if marginal_yield != float("inf") else 999999.0,
         "budget_pressure_threshold": threshold,
@@ -347,7 +352,7 @@ def _task_start_t3_score(
             if allocation is not None and allocation.planned_task_budget is not None
             else 0.0
         ),
-        "rule": "marginal_yield_per_dollar",
+        "rule": "marginal_expected_value_per_dollar",
     }
     return (
         score

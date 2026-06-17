@@ -268,6 +268,24 @@ def test_calibrate_emits_loose_budgetflow_task_budgets(tmp_path: Path) -> None:
     assert "enterprise_router_baseline" not in plan.planned_task_budget_by_strategy
 
 
+def test_planned_task_budgets_use_cross_strategy_task_cost_ceiling() -> None:
+    from budgetflow.experiments.budget_binding import _build_budgetflow_planned_task_budgets
+
+    caps = _build_budgetflow_planned_task_budgets(
+        ("bare_t3_baseline", "budgetflow_task_level"),
+        ["task-a", "task-b"],
+        {
+            "bare_t3_baseline": {"task-a": 0.5, "task-b": 0.1},
+            "budgetflow_task_level": {"task-a": 0.05, "task-b": 0.2},
+        },
+        hard_cap_usd=1.0,
+    )
+
+    task_caps = caps["budgetflow_task_level"]
+    assert task_caps["task-a"] > task_caps["task-b"]
+    assert task_caps["task-a"] == pytest.approx((1.0 / (2 ** 0.5)) + 2.0 * 0.5)
+
+
 def test_calibrate_reuses_current_catalog_historical_cost_without_repricing(tmp_path: Path) -> None:
     """Current-schema cost rows are already in active catalog units."""
     catalog = catalog_source_info()
