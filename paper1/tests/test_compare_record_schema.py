@@ -723,3 +723,59 @@ def test_value_summary_reports_primary_normalized_value_metric(tmp_path) -> None
     assert "0.60" in text
     assert "3.00" in text
     assert "abort=1" in text
+
+
+def test_live_snapshot_warns_when_task_level_underuses_t3_against_strong_baseline(tmp_path) -> None:
+    lines = _format_live_snapshot(
+        strategy_names=["bare_t2_baseline", "bare_t3_baseline", "budgetflow_task_level"],
+        resolved_by_strategy={
+            "bare_t2_baseline": [True, False, False, False],
+            "bare_t3_baseline": [True, True, True, True],
+            "budgetflow_task_level": [True, False, False, False],
+        },
+        score_status_by_strategy={
+            "bare_t2_baseline": ["pass", "true_fail", "true_fail", "true_fail"],
+            "bare_t3_baseline": ["pass", "pass", "pass", "pass"],
+            "budgetflow_task_level": ["pass", "true_fail", "true_fail", "true_fail"],
+        },
+        task_cost_by_strategy={
+            "bare_t2_baseline": [0.1, 0.1, 0.1, 0.1],
+            "bare_t3_baseline": [0.2, 0.2, 0.2, 0.2],
+            "budgetflow_task_level": [0.1, 0.1, 0.1, 0.1],
+        },
+        turns_by_strategy={
+            "bare_t2_baseline": [10, 10, 10, 10],
+            "bare_t3_baseline": [5, 5, 5, 5],
+            "budgetflow_task_level": [10, 10, 10, 10],
+        },
+        tier_mix_by_strategy={
+            "bare_t2_baseline": [{2: 1.0}] * 4,
+            "bare_t3_baseline": [{3: 1.0}] * 4,
+            "budgetflow_task_level": [{2: 1.0}] * 4,
+        },
+        batch_spent_by_strategy={
+            "bare_t2_baseline": 0.4,
+            "bare_t3_baseline": 0.8,
+            "budgetflow_task_level": 0.4,
+        },
+        batch_caps={
+            "bare_t2_baseline": 1.0,
+            "bare_t3_baseline": 1.0,
+            "budgetflow_task_level": 1.0,
+        },
+        budget_modes={
+            "bare_t2_baseline": "shared_batch_hard_budget",
+            "bare_t3_baseline": "shared_batch_hard_budget",
+            "budgetflow_task_level": "budgetflow_planned_task_budget",
+        },
+        runs_done=12,
+        total_runs=12,
+        tasks_per_strategy=4,
+        started=0.0,
+        out_path=tmp_path / "run.jsonl",
+    )
+
+    text = "\n".join(lines)
+    assert "CALIBRATION WARNING" in text
+    assert "BudgetFlow task-level used T3 on 0%" in text
+    assert "bare_t3_baseline pass rate 100%" in text

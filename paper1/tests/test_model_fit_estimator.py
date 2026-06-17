@@ -104,6 +104,40 @@ class TestModelFitEstimation:
         finally:
             _restore_catalog(catalog_orig)
 
+    def test_fit_rate_is_capped_as_normalized_model_fit_signal(self):
+        """ModelFit is a normalized routing signal capped at 1.0."""
+        from budgetflow.model_fit_estimator import estimate_model_fit_from_jsonl
+
+        cat = _catalog()
+        records = [
+            {
+                "strategy": "bare_t3_baseline",
+                "instance_id": "task-a",
+                "total_cost": 0.10,
+                "catalog": cat,
+                "score_status": "pass",
+                "exit_status": "HarnessResolved",
+                "row_finished_at": 1,
+            },
+        ]
+        catalog_orig = _setup_catalog_test()
+        try:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+                path = Path(f.name)
+            _write_jsonl(path, records)
+
+            evidence = estimate_model_fit_from_jsonl(
+                path,
+                ["task-a"],
+                {"task-a": {"bootstrap_difficulty": 50.0}},
+            )
+
+            assert evidence.tier_fit[3] == pytest.approx(1.0)
+
+            path.unlink()
+        finally:
+            _restore_catalog(catalog_orig)
+
     def test_budget_exhausted_adds_censored_tier_evidence(self):
         """Budget-exhausted T2 row contributes censored upper-bound fit evidence."""
         from budgetflow.model_fit_estimator import estimate_model_fit_from_jsonl
@@ -374,6 +408,106 @@ class TestModelFitEstimation:
             path.unlink()
         finally:
             _restore_catalog(catalog_orig)
+
+    def test_budget_exhausted_incomplete_rows_are_censored_evidence(self):
+        """Budget-owned exhausted rows with incomplete harness still inform runway."""
+        from budgetflow.model_fit_estimator import estimate_model_fit_from_jsonl
+
+        cat = _catalog()
+        records = [
+            {
+                "strategy": "bare_t2_baseline",
+                "instance_id": "task-a",
+                "total_cost": 0.75,
+                "catalog": cat,
+                "score_status": "true_fail",
+                "exit_status": "StagnationExit",
+                "exit_reason": "tier2_turn_cap",
+                "exit_owner": "budget_exhausted",
+                "budget_exhausted": True,
+                "failure_class": "budget_fail",
+                "harness_trust": "incomplete",
+                "row_finished_at": 1,
+            },
+        ]
+        catalog_orig = _setup_catalog_test()
+        try:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+                path = Path(f.name)
+            _write_jsonl(path, records)
+
+            evidence = estimate_model_fit_from_jsonl(
+                path,
+                ["task-a"],
+                {"task-a": {"bootstrap_difficulty": 25.0}},
+            )
+
+            assert 2 in evidence.censored_tiers
+            assert evidence.tier_evidence_counts[2] == 1
+            assert evidence.evidence_tasks == 1
+
+            path.unlink()
+        finally:
+            _restore_catalog(catalog_orig)
+
+    def test_confidence_requires_reference_and_strongest_tier_coverage(self):
+        """Many T3 rows plus one T2 row is not high-confidence ModelFit."""
+        from budgetflow.model_fit_estimator import estimate_model_fit_from_jsonl
+
+        cat = _catalog()
+        records = [
+            {
+                "strategy": "bare_t2_baseline",
+                "instance_id": "task-t2",
+                "total_cost": 0.25,
+                "catalog": cat,
+                "score_status": "pass",
+                "exit_status": "HarnessResolved",
+                "row_finished_at": 1,
+            },
+        ]
+        for i in range(7):
+            records.append({
+                "strategy": "bare_t3_baseline",
+                "instance_id": f"task-t3-{i}",
+                "total_cost": 0.20,
+                "catalog": cat,
+                "score_status": "pass",
+                "exit_status": "HarnessResolved",
+                "row_finished_at": 1,
+            })
+        catalog_orig = _setup_catalog_test()
+        try:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+                path = Path(f.name)
+            _write_jsonl(path, records)
+
+            task_ids = ["task-t2"] + [f"task-t3-{i}" for i in range(7)]
+            value_features = {task_id: {"bootstrap_difficulty": 20.0} for task_id in task_ids}
+            evidence = estimate_model_fit_from_jsonl(path, task_ids, value_features)
+
+            assert evidence.tier_evidence_counts[2] == 1
+            assert evidence.tier_evidence_counts[3] == 7
+            assert evidence.confidence == "medium"
+
+            path.unlink()
+        finally:
+            _restore_catalog(catalog_orig)
+
+    def test_confidence_not_high_when_reference_tier_only_has_censored_bounds(self):
+        """Censored rows are useful, but high confidence needs completed coverage."""
+        from budgetflow.model_fit_estimator import _build_evidence
+
+        evidence = _build_evidence(
+            observed={3: [0.9, 1.0, 1.0]},
+            censored_bounds={2: [0.4, 0.5, 0.6]},
+            evidence_task_ids={"task-a", "task-b", "task-c"},
+        )
+
+        assert evidence.tier_evidence_counts[2] == 3
+        assert evidence.tier_completed_counts.get(2, 0) == 0
+        assert evidence.tier_censored_counts[2] == 3
+        assert evidence.confidence == "medium"
 
     def test_excludes_catalog_mismatch_rows(self):
         """Rows with non-matching catalog are excluded."""

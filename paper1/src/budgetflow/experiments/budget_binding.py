@@ -325,6 +325,18 @@ def calibrate_budget(
                 "source": evidence.source,
                 "confidence": evidence.confidence,
                 "evidence_tasks": evidence.evidence_tasks,
+                "tier_evidence_counts": {
+                    f"tier{tier}": count
+                    for tier, count in sorted(evidence.tier_evidence_counts.items())
+                },
+                "tier_completed_counts": {
+                    f"tier{tier}": count
+                    for tier, count in sorted(evidence.tier_completed_counts.items())
+                },
+                "tier_censored_counts": {
+                    f"tier{tier}": count
+                    for tier, count in sorted(evidence.tier_censored_counts.items())
+                },
                 "censored_tiers": sorted(evidence.censored_tiers),
                 "reasons": evidence.reasons,
             }
@@ -888,8 +900,11 @@ def _row_is_calibration_eligible(
         return False, "missing_score_status"
     if score_status not in {"pass", "true_fail"}:
         return False, f"not_scoreable:{score_status}"
+    row_is_exhausted = _row_is_budget_exhausted(row)
     harness_trust = str(row.get("harness_trust") or "")
-    if harness_trust != "trusted":
+    if harness_trust != "trusted" and not (
+        allow_budget_exhausted and row_is_exhausted and harness_trust == "incomplete"
+    ):
         if not harness_trust:
             return False, "harness_trust:missing"
         return False, f"harness_trust:{harness_trust}"
@@ -919,7 +934,7 @@ def _row_is_calibration_eligible(
     exit_status = row.get("exit_status", "")
     exit_reason = str(row.get("exit_reason") or "")
     if exit_status in ("BudgetFlowBudgetError",):
-        if not (allow_budget_exhausted and _row_is_budget_exhausted(row)):
+        if not (allow_budget_exhausted and row_is_exhausted):
             return False, f"budget_error:{exit_status}"
     failure_class = str(row.get("failure_class") or "")
     abort_reason = str(row.get("abort_reason") or "")
@@ -1011,14 +1026,22 @@ def _latest_records_by_strategy_task(jsonl_path: Path) -> dict[tuple[str, str], 
 
 
 def _row_is_budget_exhausted(row: dict) -> bool:
+    if row.get("budget_exhausted") is True:
+        return True
     fields = (
         row.get("exit_status"),
         row.get("exit_reason"),
         row.get("agent_exit_status"),
         row.get("agent_exit_reason"),
         row.get("failure_class"),
+        row.get("exit_owner"),
+        row.get("abort_owner"),
     )
-    return any("budget" in str(value).lower() and "exhaust" in str(value).lower() for value in fields)
+    if any("budget" in str(value).lower() and "exhaust" in str(value).lower() for value in fields):
+        return True
+    failure_class = str(row.get("failure_class") or "").lower()
+    exit_reason = str(row.get("exit_reason") or "").lower()
+    return failure_class == "budget_fail" and ("turn_cap" in exit_reason or "cap" in exit_reason)
 
 
 def _row_catalog_compatible(row_catalog: dict) -> tuple[bool, str]:

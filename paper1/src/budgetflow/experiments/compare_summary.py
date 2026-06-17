@@ -298,10 +298,73 @@ def _format_live_snapshot(
                 f"{yield_score:>7.2f} {yield_coverage:>8.2f} {yield_per_dollar:>9.2f} {value_profile:>12}"
             )
         lines.append("")
+    warning = _task_level_calibration_warning(
+        resolved_by_strategy=resolved_by_strategy,
+        score_status_by_strategy=score_status_by_strategy or {},
+        tier_mix_by_strategy=tier_mix_by_strategy,
+    )
+    if warning:
+        lines.append("")
+        lines.extend(warning)
     lines.append("")
     lines.append("=== EVENT LOG (newest at bottom) ===")
     lines.append("")
     return lines
+
+
+def _task_level_calibration_warning(
+    *,
+    resolved_by_strategy: dict[str, list[bool]],
+    score_status_by_strategy: dict[str, list[str]],
+    tier_mix_by_strategy: dict[str, list[dict[int, float]]],
+) -> list[str]:
+    """Warn when task-level routing underuses T3 against strong diagnostic controls."""
+    task_name = "budgetflow_task_level"
+    t2_name = "bare_t2_baseline"
+    t3_name = "bare_t3_baseline"
+    if task_name not in resolved_by_strategy or t3_name not in resolved_by_strategy:
+        return []
+
+    task_done = len(resolved_by_strategy.get(task_name, []))
+    t3_done = len(resolved_by_strategy.get(t3_name, []))
+    if task_done < 3 or t3_done < 3:
+        return []
+
+    task_t3_ratio = _strategy_tier_ratio(tier_mix_by_strategy.get(task_name, []), 3)
+    t3_pass = _strategy_pass_rate(t3_name, resolved_by_strategy, score_status_by_strategy)
+    task_pass = _strategy_pass_rate(task_name, resolved_by_strategy, score_status_by_strategy)
+    t2_pass = _strategy_pass_rate(t2_name, resolved_by_strategy, score_status_by_strategy)
+
+    if task_t3_ratio >= 0.05:
+        return []
+    if t3_pass < max(task_pass * 1.5, t2_pass * 1.5, 0.75):
+        return []
+    return [
+        "=== CALIBRATION WARNING ===",
+        "BudgetFlow task-level used T3 on "
+        f"{task_t3_ratio * 100:.0f}% of turns while bare_t3_baseline pass rate "
+        f"{t3_pass * 100:.0f}% exceeded task-level {task_pass * 100:.0f}% "
+        f"and T2 {t2_pass * 100:.0f}%. Suspect ModelFit or task-start routing calibration.",
+    ]
+
+
+def _strategy_pass_rate(
+    strategy: str,
+    resolved_by_strategy: dict[str, list[bool]],
+    score_status_by_strategy: dict[str, list[str]],
+) -> float:
+    flags = resolved_by_strategy.get(strategy, [])
+    statuses = score_status_by_strategy.get(strategy, [])
+    if not flags and not statuses:
+        return 0.0
+    pass_n, true_fail_n, _abort_n = _status_counts(statuses, flags)
+    denom = pass_n + true_fail_n
+    return pass_n / denom if denom > 0 else 0.0
+
+
+def _strategy_tier_ratio(mixes: list[dict[int, float]], tier: int) -> float:
+    mix = _average_tier_mix(mixes)
+    return float(mix.get(tier, 0.0))
 
 
 def _write_summary_file(

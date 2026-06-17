@@ -25,6 +25,9 @@ class ModelFitEvidence:
     source: str = "historical_jsonl"
     confidence: str = "low"
     evidence_tasks: int = 0
+    tier_evidence_counts: dict[int, int] = field(default_factory=dict)
+    tier_completed_counts: dict[int, int] = field(default_factory=dict)
+    tier_censored_counts: dict[int, int] = field(default_factory=dict)
     censored_tiers: set[int] = field(default_factory=set)
     reasons: list[str] = field(default_factory=list)
 
@@ -100,7 +103,9 @@ def estimate_model_fit_from_jsonl(
             is_exhausted = _row_is_budget_exhausted(rec)
 
             # fit = task_effort * per_turn_cost / total_cost
-            # Clamp to [0.001, 1.0] — a tier cannot have zero or >100% progress per turn.
+            # ModelFit is a normalized routing signal, not a raw throughput
+            # unit. Clamp to [0.001, 1.0] so heterogeneous task effort scales
+            # cannot make every task look like an all-strongest win.
             fit_estimate = (task_effort * per_turn) / total_cost
             fit_estimate = max(0.001, min(1.0, fit_estimate))
 
@@ -108,6 +113,7 @@ def estimate_model_fit_from_jsonl(
                 # Censored: true total_cost would be higher, so true fit is lower.
                 # This fit_estimate is an UPPER BOUND.
                 censored_bounds.setdefault(tier, []).append(fit_estimate)
+                evidence_task_ids.add(instance_id)
             else:
                 observed.setdefault(tier, []).append(fit_estimate)
                 evidence_task_ids.add(instance_id)
@@ -124,6 +130,9 @@ def _build_evidence(
     reasons: list[str] = []
     tier_fit: dict[int, float] = {}
     censored_tiers: set[int] = set()
+    tier_evidence_counts: dict[int, int] = {}
+    tier_completed_counts: dict[int, int] = {}
+    tier_censored_counts: dict[int, int] = {}
 
     # Catalog fallback: progress_score per tier
     catalog_fit: dict[int, float] = {}
@@ -135,6 +144,9 @@ def _build_evidence(
     for tier in all_tiers:
         obs = observed.get(tier, [])
         cens = censored_bounds.get(tier, [])
+        tier_evidence_counts[tier] = len(obs) + len(cens)
+        tier_completed_counts[tier] = len(obs)
+        tier_censored_counts[tier] = len(cens)
 
         if obs:
             # Use completed observations as the fit estimate. Censored rows are
@@ -181,16 +193,53 @@ def _build_evidence(
             )
 
     evidence_count = len(evidence_task_ids)
-    confidence = "high" if evidence_count >= 3 else "medium" if evidence_count >= 1 else "low"
+    confidence = _model_fit_confidence(
+        tier_completed_counts,
+        tier_censored_counts,
+        evidence_count,
+    )
 
     return ModelFitEvidence(
         tier_fit=tier_fit,
         source="historical_jsonl",
         confidence=confidence,
         evidence_tasks=evidence_count,
+        tier_evidence_counts=tier_evidence_counts,
+        tier_completed_counts=tier_completed_counts,
+        tier_censored_counts=tier_censored_counts,
         censored_tiers=censored_tiers,
         reasons=reasons,
     )
+
+
+def _model_fit_confidence(
+    tier_completed_counts: dict[int, int],
+    tier_censored_counts: dict[int, int],
+    evidence_count: int,
+) -> str:
+    """Return workload-level confidence only when reference and strongest are covered.
+
+    A pile of strongest-tier rows plus a single reference-tier row is useful
+    calibration evidence, but it is not high confidence for routing. Runtime
+    task-level allocation compares tiers, so high confidence requires completed
+    coverage for both reference and strongest tiers. Censored rows can raise
+    zero-coverage evidence to medium, but they do not prove completed cost.
+    """
+    if evidence_count <= 0:
+        return "low"
+    reference_tier = 2
+    strongest_tier = max((cfg.tier for cfg in MODEL_CATALOG.configs), default=reference_tier)
+    completed_pair_count = min(
+        tier_completed_counts.get(reference_tier, 0),
+        tier_completed_counts.get(strongest_tier, 0),
+    )
+    if completed_pair_count >= 3 and evidence_count >= 3:
+        return "high"
+    reference_total = tier_completed_counts.get(reference_tier, 0) + tier_censored_counts.get(reference_tier, 0)
+    strongest_total = tier_completed_counts.get(strongest_tier, 0) + tier_censored_counts.get(strongest_tier, 0)
+    if min(reference_total, strongest_total) >= 1:
+        return "medium"
+    return "low"
 
 
 def _tier_for_strategy(strategy: str) -> int | None:
@@ -255,8 +304,9 @@ def _is_clean_run(rec: dict) -> bool:
     exit_reason = str(rec.get("exit_reason") or "")
     exit_status = str(rec.get("exit_status") or "")
     harness_trust = str(rec.get("harness_trust") or "")
+    budget_exhausted = _row_is_budget_exhausted(rec)
 
-    if harness_trust != "trusted":
+    if harness_trust != "trusted" and not (budget_exhausted and harness_trust == "incomplete"):
         return False
     if failure_class == "infra_fail" or "infra" in abort_reason:
         return False
@@ -279,16 +329,22 @@ def _is_clean_run(rec: dict) -> bool:
 
 
 def _row_is_budget_exhausted(row: dict) -> bool:
+    if row.get("budget_exhausted") is True:
+        return True
     fields = (
         row.get("exit_status"),
         row.get("exit_reason"),
         row.get("agent_exit_status"),
         row.get("agent_exit_reason"),
         row.get("failure_class"),
+        row.get("exit_owner"),
+        row.get("abort_owner"),
     )
-    return any(
-        "budget" in str(v).lower() and "exhaust" in str(v).lower() for v in fields
-    )
+    if any("budget" in str(v).lower() and "exhaust" in str(v).lower() for v in fields):
+        return True
+    failure_class = str(row.get("failure_class") or "").lower()
+    exit_reason = str(row.get("exit_reason") or "").lower()
+    return failure_class == "budget_fail" and ("turn_cap" in exit_reason or "cap" in exit_reason)
 
 
 def _median(values: list[float]) -> float:
