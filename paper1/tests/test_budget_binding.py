@@ -192,6 +192,23 @@ def test_budget_plan_model_fit_evidence_is_global_not_per_task_assignment(tmp_pa
     assert not any(key in json.dumps(written["model_fit_evidence"]) for key in forbidden)
 
 
+def test_budget_plan_round_trip_preserves_model_fit_evidence() -> None:
+    plan = BudgetBindingPlan(
+        hard_cap_usd=1.25,
+        generation_mode="target_utilization",
+        model_fit_evidence={
+            "tier_fit": {"tier2": 0.08, "tier3": 0.65},
+            "source": "historical_jsonl",
+            "confidence": "medium",
+            "evidence_tasks": 4,
+        },
+    )
+
+    restored = BudgetBindingPlan.from_dict(plan.to_dict())
+
+    assert restored.model_fit_evidence == plan.model_fit_evidence
+
+
 def test_calibrate_reuses_current_catalog_historical_cost_without_repricing(tmp_path: Path) -> None:
     """Current-schema cost rows are already in active catalog units."""
     catalog = catalog_source_info()

@@ -137,6 +137,7 @@ class BudgetBindingPlan:
             calibration_error=d.get("calibration_error", {}),
             calibration_excluded=d.get("calibration_excluded", {}),
             censored_spend_floor_by_strategy=d.get("censored_spend_floor_by_strategy", {}),
+            model_fit_evidence=d.get("model_fit_evidence"),
         )
 
 
