@@ -1,0 +1,158 @@
+{
+  "hard_cap_usd": 1.6796,
+  "source": "budget_binding_calibrator",
+  "generation_mode": "target_utilization",
+  "catalog_revision": "2026-06-16-qwen37plus-t2-t3x5",
+  "catalog_path": "/root/.dev/AgentOS/paper1/docs/config/model_tiers.default.json",
+  "catalog_content_hash": "dea09fb05d2b",
+  "historical_source": "paper1/data/runs/mainline_6x5_goldpass_20260616a.jsonl",
+  "task_ids": [
+    "sympy__sympy-13480",
+    "sympy__sympy-14774",
+    "sympy__sympy-16988",
+    "sympy__sympy-21055",
+    "sympy__sympy-23117"
+  ],
+  "strategy_names": [
+    "bare_t2_baseline",
+    "bare_t3_baseline",
+    "enterprise_router_baseline",
+    "budgetflow_same_enterprise_router",
+    "budgetflow_task_level",
+    "budgetflow_segment"
+  ],
+  "projected_spend_by_strategy": {
+    "bare_t2_baseline": 1.5956,
+    "bare_t3_baseline": 0.9489,
+    "enterprise_router_baseline": 2.0122,
+    "budgetflow_same_enterprise_router": 1.47,
+    "budgetflow_task_level": 1.3383,
+    "budgetflow_segment": 1.3907
+  },
+  "projected_task_cost_by_strategy": {
+    "bare_t2_baseline": {
+      "sympy__sympy-13480": 0.2056,
+      "sympy__sympy-14774": 0.1917,
+      "sympy__sympy-16988": 0.2303,
+      "sympy__sympy-21055": 0.474,
+      "sympy__sympy-23117": 0.494
+    },
+    "bare_t3_baseline": {
+      "sympy__sympy-13480": 0.0876,
+      "sympy__sympy-14774": 0.0763,
+      "sympy__sympy-16988": 0.2745,
+      "sympy__sympy-21055": 0.2877,
+      "sympy__sympy-23117": 0.2227
+    },
+    "enterprise_router_baseline": {
+      "sympy__sympy-13480": 0.0689,
+      "sympy__sympy-14774": 0.2831,
+      "sympy__sympy-16988": 0.4995,
+      "sympy__sympy-21055": 0.7676,
+      "sympy__sympy-23117": 0.3931
+    },
+    "budgetflow_same_enterprise_router": {
+      "sympy__sympy-13480": 0.0728,
+      "sympy__sympy-14774": 0.207,
+      "sympy__sympy-16988": 0.264,
+      "sympy__sympy-21055": 0.5357,
+      "sympy__sympy-23117": 0.3905
+    },
+    "budgetflow_task_level": {
+      "sympy__sympy-13480": 0.1668,
+      "sympy__sympy-14774": 0.2399,
+      "sympy__sympy-16988": 0.2312,
+      "sympy__sympy-21055": 0.4757,
+      "sympy__sympy-23117": 0.2247
+    },
+    "budgetflow_segment": {
+      "sympy__sympy-13480": 0.0795,
+      "sympy__sympy-14774": 0.178,
+      "sympy__sympy-16988": 0.3362,
+      "sympy__sympy-21055": 0.3902,
+      "sympy__sympy-23117": 0.4067
+    }
+  },
+  "projected_utilization_by_strategy": {
+    "bare_t2_baseline": 0.95,
+    "bare_t3_baseline": 0.565,
+    "enterprise_router_baseline": 1.0,
+    "budgetflow_same_enterprise_router": 0.8752,
+    "budgetflow_task_level": 0.7968,
+    "budgetflow_segment": 0.828
+  },
+  "raw_projected_utilization_by_strategy": {
+    "bare_t2_baseline": 0.95,
+    "bare_t3_baseline": 0.565,
+    "enterprise_router_baseline": 1.198,
+    "budgetflow_same_enterprise_router": 0.8752,
+    "budgetflow_task_level": 0.7968,
+    "budgetflow_segment": 0.828
+  },
+  "reference_spend_usd": 1.5956,
+  "strongest_boundary_usd": 0.9489,
+  "max_projected_spend_usd": 2.0122,
+  "decision": "PASS",
+  "reasons": [
+    "calibration:excluded 6 contaminated rows: harness_trust:incomplete=6",
+    "calibration:model_fit_evidence confidence=high from 5 tasks: tier1=0.1500, tier2=0.6910, tier3=1.0000",
+    "calibration:bare_t2_baseline n=2 exact observed costs (low sample, no cross-task extrapolation)",
+    "calibration:bare_t3_baseline n=5 exact observed costs",
+    "calibration:enterprise_router_baseline n=5 exact observed costs",
+    "calibration:budgetflow_same_enterprise_router n=5 exact observed costs",
+    "calibration:budgetflow_task_level n=4 exact observed costs (low sample, no cross-task extrapolation)",
+    "calibration:budgetflow_segment n=3 exact observed costs (low sample, no cross-task extrapolation)",
+    "reference_rule: strategy_set_p75_projected_spend = $1.5956",
+    "hard_cap = p75_ref($1.5956) / target_utilization(0.95) = $1.6796",
+    "strongest_runway_floor: hard_cap must be at least $0.7262 so the Strongest Model baseline reaches the final task before budget pressure dominates",
+    "strongest_boundary: bare_t3_baseline projected spend $0.9489; recorded for pressure audit, not a hard cap",
+    "pressure_contract: grade=warn",
+    "pressure_contract: t2_diagnostic: bare_t2_baseline at 95.0%; not a pressure-ordering constraint",
+    "pressure_contract VIOLATION: t3_loose: bare_t3_baseline at 56.5% < 81% \u2014 strongest tier not budget-constrained",
+    "pressure_contract VIOLATION: budgetflow_under_target: budgetflow_task_level at 79.7% < 81%; budget may be too loose or policy may be too conservative",
+    "PRESSURE_GATE WARNING: BudgetFlow projected utilization is below the target pressure regime; treat the next run as calibration, not paper evidence",
+    "tight_budget_warning: enterprise_router_baseline projected spend $2.01 > hard_cap $1.68 (119.8% utilization) \u2014 strategy may not complete within shared budget",
+    "decision=PASS: hard_cap=$1.68 from target pressure with strongest boundary, max projected utilization 100.0%",
+    "projection_confidence=unvalidated: no calibration evidence provided. Run one diagnostic calibration audit before relying on projected utilization."
+  ],
+  "pressure_contract": {
+    "target_utilization": 0.95,
+    "shape": {
+      "bare_t2_baseline": 0.95,
+      "bare_t3_baseline": 0.565,
+      "enterprise_router_baseline": 1.0,
+      "budgetflow_same_enterprise_router": 0.8752,
+      "budgetflow_task_level": 0.7968,
+      "budgetflow_segment": 0.828
+    },
+    "assertions": [
+      "t2_diagnostic: bare_t2_baseline at 95.0%; not a pressure-ordering constraint"
+    ],
+    "violations": [
+      "t3_loose: bare_t3_baseline at 56.5% < 81% \u2014 strongest tier not budget-constrained",
+      "budgetflow_under_target: budgetflow_task_level at 79.7% < 81%; budget may be too loose or policy may be too conservative"
+    ],
+    "grade": "warn"
+  },
+  "projection_confidence": "unvalidated",
+  "target_projected_utilization": 0.95,
+  "calibration_excluded": {
+    "harness_trust:incomplete": 6
+  },
+  "model_fit_evidence": {
+    "tier_fit": {
+      "1": 0.15,
+      "2": 0.69103,
+      "3": 1.0
+    },
+    "source": "historical_jsonl",
+    "confidence": "high",
+    "evidence_tasks": 5,
+    "censored_tiers": [],
+    "reasons": [
+      "tier1: fit=0.1500 (catalog fallback, no historical evidence)",
+      "tier2: fit=0.6910 from 2 completed + 0 censored rows",
+      "tier3: fit=1.0000 from 5 completed + 0 censored rows"
+    ]
+  }
+}

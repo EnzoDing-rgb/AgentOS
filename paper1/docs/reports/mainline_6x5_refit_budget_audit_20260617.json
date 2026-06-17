@@ -1,0 +1,102 @@
+{
+  "strategy_errors": {
+    "bare_t2_baseline": {
+      "projected": 1.5956,
+      "actual": 1.6786,
+      "error_pct": 0.052,
+      "strategy_cap": 1.6796,
+      "projected_utilization": 0.95,
+      "raw_projected_utilization": 0.95,
+      "actual_utilization": 0.9994,
+      "raw_actual_utilization": 0.9994,
+      "budget_exhausted_rows": 3,
+      "task_count": 5
+    },
+    "bare_t3_baseline": {
+      "projected": 0.9489,
+      "actual": 0.8048,
+      "error_pct": 0.1519,
+      "strategy_cap": 1.6796,
+      "projected_utilization": 0.565,
+      "raw_projected_utilization": 0.565,
+      "actual_utilization": 0.4791,
+      "raw_actual_utilization": 0.4791,
+      "budget_exhausted_rows": 0,
+      "task_count": 5
+    },
+    "enterprise_router_baseline": {
+      "projected": 2.0122,
+      "actual": 0.9606,
+      "error_pct": 0.5226,
+      "strategy_cap": 1.6796,
+      "projected_utilization": 1.0,
+      "raw_projected_utilization": 1.198,
+      "actual_utilization": 0.5719,
+      "raw_actual_utilization": 0.5719,
+      "budget_exhausted_rows": 0,
+      "task_count": 5
+    },
+    "budgetflow_same_enterprise_router": {
+      "projected": 1.47,
+      "actual": 1.3918,
+      "error_pct": 0.0532,
+      "strategy_cap": 1.6796,
+      "projected_utilization": 0.8752,
+      "raw_projected_utilization": 0.8752,
+      "actual_utilization": 0.8286,
+      "raw_actual_utilization": 0.8286,
+      "budget_exhausted_rows": 0,
+      "task_count": 5
+    },
+    "budgetflow_task_level": {
+      "projected": 1.3383,
+      "actual": 0.8884,
+      "error_pct": 0.3362,
+      "strategy_cap": 1.6796,
+      "projected_utilization": 0.7968,
+      "raw_projected_utilization": 0.7968,
+      "actual_utilization": 0.5289,
+      "raw_actual_utilization": 0.5289,
+      "budget_exhausted_rows": 0,
+      "task_count": 5
+    },
+    "budgetflow_segment": {
+      "projected": 1.3907,
+      "actual": 1.2992,
+      "error_pct": 0.0658,
+      "strategy_cap": 1.6796,
+      "projected_utilization": 0.828,
+      "raw_projected_utilization": 0.828,
+      "actual_utilization": 0.7735,
+      "raw_actual_utilization": 0.7735,
+      "budget_exhausted_rows": 0,
+      "task_count": 5
+    }
+  },
+  "overall_mape": 0.197,
+  "max_error_strategy": "enterprise_router_baseline",
+  "max_error_pct": 0.5226,
+  "projection_confidence": "high",
+  "recommendations": [],
+  "generation_mode": "target_utilization",
+  "target_utilization": 0.95,
+  "actual_utilization_by_strategy": {
+    "bare_t3_baseline": 0.4791,
+    "bare_t2_baseline": 0.9994,
+    "budgetflow_same_enterprise_router": 0.8286,
+    "budgetflow_task_level": 0.5289,
+    "budgetflow_segment": 0.7735,
+    "enterprise_router_baseline": 0.5719
+  },
+  "raw_actual_utilization_by_strategy": {
+    "bare_t3_baseline": 0.4791,
+    "bare_t2_baseline": 0.9994,
+    "budgetflow_same_enterprise_router": 0.8286,
+    "budgetflow_task_level": 0.5289,
+    "budgetflow_segment": 0.7735,
+    "enterprise_router_baseline": 0.5719
+  },
+  "budget_exhausted_by_strategy": {
+    "bare_t2_baseline": 3
+  }
+}
