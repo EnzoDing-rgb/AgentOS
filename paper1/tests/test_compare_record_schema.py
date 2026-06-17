@@ -2,7 +2,7 @@ import json
 import threading
 from types import SimpleNamespace
 
-from budgetflow.compare_checkpoint import GlobalRunProgress, StrategyScoreboard
+from budgetflow.compare_checkpoint import CompareCheckpointStore, GlobalRunProgress, StrategyScoreboard
 from budgetflow.experiments.compare_persistence import (
     CompareRunState,
     completed_keys,
@@ -350,6 +350,73 @@ def test_run_strategy_batch_planned_caps_preserve_budget_for_remaining_tasks(mon
     assert records[0]["batch_spent"] == pytest.approx(0.5)
     assert records[1]["batch_spent"] == pytest.approx(1.0)
     assert records[1]["batch_available"] == pytest.approx(0.0)
+
+
+def test_planned_task_budget_checkpoint_records_shared_batch_cap(monkeypatch, tmp_path) -> None:
+    import pytest
+    from budgetflow.experiments import compare_execution
+
+    costs = {"task-a": 0.2, "task-b": 0.3}
+
+    def fake_run_task_record(task, **kwargs):
+        return {
+            "instance_id": task.instance_id,
+            "strategy": kwargs["cfg"].name,
+            "routing": kwargs["cfg"].routing,
+            "harness_resolved": False,
+            "score_status": "true_fail",
+            "patch_extracted": False,
+            "agent_gold_edited": False,
+            "agent_gold_files": [],
+            "detail": "",
+            "exit_status": "Stopped",
+            "exit_reason": "test",
+            "elapsed_s": 0.0,
+            "backend_picks": ["tier2"],
+            "llm_turns": 1,
+            "total_cost": costs[task.instance_id],
+            "batch_available": None,
+        }
+
+    monkeypatch.setattr(compare_execution, "run_task_record", fake_run_task_record)
+    checkpoint = CompareCheckpointStore(
+        tmp_path / "planned.checkpoint.json",
+        stem="planned",
+        total_runs=2,
+    )
+
+    _records, spent = run_strategy_batch(
+        CompareStrategy("budgetflow_task_level", "value_aware_task_level"),
+        [SimpleNamespace(instance_id="task-a"), SimpleNamespace(instance_id="task-b")],
+        batch_budget_cap=1.0,
+        value_context=_value_context(),
+        planned_task_caps={"task-a": 0.8, "task-b": 0.8},
+        budget_mode="budgetflow_planned_task_budget",
+        step_limit=1,
+        trace_console="quiet",
+        heartbeat=0,
+        global_progress=SimpleNamespace(
+            total=2,
+            start_task=lambda: None,
+            finish_task=lambda: 1,
+            format_banner=lambda scoreboard=None: "test",
+            format_global=lambda scoreboard=None: "test",
+        ),
+        scoreboard=None,
+        print_lock=None,
+        checkpoint=checkpoint,
+    )
+
+    restored = CompareCheckpointStore(
+        tmp_path / "planned.checkpoint.json",
+        stem="planned",
+        total_runs=2,
+    )
+    strategy_state = restored.strategies["budgetflow_task_level"]
+    assert spent == pytest.approx(0.5)
+    assert strategy_state.batch_cap == pytest.approx(1.0)
+    assert strategy_state.batch_spent == pytest.approx(0.5)
+    assert strategy_state.completed_tasks == ["task-a", "task-b"]
 
 
 def test_effective_planned_task_cap_returns_unused_budget_to_later_tasks() -> None:
