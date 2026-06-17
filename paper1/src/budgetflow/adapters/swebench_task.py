@@ -22,10 +22,6 @@ from typing import Any, Protocol
 from ..auto_budget import CostTaskFeatures
 from .swebench_value import SwebenchValueAdapter, ValueEstimate
 
-SWEBENCH_COST_FLOORS: dict[str, float] = {
-    "django/django": 1.00,
-}
-
 
 @dataclass(frozen=True)
 class TaskFeatures:
@@ -80,5 +76,5 @@ class SwebenchTaskAdapter:
             patch_lines=features.patch_lines,
             f2p_count=features.f2p_count,
             p2p_count=features.p2p_count,
-            cost_floor=SWEBENCH_COST_FLOORS.get(repo, 0.0),
+            cost_floor=0.0,
         )

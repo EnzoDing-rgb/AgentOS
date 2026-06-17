@@ -126,14 +126,15 @@ def run_policy_memory_gate_only(args: Namespace, *, repo_root: Path) -> int:
 def build_auto_budget_plan(args: Namespace, *, tasks: list, runs_dir: Path) -> AutoBudgetPlan:
     memory_path = Path(args.auto_budget_memory) if args.auto_budget_memory else runs_dir / "auto_budget_memory.jsonl"
     memory: AutoBudgetMemory | None = None
-    if not args.no_auto_budget_learn:
+    auto_budget_selected = bool(args.auto_budget or args.auto_budget_dry_run)
+    if auto_budget_selected and not args.no_auto_budget_learn:
         memory = AutoBudgetMemory(memory_path if memory_path.is_file() else None)
         if memory._path is None:
             memory._path = memory_path
 
     estimates: dict[str, BudgetEstimate] = {}
     task_caps: dict[str, float] | None = None
-    if args.auto_budget or args.auto_budget_dry_run:
+    if auto_budget_selected:
         estimator = AutoBudgetEstimator(
             memory=memory,
             feature_adapter=SwebenchTaskAdapter(),

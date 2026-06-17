@@ -59,3 +59,18 @@ def test_auto_budget_estimator_consumes_standard_cost_features_not_raw_task_fiel
     assert estimate.instance_id == "custom-task"
     assert estimate.source == "global_fallback"
     assert estimate.features["patch_lines"] == 3
+
+
+def test_swebench_task_adapter_does_not_embed_repo_cost_floors() -> None:
+    task = SimpleNamespace(
+        instance_id="django__django-10924",
+        repo="django/django",
+        patch="diff --git a/x.py b/x.py\n+line\n",
+        fail_to_pass=("tests/test_x.py::test_y",),
+        pass_to_pass=(),
+    )
+
+    features = SwebenchTaskAdapter().cost_features(task)
+
+    assert features.repo == "django/django"
+    assert features.cost_floor == 0.0

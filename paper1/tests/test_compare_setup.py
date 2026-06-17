@@ -12,6 +12,7 @@ from budgetflow.experiments.compare_config import (
     required_backends_for_strategies,
     task_set_kind,
 )
+from budgetflow.experiments.compare_memory import build_auto_budget_plan
 from budgetflow.experiments.compare_setup import (
     build_batch_budget_modes,
     calibrated_model_fit_from_budget_plan,
@@ -347,3 +348,21 @@ def test_retired_auto_budget_cli_flags_are_not_exposed() -> None:
     args = parse_compare_args([])
     assert args.auto_budget is False
     assert args.auto_budget_dry_run is False
+
+
+def test_retired_auto_budget_does_not_enable_cost_memory_by_default(tmp_path) -> None:
+    args = parse_compare_args([])
+    task = SimpleNamespace(
+        instance_id="sympy__sympy-13480",
+        repo="sympy/sympy",
+        patch="diff --git a/x.py b/x.py\n+line\n",
+        fail_to_pass=("tests/test_x.py::test_y",),
+        pass_to_pass=(),
+    )
+
+    plan = build_auto_budget_plan(args, tasks=[task], runs_dir=tmp_path)
+
+    assert plan.memory is None
+    assert plan.estimates == {}
+    assert plan.task_caps is None
+    assert not (tmp_path / "auto_budget_memory.jsonl").exists()
