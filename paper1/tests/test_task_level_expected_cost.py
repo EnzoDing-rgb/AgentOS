@@ -615,6 +615,36 @@ class TestChooseTaskLevelBackend:
         assert scores["rule"] == "marginal_expected_value_per_dollar"
         assert scores["marginal_yield_per_dollar"] < scores["budget_pressure_threshold"]
 
+    def test_task_start_marginal_yield_does_not_penalize_high_effort(self):
+        """Same value/fit/cost signals should not become worse only because effort is higher."""
+        from budgetflow.adapter.strategies import choose_backend
+
+        backends = _backends(t2_progress=0.67, t3_progress=1.0)
+        per_turn = _runtime_like_costs()
+
+        low_effort = _trusted_allocation(
+            task_value=1.3,
+            task_effort=21.0,
+            planned_task_budget=10.0,
+            model_fit={"tier2": 0.67, "tier3": 1.0},
+        )
+        high_effort = _trusted_allocation(
+            task_value=1.3,
+            task_effort=80.0,
+            planned_task_budget=10.0,
+            model_fit={"tier2": 0.67, "tier3": 1.0},
+        )
+        low_ctx = _task_level_ctx(backends, budget_pressure=0.01, allocation=low_effort)
+        high_ctx = _task_level_ctx(backends, budget_pressure=0.01, allocation=high_effort)
+
+        assert choose_backend(low_ctx, _turn(), per_turn).tier == 3
+        assert choose_backend(high_ctx, _turn(), per_turn).tier == 3
+        assert low_ctx.last_policy_decision is not None
+        assert high_ctx.last_policy_decision is not None
+        assert high_ctx.last_policy_decision.scores["marginal_yield_per_dollar"] == pytest.approx(
+            low_ctx.last_policy_decision.scores["marginal_yield_per_dollar"]
+        )
+
     def test_missing_expected_costs_do_not_make_t3_look_free(self):
         """Runtime should stay T2 if cost estimates are unavailable at task start."""
         from budgetflow.adapter.strategies import choose_backend

@@ -88,6 +88,20 @@ def test_task_level_stagnation_waits_for_task_budget_spend() -> None:
     assert reason == "stagnation_no_progress"
 
 
+def test_task_level_stagnation_can_stop_before_full_task_budget_when_no_progress_persists() -> None:
+    stop, reason, _ = check_stagnation(
+        strategy="value_aware_task_level",
+        no_progress_streak=36,
+        recent_commands=deque(["grep -R x"]),
+        task_effort=20,
+        task_spent=0.35,
+        planned_task_budget=1.0,
+    )
+
+    assert stop is True
+    assert reason == "stagnation_no_progress"
+
+
 def test_check_stagnation_no_progress() -> None:
     stop, reason, _ = check_stagnation(
         strategy="all_pro",

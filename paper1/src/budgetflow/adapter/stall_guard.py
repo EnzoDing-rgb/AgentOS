@@ -35,6 +35,8 @@ _STALL_GUARD_STRATEGIES = frozenset(
     }
 )
 
+TASK_LEVEL_NO_PROGRESS_STOP_BUDGET_FRACTION = 0.35
+
 
 def stall_guard_enabled(strategy: str) -> bool:
     """Return True when the BudgetFlow stall guard should fire for *strategy*."""
@@ -85,9 +87,10 @@ def check_stagnation(
             and planned_task_budget is not None
             and planned_task_budget > 0
             and task_spent is not None
-            and task_spent < planned_task_budget
         ):
-            return False, "", None
+            spent_fraction = max(0.0, float(task_spent)) / max(float(planned_task_budget), 0.000001)
+            if spent_fraction < TASK_LEVEL_NO_PROGRESS_STOP_BUDGET_FRACTION:
+                return False, "", None
         return True, "stagnation_no_progress", None
     return False, "", None
 

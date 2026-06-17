@@ -250,6 +250,16 @@ def _tier_model_fit_rate(ctx: RoutingContext, tier: int, backend_name: str) -> f
     return 0.001
 
 
+def _task_effort_units(ctx: RoutingContext) -> float:
+    """Return the effort scale used by task-level expected-cost math."""
+    allocation = ctx.allocation
+    if allocation is not None and allocation.has_effort and allocation.task_effort is not None:
+        return max(1.0, float(allocation.task_effort))
+    if ctx.tier_frontier is not None:
+        return max(1.0, float(ctx.tier_frontier.reference_runway_turns))
+    return 1.0
+
+
 def _expected_total_cost(
     ctx: RoutingContext,
     backend_name: str,
@@ -265,12 +275,7 @@ def _expected_total_cost(
     runway so the formula still produces a meaningful comparison.
     """
     fit = _tier_model_fit_rate(ctx, tier, backend_name)
-    effort = 1.0
-    allocation = ctx.allocation
-    if allocation is not None and allocation.has_effort and allocation.task_effort is not None:
-        effort = max(1.0, float(allocation.task_effort))
-    elif ctx.tier_frontier is not None:
-        effort = float(ctx.tier_frontier.reference_runway_turns)
+    effort = _task_effort_units(ctx)
     expected_turns = effort / max(fit, 0.001)
     return expected_turns * per_turn_cost
 
@@ -320,11 +325,14 @@ def _task_start_t3_score(
         0.0,
         (strongest_total_cost - reference_total_cost) / max(reference_total_cost, 0.000001),
     )
-    if strongest_total_cost <= reference_total_cost:
+    effort_units = _task_effort_units(ctx)
+    reference_unit_cost = reference_total_cost / max(effort_units, 0.000001)
+    strongest_unit_cost = strongest_total_cost / max(effort_units, 0.000001)
+    extra_unit_cost = max(0.0, strongest_unit_cost - reference_unit_cost)
+    if strongest_unit_cost <= reference_unit_cost:
         marginal_yield = float("inf") if fit_gain > 0 else 0.0
     else:
-        extra_expected_cost = strongest_total_cost - reference_total_cost
-        marginal_yield = task_value * fit_gain / max(extra_expected_cost, 0.000001)
+        marginal_yield = task_value * fit_gain / max(extra_unit_cost, 0.000001)
     threshold = MARGINAL_YIELD_PER_DOLLAR_THRESHOLD + pressure_penalty
     score = marginal_yield - threshold
     extra_expected_cost = max(0.0, strongest_total_cost - reference_total_cost)
@@ -343,6 +351,9 @@ def _task_start_t3_score(
         "reference_expected_total_cost": reference_total_cost,
         "strongest_expected_total_cost": strongest_total_cost,
         "extra_expected_cost": extra_expected_cost,
+        "reference_unit_cost": reference_unit_cost,
+        "strongest_unit_cost": strongest_unit_cost,
+        "extra_unit_cost": extra_unit_cost,
         "expected_value_gain": expected_value_gain,
         "extra_cost_ratio": extra_cost_ratio,
         "marginal_yield_per_dollar": marginal_yield if marginal_yield != float("inf") else 999999.0,
