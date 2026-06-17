@@ -22,6 +22,12 @@ from budgetflow.experiments.budget_binding import (
 from budgetflow.model_tiers import catalog_source_info
 
 
+def _trusted(row: dict) -> dict:
+    row = dict(row)
+    row.setdefault("harness_trust", "trusted")
+    return row
+
+
 # ── _distribution_p75 ───────────────────────────────────────────────────
 
 
@@ -136,11 +142,61 @@ def test_calibrate_budget_plan_records_catalog_content_hash(tmp_path: Path) -> N
     assert written["catalog_content_hash"] == plan.catalog_content_hash
 
 
+def test_budget_plan_model_fit_evidence_is_global_not_per_task_assignment(tmp_path: Path) -> None:
+    catalog = catalog_source_info()
+    jsonl = tmp_path / "hist.jsonl"
+    jsonl.write_text(
+        "\n".join([
+            json.dumps({
+                "strategy": "bare_t2_baseline",
+                "instance_id": "task-a",
+                "total_cost": 0.80,
+                "budget_mode": "shared_batch_hard_budget",
+                "catalog": catalog,
+                "score_status": "true_fail",
+                "exit_status": "HarnessFailed",
+                "harness_trust": "trusted",
+                "row_finished_at": 1,
+            }),
+            json.dumps({
+                "strategy": "bare_t3_baseline",
+                "instance_id": "task-a",
+                "total_cost": 0.20,
+                "budget_mode": "shared_batch_hard_budget",
+                "catalog": catalog,
+                "score_status": "pass",
+                "exit_status": "HarnessResolved",
+                "harness_trust": "trusted",
+                "row_finished_at": 1,
+            }),
+        ])
+        + "\n"
+    )
+    vm = tmp_path / "vm.json"
+    vm.write_text(json.dumps({"tasks": {"task-a": {"task_effort": {"bootstrap_heuristic": 10.0}}}}))
+
+    plan = calibrate_budget(
+        ["task-a"],
+        historical_jsonl=jsonl,
+        value_matrix_path=vm,
+        strategies=("bare_t2_baseline", "bare_t3_baseline", "budgetflow_task_level"),
+        target_utilization=0.80,
+        output_path=tmp_path / "bp.json",
+    )
+
+    written = json.loads((tmp_path / "bp.json").read_text())
+    assert plan.model_fit_evidence is not None
+    assert set(written["model_fit_evidence"]) >= {"tier_fit", "source", "confidence"}
+    forbidden = ("preferred_model", "model_tier", "assigned_tier", "selected_backend")
+    assert not any(key in json.dumps(written["projected_task_cost_by_strategy"]) for key in forbidden)
+    assert not any(key in json.dumps(written["model_fit_evidence"]) for key in forbidden)
+
+
 def test_calibrate_reuses_current_catalog_historical_cost_without_repricing(tmp_path: Path) -> None:
     """Current-schema cost rows are already in active catalog units."""
     catalog = catalog_source_info()
     jsonl = tmp_path / "hist.jsonl"
-    row = {
+    row = _trusted({
         "strategy": "bare_t3_baseline",
         "instance_id": "task-a",
         "total_cost": 0.25,
@@ -151,7 +207,7 @@ def test_calibrate_reuses_current_catalog_historical_cost_without_repricing(tmp_
         },
         "score_status": "true_fail",
         "exit_status": "HarnessResolved",
-    }
+    })
     jsonl.write_text(json.dumps(row) + "\n")
     vm = tmp_path / "vm.json"
     vm.write_text(json.dumps({"tasks": {"task-a": {"task_effort": {"bootstrap_heuristic": 10.0}}}}))
@@ -175,7 +231,7 @@ def test_calibrate_reuses_current_catalog_historical_cost_without_repricing(tmp_
 
 def test_calibrate_uses_budget_exhausted_rows_as_floor_not_observed_sample(tmp_path: Path) -> None:
     jsonl = tmp_path / "hist.jsonl"
-    jsonl.write_text(json.dumps({
+    jsonl.write_text(json.dumps(_trusted({
         "strategy": "budgetflow_task_level",
         "instance_id": "task-a",
         "total_cost": 0.75,
@@ -185,7 +241,7 @@ def test_calibrate_uses_budget_exhausted_rows_as_floor_not_observed_sample(tmp_p
         "exit_status": "BudgetFlowBudgetError",
         "exit_reason": "budget_exhausted",
         "row_finished_at": 1,
-    }) + "\n")
+    })) + "\n")
     vm = tmp_path / "vm.json"
     vm.write_text(json.dumps({"tasks": {"task-a": {"task_effort": {"bootstrap_heuristic": 10.0}}}}))
 
@@ -201,11 +257,34 @@ def test_calibrate_uses_budget_exhausted_rows_as_floor_not_observed_sample(tmp_p
         target_utilization=0.75,
     )
 
-    # baseline now includes model-fit turn scaling (fit_ratio ≈ 1.04x for default catalog)
-    assert plan.projected_spend_by_strategy["budgetflow_task_level"] == pytest.approx(0.79922, rel=1e-3)
+    # baseline adds workload-level remaining runway without treating the
+    # exhausted row as a complete observation.
     assert plan.projected_spend_by_strategy["budgetflow_task_level"] > 0.75
     assert plan.censored_spend_floor_by_strategy == {"budgetflow_task_level": 0.75}
     assert any("censored spend floors" in reason for reason in plan.reasons)
+
+
+def test_budget_exhausted_floor_requires_trusted_harness_row(tmp_path: Path) -> None:
+    jsonl = tmp_path / "hist.jsonl"
+    jsonl.write_text(json.dumps({
+        "strategy": "budgetflow_task_level",
+        "instance_id": "task-a",
+        "total_cost": 0.75,
+        "budget_mode": "shared_batch_hard_budget",
+        "catalog": catalog_source_info(),
+        "score_status": "true_fail",
+        "exit_status": "BudgetFlowBudgetError",
+        "exit_reason": "budget_exhausted",
+        "harness_trust": "invalid",
+        "row_finished_at": 1,
+    }) + "\n")
+
+    signals = _load_historical_cost_signals(jsonl)
+
+    assert signals.observed_costs == {}
+    assert signals.censored_spend_floor_by_strategy == {}
+    assert signals.censored_task_costs_by_strategy == {}
+    assert signals.excluded == {"harness_trust:invalid": 1}
 
 
 def test_calibrate_projects_censored_task_with_remaining_runway(tmp_path: Path) -> None:
@@ -213,7 +292,7 @@ def test_calibrate_projects_censored_task_with_remaining_runway(tmp_path: Path) 
     jsonl = tmp_path / "hist.jsonl"
     jsonl.write_text(
         "\n".join([
-            json.dumps({
+            json.dumps(_trusted({
                 "strategy": "bare_t3_baseline",
                 "instance_id": "task-a",
                 "total_cost": 0.10,
@@ -222,8 +301,8 @@ def test_calibrate_projects_censored_task_with_remaining_runway(tmp_path: Path) 
                 "score_status": "pass",
                 "exit_status": "HarnessResolved",
                 "row_finished_at": 1,
-            }),
-            json.dumps({
+            })),
+            json.dumps(_trusted({
                 "strategy": "bare_t3_baseline",
                 "instance_id": "task-b",
                 "total_cost": 0.20,
@@ -233,7 +312,7 @@ def test_calibrate_projects_censored_task_with_remaining_runway(tmp_path: Path) 
                 "exit_status": "BudgetFlowBudgetError",
                 "exit_reason": "budget_exhausted",
                 "row_finished_at": 1,
-            }),
+            })),
         ])
         + "\n"
     )
@@ -259,12 +338,34 @@ def test_calibrate_projects_censored_task_with_remaining_runway(tmp_path: Path) 
     assert plan.projected_spend_by_strategy["bare_t3_baseline"] > 0.30
 
 
+def test_cold_start_prices_fixed_tier_controls_without_assigning_budgetflow_tiers(tmp_path: Path) -> None:
+    vm = tmp_path / "vm.json"
+    vm.write_text(json.dumps({"tasks": {"task-a": {"task_effort": {"bootstrap_heuristic": 50.0}}}}))
+
+    plan = calibrate_budget(
+        ["task-a"],
+        value_matrix_path=vm,
+        strategies=("bare_t2_baseline", "bare_t3_baseline", "budgetflow_task_level"),
+        target_utilization=0.80,
+    )
+
+    bare_t2 = plan.projected_spend_by_strategy["bare_t2_baseline"]
+    bare_t3 = plan.projected_spend_by_strategy["bare_t3_baseline"]
+    budgetflow = plan.projected_spend_by_strategy["budgetflow_task_level"]
+
+    assert bare_t3 > bare_t2
+    assert bare_t3 > budgetflow
+    written = plan.to_dict()
+    forbidden = ("preferred_model", "model_tier", "assigned_tier", "selected_backend")
+    assert not any(key in json.dumps(written["projected_task_cost_by_strategy"]) for key in forbidden)
+
+
 def test_calibrate_cap_allows_strongest_model_to_reach_final_task(tmp_path: Path) -> None:
     catalog = catalog_source_info()
     jsonl = tmp_path / "hist.jsonl"
     rows = []
     for task_id, cost in (("task-a", 0.10), ("task-b", 0.12), ("task-c", 0.14)):
-        rows.append({
+        rows.append(_trusted({
             "strategy": "bare_t3_baseline",
             "instance_id": task_id,
             "total_cost": cost,
@@ -273,7 +374,7 @@ def test_calibrate_cap_allows_strongest_model_to_reach_final_task(tmp_path: Path
             "score_status": "pass",
             "exit_status": "HarnessResolved",
             "row_finished_at": 1,
-        })
+        }))
     jsonl.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
     vm = tmp_path / "vm.json"
     vm.write_text(json.dumps({
@@ -301,7 +402,7 @@ def test_calibrate_does_not_clip_cap_to_underestimated_strongest_projection(tmp_
     catalog = catalog_source_info()
     jsonl = tmp_path / "hist.jsonl"
     rows = [
-        {
+        _trusted({
             "strategy": "bare_t3_baseline",
             "instance_id": "task-a",
             "total_cost": 0.40,
@@ -310,8 +411,8 @@ def test_calibrate_does_not_clip_cap_to_underestimated_strongest_projection(tmp_
             "score_status": "pass",
             "exit_status": "HarnessResolved",
             "row_finished_at": 1,
-        },
-        {
+        }),
+        _trusted({
             "strategy": "budgetflow_task_level",
             "instance_id": "task-a",
             "total_cost": 1.80,
@@ -320,7 +421,7 @@ def test_calibrate_does_not_clip_cap_to_underestimated_strongest_projection(tmp_
             "score_status": "pass",
             "exit_status": "HarnessResolved",
             "row_finished_at": 1,
-        },
+        }),
     ]
     jsonl.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
     vm = tmp_path / "vm.json"
@@ -411,12 +512,12 @@ def test_audit_calibration_dedup_keeps_last_row(tmp_path: Path) -> None:
     jsonl.write_text(
         "\n".join(
             [
-                json.dumps({
+                json.dumps(_trusted({
                     "strategy": "bare_t3_baseline",
                     "instance_id": "task-a",
                     "total_cost": 0.10,
                     "row_finished_at": 1,
-                }),
+                })),
                 json.dumps({
                     "strategy": "bare_t3_baseline",
                     "instance_id": "task-a",
@@ -449,7 +550,7 @@ def test_historical_cost_loader_dedup_keeps_latest_row(tmp_path: Path) -> None:
     jsonl = tmp_path / "hist.jsonl"
     jsonl.write_text(
         "\n".join([
-            json.dumps({
+            json.dumps(_trusted({
                 "strategy": "bare_t3_baseline",
                 "instance_id": "task-a",
                 "total_cost": 0.10,
@@ -458,8 +559,8 @@ def test_historical_cost_loader_dedup_keeps_latest_row(tmp_path: Path) -> None:
                 "score_status": "true_fail",
                 "exit_status": "HarnessResolved",
                 "row_finished_at": 1,
-            }),
-            json.dumps({
+            })),
+            json.dumps(_trusted({
                 "strategy": "bare_t3_baseline",
                 "instance_id": "task-a",
                 "total_cost": 0.40,
@@ -468,7 +569,7 @@ def test_historical_cost_loader_dedup_keeps_latest_row(tmp_path: Path) -> None:
                 "score_status": "true_fail",
                 "exit_status": "HarnessResolved",
                 "row_finished_at": 2,
-            }),
+            })),
         ])
         + "\n"
     )
@@ -481,7 +582,7 @@ def test_historical_cost_loader_dedup_keeps_latest_row(tmp_path: Path) -> None:
 
 def test_calibration_keeps_clean_shared_rows_from_frozen_plan_budget_source(tmp_path: Path) -> None:
     """Budget source name is not contamination when runtime budget mode is clean."""
-    row = {
+    row = _trusted({
         "strategy": "bare_t3_baseline",
         "instance_id": "task-a",
         "total_cost": 0.12,
@@ -489,7 +590,7 @@ def test_calibration_keeps_clean_shared_rows_from_frozen_plan_budget_source(tmp_
         "catalog": catalog_source_info(),
         "score_status": "true_fail",
         "exit_status": "HarnessResolved",
-    }
+    })
     eligible, reason = _row_is_calibration_eligible(row)
     assert (eligible, reason) == (True, "clean")
 
@@ -501,7 +602,7 @@ def test_calibration_keeps_clean_shared_rows_from_frozen_plan_budget_source(tmp_
 
 
 def test_calibration_excludes_actual_frozen_router_cap_rows() -> None:
-    row = {
+    row = _trusted({
         "strategy": "enterprise_router_baseline",
         "instance_id": "task-a",
         "total_cost": 0.12,
@@ -509,14 +610,14 @@ def test_calibration_excludes_actual_frozen_router_cap_rows() -> None:
         "catalog": catalog_source_info(),
         "score_status": "true_fail",
         "exit_status": "HarnessResolved",
-    }
+    })
     eligible, reason = _row_is_calibration_eligible(row)
     assert eligible is False
     assert reason == "budget_asymmetry:frozen_router_caps"
 
 
 def test_calibration_keeps_enterprise_router_when_value_aware_inactive() -> None:
-    row = {
+    row = _trusted({
         "strategy": "enterprise_router_baseline",
         "routing": "enterprise_router",
         "instance_id": "task-a",
@@ -526,13 +627,13 @@ def test_calibration_keeps_enterprise_router_when_value_aware_inactive() -> None
         "score_status": "true_fail",
         "exit_status": "HarnessResolved",
         "va_active": False,
-    }
+    })
     eligible, reason = _row_is_calibration_eligible(row)
     assert (eligible, reason) == (True, "clean")
 
 
 def test_calibration_excludes_enterprise_router_with_value_aware_active() -> None:
-    row = {
+    row = _trusted({
         "strategy": "enterprise_router_baseline",
         "routing": "enterprise_router",
         "instance_id": "task-a",
@@ -542,14 +643,14 @@ def test_calibration_excludes_enterprise_router_with_value_aware_active() -> Non
         "score_status": "true_fail",
         "exit_status": "HarnessResolved",
         "va_active": True,
-    }
+    })
     eligible, reason = _row_is_calibration_eligible(row)
     assert eligible is False
     assert reason == "contaminated:enterprise_router_with_va_active"
 
 
 def test_calibration_excludes_protocol_retry_cost_overhead(tmp_path: Path) -> None:
-    row = {
+    row = _trusted({
         "strategy": "budgetflow_task_level",
         "instance_id": "task-a",
         "total_cost": 0.12,
@@ -559,7 +660,7 @@ def test_calibration_excludes_protocol_retry_cost_overhead(tmp_path: Path) -> No
         "exit_status": "HarnessResolved",
         "protocol_retry_used": True,
         "protocol_retry_success": True,
-    }
+    })
     eligible, reason = _row_is_calibration_eligible(row)
     assert eligible is False
     assert reason == "protocol_retry_overhead"
@@ -572,7 +673,7 @@ def test_calibration_excludes_protocol_retry_cost_overhead(tmp_path: Path) -> No
 
 
 def test_calibration_excludes_catalog_mismatch_rows(tmp_path: Path) -> None:
-    row = {
+    row = _trusted({
         "strategy": "budgetflow_task_level",
         "instance_id": "task-a",
         "total_cost": 0.12,
@@ -584,7 +685,7 @@ def test_calibration_excludes_catalog_mismatch_rows(tmp_path: Path) -> None:
         "score_status": "true_fail",
         "exit_status": "HarnessFailed",
         "exit_reason": "harness_failed",
-    }
+    })
     eligible, reason = _row_is_calibration_eligible(row)
     assert eligible is False
     assert reason == "catalog_mismatch"
@@ -597,7 +698,7 @@ def test_calibration_excludes_catalog_mismatch_rows(tmp_path: Path) -> None:
 
 
 def test_calibration_excludes_missing_catalog_rows(tmp_path: Path) -> None:
-    row = {
+    row = _trusted({
         "strategy": "budgetflow_task_level",
         "instance_id": "task-a",
         "total_cost": 0.12,
@@ -605,7 +706,7 @@ def test_calibration_excludes_missing_catalog_rows(tmp_path: Path) -> None:
         "score_status": "true_fail",
         "exit_status": "HarnessFailed",
         "exit_reason": "harness_failed",
-    }
+    })
 
     assert _row_catalog_compatible({}) == (False, "missing_catalog")
     eligible, reason = _row_is_calibration_eligible(row)
@@ -620,7 +721,7 @@ def test_calibration_excludes_missing_catalog_rows(tmp_path: Path) -> None:
 
 
 def test_calibration_excludes_missing_score_status_rows(tmp_path: Path) -> None:
-    row = {
+    row = _trusted({
         "strategy": "budgetflow_task_level",
         "instance_id": "task-a",
         "total_cost": 0.12,
@@ -628,7 +729,7 @@ def test_calibration_excludes_missing_score_status_rows(tmp_path: Path) -> None:
         "catalog": catalog_source_info(),
         "exit_status": "HarnessFailed",
         "exit_reason": "harness_failed",
-    }
+    })
 
     eligible, reason = _row_is_calibration_eligible(row)
     assert eligible is False
@@ -643,7 +744,7 @@ def test_calibration_excludes_missing_score_status_rows(tmp_path: Path) -> None:
 
 def test_budget_exhausted_floor_requires_current_catalog(tmp_path: Path) -> None:
     jsonl = tmp_path / "hist.jsonl"
-    jsonl.write_text(json.dumps({
+    jsonl.write_text(json.dumps(_trusted({
         "strategy": "budgetflow_task_level",
         "instance_id": "task-a",
         "total_cost": 0.75,
@@ -653,7 +754,7 @@ def test_budget_exhausted_floor_requires_current_catalog(tmp_path: Path) -> None
         "exit_status": "BudgetFlowBudgetError",
         "exit_reason": "budget_exhausted",
         "row_finished_at": 1,
-    }) + "\n")
+    })) + "\n")
 
     signals = _load_historical_cost_signals(jsonl)
     assert signals.observed_costs == {}
@@ -662,7 +763,7 @@ def test_budget_exhausted_floor_requires_current_catalog(tmp_path: Path) -> None
 
 
 def test_calibration_excludes_score_abort_rows(tmp_path: Path) -> None:
-    row = {
+    row = _trusted({
         "strategy": "budgetflow_task_level",
         "instance_id": "task-a",
         "total_cost": 0.12,
@@ -672,14 +773,14 @@ def test_calibration_excludes_score_abort_rows(tmp_path: Path) -> None:
         "abort_reason": "provider_or_infra_error",
         "exit_status": "ServiceUnavailableError",
         "exit_reason": "provider_unavailable",
-    }
+    })
     eligible, reason = _row_is_calibration_eligible(row)
     assert eligible is False
     assert reason == "not_scoreable:abort"
 
 
 def test_calibration_excludes_provider_and_parser_aborts_without_score_status() -> None:
-    provider_row = {
+    provider_row = _trusted({
         "strategy": "budgetflow_task_level",
         "instance_id": "task-a",
         "total_cost": 0.12,
@@ -689,8 +790,8 @@ def test_calibration_excludes_provider_and_parser_aborts_without_score_status() 
         "exit_reason": "provider_unavailable",
         "failure_class": "infra_fail",
         "score_status": "true_fail",
-    }
-    parser_row = {
+    })
+    parser_row = _trusted({
         "strategy": "budgetflow_segment",
         "instance_id": "task-b",
         "total_cost": 0.11,
@@ -700,7 +801,7 @@ def test_calibration_excludes_provider_and_parser_aborts_without_score_status() 
         "exit_reason": "format_error_no_tool_calls",
         "failure_class": "extract_fail",
         "score_status": "true_fail",
-    }
+    })
 
     assert _row_is_calibration_eligible(provider_row) == (False, "infra_or_provider_abort")
     assert _row_is_calibration_eligible(parser_row) == (False, "protocol_or_parser_abort")

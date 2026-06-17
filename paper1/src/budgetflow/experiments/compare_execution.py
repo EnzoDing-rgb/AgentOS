@@ -86,6 +86,8 @@ def run_task_record(
     task_set: str = "",
     task_set_kind: str = "",
     frozen_plan: FrozenRouterPlan | None = None,
+    calibrated_model_fit: dict[str, float] | None = None,
+    calibrated_model_fit_source: str = "catalog_progress_prior",
 ) -> dict:
     started = time.time()
     task_adapter = SwebenchTaskAdapter()
@@ -109,13 +111,12 @@ def run_task_record(
         task_effort = budget_estimate.estimated_cost
         effort_source = f"auto_budget_{budget_estimate.source}"
 
-    model_fit: dict[str, float] | None = None
-    model_fit_source = "catalog_progress_prior"
-    if adaptive_registry is not None and adaptive_registry.policy_memory is not None:
-        repo_prior = adaptive_registry.policy_memory.repo_prior(instance_id)
-        if repo_prior.tier_success_rate:
-            model_fit = {f"tier{t}": v for t, v in repo_prior.tier_success_rate.items()}
-            model_fit_source = "policy_memory"
+    model_fit: dict[str, float] | None = (
+        dict(calibrated_model_fit) if calibrated_model_fit else None
+    )
+    model_fit_source = (
+        calibrated_model_fit_source if calibrated_model_fit else "catalog_progress_prior"
+    )
 
     allocation = AllocationContext(
         task_value=task_value,
@@ -317,6 +318,8 @@ def run_strategy_batch(
     task_set_kind: str = "",
     frozen_plan: FrozenRouterPlan | None = None,
     budget_mode: str | None = None,
+    calibrated_model_fit: dict[str, float] | None = None,
+    calibrated_model_fit_source: str = "catalog_progress_prior",
 ) -> tuple[list[dict], float]:
     def log(msg: str) -> None:
         if print_lock:
@@ -459,6 +462,8 @@ def run_strategy_batch(
                 task_set=task_set,
                 task_set_kind=task_set_kind,
                 frozen_plan=frozen_plan,
+                calibrated_model_fit=calibrated_model_fit,
+                calibrated_model_fit_source=calibrated_model_fit_source,
             )
 
         try:

@@ -1,8 +1,8 @@
 """Tests for ModelFit estimation from clean historical JSONL evidence.
 
 Verifies that per-tier fit rates are derived from verified outcome and
-cost/turn evidence, with budget-exhausted rows as censored lower-bound
-signals that penalise the exhausted tier.
+cost/turn evidence, with budget-exhausted rows as censored runway evidence
+whose observed spend implies only an upper bound on fit.
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ sys.path.insert(0, "src")
 def _write_jsonl(path: Path, records: list[dict]) -> None:
     with path.open("w") as f:
         for rec in records:
+            rec.setdefault("harness_trust", "trusted")
             f.write(json.dumps(rec) + "\n")
 
 
@@ -103,8 +104,8 @@ class TestModelFitEstimation:
         finally:
             _restore_catalog(catalog_orig)
 
-    def test_budget_exhausted_penalises_tier(self):
-        """Budget-exhausted T2 row drags down T2 fit estimate."""
+    def test_budget_exhausted_adds_censored_tier_evidence(self):
+        """Budget-exhausted T2 row contributes censored upper-bound fit evidence."""
         from budgetflow.model_fit_estimator import estimate_model_fit_from_jsonl
 
         cat = _catalog()
@@ -157,17 +158,17 @@ class TestModelFitEstimation:
                 f"T2 should be in censored_tiers due to budget_exhausted row; "
                 f"got censored_tiers={evidence.censored_tiers}"
             )
-            # T2 fit should be penalised
+            # T2 fit should reflect limited completed evidence plus the censored bound.
             assert evidence.tier_fit[2] < 0.20, (
-                f"T2 fit {evidence.tier_fit[2]:.4f} should be penalised below catalog 0.24"
+                f"T2 fit {evidence.tier_fit[2]:.4f} should be below catalog 0.24"
             )
 
             path.unlink()
         finally:
             _restore_catalog(catalog_orig)
 
-    def test_censored_only_tier_gets_conservative_penalty(self):
-        """Tier with ONLY censored evidence gets a 0.5x conservative penalty."""
+    def test_censored_only_tier_uses_observed_upper_bound(self):
+        """Tier with ONLY censored evidence uses the observed upper bound conservatively."""
         from budgetflow.model_fit_estimator import estimate_model_fit_from_jsonl
 
         cat = _catalog()
@@ -202,16 +203,26 @@ class TestModelFitEstimation:
             evidence = estimate_model_fit_from_jsonl(path, ["task-a"], value_features)
 
             # T2 has ONLY censored evidence on task-a (no completed T2 rows)
-            # The conservative penalty should apply
-            assert evidence.tier_fit[2] < 0.10, (
-                f"T2 fit {evidence.tier_fit[2]:.4f} should be heavily penalised "
-                f"(censored-only tier with conservative 0.5x multiplier)"
-            )
+            assert evidence.tier_fit[2] < 0.20
             assert 2 in evidence.censored_tiers
 
             path.unlink()
         finally:
             _restore_catalog(catalog_orig)
+
+    def test_single_censored_outlier_does_not_override_completed_cluster(self):
+        """One censored upper bound should not slash a stable completed cluster."""
+        from budgetflow.model_fit_estimator import _build_evidence
+
+        evidence = _build_evidence(
+            {2: [0.30, 0.32, 0.34, 0.36]},
+            {2: [0.05]},
+            {"task-a", "task-b", "task-c", "task-d"},
+        )
+
+        assert evidence.tier_fit[2] == pytest.approx(0.33)
+        assert 2 in evidence.censored_tiers
+        assert any("incomplete" in reason for reason in evidence.reasons)
 
     def test_no_historical_data_falls_back_to_catalog(self):
         """When there's no historical data for a tier, catalog progress_score is used."""
@@ -292,6 +303,72 @@ class TestModelFitEstimation:
             value_features = {"task-a": {"bootstrap_difficulty": 30.0}}
             evidence = estimate_model_fit_from_jsonl(path, ["task-a"], value_features)
             assert evidence.evidence_tasks == 0
+            assert evidence.confidence == "low"
+
+            path.unlink()
+        finally:
+            _restore_catalog(catalog_orig)
+
+    def test_excludes_untrusted_completed_rows(self):
+        """Completed rows with explicit untrusted harness evidence are excluded."""
+        from budgetflow.model_fit_estimator import estimate_model_fit_from_jsonl
+
+        cat = _catalog()
+        records = [
+            {
+                "strategy": "bare_t3_baseline",
+                "instance_id": "task-a",
+                "total_cost": 0.50,
+                "catalog": cat,
+                "score_status": "pass",
+                "exit_status": "HarnessResolved",
+                "harness_trust": "invalid",
+                "row_finished_at": 1,
+            },
+        ]
+        catalog_orig = _setup_catalog_test()
+        try:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+                path = Path(f.name)
+            _write_jsonl(path, records)
+
+            value_features = {"task-a": {"bootstrap_difficulty": 30.0}}
+            evidence = estimate_model_fit_from_jsonl(path, ["task-a"], value_features)
+            assert evidence.evidence_tasks == 0
+            assert evidence.confidence == "low"
+
+            path.unlink()
+        finally:
+            _restore_catalog(catalog_orig)
+
+    def test_excludes_untrusted_budget_exhausted_rows(self):
+        """Budget-exhausted rows still need trusted harness evidence."""
+        from budgetflow.model_fit_estimator import estimate_model_fit_from_jsonl
+
+        cat = _catalog()
+        records = [
+            {
+                "strategy": "bare_t2_baseline",
+                "instance_id": "task-a",
+                "total_cost": 2.30,
+                "catalog": cat,
+                "score_status": "true_fail",
+                "exit_status": "BudgetFlowBudgetError",
+                "exit_reason": "budget_exhausted",
+                "harness_trust": "invalid",
+                "row_finished_at": 1,
+            },
+        ]
+        catalog_orig = _setup_catalog_test()
+        try:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+                path = Path(f.name)
+            _write_jsonl(path, records)
+
+            value_features = {"task-a": {"bootstrap_difficulty": 30.0}}
+            evidence = estimate_model_fit_from_jsonl(path, ["task-a"], value_features)
+            assert evidence.evidence_tasks == 0
+            assert evidence.censored_tiers == set()
             assert evidence.confidence == "low"
 
             path.unlink()
@@ -482,7 +559,7 @@ class TestSixByFiveLikeScenario:
                 path, ["task-hard", "task-easy"], value_features
             )
 
-            # T2 fit should be heavily penalised by censored evidence
+            # T2 fit should reflect the censored upper-bound evidence.
             assert evidence.tier_fit[2] < 0.15, (
                 f"T2 fit {evidence.tier_fit[2]:.4f} should be well below catalog 0.24"
             )
@@ -499,14 +576,14 @@ class TestSixByFiveLikeScenario:
                 Backend("tier3", 3, 0.0045, 0.0225, 100, 20, 1024, 0.25, 1200),
             ]
 
-            # AllocationContext: high-value task with NO per-task model_fit
+            # AllocationContext: high-value task with global per-tier Model Fit
             alloc = AllocationContext(
                 task_value=2.0,
                 task_effort=23.35,
-                model_fit=None,  # absent — as in current 6x5 value matrix
+                model_fit=evidence.to_allocation_model_fit(),
                 value_source="manual",
                 effort_source="bootstrap",
-                model_fit_source="none",
+                model_fit_source="budget_plan:historical_jsonl",
             )
 
             ctx = build_routing_context(
@@ -516,7 +593,6 @@ class TestSixByFiveLikeScenario:
                 task_value=2.0,
                 median_task_value=1.0,
                 allocation=alloc,
-                model_fit_override=evidence.tier_fit,
             )
 
             per_turn = {
@@ -591,17 +667,15 @@ class TestSixByFiveLikeScenario:
             )
 
             # Cold-start WITHOUT derived fit (catalog only)
-            t2_catalog_only = _cold_start_cost_estimate("budgetflow_task_level", 23.35)
-            # Cold-start WITH derived fit
-            t2_with_fit = _cold_start_cost_estimate(
-                "budgetflow_task_level", 23.35, fit_overrides=evidence.tier_fit
-            )
+            catalog_only = _cold_start_cost_estimate(23.35)
+            # Cold-start WITH derived workload-level fit
+            with_fit = _cold_start_cost_estimate(23.35, fit_overrides=evidence.tier_fit)
 
-            # With derived fit, T2 projection should be materially higher
-            ratio = t2_with_fit / max(t2_catalog_only, 0.0001)
+            # With derived fit, reference workload projection should be materially higher.
+            ratio = with_fit / max(catalog_only, 0.0001)
             assert ratio > 1.5, (
-                f"Derived fit should increase T2 projection by >1.5x; "
-                f"catalog-only=${t2_catalog_only:.6f}, with-fit=${t2_with_fit:.6f}, "
+                f"Derived fit should increase reference projection by >1.5x; "
+                f"catalog-only=${catalog_only:.6f}, with-fit=${with_fit:.6f}, "
                 f"ratio={ratio:.2f}x"
             )
 
@@ -621,10 +695,19 @@ class TestSixByFiveLikeScenario:
             # plan should have model_fit_evidence
             assert plan.model_fit_evidence is not None, "plan should store model_fit_evidence"
             assert plan.model_fit_evidence["confidence"] in ("medium", "high")
-            # T2 projection should include censored floor + fit-scaled runway
-            t2_projected = plan.projected_spend_by_strategy.get("budgetflow_task_level", 0)
-            assert t2_projected > 2.30, (
-                f"T2 projected ${t2_projected:.4f} should exceed censored floor $2.30"
+            assert plan.model_fit_evidence["tier_fit"]["2"] < plan.model_fit_evidence["tier_fit"]["3"]
+
+            # The compiler publishes global Model Fit and uses it to scale the
+            # workload reference budget. It must not copy a bare T2 censored
+            # spend floor into the task-level BudgetFlow policy as a hidden
+            # per-task tier assignment.
+            task_level_projected = plan.projected_spend_by_strategy.get("budgetflow_task_level", 0)
+            bare_t3_projected = plan.projected_spend_by_strategy.get("bare_t3_baseline", 0)
+            assert task_level_projected == pytest.approx(with_fit, rel=0.10)
+            assert bare_t3_projected == pytest.approx(0.2745)
+            assert task_level_projected > catalog_only, (
+                f"derived fit should raise task-level reference projection; "
+                f"catalog-only=${catalog_only:.6f}, task-level=${task_level_projected:.6f}"
             )
 
             jsonl_path.unlink()

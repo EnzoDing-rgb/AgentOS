@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from argparse import Namespace
+from types import SimpleNamespace
 
 import pytest
+import budgetflow.experiments.compare_setup as compare_setup
 
 from budgetflow.experiments.compare_cli import parse_compare_args
 from budgetflow.experiments.compare_config import (
@@ -12,6 +14,7 @@ from budgetflow.experiments.compare_config import (
 )
 from budgetflow.experiments.compare_setup import (
     build_batch_budget_modes,
+    calibrated_model_fit_from_budget_plan,
     load_tasks_for_compare,
     resolve_budget_plan,
     resolve_task_count,
@@ -57,6 +60,33 @@ def test_medium_task_set_uses_medium_pool_not_3x3_preset() -> None:
         "sympy__sympy-20212",
         "sympy__sympy-16988",
     }
+
+
+def test_load_tasks_preserves_registered_task_order(monkeypatch) -> None:
+    hard_first = SimpleNamespace(
+        instance_id="repo__hard_first",
+        patch="\n".join(str(i) for i in range(25)),
+        fail_to_pass=["a", "b", "c"],
+        pass_to_pass=["x", "y"],
+    )
+    easy_second = SimpleNamespace(
+        instance_id="repo__easy_second",
+        patch="one-line",
+        fail_to_pass=[],
+        pass_to_pass=[],
+    )
+    monkeypatch.setattr(
+        compare_setup,
+        "load_compare_medium_tasks",
+        lambda tasks_n: [hard_first, easy_second],
+    )
+
+    tasks = load_tasks_for_compare(_args(task_set="medium"), tasks_n=2)
+
+    assert [task.instance_id for task in tasks] == [
+        "repo__hard_first",
+        "repo__easy_second",
+    ]
 
 
 def test_task_set_kind_labels_experiment_groups() -> None:
@@ -188,6 +218,26 @@ def test_resolve_budget_plan_from_budget_plan_json(tmp_path) -> None:
     )
     assert plan.constrained == 1.2262, f"expected 1.2262, got {plan.constrained}"
     assert "budget_plan" in plan.source, f"source should mention budget_plan, got {plan.source}"
+
+
+def test_budget_plan_model_fit_evidence_parsed_as_global_runtime_signal(tmp_path) -> None:
+    import json
+
+    bp_path = tmp_path / "bp.json"
+    bp_path.write_text(json.dumps({
+        "hard_cap_usd": 1.2262,
+        "generation_mode": "target_utilization",
+        "model_fit_evidence": {
+            "source": "historical_jsonl",
+            "confidence": "medium",
+            "tier_fit": {"2": 0.08, "3": 0.65},
+        },
+    }))
+
+    fit, source = calibrated_model_fit_from_budget_plan(bp_path)
+
+    assert fit == {"tier2": 0.08, "tier3": 0.65}
+    assert source == "budget_plan:historical_jsonl"
 
 
 def test_resolve_budget_plan_explicit_budget_overrides_budget_plan(tmp_path) -> None:

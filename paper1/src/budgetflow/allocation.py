@@ -30,8 +30,6 @@ class AllocationContext:
     """Per-tier effectiveness prior (tier_name -> expected progress rate).
 
     The canonical keyed form is ``{"tier2": rate, "tier3": rate}``.
-    ``{"strongest_vs_reference": delta}`` is accepted as a derived form at
-    policy boundaries, but runtime adapters should prefer per-tier rates.
     """
 
     # Provenance
@@ -48,14 +46,14 @@ class AllocationContext:
 
     @property
     def has_model_fit(self) -> bool:
-        return self.model_fit is not None and len(self.model_fit) > 0
+        if not self.model_fit:
+            return False
+        return any(_is_tier_fit_key(key) for key in self.model_fit)
 
     def strongest_delta(self, *, reference_tier: int, strongest_tier: int) -> float | None:
         """Return ModelFit delta for strongest minus reference tier if available."""
         if not self.model_fit:
             return None
-        if "strongest_vs_reference" in self.model_fit:
-            return float(self.model_fit["strongest_vs_reference"])
         reference_key = f"tier{reference_tier}"
         strongest_key = f"tier{strongest_tier}"
         if reference_key not in self.model_fit or strongest_key not in self.model_fit:
@@ -72,3 +70,8 @@ class AllocationContext:
             "effort_source": self.effort_source,
             "has_model_fit": self.has_model_fit,
         }
+
+
+def _is_tier_fit_key(key: str) -> bool:
+    text = str(key)
+    return text.startswith("tier") and text[4:].isdigit()

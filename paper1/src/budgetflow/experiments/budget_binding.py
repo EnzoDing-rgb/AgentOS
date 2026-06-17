@@ -22,8 +22,6 @@ from budgetflow.experiments.compare_config import load_strategy_set, paper_mainl
 from ..model_fit_estimator import ModelFitEvidence, estimate_model_fit_from_jsonl
 from ..model_tiers import (
     MODEL_CATALOG,
-    TIER2_BACKEND,
-    TIER3_BACKEND,
     catalog_path,
     catalog_revision,
     catalog_source_info,
@@ -324,7 +322,7 @@ def calibrate_budget(
             if evidence.censored_tiers:
                 plan.reasons.append(
                     f"calibration:model_fit_censored tiers={sorted(evidence.censored_tiers)} "
-                    "have budget-exhausted evidence → fit penalised"
+                    "have budget-exhausted upper-bound evidence"
                 )
             if evidence.confidence in ("low", "medium"):
                 plan.reasons.append(
@@ -809,7 +807,11 @@ def _apply_calibration_gate(
         )
 
 
-def _row_is_calibration_eligible(row: dict) -> tuple[bool, str]:
+def _row_is_calibration_eligible(
+    row: dict,
+    *,
+    allow_budget_exhausted: bool = False,
+) -> tuple[bool, str]:
     """Check whether a historical JSONL row is clean enough for cost calibration.
 
     Contaminated rows are forensic-only — they may inform postmortems but
@@ -821,6 +823,11 @@ def _row_is_calibration_eligible(row: dict) -> tuple[bool, str]:
         return False, "missing_score_status"
     if score_status not in {"pass", "true_fail"}:
         return False, f"not_scoreable:{score_status}"
+    harness_trust = str(row.get("harness_trust") or "")
+    if harness_trust != "trusted":
+        if not harness_trust:
+            return False, "harness_trust:missing"
+        return False, f"harness_trust:{harness_trust}"
 
     row_catalog = row.get("catalog") or {}
     catalog_ok, catalog_reason = _row_catalog_compatible(row_catalog)
@@ -847,7 +854,8 @@ def _row_is_calibration_eligible(row: dict) -> tuple[bool, str]:
     exit_status = row.get("exit_status", "")
     exit_reason = str(row.get("exit_reason") or "")
     if exit_status in ("BudgetFlowBudgetError",):
-        return False, f"budget_error:{exit_status}"
+        if not (allow_budget_exhausted and _row_is_budget_exhausted(row)):
+            return False, f"budget_error:{exit_status}"
     failure_class = str(row.get("failure_class") or "")
     abort_reason = str(row.get("abort_reason") or "")
     exit_owner = str(row.get("exit_owner") or "")
@@ -899,16 +907,8 @@ def _load_historical_cost_signals(jsonl_path: Path) -> HistoricalCostSignals:
     records = _latest_records_by_strategy_task(jsonl_path)
     for (strategy, instance_id), rec in records.items():
         total_cost = float(rec.get("total_cost") or rec.get("scoreable_cost") or 0.0)
-        catalog_ok, catalog_reason = _row_catalog_compatible(rec.get("catalog") or {})
-        if not catalog_ok:
-            signals.excluded[catalog_reason] = signals.excluded.get(catalog_reason, 0) + 1
-            continue
-        score_status = str(rec.get("score_status") or "")
-        if not score_status:
-            signals.excluded["missing_score_status"] = signals.excluded.get("missing_score_status", 0) + 1
-            continue
-        if score_status not in {"pass", "true_fail"}:
-            reason = f"not_scoreable:{score_status}"
+        eligible, reason = _row_is_calibration_eligible(rec, allow_budget_exhausted=True)
+        if not eligible:
             signals.excluded[reason] = signals.excluded.get(reason, 0) + 1
             continue
         if _row_is_budget_exhausted(rec):
@@ -917,11 +917,6 @@ def _load_historical_cost_signals(jsonl_path: Path) -> HistoricalCostSignals:
                 signals.censored_spend_floor_by_strategy.get(strategy, 0.0) + total_cost
             )
             signals.censored_row_counts[strategy] = signals.censored_row_counts.get(strategy, 0) + 1
-            continue
-
-        eligible, reason = _row_is_calibration_eligible(rec)
-        if not eligible:
-            signals.excluded[reason] = signals.excluded.get(reason, 0) + 1
             continue
 
         signals.observed_costs.setdefault(strategy, {})[instance_id] = total_cost
@@ -1018,7 +1013,11 @@ def _bootstrap_cost_estimate(
         if features else 30.0
     )
 
-    return _cold_start_cost_estimate(strategy, difficulty, fit_overrides=fit_overrides)
+    return _cold_start_cost_estimate(
+        difficulty,
+        fit_overrides=fit_overrides,
+        fixed_projection_tier=_fixed_projection_tier_for_strategy(strategy),
+    )
 
 
 def _project_strategy_task_costs(
@@ -1077,57 +1076,58 @@ def _prefix_cost_before_final_task(
 
 
 def _cold_start_cost_estimate(
-    strategy: str,
     difficulty: float,
     *,
     fit_overrides: dict[int, float] | None = None,
+    fixed_projection_tier: int | None = None,
 ) -> float:
-    """Catalog-based cold-start estimate when no task-level cost data exists.
+    """Workload reference cold-start estimate when no cost data exists.
 
-    Scales by the ratio of strongest-tier fit to this tier's fit so that
-    weaker-model long-tail cost is represented: a tier with lower fit
-    is projected to need more turns for the same task.
-
-    When *fit_overrides* (tier → fit_rate) is provided from historical
-    ModelFit estimation, those rates replace catalog progress_score for
-    the fit_ratio computation. This lets the compiler learn from clean
-    historical evidence instead of staying flat at 0.25/0.24.
+    This is a Budget Regime Compiler scale estimate, not a BudgetFlow runtime
+    tier decision. It uses a catalog-level reference price near the
+    middle/strong boundary and adjusts for workload-level Model Fit when
+    available. Pure-tier diagnostic controls may pass ``fixed_projection_tier``
+    because their model tier is declared by the control itself, not assigned by
+    the compiler.
     """
-    backend_name = _cold_start_backend(strategy)
     input_tokens = max(1, round(difficulty * COLD_START_INPUT_TOKENS_PER_EFFORT))
     output_tokens = max(1, round(difficulty * COLD_START_OUTPUT_TOKENS_PER_EFFORT))
-    base_cost = estimate_token_cost(
-        backend_name,
+
+    ordered = sorted(MODEL_CATALOG.configs, key=lambda cfg: cfg.tier)
+    if not ordered:
+        raise ValueError("model catalog is empty; cannot compile cold-start budget")
+    strongest = ordered[-1]
+    reference = ordered[1] if len(ordered) >= 3 else ordered[0]
+    projection = reference
+    if fixed_projection_tier is not None:
+        projection = next((cfg for cfg in ordered if cfg.tier == fixed_projection_tier), reference)
+    reference_cost = estimate_token_cost(
+        projection.backend,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
     )
-    config = MODEL_CATALOG.config_for(backend_name)
-    if config is None:
-        return base_cost
 
     def _tier_fit(tier: int, fallback: float) -> float:
         if fit_overrides and tier in fit_overrides:
             return max(0.001, fit_overrides[tier])
         return max(0.001, fallback)
 
-    strongest = max(MODEL_CATALOG.configs, key=lambda c: c.tier, default=config)
     strongest_fit = _tier_fit(strongest.tier, getattr(strongest, "progress_score", 0.001))
-    this_fit = _tier_fit(config.tier, getattr(config, "progress_score", 0.001))
-    fit_ratio = strongest_fit / max(this_fit, 0.001)
+    reference_fit = _tier_fit(projection.tier, getattr(projection, "progress_score", 0.001))
+    fit_ratio = strongest_fit / max(reference_fit, 0.001)
     turns_multiplier = max(1.0, fit_ratio)
-    return base_cost * turns_multiplier
+    return reference_cost * turns_multiplier
 
 
-def _cold_start_backend(strategy: str) -> str:
-    if strategy == "bare_t3_baseline":
-        if MODEL_CATALOG.config_for(TIER3_BACKEND):
-            return TIER3_BACKEND
-    if MODEL_CATALOG.config_for(TIER2_BACKEND):
-        return TIER2_BACKEND
-    configs = tuple(MODEL_CATALOG.configs)
-    if not configs:
-        raise ValueError("model catalog is empty; cannot compile cold-start budget")
-    return sorted(configs, key=lambda cfg: cfg.tier)[0].backend
+def _fixed_projection_tier_for_strategy(strategy: str) -> int | None:
+    """Return a strategy-declared fixed tier for pure-tier controls only."""
+    if strategy in {"all_flash", "bare_t1_baseline", "all_t1_baseline"}:
+        return 1
+    if strategy in {"bare_t2_baseline", "budget_only_t2", "budget_only_t2_baseline", "all_tier2"}:
+        return 2
+    if strategy in {"bare_t3_baseline", "all_t3", "all_pro", "all_strongest_model"}:
+        return max((cfg.tier for cfg in MODEL_CATALOG.configs), default=3)
+    return None
 
 
 def _parse_task_ids(raw: str) -> list[str]:

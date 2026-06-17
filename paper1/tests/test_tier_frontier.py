@@ -59,7 +59,7 @@ class TestTierFrontierCalibration:
         # T3 is fixed at approximately 5x the T2 reference.
         assert frontier.reference_display == "qwen3.7-plus"
         assert frontier.strongest_output_ratio == pytest.approx(5.0)
-        assert "strongest_vs_reference" in frontier.reason or "cost_ratio" in frontier.reason
+        assert "cost_ratio" in frontier.reason
         assert "cheapest" not in frontier.reason
 
     def test_t3x2_catalog_reference_t2_high_frontier_score(self):

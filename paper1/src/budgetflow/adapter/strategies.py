@@ -80,29 +80,11 @@ def build_routing_context(
     median_task_value: float = 1.0,
     frozen_plan: FrozenRouterPlan | None = None,
     allocation: AllocationContext | None = None,
-    model_fit_override: dict[int, float] | None = None,
 ) -> RoutingContext:
     ordered = sorted(backends, key=lambda backend: backend.tier)
     pressure = BUDGET_PRESSURE_INIT if budget_pressure is None else budget_pressure
     selector = BudgetFlowSelector(build_progress_table_from_defaults(backends))
     frontier = TierFrontier.from_catalog()
-
-    # Merge externally-derived ModelFit into AllocationContext so task-level
-    # selection consumes it without every caller having to synthesise the
-    # keyed dict form.
-    if model_fit_override and allocation is not None:
-        merged_fit = dict(allocation.model_fit) if allocation.model_fit else {}
-        for tier, fit in model_fit_override.items():
-            merged_fit.setdefault(f"tier{tier}", fit)
-        allocation = AllocationContext(
-            task_value=allocation.task_value,
-            task_effort=allocation.task_effort,
-            model_fit=merged_fit,
-            value_source=allocation.value_source,
-            effort_source=allocation.effort_source,
-            model_fit_source="historical_jsonl" if model_fit_override else allocation.model_fit_source,
-            confidence=dict(allocation.confidence),
-        )
 
     ctx = RoutingContext(
         strategy=strategy,
@@ -242,8 +224,10 @@ def _task_level_max_tier(ctx: RoutingContext) -> int:
 def _tier_model_fit_rate(ctx: RoutingContext, tier: int, backend_name: str) -> float:
     """Return per-tier ModelFit rate for task-level expected-cost calculation.
 
-    Prefers task-specific model_fit from AllocationContext (per-task priors).
-    Falls back to the catalog progress_score for the backend.
+    Prefers calibrated per-tier Model Fit carried by AllocationContext.
+    Falls back to the catalog progress_score for the backend. The runtime may
+    carry the same workload-level fit map on every task; task identity is not
+    part of this lookup.
     """
     allocation = ctx.allocation
     if allocation is not None and allocation.has_model_fit:

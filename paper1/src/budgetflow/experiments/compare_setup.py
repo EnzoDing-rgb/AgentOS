@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from argparse import Namespace
 from dataclasses import dataclass
+import json
+from pathlib import Path
 from typing import Literal
 
 from budgetflow.defaults import BUDGET_PRESSURE_INIT, PRESSURE_MAX
@@ -13,7 +15,6 @@ from budgetflow.experiments.compare_config import (
     effective_policy_jobs,
     load_strategy_set,
     normalize_strategy,
-    order_tasks_easy_first,
     paper_mainline_strategy_names,
     paper_mainline_strategies,
     strategy_catalog,
@@ -96,6 +97,46 @@ def resolve_budget_plan(args: Namespace) -> CompareBudgetPlan:
     )
 
 
+def calibrated_model_fit_from_budget_plan(
+    budget_plan_path: str | Path | None,
+) -> tuple[dict[str, float] | None, str]:
+    """Return global calibrated Model Fit from a budget plan, if present.
+
+    The Budget Regime Compiler may publish workload-level tier fit evidence for
+    runtime allocation.  This is not a per-task model assignment: keys are only
+    canonical tier names such as ``tier2`` and values are scalar fit rates.
+    """
+    if budget_plan_path is None:
+        return None, "catalog_progress_prior"
+    path = Path(budget_plan_path)
+    if not path.exists():
+        return None, "catalog_progress_prior"
+    data = json.loads(path.read_text())
+    evidence = data.get("model_fit_evidence") or {}
+    if not isinstance(evidence, dict):
+        return None, "catalog_progress_prior"
+    tier_fit = evidence.get("tier_fit") or {}
+    if not isinstance(tier_fit, dict):
+        return None, "catalog_progress_prior"
+
+    parsed: dict[str, float] = {}
+    for raw_tier, raw_fit in tier_fit.items():
+        tier_text = str(raw_tier)
+        tier_key = tier_text if tier_text.startswith("tier") else f"tier{tier_text}"
+        if not tier_key[4:].isdigit():
+            continue
+        try:
+            fit = float(raw_fit)
+        except (TypeError, ValueError):
+            continue
+        if fit > 0:
+            parsed[tier_key] = fit
+    if not parsed:
+        return None, "catalog_progress_prior"
+    source = str(evidence.get("source") or "budget_plan")
+    return parsed, f"budget_plan:{source}"
+
+
 def trace_console_from_args(args: Namespace) -> TraceConsole:
     if args.trace_verbose:
         return "verbose"
@@ -163,7 +204,7 @@ def load_tasks_for_compare(args: Namespace, *, tasks_n: int) -> list:
         tasks = load_swebench_lite_tasks(instance_ids=DIAGNOSTIC_3X3_IDS)
     else:
         tasks = load_compare_easy_tasks(tasks_n)
-    return order_tasks_easy_first(tasks, task_set=args.task_set)
+    return list(tasks)
 
 
 def build_batch_budget_modes(

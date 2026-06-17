@@ -175,22 +175,6 @@ def batch_budget_cap(cfg: CompareStrategy, constrained_budget: float) -> float:
     return constrained_budget
 
 
-def task_difficulty_key(task) -> tuple[int, int, int, str]:
-    """Lower = easier (heuristic)."""
-    return (
-        len(task.patch.splitlines()),
-        len(task.fail_to_pass),
-        len(task.pass_to_pass),
-        str(task.instance_id),
-    )
-
-
-def order_tasks_easy_first(tasks: list, *, task_set: str) -> list:
-    if task_set != "medium":
-        return list(tasks)
-    return sorted(tasks, key=task_difficulty_key)
-
-
 def task_descriptor(task) -> str:
     return (
         f"{task.instance_id}"

@@ -65,6 +65,7 @@ from budgetflow.experiments.compare_readiness import (  # noqa: E402
 )
 from budgetflow.experiments.compare_setup import (  # noqa: E402
     build_batch_budget_modes,
+    calibrated_model_fit_from_budget_plan,
     load_tasks_for_compare,
     resolve_budget_plan,
     resolve_task_count,
@@ -214,6 +215,9 @@ def main() -> None:
     if budget_plan_path is not None and budget_plan_path.exists():
         import json as _json
         _budget_plan_data = _json.loads(budget_plan_path.read_text())
+    calibrated_model_fit, calibrated_model_fit_source = calibrated_model_fit_from_budget_plan(
+        budget_plan_path
+    )
 
     if args.model_catalog:
         _init_catalog(Path(args.model_catalog))
@@ -402,6 +406,11 @@ def main() -> None:
     )
     if args.w_profile:
         print(f"{dim('w_i_profile=' + args.w_profile)}", flush=True)
+    if calibrated_model_fit:
+        print(
+            f"{dim('model_fit=' + calibrated_model_fit_source + ' ' + str(calibrated_model_fit))}",
+            flush=True,
+        )
     print(f"{dim('trace_console=' + trace_console + '; heartbeat every ' + str(args.heartbeat) + 's')}", flush=True)
     print(f"{dim('run_id=' + out_stem)}", flush=True)
     print(f"{dim('out=' + str(out_path))}", flush=True)
@@ -582,6 +591,8 @@ def main() -> None:
             task_set_kind=task_set_kind,
             frozen_plan=frozen_plan,
             budget_mode=_eff_budget_mode,
+            calibrated_model_fit=calibrated_model_fit,
+            calibrated_model_fit_source=calibrated_model_fit_source,
         )
         return cfg, records, batch_spent, batch_cap
 

@@ -426,88 +426,29 @@ class TestChooseTaskLevelBackend:
 
 
 class TestBudgetCompilerFitScaling:
-    def test_cold_start_t2_scaled_by_fit_ratio(self):
-        """T2 cold-start cost is scaled up by strongest_fit / t2_fit."""
+    def test_cold_start_reference_scale_is_strategy_independent(self):
+        """Compiler cold-start scale does not preselect a runtime policy tier."""
         from budgetflow.experiments.budget_binding import _cold_start_cost_estimate
 
-        t2_cost = _cold_start_cost_estimate("budgetflow_task_level", 50.0)
-        t3_cost = _cold_start_cost_estimate("bare_t3_baseline", 50.0)
+        first = _cold_start_cost_estimate(50.0)
+        second = _cold_start_cost_estimate(50.0)
 
-        # T2 per-token is ~5x cheaper, but fit_ratio ≈ 0.25/0.24 ≈ 1.04
-        # So T2 cold-start = base_t2 * 1.04
-        # T3 cold-start = base_t3 * 1.0 (since fit_ratio for strongest = 1.0)
-        # T3 should still be more expensive per-turn, but the gap narrows
-        assert t2_cost > 0
-        assert t3_cost > 0
+        assert first > 0
+        assert second == first
 
-    def test_cold_start_with_large_fit_gap_increases_t2_projection(self):
-        """When T2 fit is much lower than T3, T2 cold-start projection rises."""
-        from budgetflow.model_tiers import MODEL_CATALOG
+    def test_cold_start_with_large_fit_gap_increases_reference_projection(self):
+        """When reference fit is much lower than strongest, cold-start projection rises."""
         from budgetflow.experiments.budget_binding import _cold_start_cost_estimate
-        import budgetflow.model_tiers as mt
 
-        # Temporarily adjust catalog so T2 has much lower progress_score
-        original_configs = list(MODEL_CATALOG.configs)
-        try:
-            modified = []
-            for cfg in original_configs:
-                if cfg.tier == 2:
-                    modified.append(type(cfg)(
-                        tier=cfg.tier,
-                        backend=cfg.backend,
-                        model=cfg.model,
-                        provider=cfg.provider,
-                        api_base=cfg.api_base,
-                        api_key_env=cfg.api_key_env,
-                        display=cfg.display,
-                        cost_per_input_token=cfg.cost_per_input_token,
-                        cost_per_output_token=cfg.cost_per_output_token,
-                        mean_output_tokens=cfg.mean_output_tokens,
-                        progress_score=0.10,
-                        latency_ms=cfg.latency_ms,
-                        progress_prior=cfg.progress_prior,
-                        escalation_patience=cfg.escalation_patience,
-                        max_turns=cfg.max_turns,
-                        token_cost_bands=cfg.token_cost_bands,
-                        rpm_limit=cfg.rpm_limit,
-                        concurrency_limit=cfg.concurrency_limit,
-                        protocol=cfg.protocol,
-                        api_base_env=cfg.api_base_env,
-                        proxy_env=cfg.proxy_env,
-                        cost_source=cfg.cost_source,
-                        cost_updated=cfg.cost_updated,
-                        cost_notes=cfg.cost_notes,
-                        progress_source=cfg.progress_source,
-                        progress_updated=cfg.progress_updated,
-                        progress_notes=cfg.progress_notes,
-                    ))
-                else:
-                    modified.append(cfg)
-            from budgetflow.model_tiers import ModelCatalog
-            new_catalog = ModelCatalog(tuple(modified))
-            mt.MODEL_CATALOG._replace(new_catalog)
-            mt.TIER_CONFIGS.clear()
-            mt.TIER_CONFIGS.update({cfg.backend: cfg for cfg in new_catalog.configs})
+        catalog_cost = _cold_start_cost_estimate(50.0)
+        fit_scaled_cost = _cold_start_cost_estimate(50.0, fit_overrides={2: 0.05, 3: 0.65})
 
-            t2_cost = _cold_start_cost_estimate("budgetflow_task_level", 50.0)
-            t3_cost = _cold_start_cost_estimate("bare_t3_baseline", 50.0)
-
-            # T2 fit=0.10, T3 fit=0.25 → fit_ratio = 2.5
-            # T2 cold start should be scaled up significantly
-            # T2: base ≈ $0.05175... * 2.5 ≈ $0.129; T3: $0.25875 * 1.0 ≈ $0.259
-            # T3 still more expensive in absolute terms but gap is MUCH narrower
-            assert t2_cost > 0
-            assert t3_cost > 0
-            # The ratio T3/T2 should be much lower than the raw per-token ratio of 5x
-            cost_ratio = t3_cost / max(t2_cost, 0.0001)
-            # Without scaling, ratio would be ~5x. With scaling, should be < 4x.
-            assert cost_ratio < 4.0, (
-                f"fit scaling should narrow T3/T2 cost ratio; got {cost_ratio:.2f}x"
-            )
-        finally:
-            mt.MODEL_CATALOG._replace(ModelCatalog(tuple(original_configs)))
-            mt.TIER_CONFIGS.clear()
-            mt.TIER_CONFIGS.update({cfg.backend: cfg for cfg in original_configs})
+        assert catalog_cost > 0
+        assert fit_scaled_cost > catalog_cost
+        assert fit_scaled_cost / catalog_cost > 2.0, (
+            f"fit scaling should increase reference projection; "
+            f"catalog=${catalog_cost:.4f}, fit_scaled=${fit_scaled_cost:.4f}"
+        )
 
 
 # ── censored rows increase projected T2 cost ───────────────────────────────
@@ -547,6 +488,7 @@ class TestCensoredCostProjection:
                         "score_status": "true_fail",
                         "exit_status": "BudgetFlowBudgetError",
                         "exit_reason": "budget_exhausted",
+                        "harness_trust": "trusted",
                         "row_finished_at": 1,
                     })
                     + "\n"
@@ -598,6 +540,7 @@ class TestCensoredCostProjection:
                         "score_status": "true_fail",
                         "exit_status": "BudgetFlowBudgetError",
                         "exit_reason": "budget_exhausted",
+                        "harness_trust": "trusted",
                         "row_finished_at": 1,
                     })
                     + "\n"

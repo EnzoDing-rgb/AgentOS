@@ -246,7 +246,7 @@ def test_tier_frontier_score_uses_per_tier_model_fit_delta() -> None:
         allocation=AllocationContext(
             task_value=1.0,
             model_fit={"tier2": 0.30, "tier3": 0.80},
-            model_fit_source="policy_memory",
+            model_fit_source="budget_plan:historical_jsonl",
         ),
     )
 

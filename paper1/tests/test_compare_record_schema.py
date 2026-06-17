@@ -141,6 +141,169 @@ def test_compare_runner_records_turns_value_and_task_features(monkeypatch) -> No
     assert record["task_set_kind"] == "familiar"
 
 
+def test_runner_threads_budget_plan_model_fit_into_allocation_context(monkeypatch) -> None:
+    import budgetflow.adapter.runner as runner
+
+    seen = {}
+
+    def fake_run_mini_swe_task(*args, **kwargs):
+        seen["allocation"] = kwargs["allocation"]
+        return SimpleNamespace(
+            instance_id="sympy__sympy-13480",
+            total_cost=0.01,
+            harness_resolved=False,
+            patch_text="",
+            patch_source="none",
+            submitted_patch_path="",
+            exit_status="Stopped",
+            exit_reason="budget_exhausted",
+            agent_exit_status="Stopped",
+            agent_exit_reason="budget_exhausted",
+            backend_picks=["tier3"],
+            llm_turns=1,
+            violations=[],
+            harness_detail="",
+            agent_gold_edited=False,
+            agent_gold_files=[],
+            agent_attempted_submit=False,
+            agent_submitted=False,
+            prompt_tokens_total=10,
+            completion_tokens_total=2,
+            provider_usage_turns=1,
+            estimated_usage_turns=0,
+            usage_source="provider",
+            cost_mode="catalog_provider_usage",
+            turn_trace_count=1,
+            turn_traces=[],
+            protocol_retry_used=False,
+            protocol_retry_success=False,
+            protocol_retry_reason="",
+            protocol_retry_attempts=0,
+            protocol_retry_limit=4,
+            protocol="tool_call",
+            parser="parse_toolcall_actions",
+            provider_error_kind="",
+            provider_retryable=None,
+        )
+
+    monkeypatch.setattr(runner, "run_mini_swe_task", fake_run_mini_swe_task)
+    governor = BudgetGovernor(GovernorConfig(total_budget=1.0, default_max_output_tokens=4096), WorkflowLedgerStore())
+    task = SimpleNamespace(
+        instance_id="sympy__sympy-13480",
+        patch="diff --git a/x b/x\n",
+        fail_to_pass=("tests/test_x.py::test_y",),
+        pass_to_pass=(),
+    )
+
+    record = run_task_record(
+        task,
+        cfg=CompareStrategy("budgetflow_task_level", "value_aware_task_level"),
+        batch_budget_cap=1.0,
+        governor=governor,
+        ledger=WorkflowLedgerStore(),
+        task_index=1,
+        step_limit=1,
+        value_context=_value_context(),
+        calibrated_model_fit={"tier2": 0.08, "tier3": 0.65},
+        calibrated_model_fit_source="budget_plan:historical_jsonl",
+    )
+
+    assert seen["allocation"].model_fit == {"tier2": 0.08, "tier3": 0.65}
+    assert seen["allocation"].model_fit_source == "budget_plan:historical_jsonl"
+    assert record["model_fit_source"] == "budget_plan:historical_jsonl"
+
+
+def test_runner_does_not_use_repo_policy_memory_as_model_fit(monkeypatch) -> None:
+    import budgetflow.adapter.runner as runner
+
+    seen = {}
+
+    def fake_run_mini_swe_task(*args, **kwargs):
+        seen["allocation"] = kwargs["allocation"]
+        return SimpleNamespace(
+            instance_id="sympy__sympy-13480",
+            total_cost=0.01,
+            harness_resolved=False,
+            patch_text="",
+            patch_source="none",
+            submitted_patch_path="",
+            exit_status="Stopped",
+            exit_reason="budget_exhausted",
+            agent_exit_status="Stopped",
+            agent_exit_reason="budget_exhausted",
+            backend_picks=["tier2"],
+            llm_turns=1,
+            violations=[],
+            harness_detail="",
+            agent_gold_edited=False,
+            agent_gold_files=[],
+            agent_attempted_submit=False,
+            agent_submitted=False,
+            prompt_tokens_total=10,
+            completion_tokens_total=2,
+            provider_usage_turns=1,
+            estimated_usage_turns=0,
+            usage_source="provider",
+            cost_mode="catalog_provider_usage",
+            turn_trace_count=1,
+            turn_traces=[],
+            protocol_retry_used=False,
+            protocol_retry_success=False,
+            protocol_retry_reason="",
+            protocol_retry_attempts=0,
+            protocol_retry_limit=4,
+            protocol="tool_call",
+            parser="parse_toolcall_actions",
+            provider_error_kind="",
+            provider_retryable=None,
+        )
+
+    class _RepoPrior:
+        tier_success_rate = {2: 0.05, 3: 0.90}
+
+    class _PolicyMemory:
+        memory_filtering_summary = {}
+
+        def repo_prior(self, instance_id):
+            return _RepoPrior()
+
+        def routing_prior_summary(self, instance_id, segment=None):
+            return {"policy_memory_source": "memory.jsonl"}
+
+    class _Registry:
+        policy_memory = _PolicyMemory()
+        memory_mode = "built_in"
+        learn_policy_inputs = SimpleNamespace(active_views=[])
+
+        def for_strategy(self, name, routing):
+            return None
+
+    monkeypatch.setattr(runner, "run_mini_swe_task", fake_run_mini_swe_task)
+    governor = BudgetGovernor(GovernorConfig(total_budget=1.0, default_max_output_tokens=4096), WorkflowLedgerStore())
+    task = SimpleNamespace(
+        instance_id="sympy__sympy-13480",
+        patch="diff --git a/x b/x\n",
+        fail_to_pass=("tests/test_x.py::test_y",),
+        pass_to_pass=(),
+    )
+
+    record = run_task_record(
+        task,
+        cfg=CompareStrategy("budgetflow_task_level", "value_aware_task_level"),
+        batch_budget_cap=1.0,
+        governor=governor,
+        ledger=WorkflowLedgerStore(),
+        task_index=1,
+        step_limit=1,
+        value_context=_value_context(),
+        adaptive_registry=_Registry(),
+    )
+
+    assert seen["allocation"].model_fit is None
+    assert seen["allocation"].model_fit_source == "catalog_progress_prior"
+    assert record["model_fit_source"] == "catalog_progress_prior"
+
+
 def test_runner_marks_pre_provider_budget_block_cost_source() -> None:
     import budgetflow.adapter.runner as runner
 

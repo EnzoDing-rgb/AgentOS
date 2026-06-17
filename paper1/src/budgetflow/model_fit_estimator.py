@@ -1,8 +1,9 @@
 """ModelFit estimation from clean historical JSONL evidence.
 
 Derives per-tier fit/productivity rates from verified outcome and cost/turn
-evidence. Budget-exhausted rows are censored lower-bound signals that penalise
-the exhausted tier, not treated as complete cost samples.
+evidence. Budget-exhausted rows are censored runway signals: the observed spend
+is not enough, so the derived fit is an upper bound rather than a complete cost
+sample.
 
 No ML, no task-id-specific rules, no benchmark-specific logic.
 """
@@ -42,7 +43,7 @@ def estimate_model_fit_from_jsonl(
     Uses only harness-trusted rows with the current catalog. Completed
     (non-budget-exhausted) rows from single-tier strategies provide direct
     per-tier cost evidence. Budget-exhausted rows are censored upper bounds
-    that drag down the exhausted tier's aggregate fit estimate.
+    that inform the exhausted tier without becoming complete samples.
 
     Returns a ModelFitEvidence with per-tier fit rates. Tiers with no
     historical evidence fall back to catalog progress_score.
@@ -136,20 +137,26 @@ def _build_evidence(
         cens = censored_bounds.get(tier, [])
 
         if obs:
-            # Use median of observed fits. Budget-exhausted upper bounds
-            # from other tasks on the same tier drag the estimate down:
-            # the aggregated fit is min(median(observed), min(censored_bounds))
-            # because censored evidence says "fit cannot be higher than this."
+            # Use completed observations as the fit estimate. Censored rows are
+            # incomplete upper-bound evidence: they lower confidence and are
+            # auditable, but a single exhausted task must not overwrite a stable
+            # completed cluster from other tasks.
             median_fit = _median(obs)
             if cens:
                 min_bound = min(cens)
-                if min_bound < median_fit:
+                censored_tiers.add(tier)
+                if len(obs) < 3 and min_bound < median_fit:
                     reasons.append(
-                        f"tier{tier}: censored evidence lowers fit from "
-                        f"{median_fit:.4f} to ≤{min_bound:.4f}"
+                        f"tier{tier}: limited completed evidence; censored upper bound "
+                        f"lowers fit from {median_fit:.4f} to ≤{min_bound:.4f}"
                     )
                     median_fit = min_bound
-                    censored_tiers.add(tier)
+                else:
+                    reasons.append(
+                        f"tier{tier}: {len(cens)} incomplete censored rows recorded "
+                        f"(min upper bound={min_bound:.4f}) without overriding "
+                        f"{len(obs)} completed rows"
+                    )
             tier_fit[tier] = round(median_fit, 6)
             reasons.append(
                 f"tier{tier}: fit={tier_fit[tier]:.4f} from {len(obs)} completed "
@@ -157,15 +164,14 @@ def _build_evidence(
             )
         elif cens:
             # Only censored evidence: the true fit is below all observed bounds.
-            # Use the minimum bound as the estimate (conservative).
+            # Use the minimum bound as the estimate and mark it censored; do not
+            # add an extra magic multiplier without calibration evidence.
             min_bound = min(cens)
-            # Further penalise: multiply by 0.5 since we only have lower-bound evidence
-            conservative_fit = min_bound * 0.5
-            tier_fit[tier] = round(max(0.001, conservative_fit), 6)
+            tier_fit[tier] = round(max(0.001, min_bound), 6)
             censored_tiers.add(tier)
             reasons.append(
                 f"tier{tier}: fit={tier_fit[tier]:.4f} from {len(cens)} censored-only rows "
-                f"(min upper bound={min_bound:.4f}, conservative penalty applied)"
+                f"(min upper bound={min_bound:.4f}; incomplete evidence)"
             )
         else:
             # No evidence — fall back to catalog
@@ -248,7 +254,10 @@ def _is_clean_run(rec: dict) -> bool:
     provider_error_kind = str(rec.get("provider_error_kind") or "")
     exit_reason = str(rec.get("exit_reason") or "")
     exit_status = str(rec.get("exit_status") or "")
+    harness_trust = str(rec.get("harness_trust") or "")
 
+    if harness_trust != "trusted":
+        return False
     if failure_class == "infra_fail" or "infra" in abort_reason:
         return False
     if "provider" in abort_reason or exit_owner == "provider_error" or provider_error_kind:
