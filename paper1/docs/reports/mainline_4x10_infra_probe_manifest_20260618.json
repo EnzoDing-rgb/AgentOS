@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "name": "mainline_4x10_infra_probe_20260618",
+  "purpose": "One paid diagnostic run to verify non-SymPy harness and infra fixes before any larger 4x25 rerun.",
+  "selected_task_ids": [
+    "django__django-13447",
+    "django__django-11179",
+    "django__django-12908",
+    "sphinx-doc__sphinx-8273",
+    "sphinx-doc__sphinx-7975",
+    "pallets__flask-4045",
+    "pallets__flask-4992",
+    "pylint-dev__pylint-6506",
+    "psf__requests-1963",
+    "psf__requests-3362"
+  ],
+  "repo_mix": {
+    "django/django": 3,
+    "sphinx-doc/sphinx": 2,
+    "pallets/flask": 2,
+    "pylint-dev/pylint": 1,
+    "psf/requests": 2
+  },
+  "excluded_for_this_probe": {
+    "sympy/sympy": "already over-used by recent 4x10/4x25 diagnostics; this probe targets new infra coverage",
+    "mwaskom/seaborn": "host environment lacks matplotlib, so current readiness should block or classify rows as infra invalid"
+  },
+  "artifacts": {
+    "value_matrix": "paper1/docs/reports/mainline_4x10_infra_probe_manual_value_matrix_20260618.json",
+    "frozen_router_plan": "paper1/docs/reports/mainline_4x10_infra_probe_frozen_router_plan_20260618.json",
+    "budget_plan": "paper1/docs/reports/mainline_4x10_infra_probe_budget_plan_20260618.json"
+  },
+  "readiness_result": "PASS",
+  "readiness_warning": "budget plan projection_confidence=unvalidated; this run is a diagnostic, not paper evidence",
+  "environment_notes": [
+    "Removed stale global editable Django install that pointed at /tmp/budgetflow-runtime/worktrees.",
+    "Installed requests so sphinx-doc/sphinx harness dependency preflight passes.",
+    "matplotlib remains absent; seaborn tasks should not be selected until dependency handling is explicit."
+  ]
+}

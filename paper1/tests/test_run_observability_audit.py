@@ -704,6 +704,25 @@ def test_harness_trust_blocks_host_dependency_contamination() -> None:
     assert trust["harness_owner"] == "infra"
 
 
+def test_harness_trust_blocks_foreign_runtime_worktree_log() -> None:
+    trust = build_harness_trust({
+        "harness_resolved": False,
+        "patch_extracted": True,
+        "patch_source": "submission",
+        "submitted_patch": "/tmp/submitted.patch",
+        "detail": (
+            "test_patch=ok; fail_before=fail; model_patch=ok; fail_after=fail; "
+            "/tmp/budgetflow-task-scout/runtime/worktrees/psf__requests/"
+            "scout_requests/requests/utils.py:12: DeprecationWarning; "
+            "pass_to_pass=fail"
+        ),
+    })
+
+    assert trust["harness_trust"] == "invalid"
+    assert trust["severity"] == "blocking"
+    assert trust["harness_owner"] == "infra"
+
+
 def test_checker_counts_invalid_harness_as_error(tmp_path) -> None:
     path = tmp_path / "run.jsonl"
     path.write_text(

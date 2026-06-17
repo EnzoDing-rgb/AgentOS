@@ -1,0 +1,457 @@
+{
+  "meta": {
+    "task_count": 10,
+    "task_value_profiles": [
+      "equal",
+      "manual_value"
+    ],
+    "task_effort_source": "task_metadata_formula",
+    "source": "bootstrap_ids:django__django-13447,django__django-11179,django__django-12908,sphinx-doc__sphinx-8273,sphinx-doc__sphinx-7975,pallets__flask-4045,pallets__flask-4992,pylint-dev__pylint-6506,psf__requests-1963,psf__requests-3362",
+    "source_class": "pre_registered_formula_plus_metadata",
+    "outcome_free": true,
+    "note": "Task Value profiles use only pre-registered task metadata. Task Effort uses a bootstrap heuristic from pre-registered SWE-bench task metadata: patch lines, fail/pass test counts, problem words, and gold file count. No strategy outcome, cost, solve rarity, or BudgetFlow signal is used.",
+    "effort_formula": "bootstrap_heuristic = 1 + patch_lines + 2*f2p_count + log1p(p2p_count) + 0.01*problem_words + 1.5*gold_file_count",
+    "value_source_kind": "pre_registered_manual",
+    "manual_value_formula": "verification_breadth_v1: round(clamp(0.60,1.00,0.60 + 0.20*min(f2p_count/75,1) + 0.20*min(log1p(p2p_count)/log1p(2000),1)),2)"
+  },
+  "tasks": {
+    "django__django-13447": {
+      "instance_id": "django__django-13447",
+      "repo": "django/django",
+      "task_value": {
+        "equal": 1.0,
+        "manual_value": 0.65
+      },
+      "task_effort": {
+        "bootstrap_heuristic": 17.9518,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 11,
+          "f2p_count": 1,
+          "p2p_count": 5,
+          "problem_words": 66,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
+      "features": {
+        "patch_lines": 11,
+        "f2p_count": 1,
+        "p2p_count": 5,
+        "problem_words": 66,
+        "gold_file_count": 1
+      },
+      "value_formula": "verification_breadth_v1"
+    },
+    "django__django-11179": {
+      "instance_id": "django__django-11179",
+      "repo": "django/django",
+      "task_value": {
+        "equal": 1.0,
+        "manual_value": 0.7
+      },
+      "task_effort": {
+        "bootstrap_heuristic": 19.6336,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 11,
+          "f2p_count": 1,
+          "p2p_count": 40,
+          "problem_words": 42,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
+      "features": {
+        "patch_lines": 11,
+        "f2p_count": 1,
+        "p2p_count": 40,
+        "problem_words": 42,
+        "gold_file_count": 1
+      },
+      "value_formula": "verification_breadth_v1"
+    },
+    "django__django-12908": {
+      "instance_id": "django__django-12908",
+      "repo": "django/django",
+      "task_value": {
+        "equal": 1.0,
+        "manual_value": 0.69
+      },
+      "task_effort": {
+        "bootstrap_heuristic": 21.7381,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 11,
+          "f2p_count": 2,
+          "p2p_count": 25,
+          "problem_words": 98,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
+      "features": {
+        "patch_lines": 11,
+        "f2p_count": 2,
+        "p2p_count": 25,
+        "problem_words": 98,
+        "gold_file_count": 1
+      },
+      "value_formula": "verification_breadth_v1"
+    },
+    "sphinx-doc__sphinx-8273": {
+      "instance_id": "sphinx-doc__sphinx-8273",
+      "repo": "sphinx-doc/sphinx",
+      "task_value": {
+        "equal": 1.0,
+        "manual_value": 0.64
+      },
+      "task_effort": {
+        "bootstrap_heuristic": 41.4263,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 34,
+          "f2p_count": 1,
+          "p2p_count": 3,
+          "problem_words": 154,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
+      "features": {
+        "patch_lines": 34,
+        "f2p_count": 1,
+        "p2p_count": 3,
+        "problem_words": 154,
+        "gold_file_count": 1
+      },
+      "value_formula": "verification_breadth_v1"
+    },
+    "sphinx-doc__sphinx-7975": {
+      "instance_id": "sphinx-doc__sphinx-7975",
+      "repo": "sphinx-doc/sphinx",
+      "task_value": {
+        "equal": 1.0,
+        "manual_value": 0.66
+      },
+      "task_effort": {
+        "bootstrap_heuristic": 41.4294,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 34,
+          "f2p_count": 1,
+          "p2p_count": 7,
+          "problem_words": 85,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
+      "features": {
+        "patch_lines": 34,
+        "f2p_count": 1,
+        "p2p_count": 7,
+        "problem_words": 85,
+        "gold_file_count": 1
+      },
+      "value_formula": "verification_breadth_v1"
+    },
+    "pallets__flask-4045": {
+      "instance_id": "pallets__flask-4045",
+      "repo": "pallets/flask",
+      "task_value": {
+        "equal": 1.0,
+        "manual_value": 0.71
+      },
+      "task_effort": {
+        "bootstrap_heuristic": 43.8418,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 33,
+          "f2p_count": 2,
+          "p2p_count": 50,
+          "problem_words": 41,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
+      "features": {
+        "patch_lines": 33,
+        "f2p_count": 2,
+        "p2p_count": 50,
+        "problem_words": 41,
+        "gold_file_count": 1
+      },
+      "value_formula": "verification_breadth_v1"
+    },
+    "pallets__flask-4992": {
+      "instance_id": "pallets__flask-4992",
+      "repo": "pallets/flask",
+      "task_value": {
+        "equal": 1.0,
+        "manual_value": 0.68
+      },
+      "task_effort": {
+        "bootstrap_heuristic": 50.8644,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 42,
+          "f2p_count": 1,
+          "p2p_count": 18,
+          "problem_words": 142,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
+      "features": {
+        "patch_lines": 42,
+        "f2p_count": 1,
+        "p2p_count": 18,
+        "problem_words": 142,
+        "gold_file_count": 1
+      },
+      "value_formula": "verification_breadth_v1"
+    },
+    "pylint-dev__pylint-6506": {
+      "instance_id": "pylint-dev__pylint-6506",
+      "repo": "pylint-dev/pylint",
+      "task_value": {
+        "equal": 1.0,
+        "manual_value": 0.66
+      },
+      "task_effort": {
+        "bootstrap_heuristic": 23.2459,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 13,
+          "f2p_count": 2,
+          "p2p_count": 6,
+          "problem_words": 180,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
+      "features": {
+        "patch_lines": 13,
+        "f2p_count": 2,
+        "p2p_count": 6,
+        "problem_words": 180,
+        "gold_file_count": 1
+      },
+      "value_formula": "verification_breadth_v1"
+    },
+    "psf__requests-1963": {
+      "instance_id": "psf__requests-1963",
+      "repo": "psf/requests",
+      "task_value": {
+        "equal": 1.0,
+        "manual_value": 0.74
+      },
+      "task_effort": {
+        "bootstrap_heuristic": 38.0574,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 16,
+          "f2p_count": 7,
+          "p2p_count": 112,
+          "problem_words": 83,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
+      "features": {
+        "patch_lines": 16,
+        "f2p_count": 7,
+        "p2p_count": 112,
+        "problem_words": 83,
+        "gold_file_count": 1
+      },
+      "value_formula": "verification_breadth_v1"
+    },
+    "psf__requests-3362": {
+      "instance_id": "psf__requests-3362",
+      "repo": "psf/requests",
+      "task_value": {
+        "equal": 1.0,
+        "manual_value": 0.72
+      },
+      "task_effort": {
+        "bootstrap_heuristic": 38.4707,
+        "source": "task_metadata_formula",
+        "features": {
+          "patch_lines": 29,
+          "f2p_count": 1,
+          "p2p_count": 75,
+          "problem_words": 64,
+          "gold_file_count": 1
+        }
+      },
+      "model_fit": null,
+      "features": {
+        "patch_lines": 29,
+        "f2p_count": 1,
+        "p2p_count": 75,
+        "problem_words": 64,
+        "gold_file_count": 1
+      },
+      "value_formula": "verification_breadth_v1"
+    }
+  },
+  "rankings": {
+    "equal": [
+      {
+        "rank": 1,
+        "instance_id": "django__django-11179",
+        "value": 1.0
+      },
+      {
+        "rank": 2,
+        "instance_id": "django__django-12908",
+        "value": 1.0
+      },
+      {
+        "rank": 3,
+        "instance_id": "django__django-13447",
+        "value": 1.0
+      },
+      {
+        "rank": 4,
+        "instance_id": "pallets__flask-4045",
+        "value": 1.0
+      },
+      {
+        "rank": 5,
+        "instance_id": "pallets__flask-4992",
+        "value": 1.0
+      },
+      {
+        "rank": 6,
+        "instance_id": "psf__requests-1963",
+        "value": 1.0
+      },
+      {
+        "rank": 7,
+        "instance_id": "psf__requests-3362",
+        "value": 1.0
+      },
+      {
+        "rank": 8,
+        "instance_id": "pylint-dev__pylint-6506",
+        "value": 1.0
+      },
+      {
+        "rank": 9,
+        "instance_id": "sphinx-doc__sphinx-7975",
+        "value": 1.0
+      },
+      {
+        "rank": 10,
+        "instance_id": "sphinx-doc__sphinx-8273",
+        "value": 1.0
+      }
+    ],
+    "bootstrap_heuristic": [
+      {
+        "rank": 1,
+        "instance_id": "pallets__flask-4992",
+        "effort": 50.8644
+      },
+      {
+        "rank": 2,
+        "instance_id": "pallets__flask-4045",
+        "effort": 43.8418
+      },
+      {
+        "rank": 3,
+        "instance_id": "sphinx-doc__sphinx-7975",
+        "effort": 41.4294
+      },
+      {
+        "rank": 4,
+        "instance_id": "sphinx-doc__sphinx-8273",
+        "effort": 41.4263
+      },
+      {
+        "rank": 5,
+        "instance_id": "psf__requests-3362",
+        "effort": 38.4707
+      },
+      {
+        "rank": 6,
+        "instance_id": "psf__requests-1963",
+        "effort": 38.0574
+      },
+      {
+        "rank": 7,
+        "instance_id": "pylint-dev__pylint-6506",
+        "effort": 23.2459
+      },
+      {
+        "rank": 8,
+        "instance_id": "django__django-12908",
+        "effort": 21.7381
+      },
+      {
+        "rank": 9,
+        "instance_id": "django__django-11179",
+        "effort": 19.6336
+      },
+      {
+        "rank": 10,
+        "instance_id": "django__django-13447",
+        "effort": 17.9518
+      }
+    ],
+    "manual_value": [
+      {
+        "rank": 1,
+        "instance_id": "psf__requests-1963",
+        "value": 0.74
+      },
+      {
+        "rank": 2,
+        "instance_id": "psf__requests-3362",
+        "value": 0.72
+      },
+      {
+        "rank": 3,
+        "instance_id": "pallets__flask-4045",
+        "value": 0.71
+      },
+      {
+        "rank": 4,
+        "instance_id": "django__django-11179",
+        "value": 0.7
+      },
+      {
+        "rank": 5,
+        "instance_id": "django__django-12908",
+        "value": 0.69
+      },
+      {
+        "rank": 6,
+        "instance_id": "pallets__flask-4992",
+        "value": 0.68
+      },
+      {
+        "rank": 7,
+        "instance_id": "sphinx-doc__sphinx-7975",
+        "value": 0.66
+      },
+      {
+        "rank": 8,
+        "instance_id": "pylint-dev__pylint-6506",
+        "value": 0.66
+      },
+      {
+        "rank": 9,
+        "instance_id": "django__django-13447",
+        "value": 0.65
+      },
+      {
+        "rank": 10,
+        "instance_id": "sphinx-doc__sphinx-8273",
+        "value": 0.64
+      }
+    ]
+  }
+}

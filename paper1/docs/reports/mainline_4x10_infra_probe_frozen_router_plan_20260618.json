@@ -1,0 +1,64 @@
+{
+  "meta": {
+    "name": "mainline_4x10_infra_probe_frozen_router_plan_20260618",
+    "source_class": "router_only_pre_registered_value_effort_formula",
+    "value_matrix": "paper1/docs/reports/mainline_4x10_infra_probe_manual_value_matrix_20260618.json",
+    "description": "Router-only frozen plan. No caps, learning, runtime progress, or outcome feedback. Budget comes only from Budget Compiler budget_plan.",
+    "task_order": [
+      "django__django-13447",
+      "django__django-11179",
+      "django__django-12908",
+      "sphinx-doc__sphinx-8273",
+      "sphinx-doc__sphinx-7975",
+      "pallets__flask-4045",
+      "pallets__flask-4992",
+      "pylint-dev__pylint-6506",
+      "psf__requests-1963",
+      "psf__requests-3362"
+    ],
+    "preferred_model_rule": "tier3 if manual_value>=0.95 or bootstrap_effort>=300 else tier2",
+    "note": "Retired cap fields are intentionally omitted."
+  },
+  "plan": {
+    "django__django-13447": {
+      "preferred_model": "tier2",
+      "priority": 65
+    },
+    "django__django-11179": {
+      "preferred_model": "tier2",
+      "priority": 70
+    },
+    "django__django-12908": {
+      "preferred_model": "tier2",
+      "priority": 69
+    },
+    "sphinx-doc__sphinx-8273": {
+      "preferred_model": "tier2",
+      "priority": 64
+    },
+    "sphinx-doc__sphinx-7975": {
+      "preferred_model": "tier2",
+      "priority": 66
+    },
+    "pallets__flask-4045": {
+      "preferred_model": "tier2",
+      "priority": 71
+    },
+    "pallets__flask-4992": {
+      "preferred_model": "tier2",
+      "priority": 68
+    },
+    "pylint-dev__pylint-6506": {
+      "preferred_model": "tier2",
+      "priority": 66
+    },
+    "psf__requests-1963": {
+      "preferred_model": "tier2",
+      "priority": 74
+    },
+    "psf__requests-3362": {
+      "preferred_model": "tier2",
+      "priority": 72
+    }
+  }
+}

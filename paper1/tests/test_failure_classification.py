@@ -137,6 +137,37 @@ def test_runtime_worktree_rootdir_is_not_host_dependency_contamination() -> None
     assert verdict["failure_owner"] == "model"
 
 
+def test_foreign_runtime_worktree_in_harness_log_is_infra_abort() -> None:
+    record = {
+        "harness_resolved": False,
+        "patch_extracted": True,
+        "patch_source": "submission",
+        "submitted_patch": "/tmp/submitted.patch",
+        "agent_gold_edited": True,
+        "agent_gold_files": ["sphinx/util/images.py"],
+        "exit_status": "HarnessFailed",
+        "exit_reason": "harness_failed",
+        "detail": (
+            "test_patch=ok; fail_before=fail; model_patch=ok; fail_after=fail; "
+            "/tmp/budgetflow-task-scout/runtime/worktrees/psf__requests/"
+            "scout_requests/requests/utils.py:12: DeprecationWarning; "
+            "pass_to_pass=fail"
+        ),
+        "turn_trace_count": 1,
+        "turn_traces": [{}],
+    }
+
+    assert classify_failure(record) == "infra_fail"
+    verdict = build_verdict(record)
+    assert verdict["verdict_axis"] == "infra_fail"
+    assert verdict["failure_owner"] == "infra"
+
+    score = build_score_status(record)
+    assert score["score_status"] == "abort"
+    assert score["abort_owner"] == "infra"
+    assert score["abort_reason"] == "host_dependency_contamination"
+
+
 def test_forensic_summary_provider_unavailable_axis() -> None:
     summary = build_forensic_summary(
         {
