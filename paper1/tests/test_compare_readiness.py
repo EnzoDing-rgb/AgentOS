@@ -409,6 +409,33 @@ def test_readiness_blocks_selected_repo_with_missing_harness_dependency(monkeypa
     assert any("missing harness dependencies" in issue for issue in report.blocking)
 
 
+def test_readiness_blocks_sphinx_when_requests_is_missing(monkeypatch) -> None:
+    import budgetflow.experiments.compare_readiness as readiness
+
+    monkeypatch.setattr(readiness.importlib.util, "find_spec", lambda module: None)
+    value_context = ValueEfficiencyContext()
+    value_context.init(value_profile="equal")
+    report = build_compare_readiness_report(
+        args=_args(),
+        tasks=[
+            SimpleNamespace(
+                instance_id="sphinx-doc__sphinx-8273",
+                repo="sphinx-doc/sphinx",
+                test_patch="diff",
+                fail_to_pass=("tests/test_build_manpage.py::test_man_make_section_directory",),
+            )
+        ],
+        strategies=(CompareStrategy("bare_t3_baseline", "bare_t3"),),
+        policy_jobs=1,
+        value_context=value_context,
+        catalog_issues=[],
+        runtime_root=Path("/tmp/budgetflow-runtime"),
+    )
+
+    assert not report.ok
+    assert any("selected repo sphinx-doc/sphinx has missing harness dependencies: requests" in issue for issue in report.blocking)
+
+
 def test_readiness_blocks_malformed_frozen_plan(tmp_path) -> None:
     plan = tmp_path / "bad_frozen_plan.json"
     plan.write_text('{"meta":{"name":"bad"},"plan":{"task-a":{"preferred_model":"tier2","base_cap":0.2,"priority":1}}}')

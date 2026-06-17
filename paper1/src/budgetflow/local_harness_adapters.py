@@ -250,6 +250,32 @@ _JINJA2_RENAMES = {
     "evalcontextfunction": "pass_eval_context",
 }
 
+_IMPORTANT_PYTEST_LOG_MARKERS = (
+    "ModuleNotFoundError:",
+    "ImportError:",
+    "ConftestImportFailure",
+    "ImportError while loading conftest",
+    "ExtensionError:",
+    "numpy.dtype size changed",
+    "_ARRAY_API not found",
+)
+
+
+def _compact_pytest_output(output: str, *, tail_chars: int = 2000) -> str:
+    if len(output) <= tail_chars:
+        return output
+    important_lines = [
+        line for line in output.splitlines()
+        if any(marker in line for marker in _IMPORTANT_PYTEST_LOG_MARKERS)
+    ]
+    tail = output[-tail_chars:]
+    if not important_lines:
+        return tail
+    prefix = "\n".join(dict.fromkeys(important_lines[:12]))
+    if prefix and prefix not in tail:
+        return prefix + "\n...\n" + tail
+    return tail
+
 
 def _patch_jinja2_imports(text: str) -> str:
     """Replace removed Jinja2 names with their 3.1+ equivalents.
@@ -514,5 +540,4 @@ def run_pytest(
         env=env,
     )
     output = (result.stdout + "\n" + result.stderr).strip()
-    tail = output[-2000:] if len(output) > 2000 else output
-    return result.returncode == 0, tail
+    return result.returncode == 0, _compact_pytest_output(output)

@@ -225,7 +225,36 @@ def bootstrap_task_effort(task) -> dict[str, float | str | dict[str, int]]:
     }
 
 
-def build_bootstrap_value_matrix(tasks: list, *, task_source: str) -> dict[str, Any]:
+MANUAL_VALUE_FORMULA_V1 = (
+    "verification_breadth_v1: round(clamp(0.60,1.00,"
+    "0.60 + 0.20*min(f2p_count/75,1) + "
+    "0.20*min(log1p(p2p_count)/log1p(2000),1)),2)"
+)
+
+
+def bootstrap_manual_value(features: dict[str, int]) -> float:
+    """Pre-registered manual value proxy from verifier breadth only.
+
+    This is outcome-free: it uses fail-to-pass and pass-to-pass test breadth,
+    not model outcomes, costs, repo names, or task IDs.
+    """
+    import math
+
+    f2p_component = min(float(features["f2p_count"]) / 75.0, 1.0)
+    p2p_component = min(
+        math.log1p(float(features["p2p_count"])) / math.log1p(2000.0),
+        1.0,
+    )
+    raw = 0.60 + 0.20 * f2p_component + 0.20 * p2p_component
+    return round(max(0.60, min(1.00, raw)), 2)
+
+
+def build_bootstrap_value_matrix(
+    tasks: list,
+    *,
+    task_source: str,
+    include_manual_value: bool = False,
+) -> dict[str, Any]:
     """Build value matrix for a selected task set without historical outcomes.
 
     Schema (North Star aligned):
@@ -238,16 +267,20 @@ def build_bootstrap_value_matrix(tasks: list, *, task_source: str) -> dict[str, 
     """
     import math as _math
 
+    task_value_profiles = ["equal", "manual_value"] if include_manual_value else ["equal"]
     matrix: dict[str, Any] = {
         "meta": {
             "task_count": len(tasks),
-            "task_value_profiles": ["equal"],
+            "task_value_profiles": task_value_profiles,
             "task_effort_source": "task_metadata_formula",
             "source": task_source,
-            "source_class": "bootstrap_pre_registered_metadata",
+            "source_class": (
+                "pre_registered_formula_plus_metadata"
+                if include_manual_value else "bootstrap_pre_registered_metadata"
+            ),
             "outcome_free": True,
             "note": (
-                "Task Value profiles use only 'equal' (1.0 per task). "
+                "Task Value profiles use only pre-registered task metadata. "
                 "Task Effort uses a bootstrap heuristic from pre-registered "
                 "SWE-bench task metadata: patch lines, fail/pass test counts, "
                 "problem words, and gold file count. "
@@ -260,16 +293,26 @@ def build_bootstrap_value_matrix(tasks: list, *, task_source: str) -> dict[str, 
         },
         "tasks": {},
     }
+    if include_manual_value:
+        matrix["meta"]["value_source_kind"] = "pre_registered_manual"
+        matrix["meta"]["manual_value_formula"] = MANUAL_VALUE_FORMULA_V1
     for task in tasks:
         features = bootstrap_task_features(task)
         effort = bootstrap_task_effort(task)
-        matrix["tasks"][task.instance_id] = {
+        task_value = {"equal": 1.0}
+        entry: dict[str, Any] = {
             "instance_id": task.instance_id,
             "repo": task.repo,
-            "task_value": {"equal": 1.0},
+            "task_value": task_value,
             "task_effort": effort,
             "model_fit": None,
             "features": features,
+        }
+        if include_manual_value:
+            task_value["manual_value"] = bootstrap_manual_value(features)
+            entry["value_formula"] = "verification_breadth_v1"
+        matrix["tasks"][task.instance_id] = {
+            **entry,
         }
     matrix["rankings"] = {}
     # Equal profile: every task has value 1.0, ranking is alphabetical.
@@ -295,6 +338,20 @@ def build_bootstrap_value_matrix(tasks: list, *, task_source: str) -> dict[str, 
         }
         for index, (iid, entry) in enumerate(ranked_effort)
     ]
+    if include_manual_value:
+        ranked_manual = sorted(
+            matrix["tasks"].items(),
+            key=lambda item: item[1]["task_value"]["manual_value"],
+            reverse=True,
+        )
+        matrix["rankings"]["manual_value"] = [
+            {
+                "rank": index + 1,
+                "instance_id": iid,
+                "value": entry["task_value"]["manual_value"],
+            }
+            for index, (iid, entry) in enumerate(ranked_manual)
+        ]
     return matrix
 
 
@@ -852,6 +909,8 @@ def _make_parser() -> argparse.ArgumentParser:
                    help="Build a no-outcome bootstrap matrix for a compare task set")
     p.add_argument("--ids", default=None,
                    help="Comma-separated task IDs for a no-outcome bootstrap matrix")
+    p.add_argument("--include-manual-value", action="store_true",
+                   help="Include outcome-free manual_value profile from verifier breadth")
     p.add_argument("--limit", type=int, default=None,
                    help="Task count for --task-set bootstrap matrix")
     return p
@@ -880,7 +939,11 @@ def main(argv: list[str] | None = None) -> dict:
         else:
             tasks = load_compare_easy_tasks(args.limit or 5)
             task_source = f"bootstrap_task_set:easy:{len(tasks)}"
-        matrix = build_bootstrap_value_matrix(tasks, task_source=task_source)
+        matrix = build_bootstrap_value_matrix(
+            tasks,
+            task_source=task_source,
+            include_manual_value=args.include_manual_value,
+        )
         output_text = json.dumps(matrix, indent=2, ensure_ascii=False)
         if args.output == "-":
             sys.stdout.write(output_text + "\n")

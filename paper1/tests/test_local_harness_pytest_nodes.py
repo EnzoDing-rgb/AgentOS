@@ -412,6 +412,33 @@ def test_run_pytest_disables_host_plugin_autoload(tmp_path: Path, monkeypatch) -
     assert captured["env"]["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] == "1"
 
 
+def test_run_pytest_preserves_missing_dependency_root_cause(tmp_path: Path, monkeypatch) -> None:
+    test_file = tmp_path / "tests" / "test_x.py"
+    test_file.parent.mkdir()
+    test_file.write_text("def test_regression():\n    pass\n")
+    root_cause = "ModuleNotFoundError: No module named 'requests'"
+    noisy_tail = "\n".join(f"tail line {index}" for index in range(240))
+
+    class Result:
+        returncode = 1
+        stdout = root_cause + "\n" + noisy_tail
+        stderr = ""
+
+    def fake_run(cmd, *, cwd, capture_output, text, env):
+        return Result()
+
+    monkeypatch.setattr("budgetflow.local_harness_adapters.subprocess.run", fake_run)
+
+    ok, output = local_harness.run_pytest(
+        tmp_path,
+        ("tests/test_x.py::test_regression",),
+        ["tests/test_x.py"],
+    )
+
+    assert ok is False
+    assert root_cause in output
+
+
 def test_evaluate_local_harness_calls_adapter_compat(tmp_path: Path, monkeypatch) -> None:
     task = SimpleNamespace(
         instance_id="sympy__sympy-14774",

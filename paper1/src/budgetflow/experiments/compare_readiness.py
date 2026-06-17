@@ -42,6 +42,7 @@ class ReadinessReport:
 
 _REPO_HARNESS_REQUIRED_MODULES: dict[str, tuple[str, ...]] = {
     "mwaskom/seaborn": ("matplotlib",),
+    "sphinx-doc/sphinx": ("requests",),
 }
 
 

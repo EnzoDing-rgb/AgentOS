@@ -1,0 +1,64 @@
+{
+  "meta": {
+    "name": "mainline_4x10_non_sympy_clean_frozen_router_plan_20260618",
+    "source_class": "router_only_pre_registered_value_effort_formula",
+    "value_matrix": "docs/reports/mainline_4x10_non_sympy_clean_manual_value_matrix_20260618.json",
+    "description": "Router-only frozen plan. No caps, learning, runtime progress, or outcome feedback. Budget comes only from Budget Compiler budget_plan.",
+    "task_order": [
+      "django__django-13447",
+      "django__django-11179",
+      "django__django-12908",
+      "pallets__flask-4045",
+      "pallets__flask-4992",
+      "pylint-dev__pylint-6506",
+      "django__django-11049",
+      "django__django-13964",
+      "django__django-15814",
+      "django__django-15851"
+    ],
+    "preferred_model_rule": "tier3 if manual_value>=0.95 or bootstrap_effort>=300 else tier2",
+    "note": "Retired cap fields are intentionally omitted."
+  },
+  "plan": {
+    "django__django-13447": {
+      "preferred_model": "tier2",
+      "priority": 65
+    },
+    "django__django-11179": {
+      "preferred_model": "tier2",
+      "priority": 70
+    },
+    "django__django-12908": {
+      "preferred_model": "tier2",
+      "priority": 69
+    },
+    "pallets__flask-4045": {
+      "preferred_model": "tier2",
+      "priority": 71
+    },
+    "pallets__flask-4992": {
+      "preferred_model": "tier2",
+      "priority": 68
+    },
+    "pylint-dev__pylint-6506": {
+      "preferred_model": "tier2",
+      "priority": 66
+    },
+    "django__django-11049": {
+      "preferred_model": "tier2",
+      "priority": 66
+    },
+    "django__django-13964": {
+      "preferred_model": "tier2",
+      "priority": 70
+    },
+    "django__django-15814": {
+      "preferred_model": "tier2",
+      "priority": 69
+    },
+    "django__django-15851": {
+      "preferred_model": "tier2",
+      "priority": 66
+    }
+  }
+}

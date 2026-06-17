@@ -1,0 +1,207 @@
+{
+  "hard_cap_usd": 1.7842,
+  "source": "budget_binding_calibrator",
+  "generation_mode": "target_utilization",
+  "catalog_revision": "2026-06-17-glm51-t2-t3x5",
+  "catalog_path": "/root/.dev/AgentOS/paper1/docs/config/model_tiers.default.json",
+  "catalog_content_hash": "70beda1fbecb",
+  "historical_source": "data/runs/mainline_5x10_glm51_20260617-0.jsonl",
+  "task_ids": [
+    "django__django-13447",
+    "django__django-11179",
+    "django__django-12908",
+    "pallets__flask-4045",
+    "pallets__flask-4992",
+    "pylint-dev__pylint-6506",
+    "django__django-11049",
+    "django__django-13964",
+    "django__django-15814",
+    "django__django-15851"
+  ],
+  "strategy_names": [
+    "bare_t2_baseline",
+    "bare_t3_baseline",
+    "enterprise_router_baseline",
+    "budgetflow_task_level"
+  ],
+  "projected_spend_by_strategy": {
+    "bare_t2_baseline": 0.4437,
+    "bare_t3_baseline": 1.945,
+    "enterprise_router_baseline": 1.6992,
+    "budgetflow_task_level": 1.4602
+  },
+  "projected_task_cost_by_strategy": {
+    "bare_t2_baseline": {
+      "django__django-13447": 0.0304,
+      "django__django-11179": 0.0332,
+      "django__django-12908": 0.0368,
+      "pallets__flask-4045": 0.0742,
+      "pallets__flask-4992": 0.0861,
+      "pylint-dev__pylint-6506": 0.0394,
+      "django__django-11049": 0.0334,
+      "django__django-13964": 0.0382,
+      "django__django-15814": 0.0354,
+      "django__django-15851": 0.0367
+    },
+    "bare_t3_baseline": {
+      "django__django-13447": 0.1332,
+      "django__django-11179": 0.1457,
+      "django__django-12908": 0.1613,
+      "pallets__flask-4045": 0.3253,
+      "pallets__flask-4992": 0.3774,
+      "pylint-dev__pylint-6506": 0.1725,
+      "django__django-11049": 0.1465,
+      "django__django-13964": 0.1673,
+      "django__django-15814": 0.155,
+      "django__django-15851": 0.1608
+    },
+    "enterprise_router_baseline": {
+      "django__django-13447": 0.1164,
+      "django__django-11179": 0.1273,
+      "django__django-12908": 0.1409,
+      "pallets__flask-4045": 0.2842,
+      "pallets__flask-4992": 0.3297,
+      "pylint-dev__pylint-6506": 0.1507,
+      "django__django-11049": 0.1279,
+      "django__django-13964": 0.1461,
+      "django__django-15814": 0.1354,
+      "django__django-15851": 0.1405
+    },
+    "budgetflow_task_level": {
+      "django__django-13447": 0.1,
+      "django__django-11179": 0.1094,
+      "django__django-12908": 0.1211,
+      "pallets__flask-4045": 0.2442,
+      "pallets__flask-4992": 0.2834,
+      "pylint-dev__pylint-6506": 0.1295,
+      "django__django-11049": 0.11,
+      "django__django-13964": 0.1256,
+      "django__django-15814": 0.1164,
+      "django__django-15851": 0.1207
+    }
+  },
+  "projected_utilization_by_strategy": {
+    "bare_t2_baseline": 0.2487,
+    "bare_t3_baseline": 1.0,
+    "enterprise_router_baseline": 0.9523,
+    "budgetflow_task_level": 0.8184
+  },
+  "raw_projected_utilization_by_strategy": {
+    "bare_t2_baseline": 0.2487,
+    "bare_t3_baseline": 1.0901,
+    "enterprise_router_baseline": 0.9523,
+    "budgetflow_task_level": 0.8184
+  },
+  "reference_spend_usd": 1.6992,
+  "strongest_boundary_usd": 1.945,
+  "max_projected_spend_usd": 1.945,
+  "decision": "PASS",
+  "reasons": [
+    "calibration:excluded 14 contaminated rows: budget_exhausted_zero_spend=4, harness_trust:incomplete=10",
+    "calibration:model_fit_evidence confidence=medium scope=historical_jsonl from 8 tasks: tier1=0.1500, tier2=1.0000, tier3=1.0000",
+    "calibration:model_fit_censored tiers=[3] have budget-exhausted upper-bound evidence",
+    "calibration:model_fit_confidence=medium; cold-start projections use derived fit but are not paper-ready. Run more diagnostic calibration before treating as paper evidence.",
+    "calibration:bare_t2_baseline n=0 (no historical data, projection uses bootstrap_estimate)",
+    "calibration:bare_t3_baseline n=0 (no historical data, projection uses bootstrap_estimate)",
+    "calibration:enterprise_router_baseline n=0 (no historical data, projection uses bootstrap_estimate)",
+    "calibration:budgetflow_task_level n=0 (no historical data, projection uses bootstrap_estimate)",
+    "reference_rule: strategy_set_p75_projected_spend = $1.6992",
+    "hard_cap = p75_ref($1.6992) / target_utilization(1.0) = $1.6992",
+    "strongest_runway_floor: hard_cap must be at least $1.7842 so the Strongest Model baseline reaches the final task before budget pressure dominates",
+    "strongest_boundary: bare_t3_baseline projected spend $1.9450; recorded for pressure audit, not a hard cap",
+    "planned_task_budget: BudgetFlow active policies get loose task budgets derived from projected task costs; sums may exceed hard_cap and runtime still enforces the shared batch hard cap",
+    "pressure_contract: grade=warn",
+    "pressure_contract: t2_diagnostic: bare_t2_baseline at 24.9%; not a pressure-ordering constraint",
+    "pressure_contract: t3_tight: bare_t3_baseline at 100.0% >= 85% \u2014 budget-constrained as expected",
+    "pressure_contract VIOLATION: budgetflow_under_target: budgetflow_task_level at 81.8% < 85%; budget may be too loose or policy may be too conservative",
+    "PRESSURE_GATE WARNING: BudgetFlow projected utilization is below the target pressure regime; treat the next run as calibration, not paper evidence",
+    "tight_budget_warning: bare_t3_baseline projected spend $1.94 > hard_cap $1.78 (109.0% utilization) \u2014 strategy may not complete within shared budget",
+    "decision=PASS: hard_cap=$1.78 from target pressure with strongest boundary, max projected utilization 100.0%",
+    "projection_confidence=unvalidated: no calibration evidence provided. Run one diagnostic calibration audit before relying on projected utilization."
+  ],
+  "pressure_contract": {
+    "target_utilization": 1.0,
+    "shape": {
+      "bare_t2_baseline": 0.2487,
+      "bare_t3_baseline": 1.0,
+      "enterprise_router_baseline": 0.9523,
+      "budgetflow_same_enterprise_router": null,
+      "budgetflow_task_level": 0.8184,
+      "budgetflow_segment": null
+    },
+    "assertions": [
+      "t2_diagnostic: bare_t2_baseline at 24.9%; not a pressure-ordering constraint",
+      "t3_tight: bare_t3_baseline at 100.0% >= 85% \u2014 budget-constrained as expected"
+    ],
+    "violations": [
+      "budgetflow_under_target: budgetflow_task_level at 81.8% < 85%; budget may be too loose or policy may be too conservative"
+    ],
+    "grade": "warn"
+  },
+  "projection_confidence": "unvalidated",
+  "target_projected_utilization": 1.0,
+  "calibration_excluded": {
+    "harness_trust:incomplete": 10,
+    "budget_exhausted_zero_spend": 4
+  },
+  "model_fit_evidence": {
+    "tier_fit": {
+      "tier1": 0.15,
+      "tier2": 1.0,
+      "tier3": 1.0
+    },
+    "source": "historical_jsonl",
+    "scope": "historical_jsonl",
+    "confidence": "medium",
+    "evidence_tasks": 8,
+    "tier_evidence_counts": {
+      "tier1": 0,
+      "tier2": 1,
+      "tier3": 8
+    },
+    "tier_completed_counts": {
+      "tier1": 0,
+      "tier2": 1,
+      "tier3": 7
+    },
+    "tier_censored_counts": {
+      "tier1": 0,
+      "tier2": 0,
+      "tier3": 1
+    },
+    "censored_tiers": [
+      3
+    ],
+    "reasons": [
+      "tier1: fit=0.1500 (catalog fallback, no historical evidence)",
+      "tier2: fit=1.0000 from 1 completed + 0 censored rows",
+      "tier3: 1 incomplete censored rows recorded (median upper bound=1.0000) without overriding 7 completed rows",
+      "tier3: fit=1.0000 from 7 completed + 1 censored rows"
+    ]
+  },
+  "planned_task_budget_by_strategy": {
+    "budgetflow_task_level": {
+      "django__django-13447": 0.8306,
+      "django__django-11179": 0.8556,
+      "django__django-12908": 0.8868,
+      "pallets__flask-4045": 1.2149,
+      "pallets__flask-4992": 1.3191,
+      "pylint-dev__pylint-6506": 0.9092,
+      "django__django-11049": 0.8571,
+      "django__django-13964": 0.8987,
+      "django__django-15814": 0.8743,
+      "django__django-15851": 0.8858
+    }
+  },
+  "planned_task_budget_policy": {
+    "mode": "budgetflow_loose_task_budget",
+    "source": "projected_task_cost_by_strategy",
+    "multiplier": 2.0,
+    "min_usd": 0.05,
+    "batch_floor_rule": "hard_cap_usd/sqrt(task_count)+cross_strategy_task_cost_ceiling_multiplier",
+    "sum_can_exceed_hard_cap": true,
+    "applies_to": [
+      "budgetflow_task_level"
+    ]
+  }
+}
