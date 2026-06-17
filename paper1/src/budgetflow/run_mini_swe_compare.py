@@ -55,8 +55,6 @@ from budgetflow.experiments.compare_config import (  # noqa: E402
 from budgetflow.adapters import SwebenchBudgetAdapter  # noqa: E402
 from budgetflow.experiments.compare_cli import parse_compare_args  # noqa: E402
 from budgetflow.experiments.compare_memory import (  # noqa: E402
-    build_auto_budget_plan,
-    run_auto_budget_dry_run,
     run_policy_memory_gate_only,
 )
 from budgetflow.experiments.compare_readiness import (  # noqa: E402
@@ -90,7 +88,6 @@ from budgetflow.observability import (  # noqa: E402
     HeartbeatWriter,
 )
 from budgetflow.learning_context import load_policy_memory_context  # noqa: E402
-from budgetflow.learn_policy import combine_learn_policy_inputs  # noqa: E402
 from budgetflow.adaptive_routing import AdaptiveRoutingRegistry  # noqa: E402
 from budgetflow.run_guards import CompareRunGuards, set_active_guard  # noqa: E402
 from budgetflow.run_series import release_run_identity, resolve_run_identity  # noqa: E402
@@ -227,10 +224,6 @@ def main() -> None:
 
     catalog_issues = print_tier_catalog_preflight()
 
-    auto_budget_plan = build_auto_budget_plan(args, tasks=tasks, runs_dir=RUNS_DIR)
-    auto_budget_estimates = auto_budget_plan.estimates
-    auto_budget_task_caps: dict[str, float] | None = auto_budget_plan.task_caps
-    auto_budget_memory = auto_budget_plan.memory
     runtime_root, _ = resolve_runtime_root()
     readiness = build_compare_readiness_report(
         args=args,
@@ -240,9 +233,6 @@ def main() -> None:
         value_context=value_context,
         catalog_issues=catalog_issues,
         runtime_root=runtime_root,
-        auto_budget_enabled=bool(args.auto_budget or args.auto_budget_dry_run),
-        auto_budget_caps=auto_budget_task_caps,
-        auto_budget_estimates=auto_budget_estimates,
         budget_plan_path=budget_plan_path,
         per_task_cap=args.per_task_cap,
         runs_dir=RUNS_DIR,
@@ -252,17 +242,6 @@ def main() -> None:
         sys.exit(0 if readiness.ok else 2)
     if not readiness.ok:
         raise SystemExit("paid readiness preflight failed")
-
-    # ── AutoBudget dry-run: learned cap + routing-memory gate, no API calls or run files ──
-    if args.auto_budget_dry_run:
-        sys.exit(run_auto_budget_dry_run(
-            args,
-            tasks=tasks,
-            runs_dir=RUNS_DIR,
-            repo_root=REPO_ROOT,
-            auto_budget_plan=auto_budget_plan,
-            value_context=value_context,
-        ))
 
     # ── Provider signature check (AFTER dry-run/gate-only to avoid API calls) ──
     if not args.no_provider_signature_check:
@@ -340,7 +319,6 @@ def main() -> None:
     budget_modes_plan = build_batch_budget_modes(
         strategies=strategies,
         per_task_cap=args.per_task_cap,
-        auto_budget_task_caps=auto_budget_task_caps,
         constrained_budget=budget_input["hard_cap_usd"],
     )
     batch_caps = budget_modes_plan.batch_caps
@@ -394,8 +372,6 @@ def main() -> None:
     print(f"{dim('strategies=' + ','.join(strategy_names))}", flush=True)
     if any(mode == "per_task_cap" for mode in budget_modes.values()):
         budget_mode = f"per_task_cap={args.per_task_cap}" + (f"+overrun={max_overrun}" if max_overrun else "")
-    elif any(mode == "dynamic_task_caps" for mode in budget_modes.values()):
-        budget_mode = "dynamic_task_caps"
     else:
         budget_mode = "shared_batch_hard_budget" + (
             f" soft_budget={args.soft_budget}+overrun={max_overrun}" if args.soft_budget is not None else ""
@@ -442,12 +418,7 @@ def main() -> None:
     else:
         print(f"{tag('policy_memory', bold=False)} disabled — {policy_ctx.reason or 'no usable run JSONL source found'}")
 
-    learn_policy_inputs = combine_learn_policy_inputs(
-        cost=auto_budget_memory,
-        routing_inputs=policy_ctx.learn_policy_inputs,
-        source=str(auto_budget_plan.memory_path) if auto_budget_memory is not None else "",
-    )
-    adaptive_registry = AdaptiveRoutingRegistry(learn_policy_inputs=learn_policy_inputs)
+    adaptive_registry = AdaptiveRoutingRegistry(learn_policy_inputs=policy_ctx.learn_policy_inputs)
     if args.append and out_path.is_file():
         adaptive_registry.rebuild_from_jsonl(out_path)
 
@@ -543,8 +514,6 @@ def main() -> None:
                 budget_modes=budget_modes,
                 started=started,
                 out_path=out_path,
-                auto_budget_memory=auto_budget_memory,
-                no_auto_budget_learn=args.no_auto_budget_learn,
                 value_profile=value_context.profile,
                 enrich_value=enrich_record_final,
             )
@@ -556,7 +525,6 @@ def main() -> None:
                 last_completed=str(record.get("instance_id", "")),
             )
 
-        _eff_task_caps = auto_budget_task_caps
         _eff_budget_mode = budget_modes[cfg.name] if budget_modes and cfg.name in budget_modes else None
         records, batch_spent = run_strategy_batch(
             cfg,
@@ -582,8 +550,6 @@ def main() -> None:
             enable_turn_trace=args.trace_turns,
             trace_max_turns=args.trace_max_turns,
             trace_truncate_chars=args.trace_truncate_chars,
-            task_caps=_eff_task_caps,
-            budget_estimates=auto_budget_estimates,
             budget_input=budget_input,
             run_series=run_series,
             heartbeat_writer=heartbeat_writer,

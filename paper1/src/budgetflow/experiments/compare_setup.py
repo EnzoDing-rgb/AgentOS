@@ -55,8 +55,6 @@ class BatchBudgetModes:
     batch_caps: dict[str, float | None]
     budget_modes: dict[str, str]
     use_fixed_per_task_cap: bool
-    use_dynamic_task_caps: bool
-    planned_dynamic_cap: float | None
 
 
 def resolve_task_count(args: Namespace) -> int:
@@ -211,27 +209,20 @@ def build_batch_budget_modes(
     *,
     strategies: tuple[CompareStrategy, ...],
     per_task_cap: float | None,
-    auto_budget_task_caps: dict[str, float] | None,
     constrained_budget: float,
 ) -> BatchBudgetModes:
     """Assign equal shared batch caps to all paper mainline strategies.
 
     Every strategy gets the same ``constrained_budget`` as a policy-local
-    shared batch hard cap.  Dynamic auto-budget caps are an explicit retired
-    diagnostic mode and only activate in code paths that set
-    ``auto_budget_task_caps``. Frozen router plans never provide budget caps.
+    shared batch hard cap. Frozen router plans never provide budget caps.
     """
     use_fixed_per_task_cap = per_task_cap is not None and per_task_cap > 0
-    use_dynamic_task_caps = auto_budget_task_caps is not None
-    planned_dynamic_cap = sum(auto_budget_task_caps.values()) if auto_budget_task_caps else None
 
     def _cap_for(s: CompareStrategy) -> float | None:
         if not s.budgeted:
             return None
         if use_fixed_per_task_cap:
             return per_task_cap
-        if use_dynamic_task_caps:
-            return planned_dynamic_cap
         return constrained_budget
 
     def _mode_for(s: CompareStrategy) -> str:
@@ -239,8 +230,6 @@ def build_batch_budget_modes(
             return "unconstrained"
         if use_fixed_per_task_cap:
             return "per_task_cap"
-        if use_dynamic_task_caps:
-            return "dynamic_task_caps"
         return "shared_batch_hard_budget"
 
     batch_caps: dict[str, float | None] = {s.name: _cap_for(s) for s in strategies}
@@ -249,8 +238,6 @@ def build_batch_budget_modes(
         batch_caps=batch_caps,
         budget_modes=budget_modes,
         use_fixed_per_task_cap=use_fixed_per_task_cap,
-        use_dynamic_task_caps=use_dynamic_task_caps,
-        planned_dynamic_cap=planned_dynamic_cap,
     )
 
 

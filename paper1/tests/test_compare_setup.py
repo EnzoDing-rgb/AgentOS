@@ -12,7 +12,6 @@ from budgetflow.experiments.compare_config import (
     required_backends_for_strategies,
     task_set_kind,
 )
-from budgetflow.experiments.compare_memory import build_auto_budget_plan
 from budgetflow.experiments.compare_setup import (
     build_batch_budget_modes,
     calibrated_model_fit_from_budget_plan,
@@ -186,24 +185,6 @@ def test_unknown_strategy_name_fails_fast() -> None:
         raise AssertionError("expected SystemExit")
 
 
-def test_batch_budget_modes_distinguish_dynamic_caps() -> None:
-    strategies = (
-        CompareStrategy("budgetflow_segment", "segment_value_aware"),
-        CompareStrategy("all_pro", "all_pro", budgeted=False),
-    )
-    modes = build_batch_budget_modes(
-        strategies=strategies,
-        per_task_cap=None,
-        auto_budget_task_caps={"t1": 0.1, "t2": 0.2},
-        constrained_budget=1.0,
-    )
-
-    assert modes.batch_caps["budgetflow_segment"] == pytest.approx(0.3)
-    assert modes.budget_modes["budgetflow_segment"] == "dynamic_task_caps"
-    assert modes.batch_caps["all_pro"] is None
-    assert modes.budget_modes["all_pro"] == "unconstrained"
-
-
 def test_resolve_budget_plan_from_budget_plan_json(tmp_path) -> None:
     """When --budget-plan is provided and --budget is not set, use hard_cap_usd."""
     import json
@@ -254,26 +235,6 @@ def test_resolve_budget_plan_explicit_budget_overrides_budget_plan(tmp_path) -> 
     assert plan.source == "cli"
 
 
-def test_batch_budget_modes_dynamic_caps_apply_to_all_strategies() -> None:
-    """auto_budget_task_caps apply to all budgeted strategies equally."""
-    strategies = (
-        CompareStrategy("enterprise_router_baseline", "enterprise_router"),
-        CompareStrategy("budgetflow_segment", "segment_value_aware"),
-    )
-    auto_caps = {"task-a": 0.99}
-    modes = build_batch_budget_modes(
-        strategies=strategies,
-        per_task_cap=None,
-        auto_budget_task_caps=auto_caps,
-        constrained_budget=1.0,
-    )
-
-    assert modes.budget_modes["enterprise_router_baseline"] == "dynamic_task_caps"
-    assert modes.budget_modes["budgetflow_segment"] == "dynamic_task_caps"
-    assert modes.batch_caps["enterprise_router_baseline"] == pytest.approx(0.99)
-    assert modes.batch_caps["budgetflow_segment"] == pytest.approx(0.99)
-
-
 def test_frozen_router_plan_does_not_create_separate_batch_caps() -> None:
     """Frozen router plans are passed to routing, not batch budget setup."""
     strategies = (
@@ -285,7 +246,6 @@ def test_frozen_router_plan_does_not_create_separate_batch_caps() -> None:
     modes = build_batch_budget_modes(
         strategies=strategies,
         per_task_cap=None,
-        auto_budget_task_caps=None,
         constrained_budget=2.0,
     )
 
@@ -303,7 +263,6 @@ def test_unbudgeted_strategy_gets_no_cap() -> None:
     modes = build_batch_budget_modes(
         strategies=strategies,
         per_task_cap=None,
-        auto_budget_task_caps=None,
         constrained_budget=1.0,
     )
     assert modes.batch_caps["all_pro"] is None
@@ -314,7 +273,7 @@ def test_paper_mainline_budget_contract_blocks_mixed_cap_modes() -> None:
     selection = select_strategies(_args(ids="sympy__sympy-22714"))
     batch_caps = {strategy.name: 1.0 for strategy in selection.strategies}
     budget_modes = {strategy.name: "shared_batch_hard_budget" for strategy in selection.strategies}
-    budget_modes["enterprise_router_baseline"] = "dynamic_task_caps"
+    budget_modes["enterprise_router_baseline"] = "per_task_cap"
 
     with pytest.raises(SystemExit, match="paper mainline requires shared_batch_hard_budget"):
         validate_paper_mainline_budget_contract(
@@ -342,27 +301,10 @@ def test_retired_auto_budget_cli_flags_are_not_exposed() -> None:
     with pytest.raises(SystemExit):
         parse_compare_args(["--auto-budget"])
     with pytest.raises(SystemExit):
+        parse_compare_args(["--auto-budget-dry-run"])
+    with pytest.raises(SystemExit):
+        parse_compare_args(["--no-auto-budget-learn"])
+    with pytest.raises(SystemExit):
         parse_compare_args(["--budget-mode", "retired"])
     with pytest.raises(SystemExit):
         parse_compare_args(["--target-utilization", "0.9"])
-    args = parse_compare_args([])
-    assert args.auto_budget is False
-    assert args.auto_budget_dry_run is False
-
-
-def test_retired_auto_budget_does_not_enable_cost_memory_by_default(tmp_path) -> None:
-    args = parse_compare_args([])
-    task = SimpleNamespace(
-        instance_id="sympy__sympy-13480",
-        repo="sympy/sympy",
-        patch="diff --git a/x.py b/x.py\n+line\n",
-        fail_to_pass=("tests/test_x.py::test_y",),
-        pass_to_pass=(),
-    )
-
-    plan = build_auto_budget_plan(args, tasks=[task], runs_dir=tmp_path)
-
-    assert plan.memory is None
-    assert plan.estimates == {}
-    assert plan.task_caps is None
-    assert not (tmp_path / "auto_budget_memory.jsonl").exists()

@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
 
-from budgetflow.auto_budget import AutoBudgetMemory
 from budgetflow.compare_checkpoint import GlobalRunProgress, StrategyScoreboard
 from budgetflow.experiment_observability import enrich_routing_observability
 from budgetflow.experiments.compare_config import CompareStrategy, fmt_usd as _fmt_usd
@@ -21,7 +20,7 @@ from budgetflow.experiments.compare_summary import (
 from budgetflow.failure_classification import classify_failure
 from budgetflow.run_series import completed_scoreable_keys
 
-_PLANNED_CAP_MODES = frozenset({"per_task_cap", "dynamic_task_caps"})
+_PLANNED_CAP_MODES = frozenset({"per_task_cap"})
 
 
 @dataclass
@@ -104,42 +103,6 @@ def rebuild_state_from_jsonl(
     return state
 
 
-def write_auto_budget_memory(memory: AutoBudgetMemory, record: dict[str, Any]) -> None:
-    forensic = record.get("forensic_summary") or {}
-    features = record.get("auto_budget_features") or record.get("task_features") or {}
-    score_status = str(record.get("score_status") or "")
-    abort_reason = str(record.get("abort_reason") or "")
-    mem = AutoBudgetMemory.build_record(
-        instance_id=str(record.get("instance_id", "")),
-        repo=str(record.get("instance_id", "")).rsplit("__", 1)[0].replace("__", "/"),
-        strategy=str(record.get("strategy", "")),
-        routing=str(record.get("routing", "")),
-        resolved=bool(record.get("harness_resolved")),
-        harness_resolved=bool(record.get("harness_resolved")),
-        failure_class=str(record.get("failure_class") or ""),
-        forensic_primary_axis=str(forensic.get("primary_axis") or record.get("failure_class") or ""),
-        total_cost=float(record.get("total_cost") or 0.0),
-        estimated_task_cap=record.get("estimated_task_cap"),
-        estimated_task_cost=record.get("estimated_task_cost"),
-        patch_extracted=bool(record.get("patch_extracted")),
-        agent_gold_edited=bool(record.get("agent_gold_edited")),
-        llm_turns=int(record.get("llm_turns") or 0),
-        patch_lines=int(features.get("patch_lines", 0)),
-        f2p_count=int(features.get("f2p_count", 0)),
-        p2p_count=int(features.get("p2p_count", 0)),
-        problem_length=int(features.get("problem_length", 0)),
-        gold_file_count=len(record.get("agent_gold_files") or []),
-        run_series=str(record.get("run_series", "")),
-        run_id=str(record.get("run_id") or record.get("attempt_id") or record.get("run_series") or ""),
-        dominant_tier=str(record.get("dominant_tier") or ""),
-        exit_status=str(record.get("exit_status") or ""),
-        detail=str(record.get("detail") or ""),
-        score_status=score_status,
-        abort_reason=abort_reason,
-    )
-    memory.write_record(mem)
-
-
 def persist_task_record(
     state: CompareRunState,
     record: dict[str, Any],
@@ -158,25 +121,8 @@ def persist_task_record(
     out_path: Path,
     value_profile: str,
     enrich_value: Callable[[dict[str, Any]], dict[str, Any]],
-    auto_budget_memory: AutoBudgetMemory | None = None,
-    no_auto_budget_learn: bool = False,
 ) -> None:
     with io_lock:
-        record["budget_learning_update_written"] = False
-        record["budget_learning_memory_path"] = (
-            str(auto_budget_memory._path or "") if auto_budget_memory is not None else ""
-        )
-        record["budget_learning_applied_to_cap"] = bool(record.get("auto_budget_enabled"))
-        record["budget_learning_skipped_due_to_abort"] = False
-        score_status = str(record.get("score_status") or "")
-        if score_status == "abort":
-            record["budget_learning_skipped_due_to_abort"] = True
-        elif not score_status and record.get("harness_resolved") is False and str(record.get("abort_reason") or ""):
-            record["budget_learning_skipped_due_to_abort"] = True
-        if auto_budget_memory is not None and not no_auto_budget_learn and not record["budget_learning_skipped_due_to_abort"]:
-            write_auto_budget_memory(auto_budget_memory, record)
-            record["budget_learning_update_written"] = True
-
         enrich_value(record)
         enrich_routing_observability(record)
 
@@ -264,8 +210,7 @@ def ingest_batch_footer(
     with io_lock:
         mode = budget_modes.get(cfg.name, "shared")
         cap_label = (
-            "planned_cap" if mode == "dynamic_task_caps"
-            else "per_task_cap" if mode == "per_task_cap"
+            "per_task_cap" if mode == "per_task_cap"
             else "shared_cap"
         )
         display_cap = batch_caps.get(cfg.name) if mode in _PLANNED_CAP_MODES else batch_cap

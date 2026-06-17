@@ -2,7 +2,6 @@ import json
 import threading
 from types import SimpleNamespace
 
-from budgetflow.auto_budget import AutoBudgetMemory
 from budgetflow.compare_checkpoint import GlobalRunProgress, StrategyScoreboard
 from budgetflow.experiments.compare_persistence import (
     CompareRunState,
@@ -363,88 +362,6 @@ def test_runner_preserves_agent_exit_when_harness_did_not_complete() -> None:
     assert reason == "budget_exhausted"
 
 
-def test_auto_budget_records_dynamic_task_cap_mode(monkeypatch) -> None:
-    import budgetflow.adapter.runner as runner
-
-    def fake_run_mini_swe_task(*args, **kwargs):
-        return SimpleNamespace(
-            instance_id="sympy__sympy-13480",
-            total_cost=0.01,
-            harness_resolved=False,
-            patch_text="",
-            patch_source="none",
-            submitted_patch_path="",
-            exit_status="Stopped",
-            exit_reason="budget_exhausted",
-            agent_exit_status="Stopped",
-            agent_exit_reason="budget_exhausted",
-            backend_picks=["tier2"],
-            llm_turns=1,
-            violations=[],
-            harness_detail="",
-            agent_gold_edited=False,
-            agent_gold_files=[],
-            agent_attempted_submit=False,
-            agent_submitted=False,
-            prompt_tokens_total=10,
-            completion_tokens_total=2,
-            provider_usage_turns=1,
-            estimated_usage_turns=0,
-            usage_source="provider",
-            cost_mode="catalog_provider_usage",
-            turn_trace_count=1,
-            turn_traces=[],
-            protocol_retry_used=False,
-            protocol_retry_success=False,
-            protocol_retry_reason="",
-            protocol_retry_attempts=0,
-            protocol_retry_limit=4,
-            protocol="tool_call",
-            parser="parse_toolcall_actions",
-            provider_error_kind="",
-            provider_retryable=None,
-        )
-
-    monkeypatch.setattr(runner, "run_mini_swe_task", fake_run_mini_swe_task)
-    task = SimpleNamespace(
-        instance_id="sympy__sympy-13480",
-        patch="diff --git a/x b/x\n",
-        fail_to_pass=(),
-        pass_to_pass=(),
-    )
-    estimate = SimpleNamespace(
-        cap=0.12,
-        estimated_cost=0.08,
-        source="memory_exact",
-        confidence="high",
-        memory_neighbors=3,
-        features={"repo": "sympy"},
-    )
-
-    records, _ = run_strategy_batch(
-        CompareStrategy("budgetflow_segment", "segment_value_aware"),
-        [task],
-        batch_budget_cap=0.12,
-        value_context=_value_context(),
-        step_limit=1,
-        trace_console="quiet",
-        heartbeat=0,
-        global_progress=GlobalRunProgress(1),
-        scoreboard=None,
-        print_lock=None,
-        task_caps={"sympy__sympy-13480": 0.12},
-        budget_estimates={"sympy__sympy-13480": estimate},
-        run_series="schema_contract",
-    )
-
-    record = records[0]
-    assert record["budget_mode"] == "dynamic_task_caps"
-    assert record["per_task_cap"] == 0.12
-    assert record["auto_budget_enabled"] is True
-    assert record["estimated_task_cap"] == 0.12
-    assert record["budget_prior_source"] == "memory_exact"
-
-
 def test_rebuild_state_ignores_current_schema_missing_score_status(tmp_path) -> None:
     path = tmp_path / "run.jsonl"
     path.write_text(
@@ -490,10 +407,8 @@ def test_completed_keys_keeps_success_after_bad_provider_retry(tmp_path) -> None
     assert keys == {("budgetflow_segment", "task-a")}
 
 
-def test_persisted_jsonl_contains_t1_t2_observability_and_learning_memory(tmp_path) -> None:
+def test_persisted_jsonl_contains_t1_t2_observability(tmp_path) -> None:
     out_path = tmp_path / "out.jsonl"
-    memory_path = tmp_path / "learning.jsonl"
-    memory = AutoBudgetMemory(memory_path)
     ctx = _value_context()
     record = _record()
 
@@ -515,12 +430,9 @@ def test_persisted_jsonl_contains_t1_t2_observability_and_learning_memory(tmp_pa
             out_path=out_path,
             value_profile="equal",
             enrich_value=ctx.enrich_record,
-            auto_budget_memory=memory,
-            no_auto_budget_learn=False,
         )
 
     persisted = json.loads(out_path.read_text().splitlines()[0])
-    learned = AutoBudgetMemory(memory_path).records
 
     assert persisted["llm_turns"] == 2
     assert persisted["value_objective"] == "t2_value_source_diagnostic"
@@ -531,45 +443,6 @@ def test_persisted_jsonl_contains_t1_t2_observability_and_learning_memory(tmp_pa
     assert persisted["policy_kind"] == "bootstrap"
     assert persisted["routing_learned_action"] == "early_rescue"
     assert persisted["routing_policy_memory_source"].endswith("066_postfix_3x3.jsonl")
-    assert record["budget_learning_update_written"] is True
-    assert learned[0]["run_id"] == "schema_contract_budgetflow_segment_sympy__sympy-14774"
-
-
-def test_abort_records_skip_auto_budget_memory(tmp_path) -> None:
-    out_path = tmp_path / "out.jsonl"
-    memory_path = tmp_path / "learning.jsonl"
-    memory = AutoBudgetMemory(memory_path)
-    ctx = _value_context()
-    record = _record(score_status="abort", abort_reason="provider_or_infra_error", harness_resolved=False)
-
-    with out_path.open("w") as handle:
-        persist_task_record(
-            _state(),
-            record,
-            handle=handle,
-            io_lock=threading.Lock(),
-            total_runs=1,
-            tasks_per_strategy=1,
-            global_progress=GlobalRunProgress(1),
-            scoreboard=None,
-            summary_path=tmp_path / "summary.log",
-            strategy_names=["budgetflow_segment"],
-            batch_caps={"budgetflow_segment": 0.5},
-            budget_modes={"budgetflow_segment": "per_task_cap"},
-            started=0.0,
-            out_path=out_path,
-            value_profile="equal",
-            enrich_value=ctx.enrich_record,
-            auto_budget_memory=memory,
-            no_auto_budget_learn=False,
-        )
-
-    persisted = json.loads(out_path.read_text().splitlines()[0])
-    assert persisted["score_status"] == "abort"
-    assert persisted["abort_reason"] == "provider_or_infra_error"
-    assert persisted["budget_learning_update_written"] is False
-    assert persisted["budget_learning_skipped_due_to_abort"] is True
-    assert AutoBudgetMemory(memory_path).records == []
 
 
 def test_budget_summary_reports_planned_cap_not_provider_runtime_balance() -> None:
@@ -583,12 +456,12 @@ def test_budget_summary_reports_planned_cap_not_provider_runtime_balance() -> No
         tier_mix_by_strategy={"budgetflow_segment": [{2: 0.5, 5: 0.5}, {5: 1.0}]},
         failure_by_strategy={"budgetflow_segment": {"pass": 1, "repair_fail": 1}},
         batch_caps={"budgetflow_segment": 1.5},
-        budget_modes={"budgetflow_segment": "dynamic_task_caps"},
+        budget_modes={"budgetflow_segment": "per_task_cap"},
     )
 
     text = "\n".join(lines)
     assert "per-task cap" in text
-    assert "1.50" in text
+    assert "3.00" in text
     assert "T5=75%" in text
     assert "100.00" not in text
 
@@ -603,7 +476,7 @@ def test_live_snapshot_uses_score_status_for_value_pass_count(tmp_path) -> None:
         tier_mix_by_strategy={"budgetflow_segment": [{2: 1.0}, {5: 1.0}]},
         batch_spent_by_strategy={"budgetflow_segment": 0.3},
         batch_caps={"budgetflow_segment": 0.5},
-        budget_modes={"budgetflow_segment": "dynamic_task_caps"},
+        budget_modes={"budgetflow_segment": "per_task_cap"},
         runs_done=2,
         total_runs=2,
         tasks_per_strategy=2,
@@ -648,7 +521,7 @@ def test_value_summary_reports_primary_normalized_value_metric(tmp_path) -> None
         tier_mix_by_strategy={"budgetflow_segment": [{2: 1.0}, {5: 1.0}]},
         batch_spent_by_strategy={"budgetflow_segment": 0.3},
         batch_caps={"budgetflow_segment": 0.5},
-        budget_modes={"budgetflow_segment": "dynamic_task_caps"},
+        budget_modes={"budgetflow_segment": "shared_batch_hard_budget"},
         runs_done=2,
         total_runs=2,
         tasks_per_strategy=2,

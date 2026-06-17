@@ -155,11 +155,8 @@ class ValueEfficiencyContext:
         else:
             record["task_value_multiplier"] = None
 
-        if record.get("auto_budget_enabled"):
-            record["budget_source"] = "auto_budget"
-        else:
-            record["budget_source"] = "static_cap"
-        record["budget_source_schema"] = "auto_budget_v2"
+        record["budget_source"] = "budget_plan_or_static_cap"
+        record["budget_source_schema"] = "shared_batch_v1"
         return record
 
     def summary_for_strategy(self, records: list[dict]) -> dict:

@@ -789,7 +789,7 @@ class PolicyMemory:
         return {
             "memory_source": self._source_path,
             "schema_version": "v1",
-            "active_views": ["cost", "routing", "escalation"],
+            "active_views": ["routing", "escalation"],
             "records_seen": self._records_seen,
             "records_accepted": self._records_accepted,
             "records_skipped": self._records_skipped,

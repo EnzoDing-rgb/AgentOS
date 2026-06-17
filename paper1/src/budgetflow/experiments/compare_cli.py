@@ -121,19 +121,6 @@ def parse_compare_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="fresh governor cap per task; avoids shared-pool starvation",
     )
     parser.add_argument("--paid-readiness-only", action="store_true", default=False, help="validate paid-run setup and exit before provider calls")
-    parser.add_argument("--no-auto-budget-learn", action="store_true", default=False, help="disable memory writes")
-    # Retired CLI surface: dynamic per-task caps are not the Budget Regime
-    # Compiler and must not be enabled for paper-mainline paid runs.
-    parser.set_defaults(
-        auto_budget=False,
-        auto_budget_dry_run=False,
-        auto_budget_scale=1.5,
-        auto_budget_min=0.10,
-        auto_budget_max=10.0,
-        auto_budget_memory=None,
-        allow_global_fallback_auto_budget=False,
-        auto_budget_k=3,
-    )
     parser.add_argument("--runtime-root", type=str, default=None, help="runtime scratch root")
     parser.add_argument("--allow-nfs-runtime", action="store_true", default=False, help="allow NFS runtime root")
     parser.add_argument("--soft-budget", type=float, default=None, help="optional soft budget for shared mode")

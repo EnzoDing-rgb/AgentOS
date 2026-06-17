@@ -15,7 +15,6 @@ from budgetflow.adapters import (
 from budgetflow.adapter import runner as mini_swe_runner
 from budgetflow.adapter.stall_guard import stall_guard_enabled
 from budgetflow.allocation import AllocationContext
-from budgetflow.auto_budget import BudgetEstimate
 from budgetflow.frozen_router import FrozenRouterPlan
 from budgetflow.compare_checkpoint import CompareCheckpointStore, GlobalRunProgress, StrategyScoreboard
 from budgetflow.experiments.compare_config import (
@@ -78,7 +77,6 @@ def run_task_record(
     enable_turn_trace: bool = False,
     trace_max_turns: int = 200,
     trace_truncate_chars: int = 120,
-    budget_estimate: BudgetEstimate | None = None,
     run_series: str = "",
     policy_lane: str = "",
     budget_mode: str = "shared",
@@ -105,12 +103,6 @@ def run_task_record(
 
     task_value, value_source = value_context.task_value(instance_id)
     task_effort, effort_source = value_context.task_effort(instance_id)
-
-    # AutoBudget memory provides a more informed effort estimate than the
-    # bootstrap heuristic.  When available, override the matrix-based effort.
-    if budget_estimate is not None and budget_estimate.source.startswith("memory_"):
-        task_effort = budget_estimate.estimated_cost
-        effort_source = f"auto_budget_{budget_estimate.source}"
 
     model_fit: dict[str, float] | None = (
         dict(calibrated_model_fit) if calibrated_model_fit else None
@@ -272,17 +264,6 @@ def run_task_record(
     record["missing_evidence"] = verdict["missing_evidence"]
     record.update(build_score_status(record))
 
-    if budget_estimate is not None:
-        record["auto_budget_enabled"] = True
-        record["estimated_task_cap"] = budget_estimate.cap
-        record["estimated_task_cost"] = budget_estimate.estimated_cost
-        record["budget_prior_source"] = budget_estimate.source
-        record["budget_prior_confidence"] = budget_estimate.confidence
-        record["budget_estimator_version"] = "v1"
-        record["auto_budget_memory_used"] = budget_estimate.source.startswith("memory_")
-        record["auto_budget_memory_neighbors"] = budget_estimate.memory_neighbors
-        record["auto_budget_features"] = budget_estimate.features
-
     return record
 
 
@@ -311,8 +292,6 @@ def run_strategy_batch(
     enable_turn_trace: bool = False,
     trace_max_turns: int = 200,
     trace_truncate_chars: int = 120,
-    task_caps: dict[str, float] | None = None,
-    budget_estimates: dict[str, BudgetEstimate] | None = None,
     budget_input: dict[str, Any] | None = None,
     run_series: str = "",
     heartbeat_writer: object | None = None,
@@ -330,9 +309,7 @@ def run_strategy_batch(
         else:
             print(msg, flush=True)
 
-    use_per_task = cfg.budgeted and (
-        (per_task_cap is not None and per_task_cap > 0) or (task_caps is not None)
-    )
+    use_per_task = cfg.budgeted and per_task_cap is not None and per_task_cap > 0
     ledger = WorkflowLedgerStore()
     governor: BudgetGovernor | None = None
     if not use_per_task:
@@ -350,9 +327,7 @@ def run_strategy_batch(
             governor.state.available_budget = max(0.0, governor.state.total_budget - initial_spent)
 
     if use_per_task:
-        cap_label = "auto_budget_per_task" if task_caps is not None else (
-            f"per_task_cap={fmt_usd(per_task_cap)}" if per_task_cap else "per_task"
-        )
+        cap_label = f"per_task_cap={fmt_usd(per_task_cap)}" if per_task_cap else "per_task"
         if max_overrun > 0:
             cap_label += f"+overrun={fmt_usd(max_overrun)}"
     else:
@@ -375,10 +350,7 @@ def run_strategy_batch(
 
         global_progress.start_task()
         if checkpoint is not None:
-            if use_per_task and task_caps is not None:
-                cap_for_ckpt = task_caps.get(task.instance_id, batch_budget_cap)
-            else:
-                cap_for_ckpt = per_task_cap if use_per_task and per_task_cap else batch_budget_cap
+            cap_for_ckpt = per_task_cap if use_per_task and per_task_cap else batch_budget_cap
             checkpoint.mark_in_flight(cfg.name, task.instance_id, cap_for_ckpt)
         banner = global_progress.format_banner(scoreboard)
         log(f"\n======== {banner} ========\n[start] task={task.instance_id} strategy={cfg.name}")
@@ -416,9 +388,7 @@ def run_strategy_batch(
             effective_batch_cap = batch_budget_cap
             task_cap: float | None = None
             if cfg.budgeted:
-                if task_caps is not None:
-                    task_cap = task_caps.get(task.instance_id)
-                elif per_task_cap is not None and per_task_cap > 0:
+                if per_task_cap is not None and per_task_cap > 0:
                     task_cap = per_task_cap
             if task_cap is not None:
                 task_ledger = WorkflowLedgerStore()
@@ -450,14 +420,12 @@ def run_strategy_batch(
                 enable_turn_trace=enable_turn_trace,
                 trace_max_turns=trace_max_turns,
                 trace_truncate_chars=trace_truncate_chars,
-                budget_estimate=budget_estimates.get(task.instance_id) if budget_estimates else None,
                 budget_input=budget_input,
                 run_series=run_series,
                 policy_lane=cfg.name,
                 budget_mode=budget_mode
                 or (
-                    "dynamic_task_caps" if task_caps is not None and task_cap is not None
-                    else "per_task_cap" if task_cap is not None
+                    "per_task_cap" if task_cap is not None
                     else "shared"
                 ),
                 per_task_cap=task_cap,

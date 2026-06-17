@@ -11,7 +11,7 @@ from budgetflow.experiments.compare_config import fmt_usd as _fmt_usd
 from budgetflow.failure_classification import classify_failure
 from budgetflow.model_tiers import parse_tier_label
 
-_PLANNED_CAP_MODES = frozenset({"per_task_cap", "dynamic_task_caps"})
+_PLANNED_CAP_MODES = frozenset({"per_task_cap"})
 
 
 def _record_score_status(record: dict) -> str:

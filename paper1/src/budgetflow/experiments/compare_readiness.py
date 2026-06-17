@@ -117,9 +117,6 @@ def build_compare_readiness_report(
     value_context: ValueEfficiencyContext,
     catalog_issues: list[str],
     runtime_root: Path,
-    auto_budget_enabled: bool,
-    auto_budget_caps: dict[str, float] | None,
-    auto_budget_estimates: dict[str, object] | None = None,
     budget_plan_path: Path | None = None,
     per_task_cap: float | None = None,
     runs_dir: Path | None = None,
@@ -158,17 +155,10 @@ def build_compare_readiness_report(
         strategy.routing in {"enterprise_router", "budgetflow_same_router"}
         for strategy in strategies
     )
-    if auto_budget_caps:
-        facts.append("budget_mode=dynamic_task_caps")
-    elif use_fixed_per_task_cap:
+    if use_fixed_per_task_cap:
         facts.append("budget_mode=per_task_cap")
     else:
         facts.append("budget_mode=shared_batch_hard_budget")
-    facts.append(f"dynamic_caps={'on' if auto_budget_enabled else 'off'}")
-    if auto_budget_caps:
-        planned_policy_cap = sum(float(cap) for cap in auto_budget_caps.values())
-        facts.append(f"planned_policy_cap={planned_policy_cap:.4f}")
-        facts.append(f"planned_total_cap={planned_policy_cap * max(len(strategy_names), 1):.4f}")
 
     if not task_ids:
         blocking.append("no tasks selected")
@@ -251,11 +241,6 @@ def build_compare_readiness_report(
             "paper mainline paid runs require primary value evidence: use "
             "--value-source-kind pre_registered_manual with a covered value matrix"
         )
-    if budget_plan_path is not None and auto_budget_enabled:
-        blocking.append(
-            "--budget-plan uses the Budget Regime Compiler shared-batch contract; "
-            "--auto-budget enables retired dynamic per-task caps. Do not combine them."
-        )
     if budget_plan_path is not None and use_fixed_per_task_cap:
         blocking.append(
             "--budget-plan uses the Budget Regime Compiler shared-batch contract; "
@@ -332,28 +317,6 @@ def build_compare_readiness_report(
 
     if args.task_set != "medium" and not args.ids and len(task_ids) <= 3:
         warnings.append("small familiar task set; diagnostic only, weak anti-overfitting evidence")
-    if auto_budget_enabled and not auto_budget_caps:
-        blocking.append("dynamic task caps enabled but no task caps were produced")
-    if auto_budget_enabled and auto_budget_estimates:
-        estimates = list(auto_budget_estimates.values())
-        fallback_n = sum(1 for estimate in estimates if str(getattr(estimate, "source", "")) == "global_fallback")
-        low_conf_n = sum(1 for estimate in estimates if str(getattr(estimate, "confidence", "")) == "low")
-        if estimates and fallback_n == len(estimates):
-            msg = "dynamic task caps are all global_fallback; do not claim Cost Memory lift"
-            if (
-                getattr(args, "allow_global_fallback_auto_budget", False)
-                or getattr(args, "auto_budget_dry_run", False)
-            ):
-                warnings.append(msg)
-            else:
-                blocking.append(
-                    msg
-                    + "; pass --allow-global-fallback-auto-budget only for a fallback-cap diagnostic"
-                )
-        elif estimates and fallback_n / len(estimates) >= 0.5:
-            warnings.append(f"dynamic task caps mostly global_fallback ({fallback_n}/{len(estimates)}); Cost Memory signal is weak")
-        if estimates and low_conf_n / len(estimates) >= 0.5:
-            warnings.append(f"dynamic cap estimates mostly low confidence ({low_conf_n}/{len(estimates)})")
     if not args.trace_turns:
         warnings.append("turn traces disabled; strongest-model productivity/source breakdown will be weak")
 

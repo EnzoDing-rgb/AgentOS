@@ -1,12 +1,8 @@
-"""Learn Policy memory source selection for BudgetFlow runs.
+"""Routing/Escalation PolicyMemory source selection for BudgetFlow runs.
 
-Cap learning and routing learning use different artifacts:
-
-- ``auto_budget_memory.jsonl`` stores cap/value-cost priors.
-- run JSONL files store routing outcomes and per-turn traces.
-
-Keeping this distinction behind one module prevents the runner from treating a
-cap-memory artifact as routing-memory evidence.
+Current runs only load explicit run JSONL files as PolicyMemory. Retired
+``auto_budget*`` artifacts are deliberately excluded so old Cost Memory files
+cannot enter active routing or escalation decisions.
 """
 
 from __future__ import annotations

@@ -1,26 +1,12 @@
-"""Learning-memory setup and no-provider gates for compare runs."""
+"""Policy-memory setup and no-provider gates for compare runs."""
 
 from __future__ import annotations
 
 from argparse import Namespace
-from dataclasses import dataclass
 from pathlib import Path
 
-from budgetflow.auto_budget import AutoBudgetEstimator, AutoBudgetMemory, BudgetEstimate
-from budgetflow.adapters import SwebenchTaskAdapter
-from budgetflow.console_log import tag
-from budgetflow.experiments.compare_config import fmt_usd
 from budgetflow.learning_context import load_policy_memory_context
 from budgetflow.policy_memory import PolicyMemory
-from budgetflow.value_efficiency import ValueEfficiencyContext
-
-
-@dataclass
-class AutoBudgetPlan:
-    memory_path: Path
-    memory: AutoBudgetMemory | None
-    estimates: dict[str, BudgetEstimate]
-    task_caps: dict[str, float] | None
 
 
 def run_policy_memory_gate(policy_memory: PolicyMemory | None, source_path: str) -> bool:
@@ -121,127 +107,6 @@ def run_policy_memory_gate_only(args: Namespace, *, repo_root: Path) -> int:
     pm = PolicyMemory(regret_threshold=args.regret_threshold)
     pm.rebuild_from_jsonl(pm_path)
     return 0 if run_policy_memory_gate(pm, args.policy_memory) else 1
-
-
-def build_auto_budget_plan(args: Namespace, *, tasks: list, runs_dir: Path) -> AutoBudgetPlan:
-    memory_path = Path(args.auto_budget_memory) if args.auto_budget_memory else runs_dir / "auto_budget_memory.jsonl"
-    memory: AutoBudgetMemory | None = None
-    auto_budget_selected = bool(args.auto_budget or args.auto_budget_dry_run)
-    if auto_budget_selected and not args.no_auto_budget_learn:
-        memory = AutoBudgetMemory(memory_path if memory_path.is_file() else None)
-        if memory._path is None:
-            memory._path = memory_path
-
-    estimates: dict[str, BudgetEstimate] = {}
-    task_caps: dict[str, float] | None = None
-    if auto_budget_selected:
-        estimator = AutoBudgetEstimator(
-            memory=memory,
-            feature_adapter=SwebenchTaskAdapter(),
-            k=args.auto_budget_k,
-        )
-        for task in tasks:
-            estimate = estimator.estimate(
-                task,
-                scale=args.auto_budget_scale,
-                min_cap=args.auto_budget_min,
-                max_cap=args.auto_budget_max,
-            )
-            estimates[task.instance_id] = estimate
-            print(
-                f"{tag('auto-budget', bold=False)} {estimate.instance_id} "
-                f"est={fmt_usd(estimate.estimated_cost)} cap={fmt_usd(estimate.cap)} "
-                f"source={estimate.source} confidence={estimate.confidence}"
-                + (f" neighbors={estimate.memory_neighbors}" if estimate.memory_neighbors else ""),
-                flush=True,
-            )
-        task_caps = {iid: estimate.cap for iid, estimate in estimates.items()}
-        if args.per_task_cap is None:
-            args.per_task_cap = -1.0
-    return AutoBudgetPlan(memory_path=memory_path, memory=memory, estimates=estimates, task_caps=task_caps)
-
-
-def run_auto_budget_dry_run(
-    args: Namespace,
-    *,
-    tasks: list,
-    runs_dir: Path,
-    repo_root: Path,
-    auto_budget_plan: AutoBudgetPlan,
-    value_context: ValueEfficiencyContext,
-) -> int:
-    policy_ctx = load_policy_memory_context(
-        runs_dir=runs_dir,
-        repo_root=repo_root,
-        explicit_path=args.policy_memory,
-        resume=False,
-        resume_path=None,
-        disable=args.disable_policy_memory,
-        regret_threshold=args.regret_threshold,
-    )
-    if policy_ctx.enabled and policy_ctx.memory is not None and policy_ctx.source is not None:
-        source_display = ",".join(str(path) for path in policy_ctx.sources) or str(policy_ctx.source)
-        print(
-            f"{tag('policy_memory', bold=True)} loaded from {source_display} "
-            f"source={policy_ctx.source_kind} records={policy_ctx.memory._record_count} "
-            f"effective_weight={policy_ctx.memory._effective_record_weight:.2f} "
-            f"repos={len(policy_ctx.memory._repo_priors)} tasks={len(policy_ctx.memory._task_priors)} "
-            f"threshold={policy_ctx.memory.regret_threshold}",
-            flush=True,
-        )
-    else:
-        print(
-            f"{tag('policy_memory', bold=False)} disabled - {policy_ctx.reason or 'no usable run JSONL source found'}",
-            flush=True,
-        )
-
-    memory = auto_budget_plan.memory
-    print("=== AutoBudget dry-run (Value-Driven Budget Allocation) ===", flush=True)
-    print(f"memory={auto_budget_plan.memory_path}", flush=True)
-    print(f"records={len(memory.records) if memory is not None else 0}", flush=True)
-    print(
-        f"policy_memory={'on' if policy_ctx.memory is not None else 'off'}"
-        + (f" source={','.join(str(path) for path in policy_ctx.sources)}" if policy_ctx.sources else ""),
-        flush=True,
-    )
-    print(
-        f"  {'task':<40} {'source':<20} {'est_cost':>10} {'cap':>10} "
-        f"{'confidence':<10} {'neighbors':>9} {'value':>8} {'v_mult':>6} "
-        f"{'esc':<36} {'starter':<38}",
-        flush=True,
-    )
-    print(f"  {'-'*202}", flush=True)
-    for task in tasks:
-        estimate = auto_budget_plan.estimates[task.instance_id]
-        task_value, _ = value_context.task_value(task.instance_id)
-        raw_multiplier = task_value / max(0.001, value_context.median_task_value)
-        value_multiplier = max(0.5, min(2.0, raw_multiplier))
-        if policy_ctx.memory is not None:
-            prior = policy_ctx.memory.routing_prior_summary(task.instance_id)
-            esc = (
-                f"{prior.get('escalation_memory_source') or 'none'}:"
-                f"{prior.get('value_triggered_escalation_action', 'default')}"
-                f"/w={prior.get('value_triggered_escalation_window', '?')}"
-                f"/t3_rate={prior.get('t3_productive_rate', 0):.2f}"
-            )
-            starter = (
-                f"{prior.get('starter_memory_source') or 'none'}:"
-                f"{prior.get('strongest_starter_action', 'default')}"
-                f"/w={prior.get('strongest_starter_window', '?')}"
-                f"/bo={prior.get('starter_bo_frontload_rate', 0):.2f}"
-                f"/bf={prior.get('starter_budgetflow_success_rate', 0):.2f}"
-            )
-        else:
-            esc = "off"
-            starter = "off"
-        print(
-            f"  {task.instance_id:<40} {estimate.source:<20} {fmt_usd(estimate.estimated_cost):>10} "
-            f"{fmt_usd(estimate.cap):>10} {estimate.confidence:<10} {estimate.memory_neighbors:>9} "
-            f"{task_value:>8.2f} {value_multiplier:>6.2f} "
-            f"{esc:<36} {starter:<38}",
-            flush=True,
-        )
-    return 0
 
 
 def _resolve_existing_file(raw_path: str, repo_root: Path, flag: str) -> Path:

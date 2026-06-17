@@ -17,8 +17,6 @@ def _args(**overrides):
         ids=None,
         task_set="easy",
         trace_turns=True,
-        auto_budget_dry_run=False,
-        allow_global_fallback_auto_budget=False,
         diagnostic_catalog=False,
         frozen_plan=None,
     )
@@ -43,14 +41,10 @@ def test_readiness_blocks_uncovered_non_equal_value_matrix(tmp_path) -> None:
         value_context=value_context,
         catalog_issues=[],
         runtime_root=Path("/tmp/budgetflow-runtime"),
-        auto_budget_enabled=True,
-        auto_budget_caps={"covered": 0.1, "missing": 0.1},
     )
 
     assert not report.ok
     assert any("missing 1 selected task values" in issue for issue in report.blocking)
-    assert "planned_policy_cap=0.2000" in report.facts
-    assert "planned_total_cap=0.2000" in report.facts
 
 
 def test_readiness_warns_equal_value_is_not_t1_evidence() -> None:
@@ -65,8 +59,6 @@ def test_readiness_warns_equal_value_is_not_t1_evidence() -> None:
         value_context=value_context,
         catalog_issues=[],
         runtime_root=Path("/tmp/budgetflow-runtime"),
-        auto_budget_enabled=False,
-        auto_budget_caps=None,
     )
 
     assert report.ok
@@ -90,8 +82,6 @@ def test_readiness_warns_plain_matrix_is_not_primary_t1_evidence(tmp_path) -> No
         value_context=value_context,
         catalog_issues=[],
         runtime_root=Path("/tmp/budgetflow-runtime"),
-        auto_budget_enabled=False,
-        auto_budget_caps=None,
     )
 
     assert report.ok
@@ -119,8 +109,6 @@ def test_readiness_accepts_pre_registered_manual_as_primary_t1_evidence(tmp_path
         value_context=value_context,
         catalog_issues=[],
         runtime_root=Path("/tmp/budgetflow-runtime"),
-        auto_budget_enabled=False,
-        auto_budget_caps=None,
     )
 
     assert report.ok
@@ -146,8 +134,6 @@ def test_readiness_blocks_underparallel_policy_jobs() -> None:
         value_context=value_context,
         catalog_issues=[],
         runtime_root=Path("/tmp/budgetflow-runtime"),
-        auto_budget_enabled=False,
-        auto_budget_caps=None,
     )
 
     assert not report.ok
@@ -177,8 +163,6 @@ def test_paper_mainline_blocks_non_tool_call_catalog(monkeypatch) -> None:
         value_context=value_context,
         catalog_issues=[],
         runtime_root=Path("/tmp/budgetflow-runtime"),
-        auto_budget_enabled=False,
-        auto_budget_caps=None,
     )
 
     assert not report.ok
@@ -197,8 +181,6 @@ def test_readiness_blocks_skipping_provider_signature_check() -> None:
         value_context=value_context,
         catalog_issues=[],
         runtime_root=Path("/tmp/budgetflow-runtime"),
-        auto_budget_enabled=False,
-        auto_budget_caps=None,
     )
 
     assert not report.ok
@@ -224,8 +206,6 @@ def test_readiness_blocks_runtime_worktree_python_contamination(tmp_path, monkey
         value_context=value_context,
         catalog_issues=[],
         runtime_root=Path("/tmp/budgetflow-runtime"),
-        auto_budget_enabled=False,
-        auto_budget_caps=None,
     )
 
     assert not report.ok
@@ -244,8 +224,6 @@ def test_readiness_blocks_missing_frozen_plan_for_mechanism_router() -> None:
         value_context=value_context,
         catalog_issues=[],
         runtime_root=Path("/tmp/budgetflow-runtime"),
-        auto_budget_enabled=False,
-        auto_budget_caps=None,
     )
 
     assert not report.ok
@@ -264,8 +242,6 @@ def test_readiness_blocks_paper_mainline_without_budget_plan() -> None:
         value_context=value_context,
         catalog_issues=[],
         runtime_root=Path("/tmp/budgetflow-runtime"),
-        auto_budget_enabled=False,
-        auto_budget_caps=None,
     )
 
     assert not report.ok
@@ -284,8 +260,6 @@ def test_readiness_blocks_retired_run_series() -> None:
         value_context=value_context,
         catalog_issues=[],
         runtime_root=Path("/tmp/budgetflow-runtime"),
-        auto_budget_enabled=False,
-        auto_budget_caps=None,
     )
 
     assert not report.ok
@@ -316,8 +290,6 @@ def test_readiness_blocks_paper_mainline_without_primary_value_source(tmp_path) 
         value_context=value_context,
         catalog_issues=[],
         runtime_root=Path("/tmp/budgetflow-runtime"),
-        auto_budget_enabled=False,
-        auto_budget_caps=None,
         budget_plan_path=bp,
     )
 
@@ -345,8 +317,6 @@ def test_readiness_blocks_frozen_plan_without_selected_task(tmp_path) -> None:
         value_context=value_context,
         catalog_issues=[],
         runtime_root=Path("/tmp/budgetflow-runtime"),
-        auto_budget_enabled=False,
-        auto_budget_caps=None,
     )
 
     assert not report.ok
@@ -371,8 +341,6 @@ def test_readiness_accepts_frozen_plan_covering_selected_tasks(tmp_path) -> None
         value_context=value_context,
         catalog_issues=[],
         runtime_root=Path("/tmp/budgetflow-runtime"),
-        auto_budget_enabled=False,
-        auto_budget_caps=None,
     )
 
     assert report.ok
@@ -395,8 +363,6 @@ def test_readiness_blocks_tasks_without_verifiable_harness_metadata() -> None:
         value_context=value_context,
         catalog_issues=[],
         runtime_root=Path("/tmp/budgetflow-runtime"),
-        auto_budget_enabled=False,
-        auto_budget_caps=None,
     )
 
     assert not report.ok
@@ -418,66 +384,10 @@ def test_readiness_blocks_malformed_frozen_plan(tmp_path) -> None:
         value_context=value_context,
         catalog_issues=[],
         runtime_root=Path("/tmp/budgetflow-runtime"),
-        auto_budget_enabled=False,
-        auto_budget_caps=None,
     )
 
     assert not report.ok
     assert any("cannot load frozen router plan" in issue for issue in report.blocking)
-
-
-def test_readiness_blocks_paid_run_when_auto_budget_has_no_memory_lift() -> None:
-    value_context = ValueEfficiencyContext()
-    value_context.init(value_profile="equal")
-
-    report = build_compare_readiness_report(
-        args=_args(),
-        tasks=[
-            SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",)),
-            SimpleNamespace(instance_id="task-b", test_patch="diff", fail_to_pass=("test_b",)),
-        ],
-        strategies=(CompareStrategy("budget_only_baseline", "budget_only"),),
-        policy_jobs=1,
-        value_context=value_context,
-        catalog_issues=[],
-        runtime_root=Path("/tmp/budgetflow-runtime"),
-        auto_budget_enabled=True,
-        auto_budget_caps={"task-a": 0.1, "task-b": 0.2},
-        auto_budget_estimates={
-            "task-a": SimpleNamespace(source="global_fallback", confidence="low"),
-            "task-b": SimpleNamespace(source="global_fallback", confidence="low"),
-        },
-    )
-
-    assert not report.ok
-    assert any("dynamic task caps are all global_fallback" in issue for issue in report.blocking)
-
-
-def test_readiness_allows_explicit_global_fallback_cap_diagnostic() -> None:
-    value_context = ValueEfficiencyContext()
-    value_context.init(value_profile="equal")
-
-    report = build_compare_readiness_report(
-        args=_args(allow_global_fallback_auto_budget=True),
-        tasks=[
-            SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",)),
-            SimpleNamespace(instance_id="task-b", test_patch="diff", fail_to_pass=("test_b",)),
-        ],
-        strategies=(CompareStrategy("budget_only_baseline", "budget_only"),),
-        policy_jobs=1,
-        value_context=value_context,
-        catalog_issues=[],
-        runtime_root=Path("/tmp/budgetflow-runtime"),
-        auto_budget_enabled=True,
-        auto_budget_caps={"task-a": 0.1, "task-b": 0.2},
-        auto_budget_estimates={
-            "task-a": SimpleNamespace(source="global_fallback", confidence="low"),
-            "task-b": SimpleNamespace(source="global_fallback", confidence="low"),
-        },
-    )
-
-    assert report.ok
-    assert any("dynamic task caps are all global_fallback" in warning for warning in report.warnings)
 
 
 def test_readiness_blocks_budget_plan_blck_decision(tmp_path) -> None:
@@ -499,8 +409,6 @@ def test_readiness_blocks_budget_plan_blck_decision(tmp_path) -> None:
         value_context=value_context,
         catalog_issues=[],
         runtime_root=Path("/tmp/budgetflow-runtime"),
-        auto_budget_enabled=False,
-        auto_budget_caps=None,
         budget_plan_path=bp,
     )
 
@@ -526,8 +434,6 @@ def test_readiness_blocks_retired_budget_plan_generation_mode(tmp_path) -> None:
         value_context=value_context,
         catalog_issues=[],
         runtime_root=Path("/tmp/budgetflow-runtime"),
-        auto_budget_enabled=False,
-        auto_budget_caps=None,
         budget_plan_path=bp,
     )
 
@@ -557,8 +463,6 @@ def test_readiness_blocks_budget_plan_missing_selected_tasks(tmp_path) -> None:
         value_context=value_context,
         catalog_issues=[],
         runtime_root=Path("/tmp/budgetflow-runtime"),
-        auto_budget_enabled=False,
-        auto_budget_caps=None,
         budget_plan_path=bp,
     )
 
@@ -589,40 +493,11 @@ def test_readiness_blocks_budget_plan_strategy_set_drift(tmp_path) -> None:
         value_context=value_context,
         catalog_issues=[],
         runtime_root=Path("/tmp/budgetflow-runtime"),
-        auto_budget_enabled=False,
-        auto_budget_caps=None,
         budget_plan_path=bp,
     )
 
     assert not report.ok
     assert any("strategy set/order" in issue for issue in report.blocking)
-
-
-def test_readiness_blocks_budget_plan_with_retired_dynamic_caps(tmp_path) -> None:
-    bp = tmp_path / "budget_plan.json"
-    bp.write_text(
-        '{"hard_cap_usd":1.0,"source":"budget_binding_calibrator","decision":"PASS",'
-        '"generation_mode":"target_utilization",'
-        '"task_ids":["task-a"],"strategy_names":["budgetflow_segment"]}'
-    )
-    value_context = ValueEfficiencyContext()
-    value_context.init(value_profile="equal")
-
-    report = build_compare_readiness_report(
-        args=_args(),
-        tasks=[SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",))],
-        strategies=(CompareStrategy("budgetflow_segment", "segment_value_aware"),),
-        policy_jobs=1,
-        value_context=value_context,
-        catalog_issues=[],
-        runtime_root=Path("/tmp/budgetflow-runtime"),
-        auto_budget_enabled=True,
-        auto_budget_caps={"task-a": 0.10},
-        budget_plan_path=bp,
-    )
-
-    assert not report.ok
-    assert any("retired dynamic per-task caps" in issue for issue in report.blocking)
 
 
 def test_readiness_blocks_budget_plan_superset_for_short_run(tmp_path) -> None:
@@ -646,8 +521,6 @@ def test_readiness_blocks_budget_plan_superset_for_short_run(tmp_path) -> None:
         value_context=value_context,
         catalog_issues=[],
         runtime_root=Path("/tmp/budgetflow-runtime"),
-        auto_budget_enabled=False,
-        auto_budget_caps=None,
         budget_plan_path=bp,
     )
 
@@ -677,8 +550,6 @@ def test_readiness_blocks_budget_plan_task_order_drift(tmp_path) -> None:
         value_context=value_context,
         catalog_issues=[],
         runtime_root=Path("/tmp/budgetflow-runtime"),
-        auto_budget_enabled=False,
-        auto_budget_caps=None,
         budget_plan_path=bp,
     )
 
@@ -703,8 +574,6 @@ def test_readiness_blocks_diagnostic_catalog_without_explicit_opt_in(tmp_path) -
             value_context=value_context,
             catalog_issues=[],
             runtime_root=Path("/tmp/budgetflow-runtime"),
-            auto_budget_enabled=False,
-            auto_budget_caps=None,
         )
 
         assert not report.ok
@@ -730,8 +599,6 @@ def test_readiness_accepts_diagnostic_catalog_with_explicit_opt_in(tmp_path) -> 
             value_context=value_context,
             catalog_issues=[],
             runtime_root=Path("/tmp/budgetflow-runtime"),
-            auto_budget_enabled=False,
-            auto_budget_caps=None,
         )
 
         assert report.ok
