@@ -1,0 +1,185 @@
+{
+  "hard_cap_usd": 1.8221,
+  "source": "budget_binding_calibrator",
+  "generation_mode": "target_utilization",
+  "catalog_revision": "2026-06-17-glm51-t2-t3x5",
+  "catalog_path": "/root/.dev/AgentOS/paper1/docs/config/model_tiers.default.json",
+  "catalog_content_hash": "70beda1fbecb",
+  "historical_source": "paper1/data/runs/mainline_5x10_glm51_20260617-0.jsonl",
+  "task_ids": [
+    "sympy__sympy-13480",
+    "sympy__sympy-14774",
+    "sympy__sympy-16988",
+    "sympy__sympy-21055",
+    "sympy__sympy-23117",
+    "sympy__sympy-20212",
+    "sympy__sympy-12419",
+    "sympy__sympy-19007",
+    "django__django-10924",
+    "django__django-12113"
+  ],
+  "strategy_names": [
+    "bare_t2_baseline",
+    "bare_t3_baseline",
+    "enterprise_router_baseline",
+    "budgetflow_task_level"
+  ],
+  "projected_spend_by_strategy": {
+    "bare_t2_baseline": 0.7931,
+    "bare_t3_baseline": 1.9299,
+    "enterprise_router_baseline": 1.4349,
+    "budgetflow_task_level": 1.4777
+  },
+  "projected_task_cost_by_strategy": {
+    "bare_t2_baseline": {
+      "sympy__sympy-13480": 0.0508,
+      "sympy__sympy-14774": 0.0534,
+      "sympy__sympy-16988": 0.0569,
+      "sympy__sympy-21055": 0.1171,
+      "sympy__sympy-23117": 0.122,
+      "sympy__sympy-20212": 0.0506,
+      "sympy__sympy-12419": 0.1209,
+      "sympy__sympy-19007": 0.1306,
+      "django__django-10924": 0.0446,
+      "django__django-12113": 0.0461
+    },
+    "bare_t3_baseline": {
+      "sympy__sympy-13480": 0.1187,
+      "sympy__sympy-14774": 0.0791,
+      "sympy__sympy-16988": 0.2489,
+      "sympy__sympy-21055": 0.2556,
+      "sympy__sympy-23117": 0.1478,
+      "sympy__sympy-20212": 0.2226,
+      "sympy__sympy-12419": 0.3397,
+      "sympy__sympy-19007": 0.3054,
+      "django__django-10924": 0.1043,
+      "django__django-12113": 0.1078
+    },
+    "enterprise_router_baseline": {
+      "sympy__sympy-13480": 0.0869,
+      "sympy__sympy-14774": 0.0913,
+      "sympy__sympy-16988": 0.2878,
+      "sympy__sympy-21055": 0.1945,
+      "sympy__sympy-23117": 0.1025,
+      "sympy__sympy-20212": 0.0866,
+      "sympy__sympy-12419": 0.2068,
+      "sympy__sympy-19007": 0.2234,
+      "django__django-10924": 0.0763,
+      "django__django-12113": 0.0788
+    },
+    "budgetflow_task_level": {
+      "sympy__sympy-13480": 0.0233,
+      "sympy__sympy-14774": 0.0311,
+      "sympy__sympy-16988": 0.0779,
+      "sympy__sympy-21055": 0.64,
+      "sympy__sympy-23117": 0.1671,
+      "sympy__sympy-20212": 0.0694,
+      "sympy__sympy-12419": 0.1656,
+      "sympy__sympy-19007": 0.1789,
+      "django__django-10924": 0.0611,
+      "django__django-12113": 0.0631
+    }
+  },
+  "projected_utilization_by_strategy": {
+    "bare_t2_baseline": 0.4353,
+    "bare_t3_baseline": 1.0,
+    "enterprise_router_baseline": 0.7875,
+    "budgetflow_task_level": 0.811
+  },
+  "raw_projected_utilization_by_strategy": {
+    "bare_t2_baseline": 0.4353,
+    "bare_t3_baseline": 1.0591,
+    "enterprise_router_baseline": 0.7875,
+    "budgetflow_task_level": 0.811
+  },
+  "reference_spend_usd": 1.4777,
+  "strongest_boundary_usd": 1.9299,
+  "max_projected_spend_usd": 1.9299,
+  "decision": "PASS",
+  "reasons": [
+    "calibration:excluded 17 contaminated rows: harness_trust:incomplete=17",
+    "calibration:model_fit_evidence confidence=high from 7 tasks: tier1=0.1500, tier2=1.0000, tier3=1.0000",
+    "calibration:bare_t2_baseline n=1 exact observed costs (low sample, no cross-task extrapolation)",
+    "calibration:bare_t3_baseline n=7 exact observed costs",
+    "calibration:enterprise_router_baseline n=4 exact observed costs (low sample, no cross-task extrapolation)",
+    "calibration:budgetflow_task_level n=4 exact observed costs (low sample, no cross-task extrapolation)",
+    "reference_rule: strategy_set_p75_projected_spend = $1.4777",
+    "hard_cap = p75_ref($1.4777) / target_utilization(1.0) = $1.4777",
+    "strongest_runway_floor: hard_cap must be at least $1.8221 so the Strongest Model baseline reaches the final task before budget pressure dominates",
+    "strongest_boundary: bare_t3_baseline projected spend $1.9299; recorded for pressure audit, not a hard cap",
+    "planned_task_budget: BudgetFlow active policies get loose task budgets derived from projected task costs; sums may exceed hard_cap and runtime still enforces the shared batch hard cap",
+    "pressure_contract: grade=warn",
+    "pressure_contract: t2_diagnostic: bare_t2_baseline at 43.5%; not a pressure-ordering constraint",
+    "pressure_contract: t3_tight: bare_t3_baseline at 100.0% >= 85% \u2014 budget-constrained as expected",
+    "pressure_contract VIOLATION: budgetflow_under_target: budgetflow_task_level at 81.1% < 85%; budget may be too loose or policy may be too conservative",
+    "PRESSURE_GATE WARNING: BudgetFlow projected utilization is below the target pressure regime; treat the next run as calibration, not paper evidence",
+    "tight_budget_warning: bare_t3_baseline projected spend $1.93 > hard_cap $1.82 (105.9% utilization) \u2014 strategy may not complete within shared budget",
+    "decision=PASS: hard_cap=$1.82 from target pressure with strongest boundary, max projected utilization 100.0%",
+    "projection_confidence=unvalidated: no calibration evidence provided. Run one diagnostic calibration audit before relying on projected utilization."
+  ],
+  "pressure_contract": {
+    "target_utilization": 1.0,
+    "shape": {
+      "bare_t2_baseline": 0.4353,
+      "bare_t3_baseline": 1.0,
+      "enterprise_router_baseline": 0.7875,
+      "budgetflow_same_enterprise_router": null,
+      "budgetflow_task_level": 0.811,
+      "budgetflow_segment": null
+    },
+    "assertions": [
+      "t2_diagnostic: bare_t2_baseline at 43.5%; not a pressure-ordering constraint",
+      "t3_tight: bare_t3_baseline at 100.0% >= 85% \u2014 budget-constrained as expected"
+    ],
+    "violations": [
+      "budgetflow_under_target: budgetflow_task_level at 81.1% < 85%; budget may be too loose or policy may be too conservative"
+    ],
+    "grade": "warn"
+  },
+  "projection_confidence": "unvalidated",
+  "target_projected_utilization": 1.0,
+  "calibration_excluded": {
+    "harness_trust:incomplete": 17
+  },
+  "model_fit_evidence": {
+    "tier_fit": {
+      "tier1": 0.15,
+      "tier2": 1.0,
+      "tier3": 1.0
+    },
+    "source": "historical_jsonl",
+    "confidence": "high",
+    "evidence_tasks": 7,
+    "censored_tiers": [],
+    "reasons": [
+      "tier1: fit=0.1500 (catalog fallback, no historical evidence)",
+      "tier2: fit=1.0000 from 1 completed + 0 censored rows",
+      "tier3: fit=1.0000 from 7 completed + 0 censored rows"
+    ]
+  },
+  "planned_task_budget_by_strategy": {
+    "budgetflow_task_level": {
+      "sympy__sympy-13480": 0.6228,
+      "sympy__sympy-14774": 0.6384,
+      "sympy__sympy-16988": 0.7321,
+      "sympy__sympy-21055": 1.8562,
+      "sympy__sympy-23117": 0.9105,
+      "sympy__sympy-20212": 0.715,
+      "sympy__sympy-12419": 0.9075,
+      "sympy__sympy-19007": 0.9341,
+      "django__django-10924": 0.6985,
+      "django__django-12113": 0.7025
+    }
+  },
+  "planned_task_budget_policy": {
+    "mode": "budgetflow_loose_task_budget",
+    "source": "projected_task_cost_by_strategy",
+    "multiplier": 2.0,
+    "min_usd": 0.05,
+    "batch_floor_rule": "hard_cap_usd/sqrt(task_count)+projected_cost_multiplier",
+    "sum_can_exceed_hard_cap": true,
+    "applies_to": [
+      "budgetflow_task_level"
+    ]
+  }
+}
