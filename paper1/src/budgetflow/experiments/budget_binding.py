@@ -318,11 +318,13 @@ def calibrate_budget(
                 historical_jsonl,
                 task_ids,
                 value_features,
+                calibration_scope="historical_jsonl",
             )
             fit_overrides = evidence.tier_fit
             plan.model_fit_evidence = {
                 "tier_fit": evidence.to_allocation_model_fit(),
                 "source": evidence.source,
+                "scope": evidence.scope,
                 "confidence": evidence.confidence,
                 "evidence_tasks": evidence.evidence_tasks,
                 "tier_evidence_counts": {
@@ -342,7 +344,7 @@ def calibrate_budget(
             }
             plan.reasons.append(
                 f"calibration:model_fit_evidence confidence={evidence.confidence} "
-                f"from {evidence.evidence_tasks} tasks: "
+                f"scope={evidence.scope} from {evidence.evidence_tasks} tasks: "
                 + ", ".join(
                     f"tier{t}={evidence.tier_fit[t]:.4f}" for t in sorted(evidence.tier_fit)
                 )

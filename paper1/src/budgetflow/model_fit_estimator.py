@@ -23,6 +23,7 @@ class ModelFitEvidence:
 
     tier_fit: dict[int, float]
     source: str = "historical_jsonl"
+    scope: str = "target_task_set"
     confidence: str = "low"
     evidence_tasks: int = 0
     tier_evidence_counts: dict[int, int] = field(default_factory=dict)
@@ -40,6 +41,8 @@ def estimate_model_fit_from_jsonl(
     jsonl_path: Path,
     task_ids: list[str],
     value_features: dict[str, dict],
+    *,
+    calibration_scope: str = "target_task_set",
 ) -> ModelFitEvidence:
     """Derive per-tier ModelFit from clean historical JSONL evidence.
 
@@ -48,10 +51,21 @@ def estimate_model_fit_from_jsonl(
     per-tier cost evidence. Budget-exhausted rows are censored upper bounds
     that inform the exhausted tier without becoming complete samples.
 
+    ``calibration_scope`` controls which clean rows are eligible:
+
+    - ``target_task_set``: only rows whose instance_id is in ``task_ids``.
+    - ``historical_jsonl``: all clean same-catalog rows in the explicitly
+      supplied calibration JSONL. This is for workload/catalog-level ModelFit
+      calibration before a larger run and does not assign tiers to target
+      tasks.
+
     Returns a ModelFitEvidence with per-tier fit rates. Tiers with no
     historical evidence fall back to catalog progress_score.
     """
+    if calibration_scope not in {"target_task_set", "historical_jsonl"}:
+        raise ValueError(f"unknown calibration_scope={calibration_scope!r}")
     task_id_set = set(task_ids)
+    filter_to_target_tasks = calibration_scope == "target_task_set"
 
     # Collect per-tier efficiency observations: tier -> [fit_estimate, ...]
     observed: dict[int, list[float]] = {}
@@ -69,7 +83,7 @@ def estimate_model_fit_from_jsonl(
                 continue
 
             instance_id = rec.get("instance_id", "")
-            if instance_id not in task_id_set:
+            if filter_to_target_tasks and instance_id not in task_id_set:
                 continue
 
             strategy = rec.get("strategy", "")
@@ -95,7 +109,7 @@ def estimate_model_fit_from_jsonl(
             if not _is_clean_run(rec):
                 continue
 
-            task_effort = _task_effort_for(value_features, instance_id)
+            task_effort = _task_effort_for(value_features, instance_id, rec)
             per_turn = _catalog_per_turn_cost(tier)
             if per_turn <= 0:
                 continue
@@ -118,13 +132,20 @@ def estimate_model_fit_from_jsonl(
                 observed.setdefault(tier, []).append(fit_estimate)
                 evidence_task_ids.add(instance_id)
 
-    return _build_evidence(observed, censored_bounds, evidence_task_ids)
+    return _build_evidence(
+        observed,
+        censored_bounds,
+        evidence_task_ids,
+        scope=calibration_scope,
+    )
 
 
 def _build_evidence(
     observed: dict[int, list[float]],
     censored_bounds: dict[int, list[float]],
     evidence_task_ids: set[str],
+    *,
+    scope: str = "target_task_set",
 ) -> ModelFitEvidence:
     """Aggregate per-tier observations into ModelFitEvidence."""
     reasons: list[str] = []
@@ -150,23 +171,25 @@ def _build_evidence(
 
         if obs:
             # Use completed observations as the fit estimate. Censored rows are
-            # incomplete upper-bound evidence: they lower confidence and are
-            # auditable, but a single exhausted task must not overwrite a stable
-            # completed cluster from other tasks.
+            # incomplete upper-bound evidence: they lower confidence and cap
+            # the estimate when the exhausted tier kept spending without
+            # enough runway. This prevents easy completed tasks from hiding a
+            # tier's hard-task spin behavior.
             median_fit = _median(obs)
             if cens:
-                min_bound = min(cens)
+                bound = _median(cens)
                 censored_tiers.add(tier)
-                if len(obs) < 3 and min_bound < median_fit:
+                should_cap_with_censored = len(cens) >= 2 or len(obs) < 3
+                if should_cap_with_censored and bound < median_fit:
                     reasons.append(
-                        f"tier{tier}: limited completed evidence; censored upper bound "
-                        f"lowers fit from {median_fit:.4f} to ≤{min_bound:.4f}"
+                        f"tier{tier}: censored upper bounds lower fit from "
+                        f"{median_fit:.4f} to ≤{bound:.4f}"
                     )
-                    median_fit = min_bound
+                    median_fit = bound
                 else:
                     reasons.append(
                         f"tier{tier}: {len(cens)} incomplete censored rows recorded "
-                        f"(min upper bound={min_bound:.4f}) without overriding "
+                        f"(median upper bound={bound:.4f}) without overriding "
                         f"{len(obs)} completed rows"
                     )
             tier_fit[tier] = round(median_fit, 6)
@@ -202,6 +225,7 @@ def _build_evidence(
     return ModelFitEvidence(
         tier_fit=tier_fit,
         source="historical_jsonl",
+        scope=scope,
         confidence=confidence,
         evidence_tasks=evidence_count,
         tier_evidence_counts=tier_evidence_counts,
@@ -269,12 +293,23 @@ def _catalog_per_turn_cost(tier: int) -> float:
     )
 
 
-def _task_effort_for(value_features: dict[str, dict], task_id: str) -> float:
+def _task_effort_for(value_features: dict[str, dict], task_id: str, rec: dict | None = None) -> float:
     """Extract task_effort from value features, defaulting to 30.0."""
     features = value_features.get(task_id, {})
-    if not features:
-        return 30.0
-    return float(features.get("bootstrap_difficulty", 30.0))
+    if features:
+        if "bootstrap_difficulty" in features:
+            return float(features["bootstrap_difficulty"])
+        task_effort = features.get("task_effort")
+        if isinstance(task_effort, dict) and task_effort.get("bootstrap_heuristic") is not None:
+            return float(task_effort["bootstrap_heuristic"])
+    if rec is not None:
+        row_effort = rec.get("task_effort")
+        if row_effort is not None:
+            return float(row_effort)
+        row_features = rec.get("task_features")
+        if isinstance(row_features, dict) and row_features.get("bootstrap_heuristic") is not None:
+            return float(row_features["bootstrap_heuristic"])
+    return 30.0
 
 
 def _catalog_compatible(row_catalog: dict) -> bool:

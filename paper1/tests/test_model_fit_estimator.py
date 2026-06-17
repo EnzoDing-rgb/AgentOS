@@ -849,3 +849,144 @@ class TestSixByFiveLikeScenario:
             vm_path.unlink()
         finally:
             _restore_catalog(catalog_orig)
+
+    def test_budget_compiler_uses_workload_level_model_fit_without_task_overlap(self):
+        """Historical calibration JSONL is workload-level evidence, not target-id overlap only."""
+        from budgetflow.experiments.budget_binding import calibrate_budget
+
+        cat = _catalog()
+        records = [
+            {
+                "strategy": "bare_t2_baseline",
+                "instance_id": "calibration-hard",
+                "task_effort": 23.35,
+                "total_cost": 2.30,
+                "catalog": cat,
+                "score_status": "true_fail",
+                "failure_class": "budget_fail",
+                "exit_status": "BudgetFlowBudgetError",
+                "exit_reason": "tier2_turn_cap",
+                "row_finished_at": 1,
+                "harness_trust": "incomplete",
+                "budget_exhausted": True,
+            },
+            {
+                "strategy": "bare_t3_baseline",
+                "instance_id": "calibration-hard",
+                "task_effort": 23.35,
+                "total_cost": 0.2745,
+                "catalog": cat,
+                "score_status": "pass",
+                "exit_status": "HarnessResolved",
+                "row_finished_at": 1,
+            },
+        ]
+        catalog_orig = _setup_catalog_test()
+        try:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+                jsonl_path = Path(f.name)
+            _write_jsonl(jsonl_path, records)
+
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+                vm_path = Path(f.name)
+                f.write(json.dumps({
+                    "tasks": {
+                        "target-new": {
+                            "task_effort": {"bootstrap_heuristic": 23.35}
+                        }
+                    }
+                }))
+
+            plan = calibrate_budget(
+                ["target-new"],
+                historical_jsonl=jsonl_path,
+                value_matrix_path=vm_path,
+                strategies=("budgetflow_task_level", "bare_t3_baseline"),
+                target_utilization=0.90,
+            )
+
+            assert plan.model_fit_evidence is not None
+            assert plan.model_fit_evidence["scope"] == "historical_jsonl"
+            assert plan.model_fit_evidence["evidence_tasks"] == 1
+            assert plan.model_fit_evidence["tier_fit"]["tier2"] < plan.model_fit_evidence["tier_fit"]["tier3"]
+            assert any("scope=historical_jsonl" in reason for reason in plan.reasons)
+
+            jsonl_path.unlink()
+            vm_path.unlink()
+        finally:
+            _restore_catalog(catalog_orig)
+
+    def test_censored_bounds_cap_completed_easy_task_fit(self):
+        """Budget-exhausted rows must affect fit even when easy completed rows exist."""
+        from budgetflow.model_fit_estimator import estimate_model_fit_from_jsonl
+
+        cat = _catalog()
+        records = [
+            {
+                "strategy": "bare_t2_baseline",
+                "instance_id": "easy-a",
+                "task_effort": 20.0,
+                "total_cost": 0.04,
+                "catalog": cat,
+                "score_status": "pass",
+                "exit_status": "HarnessResolved",
+                "row_finished_at": 1,
+            },
+            {
+                "strategy": "bare_t2_baseline",
+                "instance_id": "easy-b",
+                "task_effort": 21.0,
+                "total_cost": 0.05,
+                "catalog": cat,
+                "score_status": "pass",
+                "exit_status": "HarnessResolved",
+                "row_finished_at": 1,
+            },
+            {
+                "strategy": "bare_t2_baseline",
+                "instance_id": "hard-a",
+                "task_effort": 18.0,
+                "total_cost": 0.20,
+                "catalog": cat,
+                "score_status": "true_fail",
+                "failure_class": "budget_fail",
+                "exit_status": "BudgetFlowBudgetError",
+                "exit_reason": "tier2_turn_cap",
+                "row_finished_at": 1,
+                "harness_trust": "incomplete",
+                "budget_exhausted": True,
+            },
+            {
+                "strategy": "bare_t2_baseline",
+                "instance_id": "hard-b",
+                "task_effort": 19.0,
+                "total_cost": 0.22,
+                "catalog": cat,
+                "score_status": "true_fail",
+                "failure_class": "budget_fail",
+                "exit_status": "BudgetFlowBudgetError",
+                "exit_reason": "tier2_turn_cap",
+                "row_finished_at": 1,
+                "harness_trust": "incomplete",
+                "budget_exhausted": True,
+            },
+        ]
+        catalog_orig = _setup_catalog_test()
+        try:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+                jsonl_path = Path(f.name)
+            _write_jsonl(jsonl_path, records)
+
+            evidence = estimate_model_fit_from_jsonl(
+                jsonl_path,
+                ["target-new"],
+                {"target-new": {"bootstrap_difficulty": 20.0}},
+                calibration_scope="historical_jsonl",
+            )
+
+            assert evidence.tier_fit[2] < 1.0
+            assert any("censored upper bounds lower fit" in reason for reason in evidence.reasons)
+
+            jsonl_path.unlink()
+        finally:
+            _restore_catalog(catalog_orig)

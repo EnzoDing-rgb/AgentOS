@@ -174,9 +174,8 @@
   "reasons": [
     "calibration:excluded 3 contaminated rows: budget_exhausted_zero_spend=3",
     "calibration:censored spend floors from budget-exhausted rows: bare_t2_baseline=$0.1245, enterprise_router_baseline=$0.1974",
-    "calibration:model_fit_evidence confidence=medium from 1 tasks: tier1=0.1500, tier2=1.0000, tier3=1.0000",
-    "calibration:model_fit_censored tiers=[2] have budget-exhausted upper-bound evidence",
-    "calibration:model_fit_confidence=medium; cold-start projections use derived fit but are not paper-ready. Run more diagnostic calibration before treating as paper evidence.",
+    "calibration:model_fit_evidence confidence=high scope=historical_jsonl from 10 tasks: tier1=0.1500, tier2=0.7522, tier3=1.0000",
+    "calibration:model_fit_censored tiers=[2, 3] have budget-exhausted upper-bound evidence",
     "calibration:bare_t2_baseline n=0 (no historical data, projection uses bootstrap_estimate)",
     "calibration:bare_t3_baseline n=1 exact observed costs (low sample, no cross-task extrapolation)",
     "calibration:enterprise_router_baseline n=0 (no historical data, projection uses bootstrap_estimate)",
@@ -226,34 +225,38 @@
   "model_fit_evidence": {
     "tier_fit": {
       "tier1": 0.15,
-      "tier2": 1.0,
+      "tier2": 0.75219,
       "tier3": 1.0
     },
     "source": "historical_jsonl",
-    "confidence": "medium",
-    "evidence_tasks": 1,
+    "scope": "historical_jsonl",
+    "confidence": "high",
+    "evidence_tasks": 10,
     "tier_evidence_counts": {
       "tier1": 0,
-      "tier2": 1,
-      "tier3": 1
+      "tier2": 10,
+      "tier3": 9
     },
     "tier_completed_counts": {
       "tier1": 0,
-      "tier2": 0,
-      "tier3": 1
+      "tier2": 4,
+      "tier3": 7
     },
     "tier_censored_counts": {
       "tier1": 0,
-      "tier2": 1,
-      "tier3": 0
+      "tier2": 6,
+      "tier3": 2
     },
     "censored_tiers": [
-      2
+      2,
+      3
     ],
     "reasons": [
       "tier1: fit=0.1500 (catalog fallback, no historical evidence)",
-      "tier2: fit=1.0000 from 1 censored-only rows (min upper bound=1.0000; incomplete evidence)",
-      "tier3: fit=1.0000 from 1 completed + 0 censored rows"
+      "tier2: censored upper bounds lower fit from 1.0000 to \u22640.7522",
+      "tier2: fit=0.7522 from 4 completed + 6 censored rows",
+      "tier3: 2 incomplete censored rows recorded (median upper bound=1.0000) without overriding 7 completed rows",
+      "tier3: fit=1.0000 from 7 completed + 2 censored rows"
     ]
   },
   "planned_task_budget_by_strategy": {
