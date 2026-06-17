@@ -370,7 +370,11 @@ class TestMaxTierWithFrontier:
             budget_pressure=0.01,
             task_value=2.0,
             median_task_value=1.0,
-            allocation=AllocationContext(task_value=2.0, model_fit={"tier2": 0.50, "tier3": 0.518}),
+            allocation=AllocationContext(
+                task_value=2.0,
+                model_fit={"tier2": 0.50, "tier3": 0.518},
+                confidence={"model_fit": "medium"},
+            ),
         )
         loose.tier_frontier = frontier
         choose_backend(loose, turn, expected)
@@ -381,7 +385,11 @@ class TestMaxTierWithFrontier:
             budget_pressure=0.80,
             task_value=2.0,
             median_task_value=1.0,
-            allocation=AllocationContext(task_value=2.0, model_fit={"tier2": 0.50, "tier3": 0.518}),
+            allocation=AllocationContext(
+                task_value=2.0,
+                model_fit={"tier2": 0.50, "tier3": 0.518},
+                confidence={"model_fit": "medium"},
+            ),
         )
         tight.tier_frontier = frontier
         choose_backend(tight, turn, expected)

@@ -18,6 +18,7 @@ from budgetflow.run_series import (
     sibling_stems_exist,
     validate_resume_contract,
 )
+from budgetflow.experiments.compare_config import paper_mainline_strategies
 from budgetflow.compare_checkpoint import CompareCheckpointStore
 
 
@@ -168,14 +169,7 @@ def test_resume_explicit_stem_allows_same_count_but_different_expected_pairs(tmp
 
 
 def test_staged_resume_expands_expected_pairs_without_false_completion(tmp_path) -> None:
-    strategies = [
-        "bare_t2_baseline",
-        "bare_t3_baseline",
-        "enterprise_router_baseline",
-        "budgetflow_same_enterprise_router",
-        "budgetflow_task_level",
-        "budgetflow_segment",
-    ]
+    strategies = [strategy.name for strategy in paper_mainline_strategies()]
     tasks = [f"task-{index:02d}" for index in range(30)]
 
     def keys(first_n: int) -> set[tuple[str, str]]:

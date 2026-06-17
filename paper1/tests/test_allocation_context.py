@@ -107,6 +107,7 @@ def test_allocation_context_defaults() -> None:
     assert ctx.model_fit_source == "catalog_progress_prior"
     assert not ctx.has_effort
     assert not ctx.has_model_fit
+    assert not ctx.has_trusted_model_fit
 
 
 def test_allocation_context_has_effort() -> None:
@@ -120,7 +121,24 @@ def test_allocation_context_has_effort() -> None:
 def test_allocation_context_has_model_fit() -> None:
     ctx = AllocationContext(model_fit={"tier1": 0.3, "tier2": 0.6, "tier3": 0.9})
     assert ctx.has_model_fit
+    assert not ctx.has_trusted_model_fit
     assert ctx.to_metadata()["has_model_fit"] is True
+
+
+def test_allocation_context_trusted_model_fit_requires_confidence() -> None:
+    low = AllocationContext(
+        model_fit={"tier2": 0.3, "tier3": 0.9},
+        confidence={"model_fit": "low"},
+    )
+    trusted = AllocationContext(
+        model_fit={"tier2": 0.3, "tier3": 0.9},
+        confidence={"model_fit": "medium"},
+    )
+
+    assert low.has_model_fit
+    assert not low.has_trusted_model_fit
+    assert trusted.has_trusted_model_fit
+    assert trusted.to_metadata()["model_fit_confidence"] == "medium"
 
 
 def test_allocation_context_to_metadata() -> None:
@@ -136,6 +154,7 @@ def test_allocation_context_to_metadata() -> None:
     assert meta["task_value"] == 2.0
     assert meta["task_effort"] == 15.0
     assert meta["has_model_fit"] is True
+    assert meta["has_trusted_model_fit"] is False
     assert meta["value_source"] == "value_matrix"
 
 
@@ -247,11 +266,42 @@ def test_tier_frontier_score_uses_per_tier_model_fit_delta() -> None:
             task_value=1.0,
             model_fit={"tier2": 0.30, "tier3": 0.80},
             model_fit_source="budget_plan:historical_jsonl",
+            confidence={"model_fit": "medium"},
         ),
     )
 
     assert empirical_fit_score < weak_catalog_score
     assert empirical_fit_score == pytest.approx((2.0 - 1.0) / (0.50 * 35.0))
+
+
+def test_tier_frontier_ignores_low_confidence_model_fit() -> None:
+    """Low-confidence Model Fit is audit evidence, not a routing input."""
+    from budgetflow.tier_frontier import TierFrontier
+
+    frontier = TierFrontier(
+        reference_tier=2,
+        strongest_tier=3,
+        reference_display="T2",
+        strongest_display="T3",
+        strongest_input_ratio=2.0,
+        strongest_output_ratio=2.0,
+        strongest_progress_delta={"repair": 0.01},
+        reference_runway_turns=35,
+        reason="test",
+    )
+
+    weak_catalog_score = frontier.frontier_score("repair", allocation=AllocationContext(task_value=1.0))
+    low_confidence_score = frontier.frontier_score(
+        "repair",
+        allocation=AllocationContext(
+            task_value=1.0,
+            model_fit={"tier2": 0.30, "tier3": 0.80},
+            model_fit_source="budget_plan:historical_jsonl",
+            confidence={"model_fit": "low"},
+        ),
+    )
+
+    assert low_confidence_score == pytest.approx(weak_catalog_score)
 
 
 def test_tier_frontier_no_progress_delta_returns_cost_ratio() -> None:

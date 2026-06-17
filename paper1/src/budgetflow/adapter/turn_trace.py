@@ -70,6 +70,8 @@ def build_turn_trace(
     cost_input_per_1m: float | None = None,
     cost_output_per_1m: float | None = None,
     cost_band_input_tokens: int | None = None,
+    turn_cache_input_fraction: float | None = None,
+    turn_cache_policy: dict[str, float | int] | None = None,
     progress_prior: dict[str, float] | None = None,
     protocol: str | None = None,
     parser: str | None = None,
@@ -183,6 +185,8 @@ def build_turn_trace(
         "cost_input_per_1m": cost_input_per_1m,
         "cost_output_per_1m": cost_output_per_1m,
         "cost_band_input_tokens": cost_band_input_tokens,
+        "turn_cache_input_fraction": turn_cache_input_fraction,
+        "turn_cache_policy": turn_cache_policy,
         "progress_prior": progress_prior,
         "protocol": protocol,
         "parser": parser,
@@ -347,7 +351,12 @@ def provider_trace_fields(backend_name: str) -> dict[str, Any]:
     }
 
 
-def cost_basis_trace_fields(backend_name: str, input_tokens: int) -> dict[str, Any]:
+def cost_basis_trace_fields(
+    backend_name: str,
+    input_tokens: int,
+    *,
+    turn_index: int | None = None,
+) -> dict[str, Any]:
     cfg = MODEL_CATALOG.config_for(backend_name)
     if cfg is None:
         return {}
@@ -355,8 +364,15 @@ def cost_basis_trace_fields(backend_name: str, input_tokens: int) -> dict[str, A
         backend_name,
         input_tokens=input_tokens,
         expected_output_tokens=cfg.mean_output_tokens,
+        turn_index=turn_index,
     )
-    input_rate, output_rate = token_cost_rates(backend_name, input_tokens)
+    input_rate, output_rate = token_cost_rates(
+        backend_name,
+        input_tokens,
+        turn_index=turn_index,
+    )
+    cache_policy = cfg.turn_cache_policy
+    input_fraction = cache_policy.input_cost_fraction(turn_index)
     stage_priors = {stage: round(value, 4) for stage, value in cfg.progress_prior.items()}
     return {
         "cost_estimate_source": expected.source,
@@ -365,6 +381,12 @@ def cost_basis_trace_fields(backend_name: str, input_tokens: int) -> dict[str, A
         "cost_input_per_1m": round(input_rate * 1_000_000, 6),
         "cost_output_per_1m": round(output_rate * 1_000_000, 6),
         "cost_band_input_tokens": input_tokens,
+        "turn_cache_input_fraction": round(input_fraction, 4),
+        "turn_cache_policy": {
+            "input_discount_after_turn": cache_policy.input_discount_after_turn,
+            "input_kv_cache_discount": cache_policy.input_kv_cache_discount,
+            "min_input_cost_fraction": cache_policy.min_input_cost_fraction,
+        },
         "progress_prior": stage_priors,
     }
 

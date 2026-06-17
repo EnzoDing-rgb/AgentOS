@@ -33,6 +33,37 @@ def test_no_progress_limit_unified() -> None:
     assert no_progress_limit("budgetflow_segment") == STAGNATION_NO_PROGRESS_STEPS
 
 
+def test_task_level_no_progress_limit_scales_with_task_effort() -> None:
+    assert no_progress_limit(
+        "value_aware_task_level",
+        task_effort=20,
+    ) == 15
+    assert no_progress_limit(
+        "value_aware_task_level",
+        task_effort=80,
+    ) == 36
+
+
+def test_task_level_stagnation_uses_scaled_no_progress_limit() -> None:
+    stop, reason, _ = check_stagnation(
+        strategy="value_aware_task_level",
+        no_progress_streak=12,
+        recent_commands=deque(["grep -R x"]),
+        task_effort=80,
+    )
+    assert stop is False
+    assert reason == ""
+
+    stop, reason, _ = check_stagnation(
+        strategy="value_aware_task_level",
+        no_progress_streak=36,
+        recent_commands=deque(["grep -R x"]),
+        task_effort=80,
+    )
+    assert stop is True
+    assert reason == "stagnation_no_progress"
+
+
 def test_check_stagnation_no_progress() -> None:
     stop, reason, _ = check_stagnation(
         strategy="all_pro",

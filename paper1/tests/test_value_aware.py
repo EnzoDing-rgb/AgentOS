@@ -33,7 +33,6 @@ class TestStrategyCatalog:
             "bare_t2_baseline",
             "bare_t3_baseline",
             "enterprise_router_baseline",
-            "budgetflow_same_enterprise_router",
             "budgetflow_task_level",
             "budgetflow_segment",
         ]
@@ -63,9 +62,9 @@ class TestStrategyCatalog:
         assert strategy.routing == "enterprise_router"
         assert strategy.budgeted is True
 
-    def test_budgetflow_same_enterprise_router_budgeted(self):
-        from budgetflow.experiments.compare_config import DEFAULT_STRATEGIES
-        strategy = next(s for s in DEFAULT_STRATEGIES if s.name == "budgetflow_same_enterprise_router")
+    def test_budgetflow_same_enterprise_router_available_as_diagnostic(self):
+        from budgetflow.experiments.compare_config import strategy_catalog
+        strategy = next(s for s in strategy_catalog() if s.name == "budgetflow_same_enterprise_router")
         assert strategy.routing == "budgetflow_same_router"
         assert strategy.budgeted is True
 

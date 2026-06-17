@@ -72,6 +72,11 @@
           "output_per_1m": 4.5
         }
       ],
+      "turn_cache_policy": {
+        "input_discount_after_turn": 1,
+        "input_kv_cache_discount": 0.5,
+        "min_input_cost_fraction": 0.5
+      },
       "mean_output_tokens": 1024,
       "progress_score": 0.24,
       "latency_ms": 1100,
@@ -85,7 +90,7 @@
       "protocol": "tool_call",
       "cost_source": "BudgetFlow normalized experimental cost unit for GLM-5.1 T2",
       "cost_updated": "2026-06-17",
-      "cost_notes": "Virtual experiment units, not public Alibaba Cloud billing. T2 is fixed at approximately 3x T1; real invoices are spend-accounting evidence only.",
+      "cost_notes": "Virtual experiment units, not public Alibaba Cloud billing. T2 is fixed at approximately 3x T1; later task turns apply input_kv_cache_discount=0.50 to input tokens only; output tokens remain full price.",
       "progress_source": "BudgetFlow tier-level heuristic prior for GLM-5.1 T2; not outcome-calibrated",
       "progress_updated": "2026-06-17",
       "progress_notes": "T2 uses GLM-5.1 while preserving T2 normalized cost semantics. Provider access must pass signature preflight before paid runs."

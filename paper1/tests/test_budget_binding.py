@@ -104,7 +104,7 @@ def test_calibrate_target_utilization_reference_is_not_budgetflow_specific(tmp_p
     assert "max_projected" not in all_reasons
 
 
-def test_calibrate_defaults_to_paper_mainline_six_policy_set(tmp_path: Path) -> None:
+def test_calibrate_defaults_to_paper_mainline_five_policy_set(tmp_path: Path) -> None:
     vm = tmp_path / "vm.json"
     vm.write_text(json.dumps({"tasks": {}}))
     plan = calibrate_budget(
@@ -118,7 +118,6 @@ def test_calibrate_defaults_to_paper_mainline_six_policy_set(tmp_path: Path) -> 
         "bare_t2_baseline",
         "bare_t3_baseline",
         "enterprise_router_baseline",
-        "budgetflow_same_enterprise_router",
         "budgetflow_task_level",
         "budgetflow_segment",
     ]

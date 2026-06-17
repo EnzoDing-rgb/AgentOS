@@ -25,6 +25,7 @@ _REF_T2_INPUT = 0.90 / 1_000_000
 _REF_T2_OUTPUT = 4.50 / 1_000_000
 _REF_T3_INPUT = 4.50 / 1_000_000
 _REF_T3_OUTPUT = 22.50 / 1_000_000
+_T2_INPUT_KV_CACHE_DISCOUNT = 0.50
 
 # Default T3/T2 ratios to test (diagnostic sweep).
 DEFAULT_RATIOS = (1.5, 2.0, 3.0, 5.0, 10.0)
@@ -59,13 +60,14 @@ def recost_record(record: dict, *, t3_multiplier: float) -> dict:
     t3_turns = sum(1 for p in backend_picks if str(p) in ("tier3", "3"))
 
     new_cost = 0.0
-    for pick in backend_picks:
+    for turn_index, pick in enumerate(backend_picks, start=1):
         tier = str(pick)
         if tier in ("tier3", "3"):
             new_cost += input_per_turn * _REF_T3_INPUT * t3_multiplier
             new_cost += output_per_turn * _REF_T3_OUTPUT * t3_multiplier
         elif tier in ("tier2", "2"):
-            new_cost += input_per_turn * _REF_T2_INPUT
+            input_fraction = 1.0 if turn_index <= 1 else 1.0 - _T2_INPUT_KV_CACHE_DISCOUNT
+            new_cost += input_per_turn * _REF_T2_INPUT * input_fraction
             new_cost += output_per_turn * _REF_T2_OUTPUT
         else:
             # T1: use reference T1 prices
@@ -82,6 +84,7 @@ def recost_record(record: dict, *, t3_multiplier: float) -> dict:
     # Tag the recost metadata
     rec["recost_t3_multiplier"] = t3_multiplier
     rec["recost_t3_turns"] = t3_turns
+    rec["recost_input_kv_cache_discount"] = _T2_INPUT_KV_CACHE_DISCOUNT
 
     return rec
 

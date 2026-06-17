@@ -584,6 +584,7 @@ class TestSixByFiveLikeScenario:
                 value_source="manual",
                 effort_source="bootstrap",
                 model_fit_source="budget_plan:historical_jsonl",
+                confidence={"model_fit": "medium"},
             )
 
             ctx = build_routing_context(

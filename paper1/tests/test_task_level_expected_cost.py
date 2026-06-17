@@ -106,6 +106,15 @@ def _per_turn_costs(backends):
     }
 
 
+def _trusted_allocation(**kwargs):
+    from budgetflow.allocation import AllocationContext
+
+    confidence = dict(kwargs.pop("confidence", {"model_fit": "medium"}))
+    kwargs.setdefault("effort_source", "unit_test")
+    kwargs.setdefault("model_fit_source", "unit_test")
+    return AllocationContext(confidence=confidence, **kwargs)
+
+
 # ── expected-total-cost helper ─────────────────────────────────────────────
 
 
@@ -113,10 +122,9 @@ class TestExpectedTotalCost:
     def test_t2_more_expensive_in_total_when_low_fit(self):
         """When T2 model_fit is much lower than T3, expected total T2 cost > T3."""
         from budgetflow.adapter.strategies import _expected_total_cost, _tier_model_fit_rate
-        from budgetflow.allocation import AllocationContext
 
         # T2 fit=0.10 (very weak on this task), T3 fit=0.68 (strong)
-        alloc = AllocationContext(
+        alloc = _trusted_allocation(
             task_value=2.0,
             task_effort=50.0,
             model_fit={"tier2": 0.10, "tier3": 0.68},
@@ -139,9 +147,8 @@ class TestExpectedTotalCost:
     def test_t2_cheaper_in_total_when_similar_fit(self):
         """When model_fit values are similar, T2's lower per-turn price wins."""
         from budgetflow.adapter.strategies import _expected_total_cost
-        from budgetflow.allocation import AllocationContext
 
-        alloc = AllocationContext(
+        alloc = _trusted_allocation(
             task_value=1.0,
             task_effort=30.0,
             model_fit={"tier2": 0.60, "tier3": 0.65},
@@ -189,9 +196,8 @@ class TestExpectedTotalCost:
     def test_zero_fit_guarded(self):
         """Zero model_fit rate is clamped to avoid division by zero."""
         from budgetflow.adapter.strategies import _expected_total_cost, _tier_model_fit_rate
-        from budgetflow.allocation import AllocationContext
 
-        alloc = AllocationContext(
+        alloc = _trusted_allocation(
             task_effort=10.0,
             model_fit={"tier2": 0.0},
         )
@@ -210,10 +216,9 @@ class TestChooseTaskLevelBackend:
     def test_chooses_t3_when_t2_total_cost_exceeds_t3(self):
         """Core fix: when T2 expected total cost > T3, task-level chooses T3."""
         from budgetflow.adapter.strategies import choose_backend, _expected_total_cost
-        from budgetflow.allocation import AllocationContext
 
         # Simulate a task where T2 has much lower fit → many more turns → higher total cost
-        alloc = AllocationContext(
+        alloc = _trusted_allocation(
             task_value=2.0,
             task_effort=80.0,
             model_fit={"tier2": 0.08, "tier3": 0.65},
@@ -238,9 +243,8 @@ class TestChooseTaskLevelBackend:
     def test_chooses_t2_for_low_value_simple_task(self):
         """Low-value, low-effort task with similar fit → T2 stays cheaper."""
         from budgetflow.adapter.strategies import choose_backend, _expected_total_cost
-        from budgetflow.allocation import AllocationContext
 
-        alloc = AllocationContext(
+        alloc = _trusted_allocation(
             task_value=0.5,
             task_effort=10.0,
             model_fit={"tier2": 0.60, "tier3": 0.65},
@@ -261,11 +265,10 @@ class TestChooseTaskLevelBackend:
     def test_high_value_high_effort_chooses_t3_under_budget(self):
         """High-value, high-effort task: T3 total cost dominates T2, choose T3."""
         from budgetflow.adapter.strategies import choose_backend, _expected_total_cost
-        from budgetflow.allocation import AllocationContext
 
         # T3 per-step is ~5x T2, so T2 needs >5x more turns for T3 to dominate.
         # t2_fit=0.10, t3_fit=0.65 → turn_ratio = 6.5x > 5x price ratio.
-        alloc = AllocationContext(
+        alloc = _trusted_allocation(
             task_value=3.0,
             task_effort=60.0,
             model_fit={"tier2": 0.10, "tier3": 0.65},
@@ -303,10 +306,9 @@ class TestChooseTaskLevelBackend:
     def test_max_tier_respected(self):
         """When frontier caps max_tier at 2 with 3+ tiers, T3 is blocked."""
         from budgetflow.adapter.strategies import choose_backend, _task_level_max_tier
-        from budgetflow.allocation import AllocationContext
         from budgetflow.tier_frontier import TierFrontier
 
-        alloc = AllocationContext(
+        alloc = _trusted_allocation(
             task_value=0.5,
             task_effort=80.0,
             model_fit={"tier1": 0.10, "tier2": 0.20, "tier3": 0.22},
@@ -339,14 +341,13 @@ class TestChooseTaskLevelBackend:
         When T2 per-step is cheaper but total cost is higher, T3 is chosen.
         """
         from budgetflow.adapter.strategies import choose_backend, _expected_total_cost
-        from budgetflow.allocation import AllocationContext
 
         # T2 per-step ≈ $6.41, T3 per-step ≈ $32.04  (T3 ~5x more per step)
         # But T2 fit=0.08, T3 fit=0.65 → T2 needs ~8x more turns
         # T2 total: 80/0.08 * 6.41 = 1000 * 6.41 = $6410
         # T3 total: 80/0.65 * 32.04 = 123 * 32.04 = $3941
         # T3 IS cheaper in total despite being 5x more per step
-        alloc = AllocationContext(
+        alloc = _trusted_allocation(
             task_value=2.0,
             task_effort=80.0,
             model_fit={"tier2": 0.08, "tier3": 0.65},
@@ -378,9 +379,8 @@ class TestChooseTaskLevelBackend:
     def test_low_value_task_stays_t2_when_total_cost_favors_t2(self):
         """Low-value, low-effort task: T2 cheaper in total, stays T2."""
         from budgetflow.adapter.strategies import choose_backend
-        from budgetflow.allocation import AllocationContext
 
-        alloc = AllocationContext(
+        alloc = _trusted_allocation(
             task_value=0.5,
             task_effort=10.0,
             model_fit={"tier2": 0.55, "tier3": 0.60},
@@ -395,11 +395,10 @@ class TestChooseTaskLevelBackend:
     def test_three_tier_task_level_expected_cost(self):
         """With three tiers and large T3 fit advantage, T3 dominates in total cost."""
         from budgetflow.adapter.strategies import choose_backend, _expected_total_cost
-        from budgetflow.allocation import AllocationContext
 
         # T3 per-turn is ~18x T1 and ~5x T2. T3 needs enough fit advantage to
         # overcome this: fit_ratio must exceed price_ratio for each comparison.
-        alloc = AllocationContext(
+        alloc = _trusted_allocation(
             task_value=2.0,
             task_effort=30.0,
             model_fit={"tier1": 0.02, "tier2": 0.05, "tier3": 0.60},
@@ -420,6 +419,29 @@ class TestChooseTaskLevelBackend:
             f"T1 total ${t1_total:.2f}, T2 total ${t2_total:.2f}, "
             f"T3 total ${t3_total:.2f}; expected T3, got {backend.name}"
         )
+
+    def test_low_confidence_model_fit_does_not_drive_t3_choice(self):
+        """Low-confidence fit stays observable but task-level falls back to catalog prior."""
+        from budgetflow.adapter.strategies import choose_backend, _expected_total_cost, _tier_model_fit_rate
+
+        alloc = _trusted_allocation(
+            task_value=2.0,
+            task_effort=80.0,
+            model_fit={"tier2": 0.08, "tier3": 0.65},
+            confidence={"model_fit": "low"},
+        )
+        backends = _backends(t2_progress=0.24, t3_progress=0.25)
+        ctx = _task_level_ctx(backends, budget_pressure=0.1, allocation=alloc)
+        per_turn = _per_turn_costs(backends)
+
+        assert _tier_model_fit_rate(ctx, 2, "tier2") == pytest.approx(0.24)
+        assert _tier_model_fit_rate(ctx, 3, "tier3") == pytest.approx(0.25)
+        t2_total = _expected_total_cost(ctx, "tier2", 2, per_turn["tier2"])
+        t3_total = _expected_total_cost(ctx, "tier3", 3, per_turn["tier3"])
+        assert t2_total < t3_total
+
+        backend = choose_backend(ctx, _turn(), per_turn)
+        assert backend.tier == 2
 
 
 # ── budget compiler cold-start with model-fit scaling ──────────────────────

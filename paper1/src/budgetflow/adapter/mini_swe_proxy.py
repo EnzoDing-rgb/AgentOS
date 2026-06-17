@@ -364,6 +364,7 @@ class BudgetFlowLitellmModel:
                 backend,
                 input_tokens=input_tokens,
                 max_output_tokens=self.default_max_output_tokens,
+                turn_index=self.step_index,
             ).expected_cost
             for backend in self.routing.backends
         }
@@ -394,6 +395,11 @@ class BudgetFlowLitellmModel:
                 strategy=self.routing.strategy,
                 no_progress_streak=self._no_progress_streak,
                 recent_commands=self._recent_commands,
+                task_effort=(
+                    self.routing.allocation.task_effort
+                    if self.routing.allocation is not None
+                    else None
+                ),
             )
         else:
             should_stop, stall_reason, repeat_cmd = False, "", None
@@ -566,7 +572,7 @@ class BudgetFlowLitellmModel:
                     response_ok=False,
                     error_type=error_type,
                     **provider_trace_fields(backend.name),
-                    **cost_basis_trace_fields(backend.name, input_tokens),
+                    **cost_basis_trace_fields(backend.name, input_tokens, turn_index=self.step_index),
                     **protocol_trace_fields(backend.name),
                     **router_trace_fields(self.routing),
                     **value_aware_trace_fields(self.routing),
@@ -612,6 +618,7 @@ class BudgetFlowLitellmModel:
             backend.name,
             input_tokens=prompt_tokens,
             output_tokens=completion_tokens,
+            turn_index=self.step_index,
         )
         reservation_id = self._last_reservation_id
         snap = self.governor.budget_snapshot()
@@ -682,7 +689,7 @@ class BudgetFlowLitellmModel:
                         response_ok=True,
                         error_type=type(_fe).__name__,
                         **provider_trace_fields(backend.name),
-                        **cost_basis_trace_fields(backend.name, prompt_tokens),
+                        **cost_basis_trace_fields(backend.name, prompt_tokens, turn_index=self.step_index),
                         **protocol_trace_fields(backend.name),
                         **router_trace_fields(self.routing),
                         **value_aware_trace_fields(self.routing),
@@ -712,6 +719,7 @@ class BudgetFlowLitellmModel:
                         input_tokens=retry_input_tokens,
                         expected_output_tokens=backend.mean_output_tokens,
                         reserve_output_tokens=self.default_max_output_tokens,
+                        turn_index=self.step_index,
                     )
                     retry_reservation = self.governor.reserve(self.workflow_id, backend, retry_estimate)
                     if retry_reservation is None:
@@ -745,6 +753,7 @@ class BudgetFlowLitellmModel:
                         backend.name,
                         input_tokens=retry_prompt_tokens,
                         output_tokens=retry_completion_tokens,
+                        turn_index=self.step_index,
                     )
                     self.governor.settle(retry_reservation.reservation_id, retry_actual_cost, WorkflowStatus.RUNNING)
                     self._last_reservation_id = None
@@ -835,7 +844,7 @@ class BudgetFlowLitellmModel:
                             response_ok=True,
                             error_type=type(_retry_exc).__name__,
                             **provider_trace_fields(backend.name),
-                            **cost_basis_trace_fields(backend.name, prompt_tokens),
+                            **cost_basis_trace_fields(backend.name, prompt_tokens, turn_index=self.step_index),
                             **protocol_trace_fields(backend.name),
                             **router_trace_fields(self.routing),
                             **value_aware_trace_fields(self.routing),
@@ -907,7 +916,7 @@ class BudgetFlowLitellmModel:
                     response_ok=True,
                     error_type=type(_parse_error).__name__,
                     **provider_trace_fields(backend.name),
-                    **cost_basis_trace_fields(backend.name, prompt_tokens),
+                    **cost_basis_trace_fields(backend.name, prompt_tokens, turn_index=self.step_index),
                     **protocol_trace_fields(backend.name),
                     **router_trace_fields(self.routing),
                     **value_aware_trace_fields(self.routing),
@@ -983,10 +992,10 @@ class BudgetFlowLitellmModel:
                 response_ok=True,
                 error_type=None,
                 **provider_trace_fields(backend.name),
-                **cost_basis_trace_fields(backend.name, prompt_tokens),
+                **cost_basis_trace_fields(backend.name, prompt_tokens, turn_index=self.step_index),
                 **protocol_trace_fields(backend.name),
                 **router_trace_fields(self.routing),
-                        **value_aware_trace_fields(self.routing),
+                **value_aware_trace_fields(self.routing),
                 **self._gold_edit_guard_trace_fields(),
                 protocol_retry_used=turn_protocol_retry_used,
                 protocol_retry_success=turn_protocol_retry_success,
@@ -1114,12 +1123,22 @@ class BudgetFlowLitellmModel:
         remaining = self.governor.remaining_budget()
         if remaining <= 0:
             return 64
-        input_cost = estimate_token_cost(backend.name, input_tokens=input_tokens, output_tokens=0)
+        input_cost = estimate_token_cost(
+            backend.name,
+            input_tokens=input_tokens,
+            output_tokens=0,
+            turn_index=self.step_index,
+        )
         output_budget = remaining - input_cost
         if output_budget <= 0:
             return 64
         output_token_cost = max(
-            estimate_token_cost(backend.name, input_tokens=input_tokens, output_tokens=1) - input_cost,
+            estimate_token_cost(
+                backend.name,
+                input_tokens=input_tokens,
+                output_tokens=1,
+                turn_index=self.step_index,
+            ) - input_cost,
             backend.cost_per_output_token,
             1e-12,
         )
@@ -1236,6 +1255,7 @@ class BudgetFlowLitellmModel:
             input_tokens=input_tokens,
             expected_output_tokens=backend.mean_output_tokens,
             reserve_output_tokens=reserve_out,
+            turn_index=self.step_index,
         )
         reservation = self.governor.reserve(self.workflow_id, backend, estimate)
         if reservation is not None:

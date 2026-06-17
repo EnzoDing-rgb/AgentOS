@@ -24,3 +24,35 @@ def test_catalog_source_info_requires_initialized_catalog(monkeypatch) -> None:
 
     with pytest.raises(RuntimeError, match="model tier catalog is not initialized"):
         mt.catalog_source_info()
+
+
+def test_t2_input_kv_cache_discount_halves_input_after_first_turn() -> None:
+    import budgetflow.model_tiers as mt
+
+    first = mt.estimate_token_cost(
+        "tier2",
+        input_tokens=1000,
+        output_tokens=0,
+        turn_index=1,
+    )
+    second = mt.estimate_token_cost(
+        "tier2",
+        input_tokens=1000,
+        output_tokens=0,
+        turn_index=2,
+    )
+    output_first = mt.estimate_token_cost(
+        "tier2",
+        input_tokens=0,
+        output_tokens=1000,
+        turn_index=1,
+    )
+    output_second = mt.estimate_token_cost(
+        "tier2",
+        input_tokens=0,
+        output_tokens=1000,
+        turn_index=2,
+    )
+
+    assert second == pytest.approx(first * 0.5)
+    assert output_second == pytest.approx(output_first)

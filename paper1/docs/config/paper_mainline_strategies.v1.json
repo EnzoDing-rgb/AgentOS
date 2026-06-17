@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "name": "paper_mainline_6_policy",
-  "objective": "Claim 1 main comparison with Claim 2 segment-aware enhancement",
+  "name": "paper_mainline_5_policy",
+  "objective": "Claim 1 main comparison with a strong static-router diagnostic and Claim 2 segment-aware enhancement",
   "strategies": [
     {
       "name": "bare_t2_baseline",
@@ -14,10 +14,6 @@
     {
       "name": "enterprise_router_baseline",
       "role": "static enterprise router baseline"
-    },
-    {
-      "name": "budgetflow_same_enterprise_router",
-      "role": "BudgetFlow ledger/governor on the same enterprise routing plan"
     },
     {
       "name": "budgetflow_task_level",

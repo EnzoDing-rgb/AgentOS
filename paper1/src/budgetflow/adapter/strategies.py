@@ -20,7 +20,6 @@ from ..selector import BudgetFlowSelector, ConservativeSelector, RouterDecision,
 from ..tier_frontier import TierFrontier, finite_frontier_score
 from ..types import Backend, ProgressTable, Stage, TurnInfo
 
-
 @dataclass
 class RoutingContext:
     strategy: str
@@ -196,7 +195,7 @@ def _task_level_max_tier(ctx: RoutingContext) -> int:
         progress_delta = max(0.0, strongest.progress_score - reference.progress_score)
         fit_delta = None
         allocation = ctx.allocation
-        if allocation is not None and allocation.has_model_fit:
+        if allocation is not None and allocation.has_trusted_model_fit:
             fit_delta = allocation.strongest_delta(
                 reference_tier=frontier.reference_tier,
                 strongest_tier=frontier.strongest_tier,
@@ -230,7 +229,7 @@ def _tier_model_fit_rate(ctx: RoutingContext, tier: int, backend_name: str) -> f
     part of this lookup.
     """
     allocation = ctx.allocation
-    if allocation is not None and allocation.has_model_fit:
+    if allocation is not None and allocation.has_trusted_model_fit:
         key = f"tier{tier}"
         fit = allocation.model_fit.get(key) if allocation.model_fit else None
         if fit is not None and fit > 0:

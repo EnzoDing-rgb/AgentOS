@@ -87,6 +87,7 @@ def run_task_record(
     frozen_plan: FrozenRouterPlan | None = None,
     calibrated_model_fit: dict[str, float] | None = None,
     calibrated_model_fit_source: str = "catalog_progress_prior",
+    calibrated_model_fit_confidence: str = "none",
 ) -> dict:
     started = time.time()
     task_adapter = SwebenchTaskAdapter()
@@ -118,6 +119,7 @@ def run_task_record(
         value_source=value_source,
         effort_source=effort_source,
         model_fit_source=model_fit_source,
+        confidence={"model_fit": calibrated_model_fit_confidence},
     )
     result = mini_swe_runner.run_mini_swe_task(
         task,
@@ -198,6 +200,8 @@ def run_task_record(
         "attempt_id": f"{run_series}_{cfg.name}_{instance_id}" if run_series else "",
     }
     record["model_fit_source"] = model_fit_source
+    record["model_fit_confidence"] = calibrated_model_fit_confidence if model_fit else "none"
+    record["model_fit_active"] = allocation.has_trusted_model_fit
     record["exit_owner"] = compute_exit_owner(record)
     record["budget_exhausted"] = record["exit_owner"] == EXIT_OWNER_BUDGET_EXHAUSTED
     record["stall_guard_owner"] = "budgetflow" if stall_guard_enabled(cfg.routing) else "none"
@@ -301,6 +305,7 @@ def run_strategy_batch(
     budget_mode: str | None = None,
     calibrated_model_fit: dict[str, float] | None = None,
     calibrated_model_fit_source: str = "catalog_progress_prior",
+    calibrated_model_fit_confidence: str = "none",
 ) -> tuple[list[dict], float]:
     def log(msg: str) -> None:
         if print_lock:
@@ -434,6 +439,7 @@ def run_strategy_batch(
                 frozen_plan=frozen_plan,
                 calibrated_model_fit=calibrated_model_fit,
                 calibrated_model_fit_source=calibrated_model_fit_source,
+                calibrated_model_fit_confidence=calibrated_model_fit_confidence,
             )
 
         try:

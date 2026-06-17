@@ -1,0 +1,231 @@
+{
+  "schema_version": 1,
+  "name": "mainline_20x25_candidate_manifest",
+  "generated_at": "2026-06-17T00:00:00Z",
+  "source_reports": [
+    "paper1/docs/reports/6x30_mainline_manifest.json",
+    "paper1/docs/reports/15_candidate_gold_harness_gate_2026-06-15.md",
+    "paper1/docs/reports/25_candidate_gold_harness_gate_2026-06-15.md",
+    "paper1/docs/reports/5x20_candidate_gate_2026-06-15.md",
+    "paper1/docs/reports/6x30_pending_sympy_gold_gate_2026-06-15.md",
+    "paper1/docs/reports/6x30_artifact_audit_2026-06-15.md",
+    "paper1/docs/reports/t3_solvability_probe_2026-06-15.md",
+    "paper1/data/runs/gold_harness_probe_20x25_new_candidates.jsonl",
+    "paper1/data/runs/gold_harness_probe_20x25_sphinx.jsonl",
+    "paper1/data/runs/gold_harness_probe_20x25_sympy_batch1.jsonl"
+  ],
+  "selection_policy": {
+    "goal": "20-25 task expansion set for mainline diagnostic after 6x5/6x30 mechanics are frozen",
+    "principles": [
+      "harness-admissible: gold harness PASS in current environment (no-paid probe)",
+      "repo diversity: >= 2 tasks per repo where possible; no single-repo dominance",
+      "no infra/harness risks: exclude network-dependent, non-reproducible, heavy-build, patch-apply-fail, p2p-regression tasks",
+      "no task-id/repo-specific routing rules; harness admission only",
+      "may overlap with 6x30 (anchor tasks for continuity) but must add new repos or tasks",
+      "can be fewer than 25; do not pad with unstable tasks"
+    ],
+    "anchor_selection": "13 tasks from 6x30 with clean track records across 6x5 goldpass and prior probes, keeping repo diversity",
+    "new_selection": "11 tasks freshly verified via gold_harness_probe on 2026-06-17 (9 sympy + 2 sphinx)",
+    "exclusion_reasons": {
+      "network_dependent": "tests make real HTTP requests; ConnectionResetError in local env",
+      "non_reproducible": "fail_before=False: bug does not manifest in current Python/harness environment",
+      "p2p_regression": "gold patch fixes f2p but breaks pass_to_pass tests",
+      "patch_apply_fail": "gold patch does not apply cleanly to repo version",
+      "build_risk": "needs Cython/numpy/scipy build deps; pip install -e . fails or stalls",
+      "dependency_noise": "pip install fails (astroid metadata, etc); not a clean harness signal",
+      "test_infra_gap": "conftest/setup/netCDF4 fixtures needed; harness adapter not ready",
+      "heavy_resource": "p2p count > 50000 or build time > 10min; inference/runtime resource risk"
+    }
+  },
+  "selected_tasks": [
+    {"instance_id": "sympy__sympy-22714", "repo": "sympy/sympy", "source": "6x30_anchor", "f2p": 20, "p2p": 205, "gold_harness": "PASS", "verified_date": "2026-06-15"},
+    {"instance_id": "sympy__sympy-12171", "repo": "sympy/sympy", "source": "6x30_anchor", "f2p": 19, "p2p": 128, "gold_harness": "PASS", "verified_date": "2026-06-15"},
+    {"instance_id": "sympy__sympy-17655", "repo": "sympy/sympy", "source": "6x30_anchor", "f2p": 30, "p2p": 175, "gold_harness": "PASS", "verified_date": "2026-06-15"},
+    {"instance_id": "sympy__sympy-24102", "repo": "sympy/sympy", "source": "6x30_anchor", "f2p": 57, "p2p": 2, "gold_harness": "PASS", "verified_date": "2026-06-15"},
+    {"instance_id": "sympy__sympy-11870", "repo": "sympy/sympy", "source": "new_probe", "f2p": 13, "p2p": 1093, "gold_harness": "PASS", "verified_date": "2026-06-17"},
+    {"instance_id": "sympy__sympy-12236", "repo": "sympy/sympy", "source": "new_probe", "f2p": 12, "p2p": 2739, "gold_harness": "PASS", "verified_date": "2026-06-17"},
+    {"instance_id": "sympy__sympy-12419", "repo": "sympy/sympy", "source": "new_probe", "f2p": 17, "p2p": 549, "gold_harness": "PASS", "verified_date": "2026-06-17"},
+    {"instance_id": "sympy__sympy-12454", "repo": "sympy/sympy", "source": "new_probe", "f2p": 36, "p2p": 2666, "gold_harness": "PASS", "verified_date": "2026-06-17"},
+    {"instance_id": "sympy__sympy-13031", "repo": "sympy/sympy", "source": "new_probe", "f2p": 22, "p2p": 153, "gold_harness": "PASS", "verified_date": "2026-06-17"},
+    {"instance_id": "sympy__sympy-13437", "repo": "sympy/sympy", "source": "new_probe", "f2p": 13, "p2p": 326, "gold_harness": "PASS", "verified_date": "2026-06-17"},
+    {"instance_id": "sympy__sympy-13773", "repo": "sympy/sympy", "source": "new_probe", "f2p": 15, "p2p": 1190, "gold_harness": "PASS", "verified_date": "2026-06-17"},
+    {"instance_id": "sympy__sympy-13895", "repo": "sympy/sympy", "source": "new_probe", "f2p": 43, "p2p": 1743, "gold_harness": "PASS", "verified_date": "2026-06-17"},
+    {"instance_id": "sympy__sympy-13915", "repo": "sympy/sympy", "source": "new_probe", "f2p": 39, "p2p": 1495, "gold_harness": "PASS", "verified_date": "2026-06-17"},
+    {"instance_id": "django__django-13447", "repo": "django/django", "source": "6x30_anchor", "f2p": 72, "p2p": 367, "gold_harness": "PASS", "verified_date": "2026-06-15"},
+    {"instance_id": "django__django-11179", "repo": "django/django", "source": "6x30_anchor", "f2p": 72, "p2p": 2280, "gold_harness": "PASS", "verified_date": "2026-06-15"},
+    {"instance_id": "django__django-12908", "repo": "django/django", "source": "6x30_anchor", "f2p": 211, "p2p": 2177, "gold_harness": "PASS", "verified_date": "2026-06-15"},
+    {"instance_id": "sphinx-doc__sphinx-8273", "repo": "sphinx-doc/sphinx", "source": "6x30_anchor", "f2p": 64, "p2p": 140, "gold_harness": "PASS", "verified_date": "2026-06-15"},
+    {"instance_id": "sphinx-doc__sphinx-7686", "repo": "sphinx-doc/sphinx", "source": "6x30_anchor", "f2p": 166, "p2p": 938, "gold_harness": "PASS", "verified_date": "2026-06-15"},
+    {"instance_id": "sphinx-doc__sphinx-7975", "repo": "sphinx-doc/sphinx", "source": "new_probe", "f2p": 68, "p2p": 473, "gold_harness": "PASS", "verified_date": "2026-06-17"},
+    {"instance_id": "sphinx-doc__sphinx-8801", "repo": "sphinx-doc/sphinx", "source": "new_probe", "f2p": 70, "p2p": 537, "gold_harness": "PASS", "verified_date": "2026-06-17"},
+    {"instance_id": "mwaskom__seaborn-3010", "repo": "mwaskom/seaborn", "source": "6x30_anchor", "f2p": 67, "p2p": 131, "gold_harness": "PASS", "verified_date": "2026-06-15"},
+    {"instance_id": "mwaskom__seaborn-2848", "repo": "mwaskom/seaborn", "source": "6x30_anchor", "f2p": 64, "p2p": 3974, "gold_harness": "PASS", "verified_date": "2026-06-15"},
+    {"instance_id": "pallets__flask-4045", "repo": "pallets/flask", "source": "6x30_anchor", "f2p": 134, "p2p": 3518, "gold_harness": "PASS", "verified_date": "2026-06-15"},
+    {"instance_id": "pallets__flask-4992", "repo": "pallets/flask", "source": "6x30_anchor", "f2p": 52, "p2p": 955, "gold_harness": "PASS", "verified_date": "2026-06-15"},
+    {"instance_id": "pylint-dev__pylint-6506", "repo": "pylint-dev/pylint", "source": "6x30_anchor", "f2p": 120, "p2p": 335, "gold_harness": "PASS", "verified_date": "2026-06-15", "note": "pylint-7993 also available but kept 1 to avoid pylint over-weight"}
+  ],
+  "excluded_tasks": [
+    {"instance_id": "psf__requests-1963", "repo": "psf/requests", "reason": "non_reproducible", "detail": "fail_before=False fail_after=False p2p=False: F2P tests pass without gold patch in current Python 3.11 env. Same class as requests-863 from 5x20 gate.", "gold_harness": "FAIL", "probe_date": "2026-06-17"},
+    {"instance_id": "psf__requests-3362", "repo": "psf/requests", "reason": "non_reproducible", "detail": "fail_before=False fail_after=True p2p=False: F2P pass without fix; p2p fails. Likely Python 3.11 / dependency version skew.", "gold_harness": "FAIL", "probe_date": "2026-06-17"},
+    {"instance_id": "psf__requests-2148", "repo": "psf/requests", "reason": "network_dependent", "detail": "ConnectionResetError in test_auth_is_stripped_on_redirect_off_host. Same class as 2317, 2674.", "gold_harness": "FAIL", "verified_date": "2026-06-15"},
+    {"instance_id": "psf__requests-2317", "repo": "psf/requests", "reason": "network_dependent", "detail": "ConnectionResetError in p2p. Gold fix works but p2p flaky.", "gold_harness": "FAIL", "verified_date": "2026-06-15"},
+    {"instance_id": "psf__requests-2674", "repo": "psf/requests", "reason": "network_dependent", "detail": "ConnectionResetError in both model_patch and p2p phases.", "gold_harness": "FAIL", "verified_date": "2026-06-15"},
+    {"instance_id": "psf__requests-863", "repo": "psf/requests", "reason": "non_reproducible", "detail": "fail_before=True: F2P pass without gold patch.", "gold_harness": "FAIL", "verified_date": "2026-06-15"},
+    {"instance_id": "sphinx-doc__sphinx-10325", "repo": "sphinx-doc/sphinx", "reason": "non_reproducible", "detail": "fail_before=False fail_after=False p2p=False. Was PASS in 5x20 gate (June 15) but FAIL in June 17 probe. Environment skew suspected.", "gold_harness": "FAIL", "probe_date": "2026-06-17"},
+    {"instance_id": "sphinx-doc__sphinx-8721", "repo": "sphinx-doc/sphinx", "reason": "non_reproducible", "detail": "fail_before=True: F2P pass without fix.", "gold_harness": "FAIL", "verified_date": "2026-06-15"},
+    {"instance_id": "sphinx-doc__sphinx-11445", "repo": "sphinx-doc/sphinx", "reason": "patch_apply_fail", "detail": "model_patch_ok=None. Gold patch does not apply to Sphinx 7.1.0. Version skew.", "gold_harness": "FAIL", "verified_date": "2026-06-15"},
+    {"instance_id": "sphinx-doc__sphinx-8435", "repo": "sphinx-doc/sphinx", "reason": "p2p_regression", "detail": "f2p=ok but p2p namespace package noise.", "gold_harness": "FAIL", "verified_date": "2026-06-15"},
+    {"instance_id": "sphinx-doc__sphinx-10451", "repo": "sphinx-doc/sphinx", "reason": "non_reproducible", "detail": "fail_before=False fail_after=False p2p=False.", "gold_harness": "FAIL", "probe_date": "2026-06-17"},
+    {"instance_id": "sphinx-doc__sphinx-8474", "repo": "sphinx-doc/sphinx", "reason": "non_reproducible", "detail": "fail_before=False fail_after=False p2p=False.", "gold_harness": "FAIL", "probe_date": "2026-06-17"},
+    {"instance_id": "sphinx-doc__sphinx-8506", "repo": "sphinx-doc/sphinx", "reason": "non_reproducible", "detail": "fail_before=False fail_after=False p2p=False. Was in 6x30 candidate manifest but never gate-verified.", "gold_harness": "FAIL", "probe_date": "2026-06-17"},
+    {"instance_id": "sphinx-doc__sphinx-8627", "repo": "sphinx-doc/sphinx", "reason": "non_reproducible", "detail": "fail_before=False fail_after=False p2p=False.", "gold_harness": "FAIL", "probe_date": "2026-06-17"},
+    {"instance_id": "sphinx-doc__sphinx-8713", "repo": "sphinx-doc/sphinx", "reason": "p2p_regression", "detail": "fail_after=True but p2p=False.", "gold_harness": "FAIL", "probe_date": "2026-06-17"},
+    {"instance_id": "sympy__sympy-11400", "repo": "sympy/sympy", "reason": "non_reproducible", "detail": "fail_before=False fail_after=False p2p=False.", "gold_harness": "FAIL", "probe_date": "2026-06-17"},
+    {"instance_id": "pallets__flask-5063", "repo": "pallets/flask", "reason": "p2p_regression", "detail": "f2p=ok but p2p regression in harness.", "gold_harness": "FAIL", "verified_date": "2026-06-15"},
+    {"instance_id": "pylint-dev__pylint-7080", "repo": "pylint-dev/pylint", "reason": "p2p_regression", "detail": "f2p=ok but test_file_can_be_combined fails.", "gold_harness": "FAIL", "verified_date": "2026-06-15"},
+    {"instance_id": "pylint-dev__pylint-7114", "repo": "pylint-dev/pylint", "reason": "dependency_noise", "detail": "ImportError: from pylint import checkers during conftest load. Needs PylintHAdapter with pip install.", "gold_harness": "FAIL", "verified_date": "2026-06-15"},
+    {"instance_id": "pylint-dev__pylint-7228", "repo": "pylint-dev/pylint", "reason": "dependency_noise", "detail": "Same ImportError as 7114. Needs PylintHAdapter fix.", "gold_harness": "FAIL", "verified_date": "2026-06-15"},
+    {"instance_id": "pylint-dev__pylint-5859", "repo": "pylint-dev/pylint", "reason": "dependency_noise", "detail": "pip install fails (astroid metadata). T3 probe also showed infra/dependency noise. In 6x30 but flagged as risk.", "gold_harness": "PASS_w_risk", "verified_date": "2026-06-15"},
+    {"instance_id": "matplotlib__matplotlib-23964", "repo": "matplotlib/matplotlib", "reason": "build_risk", "detail": "vcs_versioning build error. Harness-infra not fixable.", "gold_harness": "FAIL", "verified_date": "2026-06-15"},
+    {"instance_id": "django__django-16527", "repo": "django/django", "reason": "test_infra_gap", "detail": "Django test runner not configured for non-standard test layout.", "gold_harness": "FAIL", "verified_date": "2026-06-15"},
+    {"instance_id": "pytest-dev__pytest-5227", "repo": "pytest-dev/pytest", "reason": "test_infra_gap", "detail": "pytest conftest/setup adaptation needed. Both tested pytest tasks fail.", "gold_harness": "FAIL", "verified_date": "2026-06-15"},
+    {"instance_id": "pytest-dev__pytest-8365", "repo": "pytest-dev/pytest", "reason": "test_infra_gap", "detail": "Same pytest infrastructure gap as 5227.", "gold_harness": "FAIL", "verified_date": "2026-06-15"},
+    {"instance_id": "pydata__xarray-4248", "repo": "pydata/xarray", "reason": "test_infra_gap", "detail": "Requires netCDF4/numpy test fixtures.", "gold_harness": "FAIL", "verified_date": "2026-06-15"},
+    {"instance_id": "scikit-learn__scikit-learn-13584", "repo": "scikit-learn/scikit-learn", "reason": "build_risk", "detail": "Needs Cython/numpy/scipy build deps; pip install -e . failed.", "gold_harness": "FAIL", "verified_date": "2026-06-15"}
+  ],
+  "repo_summary": {
+    "sympy/sympy": {
+      "total_in_swb_lite": 77,
+      "in_6x30": 8,
+      "new_verified": 9,
+      "selected_here": 13,
+      "adapter": "SymPyHAdapter",
+      "adapter_status": "stable",
+      "risk": "low",
+      "risk_notes": "latex.py compat, pytest imports, importtools catch. Well-tested across many runs."
+    },
+    "django/django": {
+      "total_in_swb_lite": 114,
+      "in_6x30": 7,
+      "new_verified": 0,
+      "selected_here": 3,
+      "adapter": "DjangoHAdapter",
+      "adapter_status": "stable",
+      "risk": "low",
+      "risk_notes": "conftest.py (INSTALLED_APPS, DATABASES, migrate), runtests.py runner. 107 untested tasks available for future expansion."
+    },
+    "sphinx-doc/sphinx": {
+      "total_in_swb_lite": 16,
+      "in_6x30": 5,
+      "new_verified": 2,
+      "selected_here": 4,
+      "adapter": "SphinxHAdapter",
+      "adapter_status": "stable",
+      "risk": "low",
+      "risk_notes": "Jinja2 >= 3.1 compat (environmentfilter/contextfunction → pass_* aliases). 9 of 16 tasks FAIL harness probe due to non-reproducible, p2p regression, or patch apply fail."
+    },
+    "mwaskom/seaborn": {
+      "total_in_swb_lite": 4,
+      "in_6x30": 4,
+      "new_verified": 0,
+      "selected_here": 2,
+      "adapter": "DefaultHAdapter",
+      "adapter_status": "no-op",
+      "risk": "low",
+      "risk_notes": "Standard pytest. All 4 tasks already used. No expansion capacity."
+    },
+    "pallets/flask": {
+      "total_in_swb_lite": 3,
+      "in_6x30": 2,
+      "new_verified": 0,
+      "selected_here": 2,
+      "adapter": "FlaskHAdapter",
+      "adapter_status": "stable",
+      "risk": "low",
+      "risk_notes": "FlaskHAdapter v2. 1 remaining task (5063) has p2p regression."
+    },
+    "pylint-dev/pylint": {
+      "total_in_swb_lite": 6,
+      "in_6x30": 3,
+      "new_verified": 0,
+      "selected_here": 1,
+      "adapter": "DefaultHAdapter",
+      "adapter_status": "needs_work",
+      "risk": "medium",
+      "risk_notes": "Standard pytest for 6506/7993; 5859 has astroid dependency noise; 7080 p2p regression; 7114/7228 need PylintHAdapter with pip install. Only 2 clean tasks available (both in 6x30)."
+    },
+    "matplotlib/matplotlib": {
+      "total_in_swb_lite": 23,
+      "in_6x30": 1,
+      "new_verified": 0,
+      "selected_here": 0,
+      "adapter": "DefaultHAdapter",
+      "adapter_status": "high_risk",
+      "risk": "high",
+      "risk_notes": "Requires full C extension build (pip install -e .). 1 task (25433) in 6x30 after heavy build. 22 remaining tasks excluded: build time > 5min per task, p2p counts often > 50000, inference/runtime resource pressure. Not recommended for expansion unless build caching is solved."
+    },
+    "psf/requests": {
+      "total_in_swb_lite": 6,
+      "in_6x30": 0,
+      "new_verified": 0,
+      "selected_here": 0,
+      "adapter": "RequestsHAdapter",
+      "adapter_status": "no-op",
+      "risk": "blocked",
+      "risk_notes": "0 of 6 tasks pass current gold harness probe. 3 network-dependent (2148/2317/2674), 3 non-reproducible (863/1963/3362). Python 3.11 / dependency version skew suspected for non-reproducible class. Cannot recommend until root cause is diagnosed."
+    },
+    "pytest-dev/pytest": {
+      "total_in_swb_lite": 17,
+      "in_6x30": 0,
+      "new_verified": 0,
+      "selected_here": 0,
+      "adapter": "none",
+      "adapter_status": "needs_new",
+      "risk": "blocked",
+      "risk_notes": "2 tasks tested (5227, 8365), both FAIL: conftest/setup adaptation needed. 17 tasks available but all blocked on PytestHAdapter."
+    },
+    "pydata/xarray": {
+      "total_in_swb_lite": 5,
+      "in_6x30": 0,
+      "new_verified": 0,
+      "selected_here": 0,
+      "adapter": "none",
+      "adapter_status": "needs_new",
+      "risk": "blocked",
+      "risk_notes": "1 task tested (4248), FAIL: needs netCDF4/numpy test fixtures. 5 tasks blocked on XarrayHAdapter."
+    },
+    "scikit-learn/scikit-learn": {
+      "total_in_swb_lite": 23,
+      "in_6x30": 0,
+      "new_verified": 0,
+      "selected_here": 0,
+      "adapter": "none",
+      "adapter_status": "needs_new",
+      "risk": "blocked",
+      "risk_notes": "1 task tested (13584), FAIL: Cython/numpy/scipy build deps. 23 tasks blocked on build chain. High resource risk even if build is fixed."
+    },
+    "astropy/astropy": {
+      "total_in_swb_lite": 6,
+      "in_6x30": 0,
+      "new_verified": 0,
+      "selected_here": 0,
+      "adapter": "none",
+      "adapter_status": "unexplored",
+      "risk": "unknown",
+      "risk_notes": "0 tasks probed. 6 tasks available. p2p counts range 517-21460. Needs Adapter investigation before gate."
+    }
+  },
+  "validation_commands": {
+    "gold_harness_probe_single": "cd paper1 && PYTHONPATH=src:../external/mini-swe-agent/src python -m budgetflow.gold_harness_probe --ids '<instance_id>' --out data/runs/gold_harness_probe_<stem>.jsonl",
+    "gold_harness_probe_batch": "cd paper1 && PYTHONPATH=src:../external/mini-swe-agent/src python -m budgetflow.gold_harness_probe --ids '<id1,id2,...>' --out data/runs/gold_harness_probe_<stem>.jsonl",
+    "probe_results": "data/runs/gold_harness_probe_20x25_new_candidates.jsonl, gold_harness_probe_20x25_sphinx.jsonl, gold_harness_probe_20x25_sympy_batch1.jsonl"
+  },
+  "residual_risks": [
+    "psf/requests: 0/6 tasks pass current probe. The 5x20 gate (June 15) reported 1963 and 3362 as PASS; June 17 probe shows both FAIL. Root cause not yet diagnosed — likely Python 3.11 or dependency version skew. Do not include in paid runs without re-verification.",
+    "sphinx-doc/sphinx-10325: PASS in June 15 gate, FAIL in June 17 probe. Same environment-skew concern.",
+    "sympy dominance: 13/25 selected tasks are sympy. This reflects sympy's high harness pass rate (SymPyHAdapter is mature) but limits repo diversity. Future rounds should prioritize non-sympy adapter work.",
+    "pylint-dev/pylint: only 1 task selected. The other clean task (7993) is in 6x30. 5859 is in 6x30 but flagged for dependency noise. PylintHAdapter with pip install would unlock 7114/7228.",
+    "matplotlib/matplotlib-25433: in 6x30 but excluded here due to build risk. If build caching improves, 22 matplotlib tasks become available.",
+    "No new repo added: psf/requests was the best candidate for a new repo but all 6 tasks fail current probe. This manifest adds no new repos vs 6x30."
+  ]
+}

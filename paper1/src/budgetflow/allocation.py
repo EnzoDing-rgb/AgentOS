@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+TRUSTED_MODEL_FIT_CONFIDENCE = frozenset({"medium", "high"})
+
 
 @dataclass
 class AllocationContext:
@@ -50,6 +52,11 @@ class AllocationContext:
             return False
         return any(_is_tier_fit_key(key) for key in self.model_fit)
 
+    @property
+    def has_trusted_model_fit(self) -> bool:
+        confidence = str(self.confidence.get("model_fit") or "").lower()
+        return self.has_model_fit and confidence in TRUSTED_MODEL_FIT_CONFIDENCE
+
     def strongest_delta(self, *, reference_tier: int, strongest_tier: int) -> float | None:
         """Return ModelFit delta for strongest minus reference tier if available."""
         if not self.model_fit:
@@ -69,6 +76,8 @@ class AllocationContext:
             "value_source": self.value_source,
             "effort_source": self.effort_source,
             "has_model_fit": self.has_model_fit,
+            "has_trusted_model_fit": self.has_trusted_model_fit,
+            "model_fit_confidence": self.confidence.get("model_fit", "none"),
         }
 
 

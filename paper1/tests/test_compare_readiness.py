@@ -238,7 +238,7 @@ def test_readiness_blocks_paper_mainline_without_budget_plan() -> None:
         args=_args(),
         tasks=[SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",))],
         strategies=paper_mainline_strategies(),
-        policy_jobs=6,
+        policy_jobs=len(paper_mainline_strategies()),
         value_context=value_context,
         catalog_issues=[],
         runtime_root=Path("/tmp/budgetflow-runtime"),
@@ -272,7 +272,7 @@ def test_readiness_blocks_paper_mainline_without_primary_value_source(tmp_path) 
         '{"hard_cap_usd":1.0,"source":"budget_binding_calibrator","decision":"PASS",'
         '"task_ids":["task-a"],'
         '"strategy_names":["bare_t2_baseline","bare_t3_baseline","enterprise_router_baseline",'
-        '"budgetflow_same_enterprise_router","budgetflow_task_level","budgetflow_segment"]}'
+        '"budgetflow_task_level","budgetflow_segment"]}'
     )
     frozen_plan = tmp_path / "frozen_plan.json"
     frozen_plan.write_text(
@@ -286,7 +286,7 @@ def test_readiness_blocks_paper_mainline_without_primary_value_source(tmp_path) 
         args=_args(frozen_plan=str(frozen_plan), budget_plan=str(bp)),
         tasks=[SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",))],
         strategies=paper_mainline_strategies(),
-        policy_jobs=6,
+        policy_jobs=len(paper_mainline_strategies()),
         value_context=value_context,
         catalog_issues=[],
         runtime_root=Path("/tmp/budgetflow-runtime"),

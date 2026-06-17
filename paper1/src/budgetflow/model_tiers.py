@@ -18,6 +18,22 @@ class TokenCostBand:
 
 
 @dataclass(frozen=True)
+class TurnCachePolicy:
+    """Input-token discount policy for later turns in the same task."""
+
+    input_discount_after_turn: int = 1
+    input_kv_cache_discount: float = 0.0
+    min_input_cost_fraction: float = 1.0
+
+    def input_cost_fraction(self, turn_index: int | None) -> float:
+        if turn_index is None or turn_index <= self.input_discount_after_turn:
+            return 1.0
+        discount = max(0.0, min(1.0, self.input_kv_cache_discount))
+        floor = max(0.0, min(1.0, self.min_input_cost_fraction))
+        return max(floor, 1.0 - discount)
+
+
+@dataclass(frozen=True)
 class TierConfig:
     tier: int
     backend: str
@@ -46,6 +62,7 @@ class TierConfig:
     progress_source: str = "manual"
     progress_updated: str = "unknown"
     progress_notes: str = ""
+    turn_cache_policy: TurnCachePolicy = TurnCachePolicy()
 
 
 TIER1_BACKEND = "tier1"
@@ -230,21 +247,55 @@ class ModelCatalog:
         return config.model, kwargs
 
 
-def token_cost_rates(backend_name: str, input_tokens: int) -> tuple[float, float]:
+def token_cost_rates(
+    backend_name: str,
+    input_tokens: int,
+    *,
+    turn_index: int | None = None,
+) -> tuple[float, float]:
     """Return per-token input/output cost for this request size."""
     config = MODEL_CATALOG.require_config(backend_name)
     for band in config.token_cost_bands:
         if band.max_input_tokens is None or input_tokens <= band.max_input_tokens:
-            return band.input_per_1m / 1_000_000, band.output_per_1m / 1_000_000
+            input_rate = band.input_per_1m / 1_000_000
+            output_rate = band.output_per_1m / 1_000_000
+            return _apply_turn_cache_policy(config, input_rate, output_rate, turn_index)
     if config.token_cost_bands:
         band = config.token_cost_bands[-1]
-        return band.input_per_1m / 1_000_000, band.output_per_1m / 1_000_000
-    return config.cost_per_input_token, config.cost_per_output_token
+        input_rate = band.input_per_1m / 1_000_000
+        output_rate = band.output_per_1m / 1_000_000
+        return _apply_turn_cache_policy(config, input_rate, output_rate, turn_index)
+    return _apply_turn_cache_policy(
+        config,
+        config.cost_per_input_token,
+        config.cost_per_output_token,
+        turn_index,
+    )
 
 
-def estimate_token_cost(backend_name: str, *, input_tokens: int, output_tokens: int) -> float:
-    input_rate, output_rate = token_cost_rates(backend_name, input_tokens)
+def estimate_token_cost(
+    backend_name: str,
+    *,
+    input_tokens: int,
+    output_tokens: int,
+    turn_index: int | None = None,
+) -> float:
+    input_rate, output_rate = token_cost_rates(
+        backend_name,
+        input_tokens,
+        turn_index=turn_index,
+    )
     return input_tokens * input_rate + output_tokens * output_rate
+
+
+def _apply_turn_cache_policy(
+    config: TierConfig,
+    input_rate: float,
+    output_rate: float,
+    turn_index: int | None,
+) -> tuple[float, float]:
+    fraction = config.turn_cache_policy.input_cost_fraction(turn_index)
+    return input_rate * fraction, output_rate
 
 
 # ── catalog persistence ────────────────────────────────────────────────────
@@ -271,6 +322,12 @@ def _build_tier_config_from_json(data: dict) -> TierConfig:
         for band in bands_raw
     )
     progress_prior_raw = data.get("progress_prior") or {}
+    cache_raw = data.get("turn_cache_policy") or {}
+    cache_policy = TurnCachePolicy(
+        input_discount_after_turn=int(cache_raw.get("input_discount_after_turn", 1)),
+        input_kv_cache_discount=float(cache_raw.get("input_kv_cache_discount", 0.0)),
+        min_input_cost_fraction=float(cache_raw.get("min_input_cost_fraction", 1.0)),
+    )
     return TierConfig(
         tier=int(data["tier"]),
         backend=str(data["backend"]),
@@ -303,6 +360,7 @@ def _build_tier_config_from_json(data: dict) -> TierConfig:
         progress_source=str(data.get("progress_source", "json_catalog")),
         progress_updated=str(data.get("progress_updated", "unknown")),
         progress_notes=str(data.get("progress_notes", "")),
+        turn_cache_policy=cache_policy,
     )
 
 

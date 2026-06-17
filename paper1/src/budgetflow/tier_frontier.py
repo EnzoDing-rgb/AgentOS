@@ -118,7 +118,7 @@ class TierFrontier:
         task_value = 1.0
         if allocation is not None:
             task_value = allocation.task_value
-            if allocation.has_model_fit and allocation.model_fit:
+            if allocation.has_trusted_model_fit and allocation.model_fit:
                 fit_delta = allocation.strongest_delta(
                     reference_tier=self.reference_tier,
                     strongest_tier=self.strongest_tier,

@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from budgetflow.recost import run_sensitivity
+from budgetflow.recost import recost_record
 
 
 def test_run_sensitivity_dedup_keeps_last_row(tmp_path: Path) -> None:
@@ -39,3 +40,22 @@ def test_run_sensitivity_dedup_keeps_last_row(tmp_path: Path) -> None:
 
     assert stats["total"] == 1
     assert stats["pass"] == 1
+
+
+def test_recost_applies_t2_input_kv_cache_discount_after_first_turn() -> None:
+    recosted = recost_record(
+        {
+            "strategy": "budgetflow_task_level",
+            "instance_id": "task-a",
+            "backend_picks": ["tier2", "tier2"],
+            "prompt_tokens_total": 2000,
+            "completion_tokens_total": 0,
+            "llm_turns": 2,
+        },
+        t3_multiplier=3.0,
+    )
+
+    # Turn 1 input: 1000 * 0.90 / 1M.
+    # Turn 2 input: same tokens with input_kv_cache_discount=0.50.
+    assert recosted["total_cost"] == 0.00135
+    assert recosted["recost_input_kv_cache_discount"] == 0.5

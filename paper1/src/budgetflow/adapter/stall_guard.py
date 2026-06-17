@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import deque
+import math
 
 from ..defaults import STAGNATION_NO_PROGRESS_STEPS, STAGNATION_REPEAT_CMD_LIMIT
 
@@ -53,7 +54,13 @@ def repeat_command_streak(commands: deque[str], *, limit: int) -> tuple[bool, st
     return False, None
 
 
-def no_progress_limit(strategy: str) -> int:  # noqa: ARG001 — unified limit; keep strategy arg for API stability
+def no_progress_limit(
+    strategy: str,
+    *,
+    task_effort: float | None = None,
+) -> int:
+    if strategy == "value_aware_task_level" and task_effort is not None and task_effort > 0:
+        return max(STAGNATION_NO_PROGRESS_STEPS, min(36, math.ceil(task_effort * 0.75)))
     return STAGNATION_NO_PROGRESS_STEPS
 
 
@@ -63,12 +70,13 @@ def check_stagnation(
     no_progress_streak: int,
     recent_commands: deque[str],
     repeat_limit: int = STAGNATION_REPEAT_CMD_LIMIT,
+    task_effort: float | None = None,
 ) -> tuple[bool, str, str | None]:
     """Return (should_stop, exit_reason, repeat_command)."""
     repeated, cmd = repeat_command_streak(recent_commands, limit=repeat_limit)
     if repeated:
         return True, "stagnation_repeat_command", cmd
-    limit = no_progress_limit(strategy)
+    limit = no_progress_limit(strategy, task_effort=task_effort)
     if no_progress_streak >= limit:
         return True, "stagnation_no_progress", None
     return False, "", None

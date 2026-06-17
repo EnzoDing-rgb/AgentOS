@@ -121,7 +121,7 @@ def test_3x3_selects_mechanism_isolation_strategies_and_parallel_jobs() -> None:
     assert selection.jobs_upgraded is True
 
 
-def test_custom_ids_default_to_paper_mainline_six_policy_set() -> None:
+def test_custom_ids_default_to_paper_mainline_five_policy_set() -> None:
     selection = select_strategies(_args(ids="sympy__sympy-22714", jobs=1))
     names = [s.name for s in selection.strategies]
 
@@ -129,11 +129,10 @@ def test_custom_ids_default_to_paper_mainline_six_policy_set() -> None:
         "bare_t2_baseline",
         "bare_t3_baseline",
         "enterprise_router_baseline",
-        "budgetflow_same_enterprise_router",
         "budgetflow_task_level",
         "budgetflow_segment",
     ]
-    assert selection.policy_jobs == 6
+    assert selection.policy_jobs == 5
     assert selection.jobs_upgraded is True
 
 
@@ -151,7 +150,6 @@ def test_non_3x3_preset_defaults_to_paper_mainline_not_full_catalog() -> None:
         "bare_t2_baseline",
         "bare_t3_baseline",
         "enterprise_router_baseline",
-        "budgetflow_same_enterprise_router",
         "budgetflow_task_level",
         "budgetflow_segment",
     ]
@@ -216,10 +214,11 @@ def test_budget_plan_model_fit_evidence_parsed_as_global_runtime_signal(tmp_path
         },
     }))
 
-    fit, source = calibrated_model_fit_from_budget_plan(bp_path)
+    fit, source, confidence = calibrated_model_fit_from_budget_plan(bp_path)
 
     assert fit == {"tier2": 0.08, "tier3": 0.65}
     assert source == "budget_plan:historical_jsonl"
+    assert confidence == "medium"
 
 
 def test_resolve_budget_plan_explicit_budget_overrides_budget_plan(tmp_path) -> None:
@@ -286,7 +285,7 @@ def test_paper_mainline_budget_contract_blocks_mixed_cap_modes() -> None:
 def test_paper_mainline_budget_contract_blocks_unequal_caps() -> None:
     selection = select_strategies(_args(ids="sympy__sympy-22714"))
     batch_caps = {strategy.name: 1.0 for strategy in selection.strategies}
-    batch_caps["budgetflow_same_enterprise_router"] = 0.1
+    batch_caps["budgetflow_task_level"] = 0.1
     budget_modes = {strategy.name: "shared_batch_hard_budget" for strategy in selection.strategies}
 
     with pytest.raises(SystemExit, match="paper mainline requires equal shared batch caps"):

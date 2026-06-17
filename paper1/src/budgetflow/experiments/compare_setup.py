@@ -97,7 +97,7 @@ def resolve_budget_plan(args: Namespace) -> CompareBudgetPlan:
 
 def calibrated_model_fit_from_budget_plan(
     budget_plan_path: str | Path | None,
-) -> tuple[dict[str, float] | None, str]:
+) -> tuple[dict[str, float] | None, str, str]:
     """Return global calibrated Model Fit from a budget plan, if present.
 
     The Budget Regime Compiler may publish workload-level tier fit evidence for
@@ -105,17 +105,17 @@ def calibrated_model_fit_from_budget_plan(
     canonical tier names such as ``tier2`` and values are scalar fit rates.
     """
     if budget_plan_path is None:
-        return None, "catalog_progress_prior"
+        return None, "catalog_progress_prior", "none"
     path = Path(budget_plan_path)
     if not path.exists():
-        return None, "catalog_progress_prior"
+        return None, "catalog_progress_prior", "none"
     data = json.loads(path.read_text())
     evidence = data.get("model_fit_evidence") or {}
     if not isinstance(evidence, dict):
-        return None, "catalog_progress_prior"
+        return None, "catalog_progress_prior", "none"
     tier_fit = evidence.get("tier_fit") or {}
     if not isinstance(tier_fit, dict):
-        return None, "catalog_progress_prior"
+        return None, "catalog_progress_prior", "none"
 
     parsed: dict[str, float] = {}
     for raw_tier, raw_fit in tier_fit.items():
@@ -130,9 +130,10 @@ def calibrated_model_fit_from_budget_plan(
         if fit > 0:
             parsed[tier_key] = fit
     if not parsed:
-        return None, "catalog_progress_prior"
+        return None, "catalog_progress_prior", "none"
     source = str(evidence.get("source") or "budget_plan")
-    return parsed, f"budget_plan:{source}"
+    confidence = str(evidence.get("confidence") or "unknown")
+    return parsed, f"budget_plan:{source}", confidence
 
 
 def trace_console_from_args(args: Namespace) -> TraceConsole:

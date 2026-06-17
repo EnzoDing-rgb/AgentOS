@@ -212,7 +212,7 @@ def main() -> None:
     if budget_plan_path is not None and budget_plan_path.exists():
         import json as _json
         _budget_plan_data = _json.loads(budget_plan_path.read_text())
-    calibrated_model_fit, calibrated_model_fit_source = calibrated_model_fit_from_budget_plan(
+    calibrated_model_fit, calibrated_model_fit_source, calibrated_model_fit_confidence = calibrated_model_fit_from_budget_plan(
         budget_plan_path
     )
 
@@ -384,7 +384,7 @@ def main() -> None:
         print(f"{dim('w_i_profile=' + args.w_profile)}", flush=True)
     if calibrated_model_fit:
         print(
-            f"{dim('model_fit=' + calibrated_model_fit_source + ' ' + str(calibrated_model_fit))}",
+            f"{dim('model_fit=' + calibrated_model_fit_source + ' confidence=' + calibrated_model_fit_confidence + ' ' + str(calibrated_model_fit))}",
             flush=True,
         )
     print(f"{dim('trace_console=' + trace_console + '; heartbeat every ' + str(args.heartbeat) + 's')}", flush=True)
@@ -559,6 +559,7 @@ def main() -> None:
             budget_mode=_eff_budget_mode,
             calibrated_model_fit=calibrated_model_fit,
             calibrated_model_fit_source=calibrated_model_fit_source,
+            calibrated_model_fit_confidence=calibrated_model_fit_confidence,
         )
         return cfg, records, batch_spent, batch_cap
 

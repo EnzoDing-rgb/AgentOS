@@ -71,16 +71,14 @@ class SwebenchCostAdapter:
                 f"before cost estimates can be produced."
             )
 
-        # Token-cost banding for input-length tiered pricing
-        input_rate = config.cost_per_input_token
-        output_rate = config.cost_per_output_token
-        for band in getattr(config, 'token_cost_bands', ()) or ():
-            if band.max_input_tokens is None or input_tokens <= band.max_input_tokens:
-                input_rate = band.input_per_1m / 1_000_000
-                output_rate = band.output_per_1m / 1_000_000
-                break
+        from ..model_tiers import estimate_token_cost
 
-        usd = input_tokens * input_rate + expected_output_tokens * output_rate
+        usd = estimate_token_cost(
+            backend,
+            input_tokens=input_tokens,
+            output_tokens=expected_output_tokens,
+            turn_index=context.get("turn_index"),
+        )
         return CostEstimate(
             usd=round(usd, 8),
             source=f"tier_catalog:{config.cost_source}",
