@@ -5,10 +5,18 @@ from argparse import Namespace
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
+import budgetflow.experiments.compare_readiness as readiness
 from budgetflow.experiments.compare_config import CompareStrategy, paper_mainline_strategies
 from budgetflow.experiments.compare_readiness import build_compare_readiness_report
 from budgetflow.model_tiers import DEFAULT_CATALOG_PATH, init_catalog
 from budgetflow.value_efficiency import ValueEfficiencyContext
+
+
+@pytest.fixture(autouse=True)
+def _clean_runtime_python(monkeypatch):
+    monkeypatch.setattr(readiness, "find_runtime_worktree_python_contamination", lambda runtime_root: [])
 
 
 def _args(**overrides):

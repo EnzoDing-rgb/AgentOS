@@ -61,6 +61,20 @@ def find_runtime_worktree_python_contamination(runtime_root: Path) -> list[str]:
         root = Path(site_dir)
         if not root.is_dir():
             continue
+        for marker in sorted(root.glob("__editable___*_finder.py")):
+            try:
+                text = marker.read_text(errors="ignore")
+            except OSError:
+                continue
+            if worktrees_root in text:
+                contaminated.append(f"{marker}: editable finder maps into {worktrees_root}")
+        for direct_url in sorted(root.glob("*.dist-info/direct_url.json")):
+            try:
+                text = direct_url.read_text(errors="ignore")
+            except OSError:
+                continue
+            if worktrees_root in text:
+                contaminated.append(f"{direct_url}: editable install from {worktrees_root}")
         for pth in sorted(root.glob("*.pth")):
             try:
                 lines = pth.read_text(errors="ignore").splitlines()

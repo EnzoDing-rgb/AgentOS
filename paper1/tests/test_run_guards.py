@@ -13,6 +13,7 @@ from budgetflow.run_guards import (  # noqa: E402
     _looks_upstream,
     is_fatal_billing_error,
 )
+from budgetflow.harness_contamination import find_runtime_worktree_python_contamination  # noqa: E402
 
 
 def _rec(*, resolved=False, patch=False, reason="", status=""):
@@ -108,3 +109,22 @@ def test_pytest_rootdir_under_runtime_worktree_does_not_halt_all() -> None:
 
     assert not action.halt_all
     assert not g.is_aborted()
+
+
+def test_runtime_worktree_contamination_detects_editable_finder(tmp_path, monkeypatch) -> None:
+    import site
+
+    site_dir = tmp_path / "site-packages"
+    site_dir.mkdir()
+    finder = site_dir / "__editable___sympy_1_12_dev0_finder.py"
+    finder.write_text(
+        "MAPPING = {'sympy': '/tmp/budgetflow-runtime/worktrees/sympy__sympy/run/sympy'}\n"
+    )
+
+    monkeypatch.setattr(site, "getsitepackages", lambda: [str(site_dir)])
+    monkeypatch.setattr(site, "getusersitepackages", lambda: str(tmp_path / "user-site"))
+    monkeypatch.delenv("PYTHONPATH", raising=False)
+
+    contamination = find_runtime_worktree_python_contamination(Path("/tmp/budgetflow-runtime"))
+
+    assert any("__editable___sympy_1_12_dev0_finder.py" in item for item in contamination)

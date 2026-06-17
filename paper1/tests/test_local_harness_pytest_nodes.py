@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from budgetflow import local_harness
 from budgetflow.local_harness import (
     build_pytest_node_ids,
@@ -17,6 +19,15 @@ from budgetflow.local_harness_adapters import (
     SphinxHAdapter,
     _patch_jinja2_imports,
 )
+
+
+@pytest.fixture(autouse=True)
+def _clean_runtime_python(monkeypatch):
+    monkeypatch.setattr(
+        local_harness,
+        "find_runtime_worktree_python_contamination",
+        lambda runtime_root: [],
+    )
 
 
 def test_build_pytest_node_ids_from_plain_test_names(tmp_path: Path) -> None:
