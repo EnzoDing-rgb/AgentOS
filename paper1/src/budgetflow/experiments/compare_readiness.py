@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from argparse import Namespace
 from dataclasses import dataclass
+import importlib.util
 from pathlib import Path
 
 from budgetflow.experiments.compare_config import CompareStrategy, paper_mainline_strategy_names
@@ -37,6 +38,28 @@ class ReadinessReport:
     @property
     def ok(self) -> bool:
         return not self.blocking
+
+
+_REPO_HARNESS_REQUIRED_MODULES: dict[str, tuple[str, ...]] = {
+    "mwaskom/seaborn": ("matplotlib",),
+}
+
+
+def _missing_selected_harness_dependencies(tasks: list) -> dict[str, tuple[str, ...]]:
+    missing: dict[str, tuple[str, ...]] = {}
+    selected_repos = sorted({
+        str(getattr(task, "repo", "") or "")
+        for task in tasks
+        if str(getattr(task, "repo", "") or "")
+    })
+    for repo in selected_repos:
+        required = _REPO_HARNESS_REQUIRED_MODULES.get(repo, ())
+        repo_missing = tuple(
+            module for module in required if importlib.util.find_spec(module) is None
+        )
+        if repo_missing:
+            missing[repo] = repo_missing
+    return missing
 
 
 def _find_existing_jsonl(run_series: str | None, runs_dir: Path | None) -> Path | None:
@@ -186,6 +209,12 @@ def build_compare_readiness_report(
         blocking.append(
             f"{len(missing_fail_to_pass)} selected tasks lack fail_to_pass tests; verified value cannot be trusted: "
             f"{preview}{suffix}"
+        )
+    missing_harness_deps = _missing_selected_harness_dependencies(tasks)
+    for repo, modules in missing_harness_deps.items():
+        blocking.append(
+            f"selected repo {repo} has missing harness dependencies: "
+            f"{', '.join(modules)}; install/localize dependencies or remove these tasks before paid runs"
         )
     if not strategy_names:
         blocking.append("no strategies selected")

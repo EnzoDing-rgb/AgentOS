@@ -216,6 +216,76 @@ def test_runner_threads_budget_plan_model_fit_into_allocation_context(monkeypatc
     assert record["budget_exhausted"] is True
 
 
+def test_runner_threads_run_series_to_run_scoped_trace_dir(monkeypatch) -> None:
+    import budgetflow.adapter.runner as runner
+
+    seen = {}
+
+    def fake_run_mini_swe_task(*args, **kwargs):
+        seen["run_series"] = kwargs["run_series"]
+        return SimpleNamespace(
+            instance_id="sympy__sympy-13480",
+            total_cost=0.01,
+            harness_resolved=True,
+            patch_text="diff --git a/x b/x\n",
+            patch_source="submission",
+            submitted_patch_path="/tmp/budgetflow-runtime/traces/run-a/trace_sympy__sympy-13480_budgetflow_task_level/submitted.patch",
+            exit_status="HarnessResolved",
+            exit_reason="harness_resolved",
+            agent_exit_status="Submitted",
+            agent_exit_reason="submitted",
+            backend_picks=["tier2"],
+            llm_turns=1,
+            violations=[],
+            harness_detail="test_patch=ok; fail_before=fail; model_patch=ok; fail_after=pass; pass_to_pass=pass",
+            agent_gold_edited=True,
+            agent_gold_files=["x.py"],
+            agent_attempted_submit=True,
+            agent_submitted=True,
+            prompt_tokens_total=10,
+            completion_tokens_total=2,
+            provider_usage_turns=1,
+            estimated_usage_turns=0,
+            usage_source="provider",
+            cost_mode="catalog_provider_usage",
+            turn_trace_count=1,
+            turn_traces=[],
+            protocol_retry_used=False,
+            protocol_retry_success=False,
+            protocol_retry_reason="",
+            protocol_retry_attempts=0,
+            protocol_retry_limit=4,
+            protocol="tool_call",
+            parser="parse_toolcall_actions",
+            provider_error_kind="",
+            provider_retryable=None,
+        )
+
+    monkeypatch.setattr(runner, "run_mini_swe_task", fake_run_mini_swe_task)
+    governor = BudgetGovernor(GovernorConfig(total_budget=1.0, default_max_output_tokens=4096), WorkflowLedgerStore())
+    task = SimpleNamespace(
+        instance_id="sympy__sympy-13480",
+        patch="diff --git a/x b/x\n",
+        fail_to_pass=("tests/test_x.py::test_y",),
+        pass_to_pass=(),
+    )
+
+    record = run_task_record(
+        task,
+        cfg=CompareStrategy("budgetflow_task_level", "value_aware_task_level"),
+        batch_budget_cap=1.0,
+        governor=governor,
+        ledger=WorkflowLedgerStore(),
+        task_index=1,
+        step_limit=1,
+        value_context=_value_context(),
+        run_series="run-a",
+    )
+
+    assert seen["run_series"] == "run-a"
+    assert "/traces/run-a/" in record["submitted_patch"]
+
+
 def test_runner_threads_planned_task_budget_into_allocation_context(monkeypatch) -> None:
     import budgetflow.adapter.runner as runner
 

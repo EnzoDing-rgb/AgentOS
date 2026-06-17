@@ -157,6 +157,7 @@ def run_mini_swe_task(
     median_task_value: float = 1.0,
     frozen_plan: FrozenRouterPlan | None = None,
     allocation: AllocationContext | None = None,
+    run_series: str = "",
 ) -> MiniSweRunResult:
     label = strategy_label or strategy
     ledger = ledger or WorkflowLedgerStore()
@@ -169,7 +170,7 @@ def run_mini_swe_task(
     else:
         cap = governor.config.total_budget
     repo_dir = clone_or_checkout(task, workspace_key=workspace_key)
-    trace_dir = get_trace_dir(task.instance_id, label)
+    trace_dir = get_trace_dir(task.instance_id, label, run_series=run_series)
     trace = RunTraceLogger(
         instance_id=task.instance_id,
         repo_dir=repo_dir,

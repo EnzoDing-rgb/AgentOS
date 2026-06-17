@@ -370,6 +370,37 @@ def test_readiness_blocks_tasks_without_verifiable_harness_metadata() -> None:
     assert any("lack fail_to_pass" in issue for issue in report.blocking)
 
 
+def test_readiness_blocks_selected_repo_with_missing_harness_dependency(monkeypatch) -> None:
+    import budgetflow.experiments.compare_readiness as readiness
+
+    monkeypatch.setattr(
+        readiness,
+        "_missing_selected_harness_dependencies",
+        lambda tasks: {"mwaskom/seaborn": ("matplotlib",)},
+    )
+    value_context = ValueEfficiencyContext()
+    value_context.init(value_profile="equal")
+    report = build_compare_readiness_report(
+        args=_args(),
+        tasks=[
+            SimpleNamespace(
+                instance_id="mwaskom__seaborn-3010",
+                repo="mwaskom/seaborn",
+                test_patch="diff",
+                fail_to_pass=("tests/test_regression.py::test_polyfit_missing_data",),
+            )
+        ],
+        strategies=(CompareStrategy("bare_t3_baseline", "bare_t3"),),
+        policy_jobs=1,
+        value_context=value_context,
+        catalog_issues=[],
+        runtime_root=Path("/tmp/budgetflow-runtime"),
+    )
+
+    assert not report.ok
+    assert any("missing harness dependencies" in issue for issue in report.blocking)
+
+
 def test_readiness_blocks_malformed_frozen_plan(tmp_path) -> None:
     plan = tmp_path / "bad_frozen_plan.json"
     plan.write_text('{"meta":{"name":"bad"},"plan":{"task-a":{"preferred_model":"tier2","base_cap":0.2,"priority":1}}}')

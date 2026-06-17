@@ -174,6 +174,7 @@ def run_task_record(
         median_task_value=value_context.median_task_value,
         frozen_plan=frozen_plan,
         allocation=allocation,
+        run_series=run_series,
     )
     outcome = progress_adapter.outcome_from_result(result)
     batch_snapshot = governor.budget_snapshot()

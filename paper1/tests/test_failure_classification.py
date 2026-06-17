@@ -87,6 +87,36 @@ def test_host_dependency_contamination_is_infra_not_model() -> None:
     assert verdict["failure_subtype"] == "provider_or_parser_error"
 
 
+def test_missing_harness_dependency_is_infra_abort_not_model_fail() -> None:
+    record = {
+        "harness_resolved": False,
+        "patch_extracted": True,
+        "patch_source": "submission",
+        "submitted_patch": "/tmp/submitted.patch",
+        "agent_gold_edited": True,
+        "agent_gold_files": ["seaborn/_stats/regression.py"],
+        "exit_status": "HarnessFailed",
+        "exit_reason": "harness_failed",
+        "detail": (
+            "test_patch=ok; fail_before=fail; model_patch=ok; fail_after=fail; "
+            "ConftestImportFailure: ModuleNotFoundError: No module named 'matplotlib'; "
+            "pass_to_pass=fail; ModuleNotFoundError: No module named 'matplotlib'"
+        ),
+        "turn_trace_count": 1,
+        "turn_traces": [{}],
+    }
+
+    assert classify_failure(record) == "infra_fail"
+    verdict = build_verdict(record)
+    assert verdict["verdict_axis"] == "infra_fail"
+    assert verdict["failure_owner"] == "infra"
+
+    score = build_score_status(record)
+    assert score["score_status"] == "abort"
+    assert score["abort_owner"] == "infra"
+    assert score["abort_reason"] == "host_dependency_contamination"
+
+
 def test_runtime_worktree_rootdir_is_not_host_dependency_contamination() -> None:
     record = {
         "harness_resolved": False,

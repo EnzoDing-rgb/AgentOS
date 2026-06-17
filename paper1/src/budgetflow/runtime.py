@@ -116,9 +116,20 @@ def get_locks_dir() -> Path:
     return p
 
 
-def get_trace_dir(instance_id: str, label: str) -> Path:
-    """Per-task turn trace scratch: {runtime_root}/traces/trace_{id}_{label}/"""
-    p = get_runtime_root() / "traces" / f"trace_{instance_id}_{label}"
+def _safe_path_component(raw: str) -> str:
+    return "".join(ch if ch.isalnum() or ch in "._=-" else "_" for ch in raw)
+
+
+def get_trace_dir(instance_id: str, label: str, *, run_series: str = "") -> Path:
+    """Per-task turn trace scratch.
+
+    Current paid runs pass ``run_series`` so repeated task+strategy attempts do
+    not overwrite submitted.patch evidence from earlier runs.
+    """
+    root = get_runtime_root() / "traces"
+    if run_series:
+        root = root / _safe_path_component(run_series)
+    p = root / f"trace_{_safe_path_component(instance_id)}_{_safe_path_component(label)}"
     p.mkdir(parents=True, exist_ok=True)
     return p
 
