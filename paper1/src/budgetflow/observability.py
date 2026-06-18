@@ -386,7 +386,12 @@ class HeartbeatWriter:
         self._write()
 
     def mark_done(self) -> None:
-        self._state.status = "completed"
+        if self._state.total_expected > 0 and self._state.rows_done < self._state.total_expected:
+            self._state.status = (
+                f"aborted: partial_run rows={self._state.rows_done}/{self._state.total_expected}"
+            )
+        else:
+            self._state.status = "completed"
         self._state.updated_at = time.time()
         self._write()
 

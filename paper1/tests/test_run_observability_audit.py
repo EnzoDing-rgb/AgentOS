@@ -1,6 +1,6 @@
 from budgetflow.run_observability.audit import build_compact_audit
 from budgetflow.run_observability.checker import check_jsonl
-from budgetflow.observability import build_harness_trust
+from budgetflow.observability import HeartbeatWriter, build_harness_trust
 from budgetflow.run_observability.checks import (
     _check_cost_accounting,
     _check_shared_cap_starvation,
@@ -9,6 +9,7 @@ from budgetflow.run_observability.checks import (
 from budgetflow.run_observability.report import format_compact_audit
 from budgetflow.run_observability.schema import _check_trace_coverage
 import pytest
+import json
 
 
 def test_compact_audit_preserves_generic_tier_counts() -> None:
@@ -29,6 +30,19 @@ def test_compact_audit_preserves_generic_tier_counts() -> None:
 
     assert stats["tier_turns"] == {2: 1, 4: 1, 5: 2}
     assert stats["t3_turns"] == 0
+
+
+def test_heartbeat_mark_done_preserves_partial_run_status(tmp_path) -> None:
+    hb_path = tmp_path / "partial.heartbeat.json"
+    writer = HeartbeatWriter(hb_path, run_series="partial", total_expected=100)
+    writer.pulse(rows_done=31, active_strategy="s1", active_instance="task-a")
+
+    writer.mark_done()
+
+    heartbeat = json.loads(hb_path.read_text())
+    assert heartbeat["rows_done"] == 31
+    assert heartbeat["total_expected"] == 100
+    assert heartbeat["status"].startswith("aborted")
 
 
 def test_trace_coverage_allows_pre_provider_budget_exhaustion() -> None:
