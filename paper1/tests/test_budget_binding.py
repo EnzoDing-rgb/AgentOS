@@ -268,6 +268,54 @@ def test_calibrate_emits_loose_budgetflow_task_budgets(tmp_path: Path) -> None:
     assert "enterprise_router_baseline" not in plan.planned_task_budget_by_strategy
 
 
+def test_small_historical_sample_cannot_collapse_large_workload_cap(tmp_path: Path) -> None:
+    """A few cheap diagnostic rows can calibrate scale, but not starve a larger batch."""
+    catalog = catalog_source_info()
+    jsonl = tmp_path / "hist.jsonl"
+    rows = []
+    for strategy in (
+        "bare_t2_baseline",
+        "bare_t3_baseline",
+        "enterprise_router_baseline",
+        "budgetflow_task_level",
+    ):
+        for i in range(6):
+            rows.append(_trusted({
+                "strategy": strategy,
+                "instance_id": f"task-{i}",
+                "total_cost": 0.10,
+                "budget_mode": "shared_batch_hard_budget",
+                "catalog": catalog,
+                "score_status": "pass",
+                "exit_status": "HarnessResolved",
+                "row_finished_at": i + 1,
+            }))
+    jsonl.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
+    vm = tmp_path / "vm.json"
+    vm.write_text(json.dumps({
+        "tasks": {
+            f"task-{i}": {"task_effort": {"bootstrap_heuristic": 30.0}}
+            for i in range(25)
+        }
+    }))
+
+    plan = calibrate_budget(
+        [f"task-{i}" for i in range(25)],
+        historical_jsonl=jsonl,
+        value_matrix_path=vm,
+        strategies=(
+            "bare_t2_baseline",
+            "bare_t3_baseline",
+            "enterprise_router_baseline",
+            "budgetflow_task_level",
+        ),
+        target_utilization=1.0,
+    )
+
+    assert plan.hard_cap_usd >= 8.0
+    assert any("sample_coverage_shrink" in reason for reason in plan.reasons)
+
+
 def test_planned_task_budgets_use_cross_strategy_task_cost_ceiling() -> None:
     from budgetflow.experiments.budget_binding import _build_budgetflow_planned_task_budgets
 

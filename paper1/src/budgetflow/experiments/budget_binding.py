@@ -386,6 +386,7 @@ def calibrate_budget(
             historical.get(strategy, {}),
             censored_task_costs_by_strategy.get(strategy, {}),
             fit_overrides=fit_overrides,
+            audit_reasons=plan.reasons,
         )
         projected_task_costs[strategy] = task_costs
         projected[strategy] = sum(task_costs.values())
@@ -1112,8 +1113,16 @@ def _project_strategy_task_costs(
     censored_costs: dict[str, float],
     *,
     fit_overrides: dict[int, float] | None = None,
+    audit_reasons: list[str] | None = None,
 ) -> dict[str, float]:
-    scale = _strategy_effort_scale(strategy, observed_costs, value_features, fit_overrides=fit_overrides)
+    scale = _strategy_effort_scale(
+        strategy,
+        observed_costs,
+        value_features,
+        fit_overrides=fit_overrides,
+        target_task_count=len(task_ids),
+        audit_reasons=audit_reasons,
+    )
     projected: dict[str, float] = {}
     for task_id in task_ids:
         baseline = _bootstrap_cost_estimate(task_id, strategy, value_features, fit_overrides=fit_overrides) * scale
@@ -1138,6 +1147,8 @@ def _strategy_effort_scale(
     value_features: dict[str, dict],
     *,
     fit_overrides: dict[int, float] | None = None,
+    target_task_count: int | None = None,
+    audit_reasons: list[str] | None = None,
 ) -> float:
     ratios: list[float] = []
     for task_id, cost in observed_costs.items():
@@ -1147,7 +1158,23 @@ def _strategy_effort_scale(
     if not ratios:
         return 1.0
     ratios.sort()
-    return ratios[len(ratios) // 2]
+    raw_scale = ratios[len(ratios) // 2]
+    if target_task_count is None or target_task_count <= 0:
+        return raw_scale
+
+    sample_count = len(ratios)
+    if sample_count >= target_task_count:
+        return raw_scale
+
+    coverage = max(0.0, min(1.0, sample_count / max(float(target_task_count), 1.0)))
+    shrunk_scale = raw_scale ** coverage
+    if audit_reasons is not None and abs(shrunk_scale - raw_scale) > 1e-9:
+        audit_reasons.append(
+            f"calibration:{strategy} sample_coverage_shrink raw_scale={raw_scale:.4f} "
+            f"-> {shrunk_scale:.4f} (n={sample_count}/{target_task_count}, "
+            "toward bootstrap scale)"
+        )
+    return shrunk_scale
 
 
 def _prefix_cost_before_final_task(
