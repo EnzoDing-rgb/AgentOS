@@ -363,11 +363,12 @@ def test_runner_threads_planned_task_budget_into_allocation_context(monkeypatch)
     assert record["planned_task_budget_source"] == "budget_plan:planned_task_budget_by_strategy"
 
 
-def test_run_strategy_batch_planned_caps_preserve_budget_for_remaining_tasks(monkeypatch) -> None:
+def test_run_strategy_batch_planned_caps_do_not_prorate_across_remaining_tasks(monkeypatch) -> None:
     import pytest
     from budgetflow.experiments import compare_execution
 
     seen_caps: list[float] = []
+    costs = {"task-a": 0.2, "task-b": 0.8}
 
     def fake_run_task_record(task, **kwargs):
         task_cap = float(kwargs["per_task_cap"])
@@ -388,7 +389,7 @@ def test_run_strategy_batch_planned_caps_preserve_budget_for_remaining_tasks(mon
             "elapsed_s": 0.0,
             "backend_picks": ["tier2"],
             "llm_turns": 1,
-            "total_cost": task_cap,
+            "total_cost": costs[task.instance_id],
             "batch_available": None,
         }
 
@@ -415,9 +416,9 @@ def test_run_strategy_batch_planned_caps_preserve_budget_for_remaining_tasks(mon
         print_lock=None,
     )
 
-    assert seen_caps == pytest.approx([0.5, 0.5])
+    assert seen_caps == pytest.approx([0.8, 0.8])
     assert spent == pytest.approx(1.0)
-    assert records[0]["batch_spent"] == pytest.approx(0.5)
+    assert records[0]["batch_spent"] == pytest.approx(0.2)
     assert records[1]["batch_spent"] == pytest.approx(1.0)
     assert records[1]["batch_available"] == pytest.approx(0.0)
 
@@ -489,7 +490,7 @@ def test_planned_task_budget_checkpoint_records_shared_batch_cap(monkeypatch, tm
     assert strategy_state.completed_tasks == ["task-a", "task-b"]
 
 
-def test_effective_planned_task_cap_returns_unused_budget_to_later_tasks() -> None:
+def test_effective_planned_task_cap_uses_plan_until_shared_budget_is_tighter() -> None:
     import pytest
 
     planned = {"task-a": 0.8, "task-b": 0.8, "task-c": 0.8}
@@ -509,8 +510,17 @@ def test_effective_planned_task_cap_returns_unused_budget_to_later_tasks() -> No
         shared_spent=0.1,
     )
 
-    assert first_cap == pytest.approx(0.4)
-    assert later_cap == pytest.approx(0.55)
+    final_cap = _effective_planned_task_cap(
+        planned_task_caps=planned,
+        remaining_task_ids=["task-c"],
+        task_id="task-c",
+        batch_budget_cap=1.2,
+        shared_spent=0.7,
+    )
+
+    assert first_cap == pytest.approx(0.8)
+    assert later_cap == pytest.approx(0.8)
+    assert final_cap == pytest.approx(0.5)
 
 
 def test_run_strategy_batch_planned_caps_require_all_selected_tasks() -> None:

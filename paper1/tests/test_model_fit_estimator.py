@@ -104,8 +104,8 @@ class TestModelFitEstimation:
         finally:
             _restore_catalog(catalog_orig)
 
-    def test_fit_rate_is_capped_as_normalized_model_fit_signal(self):
-        """ModelFit is a normalized routing signal capped at 1.0."""
+    def test_fit_rate_is_capped_and_shrunk_as_normalized_model_fit_signal(self):
+        """ModelFit is normalized and small samples are shrunk from 1.0."""
         from budgetflow.model_fit_estimator import estimate_model_fit_from_jsonl
 
         cat = _catalog()
@@ -132,7 +132,101 @@ class TestModelFitEstimation:
                 {"task-a": {"bootstrap_difficulty": 50.0}},
             )
 
-            assert evidence.tier_fit[3] == pytest.approx(1.0)
+            assert 0.25 < evidence.tier_fit[3] < 1.0
+            assert any("catalog prior" in reason for reason in evidence.reasons)
+
+            path.unlink()
+        finally:
+            _restore_catalog(catalog_orig)
+
+    def test_single_easy_reference_sample_does_not_flatten_model_fit(self):
+        """One easy T2 pass must not erase stronger-tier evidence."""
+        from budgetflow.model_fit_estimator import estimate_model_fit_from_jsonl
+
+        cat = _catalog()
+        records = [
+            {
+                "strategy": "bare_t2_baseline",
+                "instance_id": "easy-reference",
+                "task_effort": 20.0,
+                "total_cost": 0.05,
+                "catalog": cat,
+                "score_status": "pass",
+                "exit_status": "HarnessResolved",
+                "row_finished_at": 1,
+            },
+        ]
+        for i in range(7):
+            records.append({
+                "strategy": "bare_t3_baseline",
+                "instance_id": f"strong-{i}",
+                "task_effort": 20.0,
+                "total_cost": 0.12,
+                "catalog": cat,
+                "score_status": "pass",
+                "exit_status": "HarnessResolved",
+                "row_finished_at": 1,
+            })
+        catalog_orig = _setup_catalog_test()
+        try:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+                path = Path(f.name)
+            _write_jsonl(path, records)
+
+            task_ids = ["easy-reference"] + [f"strong-{i}" for i in range(7)]
+            value_features = {task_id: {"bootstrap_difficulty": 20.0} for task_id in task_ids}
+            evidence = estimate_model_fit_from_jsonl(path, task_ids, value_features)
+
+            assert evidence.tier_fit[3] > evidence.tier_fit[2]
+            assert evidence.tier_fit[2] < 0.75
+            assert any("prior" in reason for reason in evidence.reasons)
+
+            path.unlink()
+        finally:
+            _restore_catalog(catalog_orig)
+
+    def test_clean_model_failure_is_not_high_fit_because_it_is_cheap(self):
+        """A cheap unresolved run is negative ModelFit evidence, not a win."""
+        from budgetflow.model_fit_estimator import estimate_model_fit_from_jsonl
+
+        cat = _catalog()
+        records = [
+            {
+                "strategy": "bare_t2_baseline",
+                "instance_id": "task-a",
+                "task_effort": 20.0,
+                "total_cost": 0.04,
+                "catalog": cat,
+                "score_status": "true_fail",
+                "failure_class": "repair_fail",
+                "exit_status": "HarnessFailed",
+                "row_finished_at": 1,
+            },
+            {
+                "strategy": "bare_t3_baseline",
+                "instance_id": "task-a",
+                "task_effort": 20.0,
+                "total_cost": 0.20,
+                "catalog": cat,
+                "score_status": "pass",
+                "exit_status": "HarnessResolved",
+                "row_finished_at": 1,
+            },
+        ]
+        catalog_orig = _setup_catalog_test()
+        try:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+                path = Path(f.name)
+            _write_jsonl(path, records)
+
+            evidence = estimate_model_fit_from_jsonl(
+                path,
+                ["task-a"],
+                {"task-a": {"bootstrap_difficulty": 20.0}},
+            )
+
+            assert evidence.tier_fit[2] < 0.24
+            assert evidence.tier_fit[3] > evidence.tier_fit[2]
 
             path.unlink()
         finally:
@@ -254,7 +348,8 @@ class TestModelFitEstimation:
             {"task-a", "task-b", "task-c", "task-d"},
         )
 
-        assert evidence.tier_fit[2] == pytest.approx(0.33)
+        assert evidence.tier_fit[2] == pytest.approx(0.30)
+        assert evidence.tier_fit[2] > 0.05
         assert 2 in evidence.censored_tiers
         assert any("incomplete" in reason for reason in evidence.reasons)
 

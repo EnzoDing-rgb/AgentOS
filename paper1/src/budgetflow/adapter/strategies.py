@@ -22,8 +22,10 @@ from ..types import Backend, ProgressTable, Stage, TurnInfo
 
 TASK_BUDGET_STRONGEST_FIT_FRACTION = 1.0
 # Task-level T3 starts when each extra expected cost unit buys at least one
-# extra expected value unit. Budget pressure adds on top.
+# median-task-value unit. Budget pressure is a scarcity multiplier, not an
+# absolute veto.
 MARGINAL_YIELD_PER_DOLLAR_THRESHOLD = 1.0
+TASK_START_PRESSURE_THRESHOLD_MULTIPLIER = 0.5
 
 @dataclass
 class RoutingContext:
@@ -321,6 +323,7 @@ def _task_start_t3_score(
     reference_fit = _tier_model_fit_rate(ctx, reference.tier, reference.name)
     strongest_fit = _tier_model_fit_rate(ctx, ModelCatalog.strongest(ctx.backends).tier, ModelCatalog.strongest(ctx.backends).name)
     fit_gain = max(0.0, strongest_fit - reference_fit)
+    extra_expected_cost = max(0.0, strongest_total_cost - reference_total_cost)
     extra_cost_ratio = max(
         0.0,
         (strongest_total_cost - reference_total_cost) / max(reference_total_cost, 0.000001),
@@ -329,13 +332,16 @@ def _task_start_t3_score(
     reference_unit_cost = reference_total_cost / max(effort_units, 0.000001)
     strongest_unit_cost = strongest_total_cost / max(effort_units, 0.000001)
     extra_unit_cost = max(0.0, strongest_unit_cost - reference_unit_cost)
-    if strongest_unit_cost <= reference_unit_cost:
+    if strongest_total_cost <= reference_total_cost:
         marginal_yield = float("inf") if fit_gain > 0 else 0.0
     else:
-        marginal_yield = task_value * fit_gain / max(extra_unit_cost, 0.000001)
-    threshold = MARGINAL_YIELD_PER_DOLLAR_THRESHOLD + pressure_penalty
+        marginal_yield = task_value * fit_gain / max(extra_expected_cost, 0.000001)
+    threshold = (
+        MARGINAL_YIELD_PER_DOLLAR_THRESHOLD
+        * median
+        * (1.0 + TASK_START_PRESSURE_THRESHOLD_MULTIPLIER * pressure_penalty)
+    )
     score = marginal_yield - threshold
-    extra_expected_cost = max(0.0, strongest_total_cost - reference_total_cost)
     expected_value_gain = task_value * fit_gain
     details: dict[str, float | str | bool] = {
         "task_value": task_value,

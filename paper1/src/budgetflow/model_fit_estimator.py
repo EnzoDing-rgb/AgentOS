@@ -17,6 +17,9 @@ from pathlib import Path
 from .exit_reasons import record_is_budget_exhausted
 from .model_tiers import MODEL_CATALOG
 
+MODEL_FIT_COMPLETED_PRIOR_WEIGHT = 2.0
+MODEL_FIT_UNRESOLVED_COMPLETION_DISCOUNT = 0.05
+
 
 @dataclass
 class ModelFitEvidence:
@@ -117,11 +120,14 @@ def estimate_model_fit_from_jsonl(
 
             is_exhausted = _row_is_budget_exhausted(rec)
 
-            # fit = task_effort * per_turn_cost / total_cost
-            # ModelFit is a normalized routing signal, not a raw throughput
-            # unit. Clamp to [0.001, 1.0] so heterogeneous task effort scales
-            # cannot make every task look like an all-strongest win.
+            # fit = task_effort * per_turn_cost / total_cost, adjusted by
+            # verified outcome. A cheap unresolved row is not evidence that
+            # the tier fits the task; it is evidence that the tier can fail
+            # cheaply. Budget-exhausted rows are handled separately as
+            # censored upper bounds and are not outcome-discounted here.
             fit_estimate = (task_effort * per_turn) / total_cost
+            if not is_exhausted:
+                fit_estimate *= _outcome_fit_multiplier(rec)
             fit_estimate = max(0.001, min(1.0, fit_estimate))
 
             if is_exhausted:
@@ -177,6 +183,18 @@ def _build_evidence(
             # enough runway. This prevents easy completed tasks from hiding a
             # tier's hard-task spin behavior.
             median_fit = _median(obs)
+            shrunk_fit = _shrink_completed_fit(
+                median_fit,
+                sample_count=len(obs),
+                prior=catalog_fit.get(tier, 0.001),
+            )
+            if shrunk_fit != median_fit:
+                reasons.append(
+                    f"tier{tier}: completed fit shrunk toward catalog prior "
+                    f"from {median_fit:.4f} to {shrunk_fit:.4f} "
+                    f"(n={len(obs)}, prior_weight={MODEL_FIT_COMPLETED_PRIOR_WEIGHT:g})"
+                )
+                median_fit = shrunk_fit
             if cens:
                 bound = _median(cens)
                 censored_tiers.add(tier)
@@ -366,6 +384,27 @@ def _is_clean_run(rec: dict) -> bool:
 
 def _row_is_budget_exhausted(row: dict) -> bool:
     return record_is_budget_exhausted(row)
+
+
+def _outcome_fit_multiplier(rec: dict) -> float:
+    """Return outcome weight for completed ModelFit observations."""
+    if bool(rec.get("harness_resolved")):
+        return 1.0
+    if str(rec.get("score_status") or "") == "pass":
+        return 1.0
+    if str(rec.get("failure_class") or "") == "pass":
+        return 1.0
+    return MODEL_FIT_UNRESOLVED_COMPLETION_DISCOUNT
+
+
+def _shrink_completed_fit(fit: float, *, sample_count: int, prior: float) -> float:
+    """Shrink small completed samples toward the catalog prior."""
+    n = max(0, int(sample_count))
+    if n <= 0:
+        return max(0.001, min(1.0, fit))
+    prior_weight = max(0.0, MODEL_FIT_COMPLETED_PRIOR_WEIGHT)
+    shrunk = (float(fit) * n + max(0.001, float(prior)) * prior_weight) / (n + prior_weight)
+    return max(0.001, min(1.0, shrunk))
 
 
 def _median(values: list[float]) -> float:
