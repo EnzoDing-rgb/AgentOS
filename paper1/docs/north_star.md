@@ -365,10 +365,26 @@ infra, learning loop, or mechanism.
 - Historical JSONL and historical reports are immutable evidence. Do not patch
   old artifacts to make the current story cleaner.
 - Small paid runs are diagnostics, not paper-level evidence.
+- The current committed runner is the rollback checkpoint for the harness-v2
+  refactor. If the refactor increases noise or blocks paid-run safety gates,
+  return to this checkpoint and treat the refactor branch as forensic work.
 - Local harness results are part of the evidence system. Because nested Docker
   is not assumed available, local harness adapters, compat patches, host
   dependencies, and checker invalidation rules are first-class evaluation
   risks.
+- Harness-v2 work should improve the local no-Docker path first. Do not replace
+  the runner wholesale with an external benchmark runner unless that reduces
+  moving parts under the same Claim 1/Claim 2 contract.
+- The agent should be scored on repository changes, not on a fragile patch
+  submission ritual. Runner-side patch collection from the task workspace should
+  become the standard artifact path, with explicit submitted patches kept as
+  auxiliary evidence.
+- Worktree isolation must be auditable. Resetting to `base_commit` and cleaning
+  files is necessary but not the whole story: future git history, stale
+  worktrees, compat edits, and host Python state are all harness risks. Future
+  history exposure is not by itself proof of cheating or model failure, but it
+  should be tracked and removed where practical so reviewers do not have to rely
+  on agent honesty.
 - Runtime artifacts under `paper1/data/` are not source code. Do not commit
   trace, heartbeat, checkpoint, or run-output files unless explicitly requested.
 - Before paid runs, pass no-paid gates for tests, value/cost confidence,
