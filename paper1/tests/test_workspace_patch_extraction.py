@@ -40,6 +40,27 @@ def test_workspace_patch_baselines_compat_then_collects_only_agent_diff(tmp_path
     assert "patch.txt" not in workspace_patch.text
 
 
+def test_workspace_patch_does_not_score_baseline_only_compat_diff(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    _git(repo, "config", "user.name", "Test")
+    (repo / "compat.py").write_text("from collections import Mapping\n")
+    _git(repo, "add", "compat.py")
+    _git(repo, "commit", "-m", "base")
+
+    (repo / "compat.py").write_text("from collections.abc import Mapping\n")
+    baseline = runner._capture_workspace_baseline(repo)
+
+    workspace_patch = runner._collect_workspace_patch(repo, baseline_ref=baseline.ref)
+
+    assert baseline.changed_files == ("compat.py",)
+    assert workspace_patch.text is None
+    assert workspace_patch.source == "none"
+    assert workspace_patch.changed_files == ()
+
+
 def test_workspace_patch_collects_agent_commits_against_baseline_ref(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()

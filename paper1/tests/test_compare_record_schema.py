@@ -84,6 +84,8 @@ def test_compare_runner_records_turns_value_and_task_features(monkeypatch) -> No
             patch_text="diff --git a/x b/x\n",
             patch_source="submission",
             submitted_patch_path="/tmp/submitted.patch",
+            trace_dir="/tmp/trace",
+            trace_steps_path="/tmp/trace/steps.jsonl",
             exit_status="Submitted",
             exit_reason="submitted",
             agent_exit_status="Submitted",
@@ -158,6 +160,8 @@ def test_compare_runner_records_workspace_patch_as_scoreable_artifact(monkeypatc
             patch_source="workspace_diff",
             submitted_patch_path=None,
             workspace_patch_path="/tmp/workspace.patch",
+            trace_dir="/tmp/trace",
+            trace_steps_path="/tmp/trace/steps.jsonl",
             exit_status="HarnessFailed",
             exit_reason="harness_failed",
             agent_exit_status="BudgetFlowBudgetError",
@@ -230,6 +234,8 @@ def test_runner_threads_budget_plan_model_fit_into_allocation_context(monkeypatc
             patch_text="",
             patch_source="none",
             submitted_patch_path="",
+            trace_dir="/tmp/trace",
+            trace_steps_path="/tmp/trace/steps.jsonl",
             exit_status="Stopped",
             exit_reason="budget_exhausted",
             agent_exit_status="Stopped",
@@ -304,6 +310,8 @@ def test_runner_threads_run_series_to_run_scoped_trace_dir(monkeypatch) -> None:
             patch_text="diff --git a/x b/x\n",
             patch_source="submission",
             submitted_patch_path="/tmp/budgetflow-runtime/traces/run-a/trace_sympy__sympy-13480_budgetflow_task_level/submitted.patch",
+            trace_dir="/tmp/budgetflow-runtime/traces/run-a/trace_sympy__sympy-13480_budgetflow_task_level",
+            trace_steps_path="/tmp/budgetflow-runtime/traces/run-a/trace_sympy__sympy-13480_budgetflow_task_level/steps.jsonl",
             exit_status="HarnessResolved",
             exit_reason="harness_resolved",
             agent_exit_status="Submitted",
@@ -358,6 +366,9 @@ def test_runner_threads_run_series_to_run_scoped_trace_dir(monkeypatch) -> None:
 
     assert seen["run_series"] == "run-a"
     assert "/traces/run-a/" in record["submitted_patch"]
+    assert "/traces/run-a/" in record["trace_dir"]
+    assert record["trace_steps"].endswith("/steps.jsonl")
+    assert record["observability_status"]["trace_steps_path"] == record["trace_steps"]
 
 
 def test_runner_threads_planned_task_budget_into_allocation_context(monkeypatch) -> None:
@@ -374,6 +385,8 @@ def test_runner_threads_planned_task_budget_into_allocation_context(monkeypatch)
             patch_text="",
             patch_source="none",
             submitted_patch_path="",
+            trace_dir="/tmp/trace",
+            trace_steps_path="/tmp/trace/steps.jsonl",
             exit_status="Stopped",
             exit_reason="stopped",
             agent_exit_status="Stopped",
@@ -663,6 +676,8 @@ def test_runner_does_not_use_repo_policy_memory_as_model_fit(monkeypatch) -> Non
             patch_text="",
             patch_source="none",
             submitted_patch_path="",
+            trace_dir="/tmp/trace",
+            trace_steps_path="/tmp/trace/steps.jsonl",
             exit_status="Stopped",
             exit_reason="budget_exhausted",
             agent_exit_status="Stopped",

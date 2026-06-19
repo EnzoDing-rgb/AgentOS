@@ -7,7 +7,7 @@ from budgetflow.run_observability.checks import (
     _check_shared_cap_starvation,
     _check_value_profile_fallback,
 )
-from budgetflow.run_observability.schema import _check_observability_schema
+from budgetflow.run_observability.schema import _check_desired_fields, _check_observability_schema
 from budgetflow.run_observability.report import format_compact_audit
 from budgetflow.run_observability.schema import _check_trace_coverage
 import pytest
@@ -831,6 +831,67 @@ def test_observability_schema_warns_on_scoreable_untrusted_harness() -> None:
     ])
 
     assert any(issue.startswith("SCOREABLE_UNTRUSTED_HARNESS") for issue in issues)
+
+
+def test_desired_fields_do_not_require_workspace_patch_for_submission_rows() -> None:
+    issues = _check_desired_fields([
+        {
+            "instance_id": "repo__task",
+            "strategy": "bare_t3_baseline",
+            "patch_source": "submission",
+            "submitted_patch": "/tmp/submitted.patch",
+            "failure_class": "pass",
+            "forensic_summary": {},
+            "backend_picks": ["tier3"],
+            "attempt_id": "unit",
+            "frozen_plan_name": None,
+            "frozen_plan_preferred_model": None,
+            "frozen_plan_priority": None,
+            "abort_reason": "",
+            "abort_owner": "",
+            "abort_stage": "",
+            "true_fail_reason": "",
+        }
+    ])
+
+    assert issues == []
+
+
+def test_observability_schema_requires_workspace_patch_only_for_workspace_diff_rows() -> None:
+    issues = _check_observability_schema([
+        {
+            "instance_id": "repo__task-a",
+            "strategy": "budgetflow_task_level",
+            "score_status": "true_fail",
+            "harness_resolved": False,
+            "harness_trust": "trusted",
+            "patch_extracted": True,
+            "patch_source": "submission",
+        },
+        {
+            "instance_id": "repo__task-b",
+            "strategy": "budgetflow_task_level",
+            "score_status": "true_fail",
+            "harness_resolved": False,
+            "harness_trust": "trusted",
+            "patch_extracted": True,
+            "patch_source": "workspace_diff",
+        },
+        {
+            "instance_id": "repo__task-c",
+            "strategy": "budgetflow_task_level",
+            "score_status": "true_fail",
+            "harness_resolved": False,
+            "harness_trust": "trusted",
+            "patch_extracted": True,
+            "patch_source": "workspace_diff",
+            "workspace_patch": "/tmp/workspace.patch",
+        },
+    ])
+
+    assert any(issue.startswith("WORKSPACE_PATCH_MISSING") and "repo__task-b" in issue for issue in issues)
+    assert not any("repo__task-a" in issue for issue in issues)
+    assert not any("repo__task-c" in issue for issue in issues)
 
 
 def test_harness_trust_blocks_resolved_rows_with_missing_pass_evidence() -> None:

@@ -23,7 +23,7 @@ REQUIRED_FIELDS = frozenset({
 
 OPTIONAL_BUT_DESIRED = frozenset({
     "failure_class", "forensic_summary", "backend_picks",
-    "submitted_patch", "workspace_patch", "attempt_id",
+    "submitted_patch", "attempt_id",
     "frozen_plan_name", "frozen_plan_preferred_model",
     "frozen_plan_priority",
     "abort_reason", "abort_owner", "abort_stage", "true_fail_reason",
@@ -176,6 +176,11 @@ def _check_observability_schema(records: list[dict]) -> list[str]:
                 f"PATCH_SOURCE_INVALID row {i}: {inst} {strat} — "
                 f"patch_source={patch_source!r}; current runs only allow "
                 "'submission', 'workspace_diff', or 'none'"
+            )
+        if bool(rec.get("patch_extracted")) and patch_source == "workspace_diff" and not rec.get("workspace_patch"):
+            issues.append(
+                f"WORKSPACE_PATCH_MISSING row {i}: {inst} {strat} — "
+                "patch_source=workspace_diff requires workspace_patch for audit and official export"
             )
     return issues
 

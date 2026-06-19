@@ -86,6 +86,8 @@ class MiniSweRunResult:
     patch_source: str = "submission"
     submitted_patch_path: str | None = None
     workspace_patch_path: str | None = None
+    trace_dir: str = ""
+    trace_steps_path: str = ""
     turn_trace_count: int = 0
     turn_traces: list[dict] | None = None
     protocol_retry_used: bool = False
@@ -553,6 +555,8 @@ def run_mini_swe_task(
         turn_traces=trace_rows if trace_rows else None,
         submitted_patch_path=str(submitted_patch) if submitted_patch is not None else None,
         workspace_patch_path=str(workspace_patch_path) if workspace_patch_path is not None else None,
+        trace_dir=str(trace_dir),
+        trace_steps_path=str(trace.steps_path),
         protocol_retry_used=model._protocol_retry_used,
         protocol_retry_success=model._protocol_retry_success,
         protocol_retry_reason=model._protocol_retry_reason,

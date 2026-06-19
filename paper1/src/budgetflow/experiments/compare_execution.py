@@ -215,6 +215,8 @@ def run_task_record(
             "agent_environment_issues": list(getattr(result, "agent_environment_issues", ()) or ()),
         },
         "turn_trace_count": result.turn_trace_count,
+        "trace_dir": result.trace_dir,
+        "trace_steps": result.trace_steps_path,
         "turn_traces": truncate_turn_traces(result.turn_traces, trace_max_turns, trace_truncate_chars)
         if enable_turn_trace and result.turn_traces else None,
         "run_series": run_series,

@@ -4,6 +4,19 @@
 
 ## 2026-06-19 — Harness v2 workspace-diff validation
 
+- **Post-v2 upstream reflection complete.** Re-audited
+  `mainline_4x25_glm51_rerun_after_billing_20260618-0` after the v2 slice.
+  Removed the checker noise that treated historical submission rows as missing
+  `workspace_patch`, persisted `trace_dir`/`trace_steps` for future diagnosis,
+  and added regression coverage that baseline-only compat diffs are not scored
+  as agent workspace patches.
+- **Old partial interpretation:** still diagnostic-only. The remaining real
+  issues are 2 old BudgetFlow incomplete rows, partial run status, dead
+  heartbeat PID, and cost-accounting summaries. `sympy__sympy-24102` would now
+  be a scoreable trusted fail under v2; `sympy__sympy-11870` was baseline/compat
+  diff noise that v2 prevents from being scored. T3's 4/12 is not a harness
+  incomplete artifact, but it is also not comparable to other strategies because
+  the partial stopped with uneven strategy progress.
 - **Evaluation harness v2 slice complete.** The no-Docker SWE runner now scores
   runner-side `workspace_diff` patches first and keeps `submitted.patch` as
   auxiliary protocol evidence. This aligns the scoreable artifact with the
