@@ -73,14 +73,25 @@ def _check_partial_run(records: list[dict], runs_dir: Path | None = None) -> lis
             hb_path = runs_dir / f"{rs}.heartbeat.json"
             hb = load_heartbeat(hb_path)
             if hb:
+                rows_done = int(hb.get("rows_done") or 0)
                 total_expected = int(hb.get("total_expected") or 0)
                 if total_expected > 0 and num_strategies > 0:
                     planned_tasks = total_expected // num_strategies
-                    if planned_tasks > unique_tasks:
+                    if planned_tasks > unique_tasks or rows_done < total_expected:
+                        policy_progress = []
+                        for strategy in sorted(data["strategies"]):
+                            strategy_tasks = {
+                                str(rec.get("instance_id", ""))
+                                for rec in records
+                                if str(rec.get("run_series", "")) == rs
+                                and str(rec.get("strategy", "")) == strategy
+                            }
+                            policy_progress.append(f"{strategy}={len(strategy_tasks)}/{planned_tasks}")
                         issues.append(
                             f"PARTIAL_RUN {rs}: heartbeat total_expected={total_expected} "
-                            f"/ {num_strategies} strategies = {planned_tasks} planned tasks "
-                            f"but only {unique_tasks} executed"
+                            f"rows_done={rows_done}/{total_expected} / {num_strategies} strategies "
+                            f"= {planned_tasks} planned tasks but only {unique_tasks} unique tasks "
+                            f"and policy_progress={{{', '.join(policy_progress)}}}"
                         )
     return issues
 

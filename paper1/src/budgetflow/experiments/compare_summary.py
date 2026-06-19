@@ -12,6 +12,12 @@ from budgetflow.failure_classification import classify_failure
 from budgetflow.model_tiers import parse_tier_label
 
 _PLANNED_CAP_MODES = frozenset({"per_task_cap", "budgetflow_planned_task_budget"})
+_SUMMARY_EVENT_OMIT_KEYS = frozenset({
+    "budget_input",
+    "budget_plan",
+    "detail",
+    "turn_traces",
+})
 
 
 def _record_score_status(record: dict) -> str:
@@ -138,8 +144,39 @@ def _append_summary(lines: list[str], record: dict, *, index: int, total: int) -
     if record.get("violations"):
         lines.append(f"  violations={record['violations']}")
     lines.append(f"  detail: {str(record.get('detail', ''))[:400]}")
-    lines.append(json.dumps({k: v for k, v in record.items() if k != "detail"}, ensure_ascii=False))
+    lines.append(json.dumps(_summary_event_payload(record), ensure_ascii=False))
     lines.append("")
+
+
+def _summary_event_payload(record: dict) -> dict:
+    """Small JSON event for summary.log.
+
+    The canonical row lives in JSONL.  summary.log should stay readable and
+    should not duplicate heavyweight trace or budget-plan payloads.
+    """
+    payload = {
+        key: value
+        for key, value in record.items()
+        if key not in _SUMMARY_EVENT_OMIT_KEYS
+    }
+    if "turn_trace_count" not in payload and isinstance(record.get("turn_traces"), list):
+        payload["turn_trace_count"] = len(record["turn_traces"])
+    if "budget_plan" in record:
+        plan = record.get("budget_plan") or {}
+        if isinstance(plan, dict):
+            payload["budget_plan_summary"] = {
+                key: plan.get(key)
+                for key in (
+                    "hard_cap_usd",
+                    "source",
+                    "generation_mode",
+                    "catalog_revision",
+                    "historical_source",
+                    "projection_confidence",
+                )
+                if key in plan
+            }
+    return payload
 
 
 def _format_strategy_totals(

@@ -163,6 +163,13 @@ def _check_observability_schema(records: list[dict]) -> list[str]:
             issues.append(
                 f"SCORE_FAIL_MISMATCH row {i}: {inst} {strat} — score_status=true_fail but harness_resolved=true"
             )
+        if score_status in {"pass", "true_fail"} and str(rec.get("harness_trust") or "") not in {"", "trusted"}:
+            issues.append(
+                f"SCOREABLE_UNTRUSTED_HARNESS row {i}: {inst} {strat} — "
+                f"score_status={score_status} harness_trust={rec.get('harness_trust')!r} "
+                f"owner={rec.get('harness_owner') or '?'} severity={rec.get('harness_severity') or '?'} "
+                f"issues={rec.get('harness_issues') or []}"
+            )
         patch_source = str(rec.get("patch_source") or "none")
         if patch_source not in {"submission", "none"}:
             issues.append(

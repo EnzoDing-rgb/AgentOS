@@ -12,7 +12,11 @@ from budgetflow.experiments.compare_persistence import (
 from budgetflow.experiments.compare_config import CompareStrategy
 from budgetflow.experiments.compare_execution import run_strategy_batch, run_task_record
 from budgetflow.experiments.compare_execution import _effective_planned_task_cap
-from budgetflow.experiments.compare_summary import _format_live_snapshot, _format_strategy_totals
+from budgetflow.experiments.compare_summary import (
+    _append_summary,
+    _format_live_snapshot,
+    _format_strategy_totals,
+)
 from budgetflow.governor import BudgetGovernor, GovernorConfig
 from budgetflow.ledger import WorkflowLedgerStore
 from budgetflow.value_efficiency import ValueEfficiencyContext
@@ -954,3 +958,22 @@ def test_live_snapshot_warns_when_task_level_underuses_t3_against_strong_baselin
     assert "CALIBRATION WARNING" in text
     assert "BudgetFlow task-level used T3 on 0%" in text
     assert "bare_t3_baseline pass rate 100%" in text
+
+
+def test_append_summary_omits_heavy_runtime_payloads() -> None:
+    lines: list[str] = []
+    record = _record(
+        turn_traces=[{"step": 1, "assistant_content_head": "large"}],
+        turn_trace_count=1,
+        budget_plan={"projected_task_cost_by_strategy": {"s": {"task": 1.0}}},
+        detail="x" * 1000,
+    )
+
+    _append_summary(lines, record, index=1, total=1)
+
+    payload = json.loads(lines[-2])
+    assert "turn_traces" not in payload
+    assert "budget_plan" not in payload
+    assert "detail" not in payload
+    assert payload["turn_trace_count"] == record.get("turn_trace_count", 0)
+    assert payload["strategy"] == "budgetflow_segment"

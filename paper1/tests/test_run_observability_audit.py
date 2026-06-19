@@ -3,9 +3,11 @@ from budgetflow.run_observability.checker import check_jsonl
 from budgetflow.observability import HeartbeatWriter, build_harness_trust
 from budgetflow.run_observability.checks import (
     _check_cost_accounting,
+    _check_partial_run,
     _check_shared_cap_starvation,
     _check_value_profile_fallback,
 )
+from budgetflow.run_observability.schema import _check_observability_schema
 from budgetflow.run_observability.report import format_compact_audit
 from budgetflow.run_observability.schema import _check_trace_coverage
 import pytest
@@ -757,6 +759,78 @@ def test_checker_counts_invalid_harness_as_error(tmp_path) -> None:
 
     assert result["errors"] >= 1
     assert any(issue.startswith("HARNESS_INVALID") for issue in result["issues"])
+
+
+def test_partial_run_warning_reports_rows_and_policy_progress(tmp_path) -> None:
+    hb_path = tmp_path / "partial.heartbeat.json"
+    hb_path.write_text(
+        json.dumps(
+            {
+                "run_series": "partial",
+                "rows_done": 5,
+                "total_expected": 8,
+                "status": "running",
+                "current_pid": 0,
+            }
+        )
+    )
+    records = [
+        {
+            "run_series": "partial",
+            "instance_id": "task-a",
+            "strategy": "bare_t2_baseline",
+            "task_order_index": 1,
+        },
+        {
+            "run_series": "partial",
+            "instance_id": "task-a",
+            "strategy": "bare_t3_baseline",
+            "task_order_index": 1,
+        },
+        {
+            "run_series": "partial",
+            "instance_id": "task-a",
+            "strategy": "enterprise_router_baseline",
+            "task_order_index": 1,
+        },
+        {
+            "run_series": "partial",
+            "instance_id": "task-a",
+            "strategy": "budgetflow_task_level",
+            "task_order_index": 1,
+        },
+        {
+            "run_series": "partial",
+            "instance_id": "task-b",
+            "strategy": "budgetflow_task_level",
+            "task_order_index": 2,
+        },
+    ]
+
+    issues = _check_partial_run(records, tmp_path)
+
+    assert any("rows_done=5/8" in issue for issue in issues)
+    assert any("bare_t2_baseline=1/2" in issue for issue in issues)
+    assert any("budgetflow_task_level=2/2" in issue for issue in issues)
+
+
+def test_observability_schema_warns_on_scoreable_untrusted_harness() -> None:
+    issues = _check_observability_schema([
+        {
+            "instance_id": "repo__task",
+            "strategy": "budgetflow_task_level",
+            "score_status": "true_fail",
+            "scoreable": True,
+            "harness_trust": "incomplete",
+            "harness_issues": ["no_patch_extracted"],
+            "harness_owner": "protocol",
+            "harness_severity": "warn",
+            "harness_resolved": False,
+            "patch_source": "none",
+        }
+    ])
+
+    assert any(issue.startswith("SCOREABLE_UNTRUSTED_HARNESS") for issue in issues)
 
 
 def test_harness_trust_blocks_resolved_rows_with_missing_pass_evidence() -> None:
