@@ -86,8 +86,9 @@ def parse_harness_evidence(detail: str) -> HarnessEvidence:
 def build_observability_status(record: dict) -> dict:
     """Compute observability_status from a record dict."""
     trace_count = int(record.get("turn_trace_count") or 0)
-    trace_path = record.get("trace_steps") or record.get("submitted_patch") or ""
+    trace_path = record.get("trace_steps") or record.get("workspace_patch") or record.get("submitted_patch") or ""
     submitted_patch = bool(record.get("submitted_patch"))
+    workspace_patch = bool(record.get("workspace_patch"))
     harness_resolved = record.get("harness_resolved") in (True, "True", "true")
 
     evidence = parse_harness_evidence(str(record.get("detail") or ""))
@@ -109,6 +110,7 @@ def build_observability_status(record: dict) -> dict:
         "turn_trace_count": trace_count,
         "trace_steps_path": str(trace_path) if trace_path else None,
         "submitted_patch_exists": submitted_patch,
+        "workspace_patch_exists": workspace_patch,
         "suspicious_pass": suspicious_pass,
         "missing_evidence": missing_evidence,
         "evidence_summary": _evidence_summary(evidence),
@@ -141,18 +143,21 @@ def build_harness_trust(record: dict) -> dict:
     patch_extracted = bool(record.get("patch_extracted"))
     patch_source = str(record.get("patch_source") or "none")
     submitted_patch = record.get("submitted_patch") or ""
+    workspace_patch = record.get("workspace_patch") or ""
     agent_submitted = bool(record.get("agent_submitted"))
     agent_attempted = bool(record.get("agent_attempted_submit"))
     gold_edited = bool(record.get("agent_gold_edited"))
     gold_files = record.get("agent_gold_files") or []
 
-    # Patch source audit. Current runs have exactly one patch evidence path:
-    # explicit agent submission -> submitted.patch -> harness.
+    # Patch source audit. The scoreable artifact may be either the runner-side
+    # workspace diff or, if the workspace has no diff, the explicit submission.
     if not patch_extracted:
         issues.append("no_patch_extracted")
     elif patch_source == "submission" and not submitted_patch:
         issues.append("submitted_patch_path_missing")
-    elif patch_source != "submission":
+    elif patch_source == "workspace_diff" and not workspace_patch:
+        issues.append("workspace_patch_path_missing")
+    elif patch_source not in {"submission", "workspace_diff"}:
         issues.append(f"unknown_patch_source:{patch_source}")
 
     # Submission consistency
@@ -259,7 +264,7 @@ def _harness_owner(
     model_gaps = {"submitted_without_attempt", "attempted_but_not_submitted",
                   "gold_edited_but_no_files_listed", "model_patch_failed"}
     protocol_gaps = {"no_patch_extracted", "submitted_patch_path_missing",
-                     "unknown_patch_source"}
+                     "workspace_patch_path_missing", "unknown_patch_source"}
 
     issue_set = set(issues)
     if "host_dependency_contamination" in issue_set:

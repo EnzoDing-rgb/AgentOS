@@ -52,6 +52,7 @@ class VerifiedOutcome:
     patch_extracted: bool
     patch_source: str
     submitted_patch: str | None
+    workspace_patch: str | None
 
     def as_record(self) -> dict[str, Any]:
         return {
@@ -59,6 +60,7 @@ class VerifiedOutcome:
             "patch_extracted": self.patch_extracted,
             "patch_source": self.patch_source,
             "submitted_patch": self.submitted_patch,
+            "workspace_patch": self.workspace_patch,
             "detail": self.detail,
         }
 
@@ -134,4 +136,5 @@ class SwebenchProgressAdapter:
             patch_extracted=bool(patch_text),
             patch_source=str(getattr(result, "patch_source", "") or "none"),
             submitted_patch=getattr(result, "submitted_patch_path", None),
+            workspace_patch=getattr(result, "workspace_patch_path", None),
         )

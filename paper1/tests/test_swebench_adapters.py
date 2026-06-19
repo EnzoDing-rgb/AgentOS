@@ -38,8 +38,9 @@ def test_swebench_progress_adapter_normalizes_result_fields() -> None:
         harness_resolved=True,
         harness_detail="test_patch=ok",
         patch_text="diff",
-        patch_source="submission",
+        patch_source="workspace_diff",
         submitted_patch_path="/tmp/submitted.patch",
+        workspace_patch_path="/tmp/workspace.patch",
     )
 
     outcome = SwebenchProgressAdapter().outcome_from_result(result)
@@ -47,8 +48,9 @@ def test_swebench_progress_adapter_normalizes_result_fields() -> None:
     assert outcome.as_record() == {
         "harness_resolved": True,
         "patch_extracted": True,
-        "patch_source": "submission",
+        "patch_source": "workspace_diff",
         "submitted_patch": "/tmp/submitted.patch",
+        "workspace_patch": "/tmp/workspace.patch",
         "detail": "test_patch=ok",
     }
 

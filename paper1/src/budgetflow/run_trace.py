@@ -153,19 +153,42 @@ def git_changed_files(repo_dir: Path, *, timeout_s: int = 8) -> list[str]:
         return []
 
 
+def git_changed_files_since(repo_dir: Path, *, baseline_ref: str | None, timeout_s: int = 8) -> list[str]:
+    if not baseline_ref:
+        return git_changed_files(repo_dir, timeout_s=timeout_s)
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--name-only", baseline_ref, "--"],
+            cwd=repo_dir,
+            capture_output=True,
+            text=True,
+            timeout=timeout_s,
+        )
+        if result.returncode != 0:
+            return []
+        return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    except (subprocess.TimeoutExpired, OSError):
+        return []
+
+
 def git_diff_digest(
     repo_dir: Path,
     *,
     changed_files: list[str],
     ignore_paths: frozenset[str] | set[str] = frozenset(),
+    baseline_ref: str | None = None,
     timeout_s: int = 8,
 ) -> str | None:
     paths = [f for f in changed_files if f not in ignore_paths]
     if not paths:
         return None
     try:
+        cmd = ["git", "diff", "--no-color"]
+        if baseline_ref:
+            cmd.append(baseline_ref)
+        cmd.extend(["--", *paths])
         result = subprocess.run(
-            ["git", "diff", "--no-color", "--", *paths],
+            cmd,
             cwd=repo_dir,
             capture_output=True,
             text=True,
@@ -215,6 +238,7 @@ class RunTraceLogger:
         target_files: tuple[str, ...] = (),
         strategy_label: str = "",
         ignore_changed_files: tuple[str, ...] = (),
+        baseline_ref: str | None = None,
         console_level: TraceConsoleLevel = "quiet",
         progress_box: dict[str, str] | None = None,
     ) -> None:
@@ -224,6 +248,7 @@ class RunTraceLogger:
         self.target_files = tuple(target_files)
         self.strategy_label = strategy_label or "unknown"
         self.ignore_changed_files = frozenset(ignore_changed_files)
+        self.baseline_ref = baseline_ref
         self.console_level = console_level
         self._progress_box = progress_box
         self.steps_path = trace_dir / "steps.jsonl"
@@ -294,7 +319,11 @@ class RunTraceLogger:
         }
 
     def compact_status(self, agent: DefaultAgent, *, elapsed_s: float) -> str:
-        changed = self._last_changed or git_changed_files(self.repo_dir, timeout_s=3)
+        changed = self._last_changed or git_changed_files_since(
+            self.repo_dir,
+            baseline_ref=self.baseline_ref,
+            timeout_s=3,
+        )
         agent_changed = [f for f in changed if f not in self.ignore_changed_files]
         gold_edited = [f for f in agent_changed if f in self.target_files]
         fallback_phase = self.last_agent_phase or self._classify_phase(
@@ -423,13 +452,14 @@ class RunTraceLogger:
             self._recent_commands.append(cmd)
         self._detect_submit_attempt(commands)
 
-        changed = git_changed_files(self.repo_dir)
+        changed = git_changed_files_since(self.repo_dir, baseline_ref=self.baseline_ref)
         self._last_changed = changed
         agent_changed = [f for f in changed if f not in self.ignore_changed_files]
         patch_digest = git_diff_digest(
             self.repo_dir,
             changed_files=changed,
             ignore_paths=self.ignore_changed_files,
+            baseline_ref=self.baseline_ref,
         )
         if patch_digest and patch_digest == self._last_patch_digest:
             self._patch_stable_steps += 1

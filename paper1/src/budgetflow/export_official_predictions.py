@@ -11,6 +11,12 @@ from .official_predictions import prediction_record, write_predictions_jsonl
 
 
 def _patch_from_record(record: dict) -> str | None:
+    path = record.get("workspace_patch")
+    if path and Path(path).is_file():
+        return Path(path).read_text()
+    path = record.get("workspace_patch_path")
+    if path and Path(path).is_file():
+        return Path(path).read_text()
     path = record.get("submitted_patch")
     if path and Path(path).is_file():
         return Path(path).read_text()
@@ -19,6 +25,9 @@ def _patch_from_record(record: dict) -> str | None:
         return Path(path).read_text()
     trace_dir = record.get("trace_dir")
     if trace_dir:
+        path = Path(trace_dir) / "workspace.patch"
+        if path.is_file():
+            return path.read_text()
         path = Path(trace_dir) / "submitted.patch"
         if path.is_file():
             return path.read_text()

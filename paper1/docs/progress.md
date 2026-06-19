@@ -2,6 +2,24 @@
 
 > 单一入口：进度、跑法、历史结果。
 
+## 2026-06-19 — Harness v2 workspace-diff validation
+
+- **Evaluation harness v2 slice complete.** The no-Docker SWE runner now scores
+  runner-side `workspace_diff` patches first and keeps `submitted.patch` as
+  auxiliary protocol evidence. This aligns the scoreable artifact with the
+  actual repository edits rather than the custom submit protocol.
+- **Why it matters:** a real-agent 3-task validation produced 3/3
+  `patch_source=workspace_diff` trusted passes. Two of those three rows had no
+  `submitted_patch`, so the previous submitted-patch-only path would have lost
+  scoreable evidence.
+- **Validation:** focused no-paid tests passed (`132 passed`), full no-paid
+  suite passed (`680 passed`), `py_compile` and `git diff --check` passed, and
+  the real-agent run `data/runs/harness_v2_real_agent_3x1.jsonl` passed checker
+  with 0 errors.
+- **Evidence status:** this is harness/observability validation, not paper-scale
+  Claim 1 evidence. It is the new rollback/forward point for patch extraction
+  behavior after the earlier `7b63b23` rollback checkpoint.
+
 ## 2026-06-17 — Current Decision: Calibration Is Mechanism, Not Benchmark Tuning
 
 The current priority is to prevent local 6x5 overfitting while keeping the

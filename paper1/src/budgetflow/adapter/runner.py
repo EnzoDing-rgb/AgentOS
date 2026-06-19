@@ -3,6 +3,8 @@ from __future__ import annotations
 import sys
 import time
 import os
+import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -83,6 +85,7 @@ class MiniSweRunResult:
     usage_source: str = ""
     patch_source: str = "submission"
     submitted_patch_path: str | None = None
+    workspace_patch_path: str | None = None
     turn_trace_count: int = 0
     turn_traces: list[dict] | None = None
     protocol_retry_used: bool = False
@@ -95,6 +98,158 @@ class MiniSweRunResult:
     provider_error_kind: str = ""
     provider_retryable: bool | None = None
     agent_environment_issues: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class WorkspaceBaseline:
+    ref: str
+    changed_files: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class WorkspacePatch:
+    text: str | None
+    source: str
+    changed_files: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ScoreablePatch:
+    patch_text: str | None
+    patch_source: str
+    submitted_patch_text: str | None
+    workspace_patch_text: str | None
+
+
+_AUXILIARY_WORKSPACE_PATCH_NAMES = frozenset({
+    "patch.txt",
+    "submitted.patch",
+    "workspace.patch",
+})
+_AUXILIARY_WORKSPACE_PATCH_DIRS = frozenset({
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".tox",
+    ".nox",
+})
+
+
+def _worktree_tree(repo_dir: Path) -> str:
+    fd, index_path = tempfile.mkstemp(prefix="budgetflow-index-")
+    os.close(fd)
+    Path(index_path).unlink(missing_ok=True)
+    env = {**os.environ, "GIT_INDEX_FILE": index_path}
+    try:
+        subprocess.run(
+            ["git", "read-tree", "HEAD"],
+            cwd=repo_dir,
+            check=True,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        subprocess.run(
+            ["git", "add", "-A", "--", "."],
+            cwd=repo_dir,
+            check=True,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        result = subprocess.run(
+            ["git", "write-tree"],
+            cwd=repo_dir,
+            check=True,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        return result.stdout.strip()
+    finally:
+        Path(index_path).unlink(missing_ok=True)
+        Path(f"{index_path}.lock").unlink(missing_ok=True)
+
+
+def _git_diff_name_only(repo_dir: Path, left_ref: str, right_ref: str) -> tuple[str, ...]:
+    result = subprocess.run(
+        ["git", "diff", "--name-only", left_ref, right_ref, "--"],
+        cwd=repo_dir,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return tuple(line.strip() for line in result.stdout.splitlines() if line.strip())
+
+
+def _is_auxiliary_workspace_patch_path(path: str) -> bool:
+    normalized = path.replace("\\", "/")
+    name = normalized.rsplit("/", 1)[-1]
+    if name in _AUXILIARY_WORKSPACE_PATCH_NAMES:
+        return True
+    if name.startswith(".budgetflow_") and name.endswith(".patch"):
+        return True
+    if name.endswith((".pyc", ".pyo")):
+        return True
+    return any(part in _AUXILIARY_WORKSPACE_PATCH_DIRS for part in normalized.split("/"))
+
+
+def _scoreable_workspace_paths(paths: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(path for path in paths if not _is_auxiliary_workspace_patch_path(path))
+
+
+def _capture_workspace_baseline(repo_dir: Path) -> WorkspaceBaseline:
+    tree_ref = _worktree_tree(repo_dir)
+    changed = _scoreable_workspace_paths(_git_diff_name_only(repo_dir, "HEAD", tree_ref))
+    return WorkspaceBaseline(ref=tree_ref, changed_files=changed)
+
+
+def _collect_workspace_patch(repo_dir: Path, *, baseline_ref: str) -> WorkspacePatch:
+    current_tree = _worktree_tree(repo_dir)
+    changed_files = _scoreable_workspace_paths(_git_diff_name_only(repo_dir, baseline_ref, current_tree))
+    if not changed_files:
+        return WorkspacePatch(text=None, source="none", changed_files=())
+    result = subprocess.run(
+        ["git", "diff", "--no-color", "--binary", baseline_ref, current_tree, "--", *changed_files],
+        cwd=repo_dir,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    patch_text = result.stdout
+    if not patch_text.strip():
+        return WorkspacePatch(text=None, source="none", changed_files=changed_files)
+    if not patch_text.endswith("\n"):
+        patch_text += "\n"
+    return WorkspacePatch(text=patch_text, source="workspace_diff", changed_files=changed_files)
+
+
+def _select_scoreable_patch(
+    *,
+    workspace_patch: WorkspacePatch,
+    submitted_patch_text: str | None,
+) -> ScoreablePatch:
+    if workspace_patch.text:
+        return ScoreablePatch(
+            patch_text=workspace_patch.text,
+            patch_source=workspace_patch.source,
+            submitted_patch_text=submitted_patch_text,
+            workspace_patch_text=workspace_patch.text,
+        )
+    if submitted_patch_text:
+        return ScoreablePatch(
+            patch_text=submitted_patch_text,
+            patch_source="submission",
+            submitted_patch_text=submitted_patch_text,
+            workspace_patch_text=None,
+        )
+    return ScoreablePatch(
+        patch_text=None,
+        patch_source="none",
+        submitted_patch_text=None,
+        workspace_patch_text=None,
+    )
 
 
 def _row_cost_observability(model: BudgetFlowLitellmModel, total_cost: float) -> tuple[str, str]:
@@ -209,6 +364,7 @@ def run_mini_swe_task(
             agent_environment_issues=(),
         )
     repo_dir = clone_or_checkout(task, workspace_key=workspace_key)
+    workspace_baseline = _capture_workspace_baseline(repo_dir)
     harness_adapter = RepoHarnessAdapter.for_task(task)
     trace_dir = get_trace_dir(task.instance_id, label, run_series=run_series)
     trace = RunTraceLogger(
@@ -217,6 +373,7 @@ def run_mini_swe_task(
         trace_dir=trace_dir,
         target_files=task.gold_files,
         strategy_label=label,
+        baseline_ref=workspace_baseline.ref,
         console_level=trace_console,
         progress_box=progress_box,
     )
@@ -264,7 +421,7 @@ def run_mini_swe_task(
 
         model._progress_refresh = _refresh_live_progress
 
-    patch_text: str | None = None
+    submitted_patch_text: str | None = None
     exit_status = "unknown"
     exit_reason: str | None = None
     try:
@@ -278,13 +435,13 @@ def run_mini_swe_task(
         else:
             exit_info = agent.run(task.problem_statement)
         exit_status = str(exit_info.get("exit_status", "unknown"))
-        patch_text = exit_info.get("submission") or None
+        submitted_patch_text = exit_info.get("submission") or None
         if exit_status.lower() in {"submitted", "complete"}:
             exit_reason = "submitted"
     except Submitted as submitted:
         message = submitted.args[0] if submitted.args else {}
         exit_status = message.get("extra", {}).get("exit_status", "Submitted")
-        patch_text = message.get("extra", {}).get("submission") or message.get("content")
+        submitted_patch_text = message.get("extra", {}).get("submission") or message.get("content")
         exit_reason = "submitted"
     except BudgetFlowBudgetError as exc:
         exit_status = "BudgetFlowBudgetError"
@@ -308,18 +465,33 @@ def run_mini_swe_task(
     if exit_reason is None and model.last_exit_reason:
         exit_reason = model.last_exit_reason
 
-    patch_source = "submission" if patch_text else "none"
+    workspace_patch = _collect_workspace_patch(repo_dir, baseline_ref=workspace_baseline.ref)
+    scoreable_patch = _select_scoreable_patch(
+        workspace_patch=workspace_patch,
+        submitted_patch_text=submitted_patch_text,
+    )
+    patch_text = scoreable_patch.patch_text
+    patch_source = scoreable_patch.patch_source
 
     trace.finalize_agent(submitted=exit_reason == "submitted", patch_extracted=bool(patch_text))
-    if patch_text:
+    if submitted_patch_text:
         submitted_patch = trace_dir / "submitted.patch"
-        submitted_patch.write_text(patch_text if patch_text.endswith("\n") else patch_text + "\n")
-        print(
-            f"{tag('eval', bold=False)} {task.instance_id} {label} running harness on extracted patch...",
-            flush=True,
+        submitted_patch.write_text(
+            submitted_patch_text if submitted_patch_text.endswith("\n") else submitted_patch_text + "\n"
         )
     else:
         submitted_patch = None
+    if scoreable_patch.workspace_patch_text:
+        workspace_patch_path = trace_dir / "workspace.patch"
+        workspace_patch_path.write_text(scoreable_patch.workspace_patch_text)
+    else:
+        workspace_patch_path = None
+    if patch_text:
+        print(
+            f"{tag('eval', bold=False)} {task.instance_id} {label} "
+            f"running harness on {patch_source} patch...",
+            flush=True,
+        )
 
     harness = evaluate_local_harness(task, patch_text, workspace_key=workspace_key)
     trace.log_harness_result(
@@ -380,6 +552,7 @@ def run_mini_swe_task(
         turn_trace_count=len(model.turn_traces),
         turn_traces=trace_rows if trace_rows else None,
         submitted_patch_path=str(submitted_patch) if submitted_patch is not None else None,
+        workspace_patch_path=str(workspace_patch_path) if workspace_patch_path is not None else None,
         protocol_retry_used=model._protocol_retry_used,
         protocol_retry_success=model._protocol_retry_success,
         protocol_retry_reason=model._protocol_retry_reason,
