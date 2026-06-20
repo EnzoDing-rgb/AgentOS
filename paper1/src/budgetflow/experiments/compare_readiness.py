@@ -13,6 +13,7 @@ from pathlib import Path
 
 from budgetflow.experiments.compare_config import CompareStrategy, paper_mainline_strategy_names
 from budgetflow.experiments.compare_setup import BUDGETFLOW_ACTIVE_ROUTINGS
+from budgetflow.defaults import PAID_MAINLINE_STEP_LIMIT
 from budgetflow.frozen_router import load_frozen_plan
 from budgetflow.harness_contamination import (
     find_runtime_worktree_python_contamination,
@@ -157,6 +158,8 @@ def build_compare_readiness_report(
     facts.append(f"tasks={len(task_ids)}")
     facts.append(f"strategies={len(strategy_names)}")
     facts.append(f"policy_jobs={policy_jobs}")
+    step_limit = int(getattr(args, "step_limit", PAID_MAINLINE_STEP_LIMIT) or 0)
+    facts.append(f"step_limit={step_limit}")
     facts.append(f"value_profile={value_context.profile}")
     facts.append(f"value_source_class={value_context.source_class}")
     facts.append(f"value_evidence={value_context.evidence_role}")
@@ -219,6 +222,14 @@ def build_compare_readiness_report(
         )
     if not strategy_names:
         blocking.append("no strategies selected")
+    if step_limit <= 0:
+        blocking.append("--step-limit must be positive")
+    elif is_paper_mainline and step_limit > PAID_MAINLINE_STEP_LIMIT:
+        blocking.append(
+            f"paper mainline step_limit={step_limit} exceeds "
+            f"paid safety cap {PAID_MAINLINE_STEP_LIMIT}; use a non-mainline diagnostic "
+            "strategy set if a longer exploratory run is required"
+        )
     if len(strategy_names) > 1 and policy_jobs < len(strategy_names):
         blocking.append(
             f"policy_jobs={policy_jobs} is below strategy_count={len(strategy_names)}; "
@@ -497,6 +508,7 @@ def build_compare_readiness_report(
         cal_err = bp2.get("calibration_error", {}) if isinstance(bp2, dict) else {}
         proj_conf = bp2.get("projection_confidence", "unvalidated") if isinstance(bp2, dict) else "unvalidated"
         per_strat_util = bp2.get("projected_utilization_by_strategy", {}) if isinstance(bp2, dict) else {}
+        pressure_contract = bp2.get("pressure_contract", {}) if isinstance(bp2, dict) else {}
 
         if proj_conf == "unvalidated":
             warnings.append(
@@ -535,6 +547,13 @@ def build_compare_readiness_report(
                 f"bare_t3={t3_util:.1%}, bf_task_level={bf_task_util:.1%}, bf_segment={bf_seg_util:.1%}. "
                 f"Budget may be too loose for mechanism discrimination."
             )
+        for violation in pressure_contract.get("violations", []) if isinstance(pressure_contract, dict) else []:
+            if "budgetflow_under_target" in str(violation):
+                blocking.append(
+                    "budget plan pressure contract has budgetflow_under_target; "
+                    "BudgetFlow projected utilization is too low to exercise the task-level allocation mechanism"
+                )
+                break
 
     # ── Protocol health gate ───────────────────────────────────────────────
     existing_jsonl = _find_existing_jsonl(run_series, runs_dir)

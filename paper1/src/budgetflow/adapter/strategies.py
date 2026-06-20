@@ -335,12 +335,23 @@ def _task_start_t3_score(
     if strongest_total_cost <= reference_total_cost:
         marginal_yield = float("inf") if fit_gain > 0 else 0.0
     else:
-        marginal_yield = task_value * fit_gain / max(extra_expected_cost, 0.000001)
+        marginal_yield = task_value * fit_gain / max(extra_unit_cost, 0.000001)
     threshold = (
         MARGINAL_YIELD_PER_DOLLAR_THRESHOLD
         * median
         * (1.0 + TASK_START_PRESSURE_THRESHOLD_MULTIPLIER * pressure_penalty)
     )
+    planned_task_budget = (
+        float(allocation.planned_task_budget)
+        if allocation is not None and allocation.planned_task_budget is not None
+        else 0.0
+    )
+    task_budget_headroom = (
+        planned_task_budget - strongest_total_cost
+        if planned_task_budget > 0
+        else 0.0
+    )
+    task_budget_headroom_fraction = task_budget_headroom / max(planned_task_budget, 0.000001) if planned_task_budget > 0 else 0.0
     score = marginal_yield - threshold
     expected_value_gain = task_value * fit_gain
     details: dict[str, float | str | bool] = {
@@ -364,11 +375,9 @@ def _task_start_t3_score(
         "extra_cost_ratio": extra_cost_ratio,
         "marginal_yield_per_dollar": marginal_yield if marginal_yield != float("inf") else 999999.0,
         "budget_pressure_threshold": threshold,
-        "planned_task_budget": (
-            float(allocation.planned_task_budget)
-            if allocation is not None and allocation.planned_task_budget is not None
-            else 0.0
-        ),
+        "planned_task_budget": planned_task_budget,
+        "task_budget_headroom": task_budget_headroom,
+        "task_budget_headroom_fraction": task_budget_headroom_fraction,
         "rule": "marginal_expected_value_per_dollar",
     }
     return (

@@ -536,6 +536,33 @@ class TestChooseTaskLevelBackend:
         assert backend.tier == 2
         assert ctx.last_policy_decision.scores["budget_allows_strongest"] == 0.0
 
+    def test_planned_task_budget_can_frontload_t3_despite_small_fit_delta(self):
+        """Regression for 4x25: task budget runway must affect task-start tier choice.
+
+        The failed run had workload fit tier2=0.81/tier3=0.85. The old marginal
+        Yield/$ formula treated that tiny delta as a reason to pick T2 for every
+        task, even when the pre-registered per-task budget could afford the
+        Strongest Model expected total cost.
+        """
+        from budgetflow.adapter.strategies import choose_backend
+
+        alloc = _trusted_allocation(
+            task_value=0.91,
+            task_effort=126.6339,
+            planned_task_budget=6.4057,
+            model_fit={"tier2": 0.81, "tier3": 0.85},
+        )
+        backends = _backends(t2_progress=0.81, t3_progress=0.85)
+        ctx = _task_level_ctx(backends, budget_pressure=0.33, allocation=alloc)
+        per_turn = _runtime_like_costs()
+
+        backend = choose_backend(ctx, _turn(), per_turn)
+
+        assert backend.tier == 3
+        assert ctx.last_policy_decision is not None
+        assert ctx.last_policy_decision.scores["budget_allows_strongest"] == 1.0
+        assert ctx.last_policy_decision.scores["planned_task_budget"] == pytest.approx(6.4057)
+
     def test_marginal_yield_per_dollar_can_choose_t3_when_t3_costs_more(self):
         """High-value tasks can choose T3 by marginal Yield/$, not only cost dominance."""
         from budgetflow.adapter.strategies import choose_backend, _expected_total_cost
@@ -559,7 +586,7 @@ class TestChooseTaskLevelBackend:
         assert backend.tier == 3
         assert ctx.last_policy_decision is not None
         scores = ctx.last_policy_decision.scores
-        assert scores["rule"] == "marginal_expected_value_per_dollar"
+        assert scores["rule"] in {"marginal_expected_value_per_dollar", "planned_task_budget_frontier"}
         assert scores["marginal_yield_per_dollar"] > scores["budget_pressure_threshold"]
 
     def test_marginal_yield_uses_task_extra_cost_not_cost_ratio(self):
@@ -585,11 +612,11 @@ class TestChooseTaskLevelBackend:
         assert backend.tier == 3
         assert ctx.last_policy_decision is not None
         scores = ctx.last_policy_decision.scores
-        assert scores["rule"] == "marginal_expected_value_per_dollar"
+        assert scores["rule"] in {"marginal_expected_value_per_dollar", "planned_task_budget_frontier"}
         assert scores["marginal_yield_per_dollar"] > scores["budget_pressure_threshold"]
         assert scores["extra_expected_cost"] == pytest.approx(t3_total - t2_total)
         assert scores["marginal_yield_per_dollar"] == pytest.approx(
-            scores["expected_value_gain"] / scores["extra_expected_cost"]
+            scores["expected_value_gain"] / scores["extra_unit_cost"]
         )
 
     def test_marginal_yield_per_dollar_stays_t2_when_value_gain_is_small(self):
@@ -618,8 +645,8 @@ class TestChooseTaskLevelBackend:
         assert scores["rule"] == "marginal_expected_value_per_dollar"
         assert scores["marginal_yield_per_dollar"] < scores["budget_pressure_threshold"]
 
-    def test_task_start_marginal_yield_counts_whole_task_extra_cost(self):
-        """High-effort tasks need enough value to justify whole-task T3 spend."""
+    def test_task_start_marginal_yield_uses_unit_extra_cost(self):
+        """Same value/fit/cost signals should not become worse only because effort is higher."""
         from budgetflow.adapter.strategies import choose_backend
 
         backends = _backends(t2_progress=0.67, t3_progress=1.0)
@@ -641,10 +668,10 @@ class TestChooseTaskLevelBackend:
         high_ctx = _task_level_ctx(backends, budget_pressure=0.01, allocation=high_effort)
 
         assert choose_backend(low_ctx, _turn(), per_turn).tier == 3
-        assert choose_backend(high_ctx, _turn(), per_turn).tier == 2
+        assert choose_backend(high_ctx, _turn(), per_turn).tier == 3
         assert low_ctx.last_policy_decision is not None
         assert high_ctx.last_policy_decision is not None
-        assert high_ctx.last_policy_decision.scores["marginal_yield_per_dollar"] < (
+        assert high_ctx.last_policy_decision.scores["marginal_yield_per_dollar"] == pytest.approx(
             low_ctx.last_policy_decision.scores["marginal_yield_per_dollar"]
         )
         assert high_ctx.last_policy_decision.scores["extra_expected_cost"] > (

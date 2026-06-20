@@ -92,6 +92,38 @@ def test_host_dependency_contamination_halts_all() -> None:
     assert g.is_aborted()
 
 
+def test_task_level_all_t2_degeneracy_halts_all() -> None:
+    g = CompareRunGuards(task_level_tier_mix_min_rows=3)
+    action = GuardAction()
+    for i in range(3):
+        action = g.record_task(
+            {
+                "strategy": "budgetflow_task_level",
+                "instance_id": f"task-{i}",
+                "score_status": "true_fail",
+                "backend_picks": ["tier2", "tier2"],
+            }
+        )
+
+    assert action.halt_all
+    assert "degenerated into a fixed-tier run" in action.reason
+
+
+def test_task_level_t3_use_satisfies_mechanism_guard() -> None:
+    g = CompareRunGuards(task_level_tier_mix_min_rows=3)
+    records = [
+        {"strategy": "budgetflow_task_level", "score_status": "true_fail", "backend_picks": ["tier2"]},
+        {"strategy": "budgetflow_task_level", "score_status": "true_fail", "backend_picks": ["tier3"]},
+        {"strategy": "budgetflow_task_level", "score_status": "true_fail", "backend_picks": ["tier2"]},
+    ]
+    action = GuardAction()
+    for record in records:
+        action = g.record_task(record)
+
+    assert not action.halt_all
+    assert not g.is_aborted()
+
+
 def test_pytest_rootdir_under_runtime_worktree_does_not_halt_all() -> None:
     g = CompareRunGuards()
     action = g.record_task(

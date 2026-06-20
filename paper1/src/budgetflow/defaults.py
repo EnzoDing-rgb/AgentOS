@@ -117,6 +117,11 @@ VALUE_TRIGGERED_ESCALATION_MIN_HEADROOM_FRAC = 0.12
 # a benchmark-specific tuning knob.
 FRONTIER_DEFAULT_RUNWAY_TURNS = 35
 
+# Paid mainline task cap. This is intentionally above the T2 catalog runway
+# (currently 35 turns) so a routing policy can spend a short Strongest Model
+# window, but far below the old exploratory 150-turn default.
+PAID_MAINLINE_STEP_LIMIT = 60
+
 # PolicyMemory regret threshold: when full_vs_baseline_regret exceeds this,
 # budgetflow_segment receives stronger budget-pressure correction.
 POLICY_REGRET_THRESHOLD = 0.15

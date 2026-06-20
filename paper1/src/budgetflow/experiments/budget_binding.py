@@ -846,8 +846,8 @@ def _apply_pressure_contract_gate(plan: BudgetBindingPlan) -> None:
     elif any("budgetflow_under_target" in violation for violation in violations):
         plan.reasons.append(
             "PRESSURE_GATE WARNING: BudgetFlow projected utilization is below "
-            "the target pressure regime; treat the next run as calibration, "
-            "not paper evidence"
+            "the target pressure regime; paid readiness must block primary "
+            "runs until the mechanism projection is fixed"
         )
 
 

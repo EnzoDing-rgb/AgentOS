@@ -379,6 +379,13 @@ infra, learning loop, or mechanism.
   submission ritual. Runner-side patch collection from the task workspace should
   become the standard artifact path, with explicit submitted patches kept as
   auxiliary evidence.
+- Harness and observability refactors must preserve the BudgetFlow mechanism.
+  For task-level BudgetFlow, the Budget Regime Compiler supplies both the
+  shared hard budget and pre-registered per-task runway. Runtime uses that
+  per-task runway, Task Value, Task Effort, Model Fit, and CostSource to choose
+  a fixed model tier before the task starts, while the shared hard budget still
+  controls the batch. A run where task-level BudgetFlow silently degenerates
+  into a pure-tier baseline is a mechanism failure, not a weak positive signal.
 - Worktree isolation must be auditable. Resetting to `base_commit` and cleaning
   files is necessary but not the whole story: future git history, stale
   worktrees, compat edits, and host Python state are all harness risks. Future

@@ -11,6 +11,7 @@ from typing import Any
 from .console_log import tag
 from .failure_classification import is_score_abort, is_score_pass, is_score_true_fail
 from .harness_contamination import has_host_dependency_contamination
+from .model_tiers import MODEL_CATALOG, parse_tier_label
 
 # Defaults tuned for 15×7 (105 runs); override via CompareRunGuards config.
 GLOBAL_WINDOW = 200
@@ -20,6 +21,7 @@ GLOBAL_PATCH_RATE_MIN = 0.20
 POLICY_CONSECUTIVE_FAIL = 8
 POLICY_PIPELINE_FAIL_MIN = 6
 UPSTREAM_CONSECUTIVE = 100
+TASK_LEVEL_TIER_MIX_MIN_ROWS = 3
 
 _PIPELINE_EXIT_REASONS = frozenset(
     {
@@ -70,6 +72,7 @@ class CompareRunGuards:
     policy_consecutive_fail: int = POLICY_CONSECUTIVE_FAIL
     policy_pipeline_fail_min: int = POLICY_PIPELINE_FAIL_MIN
     upstream_consecutive: int = UPSTREAM_CONSECUTIVE
+    task_level_tier_mix_min_rows: int = TASK_LEVEL_TIER_MIX_MIN_ROWS
 
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
     _recent: deque[dict[str, Any]] = field(default_factory=lambda: deque(maxlen=GLOBAL_WINDOW), repr=False)
@@ -77,6 +80,8 @@ class CompareRunGuards:
     _halted_strategies: set[str] = field(default_factory=set, repr=False)
     _abort_all_reason: str | None = field(default=None, repr=False)
     _upstream_streak: int = field(default=0, repr=False)
+    _task_level_rows: int = field(default=0, repr=False)
+    _task_level_strongest_rows: int = field(default=0, repr=False)
 
     def is_aborted(self) -> bool:
         with self._lock:
@@ -104,6 +109,10 @@ class CompareRunGuards:
                     f"task={record.get('instance_id') or ''}"
                 )
                 return GuardAction(halt_all=True, reason=self._abort_all_reason)
+
+            action = self._record_task_level_tier_mix(record)
+            if action.should_stop_batch:
+                return action
 
             if _is_pipeline_failure(record):
                 self._strategy_streak[strategy] = self._strategy_streak.get(strategy, 0) + 1
@@ -136,6 +145,44 @@ class CompareRunGuards:
                     return GuardAction(halt_all=True, reason=self._abort_all_reason)
 
             return GuardAction()
+
+    def _record_task_level_tier_mix(self, record: dict[str, Any]) -> GuardAction:
+        """Abort when task-level BudgetFlow silently degenerates into pure T2.
+
+        ``budgetflow_task_level`` is a routing policy, not another fixed-tier
+        baseline. If it never spends a strongest-tier task after a few completed
+        rows, the run is no longer testing the intended mechanism.
+        """
+        if str(record.get("strategy") or "") != "budgetflow_task_level":
+            return GuardAction()
+        if is_score_abort(record):
+            return GuardAction()
+
+        strongest_tier = max((cfg.tier for cfg in MODEL_CATALOG.configs), default=0)
+        if strongest_tier <= 0:
+            return GuardAction()
+        tiers = {
+            parse_tier_label(pick)
+            for pick in (record.get("backend_picks") or [])
+            if parse_tier_label(pick) > 0
+        }
+        if not tiers:
+            return GuardAction()
+
+        self._task_level_rows += 1
+        if strongest_tier in tiers:
+            self._task_level_strongest_rows += 1
+        if (
+            self._task_level_rows >= self.task_level_tier_mix_min_rows
+            and self._task_level_strongest_rows == 0
+        ):
+            self._abort_all_reason = (
+                "mechanism_guard strategy=budgetflow_task_level "
+                f"rows={self._task_level_rows} strongest_tier=T{strongest_tier} "
+                "strongest_rows=0; task-level routing degenerated into a fixed-tier run"
+            )
+            return GuardAction(halt_all=True, reason=self._abort_all_reason)
+        return GuardAction()
 
     def record_upstream_error(self, message: str, *, backend: str) -> GuardAction:
         if not _looks_upstream(message):

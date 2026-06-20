@@ -13,6 +13,7 @@ from budgetflow.experiments.budget_binding import (
     _row_is_calibration_eligible,
     _distribution_p75,
     _build_pressure_contract,
+    _apply_pressure_contract_gate,
     audit_calibration,
     BudgetBindingPlan,
     CalibrationAudit,
@@ -668,6 +669,26 @@ def test_pressure_contract_flags_weak_strongest_pressure() -> None:
     assert plan.decision == original_decision
     assert plan.pressure_contract["grade"] == "warn"
     assert any("t3_loose" in v for v in plan.pressure_contract["violations"])
+
+
+def test_pressure_gate_warns_budgetflow_under_target_without_blocking_compiler() -> None:
+    plan = BudgetBindingPlan(
+        hard_cap_usd=10.0,
+        generation_mode="target_utilization",
+        target_projected_utilization=0.80,
+        decision="PASS",
+    )
+    plan.projected_utilization_by_strategy = {
+        "bare_t2_baseline": 0.40,
+        "bare_t3_baseline": 0.90,
+        "budgetflow_task_level": 0.36,
+    }
+
+    _build_pressure_contract(plan, ("bare_t2_baseline", "bare_t3_baseline", "budgetflow_task_level"))
+    _apply_pressure_contract_gate(plan)
+
+    assert plan.decision == "PASS"
+    assert any("PRESSURE_GATE WARNING" in reason for reason in plan.reasons)
 
 
 def test_pressure_contract_healthy_shape_grade_pass() -> None:

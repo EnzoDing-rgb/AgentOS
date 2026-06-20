@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from typing import Any
 
-from budgetflow.defaults import BUDGET_PRESSURE_INIT, PRESSURE_MAX
+from budgetflow.defaults import BUDGET_PRESSURE_INIT, PAID_MAINLINE_STEP_LIMIT, PRESSURE_MAX
 
 
 PRESET_TASKS = {"3x3": 3, "3x5": 3, "5x5": 5}
@@ -24,8 +24,11 @@ def parse_compare_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--step-limit",
         type=int,
-        default=150,
-        help="agent step cap per task (default 150; raise for hard localization tasks)",
+        default=PAID_MAINLINE_STEP_LIMIT,
+        help=(
+            "agent step cap per task "
+            f"(default {PAID_MAINLINE_STEP_LIMIT}; paid mainline readiness blocks larger values)"
+        ),
     )
     parser.add_argument("--heartbeat", type=float, default=30.0)
     parser.add_argument(
