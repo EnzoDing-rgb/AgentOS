@@ -490,8 +490,8 @@ def test_score_status_pass_requires_trusted_evidence() -> None:
     rec = {
         "harness_resolved": True,
         "patch_extracted": True,
-        "patch_source": "submission",
-        "submitted_patch": "/tmp/patch.diff",
+        "patch_source": "workspace_diff",
+        "workspace_patch": "/tmp/workspace.patch",
         "agent_gold_edited": True,
         "agent_gold_files": ["sympy/core/basic.py"],
         "detail": "test_patch=ok; fail_before=fail; model_patch=ok; fail_after=pass; pass_to_pass=pass",
@@ -508,8 +508,8 @@ def test_score_status_true_fail_for_clean_validation_failure() -> None:
     rec = {
         "harness_resolved": False,
         "patch_extracted": True,
-        "patch_source": "submission",
-        "submitted_patch": "/tmp/patch.diff",
+        "patch_source": "workspace_diff",
+        "workspace_patch": "/tmp/workspace.patch",
         "agent_gold_edited": True,
         "detail": "test_patch=ok; fail_before=fail; model_patch=ok; fail_after=fail; pass_to_pass=pass",
         "turn_trace_count": 3,

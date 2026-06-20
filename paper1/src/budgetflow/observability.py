@@ -125,7 +125,7 @@ def build_harness_trust(record: dict) -> dict:
     Returns {harness_trust, harness_issues, harness_owner, severity}.
 
     Trust levels:
-      - trusted: evidence complete, submission patch, no gaps
+      - trusted: evidence complete, workspace diff patch, no gaps
       - suspicious: PASS with missing harness evidence (may still be correct)
       - invalid: PASS with blocking evidence gaps (fail_after/pass_to_pass missing)
       - incomplete: FAIL with no patch or incomplete evidence
@@ -149,15 +149,14 @@ def build_harness_trust(record: dict) -> dict:
     gold_edited = bool(record.get("agent_gold_edited"))
     gold_files = record.get("agent_gold_files") or []
 
-    # Patch source audit. The scoreable artifact may be either the runner-side
-    # workspace diff or, if the workspace has no diff, the explicit submission.
+    # Patch source audit. Current scoreable SWE tasks use the runner-side
+    # workspace diff only; submitted patches are retained as audit artifacts,
+    # never as the scored model patch.
     if not patch_extracted:
         issues.append("no_patch_extracted")
-    elif patch_source == "submission" and not submitted_patch:
-        issues.append("submitted_patch_path_missing")
     elif patch_source == "workspace_diff" and not workspace_patch:
         issues.append("workspace_patch_path_missing")
-    elif patch_source not in {"submission", "workspace_diff"}:
+    elif patch_source not in {"workspace_diff"}:
         issues.append(f"unknown_patch_source:{patch_source}")
 
     # Submission consistency
@@ -263,8 +262,7 @@ def _harness_owner(
                     "resolved_but_fail_after_not_passed", "resolved_but_pass_to_pass_not_ok"}
     model_gaps = {"submitted_without_attempt", "attempted_but_not_submitted",
                   "gold_edited_but_no_files_listed", "model_patch_failed"}
-    protocol_gaps = {"no_patch_extracted", "submitted_patch_path_missing",
-                     "workspace_patch_path_missing", "unknown_patch_source"}
+    protocol_gaps = {"no_patch_extracted", "workspace_patch_path_missing", "unknown_patch_source"}
 
     issue_set = set(issues)
     if "host_dependency_contamination" in issue_set:

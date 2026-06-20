@@ -12,7 +12,7 @@ import importlib.util
 from pathlib import Path
 
 from budgetflow.experiments.compare_config import CompareStrategy, paper_mainline_strategy_names
-from budgetflow.experiments.compare_setup import BUDGETFLOW_ACTIVE_ROUTINGS
+from budgetflow.experiments.compare_setup import BUDGETFLOW_ACTIVE_ROUTINGS, PLANNED_TASK_BUDGET_MODE
 from budgetflow.defaults import PAID_MAINLINE_STEP_LIMIT
 from budgetflow.frozen_router import load_frozen_plan
 from budgetflow.harness_contamination import (
@@ -446,6 +446,17 @@ def build_compare_readiness_report(
             ]
             planned_caps = bp.get("planned_task_budget_by_strategy")
             if active_budgetflow_names:
+                planned_policy = bp.get("planned_task_budget_policy")
+                planned_mode = ""
+                if isinstance(planned_policy, dict):
+                    planned_mode = str(planned_policy.get("mode") or "")
+                if planned_mode and planned_mode != PLANNED_TASK_BUDGET_MODE:
+                    blocking.append(
+                        "budget plan planned_task_budget_policy.mode="
+                        f"{planned_mode!r} does not match runtime mode "
+                        f"{PLANNED_TASK_BUDGET_MODE!r}; regenerate it with the current "
+                        "Budget Regime Compiler"
+                    )
                 if not isinstance(planned_caps, dict) or not planned_caps:
                     blocking.append(
                         "budget plan is missing planned_task_budget_by_strategy for "

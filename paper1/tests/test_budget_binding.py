@@ -11,6 +11,7 @@ from budgetflow.experiments.budget_binding import (
     _load_historical_cost_signals,
     _row_catalog_compatible,
     _row_is_calibration_eligible,
+    BUDGETFLOW_PLANNED_TASK_BUDGET_MODE,
     _distribution_p75,
     _build_pressure_contract,
     _apply_pressure_contract_gate,
@@ -20,6 +21,7 @@ from budgetflow.experiments.budget_binding import (
     calibrate_budget,
     main as budget_binding_main,
 )
+from budgetflow.experiments.compare_setup import PLANNED_TASK_BUDGET_MODE
 from budgetflow.model_tiers import catalog_source_info
 
 
@@ -233,7 +235,7 @@ def test_budget_plan_round_trips_budgetflow_planned_task_budgets() -> None:
             }
         },
         planned_task_budget_policy={
-            "mode": "budgetflow_loose_task_budget",
+            "mode": BUDGETFLOW_PLANNED_TASK_BUDGET_MODE,
             "sum_can_exceed_hard_cap": True,
         },
     )
@@ -243,6 +245,7 @@ def test_budget_plan_round_trips_budgetflow_planned_task_budgets() -> None:
     assert restored.planned_task_budget_by_strategy == {
         "budgetflow_task_level": {"task-a": 0.4, "task-b": 0.7}
     }
+    assert restored.planned_task_budget_policy["mode"] == PLANNED_TASK_BUDGET_MODE
     assert restored.planned_task_budget_policy["sum_can_exceed_hard_cap"] is True
 
 
@@ -267,6 +270,7 @@ def test_calibrate_emits_loose_budgetflow_task_budgets(tmp_path: Path) -> None:
     assert caps["task-b"] > caps["task-a"]
     assert sum(caps.values()) > plan.hard_cap_usd
     assert "enterprise_router_baseline" not in plan.planned_task_budget_by_strategy
+    assert plan.planned_task_budget_policy["mode"] == PLANNED_TASK_BUDGET_MODE
 
 
 def test_task_level_projection_diagnostic_uses_compiled_budget_without_rewriting_cap_costs(tmp_path: Path) -> None:

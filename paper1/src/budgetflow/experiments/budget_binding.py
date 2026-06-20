@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from budgetflow.experiments.compare_config import load_strategy_set, paper_mainline_strategy_names
+from budgetflow.experiments.compare_setup import PLANNED_TASK_BUDGET_MODE
 
 from ..exit_reasons import record_is_budget_exhausted
 from ..defaults import BUDGET_PRESSURE_INIT
@@ -39,7 +40,7 @@ from ..model_tiers import (
 
 COLD_START_INPUT_TOKENS_PER_EFFORT = 4_500
 COLD_START_OUTPUT_TOKENS_PER_EFFORT = 150
-BUDGETFLOW_PLANNED_TASK_BUDGET_MODE = "budgetflow_loose_task_budget"
+BUDGETFLOW_PLANNED_TASK_BUDGET_MODE = PLANNED_TASK_BUDGET_MODE
 BUDGETFLOW_PLANNED_TASK_BUDGET_MULTIPLIER = 2.0
 BUDGETFLOW_PLANNED_TASK_BUDGET_MIN_USD = 0.05
 BUDGETFLOW_PLANNED_TASK_BUDGET_BATCH_FLOOR_RULE = "hard_cap_usd/sqrt(task_count)+cross_strategy_task_cost_ceiling_multiplier"

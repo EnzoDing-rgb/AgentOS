@@ -21,6 +21,7 @@ from minisweagent.exceptions import Submitted  # noqa: E402
 from minisweagent.utils.serialize import recursive_merge  # noqa: E402
 
 from ..console_log import tag
+from ..defaults import PAID_MAINLINE_STEP_LIMIT
 from ..governor import BudgetGovernor, GovernorConfig
 from ..heartbeat import run_with_heartbeat
 from ..ledger import WorkflowLedgerStore
@@ -83,7 +84,7 @@ class MiniSweRunResult:
     estimated_usage_turns: int = 0
     cost_mode: str = ""
     usage_source: str = ""
-    patch_source: str = "submission"
+    patch_source: str = "none"
     submitted_patch_path: str | None = None
     workspace_patch_path: str | None = None
     trace_dir: str = ""
@@ -239,17 +240,10 @@ def _select_scoreable_patch(
             submitted_patch_text=submitted_patch_text,
             workspace_patch_text=workspace_patch.text,
         )
-    if submitted_patch_text:
-        return ScoreablePatch(
-            patch_text=submitted_patch_text,
-            patch_source="submission",
-            submitted_patch_text=submitted_patch_text,
-            workspace_patch_text=None,
-        )
     return ScoreablePatch(
         patch_text=None,
         patch_source="none",
-        submitted_patch_text=None,
+        submitted_patch_text=submitted_patch_text,
         workspace_patch_text=None,
     )
 
@@ -279,7 +273,7 @@ def _harness_exit_label(
     return agent_exit_status, agent_exit_reason
 
 
-def _load_agent_config(*, step_limit: int = 250) -> dict:
+def _load_agent_config(*, step_limit: int = PAID_MAINLINE_STEP_LIMIT) -> dict:
     # Keep one action contract across all routed tiers. BudgetFlow experiments
     # should isolate model/routing decisions, not switch the mini-SWE protocol
     # when a policy escalates or downgrades between tiers.
@@ -308,7 +302,7 @@ def run_mini_swe_task(
     budget_per_task: float | None = None,
     budget_pressure: float | None = None,
     pressure_max: float | None = None,
-    step_limit: int = 250,
+    step_limit: int = PAID_MAINLINE_STEP_LIMIT,
     trace_console: TraceConsoleLevel = "quiet",
     progress_box: dict[str, str] | None = None,
     agent_heartbeat: bool = True,

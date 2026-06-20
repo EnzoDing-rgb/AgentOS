@@ -57,7 +57,7 @@ class TestTierFrontierCalibration:
         assert frontier.strongest_tier == 3
         # Default mainline catalog uses normalized experimental units:
         # T3 is fixed at approximately 5x the T2 reference.
-        assert frontier.reference_display == "glm-5.1"
+        assert frontier.reference_display == "DeepSeek-V4-Pro"
         assert frontier.strongest_output_ratio == pytest.approx(5.0)
         assert "cost_ratio" in frontier.reason
         assert "cheapest" not in frontier.reason

@@ -57,7 +57,11 @@ def _model(strategy: str = "all_t3") -> tuple[BudgetFlowLitellmModel, BudgetGove
         default_max_output_tokens=128,
         enable_turn_trace=True,
     )
-    model._api_keys = {"DASHSCOPE_API_KEY": "test", "AICODE007_API_KEY": "test"}
+    model._api_keys = {
+        "DASHSCOPE_API_KEY": "test",
+        "DEEPSEEK_API_KEY": "test",
+        "AICODE007_API_KEY": "test",
+    }
     model._model_config_for = lambda backend: (backend.name, {})
     return model, governor
 
@@ -65,6 +69,7 @@ def _model(strategy: str = "all_t3") -> tuple[BudgetFlowLitellmModel, BudgetGove
 def test_provider_unavailable_releases_reservation_and_fails_fast(monkeypatch) -> None:
     monkeypatch.setattr("budgetflow.adapter.mini_swe_proxy.load_env_file", lambda: None)
     monkeypatch.setenv("DASHSCOPE_API_KEY", "test")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test")
     monkeypatch.setenv("AICODE007_API_KEY", "test")
     model, governor = _model("all_t3")
     attempts: list[str] = []

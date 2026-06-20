@@ -677,8 +677,8 @@ def test_harness_trust_treats_failed_patch_as_trusted_failure() -> None:
     trust = build_harness_trust({
         "harness_resolved": False,
         "patch_extracted": True,
-        "patch_source": "submission",
-        "submitted_patch": "/tmp/submitted.patch",
+        "patch_source": "workspace_diff",
+        "workspace_patch": "/tmp/workspace.patch",
         "detail": "test_patch=ok; fail_before=fail; model_patch=ok; fail_after=fail; pass_to_pass=pass",
     })
 
@@ -690,8 +690,8 @@ def test_harness_trust_allows_runtime_worktree_pytest_rootdir() -> None:
     trust = build_harness_trust({
         "harness_resolved": False,
         "patch_extracted": True,
-        "patch_source": "submission",
-        "submitted_patch": "/tmp/submitted.patch",
+        "patch_source": "workspace_diff",
+        "workspace_patch": "/tmp/workspace.patch",
         "detail": (
             "test_patch=ok; fail_before=fail; model_patch=ok; fail_after=fail; "
             "rootdir: /tmp/budgetflow-runtime/worktrees/sympy__sympy/"
@@ -833,7 +833,7 @@ def test_observability_schema_warns_on_scoreable_untrusted_harness() -> None:
     assert any(issue.startswith("SCOREABLE_UNTRUSTED_HARNESS") for issue in issues)
 
 
-def test_desired_fields_do_not_require_workspace_patch_for_submission_rows() -> None:
+def test_desired_fields_allow_submitted_patch_as_audit_artifact() -> None:
     issues = _check_desired_fields([
         {
             "instance_id": "repo__task",
@@ -857,7 +857,7 @@ def test_desired_fields_do_not_require_workspace_patch_for_submission_rows() -> 
     assert issues == []
 
 
-def test_observability_schema_requires_workspace_patch_only_for_workspace_diff_rows() -> None:
+def test_observability_schema_requires_workspace_diff_for_scoreable_patch() -> None:
     issues = _check_observability_schema([
         {
             "instance_id": "repo__task-a",
@@ -889,8 +889,8 @@ def test_observability_schema_requires_workspace_patch_only_for_workspace_diff_r
         },
     ])
 
+    assert any(issue.startswith("PATCH_SOURCE_INVALID") and "repo__task-a" in issue for issue in issues)
     assert any(issue.startswith("WORKSPACE_PATCH_MISSING") and "repo__task-b" in issue for issue in issues)
-    assert not any("repo__task-a" in issue for issue in issues)
     assert not any("repo__task-c" in issue for issue in issues)
 
 
@@ -905,6 +905,7 @@ def test_harness_trust_blocks_resolved_rows_with_missing_pass_evidence() -> None
 
     assert trust["harness_trust"] == "invalid"
     assert trust["severity"] == "blocking"
+    assert "unknown_patch_source:submission" in trust["harness_issues"]
 
 
 def test_per_task_comparison_includes_cross_policy_rows() -> None:

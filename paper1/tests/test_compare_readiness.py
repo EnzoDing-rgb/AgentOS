@@ -641,6 +641,34 @@ def test_readiness_blocks_budgetflow_plan_missing_planned_task_cap(tmp_path) -> 
     assert any("missing selected tasks: task-b" in issue for issue in report.blocking)
 
 
+def test_readiness_blocks_stale_planned_task_budget_mode(tmp_path) -> None:
+    bp = tmp_path / "budget_plan.json"
+    bp.write_text(
+        '{"hard_cap_usd":1.0,"source":"budget_binding_calibrator","decision":"PASS",'
+        '"generation_mode":"target_utilization",'
+        '"task_ids":["task-a"],'
+        '"strategy_names":["budgetflow_task_level"],'
+        '"planned_task_budget_policy":{"mode":"budgetflow_loose_task_budget"},'
+        '"planned_task_budget_by_strategy":{"budgetflow_task_level":{"task-a":0.8}}}'
+    )
+    value_context = ValueEfficiencyContext()
+    value_context.init(value_profile="equal")
+
+    report = build_compare_readiness_report(
+        args=_args(),
+        tasks=[SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",))],
+        strategies=(CompareStrategy("budgetflow_task_level", "value_aware_task_level"),),
+        policy_jobs=1,
+        value_context=value_context,
+        catalog_issues=[],
+        runtime_root=Path("/tmp/budgetflow-runtime"),
+        budget_plan_path=bp,
+    )
+
+    assert not report.ok
+    assert any("planned_task_budget_policy.mode" in issue for issue in report.blocking)
+
+
 def test_readiness_warns_budgetflow_under_target_pressure_contract(tmp_path) -> None:
     bp = tmp_path / "budget_plan.json"
     bp.write_text(

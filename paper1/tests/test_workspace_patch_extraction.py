@@ -3,6 +3,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+from budgetflow.defaults import PAID_MAINLINE_STEP_LIMIT
 from budgetflow.adapter import runner
 
 
@@ -99,3 +100,20 @@ def test_scoreable_patch_prefers_workspace_diff_over_submission() -> None:
     assert selected.patch_text == workspace_patch.text
     assert selected.patch_source == "workspace_diff"
     assert selected.submitted_patch_text == "diff --git a/app.py b/app.py\n+submitted\n"
+
+
+def test_scoreable_patch_does_not_fallback_to_submission() -> None:
+    selected = runner._select_scoreable_patch(
+        workspace_patch=runner.WorkspacePatch(text=None, source="none", changed_files=()),
+        submitted_patch_text="diff --git a/app.py b/app.py\n+submitted\n",
+    )
+
+    assert selected.patch_text is None
+    assert selected.patch_source == "none"
+    assert selected.submitted_patch_text == "diff --git a/app.py b/app.py\n+submitted\n"
+
+
+def test_runner_default_step_limit_uses_paid_mainline_cap() -> None:
+    config = runner._load_agent_config()
+
+    assert config["agent"]["step_limit"] == PAID_MAINLINE_STEP_LIMIT

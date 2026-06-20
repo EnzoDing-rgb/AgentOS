@@ -171,11 +171,11 @@ def _check_observability_schema(records: list[dict]) -> list[str]:
                 f"issues={rec.get('harness_issues') or []}"
             )
         patch_source = str(rec.get("patch_source") or "none")
-        if patch_source not in {"submission", "workspace_diff", "none"}:
+        if patch_source not in {"workspace_diff", "none"}:
             issues.append(
                 f"PATCH_SOURCE_INVALID row {i}: {inst} {strat} — "
                 f"patch_source={patch_source!r}; current runs only allow "
-                "'submission', 'workspace_diff', or 'none'"
+                "'workspace_diff' or 'none'; submitted_patch is audit-only"
             )
         if bool(rec.get("patch_extracted")) and patch_source == "workspace_diff" and not rec.get("workspace_patch"):
             issues.append(
