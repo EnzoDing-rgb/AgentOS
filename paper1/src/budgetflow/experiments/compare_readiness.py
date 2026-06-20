@@ -548,12 +548,17 @@ def build_compare_readiness_report(
                 f"Budget may be too loose for mechanism discrimination."
             )
         for violation in pressure_contract.get("violations", []) if isinstance(pressure_contract, dict) else []:
-            if "budgetflow_under_target" in str(violation):
+            if "budgetflow_task_level_degenerated" in str(violation):
                 blocking.append(
-                    "budget plan pressure contract has budgetflow_under_target; "
-                    "BudgetFlow projected utilization is too low to exercise the task-level allocation mechanism"
+                    "budget plan pressure contract has budgetflow_task_level_degenerated; "
+                    "BudgetFlow task-level projection uses zero Strongest Model tasks under compiled task budgets"
                 )
                 break
+            if "budgetflow_under_target" in str(violation):
+                warnings.append(
+                    "budget plan pressure contract has budgetflow_under_target; "
+                    "treat BudgetFlow projected utilization as a pressure warning"
+                )
 
     # ── Protocol health gate ───────────────────────────────────────────────
     existing_jsonl = _find_existing_jsonl(run_series, runs_dir)

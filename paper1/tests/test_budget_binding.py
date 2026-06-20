@@ -269,6 +269,72 @@ def test_calibrate_emits_loose_budgetflow_task_budgets(tmp_path: Path) -> None:
     assert "enterprise_router_baseline" not in plan.planned_task_budget_by_strategy
 
 
+def test_task_level_projection_diagnostic_uses_compiled_budget_without_rewriting_cap_costs(tmp_path: Path) -> None:
+    """Compiler predicts runtime tier mix as diagnostics, not cap source."""
+    catalog = catalog_source_info()
+    jsonl = tmp_path / "hist.jsonl"
+    rows = []
+    effort = 126.6339
+    tier2_per_turn = 0.006408
+    tier3_per_turn = 0.03204
+    # Eight clean calibration tasks overcome the completed-sample prior shrink
+    # and produce workload fit close to tier2=0.81, tier3=0.85.
+    for i in range(8):
+        rows.append(_trusted({
+            "strategy": "bare_t2_baseline",
+            "instance_id": f"cal-t2-{i}",
+            "total_cost": effort * tier2_per_turn / 0.9525,
+            "task_effort": effort,
+            "budget_mode": "shared_batch_hard_budget",
+            "catalog": catalog,
+            "score_status": "pass",
+            "exit_status": "HarnessResolved",
+            "row_finished_at": i + 1,
+        }))
+        rows.append(_trusted({
+            "strategy": "bare_t3_baseline",
+            "instance_id": f"cal-t3-{i}",
+            "total_cost": effort * tier3_per_turn / 1.0,
+            "task_effort": effort,
+            "budget_mode": "shared_batch_hard_budget",
+            "catalog": catalog,
+            "score_status": "pass",
+            "exit_status": "HarnessResolved",
+            "row_finished_at": i + 1,
+        }))
+    jsonl.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
+
+    vm = tmp_path / "vm.json"
+    vm.write_text(json.dumps({
+        "tasks": {
+            "task-a": {
+                "task_value": {"manual_value": 0.91},
+                "task_effort": {"bootstrap_heuristic": 126.6339},
+            }
+        }
+    }))
+
+    plan = calibrate_budget(
+        ["task-a"],
+        historical_jsonl=jsonl,
+        value_matrix_path=vm,
+        strategies=("bare_t2_baseline", "bare_t3_baseline", "budgetflow_task_level"),
+        target_utilization=1.0,
+    )
+
+    task_budget = plan.planned_task_budget_by_strategy["budgetflow_task_level"]["task-a"]
+    t3_cost = plan.projected_task_cost_by_strategy["bare_t3_baseline"]["task-a"]
+    cap_generation_task_level = plan.projected_spend_by_strategy["budgetflow_task_level"]
+    diagnostic = plan.projection_diagnostics["budgetflow_task_level"]
+
+    assert task_budget > t3_cost
+    assert cap_generation_task_level < t3_cost
+    assert diagnostic["projected_tier_counts"]["tier3"] == 1
+    assert diagnostic["projected_spend_usd"] == pytest.approx(t3_cost, rel=1e-4)
+    assert diagnostic["role"] == "readiness_diagnostic_not_cap_source"
+    assert any("task_level_policy_projection" in reason for reason in plan.reasons)
+
+
 def test_small_historical_sample_cannot_collapse_large_workload_cap(tmp_path: Path) -> None:
     """A few cheap diagnostic rows can calibrate scale, but not starve a larger batch."""
     catalog = catalog_source_info()
@@ -689,6 +755,57 @@ def test_pressure_gate_warns_budgetflow_under_target_without_blocking_compiler()
 
     assert plan.decision == "PASS"
     assert any("PRESSURE_GATE WARNING" in reason for reason in plan.reasons)
+
+
+def test_pressure_contract_flags_task_level_pure_reference_degeneration() -> None:
+    plan = BudgetBindingPlan(
+        hard_cap_usd=10.0,
+        generation_mode="target_utilization",
+        target_projected_utilization=0.80,
+    )
+    plan.projected_utilization_by_strategy = {
+        "bare_t2_baseline": 0.40,
+        "bare_t3_baseline": 0.90,
+        "budgetflow_task_level": 0.36,
+    }
+    plan.projection_diagnostics = {
+        "budgetflow_task_level": {
+            "degeneration": "pure_reference_tier",
+            "projected_tier_counts": {"tier2": 25},
+            "projected_strongest_task_fraction": 0.0,
+        }
+    }
+
+    _build_pressure_contract(plan, ("bare_t2_baseline", "bare_t3_baseline", "budgetflow_task_level"))
+
+    assert plan.pressure_contract["grade"] == "warn"
+    assert any("budgetflow_task_level_degenerated" in v for v in plan.pressure_contract["violations"])
+
+
+def test_pressure_contract_accepts_mixed_task_level_projection_below_util_target() -> None:
+    plan = BudgetBindingPlan(
+        hard_cap_usd=10.0,
+        generation_mode="target_utilization",
+        target_projected_utilization=1.0,
+    )
+    plan.projected_utilization_by_strategy = {
+        "bare_t2_baseline": 0.40,
+        "bare_t3_baseline": 1.00,
+        "budgetflow_task_level": 0.36,
+    }
+    plan.projection_diagnostics = {
+        "budgetflow_task_level": {
+            "degeneration": "mixed_or_strongest",
+            "projected_tier_counts": {"tier2": 8, "tier3": 17},
+            "projected_strongest_task_fraction": 0.68,
+        }
+    }
+
+    _build_pressure_contract(plan, ("bare_t2_baseline", "bare_t3_baseline", "budgetflow_task_level"))
+
+    assert not any("budgetflow_under_target" in v for v in plan.pressure_contract["violations"])
+    assert not any("budgetflow_task_level_degenerated" in v for v in plan.pressure_contract["violations"])
+    assert any("budgetflow_task_level_mixed" in a for a in plan.pressure_contract["assertions"])
 
 
 def test_pressure_contract_healthy_shape_grade_pass() -> None:
