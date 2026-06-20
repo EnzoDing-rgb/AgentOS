@@ -56,3 +56,42 @@ def test_t2_input_kv_cache_discount_halves_input_after_first_turn() -> None:
 
     assert second == pytest.approx(first * 0.5)
     assert output_second == pytest.approx(output_first)
+
+
+def test_default_t2_uses_deepseek_v4_pro_provider() -> None:
+    import budgetflow.model_tiers as mt
+
+    tier2 = mt.MODEL_CATALOG.require_config("tier2")
+    info = mt.catalog_source_info()
+
+    assert tier2.model == "openai/deepseek-v4-pro"
+    assert tier2.api_base == "https://api.deepseek.com/v1"
+    assert tier2.api_key_env == "DEEPSEEK_API_KEY"
+    assert tier2.display == "DeepSeek-V4-Pro"
+    assert tier2.protocol == "tool_call"
+    assert tier2.max_turns == 35
+    assert info["catalog_semantic_revision"] == "t2-normalized-v1-t3x5"
+
+
+def test_default_catalog_accepts_provider_only_t2_swap_history() -> None:
+    import budgetflow.model_tiers as mt
+
+    ok, reason = mt.catalog_record_compatible({
+        "catalog_revision": "2026-06-17-glm51-t2-t3x5",
+        "catalog_content_hash": "70beda1fbecb",
+    })
+
+    assert ok is True
+    assert reason == "clean"
+
+
+def test_default_catalog_rejects_unknown_semantic_history() -> None:
+    import budgetflow.model_tiers as mt
+
+    ok, reason = mt.catalog_record_compatible({
+        "catalog_revision": "different-revision",
+        "catalog_content_hash": "not-current",
+    })
+
+    assert ok is False
+    assert reason == "catalog_mismatch"

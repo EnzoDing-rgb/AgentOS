@@ -333,20 +333,9 @@ def _task_effort_for(value_features: dict[str, dict], task_id: str, rec: dict | 
 
 def _catalog_compatible(row_catalog: dict) -> bool:
     """Check whether a row's catalog matches the currently loaded catalog."""
-    from .model_tiers import catalog_source_info
+    from .model_tiers import catalog_record_compatible
 
-    if not isinstance(row_catalog, dict) or not row_catalog:
-        return False
-    active = catalog_source_info()
-    row_hash = str(row_catalog.get("catalog_content_hash") or "")
-    active_hash = str(active.get("catalog_content_hash") or "")
-    if row_hash and active_hash:
-        return row_hash == active_hash
-    row_rev = str(row_catalog.get("catalog_revision") or "")
-    active_rev = str(active.get("catalog_revision") or "")
-    if row_rev and active_rev:
-        return row_rev == active_rev
-    return False
+    return catalog_record_compatible(row_catalog)[0]
 
 
 def _is_clean_run(rec: dict) -> bool:

@@ -1027,6 +1027,31 @@ def test_calibration_excludes_catalog_mismatch_rows(tmp_path: Path) -> None:
     assert excluded == {"catalog_mismatch": 1}
 
 
+def test_calibration_accepts_provider_only_t2_catalog_swap_rows(tmp_path: Path) -> None:
+    row = _trusted({
+        "strategy": "budgetflow_task_level",
+        "instance_id": "task-a",
+        "total_cost": 0.12,
+        "budget_mode": "shared_batch_hard_budget",
+        "catalog": {
+            "catalog_revision": "2026-06-17-glm51-t2-t3x5",
+            "catalog_content_hash": "70beda1fbecb",
+        },
+        "score_status": "true_fail",
+        "exit_status": "HarnessFailed",
+        "exit_reason": "harness_failed",
+    })
+    eligible, reason = _row_is_calibration_eligible(row)
+    assert eligible is True
+    assert reason == "clean"
+
+    jsonl = tmp_path / "hist.jsonl"
+    jsonl.write_text(json.dumps(row) + "\n")
+    costs, excluded = _load_historical_costs(jsonl)
+    assert costs == {"budgetflow_task_level": {"task-a": 0.12}}
+    assert excluded == {}
+
+
 def test_calibration_excludes_missing_catalog_rows(tmp_path: Path) -> None:
     row = _trusted({
         "strategy": "budgetflow_task_level",

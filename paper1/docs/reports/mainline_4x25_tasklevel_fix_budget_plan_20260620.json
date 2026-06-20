@@ -2,9 +2,10 @@
   "hard_cap_usd": 21.5059,
   "source": "budget_binding_calibrator",
   "generation_mode": "target_utilization",
-  "catalog_revision": "2026-06-17-glm51-t2-t3x5",
+  "catalog_revision": "2026-06-20-deepseek-v4-pro-t2-t3x5",
+  "catalog_semantic_revision": "t2-normalized-v1-t3x5",
   "catalog_path": "/root/.dev/AgentOS/paper1/docs/config/model_tiers.default.json",
-  "catalog_content_hash": "70beda1fbecb",
+  "catalog_content_hash": "229f0eb716dc",
   "historical_source": "paper1/data/runs/mainline_4x10_non_sympy_clean_after_infra_fix_20260618-0.jsonl",
   "task_ids": [
     "sympy__sympy-22714",

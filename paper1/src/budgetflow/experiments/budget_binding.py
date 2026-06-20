@@ -28,6 +28,7 @@ from ..adapter.strategies import (
 from ..model_fit_estimator import ModelFitEvidence, estimate_model_fit_from_jsonl
 from ..model_tiers import (
     MODEL_CATALOG,
+    catalog_record_compatible,
     catalog_path,
     catalog_revision,
     catalog_source_info,
@@ -57,6 +58,7 @@ class BudgetBindingPlan:
     generation_mode: str = "target_utilization"
     target_projected_utilization: float | None = None
     catalog_revision: str = ""
+    catalog_semantic_revision: str = ""
     catalog_path: str = ""
     catalog_content_hash: str = ""
     historical_source: str = ""
@@ -88,6 +90,7 @@ class BudgetBindingPlan:
             "source": self.source,
             "generation_mode": self.generation_mode,
             "catalog_revision": self.catalog_revision,
+            "catalog_semantic_revision": self.catalog_semantic_revision,
             "catalog_path": self.catalog_path,
             "catalog_content_hash": self.catalog_content_hash,
             "historical_source": self.historical_source,
@@ -147,6 +150,7 @@ class BudgetBindingPlan:
             generation_mode=d["generation_mode"],
             target_projected_utilization=d.get("target_projected_utilization"),
             catalog_revision=d.get("catalog_revision", ""),
+            catalog_semantic_revision=d.get("catalog_semantic_revision", ""),
             catalog_path=d.get("catalog_path", ""),
             catalog_content_hash=d.get("catalog_content_hash", ""),
             historical_source=d.get("historical_source", ""),
@@ -276,6 +280,7 @@ def calibrate_budget(
         generation_mode="target_utilization",
         target_projected_utilization=target_utilization,
         catalog_revision=str(catalog_info.get("catalog_revision") or catalog_revision()),
+        catalog_semantic_revision=str(catalog_info.get("catalog_semantic_revision") or ""),
         catalog_path=str(catalog_info.get("catalog_path") or catalog_path()),
         catalog_content_hash=str(catalog_info.get("catalog_content_hash") or ""),
         historical_source=str(historical_jsonl) if historical_jsonl else "bootstrap_estimate",
@@ -1275,19 +1280,7 @@ def _row_is_budget_exhausted(row: dict) -> bool:
 
 def _row_catalog_compatible(row_catalog: dict) -> tuple[bool, str]:
     """Current cost observations must use the active catalog units."""
-
-    if not isinstance(row_catalog, dict) or not row_catalog:
-        return False, "missing_catalog"
-    active_catalog = catalog_source_info()
-    row_hash = str(row_catalog.get("catalog_content_hash") or "")
-    active_hash = str(active_catalog.get("catalog_content_hash") or "")
-    row_revision = str(row_catalog.get("catalog_revision") or "")
-    active_revision = str(active_catalog.get("catalog_revision") or "")
-    if row_hash and active_hash:
-        return (True, "clean") if row_hash == active_hash else (False, "catalog_mismatch")
-    if row_revision and active_revision:
-        return (True, "clean") if row_revision == active_revision else (False, "catalog_mismatch")
-    return False, "missing_catalog"
+    return catalog_record_compatible(row_catalog)
 
 
 def _load_value_features(value_matrix_path: Path) -> dict[str, dict]:

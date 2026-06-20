@@ -306,6 +306,26 @@ _catalog: ModelCatalog | None = None
 _catalog_path: Path | None = None
 _catalog_revision: str = ""
 _catalog_content_hash: str = ""
+_catalog_semantic_revision: str = ""
+
+
+# Provider-only swaps keep BudgetFlow's normalized tier semantics. Historical
+# rows produced with these revisions may still calibrate the current catalog as
+# long as the active catalog declares the same semantic revision.
+CATALOG_SEMANTIC_COMPATIBILITY: dict[str, frozenset[str]] = {
+    "t2-normalized-v1-t3x5": frozenset({
+        "2026-06-17-glm51-t2-t3x5",
+        "2026-06-20-deepseek-v4-pro-t2-t3x5",
+    }),
+    "t2-normalized-v1-t3x2": frozenset({
+        "2026-06-17-glm51-t2-t3x2",
+        "2026-06-20-deepseek-v4-pro-t2-t3x2",
+    }),
+    "t2-normalized-v1-t3x3": frozenset({
+        "2026-06-17-glm51-t2-t3x3",
+        "2026-06-20-deepseek-v4-pro-t2-t3x3",
+    }),
+}
 
 
 def _build_tier_config_from_json(data: dict) -> TierConfig:
@@ -389,7 +409,7 @@ def init_catalog(path: Path | None = None) -> ModelCatalog:
 
     Updates ``MODEL_CATALOG`` in-place.
     """
-    global _catalog, _catalog_path, _catalog_revision, _catalog_content_hash
+    global _catalog, _catalog_path, _catalog_revision, _catalog_content_hash, _catalog_semantic_revision
     resolved = path or DEFAULT_CATALOG_PATH
     if not resolved.is_file():
         raise FileNotFoundError(f"model tier catalog not found: {resolved}")
@@ -398,6 +418,7 @@ def init_catalog(path: Path | None = None) -> ModelCatalog:
     _catalog_path = resolved.resolve()
     meta_raw = json.loads(resolved.read_text(errors="replace")).get("meta") or {}
     _catalog_revision = str(meta_raw.get("revision", "unknown"))
+    _catalog_semantic_revision = str(meta_raw.get("semantic_revision", "") or "")
     _catalog_content_hash = _compute_content_hash(resolved)
     MODEL_CATALOG._replace(_catalog)
     return _catalog
@@ -413,6 +434,11 @@ def catalog_revision() -> str:
     return _catalog_revision
 
 
+def catalog_semantic_revision() -> str:
+    """Return the normalized tier-semantics revision of the loaded catalog."""
+    return _catalog_semantic_revision
+
+
 def catalog_path() -> Path | None:
     """Return the path of the loaded catalog."""
     return _catalog_path
@@ -425,8 +451,39 @@ def catalog_source_info() -> dict:
     return {
         "catalog_path": str(_catalog_path),
         "catalog_revision": catalog_revision(),
+        "catalog_semantic_revision": catalog_semantic_revision(),
         "catalog_content_hash": _catalog_content_hash,
     }
+
+
+def catalog_record_compatible(row_catalog: dict) -> tuple[bool, str]:
+    """Return whether a historical row uses compatible normalized tier semantics."""
+
+    if not isinstance(row_catalog, dict) or not row_catalog:
+        return False, "missing_catalog"
+    active_catalog = catalog_source_info()
+    row_hash = str(row_catalog.get("catalog_content_hash") or "")
+    active_hash = str(active_catalog.get("catalog_content_hash") or "")
+    if row_hash and active_hash and row_hash == active_hash:
+        return True, "clean"
+
+    row_semantic = str(row_catalog.get("catalog_semantic_revision") or "")
+    active_semantic = str(active_catalog.get("catalog_semantic_revision") or "")
+    row_revision = str(row_catalog.get("catalog_revision") or "")
+    active_revision = str(active_catalog.get("catalog_revision") or "")
+    if active_semantic:
+        compatible_revisions = CATALOG_SEMANTIC_COMPATIBILITY.get(
+            active_semantic,
+            frozenset({active_revision}),
+        )
+        if row_semantic and row_semantic == active_semantic:
+            return True, "clean"
+        if row_revision in compatible_revisions:
+            return True, "clean"
+
+    if row_revision and active_revision:
+        return (True, "clean") if row_revision == active_revision else (False, "catalog_mismatch")
+    return False, "missing_catalog"
 
 
 class _CatalogHandle:
@@ -460,6 +517,7 @@ _catalog = ModelCatalog(_configs)
 _catalog_path = DEFAULT_CATALOG_PATH.resolve()
 _meta_raw = json.loads(DEFAULT_CATALOG_PATH.read_text(errors="replace")).get("meta") or {}
 _catalog_revision = str(_meta_raw.get("revision", "unknown"))
+_catalog_semantic_revision = str(_meta_raw.get("semantic_revision", "") or "")
 _catalog_content_hash = _compute_content_hash(DEFAULT_CATALOG_PATH)
 MODEL_CATALOG = _CatalogHandle(_catalog)
 

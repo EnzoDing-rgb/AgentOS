@@ -1,7 +1,8 @@
 {
   "meta": {
-    "revision": "2026-06-17-glm51-t2-t3x2",
-    "revision_note": "Diagnostic catalog with GLM-5.1 as T2 and T3/T2 approximately 2x. Native tool_call only. Costs are normalized experimental units, not public provider billing.",
+    "revision": "2026-06-20-deepseek-v4-pro-t2-t3x2",
+    "semantic_revision": "t2-normalized-v1-t3x2",
+    "revision_note": "Diagnostic catalog with DeepSeek V4 Pro as T2 and T3/T2 approximately 2x. Native tool_call only. Costs are normalized experimental units, not public provider billing.",
     "schema_version": "v1"
   },
   "tiers": [
@@ -58,11 +59,11 @@
     {
       "tier": 2,
       "backend": "tier2",
-      "model": "openai/glm-5.1",
+      "model": "openai/deepseek-v4-pro",
       "provider": "openai_compatible",
-      "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-      "api_key_env": "DASHSCOPE_API_KEY",
-      "display": "glm-5.1",
+      "api_base": "https://api.deepseek.com/v1",
+      "api_key_env": "DEEPSEEK_API_KEY",
+      "display": "DeepSeek-V4-Pro",
       "cost_per_input_1m": 0.9,
       "cost_per_output_1m": 4.5,
       "token_cost_bands": [
@@ -83,12 +84,12 @@
       "escalation_patience": 5,
       "max_turns": 35,
       "protocol": "tool_call",
-      "cost_source": "BudgetFlow normalized experimental cost unit for GLM-5.1 T2",
-      "cost_updated": "2026-06-17",
-      "cost_notes": "Virtual experiment units, not public Alibaba Cloud billing. T2 is fixed at approximately 3x T1; real invoices are spend-accounting evidence only.",
-      "progress_source": "BudgetFlow tier-level heuristic prior for GLM-5.1 T2; not outcome-calibrated",
-      "progress_updated": "2026-06-17",
-      "progress_notes": "T2 uses GLM-5.1 while preserving T2 normalized cost semantics. Provider access must pass signature preflight before paid runs."
+      "cost_source": "BudgetFlow normalized experimental cost unit for DeepSeek V4 Pro T2",
+      "cost_updated": "2026-06-20",
+      "cost_notes": "Virtual experiment units, not public provider billing. T2 is fixed at approximately 3x T1; real invoices are spend-accounting evidence only.",
+      "progress_source": "BudgetFlow tier-level heuristic prior for DeepSeek V4 Pro T2; not outcome-calibrated",
+      "progress_updated": "2026-06-20",
+      "progress_notes": "T2 uses DeepSeek V4 Pro while preserving T2 normalized cost semantics. Provider access must pass signature preflight before paid runs."
     },
     {
       "tier": 3,
