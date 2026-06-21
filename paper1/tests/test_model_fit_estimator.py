@@ -52,6 +52,69 @@ def _restore_catalog(original: dict):
 
 
 class TestModelFitEstimation:
+    def test_rejects_raw_value_feature_task_effort_schema(self):
+        """ModelFit consumes normalized compiler features, not raw value matrix schema."""
+        from budgetflow.model_fit_estimator import estimate_model_fit_from_jsonl
+
+        cat = _catalog()
+        records = [
+            {
+                "strategy": "bare_t2_baseline",
+                "instance_id": "task-a",
+                "total_cost": 1.0,
+                "catalog": cat,
+                "score_status": "true_fail",
+                "exit_status": "HarnessFailed",
+                "row_finished_at": 1,
+            },
+        ]
+        catalog_orig = _setup_catalog_test()
+        try:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+                path = Path(f.name)
+            _write_jsonl(path, records)
+
+            with pytest.raises(ValueError, match="not normalized"):
+                estimate_model_fit_from_jsonl(
+                    path,
+                    ["task-a"],
+                    {"task-a": {"task_effort": {"bootstrap_heuristic": 23.35}}},
+                )
+
+            path.unlink()
+        finally:
+            _restore_catalog(catalog_orig)
+
+    def test_model_fit_ignores_retired_row_task_features_effort_fallback(self):
+        """Historical rows may carry task_features, but they are not active ModelFit effort input."""
+        from budgetflow.model_fit_estimator import estimate_model_fit_from_jsonl
+
+        cat = _catalog()
+        records = [
+            {
+                "strategy": "bare_t2_baseline",
+                "instance_id": "task-a",
+                "total_cost": 1.0,
+                "catalog": cat,
+                "score_status": "true_fail",
+                "exit_status": "HarnessFailed",
+                "row_finished_at": 1,
+                "task_features": {"bootstrap_heuristic": 200.0},
+            },
+        ]
+        catalog_orig = _setup_catalog_test()
+        try:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+                path = Path(f.name)
+            _write_jsonl(path, records)
+
+            evidence = estimate_model_fit_from_jsonl(path, ["task-a"], {})
+
+            assert evidence.tier_fit[2] < 0.2
+            path.unlink()
+        finally:
+            _restore_catalog(catalog_orig)
+
     def test_derives_fit_from_completed_rows(self):
         """Clean completed T2 and T3 rows on the same task → per-tier fit derived."""
         from budgetflow.model_fit_estimator import estimate_model_fit_from_jsonl

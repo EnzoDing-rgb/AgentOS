@@ -13,6 +13,7 @@ from ..defaults import (
     progress_table,
     tier_escalation_patience,
 )
+from ..decision_costs import task_level_decision_per_turn_cost
 from ..frozen_router import FrozenRouterPlan
 from ..policies import BudgetOnlyStepRouter, BudgetOnlyT2Router, WorkflowLevelRouter
 from ..policy_backend import BootstrapPolicy, PolicyDecision
@@ -420,6 +421,7 @@ def _task_start_t3_score(
         "planned_task_budget": planned_task_budget,
         "task_budget_headroom": task_budget_headroom,
         "task_budget_headroom_fraction": task_budget_headroom_fraction,
+        "decision_cost_source": "normalized_catalog",
         "rule": "marginal_expected_value_per_dollar",
     }
     return (
@@ -462,13 +464,15 @@ def _choose_task_level_backend(ctx: RoutingContext, expected_costs: dict[str, fl
     # Pre-compute expected total cost for each tier.
     total_costs: dict[str, float] = {}
     for backend in ordered:
-        per_turn = expected_costs.get(backend.name, 0.0)
+        per_turn = task_level_decision_per_turn_cost(backend)
         total_costs[backend.name] = _expected_total_cost(ctx, backend.name, backend.tier, per_turn)
 
     strongest = ModelCatalog.strongest(ctx.backends)
     cost_estimate_available = (
         expected_costs.get(current.name, 0.0) > 0
         and expected_costs.get(strongest.name, 0.0) > 0
+        and total_costs.get(current.name, 0.0) > 0
+        and total_costs.get(strongest.name, 0.0) > 0
     )
     task_start_score, task_start_details = _task_start_t3_score(
         ctx,

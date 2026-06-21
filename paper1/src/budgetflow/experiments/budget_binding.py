@@ -22,6 +22,7 @@ from budgetflow.experiments.compare_setup import PLANNED_TASK_BUDGET_MODE
 
 from ..exit_reasons import record_is_budget_exhausted
 from ..defaults import BUDGET_PRESSURE_INIT, PRESSURE_MAX
+from ..decision_costs import task_level_decision_per_turn_cost
 from ..adapter.strategies import (
     MARGINAL_YIELD_PER_DOLLAR_THRESHOLD,
     TASK_START_EFFORT_MULTIPLIER_MAX,
@@ -51,6 +52,8 @@ BUDGETFLOW_PLANNED_TASK_BUDGET_STRATEGIES = frozenset({
     "budgetflow_task_level",
     "budgetflow_segment",
 })
+DEFAULT_TASK_DIFFICULTY = 30.0
+DEFAULT_TASK_VALUE = 1.0
 
 
 @dataclass
@@ -387,9 +390,12 @@ def calibrate_budget(
                     "cold-start projections use derived fit but are not paper-ready. "
                     "Run more diagnostic calibration before treating as paper evidence."
                 )
-        except Exception:
-            # ModelFit estimation is advisory; never block budget generation.
-            pass
+        except ValueError:
+            raise
+        except (OSError, json.JSONDecodeError, TypeError) as exc:
+            plan.reasons.append(
+                f"calibration:model_fit_evidence_unavailable reason={type(exc).__name__}: {exc}"
+            )
 
     strategy_cal_n: dict[str, int] = {}
     for strategy in strategies:
@@ -1053,21 +1059,23 @@ def _projected_shared_pressure(
 def _task_difficulty_for_projection(task_id: str, value_features: dict[str, dict]) -> float:
     features = value_features.get(task_id, {})
     if not isinstance(features, dict):
-        return 30.0
-    return float(features.get("bootstrap_difficulty", 30.0) or 30.0)
+        return DEFAULT_TASK_DIFFICULTY
+    if isinstance(features.get("task_effort"), dict):
+        raise ValueError(
+            f"value features for {task_id} are not normalized; call _load_value_features first"
+        )
+    return float(features.get("bootstrap_difficulty", DEFAULT_TASK_DIFFICULTY) or DEFAULT_TASK_DIFFICULTY)
 
 
 def _task_value_for_projection(task_id: str, value_features: dict[str, dict]) -> float:
     features = value_features.get(task_id, {})
     if not isinstance(features, dict):
-        return 1.0
-    task_value = features.get("task_value")
-    if isinstance(task_value, dict):
-        if task_value.get("manual_value") is not None:
-            return float(task_value["manual_value"])
-        if task_value.get("equal") is not None:
-            return float(task_value["equal"])
-    return float(features.get("task_value", 1.0) or 1.0) if not isinstance(task_value, dict) else 1.0
+        return DEFAULT_TASK_VALUE
+    if isinstance(features.get("task_value"), dict):
+        raise ValueError(
+            f"value features for {task_id} are not normalized; call _load_value_features first"
+        )
+    return float(features.get("task_value", DEFAULT_TASK_VALUE) or DEFAULT_TASK_VALUE)
 
 
 def _median_task_value_for_projection(value_features: dict[str, dict]) -> float:
@@ -1106,10 +1114,7 @@ def _projection_expected_total_cost(
 def _projection_per_turn_cost(tier: int) -> float:
     for cfg in MODEL_CATALOG.configs:
         if cfg.tier == tier:
-            return (
-                cfg.cost_per_input_token * 2000
-                + cfg.cost_per_output_token * cfg.mean_output_tokens
-            )
+            return task_level_decision_per_turn_cost(cfg)
     return 0.0
 
 
@@ -1437,25 +1442,49 @@ def _row_catalog_compatible(row_catalog: dict) -> tuple[bool, str]:
 
 
 def _load_value_features(value_matrix_path: Path) -> dict[str, dict]:
-    """Extract per-task features from value matrix.
-
-    Reads ``task_effort.bootstrap_heuristic`` (North Star schema) and
-    normalises into a ``bootstrap_difficulty`` key on each entry.
-    """
+    """Extract the compiler's flat per-task value features from value matrix."""
     with value_matrix_path.open() as f:
         matrix = json.load(f)
     tasks = matrix.get("tasks", {})
+    normalized: dict[str, dict] = {}
     for tid, entry in tasks.items():
         if not isinstance(entry, dict):
             continue
         if "bootstrap_difficulty" in entry:
-            continue
+            raise ValueError(
+                f"value matrix task {tid} uses retired bootstrap_difficulty; "
+                "expected task_effort.bootstrap_heuristic"
+            )
+        task_value = DEFAULT_TASK_VALUE
+        tv = entry.get("task_value")
+        if isinstance(tv, dict):
+            if tv.get("manual_value") is not None:
+                task_value = float(tv["manual_value"])
+            elif tv.get("equal") is not None:
+                task_value = float(tv["equal"])
+        elif tv is not None:
+            raise ValueError(
+                f"value matrix task {tid} has non-canonical task_value; "
+                "expected task_value.manual_value or task_value.equal"
+            )
+
+        bootstrap_difficulty = DEFAULT_TASK_DIFFICULTY
         te = entry.get("task_effort")
         if isinstance(te, dict):
             heuristic = te.get("bootstrap_heuristic")
             if heuristic is not None:
-                entry["bootstrap_difficulty"] = float(heuristic)
-    return tasks
+                bootstrap_difficulty = float(heuristic)
+        elif te is not None:
+            raise ValueError(
+                f"value matrix task {tid} has non-canonical task_effort; "
+                "expected task_effort.bootstrap_heuristic"
+            )
+
+        normalized[str(tid)] = {
+            "task_value": task_value,
+            "bootstrap_difficulty": bootstrap_difficulty,
+        }
+    return normalized
 
 
 def _bootstrap_cost_estimate(

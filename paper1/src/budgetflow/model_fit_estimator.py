@@ -14,6 +14,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .decision_costs import task_level_decision_per_turn_cost
 from .exit_reasons import record_is_budget_exhausted
 from .model_tiers import MODEL_CATALOG
 
@@ -306,10 +307,7 @@ def _catalog_per_turn_cost(tier: int) -> float:
                 break
     if config is None:
         return 0.0
-    return (
-        config.cost_per_input_token * 2000
-        + config.cost_per_output_token * config.mean_output_tokens
-    )
+    return task_level_decision_per_turn_cost(config)
 
 
 def _task_effort_for(value_features: dict[str, dict], task_id: str, rec: dict | None = None) -> float:
@@ -318,16 +316,14 @@ def _task_effort_for(value_features: dict[str, dict], task_id: str, rec: dict | 
     if features:
         if "bootstrap_difficulty" in features:
             return float(features["bootstrap_difficulty"])
-        task_effort = features.get("task_effort")
-        if isinstance(task_effort, dict) and task_effort.get("bootstrap_heuristic") is not None:
-            return float(task_effort["bootstrap_heuristic"])
+        if isinstance(features.get("task_effort"), dict):
+            raise ValueError(
+                f"value features for {task_id} are not normalized; call _load_value_features first"
+            )
     if rec is not None:
         row_effort = rec.get("task_effort")
         if row_effort is not None:
             return float(row_effort)
-        row_features = rec.get("task_features")
-        if isinstance(row_features, dict) and row_features.get("bootstrap_heuristic") is not None:
-            return float(row_features["bootstrap_heuristic"])
     return 30.0
 
 

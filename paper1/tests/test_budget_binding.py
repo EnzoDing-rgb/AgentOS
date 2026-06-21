@@ -75,8 +75,8 @@ def test_calibrate_target_utilization_has_no_frozen_plan_input(tmp_path: Path) -
     vm = tmp_path / "vm.json"
     vm.write_text(json.dumps({
         "tasks": {
-            "task-a": {"bootstrap_difficulty": 50.0},
-            "task-b": {"bootstrap_difficulty": 50.0},
+            "task-a": {"task_effort": {"bootstrap_heuristic": 50.0}},
+            "task-b": {"task_effort": {"bootstrap_heuristic": 50.0}},
         }
     }))
     plan = calibrate_budget(
@@ -413,6 +413,52 @@ def test_task_level_projection_uses_runtime_policy_without_model_plan(tmp_path: 
     assert diagnostic["degeneration"] == "mixed"
     assert diagnostic["task_level_model_plan_source"] == "runtime_policy_projection"
     assert not any("task_level_model_plan:" in reason for reason in plan.reasons)
+
+
+def test_value_matrix_schema_is_normalized_at_single_projection_entry(tmp_path: Path) -> None:
+    """Projection helpers consume flat compiler features, not raw value matrix schema."""
+    from budgetflow.experiments.budget_binding import (
+        _load_value_features,
+        _task_difficulty_for_projection,
+        _task_value_for_projection,
+    )
+
+    vm = tmp_path / "vm.json"
+    vm.write_text(json.dumps({
+        "tasks": {
+            "task-a": {
+                "task_value": {"manual_value": 0.73, "equal": 1.0},
+                "task_effort": {
+                    "bootstrap_heuristic": 24.7926,
+                    "source": "task_metadata_formula",
+                },
+            },
+            "task-b": {
+                "task_value": {"equal": 1.0},
+                "task_effort": {"bootstrap_heuristic": 41.0},
+            },
+        }
+    }))
+
+    value_features = _load_value_features(vm)
+
+    assert value_features == {
+        "task-a": {"task_value": 0.73, "bootstrap_difficulty": 24.7926},
+        "task-b": {"task_value": 1.0, "bootstrap_difficulty": 41.0},
+    }
+    assert _task_value_for_projection("task-a", value_features) == pytest.approx(0.73)
+    assert _task_difficulty_for_projection("task-a", value_features) == pytest.approx(24.7926)
+    assert _task_difficulty_for_projection("missing", value_features) == pytest.approx(30.0)
+
+    with pytest.raises(ValueError, match="not normalized"):
+        _task_difficulty_for_projection(
+            "raw-task",
+            {"raw-task": {"task_effort": {"bootstrap_heuristic": 24.7926}}},
+        )
+    with pytest.raises(ValueError, match="retired bootstrap_difficulty"):
+        old_vm = tmp_path / "old-vm.json"
+        old_vm.write_text(json.dumps({"tasks": {"old-task": {"bootstrap_difficulty": 24.7926}}}))
+        _load_value_features(old_vm)
 
 
 def test_small_historical_sample_cannot_collapse_large_workload_cap(tmp_path: Path) -> None:
