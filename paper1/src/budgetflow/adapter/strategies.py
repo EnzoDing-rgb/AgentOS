@@ -28,6 +28,7 @@ MARGINAL_YIELD_PER_DOLLAR_THRESHOLD = 1.0
 TASK_START_PRESSURE_THRESHOLD_MULTIPLIER = 0.5
 TASK_START_EFFORT_MULTIPLIER_MIN = 0.5
 TASK_START_EFFORT_MULTIPLIER_MAX = 2.0
+TASK_START_T3_ACCEPTANCE_MARGIN = 0.10
 
 @dataclass
 class RoutingContext:
@@ -284,6 +285,16 @@ def _strongest_price_ratio(ctx: RoutingContext, reference: Backend, strongest: B
     return max(1.0, input_ratio, output_ratio)
 
 
+def task_start_t3_acceptance_threshold(base_threshold: float) -> float:
+    """Return the robust T3-start threshold above the break-even frontier.
+
+    Task-start routing consumes estimated ModelFit and per-turn cost. A small
+    ambiguity band prevents near-threshold forecast noise from turning a
+    value-aware router into a fixed Strongest Model run.
+    """
+    return float(base_threshold) * (1.0 + TASK_START_T3_ACCEPTANCE_MARGIN)
+
+
 def _expected_total_cost(
     ctx: RoutingContext,
     backend_name: str,
@@ -367,6 +378,7 @@ def _task_start_t3_score(
         * price_ratio
         * (1.0 + TASK_START_PRESSURE_THRESHOLD_MULTIPLIER * pressure_penalty)
     )
+    acceptance_threshold = task_start_t3_acceptance_threshold(threshold)
     planned_task_budget = (
         float(allocation.planned_task_budget)
         if allocation is not None and allocation.planned_task_budget is not None
@@ -403,6 +415,8 @@ def _task_start_t3_score(
         "extra_cost_ratio": extra_cost_ratio,
         "marginal_yield_per_dollar": marginal_yield if marginal_yield != float("inf") else 999999.0,
         "budget_pressure_threshold": threshold,
+        "t3_acceptance_threshold": acceptance_threshold,
+        "t3_acceptance_margin": TASK_START_T3_ACCEPTANCE_MARGIN,
         "planned_task_budget": planned_task_budget,
         "task_budget_headroom": task_budget_headroom,
         "task_budget_headroom_fraction": task_budget_headroom_fraction,
@@ -466,7 +480,7 @@ def _choose_task_level_backend(ctx: RoutingContext, expected_costs: dict[str, fl
     if (
         task_start_score >= 0.0
         and float(task_start_details["marginal_yield_per_dollar"])
-        >= float(task_start_details["budget_pressure_threshold"])
+        >= float(task_start_details["t3_acceptance_threshold"])
     ):
         current = strongest
         current_score = task_start_score

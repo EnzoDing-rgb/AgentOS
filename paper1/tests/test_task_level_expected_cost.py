@@ -638,6 +638,65 @@ class TestChooseTaskLevelBackend:
             scores["expected_value_gain"] * scores["effort_multiplier"] / scores["extra_unit_cost"]
         )
 
+    def test_near_boundary_marginal_yield_stays_t2(self):
+        """Near-threshold T3 starts stay on T2 instead of flipping on cost noise."""
+        from budgetflow.adapter.strategies import choose_backend
+
+        alloc = _trusted_allocation(
+            task_value=0.67,
+            task_effort=20.3949,
+            planned_task_budget=2.3246,
+            model_fit={"tier2": 0.261034, "tier3": 0.541978},
+        )
+        backends = _backends(t2_progress=0.24, t3_progress=0.25)
+        ctx = _task_level_ctx(
+            backends,
+            budget_pressure=0.01,
+            median_task_value=0.68,
+            allocation=alloc,
+        )
+
+        backend = choose_backend(
+            ctx,
+            _turn(),
+            {"tier2": 0.0056493, "tier3": 0.0282465},
+        )
+
+        assert backend.tier == 2
+        assert ctx.last_policy_decision is not None
+        scores = ctx.last_policy_decision.scores
+        assert scores["marginal_yield_per_dollar"] > scores["budget_pressure_threshold"]
+        assert scores["marginal_yield_per_dollar"] < scores["t3_acceptance_threshold"]
+
+    def test_decisive_marginal_yield_still_starts_t3(self):
+        """A clear T3 opportunity still starts on T3 after the ambiguity band."""
+        from budgetflow.adapter.strategies import choose_backend
+
+        alloc = _trusted_allocation(
+            task_value=0.67,
+            task_effort=24.7926,
+            planned_task_budget=3.4289,
+            model_fit={"tier2": 0.261034, "tier3": 0.541978},
+        )
+        backends = _backends(t2_progress=0.24, t3_progress=0.25)
+        ctx = _task_level_ctx(
+            backends,
+            budget_pressure=0.08823291505893546,
+            median_task_value=0.68,
+            allocation=alloc,
+        )
+
+        backend = choose_backend(
+            ctx,
+            _turn(),
+            {"tier2": 0.0057186, "tier3": 0.028593},
+        )
+
+        assert backend.tier == 3
+        assert ctx.last_policy_decision is not None
+        scores = ctx.last_policy_decision.scores
+        assert scores["marginal_yield_per_dollar"] >= scores["t3_acceptance_threshold"]
+
     def test_marginal_yield_per_dollar_stays_t2_when_value_gain_is_small(self):
         """Low-value tasks stay T2 when T3's extra cost buys little expected value."""
         from budgetflow.adapter.strategies import choose_backend, _expected_total_cost

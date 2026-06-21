@@ -92,10 +92,27 @@ def test_host_dependency_contamination_halts_all() -> None:
     assert g.is_aborted()
 
 
-def test_task_level_all_t2_degeneracy_halts_all() -> None:
-    g = CompareRunGuards(task_level_tier_mix_min_rows=3)
+def test_task_level_short_prefix_does_not_trigger_degeneracy_guard() -> None:
+    g = CompareRunGuards(task_level_tier_mix_min_rows=5)
     action = GuardAction()
     for i in range(3):
+        action = g.record_task(
+            {
+                "strategy": "budgetflow_task_level",
+                "instance_id": f"task-{i}",
+                "score_status": "true_fail",
+                "backend_picks": ["tier3", "tier3"],
+            }
+        )
+
+    assert not action.halt_all
+    assert not g.is_aborted()
+
+
+def test_task_level_all_t2_degeneracy_halts_all() -> None:
+    g = CompareRunGuards(task_level_tier_mix_min_rows=5)
+    action = GuardAction()
+    for i in range(5):
         action = g.record_task(
             {
                 "strategy": "budgetflow_task_level",
@@ -110,7 +127,7 @@ def test_task_level_all_t2_degeneracy_halts_all() -> None:
 
 
 def test_task_level_t3_use_satisfies_mechanism_guard() -> None:
-    g = CompareRunGuards(task_level_tier_mix_min_rows=3)
+    g = CompareRunGuards(task_level_tier_mix_min_rows=5)
     records = [
         {"strategy": "budgetflow_task_level", "score_status": "true_fail", "backend_picks": ["tier2"]},
         {"strategy": "budgetflow_task_level", "score_status": "true_fail", "backend_picks": ["tier3"]},
@@ -125,9 +142,9 @@ def test_task_level_t3_use_satisfies_mechanism_guard() -> None:
 
 
 def test_task_level_all_t3_degeneracy_halts_all() -> None:
-    g = CompareRunGuards(task_level_tier_mix_min_rows=3)
+    g = CompareRunGuards(task_level_tier_mix_min_rows=5)
     action = GuardAction()
-    for i in range(3):
+    for i in range(5):
         action = g.record_task(
             {
                 "strategy": "budgetflow_task_level",

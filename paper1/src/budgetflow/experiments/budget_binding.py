@@ -27,6 +27,7 @@ from ..adapter.strategies import (
     TASK_START_EFFORT_MULTIPLIER_MAX,
     TASK_START_EFFORT_MULTIPLIER_MIN,
     TASK_START_PRESSURE_THRESHOLD_MULTIPLIER,
+    task_start_t3_acceptance_threshold,
 )
 from ..model_fit_estimator import ModelFitEvidence, estimate_model_fit_from_jsonl
 from ..model_tiers import (
@@ -1014,7 +1015,7 @@ def _project_task_level_choice_cost(
         _projection_price_ratio(2, strongest_tier)
         * (1.0 + TASK_START_PRESSURE_THRESHOLD_MULTIPLIER * max(0.0, budget_pressure))
     )
-    if budget_allows and fit_gain > 0 and marginal_yield >= threshold:
+    if budget_allows and fit_gain > 0 and marginal_yield >= task_start_t3_acceptance_threshold(threshold):
         return strongest_tier, strongest_cost
     return 2, reference_cost
 
