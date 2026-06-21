@@ -43,13 +43,6 @@ class AllocationContext:
     planned_task_budget: float | None = None
     """Optional BudgetFlow-only task spend boundary compiled before runtime."""
 
-    task_level_preferred_model: str | None = None
-    """Optional compiler-selected model tier for task-level BudgetFlow.
-
-    This is a task-start routing decision, not a segment/window directive. When
-    present, runtime fixes the task to this model for the whole task.
-    """
-
     # Confidence per input
     confidence: dict[str, str] = field(default_factory=dict)
 
@@ -88,7 +81,6 @@ class AllocationContext:
             "effort_source": self.effort_source,
             "budget_source": self.budget_source,
             "planned_task_budget": self.planned_task_budget,
-            "task_level_preferred_model": self.task_level_preferred_model,
             "has_model_fit": self.has_model_fit,
             "has_trusted_model_fit": self.has_trusted_model_fit,
             "model_fit_confidence": self.confidence.get("model_fit", "none"),

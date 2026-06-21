@@ -677,7 +677,9 @@ def test_readiness_warns_budgetflow_under_target_pressure_contract(tmp_path) -> 
         '"task_ids":["task-a"],'
         '"strategy_names":["budgetflow_task_level"],'
         '"planned_task_budget_by_strategy":{"budgetflow_task_level":{"task-a":0.8}},'
-        '"task_level_model_plan_by_strategy":{"budgetflow_task_level":{"task-a":"tier2"}},'
+        '"projection_diagnostics":{"budgetflow_task_level":{'
+        '"degeneration":"mixed","projected_tier_counts":{"tier2":1,"tier3":1},'
+        '"projected_strongest_task_fraction":0.5}},'
         '"projected_utilization_by_strategy":{"budgetflow_task_level":0.36},'
         '"pressure_contract":{"grade":"warn","violations":["budgetflow_under_target: budgetflow_task_level at 36.0% < 85%"]}}'
     )
@@ -729,7 +731,7 @@ def test_readiness_blocks_task_level_projected_pure_reference_degeneration(tmp_p
     )
 
     assert not report.ok
-    assert any("budgetflow_task_level_degenerated" in issue for issue in report.blocking)
+    assert any("pure_reference_tier" in issue for issue in report.blocking)
 
 
 def test_readiness_blocks_task_level_projected_pure_strongest_degeneration(tmp_path) -> None:
@@ -762,7 +764,7 @@ def test_readiness_blocks_task_level_projected_pure_strongest_degeneration(tmp_p
     )
 
     assert not report.ok
-    assert any("budgetflow_task_level_degenerated" in issue for issue in report.blocking)
+    assert any("pure_strongest_tier" in issue for issue in report.blocking)
 
 
 def test_readiness_blocks_budget_plan_superset_for_short_run(tmp_path) -> None:

@@ -485,26 +485,23 @@ def build_compare_readiness_report(
                 strategy.name for strategy in strategies if strategy.routing == "value_aware_task_level"
             ]
             if task_level_strategy_names:
-                task_level_model_plans = bp.get("task_level_model_plan_by_strategy")
-                for strategy_name in task_level_strategy_names:
-                    plan_for_strategy = (
-                        task_level_model_plans.get(strategy_name)
-                        if isinstance(task_level_model_plans, dict)
-                        else None
+                projection_diagnostics = bp.get("projection_diagnostics")
+                task_diag = (
+                    projection_diagnostics.get("budgetflow_task_level")
+                    if isinstance(projection_diagnostics, dict)
+                    else None
+                )
+                if not isinstance(task_diag, dict):
+                    blocking.append(
+                        "BudgetFlow task-level strategy is missing runtime projection diagnostics; "
+                        "regenerate the budget plan with the current Budget Regime Compiler"
                     )
-                    if not isinstance(plan_for_strategy, dict) or not plan_for_strategy:
+                else:
+                    degeneration = str(task_diag.get("degeneration") or "")
+                    if degeneration in {"pure_reference_tier", "pure_strongest_tier"}:
                         blocking.append(
-                            f"BudgetFlow task-level strategy {strategy_name} is missing "
-                            "task_level_model_plan_by_strategy; regenerate the budget plan"
-                        )
-                        continue
-                    missing_plan = [task_id for task_id in task_ids if task_id not in plan_for_strategy]
-                    if missing_plan:
-                        preview = ", ".join(missing_plan[:8])
-                        suffix = "" if len(missing_plan) <= 8 else f", ... +{len(missing_plan) - 8} more"
-                        blocking.append(
-                            f"budget plan task-level model plan for {strategy_name} "
-                            f"is missing selected tasks: {preview}{suffix}"
+                            f"BudgetFlow task-level runtime projection degenerates to {degeneration}; "
+                            "fix ModelFit/value/cost calibration before paid run"
                         )
 
             active_revision = active_catalog_revision

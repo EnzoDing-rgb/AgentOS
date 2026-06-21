@@ -18,6 +18,7 @@ from budgetflow.experiments.compare_setup import (
     load_tasks_for_compare,
     resolve_budget_plan,
     resolve_task_count,
+    select_stage_batch_tasks,
     select_strategies,
     trace_console_from_args,
     validate_paper_mainline_budget_contract,
@@ -106,6 +107,52 @@ def test_trace_console_priority() -> None:
     assert trace_console_from_args(_args()) == "milestones"
     assert trace_console_from_args(_args(trace_quiet=True)) == "quiet"
     assert trace_console_from_args(_args(trace_quiet=True, trace_verbose=True)) == "verbose"
+
+
+def test_select_stage_batch_tasks_caps_each_strategy_by_completed_prefix() -> None:
+    tasks = [SimpleNamespace(instance_id=f"task-{index:02d}") for index in range(30)]
+    completed = {("budgetflow_task_level", f"task-{index:02d}") for index in range(10)}
+
+    selected = select_stage_batch_tasks(
+        tasks,
+        strategy_name="budgetflow_task_level",
+        completed=completed,
+        max_tasks_per_strategy=20,
+    )
+
+    assert [task.instance_id for task in selected] == [f"task-{index:02d}" for index in range(10, 20)]
+
+
+def test_select_stage_batch_tasks_retries_uncompleted_gaps_before_advancing() -> None:
+    tasks = [SimpleNamespace(instance_id=f"task-{index:02d}") for index in range(12)]
+    completed = {
+        ("budgetflow_task_level", "task-00"),
+        ("budgetflow_task_level", "task-01"),
+        ("budgetflow_task_level", "task-03"),
+    }
+
+    selected = select_stage_batch_tasks(
+        tasks,
+        strategy_name="budgetflow_task_level",
+        completed=completed,
+        max_tasks_per_strategy=5,
+    )
+
+    assert [task.instance_id for task in selected] == ["task-02", "task-04"]
+
+
+def test_select_stage_batch_tasks_returns_empty_when_stage_already_reached() -> None:
+    tasks = [SimpleNamespace(instance_id=f"task-{index:02d}") for index in range(12)]
+    completed = {("bare_t3_baseline", f"task-{index:02d}") for index in range(10)}
+
+    selected = select_stage_batch_tasks(
+        tasks,
+        strategy_name="bare_t3_baseline",
+        completed=completed,
+        max_tasks_per_strategy=10,
+    )
+
+    assert selected == []
 
 
 def test_3x3_selects_mechanism_isolation_strategies_and_parallel_jobs() -> None:

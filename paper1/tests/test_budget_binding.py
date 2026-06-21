@@ -333,16 +333,50 @@ def test_task_level_projection_diagnostic_uses_compiled_budget_without_rewriting
 
     assert task_budget > t3_cost
     assert cap_generation_task_level < t3_cost
-    assert plan.projected_spend_by_strategy["budgetflow_task_level"] == pytest.approx(t3_cost, rel=1e-4)
-    assert diagnostic["projected_tier_counts"]["tier3"] == 1
-    assert diagnostic["projected_spend_usd"] == pytest.approx(t3_cost, rel=1e-4)
+    assert plan.projected_spend_by_strategy["budgetflow_task_level"] == pytest.approx(
+        plan.projected_task_cost_by_strategy["bare_t2_baseline"]["task-a"],
+        rel=1e-4,
+    )
+    assert diagnostic["projected_tier_counts"]["tier2"] == 1
+    assert diagnostic["projected_spend_usd"] == pytest.approx(
+        plan.projected_task_cost_by_strategy["bare_t2_baseline"]["task-a"],
+        rel=1e-4,
+    )
     assert diagnostic["role"] == "readiness_diagnostic_not_cap_source"
     assert any("task_level_policy_projection" in reason for reason in plan.reasons)
     assert any("runtime_projection: budgetflow_task_level" in reason for reason in plan.reasons)
 
 
-def test_task_level_model_plan_allocates_strongest_by_batch_uplift(tmp_path: Path) -> None:
-    """Workload-level ModelFit cannot make every task Strongest by itself."""
+def test_task_level_projection_uses_runtime_policy_without_model_plan(tmp_path: Path) -> None:
+    """The compiler mirrors runtime policy for diagnostics but does not assign tiers."""
+    catalog = catalog_source_info()
+    jsonl = tmp_path / "hist.jsonl"
+    rows = []
+    for index in range(8):
+        rows.append(_trusted({
+            "strategy": "bare_t2_baseline",
+            "instance_id": f"cal-t2-{index}",
+            "total_cost": 1.97,
+            "task_effort": 80.0,
+            "budget_mode": "shared_batch_hard_budget",
+            "catalog": catalog,
+            "score_status": "pass",
+            "exit_status": "HarnessResolved",
+            "row_finished_at": index + 1,
+        }))
+        rows.append(_trusted({
+            "strategy": "bare_t3_baseline",
+            "instance_id": f"cal-t3-{index}",
+            "total_cost": 4.75,
+            "task_effort": 80.0,
+            "budget_mode": "shared_batch_hard_budget",
+            "catalog": catalog,
+            "score_status": "pass",
+            "exit_status": "HarnessResolved",
+            "row_finished_at": index + 1,
+        }))
+    jsonl.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
+
     vm = tmp_path / "vm.json"
     vm.write_text(json.dumps({
         "tasks": {
@@ -367,24 +401,18 @@ def test_task_level_model_plan_allocates_strongest_by_batch_uplift(tmp_path: Pat
 
     plan = calibrate_budget(
         ["task-a", "task-b", "task-c", "task-d"],
+        historical_jsonl=jsonl,
         value_matrix_path=vm,
         strategies=("bare_t2_baseline", "bare_t3_baseline", "budgetflow_task_level"),
         target_utilization=1.0,
     )
 
-    model_plan = plan.task_level_model_plan_by_strategy["budgetflow_task_level"]
-    counts = {
-        model: sum(1 for value in model_plan.values() if value == model)
-        for model in set(model_plan.values())
-    }
     diagnostic = plan.projection_diagnostics["budgetflow_task_level"]
 
-    assert counts["tier3"] == 1
-    assert counts["tier2"] == 3
-    assert diagnostic["projected_tier_counts"] == {"tier2": 3, "tier3": 1}
+    assert "task_level_model_plan_by_strategy" not in plan.to_dict()
     assert diagnostic["degeneration"] == "mixed"
-    assert diagnostic["task_level_model_plan_source"] == "budget_compiler_batch_uplift_rank"
-    assert any("task_level_model_plan:" in reason for reason in plan.reasons)
+    assert diagnostic["task_level_model_plan_source"] == "runtime_policy_projection"
+    assert not any("task_level_model_plan:" in reason for reason in plan.reasons)
 
 
 def test_small_historical_sample_cannot_collapse_large_workload_cap(tmp_path: Path) -> None:

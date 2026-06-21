@@ -208,6 +208,31 @@ def load_tasks_for_compare(args: Namespace, *, tasks_n: int) -> list:
     return list(tasks)
 
 
+def select_stage_batch_tasks(
+    tasks: list,
+    *,
+    strategy_name: str,
+    completed: set[tuple[str, str]],
+    max_tasks_per_strategy: int | None,
+) -> list:
+    """Return the not-yet-completed task slice for a staged diagnostic run.
+
+    The selected task list remains the full experiment contract.  This helper
+    only limits how far each policy may advance in the current execution stage.
+    """
+    if max_tasks_per_strategy is None:
+        return [task for task in tasks if (strategy_name, task.instance_id) not in completed]
+    if max_tasks_per_strategy <= 0:
+        raise ValueError("max_tasks_per_strategy must be positive")
+
+    staged_prefix = tasks[:max_tasks_per_strategy]
+    return [
+        task
+        for task in staged_prefix
+        if (strategy_name, task.instance_id) not in completed
+    ]
+
+
 def build_batch_budget_modes(
     *,
     strategies: tuple[CompareStrategy, ...],

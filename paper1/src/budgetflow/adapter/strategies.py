@@ -26,6 +26,8 @@ TASK_BUDGET_STRONGEST_FIT_FRACTION = 1.0
 # absolute veto.
 MARGINAL_YIELD_PER_DOLLAR_THRESHOLD = 1.0
 TASK_START_PRESSURE_THRESHOLD_MULTIPLIER = 0.5
+TASK_START_EFFORT_MULTIPLIER_MIN = 0.5
+TASK_START_EFFORT_MULTIPLIER_MAX = 2.0
 
 @dataclass
 class RoutingContext:
@@ -137,24 +139,6 @@ def _backend_by_tier(backends: list[Backend], tier: int) -> Backend:
 def _task_level_reference_backend(backends: list[Backend]) -> Backend:
     ordered = sorted(backends, key=lambda backend: backend.tier)
     return next((backend for backend in ordered if backend.tier == 2), ModelCatalog.second_cheapest(ordered))
-
-
-def _task_level_planned_backend(ctx: RoutingContext) -> Backend | None:
-    allocation = ctx.allocation
-    preferred = (
-        str(allocation.task_level_preferred_model).strip().lower()
-        if allocation is not None and allocation.task_level_preferred_model
-        else ""
-    )
-    if not preferred:
-        return None
-    if preferred.startswith("tier") and preferred[4:].isdigit():
-        tier = int(preferred[4:])
-        return _backend_by_tier(ctx.backends, tier)
-    return next(
-        (backend for backend in ctx.backends if backend.name.lower() == preferred),
-        None,
-    )
 
 
 def _budgetflow_max_tier(ctx: RoutingContext, stage: Stage) -> int:
@@ -280,6 +264,26 @@ def _task_effort_units(ctx: RoutingContext) -> float:
     return 1.0
 
 
+def _task_start_effort_multiplier(ctx: RoutingContext, effort_units: float) -> float:
+    """Bounded need multiplier: harder tasks justify stronger-tier starts sooner."""
+    reference = (
+        float(ctx.tier_frontier.reference_runway_turns)
+        if ctx.tier_frontier is not None
+        else 35.0
+    )
+    reference = max(1.0, reference)
+    return max(
+        TASK_START_EFFORT_MULTIPLIER_MIN,
+        min(TASK_START_EFFORT_MULTIPLIER_MAX, effort_units / reference),
+    )
+
+
+def _strongest_price_ratio(ctx: RoutingContext, reference: Backend, strongest: Backend) -> float:
+    input_ratio = strongest.cost_per_input_token / max(reference.cost_per_input_token, 0.000001)
+    output_ratio = strongest.cost_per_output_token / max(reference.cost_per_output_token, 0.000001)
+    return max(1.0, input_ratio, output_ratio)
+
+
 def _expected_total_cost(
     ctx: RoutingContext,
     backend_name: str,
@@ -339,7 +343,8 @@ def _task_start_t3_score(
         fraction=TASK_BUDGET_STRONGEST_FIT_FRACTION,
     )
     reference_fit = _tier_model_fit_rate(ctx, reference.tier, reference.name)
-    strongest_fit = _tier_model_fit_rate(ctx, ModelCatalog.strongest(ctx.backends).tier, ModelCatalog.strongest(ctx.backends).name)
+    strongest = ModelCatalog.strongest(ctx.backends)
+    strongest_fit = _tier_model_fit_rate(ctx, strongest.tier, strongest.name)
     fit_gain = max(0.0, strongest_fit - reference_fit)
     extra_expected_cost = max(0.0, strongest_total_cost - reference_total_cost)
     extra_cost_ratio = max(
@@ -350,13 +355,16 @@ def _task_start_t3_score(
     reference_unit_cost = reference_total_cost / max(effort_units, 0.000001)
     strongest_unit_cost = strongest_total_cost / max(effort_units, 0.000001)
     extra_unit_cost = max(0.0, strongest_unit_cost - reference_unit_cost)
+    effort_multiplier = _task_start_effort_multiplier(ctx, effort_units)
     if strongest_total_cost <= reference_total_cost:
         marginal_yield = float("inf") if fit_gain > 0 else 0.0
     else:
-        marginal_yield = task_value * fit_gain / max(extra_unit_cost, 0.000001)
+        marginal_yield = task_value * fit_gain * effort_multiplier / max(extra_unit_cost, 0.000001)
+    price_ratio = _strongest_price_ratio(ctx, reference, strongest)
     threshold = (
         MARGINAL_YIELD_PER_DOLLAR_THRESHOLD
         * median
+        * price_ratio
         * (1.0 + TASK_START_PRESSURE_THRESHOLD_MULTIPLIER * pressure_penalty)
     )
     planned_task_budget = (
@@ -390,6 +398,8 @@ def _task_start_t3_score(
         "strongest_unit_cost": strongest_unit_cost,
         "extra_unit_cost": extra_unit_cost,
         "expected_value_gain": expected_value_gain,
+        "effort_multiplier": effort_multiplier,
+        "strongest_price_ratio": price_ratio,
         "extra_cost_ratio": extra_cost_ratio,
         "marginal_yield_per_dollar": marginal_yield if marginal_yield != float("inf") else 999999.0,
         "budget_pressure_threshold": threshold,
@@ -422,27 +432,6 @@ def _choose_task_level_backend(ctx: RoutingContext, expected_costs: dict[str, fl
             branch="value_aware_task_level",
         )
         return backend
-
-    planned_backend = _task_level_planned_backend(ctx)
-    if planned_backend is not None:
-        ctx.task_level_backend = planned_backend
-        ctx.last_decision = RouterDecision(
-            backend=planned_backend,
-            reason="bf_task_fixed_budget_plan_model",
-            scores={planned_backend.name: 1.0},
-            pressure=ctx.budget_pressure,
-            branch="value_aware_task_level",
-        )
-        if ctx.bootstrap_policy is not None:
-            ctx.last_policy_decision = PolicyDecision(
-                backend=planned_backend.name,
-                reason="task_level_fixed_budget_plan_model",
-                scores={
-                    "task_level_preferred_model": planned_backend.name,
-                    "task_level_preferred_tier": planned_backend.tier,
-                },
-            )
-        return planned_backend
 
     max_tier = _task_level_max_tier(ctx)
     # Current task-level policy chooses one model for the task from the active

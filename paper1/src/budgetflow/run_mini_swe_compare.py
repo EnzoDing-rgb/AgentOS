@@ -68,6 +68,7 @@ from budgetflow.experiments.compare_setup import (  # noqa: E402
     resolve_budget_plan,
     resolve_task_count,
     select_strategies,
+    select_stage_batch_tasks,
     trace_console_from_args,
     validate_paper_mainline_budget_contract,
 )
@@ -178,6 +179,8 @@ def main() -> None:
     if args.resume:
         args.append = True
         args.skip_completed = True
+    if args.max_tasks_per_strategy is not None and args.max_tasks_per_strategy <= 0:
+        raise SystemExit("--max-tasks-per-strategy must be a positive integer")
 
     tasks_n = resolve_task_count(args)
     budget_plan = resolve_budget_plan(args)
@@ -210,7 +213,6 @@ def main() -> None:
     _frontier = TierFrontier.from_catalog()
     _budget_plan_data: dict | None = None
     planned_task_caps_by_strategy: dict[str, dict[str, float]] = {}
-    task_level_model_plan_by_strategy: dict[str, dict[str, str]] = {}
     budget_plan_path = Path(args.budget_plan) if getattr(args, "budget_plan", None) else None
     if budget_plan_path is not None and budget_plan_path.exists():
         import json as _json
@@ -225,17 +227,6 @@ def main() -> None:
                 }
                 for strategy, caps in raw_planned_caps.items()
                 if isinstance(caps, dict)
-            }
-        raw_task_level_model_plans = _budget_plan_data.get("task_level_model_plan_by_strategy") or {}
-        if isinstance(raw_task_level_model_plans, dict):
-            task_level_model_plan_by_strategy = {
-                str(strategy): {
-                    str(task_id): str(model)
-                    for task_id, model in plan.items()
-                    if model
-                }
-                for strategy, plan in raw_task_level_model_plans.items()
-                if isinstance(plan, dict)
             }
     calibrated_model_fit, calibrated_model_fit_source, calibrated_model_fit_confidence = calibrated_model_fit_from_budget_plan(
         budget_plan_path
@@ -420,6 +411,11 @@ def main() -> None:
             flush=True,
         )
     print(f"{dim('trace_console=' + trace_console + '; heartbeat every ' + str(args.heartbeat) + 's')}", flush=True)
+    if args.max_tasks_per_strategy is not None:
+        print(
+            f"{dim('stage_cap=max_tasks_per_strategy=' + str(args.max_tasks_per_strategy) + '/' + str(len(tasks)))}",
+            flush=True,
+        )
     print(f"{dim('run_id=' + out_stem)}", flush=True)
     print(f"{dim('out=' + str(out_path))}", flush=True)
     print(f"{dim('checkpoint=' + str(checkpoint_path))}", flush=True)
@@ -522,12 +518,28 @@ def main() -> None:
             batch_cap = _batch_budget_cap(cfg, budget_input["hard_cap_usd"])
             return cfg, [], resume_scoreable_spend.get(cfg.name, 0.0) if args.resume else 0.0, batch_cap
         batch_cap = _batch_budget_cap(cfg, budget_input["hard_cap_usd"])
-        batch_tasks = list(tasks)
-        if completed:
-            batch_tasks = [t for t in tasks if (cfg.name, t.instance_id) not in completed]
-            if not batch_tasks:
+        batch_tasks = select_stage_batch_tasks(
+            tasks,
+            strategy_name=cfg.name,
+            completed=completed,
+            max_tasks_per_strategy=args.max_tasks_per_strategy,
+        )
+        if not batch_tasks:
+            if args.max_tasks_per_strategy is not None:
+                print(
+                    f"{tag('skip', bold=False)} strategy={cfg.name} "
+                    f"stage target {args.max_tasks_per_strategy}/{len(tasks)} already reached",
+                    flush=True,
+                )
+            else:
                 print(f"{tag('skip', bold=False)} strategy={cfg.name} all tasks already done", flush=True)
-                return cfg, [], 0.0, batch_cap
+            return cfg, [], 0.0, batch_cap
+        if args.max_tasks_per_strategy is not None:
+            print(
+                f"{tag('stage', bold=False)} strategy={cfg.name} running {len(batch_tasks)} "
+                f"remaining task(s) toward {args.max_tasks_per_strategy}/{len(tasks)}",
+                flush=True,
+            )
         initial_spent = resume_scoreable_spend.get(cfg.name, 0.0) if args.resume else 0.0
 
         def _on_task(record: dict) -> None:
@@ -590,7 +602,6 @@ def main() -> None:
             task_set_kind=task_set_kind,
             frozen_plan=frozen_plan,
             budget_mode=_eff_budget_mode,
-            task_level_model_plan=task_level_model_plan_by_strategy.get(cfg.name),
             calibrated_model_fit=calibrated_model_fit,
             calibrated_model_fit_source=calibrated_model_fit_source,
             calibrated_model_fit_confidence=calibrated_model_fit_confidence,

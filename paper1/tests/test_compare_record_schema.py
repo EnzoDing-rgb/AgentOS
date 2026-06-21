@@ -2,6 +2,8 @@ import json
 import threading
 from types import SimpleNamespace
 
+import pytest
+
 from budgetflow.compare_checkpoint import CompareCheckpointStore, GlobalRunProgress, StrategyScoreboard
 from budgetflow.experiments.compare_persistence import (
     CompareRunState,
@@ -11,7 +13,7 @@ from budgetflow.experiments.compare_persistence import (
 )
 from budgetflow.experiments.compare_config import CompareStrategy
 from budgetflow.experiments.compare_execution import run_strategy_batch, run_task_record
-from budgetflow.experiments.compare_execution import _effective_planned_task_cap
+from budgetflow.experiments.compare_execution import _effective_planned_task_cap, _shared_batch_pressure
 from budgetflow.experiments.compare_summary import (
     _append_summary,
     _format_live_snapshot,
@@ -674,6 +676,27 @@ def test_effective_planned_task_cap_uses_plan_until_shared_budget_is_tighter() -
     assert first_cap == pytest.approx(0.8)
     assert later_cap == pytest.approx(0.8)
     assert final_cap == pytest.approx(0.5)
+
+
+def test_planned_task_budget_uses_shared_batch_pressure() -> None:
+    assert _shared_batch_pressure(
+        batch_budget_cap=10.0,
+        shared_spent=0.0,
+        init=0.01,
+        pressure_max=1.0,
+    ) == pytest.approx(0.01)
+    assert _shared_batch_pressure(
+        batch_budget_cap=10.0,
+        shared_spent=5.0,
+        init=0.01,
+        pressure_max=1.0,
+    ) == pytest.approx(0.505)
+    assert _shared_batch_pressure(
+        batch_budget_cap=10.0,
+        shared_spent=20.0,
+        init=0.01,
+        pressure_max=1.0,
+    ) == pytest.approx(1.0)
 
 
 def test_run_strategy_batch_planned_caps_require_all_selected_tasks() -> None:

@@ -217,8 +217,8 @@ class TestExpectedTotalCost:
 
 
 class TestChooseTaskLevelBackend:
-    def test_budget_plan_preferred_model_fixes_task_level_backend(self):
-        """Compiler task-level model plan wins at task start and stays fixed."""
+    def test_task_level_runtime_decision_is_not_compiler_assigned(self):
+        """Task-level routing uses runtime AllocationContext signals."""
         from budgetflow.adapter.strategies import choose_backend
 
         alloc = _trusted_allocation(
@@ -226,19 +226,17 @@ class TestChooseTaskLevelBackend:
             task_effort=80.0,
             planned_task_budget=10000.0,
             model_fit={"tier2": 0.08, "tier3": 0.65},
-            task_level_preferred_model="tier2",
         )
         backends = _backends(t2_progress=0.08, t3_progress=0.65)
         ctx = _task_level_ctx(backends, budget_pressure=0.01, allocation=alloc)
 
         backend = choose_backend(ctx, _turn(), _runtime_like_costs())
 
-        assert backend.tier == 2
+        assert backend.tier == 3
         assert ctx.task_level_backend is backend
         assert ctx.last_decision is not None
-        assert ctx.last_decision.reason == "bf_task_fixed_budget_plan_model"
         assert ctx.last_policy_decision is not None
-        assert ctx.last_policy_decision.reason == "task_level_fixed_budget_plan_model"
+        assert ctx.last_policy_decision.reason != "task_level_fixed_budget_plan_model"
 
     def test_chooses_t3_when_t2_total_cost_exceeds_t3(self):
         """Core fix: when T2 expected total cost > T3, task-level chooses T3."""
@@ -559,14 +557,8 @@ class TestChooseTaskLevelBackend:
         assert backend.tier == 2
         assert ctx.last_policy_decision.scores["budget_allows_strongest"] == 0.0
 
-    def test_planned_task_budget_can_frontload_t3_despite_small_fit_delta(self):
-        """Regression for 4x25: task budget runway must affect task-start tier choice.
-
-        The failed run had workload fit tier2=0.81/tier3=0.85. The old marginal
-        Yield/$ formula treated that tiny delta as a reason to pick T2 for every
-        task, even when the pre-registered per-task budget could afford the
-        Strongest Model expected total cost.
-        """
+    def test_planned_task_budget_does_not_override_small_fit_delta(self):
+        """Task runway is necessary but not enough to buy Strongest Model turns."""
         from budgetflow.adapter.strategies import choose_backend
 
         alloc = _trusted_allocation(
@@ -581,10 +573,14 @@ class TestChooseTaskLevelBackend:
 
         backend = choose_backend(ctx, _turn(), per_turn)
 
-        assert backend.tier == 3
+        assert backend.tier == 2
         assert ctx.last_policy_decision is not None
         assert ctx.last_policy_decision.scores["budget_allows_strongest"] == 1.0
         assert ctx.last_policy_decision.scores["planned_task_budget"] == pytest.approx(6.4057)
+        assert (
+            ctx.last_policy_decision.scores["marginal_yield_per_dollar"]
+            < ctx.last_policy_decision.scores["budget_pressure_threshold"]
+        )
 
     def test_marginal_yield_per_dollar_can_choose_t3_when_t3_costs_more(self):
         """High-value tasks can choose T3 by marginal Yield/$, not only cost dominance."""
@@ -639,7 +635,7 @@ class TestChooseTaskLevelBackend:
         assert scores["marginal_yield_per_dollar"] > scores["budget_pressure_threshold"]
         assert scores["extra_expected_cost"] == pytest.approx(t3_total - t2_total)
         assert scores["marginal_yield_per_dollar"] == pytest.approx(
-            scores["expected_value_gain"] / scores["extra_unit_cost"]
+            scores["expected_value_gain"] * scores["effort_multiplier"] / scores["extra_unit_cost"]
         )
 
     def test_marginal_yield_per_dollar_stays_t2_when_value_gain_is_small(self):
@@ -694,7 +690,7 @@ class TestChooseTaskLevelBackend:
         assert choose_backend(high_ctx, _turn(), per_turn).tier == 3
         assert low_ctx.last_policy_decision is not None
         assert high_ctx.last_policy_decision is not None
-        assert high_ctx.last_policy_decision.scores["marginal_yield_per_dollar"] == pytest.approx(
+        assert high_ctx.last_policy_decision.scores["marginal_yield_per_dollar"] > (
             low_ctx.last_policy_decision.scores["marginal_yield_per_dollar"]
         )
         assert high_ctx.last_policy_decision.scores["extra_expected_cost"] > (

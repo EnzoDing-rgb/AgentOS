@@ -55,6 +55,15 @@ def parse_compare_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--skip-completed", action="store_true", help="with --append, skip completed pairs")
     parser.add_argument("--resume", action="store_true", help="continue run from JSONL/checkpoint state")
     parser.add_argument(
+        "--max-tasks-per-strategy",
+        type=int,
+        default=None,
+        help=(
+            "diagnostic staged run: keep the full selected task contract but stop each "
+            "strategy after N completed tasks in that order"
+        ),
+    )
+    parser.add_argument(
         "--repair",
         action="store_true",
         help="acknowledge sibling-fragmented series and target latest stem for repair",
