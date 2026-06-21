@@ -124,6 +124,24 @@ def test_task_level_t3_use_satisfies_mechanism_guard() -> None:
     assert not g.is_aborted()
 
 
+def test_task_level_all_t3_degeneracy_halts_all() -> None:
+    g = CompareRunGuards(task_level_tier_mix_min_rows=3)
+    action = GuardAction()
+    for i in range(3):
+        action = g.record_task(
+            {
+                "strategy": "budgetflow_task_level",
+                "instance_id": f"task-{i}",
+                "score_status": "true_fail",
+                "backend_picks": ["tier3", "tier3"],
+            }
+        )
+
+    assert action.halt_all
+    assert "fixed_tier=T3" in action.reason
+    assert "degenerated into a fixed-tier run" in action.reason
+
+
 def test_pytest_rootdir_under_runtime_worktree_does_not_halt_all() -> None:
     g = CompareRunGuards()
     action = g.record_task(

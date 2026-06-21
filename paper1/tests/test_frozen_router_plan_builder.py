@@ -30,10 +30,13 @@ def test_build_router_only_plan_uses_value_effort_without_budget_caps() -> None:
 
     assert plan["meta"]["name"] == "unit_router"
     assert plan["meta"]["preferred_model_rule"] == (
-        "tier3 if manual_value>=0.95 or bootstrap_effort>=300 else tier2"
+        "tier3 for the top one-third by 0.5*manual_value_percentile "
+        "+ 0.5*bootstrap_effort_percentile; tier2 otherwise"
     )
-    assert plan["plan"]["easy"] == {"preferred_model": "tier2", "priority": 70}
-    assert plan["plan"]["high_value"] == {"preferred_model": "tier3", "priority": 96}
-    assert plan["plan"]["high_effort"] == {"preferred_model": "tier3", "priority": 75}
+    assert plan["plan"]["easy"]["preferred_model"] == "tier2"
+    assert plan["plan"]["high_value"]["preferred_model"] == "tier3"
+    assert plan["plan"]["high_effort"]["preferred_model"] == "tier3"
+    assert plan["plan"]["high_value"]["priority"] > plan["plan"]["easy"]["priority"]
+    assert plan["plan"]["high_effort"]["priority"] > plan["plan"]["easy"]["priority"]
     assert "hard_cap_usd" not in plan["meta"]
     assert "base_cap" not in plan["plan"]["easy"]

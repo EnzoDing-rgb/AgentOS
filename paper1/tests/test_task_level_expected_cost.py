@@ -217,6 +217,29 @@ class TestExpectedTotalCost:
 
 
 class TestChooseTaskLevelBackend:
+    def test_budget_plan_preferred_model_fixes_task_level_backend(self):
+        """Compiler task-level model plan wins at task start and stays fixed."""
+        from budgetflow.adapter.strategies import choose_backend
+
+        alloc = _trusted_allocation(
+            task_value=2.0,
+            task_effort=80.0,
+            planned_task_budget=10000.0,
+            model_fit={"tier2": 0.08, "tier3": 0.65},
+            task_level_preferred_model="tier2",
+        )
+        backends = _backends(t2_progress=0.08, t3_progress=0.65)
+        ctx = _task_level_ctx(backends, budget_pressure=0.01, allocation=alloc)
+
+        backend = choose_backend(ctx, _turn(), _runtime_like_costs())
+
+        assert backend.tier == 2
+        assert ctx.task_level_backend is backend
+        assert ctx.last_decision is not None
+        assert ctx.last_decision.reason == "bf_task_fixed_budget_plan_model"
+        assert ctx.last_policy_decision is not None
+        assert ctx.last_policy_decision.reason == "task_level_fixed_budget_plan_model"
+
     def test_chooses_t3_when_t2_total_cost_exceeds_t3(self):
         """Core fix: when T2 expected total cost > T3, task-level chooses T3."""
         from budgetflow.adapter.strategies import choose_backend, _expected_total_cost

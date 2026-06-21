@@ -328,15 +328,63 @@ def test_task_level_projection_diagnostic_uses_compiled_budget_without_rewriting
 
     task_budget = plan.planned_task_budget_by_strategy["budgetflow_task_level"]["task-a"]
     t3_cost = plan.projected_task_cost_by_strategy["bare_t3_baseline"]["task-a"]
-    cap_generation_task_level = plan.projected_spend_by_strategy["budgetflow_task_level"]
+    cap_generation_task_level = plan.cap_generation_projected_spend_by_strategy["budgetflow_task_level"]
     diagnostic = plan.projection_diagnostics["budgetflow_task_level"]
 
     assert task_budget > t3_cost
     assert cap_generation_task_level < t3_cost
+    assert plan.projected_spend_by_strategy["budgetflow_task_level"] == pytest.approx(t3_cost, rel=1e-4)
     assert diagnostic["projected_tier_counts"]["tier3"] == 1
     assert diagnostic["projected_spend_usd"] == pytest.approx(t3_cost, rel=1e-4)
     assert diagnostic["role"] == "readiness_diagnostic_not_cap_source"
     assert any("task_level_policy_projection" in reason for reason in plan.reasons)
+    assert any("runtime_projection: budgetflow_task_level" in reason for reason in plan.reasons)
+
+
+def test_task_level_model_plan_allocates_strongest_by_batch_uplift(tmp_path: Path) -> None:
+    """Workload-level ModelFit cannot make every task Strongest by itself."""
+    vm = tmp_path / "vm.json"
+    vm.write_text(json.dumps({
+        "tasks": {
+            "task-a": {
+                "task_value": {"manual_value": 0.60},
+                "task_effort": {"bootstrap_heuristic": 20.0},
+            },
+            "task-b": {
+                "task_value": {"manual_value": 0.70},
+                "task_effort": {"bootstrap_heuristic": 40.0},
+            },
+            "task-c": {
+                "task_value": {"manual_value": 0.80},
+                "task_effort": {"bootstrap_heuristic": 60.0},
+            },
+            "task-d": {
+                "task_value": {"manual_value": 0.90},
+                "task_effort": {"bootstrap_heuristic": 80.0},
+            },
+        }
+    }))
+
+    plan = calibrate_budget(
+        ["task-a", "task-b", "task-c", "task-d"],
+        value_matrix_path=vm,
+        strategies=("bare_t2_baseline", "bare_t3_baseline", "budgetflow_task_level"),
+        target_utilization=1.0,
+    )
+
+    model_plan = plan.task_level_model_plan_by_strategy["budgetflow_task_level"]
+    counts = {
+        model: sum(1 for value in model_plan.values() if value == model)
+        for model in set(model_plan.values())
+    }
+    diagnostic = plan.projection_diagnostics["budgetflow_task_level"]
+
+    assert counts["tier3"] == 1
+    assert counts["tier2"] == 3
+    assert diagnostic["projected_tier_counts"] == {"tier2": 3, "tier3": 1}
+    assert diagnostic["degeneration"] == "mixed"
+    assert diagnostic["task_level_model_plan_source"] == "budget_compiler_batch_uplift_rank"
+    assert any("task_level_model_plan:" in reason for reason in plan.reasons)
 
 
 def test_small_historical_sample_cannot_collapse_large_workload_cap(tmp_path: Path) -> None:
@@ -440,6 +488,41 @@ def test_calibrate_reuses_current_catalog_historical_cost_without_repricing(tmp_
     assert plan.max_projected_spend_usd == 0.25
     assert any("strongest_boundary" in reason for reason in plan.reasons)
     assert not any("clipped" in reason for reason in plan.reasons)
+
+
+def test_enterprise_router_projection_uses_frozen_preferred_model_mix(tmp_path: Path) -> None:
+    vm = tmp_path / "vm.json"
+    vm.write_text(json.dumps({
+        "tasks": {
+            "task-a": {"task_effort": {"bootstrap_heuristic": 30.0}},
+            "task-b": {"task_effort": {"bootstrap_heuristic": 30.0}},
+        }
+    }))
+    frozen_plan = tmp_path / "frozen.json"
+    frozen_plan.write_text(json.dumps({
+        "meta": {"name": "unit_router"},
+        "plan": {
+            "task-a": {"preferred_model": "tier2", "priority": 10},
+            "task-b": {"preferred_model": "tier3", "priority": 90},
+        },
+    }))
+
+    plan = calibrate_budget(
+        ["task-a", "task-b"],
+        value_matrix_path=vm,
+        frozen_plan_path=frozen_plan,
+        strategies=("bare_t2_baseline", "bare_t3_baseline", "enterprise_router_baseline"),
+        target_utilization=1.0,
+    )
+
+    expected = (
+        plan.projected_task_cost_by_strategy["bare_t2_baseline"]["task-a"]
+        + plan.projected_task_cost_by_strategy["bare_t3_baseline"]["task-b"]
+    )
+
+    assert plan.projected_spend_by_strategy["enterprise_router_baseline"] == pytest.approx(expected)
+    assert "hard_cap_usd" not in json.loads(frozen_plan.read_text())["meta"]
+    assert any("enterprise_router_projection uses frozen preferred_model mix" in reason for reason in plan.reasons)
 
 
 def test_calibrate_uses_budget_exhausted_rows_as_floor_not_observed_sample(tmp_path: Path) -> None:
@@ -777,6 +860,31 @@ def test_pressure_contract_flags_task_level_pure_reference_degeneration() -> Non
             "degeneration": "pure_reference_tier",
             "projected_tier_counts": {"tier2": 25},
             "projected_strongest_task_fraction": 0.0,
+        }
+    }
+
+    _build_pressure_contract(plan, ("bare_t2_baseline", "bare_t3_baseline", "budgetflow_task_level"))
+
+    assert plan.pressure_contract["grade"] == "warn"
+    assert any("budgetflow_task_level_degenerated" in v for v in plan.pressure_contract["violations"])
+
+
+def test_pressure_contract_flags_task_level_pure_strongest_degeneration() -> None:
+    plan = BudgetBindingPlan(
+        hard_cap_usd=10.0,
+        generation_mode="target_utilization",
+        target_projected_utilization=0.80,
+    )
+    plan.projected_utilization_by_strategy = {
+        "bare_t2_baseline": 0.40,
+        "bare_t3_baseline": 0.90,
+        "budgetflow_task_level": 0.90,
+    }
+    plan.projection_diagnostics = {
+        "budgetflow_task_level": {
+            "degeneration": "pure_strongest_tier",
+            "projected_tier_counts": {"tier3": 25},
+            "projected_strongest_task_fraction": 1.0,
         }
     }
 

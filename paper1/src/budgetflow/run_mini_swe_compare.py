@@ -210,6 +210,7 @@ def main() -> None:
     _frontier = TierFrontier.from_catalog()
     _budget_plan_data: dict | None = None
     planned_task_caps_by_strategy: dict[str, dict[str, float]] = {}
+    task_level_model_plan_by_strategy: dict[str, dict[str, str]] = {}
     budget_plan_path = Path(args.budget_plan) if getattr(args, "budget_plan", None) else None
     if budget_plan_path is not None and budget_plan_path.exists():
         import json as _json
@@ -224,6 +225,17 @@ def main() -> None:
                 }
                 for strategy, caps in raw_planned_caps.items()
                 if isinstance(caps, dict)
+            }
+        raw_task_level_model_plans = _budget_plan_data.get("task_level_model_plan_by_strategy") or {}
+        if isinstance(raw_task_level_model_plans, dict):
+            task_level_model_plan_by_strategy = {
+                str(strategy): {
+                    str(task_id): str(model)
+                    for task_id, model in plan.items()
+                    if model
+                }
+                for strategy, plan in raw_task_level_model_plans.items()
+                if isinstance(plan, dict)
             }
     calibrated_model_fit, calibrated_model_fit_source, calibrated_model_fit_confidence = calibrated_model_fit_from_budget_plan(
         budget_plan_path
@@ -578,6 +590,7 @@ def main() -> None:
             task_set_kind=task_set_kind,
             frozen_plan=frozen_plan,
             budget_mode=_eff_budget_mode,
+            task_level_model_plan=task_level_model_plan_by_strategy.get(cfg.name),
             calibrated_model_fit=calibrated_model_fit,
             calibrated_model_fit_source=calibrated_model_fit_source,
             calibrated_model_fit_confidence=calibrated_model_fit_confidence,

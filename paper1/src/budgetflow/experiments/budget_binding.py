@@ -48,6 +48,7 @@ BUDGETFLOW_PLANNED_TASK_BUDGET_STRATEGIES = frozenset({
     "budgetflow_task_level",
     "budgetflow_segment",
 })
+BUDGETFLOW_TASK_LEVEL_STRONGEST_TRANCHE_FRACTION = 1.0 / 3.0
 
 
 @dataclass
@@ -83,6 +84,7 @@ class BudgetBindingPlan:
     model_fit_evidence: dict | None = None
     planned_task_budget_by_strategy: dict[str, dict[str, float]] = field(default_factory=dict)
     planned_task_budget_policy: dict[str, Any] = field(default_factory=dict)
+    task_level_model_plan_by_strategy: dict[str, dict[str, str]] = field(default_factory=dict)
     projection_diagnostics: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
@@ -139,6 +141,11 @@ class BudgetBindingPlan:
                 for strategy, caps in self.planned_task_budget_by_strategy.items()
             }
             d["planned_task_budget_policy"] = dict(self.planned_task_budget_policy)
+        if self.task_level_model_plan_by_strategy:
+            d["task_level_model_plan_by_strategy"] = {
+                strategy: dict(plan)
+                for strategy, plan in self.task_level_model_plan_by_strategy.items()
+            }
         if self.projection_diagnostics:
             d["projection_diagnostics"] = self.projection_diagnostics
         return d
@@ -175,6 +182,7 @@ class BudgetBindingPlan:
             model_fit_evidence=d.get("model_fit_evidence"),
             planned_task_budget_by_strategy=d.get("planned_task_budget_by_strategy", {}),
             planned_task_budget_policy=d.get("planned_task_budget_policy", {}),
+            task_level_model_plan_by_strategy=d.get("task_level_model_plan_by_strategy", {}),
             projection_diagnostics=d.get("projection_diagnostics", {}),
         )
 
@@ -250,6 +258,7 @@ def calibrate_budget(
     *,
     historical_jsonl: Path | None = None,
     value_matrix_path: Path | None = None,
+    frozen_plan_path: Path | None = None,
     strategies: tuple[str, ...] | None = None,
     output_path: Path | None = None,
     target_utilization: float | None = None,
@@ -331,6 +340,7 @@ def calibrate_budget(
     value_features: dict[str, dict] = {}
     if value_matrix_path and value_matrix_path.exists():
         value_features = _load_value_features(value_matrix_path)
+    frozen_preferred_models = _load_frozen_preferred_models(frozen_plan_path) if frozen_plan_path else {}
 
     # ── Derive ModelFit from clean historical evidence ──────────────────
     fit_overrides: dict[int, float] | None = None
@@ -407,6 +417,7 @@ def calibrate_budget(
             historical.get(strategy, {}),
             censored_task_costs_by_strategy.get(strategy, {}),
             fit_overrides=fit_overrides,
+            frozen_preferred_models=frozen_preferred_models if strategy == "enterprise_router_baseline" else None,
             audit_reasons=plan.reasons,
         )
         projected_task_costs[strategy] = task_costs
@@ -491,8 +502,7 @@ def calibrate_budget(
             "derived from projected task costs; sums may exceed hard_cap and runtime "
             "still enforces the shared batch hard cap"
         )
-
-    plan.projection_diagnostics = _build_projection_diagnostics(
+    plan.task_level_model_plan_by_strategy = _build_task_level_model_plans(
         strategies,
         task_ids,
         value_features,
@@ -501,6 +511,19 @@ def calibrate_budget(
         planned_task_budgets=plan.planned_task_budget_by_strategy.get("budgetflow_task_level", {}),
         audit_reasons=plan.reasons,
     )
+
+    plan.projection_diagnostics = _build_projection_diagnostics(
+        strategies,
+        task_ids,
+        value_features,
+        projected_task_costs,
+        fit_overrides=fit_overrides,
+        planned_task_budgets=plan.planned_task_budget_by_strategy.get("budgetflow_task_level", {}),
+        task_level_model_plan=plan.task_level_model_plan_by_strategy.get("budgetflow_task_level", {}),
+        audit_reasons=plan.reasons,
+    )
+    _apply_runtime_projection_diagnostics(plan, projected_task_costs)
+    projected = plan.projected_spend_by_strategy
 
     for strategy in strategies:
         spend = projected.get(strategy, 0.0)
@@ -789,6 +812,7 @@ def _build_projection_diagnostics(
     *,
     fit_overrides: dict[int, float] | None,
     planned_task_budgets: dict[str, float],
+    task_level_model_plan: dict[str, str] | None = None,
     audit_reasons: list[str] | None = None,
 ) -> dict[str, Any]:
     if "budgetflow_task_level" not in strategies or not planned_task_budgets:
@@ -809,6 +833,7 @@ def _build_projection_diagnostics(
             strongest_cost=float(strongest_costs.get(task_id, 0.0) or 0.0),
             planned_task_budget=float(planned_task_budgets.get(task_id, 0.0) or 0.0),
             fit_overrides=fit_overrides,
+            preferred_model=(task_level_model_plan or {}).get(task_id),
         )
         chosen[tier] = chosen.get(tier, 0) + 1
         task_costs[task_id] = cost
@@ -839,11 +864,160 @@ def _build_projection_diagnostics(
             "strongest_spend_usd": round(t3_spend, 4),
             "projected_to_reference_spend_ratio": round(projected_spend / t2_spend, 4) if t2_spend > 0 else None,
             "projected_to_strongest_spend_ratio": round(projected_spend / t3_spend, 4) if t3_spend > 0 else None,
-            "degeneration": "pure_reference_tier" if strongest_count == 0 else "mixed_or_strongest",
+            "degeneration": (
+                "pure_reference_tier"
+                if strongest_count == 0
+                else "pure_strongest_tier" if strongest_count == len(task_ids) else "mixed"
+            ),
+            "task_level_model_plan_source": (
+                "budget_compiler_batch_uplift_rank"
+                if task_level_model_plan
+                else "runtime_policy_projection"
+            ),
             "task_choices": task_choices,
         }
     }
     return diagnostic
+
+
+def _build_task_level_model_plans(
+    strategies: tuple[str, ...],
+    task_ids: list[str],
+    value_features: dict[str, dict],
+    projected_task_costs: dict[str, dict[str, float]],
+    *,
+    fit_overrides: dict[int, float] | None,
+    planned_task_budgets: dict[str, float],
+    audit_reasons: list[str] | None = None,
+) -> dict[str, dict[str, str]]:
+    if "budgetflow_task_level" not in strategies or not planned_task_budgets:
+        return {}
+    reference_costs = projected_task_costs.get("bare_t2_baseline", {})
+    strongest_costs = projected_task_costs.get("bare_t3_baseline", {})
+    if not reference_costs or not strongest_costs or len(task_ids) <= 1:
+        return {}
+
+    candidates: list[tuple[float, str]] = []
+    for task_id in task_ids:
+        if float(strongest_costs.get(task_id, 0.0) or 0.0) <= 0:
+            continue
+        if float(planned_task_budgets.get(task_id, 0.0) or 0.0) <= 0:
+            continue
+        score = _task_level_strongest_uplift_score(
+            task_id,
+            value_features,
+            reference_cost=float(reference_costs.get(task_id, 0.0) or 0.0),
+            strongest_cost=float(strongest_costs.get(task_id, 0.0) or 0.0),
+            planned_task_budget=float(planned_task_budgets.get(task_id, 0.0) or 0.0),
+            fit_overrides=fit_overrides,
+        )
+        candidates.append((score, task_id))
+
+    if not candidates:
+        return {}
+    strongest_slots = max(1, round(len(task_ids) * BUDGETFLOW_TASK_LEVEL_STRONGEST_TRANCHE_FRACTION))
+    strongest_slots = min(strongest_slots, len(candidates), len(task_ids) - 1)
+    ranked = sorted(candidates, key=lambda item: (item[0], item[1]), reverse=True)
+    strongest_task_ids = {task_id for _score, task_id in ranked[:strongest_slots]}
+    plan = {
+        task_id: ("tier3" if task_id in strongest_task_ids else "tier2")
+        for task_id in task_ids
+    }
+    if audit_reasons is not None:
+        audit_reasons.append(
+            "task_level_model_plan: budget_compiler_batch_uplift_rank "
+            f"tier3={len(strongest_task_ids)} tier2={len(task_ids) - len(strongest_task_ids)} "
+            f"strongest_tranche_fraction={BUDGETFLOW_TASK_LEVEL_STRONGEST_TRANCHE_FRACTION:.3f}"
+        )
+    return {"budgetflow_task_level": plan}
+
+
+def _task_level_strongest_uplift_score(
+    task_id: str,
+    value_features: dict[str, dict],
+    *,
+    reference_cost: float,
+    strongest_cost: float,
+    planned_task_budget: float,
+    fit_overrides: dict[int, float] | None,
+) -> float:
+    task_value = _task_value_for_projection(task_id, value_features)
+    reference_fit = _projection_tier_fit(2, fit_overrides)
+    strongest_tier = max((cfg.tier for cfg in MODEL_CATALOG.configs), default=3)
+    strongest_fit = _projection_tier_fit(strongest_tier, fit_overrides)
+    fit_gain = max(0.0, strongest_fit - reference_fit)
+    effort_units = _task_difficulty_for_projection(task_id, value_features)
+    reference_decision_cost = _projection_expected_total_cost(
+        tier=2,
+        effort_units=effort_units,
+        fit=reference_fit,
+    )
+    strongest_decision_cost = _projection_expected_total_cost(
+        tier=strongest_tier,
+        effort_units=effort_units,
+        fit=strongest_fit,
+    )
+    if planned_task_budget <= 0 or strongest_decision_cost > planned_task_budget:
+        return float("-inf")
+    extra_unit_cost = max(
+        0.000001,
+        (strongest_decision_cost - reference_decision_cost) / max(effort_units, 0.000001),
+    )
+    cost_saving = max(0.0, reference_cost - strongest_cost)
+    return task_value * fit_gain / extra_unit_cost + cost_saving
+
+
+def _load_frozen_preferred_models(frozen_plan_path: Path | None) -> dict[str, str]:
+    if frozen_plan_path is None:
+        return {}
+    from budgetflow.frozen_router import load_frozen_plan
+
+    frozen_plan = load_frozen_plan(frozen_plan_path)
+    return {
+        task_id: entry.preferred_model
+        for task_id, entry in frozen_plan.plan.items()
+    }
+
+
+def _apply_runtime_projection_diagnostics(
+    plan: BudgetBindingPlan,
+    projected_task_costs: dict[str, dict[str, float]],
+) -> None:
+    """Promote runtime-choice projections into the main projected spend table.
+
+    ``cap_generation_projected_spend_by_strategy`` preserves the raw cost
+    estimates used to pick the shared hard cap.  After planned task budgets are
+    known, BudgetFlow task-level has a more precise runtime-choice projection.
+    Readiness and later audits should read that final strategy projection from
+    ``projected_spend_by_strategy`` rather than a cap-source placeholder.
+    """
+    bf_diag = (plan.projection_diagnostics or {}).get("budgetflow_task_level")
+    if not isinstance(bf_diag, dict):
+        return
+    projected_spend = bf_diag.get("projected_spend_usd")
+    try:
+        final_spend = float(projected_spend)
+    except (TypeError, ValueError):
+        return
+    if final_spend < 0:
+        return
+
+    plan.projected_spend_by_strategy["budgetflow_task_level"] = final_spend
+    task_choices = bf_diag.get("task_choices")
+    if isinstance(task_choices, dict) and task_choices:
+        projected_task_costs["budgetflow_task_level"] = {
+            str(task_id): float(choice.get("projected_cost_usd") or 0.0)
+            for task_id, choice in task_choices.items()
+            if isinstance(choice, dict)
+        }
+        plan.projected_task_cost_by_strategy["budgetflow_task_level"] = projected_task_costs[
+            "budgetflow_task_level"
+        ]
+    plan.reasons.append(
+        "runtime_projection: budgetflow_task_level projected_spend_by_strategy "
+        "uses task-level runtime-choice diagnostic; cap_generation_projected_spend "
+        "keeps the pre-routing cap source"
+    )
 
 
 def _project_task_level_choice_cost(
@@ -854,6 +1028,7 @@ def _project_task_level_choice_cost(
     strongest_cost: float,
     planned_task_budget: float,
     fit_overrides: dict[int, float] | None,
+    preferred_model: str | None = None,
 ) -> tuple[int, float]:
     """Compiler-side mirror of task-start T2/T3 choice for cost projection.
 
@@ -869,11 +1044,16 @@ def _project_task_level_choice_cost(
         return 3, strongest_cost
     if strongest_cost <= 0:
         return 2, reference_cost
+    strongest_tier = max((cfg.tier for cfg in MODEL_CATALOG.configs), default=3)
+    preferred = str(preferred_model or "").strip().lower()
+    if preferred == "tier2":
+        return 2, reference_cost
+    if preferred == f"tier{strongest_tier}":
+        return strongest_tier, strongest_cost
 
     task_value = _task_value_for_projection(task_id, value_features)
     median = _median_task_value_for_projection(value_features)
     reference_fit = _projection_tier_fit(2, fit_overrides)
-    strongest_tier = max((cfg.tier for cfg in MODEL_CATALOG.configs), default=3)
     strongest_fit = _projection_tier_fit(strongest_tier, fit_overrides)
     fit_gain = max(0.0, strongest_fit - reference_fit)
     effort_units = _task_difficulty_for_projection(task_id, value_features)
@@ -1016,6 +1196,11 @@ def _build_pressure_contract(
             violations.append(
                 "budgetflow_task_level_degenerated: projected task-level policy uses "
                 "zero Strongest Model tasks under compiled task budgets"
+            )
+        elif degeneration == "pure_strongest_tier":
+            violations.append(
+                "budgetflow_task_level_degenerated: projected task-level policy uses "
+                "only Strongest Model tasks under compiled task budgets"
             )
         else:
             assertions.append(
@@ -1339,6 +1524,7 @@ def _project_strategy_task_costs(
     censored_costs: dict[str, float],
     *,
     fit_overrides: dict[int, float] | None = None,
+    frozen_preferred_models: dict[str, str] | None = None,
     audit_reasons: list[str] | None = None,
 ) -> dict[str, float]:
     scale = _strategy_effort_scale(
@@ -1351,7 +1537,16 @@ def _project_strategy_task_costs(
     )
     projected: dict[str, float] = {}
     for task_id in task_ids:
-        baseline = _bootstrap_cost_estimate(task_id, strategy, value_features, fit_overrides=fit_overrides) * scale
+        projection_strategy = _projection_strategy_for_frozen_model(
+            frozen_preferred_models.get(task_id) if frozen_preferred_models else None,
+            fallback_strategy=strategy,
+        )
+        baseline = _bootstrap_cost_estimate(
+            task_id,
+            projection_strategy,
+            value_features,
+            fit_overrides=fit_overrides,
+        ) * scale
         observed = observed_costs.get(task_id)
         if observed is not None and observed > 0:
             projected[task_id] = observed
@@ -1364,7 +1559,29 @@ def _project_strategy_task_costs(
             projected[task_id] = censored + baseline
             continue
         projected[task_id] = baseline
+    if frozen_preferred_models and audit_reasons is not None:
+        counts: dict[str, int] = {}
+        for task_id in task_ids:
+            model = frozen_preferred_models.get(task_id, "missing")
+            counts[model] = counts.get(model, 0) + 1
+        audit_reasons.append(
+            "calibration:enterprise_router_projection uses frozen preferred_model mix "
+            + ", ".join(f"{model}={count}" for model, count in sorted(counts.items()))
+        )
     return projected
+
+
+def _projection_strategy_for_frozen_model(preferred_model: str | None, *, fallback_strategy: str) -> str:
+    if not preferred_model:
+        return fallback_strategy
+    model = str(preferred_model).strip().lower()
+    if model == "tier1":
+        return "bare_t1_baseline"
+    if model == "tier2":
+        return "bare_t2_baseline"
+    if model == "tier3":
+        return "bare_t3_baseline"
+    return fallback_strategy
 
 
 def _strategy_effort_scale(
@@ -1490,6 +1707,7 @@ def _build_parser() -> argparse.ArgumentParser:
     calibrate.add_argument("--task-ids", required=True, help="comma-separated selected task ids")
     calibrate.add_argument("--strategy-set", default=None, help="strategy-set JSON; default is paper mainline")
     calibrate.add_argument("--value-matrix", default=None, help="value matrix JSON")
+    calibrate.add_argument("--frozen-plan", default=None, help="optional frozen router plan for static-router cost projection")
     calibrate.add_argument("--model-catalog", default=None, help="model tier catalog JSON")
     calibrate.add_argument("--historical-jsonl", default=None, help="optional clean historical JSONL")
     calibrate.add_argument(
@@ -1521,6 +1739,7 @@ def main(argv: list[str] | None = None) -> int:
             _parse_task_ids(args.task_ids),
             historical_jsonl=Path(args.historical_jsonl) if args.historical_jsonl else None,
             value_matrix_path=Path(args.value_matrix) if args.value_matrix else None,
+            frozen_plan_path=Path(args.frozen_plan) if args.frozen_plan else None,
             strategies=_strategy_names_from_set(args.strategy_set),
             output_path=Path(args.output),
             target_utilization=args.target_utilization,

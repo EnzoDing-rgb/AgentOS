@@ -481,6 +481,32 @@ def build_compare_readiness_report(
                                 f"are missing selected tasks: {preview}{suffix}"
                             )
 
+            task_level_strategy_names = [
+                strategy.name for strategy in strategies if strategy.routing == "value_aware_task_level"
+            ]
+            if task_level_strategy_names:
+                task_level_model_plans = bp.get("task_level_model_plan_by_strategy")
+                for strategy_name in task_level_strategy_names:
+                    plan_for_strategy = (
+                        task_level_model_plans.get(strategy_name)
+                        if isinstance(task_level_model_plans, dict)
+                        else None
+                    )
+                    if not isinstance(plan_for_strategy, dict) or not plan_for_strategy:
+                        blocking.append(
+                            f"BudgetFlow task-level strategy {strategy_name} is missing "
+                            "task_level_model_plan_by_strategy; regenerate the budget plan"
+                        )
+                        continue
+                    missing_plan = [task_id for task_id in task_ids if task_id not in plan_for_strategy]
+                    if missing_plan:
+                        preview = ", ".join(missing_plan[:8])
+                        suffix = "" if len(missing_plan) <= 8 else f", ... +{len(missing_plan) - 8} more"
+                        blocking.append(
+                            f"budget plan task-level model plan for {strategy_name} "
+                            f"is missing selected tasks: {preview}{suffix}"
+                        )
+
             active_revision = active_catalog_revision
             if active_catalog_path is None:
                 blocking.append("active model tier catalog is not initialized")

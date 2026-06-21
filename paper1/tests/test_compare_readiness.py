@@ -677,6 +677,7 @@ def test_readiness_warns_budgetflow_under_target_pressure_contract(tmp_path) -> 
         '"task_ids":["task-a"],'
         '"strategy_names":["budgetflow_task_level"],'
         '"planned_task_budget_by_strategy":{"budgetflow_task_level":{"task-a":0.8}},'
+        '"task_level_model_plan_by_strategy":{"budgetflow_task_level":{"task-a":"tier2"}},'
         '"projected_utilization_by_strategy":{"budgetflow_task_level":0.36},'
         '"pressure_contract":{"grade":"warn","violations":["budgetflow_under_target: budgetflow_task_level at 36.0% < 85%"]}}'
     )
@@ -712,6 +713,39 @@ def test_readiness_blocks_task_level_projected_pure_reference_degeneration(tmp_p
         '"projected_strongest_task_fraction":0.0}},'
         '"pressure_contract":{"grade":"warn","violations":['
         '"budgetflow_task_level_degenerated: projected task-level policy uses zero Strongest Model tasks under compiled task budgets"]}}'
+    )
+    value_context = ValueEfficiencyContext()
+    value_context.init(value_profile="equal")
+
+    report = build_compare_readiness_report(
+        args=_args(),
+        tasks=[SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",))],
+        strategies=(CompareStrategy("budgetflow_task_level", "value_aware_task_level"),),
+        policy_jobs=1,
+        value_context=value_context,
+        catalog_issues=[],
+        runtime_root=Path("/tmp/budgetflow-runtime"),
+        budget_plan_path=bp,
+    )
+
+    assert not report.ok
+    assert any("budgetflow_task_level_degenerated" in issue for issue in report.blocking)
+
+
+def test_readiness_blocks_task_level_projected_pure_strongest_degeneration(tmp_path) -> None:
+    bp = tmp_path / "budget_plan.json"
+    bp.write_text(
+        '{"hard_cap_usd":1.0,"source":"budget_binding_calibrator","decision":"PASS",'
+        '"generation_mode":"target_utilization",'
+        '"task_ids":["task-a"],'
+        '"strategy_names":["budgetflow_task_level"],'
+        '"planned_task_budget_by_strategy":{"budgetflow_task_level":{"task-a":0.8}},'
+        '"projected_utilization_by_strategy":{"budgetflow_task_level":0.90},'
+        '"projection_diagnostics":{"budgetflow_task_level":{'
+        '"degeneration":"pure_strongest_tier","projected_tier_counts":{"tier3":1},'
+        '"projected_strongest_task_fraction":1.0}},'
+        '"pressure_contract":{"grade":"warn","violations":['
+        '"budgetflow_task_level_degenerated: projected task-level policy uses only Strongest Model under compiled task budgets"]}}'
     )
     value_context = ValueEfficiencyContext()
     value_context.init(value_profile="equal")

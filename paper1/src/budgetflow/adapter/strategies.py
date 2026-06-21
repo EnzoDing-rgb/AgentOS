@@ -139,6 +139,24 @@ def _task_level_reference_backend(backends: list[Backend]) -> Backend:
     return next((backend for backend in ordered if backend.tier == 2), ModelCatalog.second_cheapest(ordered))
 
 
+def _task_level_planned_backend(ctx: RoutingContext) -> Backend | None:
+    allocation = ctx.allocation
+    preferred = (
+        str(allocation.task_level_preferred_model).strip().lower()
+        if allocation is not None and allocation.task_level_preferred_model
+        else ""
+    )
+    if not preferred:
+        return None
+    if preferred.startswith("tier") and preferred[4:].isdigit():
+        tier = int(preferred[4:])
+        return _backend_by_tier(ctx.backends, tier)
+    return next(
+        (backend for backend in ctx.backends if backend.name.lower() == preferred),
+        None,
+    )
+
+
 def _budgetflow_max_tier(ctx: RoutingContext, stage: Stage) -> int:
     """Maximum tier cap for BudgetFlow policies on this step.
 
@@ -404,6 +422,27 @@ def _choose_task_level_backend(ctx: RoutingContext, expected_costs: dict[str, fl
             branch="value_aware_task_level",
         )
         return backend
+
+    planned_backend = _task_level_planned_backend(ctx)
+    if planned_backend is not None:
+        ctx.task_level_backend = planned_backend
+        ctx.last_decision = RouterDecision(
+            backend=planned_backend,
+            reason="bf_task_fixed_budget_plan_model",
+            scores={planned_backend.name: 1.0},
+            pressure=ctx.budget_pressure,
+            branch="value_aware_task_level",
+        )
+        if ctx.bootstrap_policy is not None:
+            ctx.last_policy_decision = PolicyDecision(
+                backend=planned_backend.name,
+                reason="task_level_fixed_budget_plan_model",
+                scores={
+                    "task_level_preferred_model": planned_backend.name,
+                    "task_level_preferred_tier": planned_backend.tier,
+                },
+            )
+        return planned_backend
 
     max_tier = _task_level_max_tier(ctx)
     # Current task-level policy chooses one model for the task from the active

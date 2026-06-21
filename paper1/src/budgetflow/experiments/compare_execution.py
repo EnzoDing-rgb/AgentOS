@@ -100,6 +100,7 @@ def run_task_record(
     budget_mode: str = "shared",
     per_task_cap: float | None = None,
     budget_plan_task_cap: float | None = None,
+    task_level_preferred_model: str | None = None,
     planned_task_budget_source: str | None = None,
     budget_input: dict[str, Any] | None = None,
     task_set: str = "",
@@ -146,6 +147,7 @@ def run_task_record(
         model_fit_source=model_fit_source,
         budget_source=budget_source,
         planned_task_budget=per_task_cap if per_task_cap is not None and per_task_cap >= 0 else None,
+        task_level_preferred_model=task_level_preferred_model,
         confidence={"model_fit": calibrated_model_fit_confidence},
     )
     result = mini_swe_runner.run_mini_swe_task(
@@ -224,6 +226,7 @@ def run_task_record(
         "budget_mode": budget_mode,
         "per_task_cap": per_task_cap,
         "budget_plan_task_cap": budget_plan_task_cap,
+        "task_level_preferred_model": task_level_preferred_model,
         "planned_task_budget_source": planned_task_budget_source,
         "task_order_index": task_index,
         "task_features": task_features,
@@ -314,6 +317,7 @@ def run_strategy_batch(
     per_task_cap: float | None = None,
     planned_task_caps: dict[str, float] | None = None,
     planned_task_budget_source: str = "budget_plan:planned_task_budget_by_strategy",
+    task_level_model_plan: dict[str, str] | None = None,
     soft_budget: float | None = None,
     max_overrun: float = 0.0,
     step_limit: int,
@@ -354,6 +358,11 @@ def run_strategy_batch(
         str(task_id): float(cap)
         for task_id, cap in (planned_task_caps or {}).items()
         if cap is not None and float(cap) > 0
+    }
+    task_level_model_plan = {
+        str(task_id): str(model)
+        for task_id, model in (task_level_model_plan or {}).items()
+        if model
     }
     use_planned_task_caps = (
         cfg.budgeted
@@ -525,6 +534,11 @@ def run_strategy_batch(
                 planned_task_budget_source=(
                     planned_task_budget_source
                     if use_planned_task_caps and task_cap is not None
+                    else None
+                ),
+                task_level_preferred_model=(
+                    task_level_model_plan.get(str(task.instance_id))
+                    if cfg.routing == "value_aware_task_level"
                     else None
                 ),
                 task_set=task_set,

@@ -82,6 +82,7 @@ class CompareRunGuards:
     _upstream_streak: int = field(default=0, repr=False)
     _task_level_rows: int = field(default=0, repr=False)
     _task_level_strongest_rows: int = field(default=0, repr=False)
+    _task_level_single_tier: int | None = field(default=None, repr=False)
 
     def is_aborted(self) -> bool:
         with self._lock:
@@ -147,11 +148,11 @@ class CompareRunGuards:
             return GuardAction()
 
     def _record_task_level_tier_mix(self, record: dict[str, Any]) -> GuardAction:
-        """Abort when task-level BudgetFlow silently degenerates into pure T2.
+        """Abort when task-level BudgetFlow silently degenerates into a fixed tier.
 
         ``budgetflow_task_level`` is a routing policy, not another fixed-tier
-        baseline. If it never spends a strongest-tier task after a few completed
-        rows, the run is no longer testing the intended mechanism.
+        baseline. If all completed rows use the same tier after a few tasks, the
+        run is no longer testing the intended mechanism.
         """
         if str(record.get("strategy") or "") != "budgetflow_task_level":
             return GuardAction()
@@ -172,14 +173,20 @@ class CompareRunGuards:
         self._task_level_rows += 1
         if strongest_tier in tiers:
             self._task_level_strongest_rows += 1
+        record_single_tier = next(iter(tiers)) if len(tiers) == 1 else None
+        if self._task_level_single_tier is None:
+            self._task_level_single_tier = record_single_tier
+        elif self._task_level_single_tier != record_single_tier:
+            self._task_level_single_tier = 0
         if (
             self._task_level_rows >= self.task_level_tier_mix_min_rows
-            and self._task_level_strongest_rows == 0
+            and self._task_level_single_tier
         ):
+            fixed_tier = self._task_level_single_tier
             self._abort_all_reason = (
                 "mechanism_guard strategy=budgetflow_task_level "
-                f"rows={self._task_level_rows} strongest_tier=T{strongest_tier} "
-                "strongest_rows=0; task-level routing degenerated into a fixed-tier run"
+                f"rows={self._task_level_rows} fixed_tier=T{fixed_tier}; "
+                "task-level routing degenerated into a fixed-tier run"
             )
             return GuardAction(halt_all=True, reason=self._abort_all_reason)
         return GuardAction()

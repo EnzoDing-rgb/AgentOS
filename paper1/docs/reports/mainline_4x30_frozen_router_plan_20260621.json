@@ -1,0 +1,165 @@
+{
+  "meta": {
+    "name": "mainline_4x30_router_only_20260621",
+    "source_class": "router_only_pre_registered_value_effort_formula",
+    "value_matrix": "paper1/docs/reports/mainline_4x30_manual_value_matrix_20260621.json",
+    "description": "Router-only frozen plan. No caps, learning, runtime progress, or outcome feedback. Budget comes only from Budget Compiler budget_plan.",
+    "task_order": [
+      "sympy__sympy-22714",
+      "sympy__sympy-12171",
+      "sympy__sympy-17655",
+      "sympy__sympy-24102",
+      "sympy__sympy-15346",
+      "sympy__sympy-18621",
+      "sympy__sympy-13647",
+      "sympy__sympy-13177",
+      "pallets__flask-4045",
+      "pallets__flask-4992",
+      "pylint-dev__pylint-5859",
+      "pylint-dev__pylint-7993",
+      "pylint-dev__pylint-6506",
+      "mwaskom__seaborn-3190",
+      "mwaskom__seaborn-3407",
+      "mwaskom__seaborn-3010",
+      "mwaskom__seaborn-2848",
+      "sphinx-doc__sphinx-8273",
+      "sphinx-doc__sphinx-7686",
+      "sphinx-doc__sphinx-7738",
+      "sphinx-doc__sphinx-8282",
+      "sphinx-doc__sphinx-8595",
+      "django__django-13447",
+      "django__django-11049",
+      "django__django-11179",
+      "django__django-12908",
+      "django__django-13964",
+      "django__django-15814",
+      "django__django-15851",
+      "matplotlib__matplotlib-25433"
+    ],
+    "preferred_model_rule": "tier3 for the top one-third by 0.5*manual_value_percentile + 0.5*bootstrap_effort_percentile; tier2 otherwise",
+    "strongest_tranche_fraction": 0.3333333333333333,
+    "note": "Retired cap fields are intentionally omitted."
+  },
+  "plan": {
+    "sympy__sympy-22714": {
+      "preferred_model": "tier2",
+      "priority": 25
+    },
+    "sympy__sympy-12171": {
+      "preferred_model": "tier2",
+      "priority": 20
+    },
+    "sympy__sympy-17655": {
+      "preferred_model": "tier2",
+      "priority": 56
+    },
+    "sympy__sympy-24102": {
+      "preferred_model": "tier2",
+      "priority": 12
+    },
+    "sympy__sympy-15346": {
+      "preferred_model": "tier2",
+      "priority": 56
+    },
+    "sympy__sympy-18621": {
+      "preferred_model": "tier2",
+      "priority": 39
+    },
+    "sympy__sympy-13647": {
+      "preferred_model": "tier3",
+      "priority": 74
+    },
+    "sympy__sympy-13177": {
+      "preferred_model": "tier3",
+      "priority": 83
+    },
+    "pallets__flask-4045": {
+      "preferred_model": "tier3",
+      "priority": 88
+    },
+    "pallets__flask-4992": {
+      "preferred_model": "tier3",
+      "priority": 73
+    },
+    "pylint-dev__pylint-5859": {
+      "preferred_model": "tier2",
+      "priority": 49
+    },
+    "pylint-dev__pylint-7993": {
+      "preferred_model": "tier2",
+      "priority": 37
+    },
+    "pylint-dev__pylint-6506": {
+      "preferred_model": "tier2",
+      "priority": 44
+    },
+    "mwaskom__seaborn-3190": {
+      "preferred_model": "tier3",
+      "priority": 76
+    },
+    "mwaskom__seaborn-3407": {
+      "preferred_model": "tier3",
+      "priority": 90
+    },
+    "mwaskom__seaborn-3010": {
+      "preferred_model": "tier2",
+      "priority": 38
+    },
+    "mwaskom__seaborn-2848": {
+      "preferred_model": "tier3",
+      "priority": 83
+    },
+    "sphinx-doc__sphinx-8273": {
+      "preferred_model": "tier2",
+      "priority": 48
+    },
+    "sphinx-doc__sphinx-7686": {
+      "preferred_model": "tier3",
+      "priority": 75
+    },
+    "sphinx-doc__sphinx-7738": {
+      "preferred_model": "tier2",
+      "priority": 47
+    },
+    "sphinx-doc__sphinx-8282": {
+      "preferred_model": "tier3",
+      "priority": 70
+    },
+    "sphinx-doc__sphinx-8595": {
+      "preferred_model": "tier2",
+      "priority": 0
+    },
+    "django__django-13447": {
+      "preferred_model": "tier2",
+      "priority": 9
+    },
+    "django__django-11049": {
+      "preferred_model": "tier2",
+      "priority": 16
+    },
+    "django__django-11179": {
+      "preferred_model": "tier2",
+      "priority": 41
+    },
+    "django__django-12908": {
+      "preferred_model": "tier2",
+      "priority": 53
+    },
+    "django__django-13964": {
+      "preferred_model": "tier2",
+      "priority": 63
+    },
+    "django__django-15814": {
+      "preferred_model": "tier2",
+      "priority": 44
+    },
+    "django__django-15851": {
+      "preferred_model": "tier2",
+      "priority": 28
+    },
+    "matplotlib__matplotlib-25433": {
+      "preferred_model": "tier3",
+      "priority": 64
+    }
+  }
+}
