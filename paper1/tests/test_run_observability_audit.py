@@ -720,6 +720,24 @@ def test_harness_trust_blocks_host_dependency_contamination() -> None:
     assert trust["harness_owner"] == "infra"
 
 
+def test_harness_trust_blocks_host_dependency_version_mismatch() -> None:
+    trust = build_harness_trust({
+        "harness_resolved": False,
+        "patch_extracted": True,
+        "patch_source": "workspace_diff",
+        "workspace_patch": "/tmp/workspace.patch",
+        "detail": (
+            "test_patch=ok; fail_before=fail; model_patch=ok; fail_after=fail; "
+            "AttributeError: module 'matplotlib.cm' has no attribute 'register_cmap'; "
+            "/root/anaconda3/lib/python3.11/site-packages/fontTools/misc/py23.py"
+        ),
+    })
+
+    assert trust["harness_trust"] == "invalid"
+    assert trust["severity"] == "blocking"
+    assert trust["harness_owner"] == "infra"
+
+
 def test_harness_trust_blocks_foreign_runtime_worktree_log() -> None:
     trust = build_harness_trust({
         "harness_resolved": False,

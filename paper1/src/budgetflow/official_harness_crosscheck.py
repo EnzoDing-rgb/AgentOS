@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import shlex
+import shutil
 from pathlib import Path
 
 from .console_log import dim, tag
@@ -32,12 +33,18 @@ def select_crosscheck_rows(
         elif record.get("score_status") == "true_fail" or record.get("failure_class"):
             fail_rows.append(record)
 
-    selected = fail_rows[: max(0, limit - include_passes)] + pass_rows[:include_passes]
+    selected: list[dict] = []
+    seen_instances: set[str] = set()
+    fail_target = max(0, limit - include_passes)
+    _append_unique(selected, seen_instances, fail_rows, max_new=fail_target)
+    _append_unique(selected, seen_instances, pass_rows, max_new=include_passes)
+    if len(selected) < limit:
+        _append_unique(selected, seen_instances, fail_rows + pass_rows, max_new=limit - len(selected))
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w") as handle:
-        for record in selected[:limit]:
+        for record in selected:
             handle.write(json.dumps(record, ensure_ascii=False) + "\n")
-    return min(len(selected), limit)
+    return len(selected)
 
 
 def official_eval_command(
@@ -67,6 +74,17 @@ def official_eval_command(
     return " ".join(shlex.quote(part) for part in parts)
 
 
+def official_eval_preflight(*, swebench_venv: Path) -> list[str]:
+    """Return local environment warnings for running the official evaluator."""
+    warnings: list[str] = []
+    python_bin = swebench_venv / "bin" / "python"
+    if not python_bin.exists():
+        warnings.append(f"missing_swebench_python:{python_bin}")
+    if shutil.which("docker") is None:
+        warnings.append("missing_docker")
+    return warnings
+
+
 def _has_workspace_patch(record: dict) -> bool:
     if record.get("workspace_patch") or record.get("workspace_patch_path"):
         return True
@@ -76,6 +94,25 @@ def _has_workspace_patch(record: dict) -> bool:
 
 def _is_pass(record: dict) -> bool:
     return record.get("score_status") == "pass" or record.get("failure_class") == "pass"
+
+
+def _append_unique(
+    selected: list[dict],
+    seen_instances: set[str],
+    candidates: list[dict],
+    *,
+    max_new: int,
+) -> None:
+    added = 0
+    for record in candidates:
+        if added >= max_new:
+            return
+        instance_id = str(record.get("instance_id") or "")
+        if not instance_id or instance_id in seen_instances:
+            continue
+        selected.append(record)
+        seen_instances.add(instance_id)
+        added += 1
 
 
 def main() -> None:
@@ -109,6 +146,9 @@ def main() -> None:
     print(f"{tag('official')} selected {selected} rows; exported {exported} predictions")
     print(f"{dim('rows=')}{subset_path}")
     print(f"{dim('predictions=')}{predictions_path}")
+    warnings = official_eval_preflight(swebench_venv=args.swebench_venv)
+    if warnings:
+        print(f"{tag('official', bold=False)} preflight_warnings={','.join(warnings)}")
     print(f"{dim('command=')}{official_eval_command(predictions_path, dataset_name=args.dataset_name, run_id=run_id, swebench_venv=args.swebench_venv, max_workers=args.max_workers)}")
 
 

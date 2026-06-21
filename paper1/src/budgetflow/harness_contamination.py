@@ -11,6 +11,7 @@ HOST_DEPENDENCY_CONTAMINATION_MARKERS = (
     "host_dependency_contamination:",
     "numpy.dtype size changed",
     "_ARRAY_API not found",
+    "module 'matplotlib.cm' has no attribute 'register_cmap'",
     "opik/evaluation/metrics",
     "site-packages/tensorflow",
     "site-packages/keras",

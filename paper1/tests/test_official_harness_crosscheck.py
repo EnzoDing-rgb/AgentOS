@@ -3,7 +3,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from budgetflow.official_harness_crosscheck import official_eval_command, select_crosscheck_rows
+from budgetflow.official_harness_crosscheck import (
+    official_eval_command,
+    official_eval_preflight,
+    select_crosscheck_rows,
+)
 
 
 def _write_row(path: Path, row: dict) -> None:
@@ -28,6 +32,23 @@ def test_select_crosscheck_rows_prefers_workspace_patch_failures_plus_passes(tmp
     assert [row["instance_id"] for row in rows] == ["fail-a", "pass-a"]
 
 
+def test_select_crosscheck_rows_deduplicates_instances_for_official_predictions(tmp_path: Path) -> None:
+    workspace_patch = tmp_path / "workspace.patch"
+    workspace_patch.write_text("diff --git a/app.py b/app.py\n+fixed\n")
+    input_path = tmp_path / "run.jsonl"
+    output_path = tmp_path / "subset.jsonl"
+
+    _write_row(input_path, {"instance_id": "same-task", "strategy": "bare_t3_baseline", "score_status": "true_fail", "failure_class": "repair_fail", "workspace_patch": str(workspace_patch)})
+    _write_row(input_path, {"instance_id": "same-task", "strategy": "budgetflow_task_level", "score_status": "true_fail", "failure_class": "repair_fail", "workspace_patch": str(workspace_patch)})
+    _write_row(input_path, {"instance_id": "other-task", "strategy": "budgetflow_task_level", "score_status": "pass", "failure_class": "pass", "workspace_patch": str(workspace_patch)})
+
+    count = select_crosscheck_rows(input_path, output_path, limit=3, include_passes=1)
+
+    rows = [json.loads(line) for line in output_path.read_text().splitlines()]
+    assert count == 2
+    assert [row["instance_id"] for row in rows] == ["same-task", "other-task"]
+
+
 def test_official_eval_command_points_at_official_swebench_runner(tmp_path: Path) -> None:
     cmd = official_eval_command(
         tmp_path / "predictions.jsonl",
@@ -40,3 +61,9 @@ def test_official_eval_command_points_at_official_swebench_runner(tmp_path: Path
     assert "/opt/swebench/bin/python -m swebench.harness.run_evaluation" in cmd
     assert "--predictions_path" in cmd
     assert "--run_id run-a" in cmd
+
+
+def test_official_eval_preflight_warns_when_swebench_python_missing(tmp_path: Path) -> None:
+    warnings = official_eval_preflight(swebench_venv=tmp_path / "missing")
+
+    assert any(warning.startswith("missing_swebench_python:") for warning in warnings)
