@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import fcntl
+import hashlib
 import os
 import re
+import shutil
 import subprocess
 import sys
+import venv
 from pathlib import Path
 
 from .console_log import _BRIGHT_GREEN, paint, tag
@@ -30,6 +34,15 @@ class RepoHarnessAdapter:
     def pytest_env(self) -> dict[str, str]:
         return {}
 
+    def harness_env(self, repo_dir: Path) -> dict[str, str]:
+        return {}
+
+    def prepare_harness(self, repo_dir: Path) -> None:
+        return None
+
+    def test_python(self, repo_dir: Path) -> str:
+        return harness_python()
+
     def agent_pythonpath_prefixes(self, repo_dir: Path) -> list[Path]:
         return [repo_dir]
 
@@ -40,7 +53,7 @@ class RepoHarnessAdapter:
         test suite needs a custom runner (e.g. Django's DiscoverRunner) override
         this method.
         """
-        return [harness_python(), "-m", "pytest", "-x"] + test_node_ids
+        return [self.test_python(repo_dir), "-m", "pytest", "-x"] + test_node_ids
 
     @staticmethod
     def for_task(task) -> "RepoHarnessAdapter":
@@ -56,6 +69,8 @@ class RepoHarnessAdapter:
             return SphinxHAdapter()
         if slug == "pallets__flask":
             return FlaskHAdapter()
+        if slug == "pylint-dev__pylint":
+            return PylintHAdapter()
         return DefaultHAdapter()
 
 
@@ -365,8 +380,109 @@ class FlaskHAdapter(RepoHarnessAdapter):
         return changed
 
 
+class PylintHAdapter(RepoHarnessAdapter):
+    repo_slug = "pylint-dev__pylint"
+
+    def prepare_harness(self, repo_dir: Path) -> None:
+        _ensure_pylint_harness_venv(repo_dir)
+
+    def test_python(self, repo_dir: Path) -> str:
+        return str(_ensure_pylint_harness_venv(repo_dir) / "bin" / "python")
+
+    def harness_env(self, repo_dir: Path) -> dict[str, str]:
+        venv_dir = _ensure_pylint_harness_venv(repo_dir)
+        path = os.environ.get("PATH", "")
+        return {
+            "VIRTUAL_ENV": str(venv_dir),
+            "PATH": f"{venv_dir / 'bin'}{os.pathsep}{path}" if path else str(venv_dir / "bin"),
+            "PYTHONNOUSERSITE": "1",
+        }
+
+
 class DefaultHAdapter(RepoHarnessAdapter):
     repo_slug = ""
+
+
+def _pylint_requirements_path(repo_dir: Path) -> Path:
+    preferred = repo_dir / "requirements_test_min.txt"
+    if preferred.is_file():
+        return preferred
+    fallback = repo_dir / "requirements_test.txt"
+    if fallback.is_file():
+        return fallback
+    raise RuntimeError(f"pylint harness requirements file not found under {repo_dir}")
+
+
+def _pylint_dependency_requirements(repo_dir: Path) -> tuple[str, ...]:
+    req_path = _pylint_requirements_path(repo_dir)
+    lines: list[str] = []
+    saw_editable = False
+    for raw in req_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        stripped = raw.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if stripped.startswith("-e ") or stripped in {".", "-e."}:
+            saw_editable = True
+            continue
+        lines.append(raw)
+    if saw_editable:
+        lines.insert(0, "-e .")
+    return tuple(lines)
+
+
+def _pylint_harness_venv_fingerprint(repo_dir: Path) -> str:
+    h = hashlib.sha256()
+    h.update(f"python={sys.version_info.major}.{sys.version_info.minor}\n".encode())
+    h.update(str(_pylint_requirements_path(repo_dir).name).encode())
+    h.update(b"\n")
+    for line in _pylint_dependency_requirements(repo_dir):
+        h.update(line.encode())
+        h.update(b"\n")
+    return h.hexdigest()[:16]
+
+
+def _ensure_pylint_harness_venv(repo_dir: Path) -> Path:
+    fingerprint = _pylint_harness_venv_fingerprint(repo_dir)
+    root = get_runtime_root() / "harness_venvs"
+    root.mkdir(parents=True, exist_ok=True)
+    venv_dir = root / f"pylint-dev__pylint-{fingerprint}"
+    ready = venv_dir / ".budgetflow_ready"
+    python = venv_dir / "bin" / "python"
+    if ready.is_file() and python.is_file():
+        return venv_dir
+
+    lock_dir = get_runtime_root() / "locks"
+    lock_dir.mkdir(parents=True, exist_ok=True)
+    lock_path = lock_dir / f"pylint-harness-venv-{fingerprint}.lock"
+    with lock_path.open("w") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        if ready.is_file() and python.is_file():
+            return venv_dir
+        if venv_dir.exists():
+            shutil.rmtree(venv_dir, ignore_errors=True)
+        venv.EnvBuilder(with_pip=True, clear=True).create(venv_dir)
+        req_file = venv_dir / "requirements.pylint.txt"
+        req_file.write_text("\n".join(_pylint_dependency_requirements(repo_dir)) + "\n")
+        cmd = [
+            str(python),
+            "-m",
+            "pip",
+            "install",
+            "--disable-pip-version-check",
+            "-q",
+            "-r",
+            str(req_file),
+        ]
+        env = dict(os.environ)
+        env["VIRTUAL_ENV"] = str(venv_dir)
+        env["PATH"] = f"{venv_dir / 'bin'}{os.pathsep}{env.get('PATH', '')}"
+        env["PYTHONNOUSERSITE"] = "1"
+        result = subprocess.run(cmd, cwd=repo_dir, capture_output=True, text=True, env=env, timeout=900)
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout or "").strip()[-2000:]
+            raise RuntimeError(f"pylint harness dependency install failed: {detail}")
+        ready.write_text("ok\n")
+        return venv_dir
 
 
 def _ensure_sphinx_jinja2_sitecustomize() -> Path:
@@ -428,6 +544,7 @@ def build_agent_shell_env(
     )
     env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
     env.update(adapter.pytest_env())
+    env.update(adapter.harness_env(repo_dir))
     return env
 
 
@@ -607,6 +724,9 @@ def run_pytest(
         extra_env = adapter.pytest_env()
         if extra_env:
             env.update(extra_env)
+        harness_env = adapter.harness_env(repo_dir)
+        if harness_env:
+            env.update(harness_env)
         cmd = adapter.build_test_command(repo_dir, node_ids)
     else:
         env["PYTHONPATH"] = isolated_repo_pythonpath(

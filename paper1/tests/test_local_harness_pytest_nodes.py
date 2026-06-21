@@ -16,6 +16,7 @@ from budgetflow.local_harness import (
     DefaultHAdapter,
 )
 from budgetflow.local_harness_adapters import (
+    PylintHAdapter,
     SphinxHAdapter,
     build_agent_shell_env,
     _patch_jinja2_imports,
@@ -377,6 +378,12 @@ def test_adapter_dispatch_requests() -> None:
     task = SimpleNamespace(repo="psf/requests")
     adapter = RepoHarnessAdapter.for_task(task)
     assert isinstance(adapter, RequestsHAdapter)
+
+
+def test_adapter_dispatch_pylint() -> None:
+    task = SimpleNamespace(repo="pylint-dev/pylint")
+    adapter = RepoHarnessAdapter.for_task(task)
+    assert isinstance(adapter, PylintHAdapter)
 
 
 def test_adapter_dispatch_unknown() -> None:
@@ -877,3 +884,93 @@ def test_flask_adapter_idempotent(tmp_path: Path) -> None:
 
     assert len(changed1) == 1
     assert changed2 == []  # second pass no-op
+
+
+# ── PylintHAdapter tests ───────────────────────────────────────────────────
+
+
+def test_pylint_adapter_uses_isolated_harness_python(tmp_path: Path, monkeypatch) -> None:
+    repo_dir = tmp_path / "pylint"
+    repo_dir.mkdir()
+    (repo_dir / "requirements_test_min.txt").write_text(
+        "-e .[testutils,spelling]\n"
+        "astroid==2.12.13\n"
+        "pytest~=7.2\n"
+    )
+    fake_venv = tmp_path / "venv"
+    (fake_venv / "bin").mkdir(parents=True)
+    (fake_venv / "bin" / "python").write_text("")
+    monkeypatch.setattr(
+        "budgetflow.local_harness_adapters._ensure_pylint_harness_venv",
+        lambda repo: fake_venv,
+    )
+
+    adapter = PylintHAdapter()
+    assert adapter.test_python(repo_dir) == str(fake_venv / "bin" / "python")
+
+    env = adapter.harness_env(repo_dir)
+    assert env["VIRTUAL_ENV"] == str(fake_venv)
+    assert str(fake_venv / "bin") in env["PATH"].split(":")
+    assert env["PYTHONNOUSERSITE"] == "1"
+
+
+def test_pylint_agent_shell_env_uses_harness_venv(tmp_path: Path, monkeypatch) -> None:
+    repo_dir = tmp_path / "pylint"
+    repo_dir.mkdir()
+    (repo_dir / "requirements_test_min.txt").write_text("astroid==2.12.13\npytest~=7.2\n")
+    fake_venv = tmp_path / "venv"
+    (fake_venv / "bin").mkdir(parents=True)
+    (fake_venv / "bin" / "python").write_text("")
+    monkeypatch.setattr(
+        "budgetflow.local_harness_adapters._ensure_pylint_harness_venv",
+        lambda repo: fake_venv,
+    )
+
+    env = build_agent_shell_env(repo_dir, PylintHAdapter())
+
+    assert env["VIRTUAL_ENV"] == str(fake_venv)
+    assert str(fake_venv / "bin") in env["PATH"].split(":")
+    assert env["PYTHONPATH"].split(":")[0] == str(repo_dir)
+
+
+def test_run_pytest_applies_pylint_harness_env_and_python(tmp_path: Path, monkeypatch) -> None:
+    repo_dir = tmp_path / "pylint"
+    test_file = repo_dir / "tests" / "test_x.py"
+    test_file.parent.mkdir(parents=True)
+    test_file.write_text("def test_regression():\n    pass\n")
+    (repo_dir / "requirements_test_min.txt").write_text("astroid==2.12.13\npytest~=7.2\n")
+    fake_venv = tmp_path / "venv"
+    (fake_venv / "bin").mkdir(parents=True)
+    python = fake_venv / "bin" / "python"
+    python.write_text("")
+    captured: dict[str, object] = {}
+
+    class Result:
+        returncode = 0
+        stdout = "ok"
+        stderr = ""
+
+    def fake_run(cmd, *, cwd, capture_output, text, env):
+        captured["cmd"] = cmd
+        captured["env"] = env
+        return Result()
+
+    monkeypatch.setattr(
+        "budgetflow.local_harness_adapters._ensure_pylint_harness_venv",
+        lambda repo: fake_venv,
+    )
+    monkeypatch.setattr("budgetflow.local_harness_adapters.subprocess.run", fake_run)
+
+    ok, _ = local_harness.run_pytest(
+        repo_dir,
+        ("tests/test_x.py::test_regression",),
+        ["tests/test_x.py"],
+        adapter=PylintHAdapter(),
+    )
+
+    assert ok is True
+    assert captured["cmd"][0] == str(python)
+    env = captured["env"]
+    assert env["VIRTUAL_ENV"] == str(fake_venv)
+    assert env["PYTHONNOUSERSITE"] == "1"
+    assert env["PYTHONPATH"].split(":")[0] == str(repo_dir)

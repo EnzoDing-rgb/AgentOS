@@ -89,6 +89,43 @@ def test_runner_aborts_before_provider_calls_on_global_runtime_worktree_contamin
     assert "host_dependency_contamination" in result.harness_detail
 
 
+def test_runner_aborts_before_provider_calls_on_harness_dependency_preflight_failure(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    import budgetflow.adapter.runner as runner
+
+    class FakeAdapter:
+        def prepare_harness(self, repo_dir):
+            raise RuntimeError("missing repo test dependency")
+
+    def fail_if_model_constructed(*args, **kwargs):
+        raise AssertionError("provider model should not be constructed when harness preflight fails")
+
+    monkeypatch.setattr(runner, "find_runtime_worktree_python_contamination", lambda runtime_root: [])
+    monkeypatch.setattr(runner, "clone_or_checkout", lambda *args, **kwargs: tmp_path)
+    monkeypatch.setattr(
+        runner,
+        "_capture_workspace_baseline",
+        lambda repo_dir: runner.WorkspaceBaseline(ref="HEAD", changed_files=()),
+    )
+    monkeypatch.setattr(runner.RepoHarnessAdapter, "for_task", staticmethod(lambda task: FakeAdapter()))
+    monkeypatch.setattr(runner, "BudgetFlowLitellmModel", fail_if_model_constructed)
+
+    task = type("Task", (), {"instance_id": "repo__task"})()
+
+    result = runner.run_mini_swe_task(task, strategy="bare_t3", strategy_label="bare_t3_baseline")
+
+    assert result.exit_status == "infra_error"
+    assert result.exit_reason == "harness_dependency_preflight_failed"
+    assert result.total_cost == 0.0
+    assert result.llm_turns == 0
+    assert result.backend_picks == ()
+    assert result.usage_source == "none"
+    assert result.cost_mode == "no_provider_call"
+    assert "missing repo test dependency" in result.harness_detail
+
+
 def test_turn_trace_has_fields_needed_to_debug_value_routing_and_provider_failures() -> None:
     trace = build_turn_trace(
         step_index=1,

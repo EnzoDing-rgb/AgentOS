@@ -361,6 +361,35 @@ def run_mini_swe_task(
     repo_dir = clone_or_checkout(task, workspace_key=workspace_key)
     workspace_baseline = _capture_workspace_baseline(repo_dir)
     harness_adapter = RepoHarnessAdapter.for_task(task)
+    try:
+        harness_adapter.prepare_harness(repo_dir)
+    except Exception as exc:  # noqa: BLE001
+        detail = f"harness_dependency_preflight_failed: {exc}"
+        return MiniSweRunResult(
+            instance_id=task.instance_id,
+            strategy=strategy,
+            strategy_label=label,
+            patch_text=None,
+            exit_status="infra_error",
+            exit_reason="harness_dependency_preflight_failed",
+            agent_exit_status="infra_error",
+            agent_exit_reason="harness_dependency_preflight_failed",
+            total_cost=0.0,
+            budget_cap=cap,
+            budget_snapshot=governor.budget_snapshot(),
+            backend_picks=(),
+            llm_turns=0,
+            harness_resolved=False,
+            harness_detail=detail,
+            agent_gold_edited=False,
+            agent_attempted_submit=False,
+            agent_submitted=False,
+            agent_gold_files=(),
+            violations=(),
+            cost_mode="no_provider_call",
+            usage_source="none",
+            agent_environment_issues=(detail,),
+        )
     trace_dir = get_trace_dir(task.instance_id, label, run_series=run_series)
     trace = RunTraceLogger(
         instance_id=task.instance_id,

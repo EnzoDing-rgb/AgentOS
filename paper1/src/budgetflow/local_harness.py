@@ -31,6 +31,7 @@ from .runtime import (
 from .local_harness_adapters import (
     DefaultHAdapter,
     DjangoHAdapter,
+    PylintHAdapter,
     RepoHarnessAdapter,
     RequestsHAdapter,
     SymPyHAdapter,
