@@ -149,7 +149,11 @@ def build_crosscheck_artifacts(
 
 
 def _has_workspace_patch(record: dict) -> bool:
-    if record.get("workspace_patch") or record.get("workspace_patch_path"):
+    path = record.get("workspace_patch")
+    if path and Path(path).is_file():
+        return True
+    path = record.get("workspace_patch_path")
+    if path and Path(path).is_file():
         return True
     trace_dir = record.get("trace_dir")
     return bool(trace_dir and (Path(trace_dir) / "workspace.patch").is_file())

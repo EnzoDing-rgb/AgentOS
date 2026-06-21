@@ -50,6 +50,39 @@ def test_select_crosscheck_rows_deduplicates_instances_for_official_predictions(
     assert [row["instance_id"] for row in rows] == ["same-task", "other-task"]
 
 
+def test_select_crosscheck_rows_skips_missing_workspace_patch_paths(tmp_path: Path) -> None:
+    existing_patch = tmp_path / "workspace.patch"
+    existing_patch.write_text("diff --git a/app.py b/app.py\n+fixed\n")
+    missing_patch = tmp_path / "missing.patch"
+    input_path = tmp_path / "run.jsonl"
+    output_path = tmp_path / "subset.jsonl"
+
+    _write_row(
+        input_path,
+        {
+            "instance_id": "missing-patch",
+            "score_status": "true_fail",
+            "failure_class": "repair_fail",
+            "workspace_patch": str(missing_patch),
+        },
+    )
+    _write_row(
+        input_path,
+        {
+            "instance_id": "existing-patch",
+            "score_status": "true_fail",
+            "failure_class": "repair_fail",
+            "workspace_patch": str(existing_patch),
+        },
+    )
+
+    count = select_crosscheck_rows(input_path, output_path, limit=4, include_passes=0)
+
+    rows = [json.loads(line) for line in output_path.read_text().splitlines()]
+    assert count == 1
+    assert [row["instance_id"] for row in rows] == ["existing-patch"]
+
+
 def test_official_eval_command_points_at_official_swebench_runner(tmp_path: Path) -> None:
     cmd = official_eval_command(
         tmp_path / "predictions.jsonl",
