@@ -364,6 +364,109 @@ def test_compact_audit_reports_t3_productivity() -> None:
     assert "value_triggered" in text
 
 
+def test_compact_audit_reports_frontier_diagnostics() -> None:
+    audit = build_compact_audit([
+        {
+            "instance_id": "repo__task-a",
+            "strategy": "budgetflow_task_level",
+            "harness_resolved": False,
+            "harness_evidence": {"evidence_complete": True},
+            "task_value": 1.0,
+            "value_source": "manual_value",
+            "total_cost": 0.11,
+            "llm_turns": 2,
+            "turn_trace_count": 2,
+            "backend_picks": ["tier2", "tier2"],
+            "model_fit_source": "budget_plan:historical_clean",
+            "model_fit_confidence": "medium",
+            "model_fit_active": True,
+            "turn_traces": [
+                {
+                    "backend_tier": 2,
+                    "tier_frontier_active": True,
+                    "tier_frontier_score": 2.4,
+                    "strongest_vs_reference_cost_ratio": 5.0,
+                    "strongest_progress_delta": {"repair": 0.04},
+                    "max_tier_before_frontier": 2,
+                    "max_tier_after_frontier": 2,
+                    "policy_decision": {
+                        "backend": "tier2",
+                        "reason": "task_level_fixed",
+                        "scores": {
+                            "fit_gain": 0.04,
+                            "marginal_yield_per_dollar": 0.8,
+                            "budget_pressure_threshold": 1.1,
+                            "planned_task_budget": 5.0,
+                            "budget_allows_strongest": 1.0,
+                            "has_trusted_model_fit": 1.0,
+                        },
+                    },
+                },
+                {
+                    "backend_tier": 2,
+                    "tier_frontier_active": True,
+                    "tier_frontier_score": 1.5,
+                    "strongest_vs_reference_cost_ratio": 5.0,
+                    "strongest_progress_delta": {"repair": 0.04},
+                    "max_tier_before_frontier": 2,
+                    "max_tier_after_frontier": 3,
+                    "policy_decision": {
+                        "backend": "tier2",
+                        "reason": "task_level_fixed",
+                        "scores": {
+                            "fit_gain": 0.04,
+                            "marginal_yield_per_dollar": 0.8,
+                            "budget_pressure_threshold": 1.1,
+                            "planned_task_budget": 5.0,
+                            "budget_allows_strongest": 1.0,
+                            "has_trusted_model_fit": 1.0,
+                        },
+                    },
+                },
+            ],
+        },
+        {
+            "instance_id": "repo__task-b",
+            "strategy": "bare_t3_baseline",
+            "harness_resolved": True,
+            "harness_evidence": {"evidence_complete": True},
+            "task_value": 1.0,
+            "value_source": "manual_value",
+            "total_cost": 0.22,
+            "llm_turns": 1,
+            "turn_trace_count": 1,
+            "backend_picks": ["tier3"],
+            "turn_traces": [
+                {
+                    "backend_tier": 3,
+                    "routing_trigger_source": "router",
+                    "action_has_progress": True,
+                },
+            ],
+        },
+    ])
+
+    frontier = audit["frontier_diagnostics"]["budgetflow_task_level"]
+
+    assert frontier["trace_count"] == 2
+    assert frontier["frontier_block_turns"] == 1
+    assert frontier["frontier_allow_turns"] == 1
+    assert frontier["max_tier_unchanged_turns"] == 1
+    assert frontier["max_tier_opened_turns"] == 1
+    assert frontier["avg_frontier_score"] == pytest.approx(1.95)
+    assert frontier["model_fit_sources"] == {"budget_plan:historical_clean": 1}
+    assert frontier["model_fit_confidence"] == {"medium": 1}
+    assert frontier["decision_reasons"] == {"task_level_fixed": 2}
+    assert frontier["avg_fit_gain"] == pytest.approx(0.04)
+    assert frontier["avg_marginal_yield_per_dollar"] == pytest.approx(0.8)
+    assert frontier["avg_budget_pressure_threshold"] == pytest.approx(1.1)
+
+    text = format_compact_audit(audit)
+    assert "FRONTIER / MODEL-FIT DIAGNOSTICS" in text
+    assert "budget_plan:historical_clean=1" in text
+    assert "task_level_fixed=2" in text
+
+
 def test_compact_audit_uses_current_action_progress_for_t3_productivity() -> None:
     audit = build_compact_audit([
         {

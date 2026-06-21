@@ -295,8 +295,44 @@ def format_compact_audit(audit: dict) -> str:
             f"{k}={v}" for k, v in sorted(audit["decision_issue_counts"].items())
         ))
 
+    frontier = audit.get("frontier_diagnostics") or {}
+    if frontier:
+        lines.append(banner)
+        lines.append("FRONTIER / MODEL-FIT DIAGNOSTICS")
+        lines.append(
+            f"{'strategy':<26} {'rec':>4} {'tr':>4} {'allow':>5} {'block':>5} "
+            f"{'open':>4} {'same':>4} {'avg_score':>9} {'fit_gain':>8} {'yield/$':>8} {'thr':>7}"
+        )
+        lines.append("-" * 96)
+        for strategy in sorted(frontier):
+            s = frontier[strategy]
+            lines.append(
+                f"{strategy:<26} {s.get('records', 0):>4} {s.get('trace_count', 0):>4} "
+                f"{s.get('frontier_allow_turns', 0):>5} {s.get('frontier_block_turns', 0):>5} "
+                f"{s.get('max_tier_opened_turns', 0):>4} {s.get('max_tier_unchanged_turns', 0):>4} "
+                f"{s.get('avg_frontier_score', 0.0):>9.2f} "
+                f"{s.get('avg_fit_gain', 0.0):>8.3f} "
+                f"{s.get('avg_marginal_yield_per_dollar', 0.0):>8.2f} "
+                f"{s.get('avg_budget_pressure_threshold', 0.0):>7.2f}"
+            )
+            detail_parts = []
+            if s.get("model_fit_sources"):
+                detail_parts.append("fit_source=" + _format_counts(s["model_fit_sources"]))
+            if s.get("model_fit_confidence"):
+                detail_parts.append("fit_conf=" + _format_counts(s["model_fit_confidence"]))
+            if s.get("decision_reasons"):
+                detail_parts.append("reasons=" + _format_counts(s["decision_reasons"]))
+            if s.get("decision_backends"):
+                detail_parts.append("backends=" + _format_counts(s["decision_backends"]))
+            if detail_parts:
+                lines.append("  " + "  ".join(detail_parts))
+
     lines.append(banner)
     return "\n".join(lines)
+
+
+def _format_counts(counts: dict) -> str:
+    return ",".join(f"{key}={value}" for key, value in sorted(counts.items()))
 
 
 def _format_per_task_decision_detail(row: dict) -> str:

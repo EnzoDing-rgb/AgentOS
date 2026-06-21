@@ -367,6 +367,183 @@ def _decision_area_counts(records: list[dict]) -> dict[str, int]:
     return dict(counts.most_common())
 
 
+_FRONTIER_SCORE_FIELDS = (
+    "fit_gain",
+    "marginal_yield_per_dollar",
+    "budget_pressure_threshold",
+    "planned_task_budget",
+    "budget_allows_strongest",
+    "has_trusted_model_fit",
+)
+
+
+def _numeric(value) -> float | None:
+    if isinstance(value, bool):
+        return 1.0 if value else 0.0
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _average(values: list[float]) -> float:
+    return sum(values) / len(values) if values else 0.0
+
+
+def _frontier_diagnostics(records: list[dict]) -> dict[str, dict]:
+    """Summarize frontier/model-fit signals used by routing decisions.
+
+    This is intentionally diagnostic-only. It does not reinterpret outcomes or
+    tune routing; it surfaces whether BudgetFlow had enough signal to justify
+    Strongest Model use.
+    """
+    by_strategy: dict[str, dict] = {}
+    for record in records:
+        strategy = str(record.get("strategy") or "unknown")
+        traces = record.get("turn_traces") or []
+        if not isinstance(traces, list):
+            traces = []
+
+        source = str(record.get("model_fit_source") or "")
+        confidence = str(record.get("model_fit_confidence") or "")
+        has_model_fit_meta = bool(source or confidence or record.get("model_fit_active") is not None)
+        has_frontier_trace = any(
+            isinstance(trace, dict)
+            and (
+                trace.get("tier_frontier_score") is not None
+                or trace.get("tier_frontier_active") is not None
+                or trace.get("max_tier_before_frontier") is not None
+                or trace.get("max_tier_after_frontier") is not None
+            )
+            for trace in traces
+        )
+        has_policy_scores = any(
+            isinstance(trace, dict)
+            and isinstance(trace.get("policy_decision"), dict)
+            and isinstance(trace["policy_decision"].get("scores"), dict)
+            and any(field in trace["policy_decision"]["scores"] for field in _FRONTIER_SCORE_FIELDS)
+            for trace in traces
+        )
+        if not (has_model_fit_meta or has_frontier_trace or has_policy_scores):
+            continue
+
+        stats = by_strategy.setdefault(
+            strategy,
+            {
+                "records": 0,
+                "model_fit_sources": Counter(),
+                "model_fit_confidence": Counter(),
+                "model_fit_active_records": 0,
+                "trace_count": 0,
+                "frontier_scores": [],
+                "frontier_allow_turns": 0,
+                "frontier_block_turns": 0,
+                "frontier_unknown_turns": 0,
+                "max_tier_opened_turns": 0,
+                "max_tier_unchanged_turns": 0,
+                "max_tier_closed_turns": 0,
+                "strongest_vs_reference_cost_ratios": [],
+                "strongest_progress_deltas": [],
+                "decision_reasons": Counter(),
+                "decision_backends": Counter(),
+                "score_fields": {field: [] for field in _FRONTIER_SCORE_FIELDS},
+            },
+        )
+        stats["records"] += 1
+        if source:
+            stats["model_fit_sources"][source] += 1
+        if confidence:
+            stats["model_fit_confidence"][confidence] += 1
+        if record.get("model_fit_active"):
+            stats["model_fit_active_records"] += 1
+
+        for trace in traces:
+            if not isinstance(trace, dict):
+                continue
+            score = _numeric(trace.get("tier_frontier_score"))
+            before = _numeric(trace.get("max_tier_before_frontier"))
+            after = _numeric(trace.get("max_tier_after_frontier"))
+            policy_decision = trace.get("policy_decision")
+            policy_scores = {}
+            has_trace_signal = (
+                score is not None
+                or before is not None
+                or after is not None
+                or trace.get("tier_frontier_active") is not None
+            )
+            if isinstance(policy_decision, dict):
+                reason = str(policy_decision.get("reason") or "")
+                backend = str(policy_decision.get("backend") or "")
+                if reason:
+                    stats["decision_reasons"][reason] += 1
+                if backend:
+                    stats["decision_backends"][backend] += 1
+                if isinstance(policy_decision.get("scores"), dict):
+                    policy_scores = policy_decision["scores"]
+                    for field in _FRONTIER_SCORE_FIELDS:
+                        value = _numeric(policy_scores.get(field))
+                        if value is not None:
+                            stats["score_fields"][field].append(value)
+            if not has_trace_signal and not policy_scores:
+                continue
+
+            stats["trace_count"] += 1
+            if score is None:
+                stats["frontier_unknown_turns"] += 1
+            else:
+                stats["frontier_scores"].append(score)
+                if score < 2.0:
+                    stats["frontier_allow_turns"] += 1
+                else:
+                    stats["frontier_block_turns"] += 1
+            if before is not None and after is not None:
+                if after > before:
+                    stats["max_tier_opened_turns"] += 1
+                elif after == before:
+                    stats["max_tier_unchanged_turns"] += 1
+                else:
+                    stats["max_tier_closed_turns"] += 1
+            ratio = _numeric(trace.get("strongest_vs_reference_cost_ratio"))
+            if ratio is not None:
+                stats["strongest_vs_reference_cost_ratios"].append(ratio)
+            progress_delta = trace.get("strongest_progress_delta")
+            if isinstance(progress_delta, dict):
+                for value in progress_delta.values():
+                    numeric = _numeric(value)
+                    if numeric is not None:
+                        stats["strongest_progress_deltas"].append(numeric)
+
+    result: dict[str, dict] = {}
+    for strategy, stats in by_strategy.items():
+        score_fields = {
+            f"avg_{field}": _average(values)
+            for field, values in stats["score_fields"].items()
+            if values
+        }
+        result[strategy] = {
+            "records": stats["records"],
+            "model_fit_sources": dict(stats["model_fit_sources"].most_common()),
+            "model_fit_confidence": dict(stats["model_fit_confidence"].most_common()),
+            "model_fit_active_records": stats["model_fit_active_records"],
+            "trace_count": stats["trace_count"],
+            "frontier_allow_turns": stats["frontier_allow_turns"],
+            "frontier_block_turns": stats["frontier_block_turns"],
+            "frontier_unknown_turns": stats["frontier_unknown_turns"],
+            "max_tier_opened_turns": stats["max_tier_opened_turns"],
+            "max_tier_unchanged_turns": stats["max_tier_unchanged_turns"],
+            "max_tier_closed_turns": stats["max_tier_closed_turns"],
+            "avg_frontier_score": _average(stats["frontier_scores"]),
+            "min_frontier_score": min(stats["frontier_scores"]) if stats["frontier_scores"] else 0.0,
+            "max_frontier_score": max(stats["frontier_scores"]) if stats["frontier_scores"] else 0.0,
+            "avg_strongest_vs_reference_cost_ratio": _average(stats["strongest_vs_reference_cost_ratios"]),
+            "avg_strongest_progress_delta": _average(stats["strongest_progress_deltas"]),
+            "decision_reasons": dict(stats["decision_reasons"].most_common()),
+            "decision_backends": dict(stats["decision_backends"].most_common()),
+            **score_fields,
+        }
+    return result
+
+
 def _task_set_metrics(records: list[dict]) -> dict[str, dict[str, dict[str, dict]]]:
     grouped: dict[str, dict[str, dict[str, list[dict]]]] = {}
     for record in records:
@@ -813,6 +990,7 @@ def build_compact_audit(records: list[dict]) -> dict:
         "harness_severity": ht_severity_counts,
         "decision_issue_counts": _decision_issue_counts(records),
         "decision_area_counts": _decision_area_counts(records),
+        "frontier_diagnostics": _frontier_diagnostics(records),
         "task_set_metrics": _task_set_metrics(records),
         "per_task_comparison": _per_task_comparison(records, t3_tier),
         "parser_abort_breakdown": _parser_abort_breakdown(records),
