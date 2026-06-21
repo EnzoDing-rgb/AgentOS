@@ -2,6 +2,19 @@
 
 > 单一入口：进度、跑法、历史结果。
 
+## 2026-06-21 — Current status (in progress, not final evidence)
+
+- **Previous agent:** hardened paid-run harness gates; switched scoring to
+  workspace-diff-only; raised the step limit to 60; fixed planned-task-budget
+  mode behavior; switched the T2 catalog slot to DeepSeek V4 Pro; and treated
+  the 4x25 attempts as partial/diagnostic only. Those runs exposed remaining
+  harness/runtime risks rather than producing paper-grade evidence.
+- **Current main agent:** keeping the current BudgetFlow runtime and running a
+  small Route A diagnostic path only. The active slice adds patch cleaning and
+  an official SWE-bench evaluator cross-check as an auxiliary local-harness
+  false-negative diagnostic, while updating `north_star`/`AGENTS` guidance
+  around normalized tier slots, provider binding, and calibration discipline.
+
 ## 2026-06-19 — Harness v2 workspace-diff validation
 
 - **Post-v2 upstream reflection complete.** Re-audited

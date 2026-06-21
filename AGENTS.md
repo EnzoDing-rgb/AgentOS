@@ -8,6 +8,7 @@ This file is the repo-level operating contract for Codex-style agents working in
 - Claim 1 is the compass: under a shared hard budget, BudgetFlow maximizes normalized verified resolved value (Yield).
 - Claim 2 is the mechanism claim: BudgetFlow's value-aware budget allocation, routing, escalation, stop, and learning mechanisms explain how Claim 1 is achieved and must improve or preserve value/cost efficiency against strong diagnostic controls.
 - Claim 2 serves Claim 1. Do not optimize routing savings, model-tier switching, or stop-loss behavior in a way that reduces value-weighted outcomes.
+- Treat T1/T2/T3 as normalized model-tier slots. Provider/model endpoint swaps inside a catalog semantic revision change base URL, token, and physical backend, but they do not by themselves change normalized cost or routing semantics.
 
 ## Experiment Gold Standard
 
@@ -51,7 +52,7 @@ These are the short-form checks every worker should keep in view:
 - Stop on provider billing/auth/model-access/preflight blockers. Do not reinterpret provider failures as model or routing evidence.
 - Historical JSONL and historical reports are immutable evidence. Mark old artifacts forensic-only when needed; do not patch them in place.
 - Runtime artifacts under `paper1/data/` are not source code. Do not commit trace, heartbeat, checkpoint, or run-output files unless explicitly requested.
-- Model pricing and capability priors belong in a versioned tier catalog. Web search is allowed for offline catalog calibration, but paid-run execution must use the pre-registered catalog and stop if cost/progress confidence is missing or stale.
+- Model pricing and capability priors belong in a versioned tier catalog. Do not recalibrate paper experiments from public provider prices during a paid-run line; use the frozen normalized catalog unless the run is explicitly a new CostSource study. Paid-run execution must use the pre-registered catalog and stop if cost/progress confidence is missing or stale.
 - Local harness results are part of the evidence system. Because nested Docker is not assumed available, local harness adapters, compat patches, host dependencies, and checker invalidation rules must be treated as first-class evaluation risks.
 
 ## Current Vocabulary

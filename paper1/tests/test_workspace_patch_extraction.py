@@ -85,6 +85,34 @@ def test_workspace_patch_collects_agent_commits_against_baseline_ref(tmp_path: P
     assert "+fixed" in workspace_patch.text
 
 
+def test_workspace_patch_cleans_setup_lock_binary_and_non_ascii_noise(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    _git(repo, "config", "user.name", "Test")
+    (repo / "app.py").write_text("old\n")
+    (repo / "setup.py").write_text("old setup\n")
+    (repo / "poetry.lock").write_text("old lock\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "base")
+
+    baseline = runner._capture_workspace_baseline(repo)
+
+    (repo / "app.py").write_text("fixed\n")
+    (repo / "setup.py").write_text("new setup\n")
+    (repo / "poetry.lock").write_text("new lock\n")
+    (repo / "unicodé.py").write_text("noise\n")
+
+    workspace_patch = runner._collect_workspace_patch(repo, baseline_ref=baseline.ref)
+
+    assert workspace_patch.text is not None
+    assert "diff --git a/app.py b/app.py" in workspace_patch.text
+    assert "setup.py" not in workspace_patch.text
+    assert "poetry.lock" not in workspace_patch.text
+    assert "unicod" not in workspace_patch.text
+
+
 def test_scoreable_patch_prefers_workspace_diff_over_submission() -> None:
     workspace_patch = runner.WorkspacePatch(
         text="diff --git a/app.py b/app.py\n+workspace\n",

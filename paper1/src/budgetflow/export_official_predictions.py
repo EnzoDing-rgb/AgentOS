@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .console_log import dim, tag
 from .official_predictions import prediction_record, write_predictions_jsonl
+from .patch_cleaning import clean_scoreable_patch
 
 
 def _patch_from_record(record: dict) -> str | None:
@@ -39,7 +40,7 @@ def export_predictions(input_path: Path, output_path: Path, *, model_name: str) 
             prediction_record(
                 instance_id=str(record["instance_id"]),
                 model_name=_model_name(record, model_name),
-                model_patch=_patch_from_record(record),
+                model_patch=clean_scoreable_patch(_patch_from_record(record)),
             )
         )
     write_predictions_jsonl(output_path, records)

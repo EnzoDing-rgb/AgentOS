@@ -36,6 +36,9 @@ tiers only.
 | Escalation Memory | Optional learning input for whether Strongest Model turns were productive. It mainly applies to policies with escalation windows; task-level policies may not use it. |
 | Value-Triggered Escalation | Bounded use of a stronger model tier for high-value tasks when expected marginal value justifies it. |
 | Strongest Model | The strongest configured model tier. It is one model-tier option, not the system claim. |
+| Model Tier Slot | T1/T2/T3 are normalized experimental roles with fixed tier semantics for one catalog revision family. A physical model/provider can be swapped into a tier by changing endpoint binding, but the paper interpretation remains the tier slot, not the vendor name. |
+| Provider Binding | The physical model name, base URL, API key, and provider protocol attached to a Model Tier Slot. Provider binding is infra and catalog configuration; it should not create routing branches or new paper claims. |
+| Frontier Dominance | A diagnostic state where a stronger tier is both more capable and cheaper in total because it uses fewer turns. In that state, pure Strongest Model is a strong boundary control, and BudgetFlow must diagnose whether any allocation problem remains under the compiled budget. |
 | Infra | Runtime, provider, parser, harness, filesystem, worktree, and environment health. |
 
 ## What BudgetFlow Is
@@ -106,6 +109,20 @@ Resolved task count, pass rate, Pass per Dollar, average turns, and no-patch
 rate are diagnostics. They must not replace Yield or Yield per Dollar as the
 main claim metric.
 
+Pure-tier controls can expose a real model frontier change. If the Strongest
+Model is both more capable and cheaper in total for nearly every task under the
+frozen catalog and compiled cap, then the current workload has little remaining
+model-tier allocation problem. That is not something to hide by weakening the
+baseline. Report it as Frontier Dominance, explain that fewer turns made the
+stronger tier cheaper in total, and treat BudgetFlow's remaining value as
+budget governance, stop/continue discipline, and detection of the frontier
+posture. Claim 2 becomes stronger when BudgetFlow can distinguish task types:
+easy tasks where the reference tier is sufficient, hard tasks where the
+reference tier spins, high-value tasks where stronger-tier spend is justified,
+and ceiling tasks where neither tier should consume the shared budget for long.
+If every task is dominated by one tier, BudgetFlow should say so rather than
+manufacture routing savings.
+
 ## Value And Cost Discipline
 
 Task Value is a proxy, so every paid run must make the proxy auditable.
@@ -133,6 +150,19 @@ Task Effort and cost follow the same rule.
 
 - Use a versioned model-tier catalog for paid runs.
 - Record catalog path, revision, provider, and any price multipliers.
+- Treat T1/T2/T3 as normalized Model Tier Slots for this paper's experiments.
+  The tier catalog defines the experimental cost and capability priors. A
+  provider-only swap inside the same catalog semantic revision changes the
+  physical endpoint, base URL, and API token; it does not by itself change the
+  tier's normalized cost, routing semantics, or paper interpretation.
+- Do not recalibrate T1/T2/T3 from public provider prices or web search during
+  a paid-run line. Real provider invoices can be a CostSource in deployment,
+  but the paper experiments use the frozen normalized catalog unless the run is
+  explicitly declared as a new cost-source study.
+- If a provider swap materially changes observed behavior, handle it as a
+  provider validation or catalog-semantic-revision risk. Do not add
+  provider-name-specific routing rules, task exceptions, or ad hoc price
+  corrections to preserve a result.
 - Keep Task Effort separate from Task Value. Metadata heuristics, historical
   cost, turns, test counts, patch size, and repo priors estimate runway or
   expected cost; they do not define outcome utility.
@@ -218,9 +248,12 @@ catalog. They are not paper-level evidence by themselves. Their role is to
 estimate the scale that cannot be known a priori: whether the compiled budget
 is too tight or too loose, whether Task Effort predicts runway, whether Model
 Fit differentiates model tiers, and whether budget pressure reaches the
-intended regime. After that calibration pass, the compiler, model catalog,
-ValueSource, task list, task order, and policy configuration must be frozen
-before the held-out evidence run.
+intended regime. A provider-only binding change within the same normalized tier
+semantic revision is not, by itself, a new cost model. It still needs provider
+preflight and may need diagnostic validation, but it should not trigger a new
+round of real-world price calibration. After the calibration pass, the
+compiler, model catalog, ValueSource, task list, task order, and policy
+configuration must be frozen before the held-out evidence run.
 
 Frozen calibration and continual learning are different experimental modes.
 Frozen calibration is a pre-run procedure that produces a budget plan and
@@ -235,9 +268,10 @@ when it follows these rules:
 
 - Calibrate only on diagnostic runs or production holdout data, then freeze the
   policy and ValueSource before the evidence run.
-- Prefer a single diagnostic calibration pass for each new workload/model
-  catalog. If more passes are needed, report them as mechanism development, not
-  as final evidence.
+- Prefer one diagnostic calibration pass for each new workload/model catalog;
+  one additional pass is acceptable when the first pass exposes an infra or
+  scale defect that would make the evidence run uninterpretable. More passes
+  should be reported as mechanism development, not as final evidence.
 - Tune abstract mechanism inputs: task value scale, cost source, model-tier
   fit, budget slack or shadow price, progress urgency, rescue window, stop-loss
   patience, and escalation confidence.
@@ -252,6 +286,19 @@ when it follows these rules:
   policies midway through a batch or leaving every strongest-tier baseline
   unconstrained, as a Budget Regime Compiler defect to fix through the abstract
   compiler procedure rather than by hand-editing the cap.
+
+Business-side value and difficulty inputs are part of the deployment objective
+when they are pre-registered. In a real deployment, business owners or external
+priority systems may define which tasks are worth more, which tasks are
+expected to be harder, and how much budget pressure is acceptable. That is the
+point of ValueSource and Task Effort: BudgetFlow turns business judgment and
+workload features into an auditable budget allocation problem. The research
+threat is not that external stakeholders provide value or difficulty. The
+threat is seeing outcomes first and then editing those inputs to make a run
+look good. To defend against that, freeze the value matrix, task-effort
+features, model catalog, task list, and task order before the evidence run;
+report the calibration passes that produced them; and show whether the signal
+survives under at least an equal-value sensitivity view.
 
 The main generalization claim is procedural, not parametric. BudgetFlow should
 not argue that a particular target utilization, Model Fit prior, stop-loss
@@ -392,6 +439,11 @@ infra, learning loop, or mechanism.
   history exposure is not by itself proof of cheating or model failure, but it
   should be tracked and removed where practical so reviewers do not have to rely
   on agent honesty.
+- Do not undertake invasive harness rewrites solely to defend against
+  intentional reward hacking by an otherwise honest agent. The local harness
+  should score repository workspace diffs, track contamination risks, and keep
+  audit artifacts, but the paper's main validity work is credible task
+  isolation and verifier-grounded scoring, not adversarial anti-cheat.
 - Runtime artifacts under `paper1/data/` are not source code. Do not commit
   trace, heartbeat, checkpoint, or run-output files unless explicitly requested.
 - Before paid runs, pass no-paid gates for tests, value/cost confidence,

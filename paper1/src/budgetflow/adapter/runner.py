@@ -28,6 +28,7 @@ from ..ledger import WorkflowLedgerStore
 from ..lite_tasks import LiteTaskRecord
 from ..local_harness import clone_or_checkout, evaluate_local_harness
 from ..local_harness_adapters import RepoHarnessAdapter, build_agent_shell_env
+from ..patch_cleaning import clean_scoreable_patch
 from ..harness_contamination import (
     find_runtime_worktree_python_contamination,
     format_runtime_worktree_contamination,
@@ -220,11 +221,9 @@ def _collect_workspace_patch(repo_dir: Path, *, baseline_ref: str) -> WorkspaceP
         capture_output=True,
         text=True,
     )
-    patch_text = result.stdout
+    patch_text = clean_scoreable_patch(result.stdout)
     if not patch_text.strip():
         return WorkspacePatch(text=None, source="none", changed_files=changed_files)
-    if not patch_text.endswith("\n"):
-        patch_text += "\n"
     return WorkspacePatch(text=patch_text, source="workspace_diff", changed_files=changed_files)
 
 
