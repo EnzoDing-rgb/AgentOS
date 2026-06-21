@@ -10,10 +10,17 @@
   the 4x25 attempts as partial/diagnostic only. Those runs exposed remaining
   harness/runtime risks rather than producing paper-grade evidence.
 - **Current main agent:** keeping the current BudgetFlow runtime and running a
-  small Route A diagnostic path only. The active slice adds patch cleaning and
-  an official SWE-bench evaluator cross-check as an auxiliary local-harness
-  false-negative diagnostic, while updating `north_star`/`AGENTS` guidance
-  around normalized tier slots, provider binding, and calibration discipline.
+  no-paid infrastructure/diagnostic path only. New committed slices harden
+  resume accounting from scoreable JSONL rows, keep abort rows retryable, add
+  explicit T3 routing-trigger attribution, surface frontier/model-fit
+  diagnostics in compact audit, and auto-write official SWE-bench cross-check
+  dry-run artifacts after compare runs. These changes do not tune routing
+  thresholds or change the BudgetFlow runtime policy.
+- **4x25 partial interpretation:** `mainline_4x25_glm51_harness_v2_20260620`
+  remains diagnostic-only: 61/100 rows, one Seaborn host-dependency infra
+  invalid row, two billing/provider aborts, and uneven strategy progress. It
+  exposed old task-level T2-heavy behavior and harness trust risks, but it is
+  not paper evidence.
 
 ## 2026-06-19 — Harness v2 workspace-diff validation
 
