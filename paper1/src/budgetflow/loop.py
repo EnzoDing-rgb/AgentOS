@@ -8,7 +8,7 @@ from .governor import BudgetGovernor
 from .ledger import WorkflowLedgerStore
 from .mock_backend import MockBackend, STAGE_OUTPUT_MULTIPLIER
 from .scheduler import SchedulerDecision, WorkflowScheduler
-from .selector import BudgetFlowSelector, SelectionDecision, build_zero_calibration_progress_table
+from .selector import BudgetFlowSelector, SelectionDecision
 from .types import Backend, BackendCallResult, ProgressTable, Stage, TurnInfo, WorkflowStatus
 from .zombie import ZombieDetector
 
@@ -194,14 +194,14 @@ def build_default_loop(
     governor: BudgetGovernor,
     ledger: WorkflowLedgerStore,
     budget_pressure: float,
+    *,
+    progress_table: ProgressTable,
     queue_limit: int = 0,
     zombie_timeout_seconds: float = 5.0,
     backend_picker: Callable[[TurnInfo, list[Backend], BudgetFlowSelector, float, dict[str, float]], Backend] | None = None,
     backend_runner: Callable[[Backend, TurnInfo, int], BackendCallResult] | None = None,
-    progress_table: ProgressTable | None = None,
 ) -> MinimalAgentLoop:
-    table = progress_table or build_zero_calibration_progress_table(backends)
-    selector = BudgetFlowSelector(table)
+    selector = BudgetFlowSelector(progress_table)
     scheduler = WorkflowScheduler(queue_limit=queue_limit)
     zombie_detector = ZombieDetector(timeout_seconds=zombie_timeout_seconds)
     return MinimalAgentLoop(

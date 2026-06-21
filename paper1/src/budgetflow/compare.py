@@ -4,14 +4,21 @@ from .governor import BudgetGovernor
 from .ledger import WorkflowLedgerStore
 from .loop import WorkflowSpec, build_default_loop
 from .policies import BudgetOnlyStepRouter, PolicyRunSummary, WorkflowLevelRouter, summarize_policy_run
-from .types import Backend, GovernorConfig, TurnInfo
+from .types import Backend, GovernorConfig, ProgressTable, TurnInfo
 
 
 class ComparisonRunner:
-    def __init__(self, backends: list[Backend], total_budget: float, default_max_output_tokens: int) -> None:
+    def __init__(
+        self,
+        backends: list[Backend],
+        total_budget: float,
+        default_max_output_tokens: int,
+        progress_table: ProgressTable,
+    ) -> None:
         self.backends = backends
         self.total_budget = total_budget
         self.default_max_output_tokens = default_max_output_tokens
+        self.progress_table = progress_table
 
     def run_budgetflow_segment(self, workflows: list[WorkflowSpec], budget_pressure: float) -> PolicyRunSummary:
         ledger = WorkflowLedgerStore()
@@ -19,7 +26,13 @@ class ComparisonRunner:
             GovernorConfig(total_budget=self.total_budget, default_max_output_tokens=self.default_max_output_tokens),
             ledger,
         )
-        loop = build_default_loop(self.backends, governor, ledger, budget_pressure=budget_pressure)
+        loop = build_default_loop(
+            self.backends,
+            governor,
+            ledger,
+            budget_pressure=budget_pressure,
+            progress_table=self.progress_table,
+        )
         results = [loop.run_workflow(workflow) for workflow in workflows]
         return summarize_policy_run("budgetflow_segment", results)
 
@@ -42,7 +55,14 @@ class ComparisonRunner:
             GovernorConfig(total_budget=self.total_budget, default_max_output_tokens=self.default_max_output_tokens),
             ledger,
         )
-        loop = build_default_loop(self.backends, governor, ledger, budget_pressure=budget_pressure, backend_picker=backend_picker)
+        loop = build_default_loop(
+            self.backends,
+            governor,
+            ledger,
+            budget_pressure=budget_pressure,
+            progress_table=self.progress_table,
+            backend_picker=backend_picker,
+        )
         results = [loop.run_workflow(workflow) for workflow in workflows]
         return summarize_policy_run("workflow_level_router", results)
 
@@ -57,6 +77,13 @@ class ComparisonRunner:
             GovernorConfig(total_budget=self.total_budget, default_max_output_tokens=self.default_max_output_tokens),
             ledger,
         )
-        loop = build_default_loop(self.backends, governor, ledger, budget_pressure=budget_pressure, backend_picker=backend_picker)
+        loop = build_default_loop(
+            self.backends,
+            governor,
+            ledger,
+            budget_pressure=budget_pressure,
+            progress_table=self.progress_table,
+            backend_picker=backend_picker,
+        )
         results = [loop.run_workflow(workflow) for workflow in workflows]
         return summarize_policy_run("budget_only_step_router", results)

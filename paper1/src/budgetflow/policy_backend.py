@@ -197,27 +197,3 @@ class BootstrapPolicy(PolicyBackend):
             return True
         max_turns = int(kwargs.get("max_turns", 60))
         return turns_used >= max_turns
-
-
-def build_bootstrap_policy(
-    selector_class: type,
-    backends: list[Backend],
-    progress_table: object | None = None,
-    median_task_value: float = 1.0,
-    policy_name: str = "bootstrap",
-) -> BootstrapPolicy:
-    """Factory: build a BootstrapPolicy wrapping a BudgetFlow selector variant."""
-    from .selector import build_zero_calibration_progress_table
-
-    table = progress_table or build_zero_calibration_progress_table(list(backends))
-    if hasattr(selector_class, '__init__'):
-        import inspect
-        sig = inspect.signature(selector_class.__init__)
-        param_names = set(sig.parameters.keys()) - {'self'}
-        if 'median_task_value' in param_names:
-            selector = selector_class(table, median_task_value=median_task_value)
-        else:
-            selector = selector_class(table)
-    else:
-        selector = selector_class(table)
-    return BootstrapPolicy(selector=selector, name=policy_name)

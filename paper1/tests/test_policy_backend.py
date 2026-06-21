@@ -33,23 +33,33 @@ def _turn(stage=None, w_i=0.4):
     )
 
 
+def _progress_table():
+    from budgetflow.types import Stage
+
+    return {
+        Stage.LOCALIZATION: {"tier1": 0.20, "tier2": 0.35, "tier3": 0.55},
+        Stage.REPAIR: {"tier1": 0.12, "tier2": 0.30, "tier3": 0.58},
+        Stage.VALIDATION: {"tier1": 0.16, "tier2": 0.32, "tier3": 0.50},
+    }
+
+
 class TestPolicyBackendInterface:
     def test_bootstrap_policy_is_policy_backend(self):
         from budgetflow.policy_backend import BootstrapPolicy, PolicyBackend
-        from budgetflow.selector import BudgetFlowSelector, build_zero_calibration_progress_table
+        from budgetflow.selector import BudgetFlowSelector
 
         backends = _backends()
-        table = build_zero_calibration_progress_table(backends)
+        table = _progress_table()
         selector = BudgetFlowSelector(table)
         policy = BootstrapPolicy(selector)
         assert isinstance(policy, PolicyBackend)
 
     def test_bootstrap_policy_estimate_cap_is_pass_through(self):
         from budgetflow.policy_backend import BootstrapPolicy
-        from budgetflow.selector import BudgetFlowSelector, build_zero_calibration_progress_table
+        from budgetflow.selector import BudgetFlowSelector
 
         backends = _backends()
-        table = build_zero_calibration_progress_table(backends)
+        table = _progress_table()
         policy = BootstrapPolicy(BudgetFlowSelector(table))
 
         # Not yet wired into runtime; must return budget_remaining unchanged.
@@ -58,10 +68,10 @@ class TestPolicyBackendInterface:
 
     def test_bootstrap_policy_choose_backend(self):
         from budgetflow.policy_backend import BootstrapPolicy
-        from budgetflow.selector import BudgetFlowSelector, build_zero_calibration_progress_table
+        from budgetflow.selector import BudgetFlowSelector
 
         backends = _backends()
-        table = build_zero_calibration_progress_table(backends)
+        table = _progress_table()
         policy = BootstrapPolicy(BudgetFlowSelector(table))
 
         decision = policy.choose_backend(
@@ -74,10 +84,10 @@ class TestPolicyBackendInterface:
 
     def test_bootstrap_policy_stores_last_decision(self):
         from budgetflow.policy_backend import BootstrapPolicy
-        from budgetflow.selector import BudgetFlowSelector, build_zero_calibration_progress_table
+        from budgetflow.selector import BudgetFlowSelector
 
         backends = _backends()
-        table = build_zero_calibration_progress_table(backends)
+        table = _progress_table()
         policy = BootstrapPolicy(BudgetFlowSelector(table))
 
         assert policy.last_decision is None
@@ -89,40 +99,40 @@ class TestPolicyBackendInterface:
 
     def test_bootstrap_policy_should_stop_on_exhausted_budget(self):
         from budgetflow.policy_backend import BootstrapPolicy
-        from budgetflow.selector import BudgetFlowSelector, build_zero_calibration_progress_table
+        from budgetflow.selector import BudgetFlowSelector
 
         backends = _backends()
-        table = build_zero_calibration_progress_table(backends)
+        table = _progress_table()
         policy = BootstrapPolicy(BudgetFlowSelector(table))
 
         assert policy.should_stop("task-a", 0.0, 1.0, 5) is True
 
     def test_bootstrap_policy_should_continue_with_budget(self):
         from budgetflow.policy_backend import BootstrapPolicy
-        from budgetflow.selector import BudgetFlowSelector, build_zero_calibration_progress_table
+        from budgetflow.selector import BudgetFlowSelector
 
         backends = _backends()
-        table = build_zero_calibration_progress_table(backends)
+        table = _progress_table()
         policy = BootstrapPolicy(BudgetFlowSelector(table))
 
         assert policy.should_stop("task-a", 0.3, 1.0, 5) is False
 
     def test_bootstrap_policy_should_escalate_on_prolonged_stall(self):
         from budgetflow.policy_backend import BootstrapPolicy
-        from budgetflow.selector import BudgetFlowSelector, build_zero_calibration_progress_table
+        from budgetflow.selector import BudgetFlowSelector
 
         backends = _backends()
-        table = build_zero_calibration_progress_table(backends)
+        table = _progress_table()
         policy = BootstrapPolicy(BudgetFlowSelector(table))
 
         assert policy.should_escalate("task-a", "tier2", 0, 8) is True
 
     def test_bootstrap_policy_should_not_escalate_when_making_progress(self):
         from budgetflow.policy_backend import BootstrapPolicy
-        from budgetflow.selector import BudgetFlowSelector, build_zero_calibration_progress_table
+        from budgetflow.selector import BudgetFlowSelector
 
         backends = _backends()
-        table = build_zero_calibration_progress_table(backends)
+        table = _progress_table()
         policy = BootstrapPolicy(BudgetFlowSelector(table))
 
         assert policy.should_escalate("task-a", "tier2", 3, 2) is False
@@ -131,10 +141,10 @@ class TestPolicyBackendInterface:
 class TestBootstrapValueAwarePolicy:
     def test_value_aware_policy_passes_task_value(self):
         from budgetflow.policy_backend import BootstrapPolicy
-        from budgetflow.selector import ValueAwareSelector, build_zero_calibration_progress_table
+        from budgetflow.selector import ValueAwareSelector
 
         backends = _backends()
-        table = build_zero_calibration_progress_table(backends)
+        table = _progress_table()
         selector = ValueAwareSelector(table, median_task_value=1.0)
         policy = BootstrapPolicy(selector)
 

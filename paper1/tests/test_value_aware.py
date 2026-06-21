@@ -24,6 +24,16 @@ def _turn(stage=None, w_i=0.4):
     )
 
 
+def _progress_table():
+    from budgetflow.types import Stage
+
+    return {
+        Stage.LOCALIZATION: {"tier2": 0.35, "tier3": 0.55},
+        Stage.REPAIR: {"tier2": 0.30, "tier3": 0.58},
+        Stage.VALIDATION: {"tier2": 0.32, "tier3": 0.50},
+    }
+
+
 class TestStrategyCatalog:
     def test_paper_mainline_strategies_in_default_order(self):
         from budgetflow.experiments.compare_config import DEFAULT_STRATEGIES, mechanism_strategy_names
@@ -70,18 +80,18 @@ class TestStrategyCatalog:
 
 class TestValueMultiplier:
     def test_equal_value_multiplier_is_one(self):
-        from budgetflow.selector import ValueAwareSelector, build_zero_calibration_progress_table
+        from budgetflow.selector import ValueAwareSelector
         backends = _backends()
-        table = build_zero_calibration_progress_table(backends)
+        table = _progress_table()
         sel = ValueAwareSelector(table, median_task_value=1.0)
         sel.select_backend(_turn(), backends, 0.5, {b.name: 0.01 for b in backends}, task_value=1.0)
         assert sel.last_multiplier == 1.0
 
     def test_high_value_easier_t3(self):
         """Higher task_value → higher multiplier → lower effective threshold → easier T3."""
-        from budgetflow.selector import ValueAwareSelector, build_zero_calibration_progress_table
+        from budgetflow.selector import ValueAwareSelector
         backends = _backends()
-        table = build_zero_calibration_progress_table(backends)
+        table = _progress_table()
         sel = ValueAwareSelector(table, median_task_value=1.0)
         # With very low pressure, low-value should NOT upgrade but high-value might
         sel_low = ValueAwareSelector(table, median_task_value=1.0)
@@ -94,34 +104,34 @@ class TestValueMultiplier:
 
     def test_low_value_more_conservative(self):
         """Low value → lower multiplier → higher effective threshold → harder T3."""
-        from budgetflow.selector import ValueAwareSelector, build_zero_calibration_progress_table
+        from budgetflow.selector import ValueAwareSelector
         backends = _backends()
-        table = build_zero_calibration_progress_table(backends)
+        table = _progress_table()
         sel = ValueAwareSelector(table, median_task_value=1.0)
         sel.select_backend(_turn(), backends, 0.5, {b.name: 0.01 for b in backends}, task_value=0.5)
         assert sel.last_multiplier < 1.0
 
     def test_clamp_upper_bound(self):
-        from budgetflow.selector import ValueAwareSelector, build_zero_calibration_progress_table
+        from budgetflow.selector import ValueAwareSelector
         backends = _backends()
-        table = build_zero_calibration_progress_table(backends)
+        table = _progress_table()
         sel = ValueAwareSelector(table, median_task_value=1.0)
         sel.select_backend(_turn(), backends, 0.5, {b.name: 0.01 for b in backends}, task_value=10.0)
         assert sel.last_multiplier == 2.0
 
     def test_clamp_lower_bound(self):
-        from budgetflow.selector import ValueAwareSelector, build_zero_calibration_progress_table
+        from budgetflow.selector import ValueAwareSelector
         backends = _backends()
-        table = build_zero_calibration_progress_table(backends)
+        table = _progress_table()
         sel = ValueAwareSelector(table, median_task_value=1.0)
         sel.select_backend(_turn(), backends, 0.5, {b.name: 0.01 for b in backends}, task_value=0.01)
         assert sel.last_multiplier == 0.5
 
     def test_default_task_value_uses_median(self):
         """When task_value is None, median_task_value is used → multiplier=1.0."""
-        from budgetflow.selector import ValueAwareSelector, build_zero_calibration_progress_table
+        from budgetflow.selector import ValueAwareSelector
         backends = _backends()
-        table = build_zero_calibration_progress_table(backends)
+        table = _progress_table()
         sel = ValueAwareSelector(table, median_task_value=2.5)
         sel.select_backend(_turn(), backends, 0.5, {b.name: 0.01 for b in backends}, task_value=None)
         assert sel.last_multiplier == 1.0
@@ -130,9 +140,9 @@ class TestValueMultiplier:
 class TestConservativeNotAffectValueAware:
     def test_conservative_unaffected_by_task_value(self):
         """ConservativeSelector should not have value awareness."""
-        from budgetflow.selector import ConservativeSelector, build_zero_calibration_progress_table
+        from budgetflow.selector import ConservativeSelector
         backends = _backends()
-        table = build_zero_calibration_progress_table(backends)
+        table = _progress_table()
         sel = ConservativeSelector(table)
         # ConservativeSelector.select_backend doesn't accept task_value
         sel.select_backend(_turn(), backends, 0.5, {b.name: 0.01 for b in backends})
@@ -141,9 +151,9 @@ class TestConservativeNotAffectValueAware:
 
     def test_value_aware_has_conservation(self):
         """ValueAwareSelector should also apply conservation factor."""
-        from budgetflow.selector import ValueAwareSelector, build_zero_calibration_progress_table
+        from budgetflow.selector import ValueAwareSelector
         backends = _backends()
-        table = build_zero_calibration_progress_table(backends)
+        table = _progress_table()
         sel = ValueAwareSelector(table, median_task_value=1.0)
         # At p=0.2 (below 0.3): conservation = 1.0, multiplier = 1.0
         # At p=0.8: conservation = 1.0 + 0.5*1.5 = 1.75

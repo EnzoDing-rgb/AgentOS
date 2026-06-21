@@ -193,24 +193,3 @@ class ConservativeSelector(BudgetFlowSelector):
             break
 
         return SelectionDecision(backend=current, score=current_score, upgraded=upgraded)
-
-
-def build_zero_calibration_progress_table(backends: list[Backend]) -> ProgressTable:
-    ordered = sorted(backends, key=lambda backend: backend.tier)
-    # Mock-aligned success probabilities at representative token lengths
-    # (localization ~97 tokens, repair ~135 tokens, validation ~109 tokens).
-    mock_calibrated_progress = {
-        Stage.LOCALIZATION: (0.2872, 0.5427, 0.7712, 0.8941),
-        Stage.REPAIR: (0.0509, 0.1497, 0.4263, 0.7414),
-        Stage.VALIDATION: (0.1026, 0.2586, 0.5292, 0.8014),
-    }
-    table: ProgressTable = {
-        Stage.LOCALIZATION: {},
-        Stage.REPAIR: {},
-        Stage.VALIDATION: {},
-    }
-    for index, backend in enumerate(ordered):
-        for stage in table:
-            tier_index = min(index, len(mock_calibrated_progress[stage]) - 1)
-            table[stage][backend.name] = mock_calibrated_progress[stage][tier_index]
-    return table

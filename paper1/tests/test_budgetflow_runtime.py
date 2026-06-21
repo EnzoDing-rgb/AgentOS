@@ -89,6 +89,29 @@ def build_workflows() -> list[WorkflowSpec]:
     ]
 
 
+def build_progress_table():
+    return {
+        Stage.LOCALIZATION: {
+            "tier1_cheap": 0.20,
+            "tier2_balanced": 0.36,
+            "tier3_strong": 0.54,
+            "tier4_elite": 0.64,
+        },
+        Stage.REPAIR: {
+            "tier1_cheap": 0.10,
+            "tier2_balanced": 0.30,
+            "tier3_strong": 0.58,
+            "tier4_elite": 0.72,
+        },
+        Stage.VALIDATION: {
+            "tier1_cheap": 0.16,
+            "tier2_balanced": 0.32,
+            "tier3_strong": 0.50,
+            "tier4_elite": 0.62,
+        },
+    }
+
+
 def test_reserve_reports_budget_exhausted() -> None:
     backends = build_backends()
     ledger = WorkflowLedgerStore()
@@ -104,7 +127,7 @@ def test_minimal_loop_runs_end_to_end() -> None:
     backends = build_backends()
     ledger = WorkflowLedgerStore()
     governor = BudgetGovernor(GovernorConfig(total_budget=10.0, default_max_output_tokens=100), ledger)
-    loop = build_default_loop(backends, governor, ledger, budget_pressure=0.55)
+    loop = build_default_loop(backends, governor, ledger, budget_pressure=0.55, progress_table=build_progress_table())
 
     result = loop.run_workflow(build_workflows()[0])
 
@@ -118,7 +141,7 @@ def test_budget_violation_is_blocked() -> None:
     backends = build_backends()
     ledger = WorkflowLedgerStore()
     governor = BudgetGovernor(GovernorConfig(total_budget=0.05, default_max_output_tokens=100), ledger)
-    loop = build_default_loop(backends, governor, ledger, budget_pressure=0.55)
+    loop = build_default_loop(backends, governor, ledger, budget_pressure=0.55, progress_table=build_progress_table())
 
     result = loop.run_workflow(build_workflows()[0])
 
@@ -141,6 +164,7 @@ def test_minimal_loop_does_not_downgrade_when_selected_backend_cannot_dispatch()
         governor,
         ledger,
         budget_pressure=0.55,
+        progress_table=build_progress_table(),
         backend_picker=pick_strongest,
     )
 
@@ -175,7 +199,12 @@ def test_settle_never_exceeds_total_budget() -> None:
 
 
 def test_policy_comparison_runs_small_scale() -> None:
-    runner = ComparisonRunner(build_backends(), total_budget=40.0, default_max_output_tokens=100)
+    runner = ComparisonRunner(
+        build_backends(),
+        total_budget=40.0,
+        default_max_output_tokens=100,
+        progress_table=build_progress_table(),
+    )
     workflows = build_workflows()
 
     full = runner.run_budgetflow_segment(workflows, budget_pressure=0.55)
