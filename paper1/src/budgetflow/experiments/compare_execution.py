@@ -582,6 +582,7 @@ def run_strategy_batch(
         records.append(record)
         if checkpoint is not None:
             task_spent = float(record.get("total_cost") or 0)
+            score_status = str(record.get("score_status") or "")
             checkpoint.mark_task_done(
                 cfg.name,
                 task.instance_id,
@@ -594,6 +595,7 @@ def run_strategy_batch(
                 batch_cap=(
                     batch_budget_cap
                 ),
+                completed=score_status in {"pass", "true_fail"},
             )
         if on_task_complete is not None:
             on_task_complete(record)

@@ -143,6 +143,21 @@ def _backend_by_configured_tier(backends: list[Backend], tier: int) -> Backend |
     return next((backend for backend in backends if backend.tier == tier), None)
 
 
+def _routing_trigger_source(
+    backend_chosen: str,
+    final_backend: str,
+    override_source: str,
+    router_reason: str | None,
+) -> str:
+    if override_source:
+        return override_source
+    if final_backend == backend_chosen:
+        if router_reason and "task_start" in router_reason:
+            return "task_start_routing"
+        return "router"
+    return "router_override"
+
+
 def _usage_accounting(response, *, input_tokens: int, fallback_output_tokens: int) -> dict[str, Any]:
     usage = getattr(response, "usage", None)
     provider_prompt = getattr(usage, "prompt_tokens", None) if usage is not None else None
@@ -460,11 +475,13 @@ class BudgetFlowLitellmModel:
 
         backend = choose_backend(self.routing, turn, expected_costs)
         backend_chosen = backend.name
+        routing_override_source = ""
         # Adaptive starting tier: skip T1/T2 on first step if strategy is on a losing streak
         if self.step_index == 1 and self.routing.adaptive is not None:
             min_start = self.routing.adaptive.starting_tier()
             if backend.tier < min_start:
                 backend = ModelCatalog.at_or_above(self.routing.backends, min_start)
+                routing_override_source = "adaptive_floor"
                 print(
                     f"{tag('adapt', bold=False)} #{self.step_index} "
                     f"starting_tier={min_start} ({backend_tier_label(backend.name)})",
@@ -483,6 +500,7 @@ class BudgetFlowLitellmModel:
                     flush=True,
                 )
                 backend = candidate
+                routing_override_source = "starter_memory"
         protect_strongest_this_turn = False
         if self.routing.adaptive is not None and self.routing.strategy in IN_TASK_SWITCHING_ROUTINGS:
             forced_tier = self.routing.adaptive.rescue.forced_min_tier(
@@ -502,6 +520,7 @@ class BudgetFlowLitellmModel:
                     flush=True,
                 )
                 backend = candidate
+                routing_override_source = "rescue_window"
                 strongest_tier = ModelCatalog.strongest(self.routing.backends).tier
                 protect_strongest_this_turn = candidate.tier >= strongest_tier
             stop_loss = self._defer_gold_edit_stop_loss(
@@ -522,14 +541,29 @@ class BudgetFlowLitellmModel:
                     no_progress_streak=self._no_progress_streak,
                 )
         prev_tier = self._last_backend_tier
+        before_hook_backend = backend
         backend = self._apply_value_triggered_escalation(backend, stage)
+        if backend.name != before_hook_backend.name:
+            routing_override_source = "value_escalation"
+        before_hook_backend = backend
         backend = self._apply_progress_escalation(
             backend,
             protect_strongest_this_turn=protect_strongest_this_turn,
         )
+        if backend.name != before_hook_backend.name:
+            routing_override_source = "progress_escalation"
+        before_hook_backend = backend
         backend = self._apply_gold_edit_repair_guard(backend, progress_signal.segment)
+        if backend.name != before_hook_backend.name:
+            routing_override_source = "gold_edit_guard"
         escalated_backend = backend.name
         backend = self._reserve_backend(backend, input_tokens)
+        routing_trigger_source = _routing_trigger_source(
+            backend_chosen,
+            backend.name,
+            routing_override_source,
+            getattr(getattr(self.routing, "last_decision", None), "reason", None),
+        )
         reserve_out = self._last_reserve_out
         if backend.tier != prev_tier and prev_tier > 0:
             self._no_progress_on_current_tier = 0
@@ -589,6 +623,7 @@ class BudgetFlowLitellmModel:
                     escalated_backend=escalated_backend,
                     final_backend=backend.name,
                     backend_tier=backend.tier,
+                    routing_trigger_source=routing_trigger_source,
                     reserve_out=reserve_out,
                     adaptive=self.routing.adaptive,
                     no_progress_streak=self._no_progress_streak,
@@ -702,6 +737,7 @@ class BudgetFlowLitellmModel:
                         escalated_backend=escalated_backend,
                         final_backend=backend.name,
                         backend_tier=backend.tier,
+                        routing_trigger_source=routing_trigger_source,
                         reserve_out=reserve_out,
                         adaptive=self.routing.adaptive,
                         no_progress_streak=self._no_progress_streak,
@@ -857,6 +893,7 @@ class BudgetFlowLitellmModel:
                             escalated_backend=escalated_backend,
                             final_backend=backend.name,
                             backend_tier=backend.tier,
+                            routing_trigger_source=routing_trigger_source,
                             reserve_out=reserve_out,
                             adaptive=self.routing.adaptive,
                             no_progress_streak=self._no_progress_streak,
@@ -929,6 +966,7 @@ class BudgetFlowLitellmModel:
                     escalated_backend=escalated_backend,
                     final_backend=backend.name,
                     backend_tier=backend.tier,
+                    routing_trigger_source=routing_trigger_source,
                     reserve_out=reserve_out,
                     adaptive=self.routing.adaptive,
                     no_progress_streak=self._no_progress_streak,
@@ -1004,6 +1042,7 @@ class BudgetFlowLitellmModel:
                 escalated_backend=escalated_backend,
                 final_backend=backend.name,
                 backend_tier=backend.tier,
+                routing_trigger_source=routing_trigger_source,
                 reserve_out=reserve_out,
                 adaptive=self.routing.adaptive,
                 no_progress_streak=self._no_progress_streak,

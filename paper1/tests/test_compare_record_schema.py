@@ -579,6 +579,70 @@ def test_planned_task_budget_checkpoint_records_shared_batch_cap(monkeypatch, tm
     assert strategy_state.completed_tasks == ["task-a", "task-b"]
 
 
+def test_checkpoint_does_not_mark_abort_rows_completed(monkeypatch, tmp_path) -> None:
+    from budgetflow.experiments import compare_execution
+
+    def fake_run_task_record(task, **kwargs):
+        return {
+            "instance_id": task.instance_id,
+            "strategy": kwargs["cfg"].name,
+            "routing": kwargs["cfg"].routing,
+            "harness_resolved": False,
+            "score_status": "abort",
+            "abort_reason": "provider_or_infra_error",
+            "patch_extracted": False,
+            "agent_gold_edited": False,
+            "agent_gold_files": [],
+            "detail": "",
+            "exit_status": "UpstreamExit",
+            "exit_reason": "billing_guard",
+            "elapsed_s": 0.0,
+            "backend_picks": ["tier2"],
+            "llm_turns": 1,
+            "total_cost": 0.2,
+            "batch_available": None,
+        }
+
+    monkeypatch.setattr(compare_execution, "run_task_record", fake_run_task_record)
+    checkpoint = CompareCheckpointStore(
+        tmp_path / "abort.checkpoint.json",
+        stem="abort",
+        total_runs=1,
+    )
+
+    run_strategy_batch(
+        CompareStrategy("budgetflow_task_level", "value_aware_task_level"),
+        [SimpleNamespace(instance_id="task-a")],
+        batch_budget_cap=1.0,
+        value_context=_value_context(),
+        planned_task_caps={"task-a": 0.8},
+        budget_mode="budgetflow_planned_task_budget",
+        step_limit=1,
+        trace_console="quiet",
+        heartbeat=0,
+        global_progress=SimpleNamespace(
+            total=1,
+            start_task=lambda: None,
+            finish_task=lambda: 1,
+            format_banner=lambda scoreboard=None: "test",
+            format_global=lambda scoreboard=None: "test",
+        ),
+        scoreboard=None,
+        print_lock=None,
+        checkpoint=checkpoint,
+    )
+
+    restored = CompareCheckpointStore(
+        tmp_path / "abort.checkpoint.json",
+        stem="abort",
+        total_runs=1,
+    )
+    strategy_state = restored.strategies["budgetflow_task_level"]
+    assert strategy_state.in_flight_task is None
+    assert strategy_state.batch_spent == 0.0
+    assert strategy_state.completed_tasks == []
+
+
 def test_effective_planned_task_cap_uses_plan_until_shared_budget_is_tighter() -> None:
     import pytest
 

@@ -8,6 +8,7 @@ from budgetflow.run_observability.checks import (
     _check_value_profile_fallback,
 )
 from budgetflow.run_observability.schema import _check_desired_fields, _check_observability_schema
+from budgetflow.run_observability.schema import _check_duplicates
 from budgetflow.run_observability.report import format_compact_audit
 from budgetflow.run_observability.schema import _check_trace_coverage
 import pytest
@@ -80,6 +81,21 @@ def test_trace_coverage_still_flags_non_budget_missing_trace() -> None:
 
     assert issues
     assert issues[0].startswith("NO_TRACE")
+
+
+def test_duplicate_check_allows_abort_retry_but_flags_scoreable_duplicate() -> None:
+    retry_issues = _check_duplicates([
+        {"instance_id": "task-a", "strategy": "s1", "score_status": "abort"},
+        {"instance_id": "task-a", "strategy": "s1", "score_status": "pass"},
+    ])
+    duplicate_issues = _check_duplicates([
+        {"instance_id": "task-a", "strategy": "s1", "score_status": "pass"},
+        {"instance_id": "task-a", "strategy": "s1", "score_status": "true_fail"},
+    ])
+
+    assert retry_issues == []
+    assert duplicate_issues
+    assert duplicate_issues[0].startswith("DUPLICATE_SCOREABLE")
 
 
 def test_shared_cap_starvation_uses_agent_exit_reason() -> None:

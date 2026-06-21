@@ -171,6 +171,9 @@ def _t3_productivity(records: list[dict], t3_tier: int) -> dict[str, dict]:
 
 
 def _t3_source(trace: dict) -> str:
+    explicit = str(trace.get("routing_trigger_source") or "")
+    if explicit:
+        return explicit
     if trace.get("value_triggered_escalation_active") or trace.get("value_triggered_escalation_opened"):
         return "value_triggered"
     if trace.get("strongest_starter_applied"):

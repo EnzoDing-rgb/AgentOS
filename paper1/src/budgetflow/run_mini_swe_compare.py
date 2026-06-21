@@ -90,7 +90,7 @@ from budgetflow.observability import (  # noqa: E402
 from budgetflow.learning_context import load_policy_memory_context  # noqa: E402
 from budgetflow.adaptive_routing import AdaptiveRoutingRegistry  # noqa: E402
 from budgetflow.run_guards import CompareRunGuards, set_active_guard  # noqa: E402
-from budgetflow.run_series import release_run_identity, resolve_run_identity  # noqa: E402
+from budgetflow.run_series import release_run_identity, resolve_run_identity, scoreable_spend_by_strategy  # noqa: E402
 from budgetflow.run_series import validate_resume_contract  # noqa: E402
 from budgetflow.run_trace import TraceConsoleLevel  # noqa: E402
 from budgetflow.runtime import check_cwd, is_nfs_or_banned, print_runtime_info, resolve_runtime_root, set_runtime_root  # noqa: E402
@@ -304,6 +304,10 @@ def main() -> None:
         if args.skip_completed else set()
     )
     completed = completed_all & expected_run_keys
+    resume_scoreable_spend = (
+        scoreable_spend_by_strategy(out_path, normalize_strategy=_normalize_strategy)
+        if args.skip_completed else {}
+    )
     if args.skip_completed and completed:
         print(f"{tag('resume', bold=False)} skip {len(completed)} completed (strategy,task) pairs", flush=True)
     ignored_completed = len(completed_all - expected_run_keys)
@@ -503,7 +507,7 @@ def main() -> None:
                 flush=True,
             )
             batch_cap = _batch_budget_cap(cfg, budget_input["hard_cap_usd"])
-            return cfg, [], checkpoint.initial_spent(cfg.name) if args.resume else 0.0, batch_cap
+            return cfg, [], resume_scoreable_spend.get(cfg.name, 0.0) if args.resume else 0.0, batch_cap
         batch_cap = _batch_budget_cap(cfg, budget_input["hard_cap_usd"])
         batch_tasks = list(tasks)
         if completed:
@@ -511,7 +515,7 @@ def main() -> None:
             if not batch_tasks:
                 print(f"{tag('skip', bold=False)} strategy={cfg.name} all tasks already done", flush=True)
                 return cfg, [], 0.0, batch_cap
-        initial_spent = checkpoint.initial_spent(cfg.name) if args.resume else 0.0
+        initial_spent = resume_scoreable_spend.get(cfg.name, 0.0) if args.resume else 0.0
 
         def _on_task(record: dict) -> None:
             _persist_task_record(

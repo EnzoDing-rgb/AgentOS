@@ -126,6 +126,7 @@ def build_turn_trace(
     protocol_retry_reason: str = "",
     protocol_retry_attempts: int = 0,
     protocol_retry_limit: int | None = None,
+    routing_trigger_source: str = "router",
 ) -> dict:
     """Build the per-turn observability record persisted in compare JSONL."""
     trace: dict[str, Any] = {
@@ -144,6 +145,7 @@ def build_turn_trace(
         "escalated_backend": escalated_backend if escalated_backend != backend_chosen else None,
         "final_backend": final_backend,
         "backend_tier": backend_tier,
+        "routing_trigger_source": routing_trigger_source,
         "reserve_output_tokens": reserve_out,
         "no_progress_streak": no_progress_streak,
         "no_progress_on_tier": no_progress_on_tier,

@@ -136,6 +136,7 @@ def test_turn_trace_has_fields_needed_to_debug_value_routing_and_provider_failur
         provider_retryable=True,
         router_reason="value_triggered_escalation",
         router_branch="segment_value_aware",
+        routing_trigger_source="value_escalation",
         task_value=2.0,
         task_value_multiplier=1.5,
         value_aware_active=True,
@@ -165,6 +166,7 @@ def test_turn_trace_has_fields_needed_to_debug_value_routing_and_provider_failur
     assert trace["provider_error_kind"] == "transient_provider"
     assert trace["provider_retryable"] is True
     assert trace["router_branch"] == "segment_value_aware"
+    assert trace["routing_trigger_source"] == "value_escalation"
     assert trace["task_value_multiplier"] == 1.5
     assert trace["value_triggered_escalation_active"] is True
     assert trace["value_triggered_escalation_turns_remaining"] == 2

@@ -32,14 +32,20 @@ OPTIONAL_BUT_DESIRED = frozenset({
 
 def _check_duplicates(records: list[dict]) -> list[str]:
     issues: list[str] = []
-    seen: set[tuple[str, str]] = set()
+    seen_any: set[tuple[str, str]] = set()
+    seen_scoreable: set[tuple[str, str]] = set()
     for i, rec in enumerate(records):
         key = (str(rec.get("strategy", "")), str(rec.get("instance_id", "")))
         if not key[0] or not key[1]:
             continue
-        if key in seen:
-            issues.append(f"DUPLICATE row {i}: strategy={key[0]} instance={key[1]}")
-        seen.add(key)
+        score_status = str(rec.get("score_status") or "")
+        if score_status in {"pass", "true_fail"}:
+            if key in seen_scoreable:
+                issues.append(f"DUPLICATE_SCOREABLE row {i}: strategy={key[0]} instance={key[1]}")
+            seen_scoreable.add(key)
+        elif key in seen_any and score_status != "abort":
+            issues.append(f"DUPLICATE_RETRY_UNKNOWN row {i}: strategy={key[0]} instance={key[1]}")
+        seen_any.add(key)
     return issues
 
 

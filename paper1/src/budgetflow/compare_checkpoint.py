@@ -75,11 +75,20 @@ class CompareCheckpointStore:
         st.in_flight_task = instance_id
         self.save()
 
-    def mark_task_done(self, strategy: str, instance_id: str, *, batch_spent: float, batch_cap: float) -> None:
+    def mark_task_done(
+        self,
+        strategy: str,
+        instance_id: str,
+        *,
+        batch_spent: float,
+        batch_cap: float,
+        completed: bool = True,
+    ) -> None:
         st = self.ensure_strategy(strategy, batch_cap)
-        st.batch_spent = batch_spent
+        if completed:
+            st.batch_spent = batch_spent
         st.in_flight_task = None
-        if instance_id not in st.completed_tasks:
+        if completed and instance_id not in st.completed_tasks:
             st.completed_tasks.append(instance_id)
         self.save()
 
