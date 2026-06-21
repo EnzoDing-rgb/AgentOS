@@ -34,6 +34,7 @@ from .local_harness_adapters import (
     PylintHAdapter,
     RepoHarnessAdapter,
     RequestsHAdapter,
+    SeabornHAdapter,
     SymPyHAdapter,
     apply_python_compat,
     build_pytest_node_ids,

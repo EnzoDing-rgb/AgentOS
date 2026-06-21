@@ -17,6 +17,7 @@ from budgetflow.local_harness import (
 )
 from budgetflow.local_harness_adapters import (
     PylintHAdapter,
+    SeabornHAdapter,
     SphinxHAdapter,
     build_agent_shell_env,
     _patch_jinja2_imports,
@@ -199,6 +200,18 @@ def test_finalize_repo_workspace_never_installs_into_global_python(tmp_path: Pat
 
 
 # ---- RepoHarnessAdapter tests ----
+
+
+def test_seaborn_adapter_provides_matplotlib_register_cmap_compat(tmp_path: Path) -> None:
+    adapter = SeabornHAdapter()
+
+    prefixes = adapter.agent_pythonpath_prefixes(tmp_path)
+
+    sitecustomize = prefixes[0] / "sitecustomize.py"
+    text = sitecustomize.read_text()
+    assert "register_cmap" in text
+    assert "matplotlib.colormaps.register" in text
+    assert "np.product" in text
 
 
 def test_sympy_adapter_fixes_print_float_inf(tmp_path: Path) -> None:

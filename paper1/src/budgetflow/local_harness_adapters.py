@@ -71,6 +71,8 @@ class RepoHarnessAdapter:
             return FlaskHAdapter()
         if slug == "pylint-dev__pylint":
             return PylintHAdapter()
+        if slug == "mwaskom__seaborn":
+            return SeabornHAdapter()
         return DefaultHAdapter()
 
 
@@ -399,8 +401,167 @@ class PylintHAdapter(RepoHarnessAdapter):
         }
 
 
+class SeabornHAdapter(RepoHarnessAdapter):
+    repo_slug = "mwaskom__seaborn"
+
+    def prepare_harness(self, repo_dir: Path) -> None:
+        _ensure_seaborn_harness_venv(repo_dir)
+
+    def test_python(self, repo_dir: Path) -> str:
+        return str(_ensure_seaborn_harness_venv(repo_dir) / "bin" / "python")
+
+    def agent_pythonpath_prefixes(self, repo_dir: Path) -> list[Path]:
+        return [_ensure_seaborn_sitecustomize(), repo_dir]
+
+    def harness_env(self, repo_dir: Path) -> dict[str, str]:
+        venv_dir = _ensure_seaborn_harness_venv(repo_dir)
+        path = os.environ.get("PATH", "")
+        existing = os.environ.get("PYTHONPATH", "")
+        return {
+            "VIRTUAL_ENV": str(venv_dir),
+            "PATH": f"{venv_dir / 'bin'}{os.pathsep}{path}" if path else str(venv_dir / "bin"),
+            "PYTHONNOUSERSITE": "1",
+            "PYTHONPATH": _merge_agent_pythonpath(self.agent_pythonpath_prefixes(repo_dir), existing),
+        }
+
+
 class DefaultHAdapter(RepoHarnessAdapter):
     repo_slug = ""
+
+
+def _ensure_seaborn_sitecustomize() -> Path:
+    shim_dir = get_runtime_root() / "agent_shell_shims" / "seaborn_matplotlib_compat"
+    shim_dir.mkdir(parents=True, exist_ok=True)
+    sitecustomize = shim_dir / "sitecustomize.py"
+    sitecustomize.write_text(
+        "try:\n"
+        "    import matplotlib\n"
+        "    import matplotlib.cm as _cm\n"
+        "    if not hasattr(_cm, 'register_cmap') and hasattr(matplotlib, 'colormaps'):\n"
+        "        def register_cmap(name=None, cmap=None, *, override_builtin=False):\n"
+        "            target = cmap if cmap is not None else name\n"
+        "            kwargs = {}\n"
+        "            if name is not None and cmap is not None:\n"
+        "                kwargs['name'] = name\n"
+        "            try:\n"
+        "                return matplotlib.colormaps.register(target, **kwargs)\n"
+        "            except ValueError:\n"
+        "                return None\n"
+        "        _cm.register_cmap = register_cmap\n"
+        "except Exception:\n"
+        "    pass\n"
+        "try:\n"
+        "    import numpy as np\n"
+        "    if not hasattr(np, 'product') and hasattr(np, 'prod'):\n"
+        "        np.product = np.prod\n"
+        "except Exception:\n"
+        "    pass\n"
+    )
+    return shim_dir
+
+
+def _seaborn_harness_venv_fingerprint(repo_dir: Path) -> str:
+    h = hashlib.sha256()
+    h.update(f"python={sys.version_info.major}.{sys.version_info.minor}\n".encode())
+    for rel in ("pyproject.toml", "setup.cfg", "setup.py"):
+        path = repo_dir / rel
+        if path.is_file():
+            h.update(rel.encode())
+            h.update(b"\n")
+            h.update(path.read_bytes())
+            h.update(b"\n")
+    h.update(b"seaborn-harness-v5\n")
+    return h.hexdigest()[:16]
+
+
+def _install_seaborn_harness_requirements(repo_dir: Path, python: Path, venv_dir: Path) -> None:
+    compatibility_requirements = [
+        "pytest<8",
+        "numpy<2",
+        "pandas<2",
+        "matplotlib<3.8",
+        "scipy<1.12",
+    ]
+    commands = [
+        [str(python), "-m", "pip", "install", "--disable-pip-version-check", "-q", "-e", ".[dev]"],
+        [
+            str(python),
+            "-m",
+            "pip",
+            "install",
+            "--disable-pip-version-check",
+            "-q",
+            "-e",
+            ".",
+            *compatibility_requirements,
+        ],
+    ]
+    env = dict(os.environ)
+    env["VIRTUAL_ENV"] = str(venv_dir)
+    env["PATH"] = f"{venv_dir / 'bin'}{os.pathsep}{env.get('PATH', '')}"
+    env["PYTHONNOUSERSITE"] = "1"
+    last_detail = ""
+    for cmd in commands:
+        result = subprocess.run(cmd, cwd=repo_dir, capture_output=True, text=True, env=env, timeout=900)
+        if result.returncode == 0:
+            break
+        last_detail = (result.stderr or result.stdout or "").strip()[-2000:]
+    else:
+        raise RuntimeError(f"seaborn harness dependency install failed: {last_detail}")
+    ensure_result = subprocess.run(
+        [
+            str(python),
+            "-m",
+            "pip",
+            "install",
+            "--disable-pip-version-check",
+            "-q",
+            *compatibility_requirements,
+        ],
+        cwd=repo_dir,
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=900,
+    )
+    if ensure_result.returncode != 0:
+        detail = (ensure_result.stderr or ensure_result.stdout or "").strip()[-2000:]
+        raise RuntimeError(f"seaborn harness dependency install failed: {detail}")
+
+
+def _ensure_seaborn_harness_venv(repo_dir: Path) -> Path:
+    fingerprint = _seaborn_harness_venv_fingerprint(repo_dir)
+    root = get_runtime_root() / "harness_venvs"
+    root.mkdir(parents=True, exist_ok=True)
+    venv_dir = root / f"mwaskom__seaborn-{fingerprint}"
+    ready = venv_dir / ".budgetflow_ready"
+    python = venv_dir / "bin" / "python"
+    if ready.is_file() and python.is_file():
+        return venv_dir
+
+    lock_dir = get_runtime_root() / "locks"
+    lock_dir.mkdir(parents=True, exist_ok=True)
+    lock_path = lock_dir / f"seaborn-harness-venv-{fingerprint}.lock"
+    with lock_path.open("w") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        if ready.is_file() and python.is_file():
+            return venv_dir
+        if venv_dir.exists():
+            shutil.rmtree(venv_dir, ignore_errors=True)
+        venv.EnvBuilder(with_pip=True, clear=True).create(venv_dir)
+        _install_seaborn_harness_requirements(repo_dir, python, venv_dir)
+        site_packages = subprocess.check_output(
+            [
+                str(python),
+                "-c",
+                "import site; print(next(p for p in site.getsitepackages() if p.endswith('site-packages')))",
+            ],
+            text=True,
+        ).strip()
+        sitecustomize = Path(site_packages) / "sitecustomize.py"
+        sitecustomize.write_text((_ensure_seaborn_sitecustomize() / "sitecustomize.py").read_text())
+        ready.write_text("ok\n")
+        return venv_dir
 
 
 def _pylint_requirements_path(repo_dir: Path) -> Path:
