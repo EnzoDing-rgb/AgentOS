@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from budgetflow.official_harness_crosscheck import (
+    build_crosscheck_artifacts,
     official_eval_command,
     official_eval_preflight,
     select_crosscheck_rows,
@@ -67,3 +68,46 @@ def test_official_eval_preflight_warns_when_swebench_python_missing(tmp_path: Pa
     warnings = official_eval_preflight(swebench_venv=tmp_path / "missing")
 
     assert any(warning.startswith("missing_swebench_python:") for warning in warnings)
+
+
+def test_build_crosscheck_artifacts_writes_manifest_predictions_and_command(tmp_path: Path) -> None:
+    workspace_patch = tmp_path / "workspace.patch"
+    workspace_patch.write_text("diff --git a/app.py b/app.py\n+fixed\n")
+    input_path = tmp_path / "run.jsonl"
+    out_dir = tmp_path / "crosscheck"
+    _write_row(
+        input_path,
+        {
+            "instance_id": "task-a",
+            "strategy": "budgetflow_task_level",
+            "score_status": "true_fail",
+            "failure_class": "repair_fail",
+            "workspace_patch": str(workspace_patch),
+        },
+    )
+
+    manifest = build_crosscheck_artifacts(
+        input_path,
+        out_dir=out_dir,
+        limit=4,
+        include_passes=1,
+        model_name="budgetflow-crosscheck",
+        dataset_name="princeton-nlp/SWE-bench_Lite",
+        run_id="run-a-crosscheck",
+        swebench_venv=tmp_path / "missing-venv",
+        max_workers=1,
+    )
+
+    manifest_path = out_dir / "run.official_crosscheck.manifest.json"
+    command_path = out_dir / "run.official_crosscheck.command.txt"
+
+    assert manifest["selected_rows"] == 1
+    assert manifest["exported_predictions"] == 1
+    assert Path(manifest["rows_path"]).is_file()
+    assert Path(manifest["predictions_path"]).is_file()
+    assert manifest_path.is_file()
+    assert command_path.is_file()
+    assert "swebench.harness.run_evaluation" in command_path.read_text()
+    saved = json.loads(manifest_path.read_text())
+    assert saved["mode"] == "dry_run_artifact_only"
+    assert saved["selected_rows"] == 1

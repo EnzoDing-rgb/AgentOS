@@ -87,6 +87,7 @@ from budgetflow.frozen_router import load_frozen_plan  # noqa: E402
 from budgetflow.observability import (  # noqa: E402
     HeartbeatWriter,
 )
+from budgetflow.official_harness_crosscheck import build_crosscheck_artifacts  # noqa: E402
 from budgetflow.learning_context import load_policy_memory_context  # noqa: E402
 from budgetflow.adaptive_routing import AdaptiveRoutingRegistry  # noqa: E402
 from budgetflow.run_guards import CompareRunGuards, set_active_guard  # noqa: E402
@@ -678,6 +679,43 @@ def main() -> None:
         print(f"  {line}", flush=True)
     print(f"jsonl={out_path}")
     print(f"summary={summary_path}")
+    if out_path.is_file():
+        try:
+            crosscheck = build_crosscheck_artifacts(
+                out_path,
+                out_dir=out_path.parent,
+                run_id=f"{out_stem}-official-crosscheck",
+            )
+            state.summary_lines.append("")
+            state.summary_lines.append("=== OFFICIAL HARNESS CROSS-CHECK ARTIFACT ===")
+            state.summary_lines.append(
+                "dry_run_artifact_only "
+                f"selected={crosscheck['selected_rows']} "
+                f"predictions={crosscheck['predictions_path']} "
+                f"manifest={crosscheck['manifest_path']} "
+                f"command={crosscheck['command_path']}"
+            )
+            if crosscheck.get("preflight_warnings"):
+                state.summary_lines.append(
+                    "preflight_warnings="
+                    + ",".join(str(warning) for warning in crosscheck["preflight_warnings"])
+                )
+            _write_summary_snapshot(
+                summary_path,
+                state=state,
+                strategy_names=strategy_names,
+                batch_caps=batch_caps,
+                budget_modes=budget_modes,
+                started=started,
+                out_path=out_path,
+                total_runs=total_runs,
+                tasks_per_strategy=len(tasks),
+                global_line=global_progress.format_global(scoreboard),
+                value_profile=value_context.profile,
+            )
+            print(f"official_crosscheck_manifest={crosscheck['manifest_path']}")
+        except Exception as exc:  # pragma: no cover - best-effort artifact, not scoring
+            print(f"{tag('official', bold=False)} cross-check artifact warning: {type(exc).__name__}: {exc}", flush=True)
 
 
 if __name__ == "__main__":
