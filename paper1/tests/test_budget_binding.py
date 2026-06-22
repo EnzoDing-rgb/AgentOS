@@ -107,6 +107,41 @@ def test_calibrate_target_utilization_reference_is_not_budgetflow_specific(tmp_p
     assert "max_projected" not in all_reasons
 
 
+def test_calibrate_stage_prefix_pressure_sets_cap_from_reference_stage(tmp_path: Path) -> None:
+    """Stage pressure mode makes the prefix spend fraction a compiler input."""
+    vm = tmp_path / "vm.json"
+    vm.write_text(json.dumps({
+        "tasks": {
+            f"task-{i}": {"task_effort": {"bootstrap_heuristic": 30.0}}
+            for i in range(1, 5)
+        }
+    }))
+
+    plan = calibrate_budget(
+        [f"task-{i}" for i in range(1, 5)],
+        value_matrix_path=vm,
+        strategies=("bare_t2_baseline", "bare_t3_baseline", "budgetflow_task_level"),
+        stage_prefix_count=1,
+        stage_target_budget_fraction=0.35,
+        stage_reference_strategy="bare_t3_baseline",
+        output_path=tmp_path / "bp.json",
+    )
+
+    prefix_spend = plan.projected_task_cost_by_strategy["bare_t3_baseline"]["task-1"]
+
+    assert plan.generation_mode == "stage_prefix_pressure"
+    assert plan.hard_cap_usd == pytest.approx(prefix_spend / 0.35)
+    assert plan.budget_pressure_spec["stage_prefix_count"] == 1
+    assert plan.budget_pressure_spec["stage_target_budget_fraction"] == pytest.approx(0.35)
+    assert plan.budget_pressure_spec["stage_reference_strategy"] == "bare_t3_baseline"
+    assert plan.raw_projected_utilization_by_strategy["bare_t3_baseline"] > 1.0
+    assert plan.projected_utilization_by_strategy["bare_t3_baseline"] == 1.0
+    assert plan.pressure_contract["pressure_mode"] == "stage_prefix_pressure"
+    assert plan.pressure_contract["target_pressure_fraction"] == pytest.approx(0.35)
+    assert plan.pressure_contract["budget_pressure_spec"]["stage_prefix_count"] == 1
+    assert any("stage_prefix_pressure" in reason for reason in plan.reasons)
+
+
 def test_calibrate_defaults_to_paper_mainline_policy_set(tmp_path: Path) -> None:
     vm = tmp_path / "vm.json"
     vm.write_text(json.dumps({"tasks": {}}))
@@ -874,6 +909,11 @@ def test_target_utilization_above_one_raises() -> None:
         calibrate_budget(["task-a"], target_utilization=1.5)
 
 
+def test_stage_target_budget_fraction_out_of_range_raises() -> None:
+    with pytest.raises(ValueError, match="stage_target_budget_fraction"):
+        calibrate_budget(["task-a"], stage_prefix_count=1, stage_target_budget_fraction=1.5)
+
+
 # ── pressure-shape audit ────────────────────────────────────────────────
 
 
@@ -1171,6 +1211,36 @@ def test_audit_calibration_compares_completed_task_subset_projection(tmp_path: P
     assert err["stage_budget_share"] == pytest.approx(0.6667)
     assert err["stage_share_actual_utilization"] == pytest.approx(0.45)
     assert audit.overall_mape == pytest.approx(0.0)
+
+
+def test_audit_calibration_records_budget_pressure_spec(tmp_path: Path) -> None:
+    jsonl = tmp_path / "run.jsonl"
+    jsonl.write_text(json.dumps({
+        "strategy": "bare_t3_baseline",
+        "instance_id": "task-a",
+        "total_cost": 0.10,
+        "row_finished_at": 1,
+    }) + "\n")
+    plan = BudgetBindingPlan(
+        hard_cap_usd=1.0,
+        generation_mode="stage_prefix_pressure",
+        budget_pressure_spec={
+            "mode": "stage_prefix_pressure",
+            "stage_prefix_count": 1,
+            "stage_target_budget_fraction": 0.35,
+            "stage_reference_strategy": "bare_t3_baseline",
+        },
+    )
+    plan.task_ids = ["task-a", "task-b", "task-c"]
+    plan.projected_spend_by_strategy = {"bare_t3_baseline": 0.30}
+    plan.projected_task_cost_by_strategy = {
+        "bare_t3_baseline": {"task-a": 0.10, "task-b": 0.10, "task-c": 0.10}
+    }
+
+    audit = audit_calibration(jsonl, plan)
+
+    assert audit.to_dict()["budget_pressure_spec"]["stage_target_budget_fraction"] == 0.35
+    assert CalibrationAudit.from_dict(audit.to_dict()).budget_pressure_spec == audit.budget_pressure_spec
 
 
 def test_historical_cost_loader_dedup_keeps_latest_row(tmp_path: Path) -> None:
@@ -1580,3 +1650,27 @@ def test_cli_calibrate_accepts_calibration_evidence_audit(tmp_path: Path) -> Non
     assert rc == 0
     assert written["projection_confidence"] == "high"
     assert written["calibration_error"] == {"budgetflow_task_level": 0.2}
+
+
+def test_cli_calibrate_accepts_stage_prefix_pressure(tmp_path: Path) -> None:
+    output_path = tmp_path / "budget_plan.json"
+
+    rc = budget_binding_main([
+        "calibrate",
+        "--task-ids",
+        "task-a,task-b,task-c,task-d",
+        "--stage-prefix-count",
+        "1",
+        "--stage-target-budget-fraction",
+        "0.35",
+        "--stage-reference-strategy",
+        "bare_t3_baseline",
+        "--output",
+        str(output_path),
+    ])
+
+    written = json.loads(output_path.read_text())
+    assert rc == 0
+    assert written["generation_mode"] == "stage_prefix_pressure"
+    assert written["budget_pressure_spec"]["stage_prefix_count"] == 1
+    assert written["budget_pressure_spec"]["stage_target_budget_fraction"] == 0.35

@@ -78,7 +78,7 @@ def check_stagnation(
     repeat_limit: int = STAGNATION_REPEAT_CMD_LIMIT,
     task_effort: float | None = None,
     task_spent: float | None = None,
-    planned_task_budget: float | None = None,
+    task_budget_cap: float | None = None,
 ) -> tuple[bool, str, str | None]:
     """Return (should_stop, exit_reason, repeat_command)."""
     repeated, cmd = repeat_command_streak(recent_commands, limit=repeat_limit)
@@ -88,11 +88,11 @@ def check_stagnation(
     if no_progress_streak >= limit:
         if (
             strategy == "value_aware_task_level"
-            and planned_task_budget is not None
-            and planned_task_budget > 0
+            and task_budget_cap is not None
+            and task_budget_cap > 0
             and task_spent is not None
         ):
-            spent_fraction = max(0.0, float(task_spent)) / max(float(planned_task_budget), 0.000001)
+            spent_fraction = max(0.0, float(task_spent)) / max(float(task_budget_cap), 0.000001)
             if spent_fraction < TASK_LEVEL_NO_PROGRESS_STOP_BUDGET_FRACTION:
                 return False, "", None
         return True, "stagnation_no_progress", None

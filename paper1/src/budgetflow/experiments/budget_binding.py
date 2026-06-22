@@ -62,6 +62,35 @@ BUDGETFLOW_PLANNED_TASK_BUDGET_STRATEGIES = frozenset({
 BINDING_STRONGEST_STAGE_UTILIZATION_MIN = 0.90
 DEFAULT_TASK_EFFORT = 30.0
 DEFAULT_TASK_VALUE = 1.0
+TARGET_UTILIZATION_MODE = "target_utilization"
+STAGE_PREFIX_PRESSURE_MODE = "stage_prefix_pressure"
+ALLOWED_GENERATION_MODES = frozenset({
+    TARGET_UTILIZATION_MODE,
+    STAGE_PREFIX_PRESSURE_MODE,
+})
+
+
+@dataclass(frozen=True)
+class BudgetPressureSpec:
+    """Single compiler input for choosing the shared hard-budget pressure."""
+
+    mode: str
+    target_utilization: float | None = None
+    stage_prefix_count: int | None = None
+    stage_target_budget_fraction: float | None = None
+    stage_reference_strategy: str = "bare_t3_baseline"
+
+    def to_dict(self) -> dict[str, Any]:
+        d: dict[str, Any] = {"mode": self.mode}
+        if self.target_utilization is not None:
+            d["target_utilization"] = round(self.target_utilization, 4)
+        if self.stage_prefix_count is not None:
+            d["stage_prefix_count"] = int(self.stage_prefix_count)
+        if self.stage_target_budget_fraction is not None:
+            d["stage_target_budget_fraction"] = round(self.stage_target_budget_fraction, 4)
+        if self.mode == STAGE_PREFIX_PRESSURE_MODE:
+            d["stage_reference_strategy"] = self.stage_reference_strategy
+        return d
 
 
 @dataclass
@@ -70,8 +99,9 @@ class BudgetBindingPlan:
 
     hard_cap_usd: float
     source: str = "budget_binding_calibrator"
-    generation_mode: str = "target_utilization"
+    generation_mode: str = TARGET_UTILIZATION_MODE
     target_projected_utilization: float | None = None
+    budget_pressure_spec: dict[str, Any] = field(default_factory=dict)
     catalog_revision: str = ""
     catalog_semantic_revision: str = ""
     catalog_path: str = ""
@@ -138,6 +168,8 @@ class BudgetBindingPlan:
         }
         if self.target_projected_utilization is not None:
             d["target_projected_utilization"] = round(self.target_projected_utilization, 4)
+        if self.budget_pressure_spec:
+            d["budget_pressure_spec"] = dict(self.budget_pressure_spec)
         if self.calibration_error:
             d["calibration_error"] = {k: round(v, 4) for k, v in self.calibration_error.items()}
         if self.calibration_excluded:
@@ -167,6 +199,7 @@ class BudgetBindingPlan:
             source=d.get("source", "budget_binding_calibrator"),
             generation_mode=d["generation_mode"],
             target_projected_utilization=d.get("target_projected_utilization"),
+            budget_pressure_spec=d.get("budget_pressure_spec", {}),
             catalog_revision=d.get("catalog_revision", ""),
             catalog_semantic_revision=d.get("catalog_semantic_revision", ""),
             catalog_path=d.get("catalog_path", ""),
@@ -209,12 +242,13 @@ class CalibrationAudit:
     recommendations: list[str] = field(default_factory=list)
     generation_mode: str = ""
     target_utilization: float | None = None
+    budget_pressure_spec: dict[str, Any] = field(default_factory=dict)
     actual_utilization_by_strategy: dict[str, float] = field(default_factory=dict)
     raw_actual_utilization_by_strategy: dict[str, float] = field(default_factory=dict)
     budget_exhausted_by_strategy: dict[str, int] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
-        return {
+        d = {
             "strategy_errors": self.strategy_errors,
             "overall_mape": round(self.overall_mape, 4),
             "max_error_strategy": self.max_error_strategy,
@@ -231,6 +265,9 @@ class CalibrationAudit:
             },
             "budget_exhausted_by_strategy": dict(self.budget_exhausted_by_strategy),
         }
+        if self.budget_pressure_spec:
+            d["budget_pressure_spec"] = dict(self.budget_pressure_spec)
+        return d
 
     @classmethod
     def from_dict(cls, d: dict) -> CalibrationAudit:
@@ -243,6 +280,7 @@ class CalibrationAudit:
             recommendations=list(d.get("recommendations", []) or []),
             generation_mode=str(d.get("generation_mode", "") or ""),
             target_utilization=d.get("target_utilization"),
+            budget_pressure_spec=d.get("budget_pressure_spec", {}),
             actual_utilization_by_strategy=d.get("actual_utilization_by_strategy", {}),
             raw_actual_utilization_by_strategy=d.get("raw_actual_utilization_by_strategy", {}),
             budget_exhausted_by_strategy=d.get("budget_exhausted_by_strategy", {}),
@@ -272,6 +310,9 @@ def calibrate_budget(
     strategies: tuple[str, ...] | None = None,
     output_path: Path | None = None,
     target_utilization: float | None = None,
+    stage_prefix_count: int | None = None,
+    stage_target_budget_fraction: float | None = None,
+    stage_reference_strategy: str = "bare_t3_baseline",
     calibration_evidence: CalibrationAudit | None = None,
 ) -> BudgetBindingPlan:
     """Generate a budget binding plan from historical data and current catalog.
@@ -287,18 +328,21 @@ def calibrate_budget(
     diagnostic pass. It does not tune the cap. When the audit shows high
     projection error, the plan decision may be downgraded to WARNING or BLOCK.
     """
-    if target_utilization is None:
-        raise ValueError("target_utilization is required")
-    if not (0.0 < target_utilization <= 1.0):
-        raise ValueError(f"target_utilization must be in (0, 1], got {target_utilization}")
+    pressure_spec = _build_budget_pressure_spec(
+        target_utilization=target_utilization,
+        stage_prefix_count=stage_prefix_count,
+        stage_target_budget_fraction=stage_target_budget_fraction,
+        stage_reference_strategy=stage_reference_strategy,
+    )
     if strategies is None:
         strategies = paper_mainline_strategy_names()
 
     catalog_info = catalog_source_info()
     plan = BudgetBindingPlan(
         hard_cap_usd=0.0,
-        generation_mode="target_utilization",
-        target_projected_utilization=target_utilization,
+        generation_mode=pressure_spec.mode,
+        target_projected_utilization=pressure_spec.target_utilization,
+        budget_pressure_spec=pressure_spec.to_dict(),
         catalog_revision=str(catalog_info.get("catalog_revision") or catalog_revision()),
         catalog_semantic_revision=str(catalog_info.get("catalog_semantic_revision") or ""),
         catalog_path=str(catalog_info.get("catalog_path") or catalog_path()),
@@ -460,11 +504,18 @@ def calibrate_budget(
     plan.max_projected_spend_usd = max(projected.values()) if projected else 0.0
 
     # ── Decision logic ──────────────────────────────────────────────────
-    ref_spend = _distribution_p75(list(projected.values()))
+    ref_spend = _reference_spend_for_pressure_spec(pressure_spec, projected, projected_task_costs, task_ids)
     plan.reference_spend_usd = ref_spend
-    plan.reasons.append(
-        f"reference_rule: strategy_set_p75_projected_spend = ${ref_spend:.4f}"
-    )
+    if pressure_spec.mode == TARGET_UTILIZATION_MODE:
+        plan.reasons.append(
+            f"reference_rule: strategy_set_p75_projected_spend = ${ref_spend:.4f}"
+        )
+    else:
+        plan.reasons.append(
+            "reference_rule: stage_prefix_pressure "
+            f"{pressure_spec.stage_reference_strategy} first "
+            f"{pressure_spec.stage_prefix_count} tasks projected spend = ${ref_spend:.4f}"
+        )
 
     t3_boundary = projected.get("bare_t3_baseline", 0.0)
     plan.strongest_boundary_usd = t3_boundary
@@ -473,21 +524,29 @@ def calibrate_budget(
         plan.decision = "BLOCK"
         plan.reasons.append("no projected spend data; cannot compute p75 reference")
     else:
-        target_cap = ref_spend / target_utilization
-        strongest_runway_floor = _prefix_cost_before_final_task(
-            projected_task_costs.get("bare_t3_baseline", {}),
-            task_ids,
-        )
-        plan.hard_cap_usd = max(target_cap, strongest_runway_floor)
-        plan.reasons.append(
-            f"hard_cap = p75_ref(${ref_spend:.4f}) / "
-            f"target_utilization({target_utilization}) = ${target_cap:.4f}"
-        )
-        if strongest_runway_floor > 0:
+        target_cap = ref_spend / _pressure_denominator(pressure_spec)
+        if pressure_spec.mode == TARGET_UTILIZATION_MODE:
+            strongest_runway_floor = _prefix_cost_before_final_task(
+                projected_task_costs.get("bare_t3_baseline", {}),
+                task_ids,
+            )
+            plan.hard_cap_usd = max(target_cap, strongest_runway_floor)
             plan.reasons.append(
-                f"strongest_runway_floor: hard_cap must be at least "
-                f"${strongest_runway_floor:.4f} so the Strongest Model baseline "
-                "reaches the final task before budget pressure dominates"
+                f"hard_cap = p75_ref(${ref_spend:.4f}) / "
+                f"target_utilization({pressure_spec.target_utilization}) = ${target_cap:.4f}"
+            )
+            if strongest_runway_floor > 0:
+                plan.reasons.append(
+                    f"strongest_runway_floor: hard_cap must be at least "
+                    f"${strongest_runway_floor:.4f} so the Strongest Model baseline "
+                    "reaches the final task before budget pressure dominates"
+                )
+        else:
+            plan.hard_cap_usd = target_cap
+            plan.reasons.append(
+                f"hard_cap = stage_prefix_ref(${ref_spend:.4f}) / "
+                f"stage_target_budget_fraction({pressure_spec.stage_target_budget_fraction}) "
+                f"= ${target_cap:.4f}"
             )
         if t3_boundary > 0:
             plan.reasons.append(
@@ -551,11 +610,17 @@ def calibrate_budget(
 
     if plan.decision != "BLOCK":
         max_util = max(plan.projected_utilization_by_strategy.values()) if plan.projected_utilization_by_strategy else 0.0
-        plan.reasons.append(
-            f"decision=PASS: hard_cap=${plan.hard_cap_usd:.2f} from "
-            f"target pressure with strongest boundary, max projected utilization "
-            f"{max_util:.1%}"
-        )
+        if pressure_spec.mode == STAGE_PREFIX_PRESSURE_MODE:
+            plan.reasons.append(
+                f"decision=PASS: hard_cap=${plan.hard_cap_usd:.2f} from "
+                f"stage-prefix pressure, max projected utilization {max_util:.1%}"
+            )
+        else:
+            plan.reasons.append(
+                f"decision=PASS: hard_cap=${plan.hard_cap_usd:.2f} from "
+                f"target pressure with strongest boundary, max projected utilization "
+                f"{max_util:.1%}"
+            )
 
     # ── Projection confidence from calibration evidence ─────────────────
     if calibration_evidence is not None:
@@ -798,6 +863,7 @@ def audit_calibration(
         raw_actual_utilization_by_strategy=raw_actual_utilization,
         budget_exhausted_by_strategy=budget_exhausted_by_strategy,
     )
+    audit.budget_pressure_spec = dict(plan.budget_pressure_spec)
 
     if output_path:
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -820,6 +886,78 @@ def _distribution_p75(values: list[float]) -> float:
     n = len(sorted_v)
     idx = min(int(math.ceil(0.75 * n)) - 1, n - 1)
     return sorted_v[max(idx, 0)]
+
+
+def _build_budget_pressure_spec(
+    *,
+    target_utilization: float | None,
+    stage_prefix_count: int | None,
+    stage_target_budget_fraction: float | None,
+    stage_reference_strategy: str,
+) -> BudgetPressureSpec:
+    uses_stage_pressure = (
+        stage_prefix_count is not None
+        or stage_target_budget_fraction is not None
+    )
+    if uses_stage_pressure and target_utilization is not None:
+        raise ValueError(
+            "choose one budget pressure mode: target_utilization or stage_prefix_pressure"
+        )
+    if uses_stage_pressure:
+        if stage_prefix_count is None or stage_prefix_count <= 0:
+            raise ValueError("stage_prefix_count must be positive for stage_prefix_pressure")
+        if stage_target_budget_fraction is None:
+            raise ValueError(
+                "stage_target_budget_fraction is required for stage_prefix_pressure"
+            )
+        if not (0.0 < stage_target_budget_fraction <= 1.0):
+            raise ValueError(
+                "stage_target_budget_fraction must be in (0, 1], "
+                f"got {stage_target_budget_fraction}"
+            )
+        return BudgetPressureSpec(
+            mode=STAGE_PREFIX_PRESSURE_MODE,
+            stage_prefix_count=stage_prefix_count,
+            stage_target_budget_fraction=stage_target_budget_fraction,
+            stage_reference_strategy=stage_reference_strategy,
+        )
+
+    if target_utilization is None:
+        raise ValueError("target_utilization is required")
+    if not (0.0 < target_utilization <= 1.0):
+        raise ValueError(f"target_utilization must be in (0, 1], got {target_utilization}")
+    return BudgetPressureSpec(
+        mode=TARGET_UTILIZATION_MODE,
+        target_utilization=target_utilization,
+    )
+
+
+def _reference_spend_for_pressure_spec(
+    spec: BudgetPressureSpec,
+    projected_spend: dict[str, float],
+    projected_task_costs: dict[str, dict[str, float]],
+    task_ids: list[str],
+) -> float:
+    if spec.mode == TARGET_UTILIZATION_MODE:
+        return _distribution_p75(list(projected_spend.values()))
+    if spec.mode == STAGE_PREFIX_PRESSURE_MODE:
+        reference_strategy = spec.stage_reference_strategy
+        task_costs = projected_task_costs.get(reference_strategy, {})
+        if not task_costs:
+            raise ValueError(
+                f"stage_reference_strategy {reference_strategy!r} has no projected task costs"
+            )
+        prefix_count = min(int(spec.stage_prefix_count or 0), len(task_ids))
+        return sum(float(task_costs.get(task_id, 0.0) or 0.0) for task_id in task_ids[:prefix_count])
+    raise ValueError(f"unknown budget pressure mode: {spec.mode}")
+
+
+def _pressure_denominator(spec: BudgetPressureSpec) -> float:
+    if spec.mode == TARGET_UTILIZATION_MODE:
+        return float(spec.target_utilization or 0.0)
+    if spec.mode == STAGE_PREFIX_PRESSURE_MODE:
+        return float(spec.stage_target_budget_fraction or 0.0)
+    raise ValueError(f"unknown budget pressure mode: {spec.mode}")
 
 
 def _build_budgetflow_planned_task_budgets(
@@ -1217,7 +1355,12 @@ def _build_pressure_contract(
     bf_task_util = utils.get("budgetflow_task_level", 0.0)
     bf_segment_util = utils.get("budgetflow_segment", 0.0)
     bf_primary_util = bf_task_util or bf_segment_util
-    target = plan.target_projected_utilization or 0.80
+    pressure_spec = plan.budget_pressure_spec or {}
+    pressure_mode = str(pressure_spec.get("mode") or plan.generation_mode or TARGET_UTILIZATION_MODE)
+    if pressure_mode == STAGE_PREFIX_PRESSURE_MODE:
+        target = float(pressure_spec.get("stage_target_budget_fraction") or 0.80)
+    else:
+        target = plan.target_projected_utilization or 0.80
     bf_task_diag = (
         (plan.projection_diagnostics or {})
         .get("budgetflow_task_level", {})
@@ -1298,7 +1441,10 @@ def _build_pressure_contract(
         grade = "pass"
 
     contract = {
+        "pressure_mode": pressure_mode,
         "target_utilization": target,
+        "target_pressure_fraction": target,
+        "budget_pressure_spec": dict(pressure_spec) if pressure_spec else None,
         "shape": {
             "bare_t2_baseline": round(t2_util, 4),
             "bare_t3_baseline": round(t3_util, 4),
@@ -1871,6 +2017,29 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="generate hard_cap from p75(projected spend) / target utilization",
     )
+    calibrate.add_argument(
+        "--stage-prefix-count",
+        type=int,
+        default=None,
+        help=(
+            "stage pressure mode: number of leading selected tasks whose projected "
+            "reference spend should consume --stage-target-budget-fraction of the batch cap"
+        ),
+    )
+    calibrate.add_argument(
+        "--stage-target-budget-fraction",
+        type=float,
+        default=None,
+        help=(
+            "stage pressure mode: desired fraction of total batch budget consumed by "
+            "the stage prefix reference spend, e.g. 0.35 for first 10 tasks"
+        ),
+    )
+    calibrate.add_argument(
+        "--stage-reference-strategy",
+        default="bare_t3_baseline",
+        help="stage pressure mode: strategy whose prefix projected spend sets the cap",
+    )
     calibrate.add_argument("--output", required=True, help="output budget_plan.json path")
 
     audit = sub.add_parser("audit", help="compare projected vs actual spend from a completed JSONL")
@@ -1893,6 +2062,9 @@ def main(argv: list[str] | None = None) -> int:
             strategies=_strategy_names_from_set(args.strategy_set),
             output_path=Path(args.output),
             target_utilization=args.target_utilization,
+            stage_prefix_count=args.stage_prefix_count,
+            stage_target_budget_fraction=args.stage_target_budget_fraction,
+            stage_reference_strategy=args.stage_reference_strategy,
             calibration_evidence=(
                 CalibrationAudit.from_dict(json.loads(Path(args.calibration_evidence).read_text()))
                 if args.calibration_evidence else None

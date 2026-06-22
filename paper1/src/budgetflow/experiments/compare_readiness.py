@@ -12,6 +12,7 @@ import importlib.util
 from pathlib import Path
 
 from budgetflow.experiments.compare_config import CompareStrategy, paper_mainline_strategy_names
+from budgetflow.experiments.budget_binding import ALLOWED_GENERATION_MODES, STAGE_PREFIX_PRESSURE_MODE
 from budgetflow.experiments.compare_setup import BUDGETFLOW_ACTIVE_ROUTINGS, PLANNED_TASK_BUDGET_MODE
 from budgetflow.defaults import PAID_MAINLINE_STEP_LIMIT
 from budgetflow.failure_classification import build_score_status, build_verdict
@@ -384,15 +385,42 @@ def build_compare_readiness_report(
             for reason in bp_reasons:
                 facts.append(f"budget_plan_reason: {reason}")
             bp_decision = bp.get("decision", "")
-            if not bp.get("generation_mode"):
+            bp_generation_mode = str(bp.get("generation_mode", "") or "")
+            if not bp_generation_mode:
                 blocking.append(
                     "budget plan is missing generation_mode; regenerate it with the Budget Regime Compiler"
                 )
-            elif bp.get("generation_mode") != "target_utilization":
+            elif bp_generation_mode not in ALLOWED_GENERATION_MODES:
                 blocking.append(
-                    "budget plan generation_mode must be target_utilization; "
-                    "regenerate it with the Budget Regime Compiler"
+                    "budget plan generation_mode must be one of "
+                    f"{sorted(ALLOWED_GENERATION_MODES)}; regenerate it with the Budget Regime Compiler"
                 )
+            elif bp_generation_mode == STAGE_PREFIX_PRESSURE_MODE:
+                spec = bp.get("budget_pressure_spec")
+                if not isinstance(spec, dict):
+                    blocking.append(
+                        "stage_prefix_pressure budget plan is missing budget_pressure_spec; "
+                        "regenerate it with the Budget Regime Compiler"
+                    )
+                else:
+                    prefix_count = int(spec.get("stage_prefix_count") or 0)
+                    target_fraction = float(spec.get("stage_target_budget_fraction") or 0.0)
+                    reference_strategy = str(spec.get("stage_reference_strategy") or "")
+                    if prefix_count <= 0:
+                        blocking.append(
+                            "stage_prefix_pressure budget plan has invalid stage_prefix_count; "
+                            "regenerate it with the Budget Regime Compiler"
+                        )
+                    if not (0.0 < target_fraction <= 1.0):
+                        blocking.append(
+                            "stage_prefix_pressure budget plan has invalid "
+                            "stage_target_budget_fraction; regenerate it with the Budget Regime Compiler"
+                        )
+                    if not reference_strategy:
+                        blocking.append(
+                            "stage_prefix_pressure budget plan is missing stage_reference_strategy; "
+                            "regenerate it with the Budget Regime Compiler"
+                        )
             if bp_decision == "BLOCK":
                 blocking.append(
                     f"budget plan decision is BLOCK: {'; '.join(bp_reasons)}"
@@ -576,7 +604,7 @@ def build_compare_readiness_report(
         if proj_conf == "unvalidated":
             warnings.append(
                 "budget plan projection_confidence=unvalidated: "
-                "do not claim target utilization or scarcity regime is satisfied"
+                "treat projected spend as diagnostic until a post-run audit validates it"
             )
         elif proj_conf == "low":
             warnings.append(

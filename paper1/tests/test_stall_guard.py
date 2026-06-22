@@ -72,7 +72,7 @@ def test_task_level_stagnation_waits_for_task_budget_spend() -> None:
         recent_commands=deque(["grep -R x"]),
         task_effort=20,
         task_spent=0.05,
-        planned_task_budget=1.0,
+        task_budget_cap=1.0,
     )
     assert stop is False
     assert reason == ""
@@ -83,7 +83,7 @@ def test_task_level_stagnation_waits_for_task_budget_spend() -> None:
         recent_commands=deque(["grep -R x"]),
         task_effort=20,
         task_spent=1.0,
-        planned_task_budget=1.0,
+        task_budget_cap=1.0,
     )
     assert stop is True
     assert reason == "stagnation_no_progress"
@@ -96,7 +96,7 @@ def test_task_level_stagnation_can_stop_before_full_task_budget_when_no_progress
         recent_commands=deque(["grep -R x"]),
         task_effort=20,
         task_spent=0.35,
-        planned_task_budget=1.0,
+        task_budget_cap=1.0,
     )
 
     assert stop is True

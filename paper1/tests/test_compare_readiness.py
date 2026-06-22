@@ -563,7 +563,38 @@ def test_readiness_blocks_retired_budget_plan_generation_mode(tmp_path) -> None:
     )
 
     assert not report.ok
-    assert any("generation_mode must be target_utilization" in issue for issue in report.blocking)
+    assert any("generation_mode must be one of" in issue for issue in report.blocking)
+
+
+def test_readiness_accepts_stage_prefix_pressure_budget_plan(tmp_path) -> None:
+    bp = tmp_path / "budget_plan.json"
+    bp.write_text(
+        '{"hard_cap_usd":1.0,"source":"budget_binding_calibrator",'
+        '"generation_mode":"stage_prefix_pressure",'
+        '"budget_pressure_spec":{"mode":"stage_prefix_pressure",'
+        '"stage_prefix_count":1,"stage_target_budget_fraction":0.35,'
+        '"stage_reference_strategy":"bare_t3_baseline"},'
+        '"decision":"PASS","task_ids":["task-a"],'
+        '"strategy_names":["budgetflow_segment"],'
+        '"planned_task_budget_policy":{"mode":"budgetflow_planned_task_budget"},'
+        '"planned_task_budget_by_strategy":{"budgetflow_segment":{"task-a":0.8}}}'
+    )
+    value_context = ValueEfficiencyContext()
+    value_context.init(value_profile="equal")
+
+    report = build_compare_readiness_report(
+        args=_args(),
+        tasks=[SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",))],
+        strategies=(CompareStrategy("budgetflow_segment", "segment_value_aware"),),
+        policy_jobs=1,
+        value_context=value_context,
+        catalog_issues=[],
+        runtime_root=Path("/tmp/budgetflow-runtime"),
+        budget_plan_path=bp,
+    )
+
+    assert report.ok
+    assert "budget_plan_generation_mode=stage_prefix_pressure" in report.facts
 
 
 def test_readiness_blocks_budget_plan_missing_selected_tasks(tmp_path) -> None:

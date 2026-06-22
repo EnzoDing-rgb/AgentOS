@@ -4,6 +4,18 @@
 
 ## 2026-06-22 — Current status (in progress, not final evidence)
 
+- **2026-06-22 / Stage-pressure Budget Compiler ready:** added a single
+  compiler entrypoint for tight budget regimes:
+  `budget_binding calibrate --stage-prefix-count N
+  --stage-target-budget-fraction X --stage-reference-strategy STRATEGY`.
+  The new 4x30 plan
+  `paper1/docs/reports/mainline_4x30_stage_pressure35_budget_plan_20260622.json`
+  sets hard cap `$9.6933` so the first 10 tasks' bare T3 projected spend is
+  exactly 35% of total budget; full projected raw utilization is now over cap
+  for all four policies. Paid-readiness-only passes. Warnings remain explicit:
+  projection confidence is diagnostic/unvalidated and task-level BudgetFlow
+  currently projects pure Strongest Model because the frontier is
+  `strongest_cost_dominant`.
 - **2026-06-22 / No-paid gate fixes before 4x30 reset:** restored
   shared-cap-aware planned task budget rebalance, split compiler planned task
   runway from runtime effective task cap, added completed-prefix calibration

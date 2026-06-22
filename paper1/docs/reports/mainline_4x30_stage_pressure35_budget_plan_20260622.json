@@ -1,0 +1,570 @@
+{
+  "hard_cap_usd": 9.6933,
+  "source": "budget_binding_calibrator",
+  "generation_mode": "stage_prefix_pressure",
+  "catalog_revision": "2026-06-20-deepseek-v4-pro-t2-t3x5",
+  "catalog_semantic_revision": "t2-normalized-v1-t3x5",
+  "catalog_path": "/root/.dev/AgentOS/paper1/docs/config/model_tiers.default.json",
+  "catalog_content_hash": "f48f0c2cf9cd",
+  "historical_source": "paper1/data/runs/mainline_4x30_tasklevel_frontier_20260622-0.jsonl",
+  "task_ids": [
+    "django__django-15814",
+    "matplotlib__matplotlib-25433",
+    "mwaskom__seaborn-3407",
+    "pylint-dev__pylint-7993",
+    "sphinx-doc__sphinx-8282",
+    "sympy__sympy-18621",
+    "mwaskom__seaborn-3010",
+    "sphinx-doc__sphinx-7738",
+    "django__django-15851",
+    "django__django-11049",
+    "django__django-13447",
+    "pylint-dev__pylint-5859",
+    "mwaskom__seaborn-2848",
+    "django__django-12908",
+    "pallets__flask-4045",
+    "sphinx-doc__sphinx-8595",
+    "django__django-13964",
+    "sympy__sympy-24102",
+    "sphinx-doc__sphinx-7686",
+    "django__django-11179",
+    "sympy__sympy-12171",
+    "pylint-dev__pylint-6506",
+    "pallets__flask-4992",
+    "mwaskom__seaborn-3190",
+    "sympy__sympy-13647",
+    "sphinx-doc__sphinx-8273",
+    "sympy__sympy-15346",
+    "sympy__sympy-22714",
+    "sympy__sympy-13177",
+    "sympy__sympy-17655"
+  ],
+  "strategy_names": [
+    "bare_t2_baseline",
+    "bare_t3_baseline",
+    "enterprise_router_baseline",
+    "budgetflow_task_level"
+  ],
+  "projected_spend_by_strategy": {
+    "bare_t2_baseline": 26.6669,
+    "bare_t3_baseline": 14.9224,
+    "enterprise_router_baseline": 16.9587,
+    "budgetflow_task_level": 14.9224
+  },
+  "projected_task_cost_by_strategy": {
+    "bare_t2_baseline": {
+      "django__django-15814": 1.3364,
+      "matplotlib__matplotlib-25433": 0.6935,
+      "mwaskom__seaborn-3407": 0.4986,
+      "pylint-dev__pylint-7993": 1.4654,
+      "sphinx-doc__sphinx-8282": 0.546,
+      "sympy__sympy-18621": 0.6301,
+      "mwaskom__seaborn-3010": 0.0929,
+      "sphinx-doc__sphinx-7738": 1.7297,
+      "django__django-15851": 0.6897,
+      "django__django-11049": 0.6283,
+      "django__django-13447": 0.5715,
+      "pylint-dev__pylint-5859": 0.7385,
+      "mwaskom__seaborn-2848": 0.8576,
+      "django__django-12908": 0.692,
+      "pallets__flask-4045": 1.3956,
+      "sphinx-doc__sphinx-8595": 0.5539,
+      "django__django-13964": 0.7175,
+      "sympy__sympy-24102": 0.6615,
+      "sphinx-doc__sphinx-7686": 2.8278,
+      "django__django-11179": 0.625,
+      "sympy__sympy-12171": 0.6509,
+      "pylint-dev__pylint-6506": 0.74,
+      "pallets__flask-4992": 1.6192,
+      "mwaskom__seaborn-3190": 0.7377,
+      "sympy__sympy-13647": 0.7307,
+      "sphinx-doc__sphinx-8273": 1.3187,
+      "sympy__sympy-15346": 0.6967,
+      "sympy__sympy-22714": 0.6492,
+      "sympy__sympy-13177": 0.7832,
+      "sympy__sympy-17655": 0.7892
+    },
+    "bare_t3_baseline": {
+      "django__django-15814": 0.2132,
+      "matplotlib__matplotlib-25433": 0.3695,
+      "mwaskom__seaborn-3407": 0.5817,
+      "pylint-dev__pylint-7993": 0.2684,
+      "sphinx-doc__sphinx-8282": 0.6069,
+      "sympy__sympy-18621": 0.179,
+      "mwaskom__seaborn-3010": 0.1916,
+      "sphinx-doc__sphinx-7738": 0.4831,
+      "django__django-15851": 0.1538,
+      "django__django-11049": 0.3455,
+      "django__django-13447": 0.3589,
+      "pylint-dev__pylint-5859": 0.4638,
+      "mwaskom__seaborn-2848": 0.5387,
+      "django__django-12908": 0.4346,
+      "pallets__flask-4045": 0.8766,
+      "sphinx-doc__sphinx-8595": 0.3479,
+      "django__django-13964": 0.4507,
+      "sympy__sympy-24102": 0.4155,
+      "sphinx-doc__sphinx-7686": 1.7762,
+      "django__django-11179": 0.3926,
+      "sympy__sympy-12171": 0.4088,
+      "pylint-dev__pylint-6506": 0.4648,
+      "pallets__flask-4992": 1.017,
+      "mwaskom__seaborn-3190": 0.4633,
+      "sympy__sympy-13647": 0.4589,
+      "sphinx-doc__sphinx-8273": 0.8283,
+      "sympy__sympy-15346": 0.4376,
+      "sympy__sympy-22714": 0.4078,
+      "sympy__sympy-13177": 0.492,
+      "sympy__sympy-17655": 0.4957
+    },
+    "enterprise_router_baseline": {
+      "django__django-15814": 1.0928,
+      "matplotlib__matplotlib-25433": 0.3718,
+      "mwaskom__seaborn-3407": 0.1817,
+      "pylint-dev__pylint-7993": 0.772,
+      "sphinx-doc__sphinx-8282": 0.4007,
+      "sympy__sympy-18621": 0.2351,
+      "mwaskom__seaborn-3010": 0.5933,
+      "sphinx-doc__sphinx-7738": 0.9309,
+      "django__django-15851": 0.0766,
+      "django__django-11049": 0.2378,
+      "django__django-13447": 0.4335,
+      "pylint-dev__pylint-5859": 0.5602,
+      "mwaskom__seaborn-2848": 0.4725,
+      "django__django-12908": 0.5249,
+      "pallets__flask-4045": 0.7689,
+      "sphinx-doc__sphinx-8595": 0.4202,
+      "django__django-13964": 0.5443,
+      "sympy__sympy-24102": 0.5018,
+      "sphinx-doc__sphinx-7686": 1.5579,
+      "django__django-11179": 0.4741,
+      "sympy__sympy-12171": 0.4937,
+      "pylint-dev__pylint-6506": 0.5613,
+      "pallets__flask-4992": 0.892,
+      "mwaskom__seaborn-3190": 0.4064,
+      "sympy__sympy-13647": 0.4026,
+      "sphinx-doc__sphinx-8273": 1.0003,
+      "sympy__sympy-15346": 0.5285,
+      "sympy__sympy-22714": 0.4925,
+      "sympy__sympy-13177": 0.4315,
+      "sympy__sympy-17655": 0.5987
+    },
+    "budgetflow_task_level": {
+      "django__django-15814": 0.2132,
+      "matplotlib__matplotlib-25433": 0.3695,
+      "mwaskom__seaborn-3407": 0.5817,
+      "pylint-dev__pylint-7993": 0.2684,
+      "sphinx-doc__sphinx-8282": 0.6069,
+      "sympy__sympy-18621": 0.179,
+      "mwaskom__seaborn-3010": 0.1916,
+      "sphinx-doc__sphinx-7738": 0.4831,
+      "django__django-15851": 0.1538,
+      "django__django-11049": 0.3455,
+      "django__django-13447": 0.3589,
+      "pylint-dev__pylint-5859": 0.4638,
+      "mwaskom__seaborn-2848": 0.5387,
+      "django__django-12908": 0.4346,
+      "pallets__flask-4045": 0.8766,
+      "sphinx-doc__sphinx-8595": 0.3479,
+      "django__django-13964": 0.4507,
+      "sympy__sympy-24102": 0.4155,
+      "sphinx-doc__sphinx-7686": 1.7762,
+      "django__django-11179": 0.3926,
+      "sympy__sympy-12171": 0.4088,
+      "pylint-dev__pylint-6506": 0.4648,
+      "pallets__flask-4992": 1.017,
+      "mwaskom__seaborn-3190": 0.4633,
+      "sympy__sympy-13647": 0.4589,
+      "sphinx-doc__sphinx-8273": 0.8283,
+      "sympy__sympy-15346": 0.4376,
+      "sympy__sympy-22714": 0.4078,
+      "sympy__sympy-13177": 0.492,
+      "sympy__sympy-17655": 0.4957
+    }
+  },
+  "cap_generation_projected_spend_by_strategy": {
+    "bare_t2_baseline": 26.6669,
+    "bare_t3_baseline": 14.9224,
+    "enterprise_router_baseline": 16.9587,
+    "budgetflow_task_level": 15.8012
+  },
+  "projected_utilization_by_strategy": {
+    "bare_t2_baseline": 1.0,
+    "bare_t3_baseline": 1.0,
+    "enterprise_router_baseline": 1.0,
+    "budgetflow_task_level": 1.0
+  },
+  "raw_projected_utilization_by_strategy": {
+    "bare_t2_baseline": 2.7511,
+    "bare_t3_baseline": 1.5395,
+    "enterprise_router_baseline": 1.7495,
+    "budgetflow_task_level": 1.5395
+  },
+  "reference_spend_usd": 3.3926,
+  "strongest_boundary_usd": 14.9224,
+  "max_projected_spend_usd": 26.6669,
+  "decision": "PASS",
+  "reasons": [
+    "calibration:excluded 2 contaminated rows: harness_trust:incomplete=1, protocol_retry_overhead=1",
+    "calibration:model_fit_evidence confidence=high scope=historical_jsonl from 10 tasks: tier1=0.1500, tier2=0.1271, tier3=0.8750",
+    "calibration:bare_t2_baseline sample_coverage_shrink raw_scale=0.9114 -> 0.9786 (n=7/30, toward bootstrap scale)",
+    "calibration:bare_t3_baseline sample_coverage_shrink raw_scale=0.6062 -> 0.8463 (n=10/30, toward bootstrap scale)",
+    "calibration:enterprise_router_baseline sample_coverage_shrink raw_scale=0.3704 -> 0.7423 (n=9/30, toward bootstrap scale)",
+    "calibration:enterprise_router_projection uses frozen preferred_model mix tier2=20, tier3=10",
+    "calibration:budgetflow_task_level sample_coverage_shrink raw_scale=0.3104 -> 0.6771 (n=10/30, toward bootstrap scale)",
+    "calibration:bare_t2_baseline n=7 exact observed costs",
+    "calibration:bare_t3_baseline n=10 exact observed costs",
+    "calibration:enterprise_router_baseline n=9 exact observed costs",
+    "calibration:budgetflow_task_level n=10 exact observed costs",
+    "reference_rule: stage_prefix_pressure bare_t3_baseline first 10 tasks projected spend = $3.3926",
+    "hard_cap = stage_prefix_ref($3.3926) / stage_target_budget_fraction(0.35) = $9.6933",
+    "strongest_boundary: bare_t3_baseline projected spend $14.9224; recorded for pressure audit, not a hard cap",
+    "planned_task_budget: BudgetFlow active policies get loose task budgets derived from projected task costs; sums may exceed hard_cap and runtime still enforces the shared batch hard cap",
+    "task_level_policy_projection: planned-budget tier mix tier3=30",
+    "runtime_projection: budgetflow_task_level projected_spend_by_strategy uses task-level runtime-choice diagnostic; cap_generation_projected_spend keeps the pre-routing cap source",
+    "frontier_diagnostic: posture=strongest_cost_dominant ratio=0.560 fit_delta=0.7479; Strongest Model projected no more expensive and ModelFit uplift is positive",
+    "pressure_contract: grade=pass",
+    "pressure_contract: t2_diagnostic: bare_t2_baseline at 100.0%; not a pressure-ordering constraint",
+    "pressure_contract: t3_tight: bare_t3_baseline at 100.0% >= 30% \u2014 budget-constrained as expected",
+    "pressure_contract: budgetflow_task_level_frontier_strongest: projected task-level policy uses only Strongest Model tasks because the Strongest Model is cost-dominant",
+    "tight_budget_warning: bare_t2_baseline projected spend $26.67 > hard_cap $9.69 (275.1% utilization) \u2014 strategy may not complete within shared budget",
+    "tight_budget_warning: bare_t3_baseline projected spend $14.92 > hard_cap $9.69 (153.9% utilization) \u2014 strategy may not complete within shared budget",
+    "tight_budget_warning: enterprise_router_baseline projected spend $16.96 > hard_cap $9.69 (175.0% utilization) \u2014 strategy may not complete within shared budget",
+    "tight_budget_warning: budgetflow_task_level projected spend $14.92 > hard_cap $9.69 (153.9% utilization) \u2014 strategy may not complete within shared budget",
+    "decision=PASS: hard_cap=$9.69 from stage-prefix pressure, max projected utilization 100.0%",
+    "projection_confidence=unvalidated: no calibration evidence provided. Run one diagnostic calibration audit before relying on projected utilization."
+  ],
+  "pressure_contract": {
+    "pressure_mode": "stage_prefix_pressure",
+    "target_utilization": 0.35,
+    "target_pressure_fraction": 0.35,
+    "budget_pressure_spec": {
+      "mode": "stage_prefix_pressure",
+      "stage_prefix_count": 10,
+      "stage_target_budget_fraction": 0.35,
+      "stage_reference_strategy": "bare_t3_baseline"
+    },
+    "shape": {
+      "bare_t2_baseline": 1.0,
+      "bare_t3_baseline": 1.0,
+      "enterprise_router_baseline": 1.0,
+      "budgetflow_same_enterprise_router": null,
+      "budgetflow_task_level": 1.0,
+      "budgetflow_segment": null
+    },
+    "assertions": [
+      "t2_diagnostic: bare_t2_baseline at 100.0%; not a pressure-ordering constraint",
+      "t3_tight: bare_t3_baseline at 100.0% >= 30% \u2014 budget-constrained as expected",
+      "budgetflow_task_level_frontier_strongest: projected task-level policy uses only Strongest Model tasks because the Strongest Model is cost-dominant"
+    ],
+    "violations": [],
+    "grade": "pass"
+  },
+  "projection_confidence": "unvalidated",
+  "budget_pressure_spec": {
+    "mode": "stage_prefix_pressure",
+    "stage_prefix_count": 10,
+    "stage_target_budget_fraction": 0.35,
+    "stage_reference_strategy": "bare_t3_baseline"
+  },
+  "calibration_excluded": {
+    "harness_trust:incomplete": 1,
+    "protocol_retry_overhead": 1
+  },
+  "model_fit_evidence": {
+    "tier_fit": {
+      "tier1": 0.15,
+      "tier2": 0.127096,
+      "tier3": 0.875
+    },
+    "source": "historical_jsonl",
+    "scope": "historical_jsonl",
+    "confidence": "high",
+    "catalog": {
+      "catalog_revision": "2026-06-20-deepseek-v4-pro-t2-t3x5",
+      "catalog_semantic_revision": "t2-normalized-v1-t3x5",
+      "catalog_content_hash": "f48f0c2cf9cd"
+    },
+    "evidence_tasks": 10,
+    "tier_evidence_counts": {
+      "tier1": 0,
+      "tier2": 7,
+      "tier3": 10
+    },
+    "tier_completed_counts": {
+      "tier1": 0,
+      "tier2": 7,
+      "tier3": 10
+    },
+    "tier_censored_counts": {
+      "tier1": 0,
+      "tier2": 0,
+      "tier3": 0
+    },
+    "censored_tiers": [],
+    "reasons": [
+      "tier1: fit=0.1500 (catalog fallback, no historical evidence)",
+      "tier2: completed fit shrunk toward catalog prior from 0.0948 to 0.1271 (n=7, prior_weight=2)",
+      "tier2: fit=0.1271 from 7 completed + 0 censored rows",
+      "tier3: completed fit shrunk toward catalog prior from 1.0000 to 0.8750 (n=10, prior_weight=2)",
+      "tier3: fit=0.8750 from 10 completed + 0 censored rows"
+    ]
+  },
+  "planned_task_budget_by_strategy": {
+    "budgetflow_task_level": {
+      "django__django-15814": 4.4426,
+      "matplotlib__matplotlib-25433": 3.1567,
+      "mwaskom__seaborn-3407": 2.9331,
+      "pylint-dev__pylint-7993": 4.7006,
+      "sphinx-doc__sphinx-8282": 2.9834,
+      "sympy__sympy-18621": 3.0299,
+      "mwaskom__seaborn-3010": 2.9563,
+      "sphinx-doc__sphinx-7738": 5.2291,
+      "django__django-15851": 3.1492,
+      "django__django-11049": 3.0263,
+      "django__django-13447": 2.9127,
+      "pylint-dev__pylint-5859": 3.2467,
+      "mwaskom__seaborn-2848": 3.485,
+      "django__django-12908": 3.1537,
+      "pallets__flask-4045": 4.5609,
+      "sphinx-doc__sphinx-8595": 2.8775,
+      "django__django-13964": 3.2048,
+      "sympy__sympy-24102": 3.0927,
+      "sphinx-doc__sphinx-7686": 7.4253,
+      "django__django-11179": 3.0197,
+      "sympy__sympy-12171": 3.0715,
+      "pylint-dev__pylint-6506": 3.2497,
+      "pallets__flask-4992": 5.0081,
+      "mwaskom__seaborn-3190": 3.245,
+      "sympy__sympy-13647": 3.2311,
+      "sphinx-doc__sphinx-8273": 4.4072,
+      "sympy__sympy-15346": 3.1631,
+      "sympy__sympy-22714": 3.0682,
+      "sympy__sympy-13177": 3.3362,
+      "sympy__sympy-17655": 3.3482
+    }
+  },
+  "planned_task_budget_policy": {
+    "mode": "budgetflow_planned_task_budget",
+    "source": "projected_task_cost_by_strategy",
+    "multiplier": 2.0,
+    "min_usd": 0.05,
+    "batch_floor_rule": "hard_cap_usd/sqrt(task_count)+cross_strategy_task_cost_ceiling_multiplier",
+    "sum_can_exceed_hard_cap": true,
+    "applies_to": [
+      "budgetflow_task_level"
+    ]
+  },
+  "projection_diagnostics": {
+    "budgetflow_task_level": {
+      "source": "runtime_policy_projection",
+      "role": "readiness_diagnostic_not_cap_source",
+      "reference_tier": 2,
+      "strongest_tier": 3,
+      "projected_tier_counts": {
+        "tier3": 30
+      },
+      "projected_strongest_task_fraction": 1.0,
+      "projected_spend_usd": 14.9224,
+      "reference_spend_usd": 26.6669,
+      "strongest_spend_usd": 14.9224,
+      "projected_to_reference_spend_ratio": 0.5596,
+      "projected_to_strongest_spend_ratio": 1.0,
+      "degeneration": "pure_strongest_tier",
+      "task_level_model_plan_source": "runtime_policy_projection",
+      "task_choices": {
+        "django__django-15814": {
+          "projected_tier": 3,
+          "projected_cost_usd": 0.2132,
+          "planned_task_budget_usd": 4.4426,
+          "budget_pressure": 0.01
+        },
+        "matplotlib__matplotlib-25433": {
+          "projected_tier": 3,
+          "projected_cost_usd": 0.3695,
+          "planned_task_budget_usd": 3.1567,
+          "budget_pressure": 0.0428
+        },
+        "mwaskom__seaborn-3407": {
+          "projected_tier": 3,
+          "projected_cost_usd": 0.5817,
+          "planned_task_budget_usd": 2.9331,
+          "budget_pressure": 0.0996
+        },
+        "pylint-dev__pylint-7993": {
+          "projected_tier": 3,
+          "projected_cost_usd": 0.2684,
+          "planned_task_budget_usd": 4.7006,
+          "budget_pressure": 0.189
+        },
+        "sphinx-doc__sphinx-8282": {
+          "projected_tier": 3,
+          "projected_cost_usd": 0.6069,
+          "planned_task_budget_usd": 2.9834,
+          "budget_pressure": 0.2302
+        },
+        "sympy__sympy-18621": {
+          "projected_tier": 3,
+          "projected_cost_usd": 0.179,
+          "planned_task_budget_usd": 3.0299,
+          "budget_pressure": 0.3235
+        },
+        "mwaskom__seaborn-3010": {
+          "projected_tier": 3,
+          "projected_cost_usd": 0.1916,
+          "planned_task_budget_usd": 2.9563,
+          "budget_pressure": 0.351
+        },
+        "sphinx-doc__sphinx-7738": {
+          "projected_tier": 3,
+          "projected_cost_usd": 0.4831,
+          "planned_task_budget_usd": 5.2291,
+          "budget_pressure": 0.3805
+        },
+        "django__django-15851": {
+          "projected_tier": 3,
+          "projected_cost_usd": 0.1538,
+          "planned_task_budget_usd": 3.1492,
+          "budget_pressure": 0.4548
+        },
+        "django__django-11049": {
+          "projected_tier": 3,
+          "projected_cost_usd": 0.3455,
+          "planned_task_budget_usd": 3.0263,
+          "budget_pressure": 0.4784
+        },
+        "django__django-13447": {
+          "projected_tier": 3,
+          "projected_cost_usd": 0.3589,
+          "planned_task_budget_usd": 2.9127,
+          "budget_pressure": 0.5315
+        },
+        "pylint-dev__pylint-5859": {
+          "projected_tier": 3,
+          "projected_cost_usd": 0.4638,
+          "planned_task_budget_usd": 3.2467,
+          "budget_pressure": 0.5867
+        },
+        "mwaskom__seaborn-2848": {
+          "projected_tier": 3,
+          "projected_cost_usd": 0.5387,
+          "planned_task_budget_usd": 3.485,
+          "budget_pressure": 0.658
+        },
+        "django__django-12908": {
+          "projected_tier": 3,
+          "projected_cost_usd": 0.4346,
+          "planned_task_budget_usd": 3.1537,
+          "budget_pressure": 0.7408
+        },
+        "pallets__flask-4045": {
+          "projected_tier": 3,
+          "projected_cost_usd": 0.8766,
+          "planned_task_budget_usd": 4.5609,
+          "budget_pressure": 0.8076
+        },
+        "sphinx-doc__sphinx-8595": {
+          "projected_tier": 3,
+          "projected_cost_usd": 0.3479,
+          "planned_task_budget_usd": 2.8775,
+          "budget_pressure": 0.9423
+        },
+        "django__django-13964": {
+          "projected_tier": 3,
+          "projected_cost_usd": 0.4507,
+          "planned_task_budget_usd": 3.2048,
+          "budget_pressure": 0.9958
+        },
+        "sympy__sympy-24102": {
+          "projected_tier": 3,
+          "projected_cost_usd": 0.4155,
+          "planned_task_budget_usd": 3.0927,
+          "budget_pressure": 1.0651
+        },
+        "sphinx-doc__sphinx-7686": {
+          "projected_tier": 3,
+          "projected_cost_usd": 1.7762,
+          "planned_task_budget_usd": 7.4253,
+          "budget_pressure": 1.129
+        },
+        "django__django-11179": {
+          "projected_tier": 3,
+          "projected_cost_usd": 0.3926,
+          "planned_task_budget_usd": 3.0197,
+          "budget_pressure": 1.402
+        },
+        "sympy__sympy-12171": {
+          "projected_tier": 3,
+          "projected_cost_usd": 0.4088,
+          "planned_task_budget_usd": 3.0715,
+          "budget_pressure": 1.4623
+        },
+        "pylint-dev__pylint-6506": {
+          "projected_tier": 3,
+          "projected_cost_usd": 0.4648,
+          "planned_task_budget_usd": 3.2497,
+          "budget_pressure": 1.5
+        },
+        "pallets__flask-4992": {
+          "projected_tier": 3,
+          "projected_cost_usd": 1.017,
+          "planned_task_budget_usd": 5.0081,
+          "budget_pressure": 1.5
+        },
+        "mwaskom__seaborn-3190": {
+          "projected_tier": 3,
+          "projected_cost_usd": 0.4633,
+          "planned_task_budget_usd": 3.245,
+          "budget_pressure": 1.5
+        },
+        "sympy__sympy-13647": {
+          "projected_tier": 3,
+          "projected_cost_usd": 0.4589,
+          "planned_task_budget_usd": 3.2311,
+          "budget_pressure": 1.5
+        },
+        "sphinx-doc__sphinx-8273": {
+          "projected_tier": 3,
+          "projected_cost_usd": 0.8283,
+          "planned_task_budget_usd": 4.4072,
+          "budget_pressure": 1.5
+        },
+        "sympy__sympy-15346": {
+          "projected_tier": 3,
+          "projected_cost_usd": 0.4376,
+          "planned_task_budget_usd": 3.1631,
+          "budget_pressure": 1.5
+        },
+        "sympy__sympy-22714": {
+          "projected_tier": 3,
+          "projected_cost_usd": 0.4078,
+          "planned_task_budget_usd": 3.0682,
+          "budget_pressure": 1.5
+        },
+        "sympy__sympy-13177": {
+          "projected_tier": 3,
+          "projected_cost_usd": 0.492,
+          "planned_task_budget_usd": 3.3362,
+          "budget_pressure": 1.5
+        },
+        "sympy__sympy-17655": {
+          "projected_tier": 3,
+          "projected_cost_usd": 0.4957,
+          "planned_task_budget_usd": 3.3482,
+          "budget_pressure": 1.5
+        }
+      }
+    }
+  },
+  "frontier_diagnostic": {
+    "posture": "strongest_cost_dominant",
+    "reason": "Strongest Model projected no more expensive and ModelFit uplift is positive",
+    "bare_t2_projected_spend": 26.6669,
+    "bare_t3_projected_spend": 14.9224,
+    "t3_over_t2_spend_ratio": 0.5596,
+    "tier2_model_fit": 0.127096,
+    "tier3_model_fit": 0.875,
+    "model_fit_delta": 0.747904,
+    "fit_confidence": "trusted",
+    "scope": "projection_only_not_outcome_evidence"
+  }
+}

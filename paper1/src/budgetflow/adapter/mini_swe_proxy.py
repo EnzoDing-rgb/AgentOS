@@ -468,7 +468,7 @@ class BudgetFlowLitellmModel:
                 recent_commands=self._recent_commands,
                 task_effort=allocation.task_effort if allocation is not None else None,
                 task_spent=self.governor.state.spent_budget,
-                planned_task_budget=(
+                task_budget_cap=(
                     allocation.effective_task_budget
                     if allocation is not None and allocation.effective_task_budget is not None
                     else allocation.planned_task_budget if allocation is not None else None

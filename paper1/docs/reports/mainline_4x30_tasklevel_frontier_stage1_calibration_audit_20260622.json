@@ -1,0 +1,100 @@
+{
+  "strategy_errors": {
+    "bare_t2_baseline": {
+      "projected": 0.9816,
+      "full_projected": 4.0236,
+      "completed_projected": 0.9816,
+      "projection_scope": "completed_task_subset",
+      "actual": 7.9403,
+      "error_pct": 7.0892,
+      "strategy_cap": 18.7277,
+      "projected_utilization": 0.2148,
+      "raw_projected_utilization": 0.2148,
+      "actual_utilization": 0.424,
+      "raw_actual_utilization": 0.424,
+      "budget_exhausted_rows": 0,
+      "task_count": 8,
+      "completed_task_fraction": 0.2667,
+      "stage_budget_share": 4.9941,
+      "stage_share_actual_utilization": 1.59
+    },
+    "bare_t3_baseline": {
+      "projected": 5.6902,
+      "full_projected": 19.3134,
+      "completed_projected": 5.6902,
+      "projection_scope": "completed_task_subset",
+      "actual": 3.3926,
+      "error_pct": 0.4038,
+      "strategy_cap": 18.7277,
+      "projected_utilization": 1.0,
+      "raw_projected_utilization": 1.0313,
+      "actual_utilization": 0.1812,
+      "raw_actual_utilization": 0.1812,
+      "budget_exhausted_rows": 0,
+      "task_count": 10,
+      "completed_task_fraction": 0.3333,
+      "stage_budget_share": 6.2426,
+      "stage_share_actual_utilization": 0.5435
+    },
+    "enterprise_router_baseline": {
+      "projected": 2.8632,
+      "full_projected": 10.9611,
+      "completed_projected": 2.8632,
+      "projection_scope": "completed_task_subset",
+      "actual": 4.4067,
+      "error_pct": 0.5391,
+      "strategy_cap": 18.7277,
+      "projected_utilization": 0.5853,
+      "raw_projected_utilization": 0.5853,
+      "actual_utilization": 0.2353,
+      "raw_actual_utilization": 0.2353,
+      "budget_exhausted_rows": 0,
+      "task_count": 10,
+      "completed_task_fraction": 0.3333,
+      "stage_budget_share": 6.2426,
+      "stage_share_actual_utilization": 0.7059
+    },
+    "budgetflow_task_level": {
+      "projected": 4.5285,
+      "full_projected": 10.7719,
+      "completed_projected": 4.5285,
+      "projection_scope": "completed_task_subset",
+      "actual": 3.1007,
+      "error_pct": 0.3153,
+      "strategy_cap": 18.7277,
+      "projected_utilization": 0.5752,
+      "raw_projected_utilization": 0.5752,
+      "actual_utilization": 0.1656,
+      "raw_actual_utilization": 0.1656,
+      "budget_exhausted_rows": 0,
+      "task_count": 10,
+      "completed_task_fraction": 0.3333,
+      "stage_budget_share": 6.2426,
+      "stage_share_actual_utilization": 0.4967
+    }
+  },
+  "overall_mape": 2.0868,
+  "max_error_strategy": "bare_t2_baseline",
+  "max_error_pct": 7.0892,
+  "projection_confidence": "unvalidated",
+  "recommendations": [
+    "BLOCK next paid run until projection model is recalibrated. Overall MAPE 208.7% exceeds 60% threshold.",
+    "CRITICAL: bare_t2_baseline projection error 708.9% \u2014 this strategy's spend estimate is off by more than 2x.",
+    "BLOCK: stage strongest utilization 54.4% is below 90%; budget regime is too loose for Yield per Dollar evidence. Recompile the hard cap before the next paid stage."
+  ],
+  "generation_mode": "target_utilization",
+  "target_utilization": 1.0,
+  "actual_utilization_by_strategy": {
+    "budgetflow_task_level": 0.1656,
+    "bare_t3_baseline": 0.1812,
+    "enterprise_router_baseline": 0.2353,
+    "bare_t2_baseline": 0.424
+  },
+  "raw_actual_utilization_by_strategy": {
+    "budgetflow_task_level": 0.1656,
+    "bare_t3_baseline": 0.1812,
+    "enterprise_router_baseline": 0.2353,
+    "bare_t2_baseline": 0.424
+  },
+  "budget_exhausted_by_strategy": {}
+}
