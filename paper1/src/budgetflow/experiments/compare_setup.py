@@ -106,6 +106,10 @@ def calibrated_model_fit_from_budget_plan(
     The Budget Regime Compiler may publish workload-level tier fit evidence for
     runtime allocation.  This is not a per-task model assignment: keys are only
     canonical tier names such as ``tier2`` and values are scalar fit rates.
+
+    Task-local same-task history (``task_tier_fit_overrides``) is deliberately
+    not parsed here.  It remains a compiler-side annotation only and must not
+    feed runtime AllocationContext.model_fit.
     """
     if budget_plan_path is None:
         return None, "catalog_progress_prior", "none"
@@ -123,7 +127,6 @@ def calibrated_model_fit_from_budget_plan(
     tier_fit = evidence.get("tier_fit") or {}
     if not isinstance(tier_fit, dict):
         return None, "catalog_progress_prior", "none"
-
     parsed: dict[str, float] = {}
     for raw_tier, raw_fit in tier_fit.items():
         tier_text = str(raw_tier)

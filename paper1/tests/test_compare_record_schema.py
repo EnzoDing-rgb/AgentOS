@@ -299,6 +299,87 @@ def test_runner_threads_budget_plan_model_fit_into_allocation_context(monkeypatc
     assert record["budget_exhausted"] is True
 
 
+def test_runner_ignores_task_local_model_fit_override(monkeypatch) -> None:
+    """Same-task history must not lock runtime routing.
+
+    The compiler may publish ``task_tier_fit_overrides`` as annotation, but
+    runtime AllocationContext.model_fit must only carry the workload-level
+    calibrated fit.  Task-local overrides are diagnostic-only.
+    """
+    import budgetflow.adapter.runner as runner
+
+    seen = {}
+
+    def fake_run_mini_swe_task(*args, **kwargs):
+        seen["allocation"] = kwargs["allocation"]
+        return SimpleNamespace(
+            instance_id="task-a",
+            total_cost=0.01,
+            harness_resolved=True,
+            patch_text="diff --git a/x b/x\n",
+            patch_source="workspace_diff",
+            submitted_patch_path="/tmp/submitted.patch",
+            workspace_patch_path="/tmp/workspace.patch",
+            trace_dir="/tmp/trace",
+            trace_steps_path="/tmp/trace/steps.jsonl",
+            exit_status="HarnessResolved",
+            exit_reason="harness_resolved",
+            agent_exit_status="Submitted",
+            agent_exit_reason="submitted",
+            backend_picks=["tier2"],
+            llm_turns=1,
+            violations=[],
+            harness_detail="ok",
+            agent_gold_edited=False,
+            agent_gold_files=[],
+            agent_attempted_submit=True,
+            agent_submitted=True,
+            prompt_tokens_total=10,
+            completion_tokens_total=2,
+            provider_usage_turns=1,
+            estimated_usage_turns=0,
+            usage_source="provider",
+            cost_mode="catalog_provider_usage",
+            turn_trace_count=0,
+            turn_traces=[],
+            protocol_retry_used=False,
+            protocol_retry_success=False,
+            protocol_retry_reason="",
+            protocol_retry_attempts=0,
+            protocol_retry_limit=4,
+            protocol="tool_call",
+            parser="parse_toolcall_actions",
+            provider_error_kind="",
+            provider_retryable=None,
+        )
+
+    monkeypatch.setattr(runner, "run_mini_swe_task", fake_run_mini_swe_task)
+    task = SimpleNamespace(
+        instance_id="task-a",
+        patch="diff --git a/x b/x\n",
+        fail_to_pass=("tests/test_x.py::test_y",),
+        pass_to_pass=(),
+    )
+
+    record = run_task_record(
+        task,
+        cfg=CompareStrategy("budgetflow_task_level", "value_aware_task_level"),
+        batch_budget_cap=1.0,
+        governor=BudgetGovernor(GovernorConfig(total_budget=1.0, default_max_output_tokens=4096), WorkflowLedgerStore()),
+        ledger=WorkflowLedgerStore(),
+        task_index=1,
+        step_limit=1,
+        value_context=_value_context(),
+        calibrated_model_fit={"tier2": 0.08, "tier3": 0.65},
+        calibrated_model_fit_source="budget_plan:historical_jsonl",
+        calibrated_model_fit_confidence="medium",
+    )
+
+    assert seen["allocation"].model_fit == {"tier2": 0.08, "tier3": 0.65}
+    assert seen["allocation"].model_fit_source == "budget_plan:historical_jsonl"
+    assert record["model_fit_source"] == "budget_plan:historical_jsonl"
+
+
 def test_runner_threads_run_series_to_run_scoped_trace_dir(monkeypatch) -> None:
     import budgetflow.adapter.runner as runner
 

@@ -153,7 +153,7 @@ def run_task_record(
         dict(calibrated_model_fit) if calibrated_model_fit else None
     )
     model_fit_source = (
-        calibrated_model_fit_source if calibrated_model_fit else "catalog_progress_prior"
+        calibrated_model_fit_source if model_fit else "catalog_progress_prior"
     )
     budget_source = (
         planned_task_budget_source

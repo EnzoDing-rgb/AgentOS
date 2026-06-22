@@ -355,6 +355,41 @@ def test_budget_plan_model_fit_evidence_parsed_as_global_runtime_signal(tmp_path
     assert confidence == "medium"
 
 
+def test_budget_plan_model_fit_ignores_task_local_overrides(tmp_path) -> None:
+    """Task-local same-task overrides must not flow into runtime model_fit.
+
+    The compiler may still write ``task_tier_fit_overrides`` as annotation,
+    but ``calibrated_model_fit_from_budget_plan`` must not parse it into a
+    runtime signal.  This keeps same-task history diagnostic-only.
+    """
+    import json
+    from budgetflow.model_tiers import catalog_source_info
+
+    bp_path = tmp_path / "bp.json"
+    bp_path.write_text(json.dumps({
+        "hard_cap_usd": 1.2262,
+        "generation_mode": "target_utilization",
+        "model_fit_evidence": {
+            "source": "historical_jsonl",
+            "confidence": "medium",
+            "catalog": catalog_source_info(),
+            "tier_fit": {"tier2": 0.08, "tier3": 0.65},
+            "task_tier_fit_overrides": {
+                "task-a": {
+                    "tier_fit": {"tier2": 0.81, "tier3": 0.65},
+                    "source": "same_task_clean_t2_success",
+                }
+            },
+        },
+    }))
+
+    fit, source, confidence = calibrated_model_fit_from_budget_plan(bp_path)
+
+    assert fit == {"tier2": 0.08, "tier3": 0.65}
+    assert source == "budget_plan:historical_jsonl"
+    assert confidence == "medium"
+
+
 def test_budget_plan_model_fit_rejects_stale_physical_catalog(tmp_path) -> None:
     import json
     from budgetflow.model_tiers import catalog_source_info

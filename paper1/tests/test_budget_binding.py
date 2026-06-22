@@ -14,6 +14,7 @@ from budgetflow.experiments.budget_binding import (
     BUDGETFLOW_PLANNED_TASK_BUDGET_MODE,
     _distribution_p75,
     _build_pressure_contract,
+    _apply_task_level_degeneracy_gate,
     _apply_pressure_contract_gate,
     audit_calibration,
     BudgetBindingPlan,
@@ -1032,6 +1033,32 @@ def test_pressure_contract_allows_strongest_frontier_diagnostic() -> None:
 
     assert not any("budgetflow_task_level_degenerated" in v for v in plan.pressure_contract["violations"])
     assert any("budgetflow_task_level_frontier_strongest" in a for a in plan.pressure_contract["assertions"])
+
+
+def test_task_level_degeneracy_gate_blocks_pure_frontier_plan() -> None:
+    plan = BudgetBindingPlan(
+        hard_cap_usd=10.0,
+        generation_mode="target_utilization",
+        target_projected_utilization=0.80,
+        decision="PASS",
+        frontier_diagnostic={"posture": "strongest_cost_dominant"},
+        model_fit_evidence={
+            "tier_fit": {"tier2": 0.10, "tier3": 0.80},
+            "confidence": "high",
+        },
+    )
+    plan.projection_diagnostics = {
+        "budgetflow_task_level": {
+            "degeneration": "pure_strongest_tier",
+            "projected_tier_counts": {"tier3": 30},
+            "projected_strongest_task_fraction": 1.0,
+        }
+    }
+
+    _apply_task_level_degeneracy_gate(plan)
+
+    assert plan.decision == "BLOCK"
+    assert any("TASK_LEVEL_GATE BLOCK" in reason for reason in plan.reasons)
 
 
 def test_pressure_contract_accepts_mixed_task_level_projection_below_util_target() -> None:

@@ -411,6 +411,22 @@ def build_compare_readiness_report(
                             "stage_prefix_pressure budget plan has invalid stage_prefix_count; "
                             "regenerate it with the Budget Regime Compiler"
                         )
+                    if prefix_count > len(task_ids):
+                        blocking.append(
+                            f"stage_prefix_pressure budget plan stage_prefix_count={prefix_count} "
+                            f"exceeds selected task count={len(task_ids)}; the prefix must be a "
+                            "leading subset of the selected task order"
+                        )
+                    max_tasks_per_strategy = getattr(args, "max_tasks_per_strategy", None)
+                    if max_tasks_per_strategy is not None and max_tasks_per_strategy > 0:
+                        staged_run = min(int(max_tasks_per_strategy), len(task_ids))
+                        if prefix_count != staged_run:
+                            blocking.append(
+                                f"stage_prefix_pressure budget plan stage_prefix_count={prefix_count} "
+                                f"does not match --max-tasks-per-strategy={max_tasks_per_strategy} "
+                                f"(staged run={staged_run}); the compiled prefix must cover exactly "
+                                "the tasks the staged execution will run"
+                            )
                     if not (0.0 < target_fraction <= 1.0):
                         blocking.append(
                             "stage_prefix_pressure budget plan has invalid "
@@ -457,10 +473,18 @@ def build_compare_readiness_report(
                         + "; ".join(detail_parts)
                     )
                 elif bp_task_list != task_ids:
-                    warnings.append(
-                        "budget plan task_ids have the same task set but a different order; "
-                        "runtime will use selected task order"
-                    )
+                    if bp_generation_mode == STAGE_PREFIX_PRESSURE_MODE:
+                        blocking.append(
+                            "stage_prefix_pressure budget plan task_ids order must exactly match "
+                            "selected task order; the compiled prefix spend is order-sensitive. "
+                            f"budget_plan_order={bp_task_list[:8]} "
+                            f"selected_order={task_ids[:8]}"
+                        )
+                    else:
+                        warnings.append(
+                            "budget plan task_ids have the same task set but a different order; "
+                            "runtime will use selected task order"
+                        )
                 bp_generation_mode = str(bp.get("generation_mode", "") or "")
             bp_strategy_names = bp.get("strategy_names")
             if isinstance(bp_strategy_names, list) and bp_strategy_names:
@@ -542,22 +566,12 @@ def build_compare_readiness_report(
                     )
                 else:
                     degeneration = str(task_diag.get("degeneration") or "")
-                    if degeneration == "pure_reference_tier" and frontier_posture == "reference_cost_dominant":
-                        warnings.append(
-                            "BudgetFlow task-level runtime projection collapses to the reference tier because "
-                            "frontier_diagnostic=reference_cost_dominant; treat this run as frontier-selection "
-                            "diagnostic evidence, not strong tier-routing evidence"
-                        )
-                    elif degeneration == "pure_strongest_tier" and frontier_posture == "strongest_cost_dominant":
-                        warnings.append(
-                            "BudgetFlow task-level runtime projection collapses to the Strongest Model because "
-                            "frontier_diagnostic=strongest_cost_dominant; treat this run as frontier-selection "
-                            "diagnostic evidence, not strong mixed-routing evidence"
-                        )
-                    elif degeneration in {"pure_reference_tier", "pure_strongest_tier"}:
+                    if degeneration in {"pure_reference_tier", "pure_strongest_tier"}:
                         blocking.append(
                             f"BudgetFlow task-level runtime projection degenerates to {degeneration}; "
-                            "fix ModelFit/value/cost calibration before paid run"
+                            "value-aware task-level paid runs must preserve a real T2/T3 frontier. "
+                            "Use pure-tier baselines for fixed-tier controls or fix ModelFit/value/cost "
+                            "calibration before paid run"
                         )
 
             active_revision = active_catalog_revision
@@ -640,29 +654,13 @@ def build_compare_readiness_report(
             )
         for violation in pressure_contract.get("violations", []) if isinstance(pressure_contract, dict) else []:
             if "budgetflow_task_level_degenerated" in str(violation):
-                frontier_posture = (
-                    str(frontier_diagnostic.get("posture") or "")
-                    if isinstance(frontier_diagnostic, dict)
-                    else ""
+                blocking.append(
+                    "budget plan pressure contract has budgetflow_task_level_degenerated; "
+                    "BudgetFlow task-level projection degenerates to a pure-tier frontier. "
+                    "Use pure-tier baselines for fixed-tier controls or run as an explicit "
+                    "frontier diagnostic — main evidence readiness must not silently pass "
+                    "near-pure T2/T3 routing"
                 )
-                if "zero Strongest Model" in str(violation) and frontier_posture == "reference_cost_dominant":
-                    warnings.append(
-                        "budget plan pressure contract reports budgetflow_task_level_degenerated, "
-                        "but frontier_diagnostic=reference_cost_dominant makes pure reference-tier routing "
-                        "a diagnostic frontier-selection outcome rather than a paid-run blocker"
-                    )
-                elif "only Strongest Model" in str(violation) and frontier_posture == "strongest_cost_dominant":
-                    warnings.append(
-                        "budget plan pressure contract reports budgetflow_task_level_degenerated, "
-                        "but frontier_diagnostic=strongest_cost_dominant makes pure strongest-tier routing "
-                        "a diagnostic frontier-selection outcome rather than a paid-run blocker"
-                    )
-                else:
-                    blocking.append(
-                        "budget plan pressure contract has budgetflow_task_level_degenerated; "
-                        "BudgetFlow task-level projection uses a fixed-tier frontier without a matching "
-                        "frontier dominance diagnostic"
-                    )
                 break
             if "budgetflow_under_target" in str(violation):
                 warnings.append(

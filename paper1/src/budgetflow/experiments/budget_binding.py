@@ -21,10 +21,10 @@ from budgetflow.experiments.compare_config import load_strategy_set, paper_mainl
 from budgetflow.experiments.compare_setup import PLANNED_TASK_BUDGET_MODE
 
 from ..exit_reasons import record_is_budget_exhausted
-from ..defaults import BUDGET_PRESSURE_INIT, PRESSURE_MAX
-from ..decision_costs import task_level_decision_per_turn_cost
-from ..adapter.strategies import (
+from ..defaults import (
+    BUDGET_PRESSURE_INIT,
     MARGINAL_YIELD_PER_DOLLAR_THRESHOLD,
+    PRESSURE_MAX,
     TASK_START_COLD_FRONTIER_EFFORT_THRESHOLD,
     TASK_START_COLD_FRONTIER_EFFORT_TOLERANCE,
     TASK_START_DECISIVE_FIT_GAIN,
@@ -37,9 +37,11 @@ from ..adapter.strategies import (
     TASK_START_VALUE_RATIO_GATE,
     task_start_t3_acceptance_threshold,
 )
+from ..decision_costs import task_level_decision_per_turn_cost
 from ..model_fit_estimator import ModelFitEvidence, estimate_model_fit_from_jsonl
 from ..model_tiers import (
     MODEL_CATALOG,
+    catalog_record_exact_match,
     catalog_record_compatible,
     catalog_path,
     catalog_revision,
@@ -429,6 +431,15 @@ def calibrate_budget(
                 "censored_tiers": sorted(evidence.censored_tiers),
                 "reasons": evidence.reasons,
             }
+            task_fit_overrides = _build_same_task_fit_overrides(
+                historical_jsonl,
+                task_ids,
+                value_features,
+                base_fit_overrides=fit_overrides,
+                audit_reasons=plan.reasons,
+            )
+            if task_fit_overrides:
+                plan.model_fit_evidence["task_tier_fit_overrides"] = task_fit_overrides
             plan.reasons.append(
                 f"calibration:model_fit_evidence confidence={evidence.confidence} "
                 f"scope={evidence.scope} from {evidence.evidence_tasks} tasks: "
@@ -596,6 +607,7 @@ def calibrate_budget(
 
     _build_frontier_diagnostic(plan, fit_overrides)
     _build_pressure_contract(plan, strategies)
+    _apply_task_level_degeneracy_gate(plan)
     _apply_pressure_contract_gate(plan)
 
     for strategy in strategies:
@@ -1179,6 +1191,10 @@ def _project_task_level_choice_cost(
     estimates for accounting, but it must still use per-turn catalog costs for
     the task-start tier decision.  Mixing those units is exactly how the 4x25
     plan mis-projected task-level BudgetFlow as near-all-T2.
+
+    Task-local same-task history is annotation-only: it must not feed the
+    projection's tier fit, or the compiler would lock in routes from
+    historical same-task outcomes.
     """
     if reference_cost <= 0 and strongest_cost <= 0:
         return 2, 0.0
@@ -1537,6 +1553,28 @@ def _apply_pressure_contract_gate(plan: BudgetBindingPlan) -> None:
         )
 
 
+def _apply_task_level_degeneracy_gate(plan: BudgetBindingPlan) -> None:
+    if not isinstance(plan.model_fit_evidence, dict):
+        return
+    task_diag = (
+        (plan.projection_diagnostics or {}).get("budgetflow_task_level")
+        if isinstance(plan.projection_diagnostics, dict)
+        else None
+    )
+    if not isinstance(task_diag, dict):
+        return
+    degeneration = str(task_diag.get("degeneration") or "")
+    if degeneration not in {"pure_reference_tier", "pure_strongest_tier"}:
+        return
+    if plan.decision != "BLOCK":
+        plan.decision = "BLOCK"
+    plan.reasons.append(
+        "TASK_LEVEL_GATE BLOCK: budgetflow_task_level projection degenerates "
+        f"to {degeneration}; value-aware task-level paid plans must preserve "
+        "a real T2/T3 frontier or be run as explicit pure-tier controls"
+    )
+
+
 def _apply_calibration_gate(
     plan: BudgetBindingPlan,
     audit: CalibrationAudit,
@@ -1721,6 +1759,122 @@ def _latest_records_by_strategy_task(jsonl_path: Path) -> dict[tuple[str, str], 
             if key not in latest or (finished_at, order) >= (latest[key][0], latest[key][1]):
                 latest[key] = (finished_at, order, rec)
     return {key: rec for key, (_finished_at, _order, rec) in latest.items()}
+
+
+def _build_same_task_fit_overrides(
+    jsonl_path: Path,
+    task_ids: list[str],
+    value_features: dict[str, dict],
+    *,
+    base_fit_overrides: dict[int, float] | None,
+    audit_reasons: list[str] | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Build task-local ModelFit overrides from clean same-task boundary wins.
+
+    This is deliberately narrow: a clean same-catalog T2 pass that is no more
+    expensive than same-task T3 evidence is evidence that the task sits on the
+    reference frontier.  It is still ModelFit evidence, not a direct model
+    assignment.
+    """
+    latest = _latest_records_by_strategy_task(jsonl_path)
+    by_task: dict[str, list[dict]] = {}
+    for (_strategy, instance_id), rec in latest.items():
+        by_task.setdefault(instance_id, []).append(rec)
+    task_id_set = set(task_ids)
+    overrides: dict[str, dict[str, Any]] = {}
+    strongest_tier = max((cfg.tier for cfg in MODEL_CATALOG.configs), default=3)
+    reference_fit = _projection_tier_fit(2, base_fit_overrides)
+    strongest_fit = _projection_tier_fit(strongest_tier, base_fit_overrides)
+
+    for task_id in task_ids:
+        t2 = _best_clean_single_tier_row(by_task.get(task_id, []), tier=2, require_pass=True)
+        if t2 is None:
+            continue
+        t2_cost = float(t2.get("total_cost") or t2.get("scoreable_cost") or 0.0)
+        if t2_cost <= 0:
+            continue
+        t3 = _best_clean_single_tier_row(by_task.get(task_id, []), tier=strongest_tier, require_pass=True)
+        t3_cost = float(t3.get("total_cost") or t3.get("scoreable_cost") or 0.0) if t3 else 0.0
+        t3_pass = t3 is not None
+        if t3_pass and t3_cost > 0 and t3_cost < t2_cost * 0.95:
+            continue
+
+        effort = _task_effort_for_projection(task_id, value_features)
+        per_turn = _projection_per_turn_cost(2)
+        observed_fit = max(0.001, min(1.0, (effort * per_turn) / t2_cost))
+        # A same-task clean T2 pass with no cheaper clean T3 pass means the
+        # local frontier is at least reference-tier competitive.  Do not let a
+        # workload-level T3 fit prior erase that task-local boundary.
+        anchored_t2_fit = max(reference_fit, observed_fit, strongest_fit)
+        overrides[task_id] = {
+            "tier_fit": {
+                "tier2": round(min(1.0, anchored_t2_fit), 6),
+                f"tier{strongest_tier}": round(min(strongest_fit, anchored_t2_fit), 6),
+            },
+            "source": "same_task_clean_t2_success",
+            "evidence": {
+                "tier2_cost_usd": round(t2_cost, 4),
+                "tier3_cost_usd": round(t3_cost, 4) if t3_cost > 0 else None,
+                "tier3_clean_pass": bool(t3_pass),
+                "tier2_evidence_strategy": str(t2.get("strategy") or ""),
+                "tier3_evidence_strategy": str(t3.get("strategy") or "") if t3 else None,
+            },
+        }
+    if overrides and audit_reasons is not None:
+        in_scope = [task_id for task_id in overrides if task_id in task_id_set]
+        audit_reasons.append(
+            "calibration:task_tier_fit_overrides same_task_clean_t2_success "
+            f"tasks={len(in_scope)}"
+        )
+    return overrides
+
+
+def _best_clean_single_tier_row(rows: list[dict], *, tier: int, require_pass: bool) -> dict | None:
+    candidates: list[dict] = []
+    for row in rows:
+        if require_pass and not _row_is_clean_pass(row):
+            continue
+        if not require_pass:
+            eligible, _reason = _row_is_calibration_eligible(row, allow_budget_exhausted=False)
+            if not eligible:
+                continue
+            catalog_ok, _catalog_reason = catalog_record_exact_match(row.get("catalog") or {})
+            if not catalog_ok:
+                continue
+        if not _row_uses_single_tier(row, tier):
+            continue
+        candidates.append(row)
+    if not candidates:
+        return None
+    return min(candidates, key=lambda row: float(row.get("total_cost") or row.get("scoreable_cost") or 0.0))
+
+
+def _row_uses_single_tier(row: dict, tier: int) -> bool:
+    backend = f"tier{tier}"
+    picks = row.get("backend_picks")
+    if isinstance(picks, list) and picks:
+        return all(str(pick) == backend or str(pick) == str(tier) for pick in picks)
+    strategy = str(row.get("strategy") or "")
+    if tier == 2:
+        return strategy in {"bare_t2_baseline", "budget_only_t2", "all_tier2"}
+    strongest_tier = max((cfg.tier for cfg in MODEL_CATALOG.configs), default=3)
+    if tier == strongest_tier:
+        return strategy in {"bare_t3_baseline", "all_t3", "all_pro", "all_strongest_model"}
+    return False
+
+
+def _row_is_clean_pass(row: dict | None) -> bool:
+    if not isinstance(row, dict):
+        return False
+    eligible, _reason = _row_is_calibration_eligible(row, allow_budget_exhausted=False)
+    if not eligible:
+        return False
+    catalog_ok, _catalog_reason = catalog_record_exact_match(row.get("catalog") or {})
+    if not catalog_ok:
+        return False
+    if str(row.get("score_status") or "") != "pass":
+        return False
+    return True
 
 
 def _row_is_budget_exhausted(row: dict) -> bool:

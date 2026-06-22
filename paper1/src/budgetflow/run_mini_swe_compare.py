@@ -230,7 +230,11 @@ def main() -> None:
                 for strategy, caps in raw_planned_caps.items()
                 if isinstance(caps, dict)
             }
-    calibrated_model_fit, calibrated_model_fit_source, calibrated_model_fit_confidence = calibrated_model_fit_from_budget_plan(
+    (
+        calibrated_model_fit,
+        calibrated_model_fit_source,
+        calibrated_model_fit_confidence,
+    ) = calibrated_model_fit_from_budget_plan(
         budget_plan_path
     )
 

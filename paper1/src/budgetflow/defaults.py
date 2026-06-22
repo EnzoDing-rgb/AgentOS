@@ -130,5 +130,32 @@ BUDGET_PRESSURE_INIT = 0.01
 PRESSURE_MAX = 1.5
 UNCAPPED_BUDGET_THRESHOLD = 1_000_000.0
 
+# Task-level routing constants shared between the Budget Regime Compiler
+# (budget_binding.py projection) and the runtime (adapter/strategies.py). Both
+# sides must read these from a single neutral source so the compiler's
+# task-start mirror stays in lockstep with runtime tier choices.
+MARGINAL_YIELD_PER_DOLLAR_THRESHOLD = 1.0
+TASK_START_PRESSURE_THRESHOLD_MULTIPLIER = 0.5
+TASK_START_EFFORT_MULTIPLIER_MIN = 0.5
+TASK_START_EFFORT_MULTIPLIER_MAX = 2.0
+TASK_START_T3_ACCEPTANCE_MARGIN = 0.10
+TASK_START_PAID_UPGRADE_MIN_FIT_GAIN = 0.10
+TASK_START_DECISIVE_FIT_GAIN = 0.30
+TASK_START_MIN_VALUE_FOR_DECISIVE_FIT = 0.50
+TASK_START_VALUE_RATIO_GATE = 1.25
+TASK_START_HIGH_EFFORT_THRESHOLD = 40.0
+TASK_START_COLD_FRONTIER_EFFORT_THRESHOLD = 20.0
+TASK_START_COLD_FRONTIER_EFFORT_TOLERANCE = 0.95
+
+
+def task_start_t3_acceptance_threshold(base_threshold: float) -> float:
+    """Return the robust T3-start threshold above the break-even frontier.
+
+    Task-start routing consumes estimated ModelFit and per-turn cost. A small
+    ambiguity band prevents near-threshold forecast noise from turning a
+    value-aware router into a fixed Strongest Model run.
+    """
+    return float(base_threshold) * (1.0 + TASK_START_T3_ACCEPTANCE_MARGIN)
+
 # Convenience labels for banners and legacy diagnostic scripts. Runtime routing
 # must use MODEL_CATALOG / ModelCatalog instead of assuming exactly three tiers.

@@ -647,6 +647,46 @@ class TestChooseTaskLevelBackend:
         assert ctx.last_policy_decision.reason == "task_level_reference_frontier"
         assert ctx.last_policy_decision.scores["reference_frontier_candidate"] == 1.0
 
+    def test_effective_task_budget_overrides_planned_for_t3_affordability(self):
+        """Effective cap must veto T3 even when planned cap is generous.
+
+        Runtime rebalancing can shrink the task cap below the compiler's
+        planned budget.  Task-start T3 affordability must consult the
+        effective cap first; otherwise a generous planned cap masks a real
+        runtime budget squeeze and T3 starts spending money the batch does
+        not have.
+        """
+        from budgetflow.adapter.strategies import choose_backend, _expected_total_cost
+        from budgetflow.decision_costs import task_level_decision_per_turn_cost
+
+        alloc = _trusted_allocation(
+            task_value=2.0,
+            task_effort=80.0,
+            planned_task_budget=10.0,
+            effective_task_budget=0.05,
+            model_fit={"tier2": 1.0, "tier3": 1.0},
+        )
+        backends = _backends(t2_progress=0.60, t3_progress=0.65)
+        ctx = _task_level_ctx(backends, budget_pressure=0.35, allocation=alloc)
+        per_turn = _per_turn_costs(backends)
+        strongest = backends[-1]
+        strongest_total = _expected_total_cost(
+            ctx,
+            strongest.name,
+            strongest.tier,
+            task_level_decision_per_turn_cost(strongest),
+        )
+        assert strongest_total > alloc.effective_task_budget
+        assert strongest_total <= alloc.planned_task_budget
+
+        backend = choose_backend(ctx, _turn(), per_turn)
+
+        assert backend.tier == 2
+        assert ctx.last_policy_decision.scores["budget_allows_strongest"] == 0.0
+        assert ctx.last_policy_decision.scores["planned_task_budget"] == pytest.approx(0.05)
+        assert ctx.last_policy_decision.reason == "task_level_reference_frontier"
+        assert ctx.last_policy_decision.scores["reference_frontier_candidate"] == 1.0
+
     def test_marginal_yield_per_dollar_can_choose_t3_when_t3_costs_more(self):
         """High-value tasks can choose T3 by marginal Yield/$, not only cost dominance."""
         from budgetflow.adapter.strategies import choose_backend, _expected_total_cost

@@ -6,11 +6,24 @@ from ..adaptive_routing import AdaptiveRoutingState
 from ..allocation import AllocationContext
 from ..defaults import (
     BUDGET_PRESSURE_INIT,
+    MARGINAL_YIELD_PER_DOLLAR_THRESHOLD,
     ModelCatalog,
+    TASK_START_COLD_FRONTIER_EFFORT_THRESHOLD,
+    TASK_START_COLD_FRONTIER_EFFORT_TOLERANCE,
+    TASK_START_DECISIVE_FIT_GAIN,
+    TASK_START_EFFORT_MULTIPLIER_MAX,
+    TASK_START_EFFORT_MULTIPLIER_MIN,
+    TASK_START_HIGH_EFFORT_THRESHOLD,
+    TASK_START_MIN_VALUE_FOR_DECISIVE_FIT,
+    TASK_START_PAID_UPGRADE_MIN_FIT_GAIN,
+    TASK_START_PRESSURE_THRESHOLD_MULTIPLIER,
+    TASK_START_T3_ACCEPTANCE_MARGIN,
+    TASK_START_VALUE_RATIO_GATE,
     W_I,
     active_w_i,
     active_w_i_profile_name,
     progress_table,
+    task_start_t3_acceptance_threshold,
     tier_escalation_patience,
 )
 from ..decision_costs import task_level_decision_per_turn_cost
@@ -22,21 +35,6 @@ from ..tier_frontier import TierFrontier, finite_frontier_score
 from ..types import Backend, ProgressTable, Stage, TurnInfo
 
 TASK_BUDGET_STRONGEST_FIT_FRACTION = 1.0
-# Task-level T3 starts when each extra expected cost unit buys at least one
-# median-task-value unit. Budget pressure is a scarcity multiplier, not an
-# absolute veto.
-MARGINAL_YIELD_PER_DOLLAR_THRESHOLD = 1.0
-TASK_START_PRESSURE_THRESHOLD_MULTIPLIER = 0.5
-TASK_START_EFFORT_MULTIPLIER_MIN = 0.5
-TASK_START_EFFORT_MULTIPLIER_MAX = 2.0
-TASK_START_T3_ACCEPTANCE_MARGIN = 0.10
-TASK_START_PAID_UPGRADE_MIN_FIT_GAIN = 0.10
-TASK_START_DECISIVE_FIT_GAIN = 0.30
-TASK_START_MIN_VALUE_FOR_DECISIVE_FIT = 0.50
-TASK_START_VALUE_RATIO_GATE = 1.25
-TASK_START_HIGH_EFFORT_THRESHOLD = 40.0
-TASK_START_COLD_FRONTIER_EFFORT_THRESHOLD = 20.0
-TASK_START_COLD_FRONTIER_EFFORT_TOLERANCE = 0.95
 
 @dataclass
 class RoutingContext:
@@ -297,16 +295,6 @@ def _strongest_price_ratio(ctx: RoutingContext, reference: Backend, strongest: B
     return max(1.0, input_ratio, output_ratio)
 
 
-def task_start_t3_acceptance_threshold(base_threshold: float) -> float:
-    """Return the robust T3-start threshold above the break-even frontier.
-
-    Task-start routing consumes estimated ModelFit and per-turn cost. A small
-    ambiguity band prevents near-threshold forecast noise from turning a
-    value-aware router into a fixed Strongest Model run.
-    """
-    return float(base_threshold) * (1.0 + TASK_START_T3_ACCEPTANCE_MARGIN)
-
-
 def _expected_total_cost(
     ctx: RoutingContext,
     backend_name: str,
@@ -327,15 +315,32 @@ def _expected_total_cost(
     return expected_turns * per_turn_cost
 
 
+def _runtime_task_budget(allocation: AllocationContext | None) -> float | None:
+    """Return the runtime task cap, effective-first.
+
+    ``effective_task_budget`` is the live post-rebalance cap; when present it
+    supersedes the compiler's ``planned_task_budget``.  Returning None means
+    no runtime cap is in play and strongest-tier affordability is unconstrained.
+    """
+    if allocation is None:
+        return None
+    if allocation.effective_task_budget is not None:
+        return float(allocation.effective_task_budget)
+    if allocation.planned_task_budget is not None:
+        return float(allocation.planned_task_budget)
+    return None
+
+
 def _expected_cost_fits_task_budget(
     allocation: AllocationContext | None,
     cost: float,
     *,
     fraction: float = TASK_BUDGET_STRONGEST_FIT_FRACTION,
 ) -> bool:
-    if allocation is None or allocation.planned_task_budget is None:
+    budget = _runtime_task_budget(allocation)
+    if budget is None:
         return True
-    budget = max(0.0, float(allocation.planned_task_budget))
+    budget = max(0.0, budget)
     if budget <= 0:
         return False
     return cost <= budget * max(0.0, min(1.0, fraction))
@@ -390,11 +395,8 @@ def _task_start_t3_score(
         * (1.0 + TASK_START_PRESSURE_THRESHOLD_MULTIPLIER * pressure_penalty)
     )
     acceptance_threshold = task_start_t3_acceptance_threshold(threshold)
-    planned_task_budget = (
-        float(allocation.planned_task_budget)
-        if allocation is not None and allocation.planned_task_budget is not None
-        else 0.0
-    )
+    runtime_task_budget = _runtime_task_budget(allocation)
+    planned_task_budget = runtime_task_budget if runtime_task_budget is not None else 0.0
     task_budget_headroom = (
         planned_task_budget - strongest_total_cost
         if planned_task_budget > 0
