@@ -4,6 +4,17 @@
 
 ## 2026-06-22 — Current status (in progress, not final evidence)
 
+- **2026-06-23 / 3x30 stage 2+3 completed after soft-gate fix:** completed
+  `mainline_3x30_lhm_cycle_stage23_softgate_kv50_20260623` (60/60 rows).
+  Stage 2 showed a real cost-efficiency signal: BF task-level matched pure T3
+  Yield 6.0 while spending `$2.2158` vs pure T3 `$2.6567` (Yield/$ 2.7078 vs
+  2.2585). Stage 3 reversed the result: BF selected T3 on all 10 tasks but
+  finished 4/10, Yield 4.0, cost `$1.9724`, below pure T3's 5/10, Yield 5.0,
+  cost `$1.7425`. The stage 3 failure is not a T2/T3 routing-ratio bug; it is a
+  Claim 2 warning that BF's task-level control path must preserve pure-T3
+  productivity when it degenerates to all Strongest Model, or save enough
+  failed-task spend to compensate. Short report:
+  `paper1/docs/reports/mainline_3x30_stage23_softgate_result_20260623.md`.
 - **2026-06-23 / 3x30 task-start budget gate routefix:** stopped
   `mainline_3x30_lhm_cycle_kv50_20260623` after early evidence showed
   BudgetFlow routing a high-value Seaborn task to T2 even though pure T3 solved
