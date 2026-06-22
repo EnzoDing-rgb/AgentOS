@@ -47,13 +47,13 @@ PAPER_MAINLINE_STRATEGY_SET_PATH = PAPER1_ROOT / "docs" / "config" / "paper_main
 CORE_STRATEGIES: tuple[CompareStrategy, ...] = (
     CompareStrategy("bare_t2_baseline", "all_tier2"),
     CompareStrategy("bare_t3_baseline", "bare_t3"),
-    CompareStrategy("enterprise_router_baseline", "enterprise_router"),
-    CompareStrategy("budgetflow_same_enterprise_router", "budgetflow_same_router"),
     CompareStrategy("budgetflow_task_level", "value_aware_task_level"),
     CompareStrategy("budgetflow_segment", "segment_value_aware"),
 )
 
 DIAGNOSTIC_STRATEGIES: tuple[CompareStrategy, ...] = (
+    CompareStrategy("enterprise_router_baseline", "enterprise_router"),
+    CompareStrategy("budgetflow_same_enterprise_router", "budgetflow_same_router"),
     CompareStrategy("budget_only_baseline", "budget_only"),
     CompareStrategy("all_strongest_model", "all_t3", budgeted=False),
     CompareStrategy("all_t1_baseline", "all_flash"),
@@ -102,8 +102,9 @@ def paper_mainline_strategy_names() -> tuple[str, ...]:
     return tuple(strategy.name for strategy in paper_mainline_strategies())
 
 
-# Default paid comparison: task-level BudgetFlow against pure-tier boundaries
-# and one strong static-router mirror, all under the same shared hard budget.
+# Default paid comparison: task-level BudgetFlow against pure-tier boundaries,
+# all under the same shared hard budget. Static routers remain explicit
+# diagnostic controls but are not part of the paper mainline set.
 DEFAULT_STRATEGIES: tuple[CompareStrategy, ...] = paper_mainline_strategies()
 
 

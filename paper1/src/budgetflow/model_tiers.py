@@ -64,6 +64,9 @@ class TierConfig:
     progress_notes: str = ""
     turn_cache_policy: TurnCachePolicy = TurnCachePolicy()
 
+    def token_rates_for_input(self, input_tokens: int, turn_index: int | None = None) -> tuple[float, float]:
+        return _token_cost_rates_for_config(self, input_tokens, turn_index=turn_index)
+
 
 TIER1_BACKEND = "tier1"
 TIER2_BACKEND = "tier2"
@@ -186,6 +189,9 @@ class ModelCatalog:
                 mean_output_tokens=cfg.mean_output_tokens,
                 progress_score=cfg.progress_score,
                 latency_ms=cfg.latency_ms,
+                turn_cache_input_discount_after_turn=cfg.turn_cache_policy.input_discount_after_turn,
+                turn_cache_input_kv_discount=cfg.turn_cache_policy.input_kv_cache_discount,
+                turn_cache_min_input_cost_fraction=cfg.turn_cache_policy.min_input_cost_fraction,
             )
             for cfg in self._configs
         ]
@@ -257,6 +263,15 @@ def token_cost_rates(
 ) -> tuple[float, float]:
     """Return per-token input/output cost for this request size."""
     config = MODEL_CATALOG.require_config(backend_name)
+    return _token_cost_rates_for_config(config, input_tokens, turn_index=turn_index)
+
+
+def _token_cost_rates_for_config(
+    config: TierConfig,
+    input_tokens: int,
+    *,
+    turn_index: int | None = None,
+) -> tuple[float, float]:
     for band in config.token_cost_bands:
         if band.max_input_tokens is None or input_tokens <= band.max_input_tokens:
             input_rate = band.input_per_1m / 1_000_000
@@ -309,25 +324,6 @@ _catalog_path: Path | None = None
 _catalog_revision: str = ""
 _catalog_content_hash: str = ""
 _catalog_semantic_revision: str = ""
-
-
-# Provider-only swaps keep BudgetFlow's normalized tier semantics. Historical
-# rows produced with these revisions may still calibrate the current catalog as
-# long as the active catalog declares the same semantic revision.
-CATALOG_SEMANTIC_COMPATIBILITY: dict[str, frozenset[str]] = {
-    "t2-normalized-v1-t3x5": frozenset({
-        "2026-06-17-glm51-t2-t3x5",
-        "2026-06-20-deepseek-v4-pro-t2-t3x5",
-    }),
-    "t2-normalized-v1-t3x2": frozenset({
-        "2026-06-17-glm51-t2-t3x2",
-        "2026-06-20-deepseek-v4-pro-t2-t3x2",
-    }),
-    "t2-normalized-v1-t3x3": frozenset({
-        "2026-06-17-glm51-t2-t3x3",
-        "2026-06-20-deepseek-v4-pro-t2-t3x3",
-    }),
-}
 
 
 def _build_tier_config_from_json(data: dict) -> TierConfig:
@@ -456,36 +452,6 @@ def catalog_source_info() -> dict:
         "catalog_semantic_revision": catalog_semantic_revision(),
         "catalog_content_hash": _catalog_content_hash,
     }
-
-
-def catalog_record_compatible(row_catalog: dict) -> tuple[bool, str]:
-    """Return whether a historical row uses compatible normalized tier semantics."""
-
-    if not isinstance(row_catalog, dict) or not row_catalog:
-        return False, "missing_catalog"
-    active_catalog = catalog_source_info()
-    row_hash = str(row_catalog.get("catalog_content_hash") or "")
-    active_hash = str(active_catalog.get("catalog_content_hash") or "")
-    if row_hash and active_hash and row_hash == active_hash:
-        return True, "clean"
-
-    row_semantic = str(row_catalog.get("catalog_semantic_revision") or "")
-    active_semantic = str(active_catalog.get("catalog_semantic_revision") or "")
-    row_revision = str(row_catalog.get("catalog_revision") or "")
-    active_revision = str(active_catalog.get("catalog_revision") or "")
-    if active_semantic:
-        compatible_revisions = CATALOG_SEMANTIC_COMPATIBILITY.get(
-            active_semantic,
-            frozenset({active_revision}),
-        )
-        if row_semantic and row_semantic == active_semantic:
-            return True, "clean"
-        if row_revision in compatible_revisions:
-            return True, "clean"
-
-    if row_revision and active_revision:
-        return (True, "clean") if row_revision == active_revision else (False, "catalog_mismatch")
-    return False, "missing_catalog"
 
 
 def catalog_record_exact_match(row_catalog: dict) -> tuple[bool, str]:

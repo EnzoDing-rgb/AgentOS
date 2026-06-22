@@ -146,7 +146,6 @@ class TestMechanismStrategiesRegistered:
         assert names == {
             "bare_t2_baseline",
             "bare_t3_baseline",
-            "enterprise_router_baseline",
             "budgetflow_task_level",
         }
 

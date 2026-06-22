@@ -338,8 +338,7 @@ def test_readiness_blocks_paper_mainline_without_primary_value_source(tmp_path) 
     bp.write_text(
         '{"hard_cap_usd":1.0,"source":"budget_binding_calibrator","decision":"PASS",'
         '"task_ids":["task-a"],'
-        '"strategy_names":["bare_t2_baseline","bare_t3_baseline","enterprise_router_baseline",'
-        '"budgetflow_task_level","budgetflow_segment"]}'
+        '"strategy_names":["bare_t2_baseline","bare_t3_baseline","budgetflow_task_level"]}'
     )
     frozen_plan = tmp_path / "frozen_plan.json"
     frozen_plan.write_text(
@@ -370,8 +369,17 @@ def test_readiness_blocks_frozen_plan_without_selected_task(tmp_path) -> None:
     plan.write_text(
         '{"meta":{"name":"unit_plan"},"plan":{"task-a":{"preferred_model":"tier2","priority":1}}}'
     )
+    matrix = tmp_path / "value_matrix.json"
+    matrix.write_text(
+        '{"tasks":{"task-a":{"task_value":{"criticality_value":1.0},'
+        '"criticality_level":"normal"}}}'
+    )
     value_context = ValueEfficiencyContext()
-    value_context.init(value_profile="equal")
+    value_context.init(
+        value_profile="criticality_value",
+        value_matrix_path=str(matrix),
+        value_source_kind="pre_registered_manual",
+    )
 
     report = build_compare_readiness_report(
         args=_args(frozen_plan=str(plan)),
@@ -597,19 +605,21 @@ def test_readiness_accepts_stage_prefix_pressure_budget_plan(tmp_path) -> None:
     assert "budget_plan_generation_mode=stage_prefix_pressure" in report.facts
 
 
-def test_readiness_blocks_stage_prefix_count_mismatch_with_max_tasks(tmp_path) -> None:
-    """stage_prefix_count must match the staged execution limit."""
+def test_readiness_blocks_stage_prefix_count_larger_than_current_stage(tmp_path) -> None:
+    """Do not run only part of a compiled stage-prefix pressure contract."""
     bp = tmp_path / "budget_plan.json"
     bp.write_text(
         '{"hard_cap_usd":1.0,"source":"budget_binding_calibrator",'
         '"generation_mode":"stage_prefix_pressure",'
         '"budget_pressure_spec":{"mode":"stage_prefix_pressure",'
-        '"stage_prefix_count":5,"stage_target_budget_fraction":0.35,'
+        '"stage_prefix_count":10,"stage_target_budget_fraction":0.35,'
         '"stage_reference_strategy":"bare_t3_baseline"},'
         '"decision":"PASS","task_ids":["t1","t2","t3","t4","t5","t6","t7","t8","t9","t10"],'
         '"strategy_names":["budgetflow_segment"],'
         '"planned_task_budget_policy":{"mode":"budgetflow_planned_task_budget"},'
-        '"planned_task_budget_by_strategy":{"budgetflow_segment":{"t1":0.8}}}'
+        '"planned_task_budget_by_strategy":{"budgetflow_segment":{'
+        '"t1":0.8,"t2":0.8,"t3":0.8,"t4":0.8,"t5":0.8,'
+        '"t6":0.8,"t7":0.8,"t8":0.8,"t9":0.8,"t10":0.8}}}'
     )
     value_context = ValueEfficiencyContext()
     value_context.init(value_profile="equal")
@@ -619,7 +629,7 @@ def test_readiness_blocks_stage_prefix_count_mismatch_with_max_tasks(tmp_path) -
     ]
 
     report = build_compare_readiness_report(
-        args=_args(max_tasks_per_strategy=10),
+        args=_args(max_tasks_per_strategy=5),
         tasks=tasks,
         strategies=(CompareStrategy("budgetflow_segment", "segment_value_aware"),),
         policy_jobs=1,
@@ -631,9 +641,46 @@ def test_readiness_blocks_stage_prefix_count_mismatch_with_max_tasks(tmp_path) -
 
     assert not report.ok
     assert any(
-        "stage_prefix_count=5 does not match --max-tasks-per-strategy=10" in issue
+        "stage_prefix_count=10 exceeds --max-tasks-per-strategy=5" in issue
         for issue in report.blocking
     )
+
+
+def test_readiness_accepts_later_stage_for_stage_prefix_pressure_plan(tmp_path) -> None:
+    """A 10-prefix plan can resume with max_tasks_per_strategy=20 or 30."""
+    bp = tmp_path / "budget_plan.json"
+    caps = ",".join(f'"t{i}":0.8' for i in range(1, 31))
+    task_ids = ",".join(f'"t{i}"' for i in range(1, 31))
+    bp.write_text(
+        '{"hard_cap_usd":1.0,"source":"budget_binding_calibrator",'
+        '"generation_mode":"stage_prefix_pressure",'
+        '"budget_pressure_spec":{"mode":"stage_prefix_pressure",'
+        '"stage_prefix_count":10,"stage_target_budget_fraction":0.35,'
+        '"stage_reference_strategy":"bare_t3_baseline"},'
+        '"decision":"PASS","task_ids":[' + task_ids + '],'
+        '"strategy_names":["budgetflow_segment"],'
+        '"planned_task_budget_policy":{"mode":"budgetflow_planned_task_budget"},'
+        '"planned_task_budget_by_strategy":{"budgetflow_segment":{' + caps + '}}}'
+    )
+    value_context = ValueEfficiencyContext()
+    value_context.init(value_profile="equal")
+    tasks = [
+        SimpleNamespace(instance_id=f"t{i}", test_patch="diff", fail_to_pass=("test",))
+        for i in range(1, 31)
+    ]
+
+    report = build_compare_readiness_report(
+        args=_args(max_tasks_per_strategy=20),
+        tasks=tasks,
+        strategies=(CompareStrategy("budgetflow_segment", "segment_value_aware"),),
+        policy_jobs=1,
+        value_context=value_context,
+        catalog_issues=[],
+        runtime_root=Path("/tmp/budgetflow-runtime"),
+        budget_plan_path=bp,
+    )
+
+    assert report.ok
 
 
 def test_readiness_blocks_stage_prefix_count_exceeds_task_count(tmp_path) -> None:
@@ -709,7 +756,7 @@ def test_readiness_blocks_stage_prefix_pressure_task_order_mismatch(tmp_path) ->
 
     assert not report.ok
     assert any(
-        "stage_prefix_pressure budget plan task_ids order must exactly match"
+        "budget plan task_ids order must exactly match selected task order"
         in issue
         for issue in report.blocking
     )
@@ -867,8 +914,8 @@ def test_readiness_warns_budgetflow_under_target_pressure_contract(tmp_path) -> 
         '"strategy_names":["budgetflow_task_level"],'
         '"planned_task_budget_by_strategy":{"budgetflow_task_level":{"task-a":0.8}},'
         '"projection_diagnostics":{"budgetflow_task_level":{'
-        '"degeneration":"mixed","projected_tier_counts":{"tier2":1,"tier3":1},'
-        '"projected_strongest_task_fraction":0.5}},'
+        '"degeneration":"mixed","runtime_projected_tier_counts":{"tier2":1,"tier3":1},'
+        '"runtime_projected_strongest_task_fraction":0.5}},'
         '"projected_utilization_by_strategy":{"budgetflow_task_level":0.36},'
         '"pressure_contract":{"grade":"warn","violations":["budgetflow_under_target: budgetflow_task_level at 36.0% < 85%"]}}'
     )
@@ -900,8 +947,8 @@ def test_readiness_blocks_task_level_projected_pure_reference_degeneration(tmp_p
         '"planned_task_budget_by_strategy":{"budgetflow_task_level":{"task-a":0.8}},'
         '"projected_utilization_by_strategy":{"budgetflow_task_level":0.36},'
         '"projection_diagnostics":{"budgetflow_task_level":{'
-        '"degeneration":"pure_reference_tier","projected_tier_counts":{"tier2":1},'
-        '"projected_strongest_task_fraction":0.0}},'
+        '"degeneration":"pure_reference_tier","runtime_projected_tier_counts":{"tier2":1},'
+        '"runtime_projected_strongest_task_fraction":0.0}},'
         '"pressure_contract":{"grade":"warn","violations":['
         '"budgetflow_task_level_degenerated: projected task-level policy uses zero Strongest Model tasks under compiled task budgets"]}}'
     )
@@ -933,8 +980,8 @@ def test_readiness_blocks_reference_frontier_diagnostic_pure_reference(tmp_path)
         '"planned_task_budget_by_strategy":{"budgetflow_task_level":{"task-a":0.8}},'
         '"projected_utilization_by_strategy":{"budgetflow_task_level":0.36},'
         '"projection_diagnostics":{"budgetflow_task_level":{'
-        '"degeneration":"pure_reference_tier","projected_tier_counts":{"tier2":1},'
-        '"projected_strongest_task_fraction":0.0}},'
+        '"degeneration":"pure_reference_tier","runtime_projected_tier_counts":{"tier2":1},'
+        '"runtime_projected_strongest_task_fraction":0.0}},'
         '"frontier_diagnostic":{"posture":"reference_cost_dominant",'
         '"scope":"projection_only_not_outcome_evidence"},'
         '"pressure_contract":{"grade":"warn","violations":['
@@ -969,8 +1016,8 @@ def test_readiness_blocks_task_level_projected_pure_strongest_degeneration(tmp_p
         '"planned_task_budget_by_strategy":{"budgetflow_task_level":{"task-a":0.8}},'
         '"projected_utilization_by_strategy":{"budgetflow_task_level":0.90},'
         '"projection_diagnostics":{"budgetflow_task_level":{'
-        '"degeneration":"pure_strongest_tier","projected_tier_counts":{"tier3":1},'
-        '"projected_strongest_task_fraction":1.0}},'
+        '"degeneration":"pure_strongest_tier","runtime_projected_tier_counts":{"tier3":1},'
+        '"runtime_projected_strongest_task_fraction":1.0}},'
         '"pressure_contract":{"grade":"warn","violations":['
         '"budgetflow_task_level_degenerated: projected task-level policy uses only Strongest Model under compiled task budgets"]}}'
     )
@@ -1002,8 +1049,8 @@ def test_readiness_blocks_strongest_frontier_diagnostic_pure_strongest(tmp_path)
         '"planned_task_budget_by_strategy":{"budgetflow_task_level":{"task-a":0.8}},'
         '"projected_utilization_by_strategy":{"budgetflow_task_level":0.90},'
         '"projection_diagnostics":{"budgetflow_task_level":{'
-        '"degeneration":"pure_strongest_tier","projected_tier_counts":{"tier3":1},'
-        '"projected_strongest_task_fraction":1.0}},'
+        '"degeneration":"pure_strongest_tier","runtime_projected_tier_counts":{"tier3":1},'
+        '"runtime_projected_strongest_task_fraction":1.0}},'
         '"frontier_diagnostic":{"posture":"strongest_cost_dominant",'
         '"scope":"projection_only_not_outcome_evidence"},'
         '"pressure_contract":{"grade":"warn","violations":['
@@ -1037,13 +1084,22 @@ def test_readiness_warns_reference_cost_dominant_frontier(tmp_path) -> None:
         '"strategy_names":["bare_t2_baseline","bare_t3_baseline","budgetflow_task_level"],'
         '"planned_task_budget_by_strategy":{"budgetflow_task_level":{"task-a":0.8}},'
         '"projection_diagnostics":{"budgetflow_task_level":{'
-        '"degeneration":"mixed","projected_tier_counts":{"tier2":1,"tier3":1},'
-        '"projected_strongest_task_fraction":0.5}},'
+        '"degeneration":"mixed","runtime_projected_tier_counts":{"tier2":1,"tier3":1},'
+        '"runtime_projected_strongest_task_fraction":0.5}},'
         '"frontier_diagnostic":{"posture":"reference_cost_dominant",'
         '"scope":"projection_only_not_outcome_evidence"}}'
     )
+    matrix = tmp_path / "value_matrix.json"
+    matrix.write_text(
+        '{"tasks":{"task-a":{"task_value":{"criticality_value":1.0},'
+        '"criticality_level":"normal"}}}'
+    )
     value_context = ValueEfficiencyContext()
-    value_context.init(value_profile="equal")
+    value_context.init(
+        value_profile="criticality_value",
+        value_matrix_path=str(matrix),
+        value_source_kind="pre_registered_manual",
+    )
 
     report = build_compare_readiness_report(
         args=_args(),
@@ -1094,7 +1150,7 @@ def test_readiness_blocks_budget_plan_superset_for_short_run(tmp_path) -> None:
     assert any("extra budget-plan tasks: task-c" in issue for issue in report.blocking)
 
 
-def test_readiness_warns_budget_plan_task_order_drift(tmp_path) -> None:
+def test_readiness_blocks_budget_plan_task_order_drift(tmp_path) -> None:
     bp = tmp_path / "budget_plan.json"
     bp.write_text(
         '{"hard_cap_usd":1.0,"source":"budget_binding_calibrator",'
@@ -1119,9 +1175,45 @@ def test_readiness_warns_budget_plan_task_order_drift(tmp_path) -> None:
         budget_plan_path=bp,
     )
 
-    assert report.ok
-    assert any("same task set but a different order" in issue for issue in report.warnings)
-    assert not any("different order" in issue for issue in report.blocking)
+    assert not report.ok
+    assert any("task_ids order must exactly match" in issue for issue in report.blocking)
+
+
+def test_readiness_blocks_nonfinite_or_nonpositive_planned_task_caps(tmp_path) -> None:
+    bp = tmp_path / "budget_plan.json"
+    bp.write_text(
+        '{"hard_cap_usd":1.0,"source":"budget_binding_calibrator",'
+        '"generation_mode":"target_utilization","decision":"PASS",'
+        '"task_ids":["task-a","task-b","task-c","task-d"],'
+        '"strategy_names":["budgetflow_task_level"],'
+        '"planned_task_budget_policy":{"mode":"budgetflow_planned_task_budget"},'
+        '"planned_task_budget_by_strategy":{"budgetflow_task_level":{'
+        '"task-a":0.0,"task-b":-1.0,"task-c":1e999,"task-d":"nan"}},'
+        '"projection_diagnostics":{"budgetflow_task_level":{'
+        '"degeneration":"mixed","runtime_projected_tier_counts":{"tier2":2,"tier3":2},'
+        '"runtime_projected_strongest_task_fraction":0.5}}}'
+    )
+    value_context = ValueEfficiencyContext()
+    value_context.init(value_profile="equal")
+
+    report = build_compare_readiness_report(
+        args=_args(),
+        tasks=[
+            SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",)),
+            SimpleNamespace(instance_id="task-b", test_patch="diff", fail_to_pass=("test_b",)),
+            SimpleNamespace(instance_id="task-c", test_patch="diff", fail_to_pass=("test_c",)),
+            SimpleNamespace(instance_id="task-d", test_patch="diff", fail_to_pass=("test_d",)),
+        ],
+        strategies=(CompareStrategy("budgetflow_task_level", "value_aware_task_level"),),
+        policy_jobs=1,
+        value_context=value_context,
+        catalog_issues=[],
+        runtime_root=Path("/tmp/budgetflow-runtime"),
+        budget_plan_path=bp,
+    )
+
+    assert not report.ok
+    assert any("must be finite positive USD values" in issue for issue in report.blocking)
 
 
 def test_readiness_blocks_diagnostic_catalog_without_explicit_opt_in(tmp_path) -> None:

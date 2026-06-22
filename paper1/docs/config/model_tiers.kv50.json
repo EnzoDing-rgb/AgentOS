@@ -1,8 +1,8 @@
 {
   "meta": {
-    "revision": "2026-06-22-deepseek-v4-pro-t2-t3x5",
-    "semantic_revision": "t2-normalized-v1-t3x5",
-    "revision_note": "Default catalog with DeepSeek V4 Pro as T2 and normalized experimental cost units. Active mainline uses native tool_call and fixes T1:T2:T3 approximately 1:3:15 for routing/budget semantics. T3 progress_score and progress_prior updated 2026-06-22 to reflect T3 capability advantage over T2.",
+    "revision": "2026-06-22-deepseek-v4-pro-t2-t3x5-kv50",
+    "semantic_revision": "t2-normalized-v1-t3x5-kv50",
+    "revision_note": "Diagnostic sensitivity catalog with DeepSeek V4 Pro as T2 and a 50% T2/T3 input-token KV-cache discount after the first turn. Native tool_call only. Costs are normalized experimental units, not public provider billing.",
     "schema_version": "v1"
   },
   "tiers": [
@@ -75,8 +75,8 @@
       ],
       "turn_cache_policy": {
         "input_discount_after_turn": 1,
-        "input_kv_cache_discount": 0.0,
-        "min_input_cost_fraction": 1.0
+        "input_kv_cache_discount": 0.5,
+        "min_input_cost_fraction": 0.5
       },
       "mean_output_tokens": 1024,
       "progress_score": 0.24,
@@ -89,9 +89,9 @@
       "escalation_patience": 5,
       "max_turns": 60,
       "protocol": "tool_call",
-      "cost_source": "BudgetFlow normalized experimental cost unit for DeepSeek V4 Pro T2",
-      "cost_updated": "2026-06-20",
-      "cost_notes": "Virtual experiment units, not public provider billing. T2 is fixed at approximately 3x T1; mainline cost accounting does not apply a KV-cache discount. Cache discounts belong in explicit sensitivity catalogs, not the primary evidence catalog.",
+      "cost_source": "BudgetFlow normalized experimental cost unit for DeepSeek V4 Pro T2 with 50% post-first-turn input KV sensitivity discount",
+      "cost_updated": "2026-06-22",
+      "cost_notes": "Diagnostic sensitivity catalog only. Applies the same 50% post-first-turn input-token KV-cache discount to T2 and T3 so multi-turn costs are not overstated.",
       "progress_source": "BudgetFlow tier-level heuristic prior for DeepSeek V4 Pro T2; not outcome-calibrated",
       "progress_updated": "2026-06-20",
       "progress_notes": "T2 uses DeepSeek V4 Pro while preserving T2 normalized cost semantics. Provider access must pass signature preflight before paid runs."
@@ -108,6 +108,11 @@
       "display": "GPT-5.4",
       "cost_per_input_1m": 4.5,
       "cost_per_output_1m": 22.5,
+      "turn_cache_policy": {
+        "input_discount_after_turn": 1,
+        "input_kv_cache_discount": 0.5,
+        "min_input_cost_fraction": 0.5
+      },
       "mean_output_tokens": 1024,
       "progress_score": 0.35,
       "latency_ms": 1200,
@@ -119,12 +124,12 @@
       "escalation_patience": 5,
       "max_turns": 60,
       "protocol": "tool_call",
-      "cost_source": "BudgetFlow normalized experimental cost unit for GPT-5.4 T3",
-      "cost_updated": "2026-06-16",
-      "cost_notes": "Virtual experiment units, not public provider billing. Active mainline fixes T1:T2:T3 at approximately 1:3:15.",
+      "cost_source": "BudgetFlow normalized experimental cost unit for GPT-5.4 T3 with 50% post-first-turn input KV sensitivity discount",
+      "cost_updated": "2026-06-22",
+      "cost_notes": "Diagnostic sensitivity catalog only. Applies the same 50% post-first-turn input-token KV-cache discount to T2 and T3.",
       "progress_source": "BudgetFlow calibrated prior reflecting current evidence of T2/T3 capability gap; not outcome-calibrated",
       "progress_updated": "2026-06-22",
-      "progress_notes": "Prior lifted from 0.25 to 0.35 to reflect observed T3 fit advantage over T2. Stage-level progress_prior synced 2026-06-22: T3 localization/repair/validation raised to 0.72/0.72/0.70 to reflect same T3 > T2 capability hypothesis as progress_score. Must be sensitivity-checked before paper-scale paid runs."
+      "progress_notes": "Prior lifted from 0.25 to 0.35 and progress_prior synced 2026-06-22 to reflect T3 > T2 capability hypothesis. Must be sensitivity-checked before paper-scale paid runs."
     }
   ]
 }

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "name": "paper_mainline_4_policy_task_level",
-  "objective": "Claim 1 task-level diagnostic comparison with pure-tier boundaries and a strong static-router diagnostic",
+  "name": "paper_mainline_3_policy_task_level",
+  "objective": "Claim 1 task-level comparison against pure T2 and pure T3 boundary controls",
   "strategies": [
     {
       "name": "bare_t2_baseline",
@@ -10,10 +10,6 @@
     {
       "name": "bare_t3_baseline",
       "role": "strongest-model fixed baseline"
-    },
-    {
-      "name": "enterprise_router_baseline",
-      "role": "static enterprise router baseline"
     },
     {
       "name": "budgetflow_task_level",

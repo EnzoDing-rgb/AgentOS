@@ -42,7 +42,6 @@ class TestStrategyCatalog:
         assert ordered == [
             "bare_t2_baseline",
             "bare_t3_baseline",
-            "enterprise_router_baseline",
             "budgetflow_task_level",
         ]
         assert set(ordered) == names
@@ -65,9 +64,9 @@ class TestStrategyCatalog:
         assert strategy.routing == "bare_t3"
         assert strategy.budgeted is True
 
-    def test_enterprise_router_uses_shared_hard_budget(self):
-        from budgetflow.experiments.compare_config import DEFAULT_STRATEGIES
-        strategy = next(s for s in DEFAULT_STRATEGIES if s.name == "enterprise_router_baseline")
+    def test_enterprise_router_available_as_diagnostic(self):
+        from budgetflow.experiments.compare_config import strategy_catalog
+        strategy = next(s for s in strategy_catalog() if s.name == "enterprise_router_baseline")
         assert strategy.routing == "enterprise_router"
         assert strategy.budgeted is True
 

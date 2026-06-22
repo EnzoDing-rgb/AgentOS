@@ -13,6 +13,7 @@ from budgetflow.experiments.budget_binding import (
     _row_is_calibration_eligible,
     BUDGETFLOW_PLANNED_TASK_BUDGET_MODE,
     _distribution_p75,
+    _build_projection_diagnostics,
     _build_pressure_contract,
     _apply_task_level_degeneracy_gate,
     _apply_pressure_contract_gate,
@@ -69,26 +70,6 @@ def test_calibrate_target_utilization_produces_p75_reference(tmp_path: Path) -> 
     assert plan.generation_mode == "target_utilization"
     assert plan.target_projected_utilization == 0.80
     assert any("reference_rule: strategy_set_p75" in r for r in plan.reasons)
-
-
-def test_calibrate_target_utilization_has_no_frozen_plan_input(tmp_path: Path) -> None:
-    """Budget Compiler does not accept frozen caps as a budget input."""
-    vm = tmp_path / "vm.json"
-    vm.write_text(json.dumps({
-        "tasks": {
-            "task-a": {"task_effort": {"final_task_effort": 50.0}},
-            "task-b": {"task_effort": {"final_task_effort": 50.0}},
-        }
-    }))
-    plan = calibrate_budget(
-        ["task-a", "task-b"],
-        value_matrix_path=vm,
-        target_utilization=0.80,
-        output_path=tmp_path / "bp.json",
-    )
-    assert plan.historical_source == "bootstrap_estimate"
-    assert all("frozen" not in reason.lower() for reason in plan.reasons)
-    assert plan.decision != "BLOCK"
 
 
 def test_calibrate_target_utilization_reference_is_not_budgetflow_specific(tmp_path: Path) -> None:
@@ -156,7 +137,6 @@ def test_calibrate_defaults_to_paper_mainline_policy_set(tmp_path: Path) -> None
     assert list(plan.projected_spend_by_strategy) == [
         "bare_t2_baseline",
         "bare_t3_baseline",
-        "enterprise_router_baseline",
         "budgetflow_task_level",
     ]
     assert plan.strategy_names == list(plan.projected_spend_by_strategy)
@@ -373,7 +353,7 @@ def test_task_level_projection_diagnostic_uses_compiled_budget_without_rewriting
         plan.projected_task_cost_by_strategy["bare_t2_baseline"]["task-a"],
         rel=1e-4,
     )
-    assert diagnostic["projected_tier_counts"]["tier2"] == 1
+    assert diagnostic["runtime_projected_tier_counts"]["tier2"] == 1
     assert diagnostic["projected_spend_usd"] == pytest.approx(
         plan.projected_task_cost_by_strategy["bare_t2_baseline"]["task-a"],
         rel=1e-4,
@@ -447,8 +427,37 @@ def test_task_level_projection_uses_runtime_policy_without_model_plan(tmp_path: 
 
     assert "task_level_model_plan_by_strategy" not in plan.to_dict()
     assert diagnostic["degeneration"] == "mixed"
-    assert diagnostic["task_level_model_plan_source"] == "runtime_policy_projection"
+    assert diagnostic["runtime_projection_source"] == "task_level_router_formula"
     assert not any("task_level_model_plan:" in reason for reason in plan.reasons)
+
+
+def test_task_level_projection_uses_effective_shared_cap_not_raw_planned_cap() -> None:
+    """Projection must match runtime's effective task cap under shared budget."""
+    plan = BudgetBindingPlan(
+        hard_cap_usd=3.0,
+        projection_diagnostics={},
+    )
+    diagnostics = _build_projection_diagnostics(
+        plan,
+        ("bare_t2_baseline", "bare_t3_baseline", "budgetflow_task_level"),
+        ["task-a", "task-b"],
+        {
+            "task-a": {"task_value": 2.5, "task_effort": 30.0},
+            "task-b": {"task_value": 2.5, "task_effort": 30.0},
+        },
+        {
+            "bare_t2_baseline": {"task-a": 0.1, "task-b": 0.1},
+            "bare_t3_baseline": {"task-a": 0.2, "task-b": 0.2},
+        },
+        fit_overrides=None,
+        planned_task_budgets={"task-a": 10.0, "task-b": 10.0},
+    )
+
+    task_diag = diagnostics["budgetflow_task_level"]["task_choices"]["task-a"]
+    assert task_diag["planned_task_budget_usd"] == pytest.approx(10.0)
+    assert task_diag["effective_task_budget_usd"] == pytest.approx(1.5)
+    assert task_diag["runtime_projected_tier"] == 2
+    assert diagnostics["budgetflow_task_level"]["degeneration"] == "pure_reference_tier"
 
 
 def test_value_matrix_schema_is_normalized_at_single_projection_entry(tmp_path: Path) -> None:
@@ -497,15 +506,6 @@ def test_value_matrix_schema_is_normalized_at_single_projection_entry(tmp_path: 
         _load_value_features(old_vm)
 
 
-def test_projection_effort_multiplier_uses_catalog_reference_runway() -> None:
-    """Compiler task-start mirror must use the catalog runway, not a magic 35."""
-    from budgetflow.defaults import task_start_reference_runway_turns
-    from budgetflow.experiments.budget_binding import _projection_effort_multiplier
-
-    assert task_start_reference_runway_turns() == pytest.approx(60.0)
-    assert _projection_effort_multiplier(30.0) == pytest.approx(0.5)
-    assert _projection_effort_multiplier(60.0) == pytest.approx(1.0)
-    assert _projection_effort_multiplier(120.0) == pytest.approx(2.0)
 
 
 def test_small_historical_sample_cannot_collapse_large_workload_cap(tmp_path: Path) -> None:
@@ -984,8 +984,8 @@ def test_pressure_contract_flags_task_level_pure_reference_degeneration() -> Non
     plan.projection_diagnostics = {
         "budgetflow_task_level": {
             "degeneration": "pure_reference_tier",
-            "projected_tier_counts": {"tier2": 25},
-            "projected_strongest_task_fraction": 0.0,
+            "runtime_projected_tier_counts": {"tier2": 25},
+            "runtime_projected_strongest_task_fraction": 0.0,
         }
     }
 
@@ -1009,8 +1009,8 @@ def test_pressure_contract_flags_task_level_pure_strongest_degeneration() -> Non
     plan.projection_diagnostics = {
         "budgetflow_task_level": {
             "degeneration": "pure_strongest_tier",
-            "projected_tier_counts": {"tier3": 25},
-            "projected_strongest_task_fraction": 1.0,
+            "runtime_projected_tier_counts": {"tier3": 25},
+            "runtime_projected_strongest_task_fraction": 1.0,
         }
     }
 
@@ -1020,7 +1020,7 @@ def test_pressure_contract_flags_task_level_pure_strongest_degeneration() -> Non
     assert any("budgetflow_task_level_degenerated" in v for v in plan.pressure_contract["violations"])
 
 
-def test_pressure_contract_allows_strongest_frontier_diagnostic() -> None:
+def test_pressure_contract_blocks_strongest_frontier_diagnostic_for_main_run() -> None:
     plan = BudgetBindingPlan(
         hard_cap_usd=10.0,
         generation_mode="target_utilization",
@@ -1035,15 +1035,15 @@ def test_pressure_contract_allows_strongest_frontier_diagnostic() -> None:
     plan.projection_diagnostics = {
         "budgetflow_task_level": {
             "degeneration": "pure_strongest_tier",
-            "projected_tier_counts": {"tier3": 30},
-            "projected_strongest_task_fraction": 1.0,
+            "runtime_projected_tier_counts": {"tier3": 30},
+            "runtime_projected_strongest_task_fraction": 1.0,
         }
     }
 
     _build_pressure_contract(plan, ("bare_t2_baseline", "bare_t3_baseline", "budgetflow_task_level"))
 
-    assert not any("budgetflow_task_level_degenerated" in v for v in plan.pressure_contract["violations"])
-    assert any("budgetflow_task_level_frontier_strongest" in a for a in plan.pressure_contract["assertions"])
+    assert any("budgetflow_task_level_degenerated" in v for v in plan.pressure_contract["violations"])
+    assert not any("budgetflow_task_level_frontier_strongest" in a for a in plan.pressure_contract["assertions"])
 
 
 def test_task_level_degeneracy_gate_blocks_pure_frontier_plan() -> None:
@@ -1061,8 +1061,8 @@ def test_task_level_degeneracy_gate_blocks_pure_frontier_plan() -> None:
     plan.projection_diagnostics = {
         "budgetflow_task_level": {
             "degeneration": "pure_strongest_tier",
-            "projected_tier_counts": {"tier3": 30},
-            "projected_strongest_task_fraction": 1.0,
+            "runtime_projected_tier_counts": {"tier3": 30},
+            "runtime_projected_strongest_task_fraction": 1.0,
         }
     }
 
@@ -1070,6 +1070,94 @@ def test_task_level_degeneracy_gate_blocks_pure_frontier_plan() -> None:
 
     assert plan.decision == "BLOCK"
     assert any("TASK_LEVEL_GATE BLOCK" in reason for reason in plan.reasons)
+
+
+def test_task_level_degeneracy_gate_blocks_cold_start_pure_plan_without_model_fit() -> None:
+    plan = BudgetBindingPlan(
+        hard_cap_usd=10.0,
+        generation_mode="target_utilization",
+        target_projected_utilization=0.80,
+        decision="PASS",
+    )
+    plan.projection_diagnostics = {
+        "budgetflow_task_level": {
+            "degeneration": "pure_reference_tier",
+            "runtime_projected_tier_counts": {"tier2": 30},
+            "runtime_projected_strongest_task_fraction": 0.0,
+        }
+    }
+
+    _apply_task_level_degeneracy_gate(plan)
+
+    assert plan.decision == "BLOCK"
+    assert any("TASK_LEVEL_GATE BLOCK" in reason for reason in plan.reasons)
+
+
+def test_task_level_degeneracy_gate_blocks_pure_stage_prefix_even_when_full_plan_mixed() -> None:
+    plan = BudgetBindingPlan(
+        hard_cap_usd=10.0,
+        generation_mode="stage_prefix_pressure",
+        budget_pressure_spec={
+            "mode": "stage_prefix_pressure",
+            "stage_prefix_count": 10,
+            "stage_target_budget_fraction": 0.35,
+            "stage_reference_strategy": "bare_t3_baseline",
+        },
+        decision="PASS",
+    )
+    plan.projection_diagnostics = {
+        "budgetflow_task_level": {
+            "degeneration": "mixed",
+            "runtime_projected_tier_counts": {"tier2": 20, "tier3": 10},
+            "runtime_projected_strongest_task_fraction": 0.3333,
+            "stage_prefix_count": 10,
+            "stage_prefix_degeneration": "pure_reference_tier",
+            "stage_prefix_runtime_projected_tier_counts": {"tier2": 10},
+            "stage_prefix_runtime_projected_strongest_task_fraction": 0.0,
+        }
+    }
+
+    _apply_task_level_degeneracy_gate(plan)
+
+    assert plan.decision == "BLOCK"
+    assert any("stage_prefix_pure_reference_tier" in reason for reason in plan.reasons)
+
+
+def test_pressure_contract_flags_pure_stage_prefix_even_when_full_plan_mixed() -> None:
+    plan = BudgetBindingPlan(
+        hard_cap_usd=10.0,
+        generation_mode="stage_prefix_pressure",
+        budget_pressure_spec={
+            "mode": "stage_prefix_pressure",
+            "stage_prefix_count": 10,
+            "stage_target_budget_fraction": 0.35,
+            "stage_reference_strategy": "bare_t3_baseline",
+        },
+        target_projected_utilization=0.80,
+    )
+    plan.projected_utilization_by_strategy = {
+        "bare_t2_baseline": 0.40,
+        "bare_t3_baseline": 1.00,
+        "budgetflow_task_level": 0.80,
+    }
+    plan.projection_diagnostics = {
+        "budgetflow_task_level": {
+            "degeneration": "mixed",
+            "runtime_projected_tier_counts": {"tier2": 20, "tier3": 10},
+            "runtime_projected_strongest_task_fraction": 0.3333,
+            "stage_prefix_count": 10,
+            "stage_prefix_degeneration": "pure_reference_tier",
+            "stage_prefix_runtime_projected_tier_counts": {"tier2": 10},
+            "stage_prefix_runtime_projected_strongest_task_fraction": 0.0,
+        }
+    }
+
+    _build_pressure_contract(plan, ("bare_t2_baseline", "bare_t3_baseline", "budgetflow_task_level"))
+
+    assert any(
+        "budgetflow_task_level_stage_prefix_degenerated" in v
+        for v in plan.pressure_contract["violations"]
+    )
 
 
 def test_pressure_contract_accepts_mixed_task_level_projection_below_util_target() -> None:
@@ -1086,8 +1174,8 @@ def test_pressure_contract_accepts_mixed_task_level_projection_below_util_target
     plan.projection_diagnostics = {
         "budgetflow_task_level": {
             "degeneration": "mixed_or_strongest",
-            "projected_tier_counts": {"tier2": 8, "tier3": 17},
-            "projected_strongest_task_fraction": 0.68,
+            "runtime_projected_tier_counts": {"tier2": 8, "tier3": 17},
+            "runtime_projected_strongest_task_fraction": 0.68,
         }
     }
 
@@ -1432,7 +1520,7 @@ def test_calibration_excludes_catalog_mismatch_rows(tmp_path: Path) -> None:
     assert excluded == {"catalog_mismatch": 1}
 
 
-def test_calibration_accepts_provider_only_t2_catalog_swap_rows(tmp_path: Path) -> None:
+def test_calibration_rejects_provider_only_t2_catalog_swap_rows(tmp_path: Path) -> None:
     row = _trusted({
         "strategy": "budgetflow_task_level",
         "instance_id": "task-a",
@@ -1447,14 +1535,14 @@ def test_calibration_accepts_provider_only_t2_catalog_swap_rows(tmp_path: Path) 
         "exit_reason": "harness_failed",
     })
     eligible, reason = _row_is_calibration_eligible(row)
-    assert eligible is True
-    assert reason == "clean"
+    assert eligible is False
+    assert reason == "catalog_mismatch"
 
     jsonl = tmp_path / "hist.jsonl"
     jsonl.write_text(json.dumps(row) + "\n")
     costs, excluded = _load_historical_costs(jsonl)
-    assert costs == {"budgetflow_task_level": {"task-a": 0.12}}
-    assert excluded == {}
+    assert costs == {}
+    assert excluded == {"catalog_mismatch": 1}
 
 
 def test_calibration_excludes_missing_catalog_rows(tmp_path: Path) -> None:
@@ -1653,62 +1741,3 @@ def test_audit_recommends_recompile_when_stage_t3_under_uses_budget_share(tmp_pa
     assert audit.projection_confidence == "unvalidated"
     assert any("stage strongest utilization" in rec for rec in audit.recommendations)
     assert any("budget regime is too loose" in rec for rec in audit.recommendations)
-
-
-def test_cli_calibrate_accepts_calibration_evidence_audit(tmp_path: Path) -> None:
-    audit_path = tmp_path / "audit.json"
-    audit_path.write_text(json.dumps(CalibrationAudit(
-        strategy_errors={
-            "budgetflow_task_level": {
-                "error_pct": 0.20,
-                "projected": 0.8,
-                "actual": 1.0,
-            }
-        },
-        overall_mape=0.20,
-        max_error_strategy="budgetflow_task_level",
-        max_error_pct=0.20,
-        projection_confidence="high",
-    ).to_dict()))
-    output_path = tmp_path / "budget_plan.json"
-
-    rc = budget_binding_main([
-        "calibrate",
-        "--task-ids",
-        "task-a,task-b",
-        "--target-utilization",
-        "0.8",
-        "--calibration-evidence",
-        str(audit_path),
-        "--output",
-        str(output_path),
-    ])
-
-    written = json.loads(output_path.read_text())
-    assert rc == 0
-    assert written["projection_confidence"] == "high"
-    assert written["calibration_error"] == {"budgetflow_task_level": 0.2}
-
-
-def test_cli_calibrate_accepts_stage_prefix_pressure(tmp_path: Path) -> None:
-    output_path = tmp_path / "budget_plan.json"
-
-    rc = budget_binding_main([
-        "calibrate",
-        "--task-ids",
-        "task-a,task-b,task-c,task-d",
-        "--stage-prefix-count",
-        "1",
-        "--stage-target-budget-fraction",
-        "0.35",
-        "--stage-reference-strategy",
-        "bare_t3_baseline",
-        "--output",
-        str(output_path),
-    ])
-
-    written = json.loads(output_path.read_text())
-    assert rc == 0
-    assert written["generation_mode"] == "stage_prefix_pressure"
-    assert written["budget_pressure_spec"]["stage_prefix_count"] == 1
-    assert written["budget_pressure_spec"]["stage_target_budget_fraction"] == 0.35

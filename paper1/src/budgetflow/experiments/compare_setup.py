@@ -107,9 +107,8 @@ def calibrated_model_fit_from_budget_plan(
     runtime allocation.  This is not a per-task model assignment: keys are only
     canonical tier names such as ``tier2`` and values are scalar fit rates.
 
-    Task-local same-task history (``task_tier_fit_overrides``) is deliberately
-    not parsed here.  It remains a compiler-side annotation only and must not
-    feed runtime AllocationContext.model_fit.
+    Retired task-local ModelFit fields are rejected instead of ignored.  A
+    current budget plan exposes only workload-level tier fit.
     """
     if budget_plan_path is None:
         return None, "catalog_progress_prior", "none"
@@ -118,8 +117,12 @@ def calibrated_model_fit_from_budget_plan(
         return None, "catalog_progress_prior", "none"
     data = json.loads(path.read_text())
     evidence = data.get("model_fit_evidence") or {}
+    if not evidence:
+        return None, "catalog_progress_prior", "none"
     if not isinstance(evidence, dict):
         return None, "catalog_progress_prior", "none"
+    if "task_tier_fit_overrides" in evidence:
+        return None, "budget_plan_model_fit_rejected:retired_task_tier_fit_overrides", "unvalidated"
     evidence_catalog = evidence.get("catalog") or {}
     catalog_ok, catalog_reason = catalog_record_exact_match(evidence_catalog)
     if not catalog_ok:

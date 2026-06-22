@@ -6,23 +6,11 @@ from ..adaptive_routing import AdaptiveRoutingState
 from ..allocation import AllocationContext
 from ..defaults import (
     BUDGET_PRESSURE_INIT,
-    MARGINAL_YIELD_PER_DOLLAR_THRESHOLD,
     ModelCatalog,
-    TASK_START_COLD_FRONTIER_EFFORT_THRESHOLD,
-    TASK_START_COLD_FRONTIER_EFFORT_TOLERANCE,
-    TASK_START_DECISIVE_FIT_GAIN,
-    TASK_START_HIGH_EFFORT_THRESHOLD,
-    TASK_START_MIN_VALUE_FOR_DECISIVE_FIT,
-    TASK_START_PAID_UPGRADE_MIN_FIT_GAIN,
-    TASK_START_PRESSURE_THRESHOLD_MULTIPLIER,
-    TASK_START_T3_ACCEPTANCE_MARGIN,
-    TASK_START_VALUE_RATIO_GATE,
     W_I,
     active_w_i,
     active_w_i_profile_name,
     progress_table,
-    task_start_effort_multiplier,
-    task_start_t3_acceptance_threshold,
     tier_escalation_patience,
 )
 from ..decision_costs import task_level_decision_per_turn_cost
@@ -30,11 +18,9 @@ from ..frozen_router import FrozenRouterPlan
 from ..policies import BudgetOnlyStepRouter, BudgetOnlyT2Router, WorkflowLevelRouter
 from ..policy_backend import BootstrapPolicy, PolicyDecision
 from ..selector import BudgetFlowSelector, ConservativeSelector, RouterDecision, ValueAwareSelector
+from ..task_level_routing import task_start_tier_decision
 from ..tier_frontier import TierFrontier, finite_frontier_score
 from ..types import Backend, ProgressTable, Stage, TurnInfo
-
-TASK_BUDGET_STRONGEST_FIT_FRACTION = 1.0
-
 @dataclass
 class RoutingContext:
     strategy: str
@@ -274,42 +260,6 @@ def _task_effort_units(ctx: RoutingContext) -> float:
     return 1.0
 
 
-def _task_start_effort_multiplier(ctx: RoutingContext, effort_units: float) -> float:
-    """Bounded need multiplier: harder tasks justify stronger-tier starts sooner."""
-    reference = (
-        float(ctx.tier_frontier.reference_runway_turns)
-        if ctx.tier_frontier is not None
-        else None
-    )
-    return task_start_effort_multiplier(effort_units, reference_runway_turns=reference)
-
-
-def _strongest_price_ratio(ctx: RoutingContext, reference: Backend, strongest: Backend) -> float:
-    input_ratio = strongest.cost_per_input_token / max(reference.cost_per_input_token, 0.000001)
-    output_ratio = strongest.cost_per_output_token / max(reference.cost_per_output_token, 0.000001)
-    return max(1.0, input_ratio, output_ratio)
-
-
-def _expected_total_cost(
-    ctx: RoutingContext,
-    backend_name: str,
-    tier: int,
-    per_turn_cost: float,
-) -> float:
-    """Expected total cost = expected turns * per-turn cost.
-
-    expected_turns = task_effort / model_fit_rate, where task_effort is the
-    estimated runway needed and model_fit_rate is the tier's progress rate.
-
-    When task_effort is unavailable, defaults to the tier frontier reference
-    runway so the formula still produces a meaningful comparison.
-    """
-    fit = _tier_model_fit_rate(ctx, tier, backend_name)
-    effort = _task_effort_units(ctx)
-    expected_turns = effort / max(fit, 0.001)
-    return expected_turns * per_turn_cost
-
-
 def _runtime_task_budget(allocation: AllocationContext | None) -> float | None:
     """Return the runtime task cap, effective-first.
 
@@ -326,217 +276,11 @@ def _runtime_task_budget(allocation: AllocationContext | None) -> float | None:
     return None
 
 
-def _expected_cost_fits_task_budget(
-    allocation: AllocationContext | None,
-    cost: float,
-    *,
-    fraction: float = TASK_BUDGET_STRONGEST_FIT_FRACTION,
-) -> bool:
-    budget = _runtime_task_budget(allocation)
-    if budget is None:
-        return True
-    budget = max(0.0, budget)
-    if budget <= 0:
-        return False
-    return cost <= budget * max(0.0, min(1.0, fraction))
-
-
-def _task_start_t3_score(
-    ctx: RoutingContext,
-    reference: Backend,
-    strongest_total_cost: float,
-    reference_total_cost: float,
-    *,
-    cost_estimate_available: bool,
-) -> tuple[float, dict[str, float | str | bool]]:
-    allocation = ctx.allocation
-    has_trusted_fit = bool(allocation is not None and allocation.has_trusted_model_fit)
-    task_value = float(getattr(allocation, "task_value", ctx.task_value) if allocation is not None else ctx.task_value)
-    task_effort = (
-        float(allocation.task_effort)
-        if allocation is not None and allocation.has_effort and allocation.task_effort is not None
-        else 0.0
-    )
-    median = max(0.001, float(ctx.median_task_value or 1.0))
-    value_ratio = task_value / median
-    pressure_penalty = max(0.0, min(1.5, float(ctx.budget_pressure or 0.0)))
-    budget_allows = _expected_cost_fits_task_budget(
-        allocation,
-        strongest_total_cost,
-        fraction=TASK_BUDGET_STRONGEST_FIT_FRACTION,
-    )
-    reference_fit = _tier_model_fit_rate(ctx, reference.tier, reference.name)
-    strongest = ModelCatalog.strongest(ctx.backends)
-    strongest_fit = _tier_model_fit_rate(ctx, strongest.tier, strongest.name)
-    fit_gain = max(0.0, strongest_fit - reference_fit)
-    extra_expected_cost = max(0.0, strongest_total_cost - reference_total_cost)
-    extra_cost_ratio = max(
-        0.0,
-        (strongest_total_cost - reference_total_cost) / max(reference_total_cost, 0.000001),
-    )
-    effort_units = _task_effort_units(ctx)
-    reference_unit_cost = reference_total_cost / max(effort_units, 0.000001)
-    strongest_unit_cost = strongest_total_cost / max(effort_units, 0.000001)
-    extra_unit_cost = max(0.0, strongest_unit_cost - reference_unit_cost)
-    effort_multiplier = _task_start_effort_multiplier(ctx, effort_units)
-    if strongest_total_cost <= reference_total_cost:
-        marginal_yield = float("inf") if fit_gain > 0 else 0.0
-    else:
-        marginal_yield = task_value * fit_gain * effort_multiplier / max(extra_unit_cost, 0.000001)
-    price_ratio = _strongest_price_ratio(ctx, reference, strongest)
-    threshold = (
-        MARGINAL_YIELD_PER_DOLLAR_THRESHOLD
-        * median
-        * (1.0 + TASK_START_PRESSURE_THRESHOLD_MULTIPLIER * pressure_penalty)
-    )
-    acceptance_threshold = task_start_t3_acceptance_threshold(threshold)
-    runtime_task_budget = _runtime_task_budget(allocation)
-    planned_task_budget = (
-        float(allocation.planned_task_budget)
-        if allocation is not None and allocation.planned_task_budget is not None
-        else 0.0
-    )
-    effective_task_budget = (
-        float(allocation.effective_task_budget)
-        if allocation is not None and allocation.effective_task_budget is not None
-        else 0.0
-    )
-    runtime_task_budget_value = runtime_task_budget if runtime_task_budget is not None else 0.0
-    task_budget_headroom = (
-        runtime_task_budget_value - strongest_total_cost
-        if runtime_task_budget_value > 0
-        else 0.0
-    )
-    task_budget_headroom_fraction = (
-        task_budget_headroom / max(runtime_task_budget_value, 0.000001)
-        if runtime_task_budget_value > 0
-        else 0.0
-    )
-    metadata_gate = (
-        value_ratio >= TASK_START_VALUE_RATIO_GATE
-        or (effort_units >= TASK_START_HIGH_EFFORT_THRESHOLD and task_value >= median)
-    )
-    decisive_fit_gate = (
-        fit_gain >= TASK_START_DECISIVE_FIT_GAIN
-        and task_value >= TASK_START_MIN_VALUE_FOR_DECISIVE_FIT
-    )
-    paid_upgrade_candidate = (
-        strongest_total_cost <= reference_total_cost
-        or decisive_fit_gate
-        or (fit_gain >= TASK_START_PAID_UPGRADE_MIN_FIT_GAIN and metadata_gate)
-    )
-    reference_frontier_candidate = (
-        cost_estimate_available
-        and has_trusted_fit
-        and (
-            not budget_allows
-            or fit_gain <= 0
-            or not paid_upgrade_candidate
-            or marginal_yield < acceptance_threshold
-        )
-    )
-    score = marginal_yield - threshold
-    expected_value_gain = task_value * fit_gain
-    details: dict[str, float | str | bool] = {
-        "task_value": task_value,
-        "task_effort": task_effort,
-        "value_ratio": value_ratio,
-        "budget_pressure": float(ctx.budget_pressure or 0.0),
-        "budget_allows_strongest": 1.0 if budget_allows else 0.0,
-        "has_trusted_model_fit": 1.0 if has_trusted_fit else 0.0,
-        "cost_estimate_available": 1.0 if cost_estimate_available else 0.0,
-        "reference_fit": reference_fit,
-        "strongest_fit": strongest_fit,
-        "fit_gain": fit_gain,
-        "min_fit_gain_for_paid_upgrade": TASK_START_PAID_UPGRADE_MIN_FIT_GAIN,
-        "decisive_fit_gain": TASK_START_DECISIVE_FIT_GAIN,
-        "value_ratio_gate": TASK_START_VALUE_RATIO_GATE,
-        "criticality_or_effort_gate": 1.0 if metadata_gate else 0.0,
-        "decisive_fit_gate": 1.0 if decisive_fit_gate else 0.0,
-        "paid_upgrade_candidate": 1.0 if paid_upgrade_candidate else 0.0,
-        "reference_frontier_candidate": 1.0 if reference_frontier_candidate else 0.0,
-        "reference_expected_total_cost": reference_total_cost,
-        "strongest_expected_total_cost": strongest_total_cost,
-        "extra_expected_cost": extra_expected_cost,
-        "reference_unit_cost": reference_unit_cost,
-        "strongest_unit_cost": strongest_unit_cost,
-        "extra_unit_cost": extra_unit_cost,
-        "expected_value_gain": expected_value_gain,
-        "effort_multiplier": effort_multiplier,
-        "strongest_price_ratio": price_ratio,
-        "extra_cost_ratio": extra_cost_ratio,
-        "marginal_yield_per_dollar": marginal_yield if marginal_yield != float("inf") else 999999.0,
-        "budget_pressure_threshold": threshold,
-        "t3_acceptance_threshold": acceptance_threshold,
-        "t3_acceptance_margin": TASK_START_T3_ACCEPTANCE_MARGIN,
-        "planned_task_budget": planned_task_budget,
-        "effective_task_budget": effective_task_budget,
-        "runtime_task_budget": runtime_task_budget_value,
-        "task_budget_headroom": task_budget_headroom,
-        "task_budget_headroom_fraction": task_budget_headroom_fraction,
-        "decision_cost_source": "normalized_catalog",
-        "rule": "marginal_expected_value_per_dollar",
-    }
-    return (
-        score
-        if (
-            cost_estimate_available
-            and budget_allows
-            and has_trusted_fit
-            and fit_gain > 0
-            and paid_upgrade_candidate
-        )
-        else -1.0
-    ), details
-
-
-def _uncertain_frontier_probe_candidate(
-    ctx: RoutingContext,
-    details: dict[str, float | str | bool],
-    *,
-    max_tier: int,
-) -> bool:
-    """Allow bounded T3 exploration when ModelFit is not yet trusted.
-
-    This is not a per-task assignment and not a paper-evidence shortcut.  It
-    prevents cold-start catalog priors from collapsing task-level BudgetFlow
-    into pure T2 before the run has enough current-catalog evidence to learn.
-    """
-    allocation = ctx.allocation
-    if allocation is not None and allocation.has_model_fit:
-        return False
-    strongest_tier = ModelCatalog.strongest(ctx.backends).tier
-    if max_tier < strongest_tier:
-        return False
-    if float(details.get("cost_estimate_available", 0.0) or 0.0) <= 0:
-        return False
-    if float(details.get("budget_allows_strongest", 0.0) or 0.0) <= 0:
-        return False
-    if float(details.get("task_budget_headroom_fraction", 0.0) or 0.0) < 0.10:
-        return False
-    if float(details.get("budget_pressure", 0.0) or 0.0) > 0.80:
-        return False
-    value_ratio = float(details.get("value_ratio", 1.0) or 1.0)
-    task_effort = float(details.get("task_effort", 0.0) or 0.0)
-    task_value = float(details.get("task_value", 1.0) or 1.0)
-    median = task_value / max(value_ratio, 0.000001)
-    cold_effort_floor = (
-        TASK_START_COLD_FRONTIER_EFFORT_THRESHOLD
-        * TASK_START_COLD_FRONTIER_EFFORT_TOLERANCE
-    )
-    return (
-        value_ratio >= TASK_START_VALUE_RATIO_GATE
-        or (task_effort >= cold_effort_floor and task_value >= median)
-        or (task_effort >= TASK_START_HIGH_EFFORT_THRESHOLD and task_value >= median)
-    )
-
-
 def _choose_task_level_backend(ctx: RoutingContext, expected_costs: dict[str, float]) -> Backend:
-    """Choose one backend for the whole task using expected total cost.
+    """Choose one backend for the whole task via shared task_start_tier_decision.
 
-    Compares expected total cost (not per-step cost) across tiers so a
-    cheaper-per-step tier that needs many more turns is correctly seen as
-    more expensive in total.  Budget slack still gates stronger-tier access.
+    Both runtime and compiler projection call the same function so readiness
+    projection cannot fork from actual runtime decisions.
     """
     if ctx.task_level_backend is not None:
         backend = ctx.task_level_backend
@@ -550,139 +294,68 @@ def _choose_task_level_backend(ctx: RoutingContext, expected_costs: dict[str, fl
         return backend
 
     max_tier = _task_level_max_tier(ctx)
-    # Current task-level policy chooses one model for the task from the active
-    # reference frontier: T2 by default, or Strongest Model when marginal
-    # value justifies it. T1 remains available to other policies and future
-    # extensions, but it is not part of this mainline task-level decision.
     reference = _task_level_reference_backend(ctx.backends)
-    ordered = [backend for backend in sorted(ctx.backends, key=lambda backend: backend.tier) if backend.tier >= reference.tier]
-    if not ordered:
-        ordered = sorted(ctx.backends, key=lambda backend: backend.tier)
-    current = ordered[0]
-    current_score = 0.0
-
-    # Pre-compute expected total cost for each tier.
-    total_costs: dict[str, float] = {}
-    for backend in ordered:
-        per_turn = task_level_decision_per_turn_cost(backend)
-        total_costs[backend.name] = _expected_total_cost(ctx, backend.name, backend.tier, per_turn)
-
     strongest = ModelCatalog.strongest(ctx.backends)
-    cost_estimate_available = (
-        expected_costs.get(current.name, 0.0) > 0
-        and expected_costs.get(strongest.name, 0.0) > 0
-        and total_costs.get(current.name, 0.0) > 0
-        and total_costs.get(strongest.name, 0.0) > 0
+    allocation = ctx.allocation
+
+    task_value = float(getattr(allocation, "task_value", ctx.task_value) if allocation is not None else ctx.task_value)
+    task_effort = _task_effort_units(ctx)
+    t2_fit = _tier_model_fit_rate(ctx, 2, reference.name)
+    t3_fit = _tier_model_fit_rate(ctx, 3, strongest.name)
+    t2_per_turn = task_level_decision_per_turn_cost(reference)
+    t3_per_turn = task_level_decision_per_turn_cost(strongest)
+    task_budget = _runtime_task_budget(allocation)
+    has_trusted = bool(allocation is not None and allocation.has_trusted_model_fit)
+    is_cold = not (allocation is not None and allocation.has_model_fit)
+    ref_runway = (
+        float(ctx.tier_frontier.reference_runway_turns)
+        if ctx.tier_frontier is not None
+        else None
     )
-    task_start_score, task_start_details = _task_start_t3_score(
-        ctx,
-        current,
-        total_costs.get(strongest.name, 0.0),
-        total_costs.get(current.name, 0.0),
-        cost_estimate_available=cost_estimate_available,
+
+    tier, reason, scores = task_start_tier_decision(
+        task_value=task_value,
+        task_effort=task_effort,
+        tier2_fit=t2_fit,
+        tier3_fit=t3_fit,
+        tier2_per_turn_cost=t2_per_turn,
+        tier3_per_turn_cost=t3_per_turn,
+        budget_pressure=ctx.budget_pressure,
+        task_budget=task_budget,
+        median_task_value=ctx.median_task_value,
+        has_trusted_model_fit=has_trusted,
+        is_cold_start=is_cold,
+        reference_runway_turns=ref_runway,
     )
-    if (
-        task_start_score >= 0.0
-        and float(task_start_details["marginal_yield_per_dollar"])
-        >= float(task_start_details["t3_acceptance_threshold"])
-    ):
+
+    if tier == 3:
         current = strongest
-        current_score = task_start_score
-        ctx.task_level_backend = current
-        ctx.last_decision = RouterDecision(
-            backend=current,
-            reason="bf_task_start_marginal_yield_t3",
-            scores={current.name: current_score},
-            pressure=ctx.budget_pressure,
-            branch="value_aware_task_level",
+        reason_label = (
+            "bf_task_start_marginal_yield_t3"
+            if reason == "marginal_yield_per_dollar"
+            else "bf_task_start_uncertain_frontier_probe"
         )
-        if ctx.bootstrap_policy is not None:
-            ctx.last_policy_decision = PolicyDecision(
-                backend=current.name,
-                reason="task_level_fixed_task_start",
-                scores={k: float(v) if isinstance(v, (int, float)) else v for k, v in task_start_details.items()},
-            )
-        return current
+    else:
+        current = reference
+        reason_label = "bf_task_start_reference_frontier"
 
-    if _uncertain_frontier_probe_candidate(ctx, task_start_details, max_tier=max_tier):
-        current = strongest
-        current_score = 0.0
-        ctx.task_level_backend = current
-        ctx.last_decision = RouterDecision(
-            backend=current,
-            reason="bf_task_start_uncertain_frontier_probe",
-            scores={current.name: current_score},
-            pressure=ctx.budget_pressure,
-            branch="value_aware_task_level",
-        )
-        if ctx.bootstrap_policy is not None:
-            scores = {
-                **task_start_details,
-                "rule": "uncertain_frontier_probe",
-            }
-            ctx.last_policy_decision = PolicyDecision(
-                backend=current.name,
-                reason="task_level_uncertain_frontier_probe",
-                scores={k: float(v) if isinstance(v, (int, float)) else v for k, v in scores.items()},
-            )
-        return current
-
-    for next_backend in ordered[1:]:
-        if not cost_estimate_available:
-            # Cost dominance is only meaningful when both reference and
-            # strongest costs were estimated for this turn. Missing estimates
-            # must not make the strongest tier look free.
-            break
-        # Compare expected total cost, not per-step cost.
-        delta_total_cost = total_costs.get(next_backend.name, 0.0) - total_costs.get(current.name, 0.0)
-
-        if next_backend.tier > max_tier and delta_total_cost > 0:
-            # Above max_tier cap AND costs more in total: budget-safety block.
-            # When the stronger tier is cheaper in total (delta_total_cost <= 0),
-            # expected-cost dominance overrides the cap — the cap is budget safety,
-            # not the primary value decision.
-            break
-
-        if delta_total_cost <= 0:
-            # Stronger tier is cheaper in total expected cost — dominate.
-            current = next_backend
-            current_score = 0.0
-            continue
-        # If the stronger tier costs more in expected total and failed the
-        # task-start marginal Yield/$ check above, keep the current task-level
-        # reference tier. Do not apply the old budget-slack upgrade heuristic.
-        break
+    if current.tier > max_tier:
+        current = reference
+        reason_label = "bf_task_start_reference_frontier"
 
     ctx.task_level_backend = current
-    strongest_tier = ModelCatalog.strongest(ctx.backends).tier
-    reference_frontier = (
-        current.tier == reference.tier
-        and float(task_start_details.get("reference_frontier_candidate", 0.0) or 0.0) > 0
-    )
     ctx.last_decision = RouterDecision(
         backend=current,
-        reason=(
-            f"bf_task_fixed_max_tier={max_tier}"
-            if max_tier < strongest_tier
-            else (
-                "bf_task_start_reference_frontier"
-                if reference_frontier
-                else "bf_task_fixed_strongest_allowed"
-            )
-        ),
-        scores={current.name: current_score},
+        reason=reason_label,
+        scores={current.name: 0.0},
         pressure=ctx.budget_pressure,
         branch="value_aware_task_level",
     )
     if ctx.bootstrap_policy is not None:
-        scores: dict[str, float | str | bool] = {
-            "selection_score": current_score,
-            **task_start_details,
-        }
         ctx.last_policy_decision = PolicyDecision(
             backend=current.name,
-            reason="task_level_reference_frontier" if reference_frontier else "task_level_fixed",
-            scores=scores,
+            reason=reason,
+            scores={k: float(v) if isinstance(v, (int, float)) else v for k, v in scores.items()},
         )
     return current
 

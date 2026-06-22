@@ -262,10 +262,9 @@ def test_custom_ids_default_to_paper_mainline_policy_set() -> None:
     assert names == [
         "bare_t2_baseline",
         "bare_t3_baseline",
-        "enterprise_router_baseline",
         "budgetflow_task_level",
     ]
-    assert selection.policy_jobs == 4
+    assert selection.policy_jobs == 3
     assert selection.jobs_upgraded is True
 
 
@@ -282,7 +281,6 @@ def test_non_3x3_preset_defaults_to_paper_mainline_not_full_catalog() -> None:
     assert names == [
         "bare_t2_baseline",
         "bare_t3_baseline",
-        "enterprise_router_baseline",
         "budgetflow_task_level",
     ]
 
@@ -355,13 +353,8 @@ def test_budget_plan_model_fit_evidence_parsed_as_global_runtime_signal(tmp_path
     assert confidence == "medium"
 
 
-def test_budget_plan_model_fit_ignores_task_local_overrides(tmp_path) -> None:
-    """Task-local same-task overrides must not flow into runtime model_fit.
-
-    The compiler may still write ``task_tier_fit_overrides`` as annotation,
-    but ``calibrated_model_fit_from_budget_plan`` must not parse it into a
-    runtime signal.  This keeps same-task history diagnostic-only.
-    """
+def test_budget_plan_model_fit_rejects_retired_task_local_overrides(tmp_path) -> None:
+    """Old task-local ModelFit fields are not accepted in active plans."""
     import json
     from budgetflow.model_tiers import catalog_source_info
 
@@ -374,20 +367,15 @@ def test_budget_plan_model_fit_ignores_task_local_overrides(tmp_path) -> None:
             "confidence": "medium",
             "catalog": catalog_source_info(),
             "tier_fit": {"tier2": 0.08, "tier3": 0.65},
-            "task_tier_fit_overrides": {
-                "task-a": {
-                    "tier_fit": {"tier2": 0.81, "tier3": 0.65},
-                    "source": "same_task_clean_t2_success",
-                }
-            },
+            "task_tier_fit_overrides": {"task-a": {"tier_fit": {"tier2": 0.81}}},
         },
     }))
 
     fit, source, confidence = calibrated_model_fit_from_budget_plan(bp_path)
 
-    assert fit == {"tier2": 0.08, "tier3": 0.65}
-    assert source == "budget_plan:historical_jsonl"
-    assert confidence == "medium"
+    assert fit is None
+    assert source == "budget_plan_model_fit_rejected:retired_task_tier_fit_overrides"
+    assert confidence == "unvalidated"
 
 
 def test_budget_plan_model_fit_rejects_stale_physical_catalog(tmp_path) -> None:
@@ -488,7 +476,7 @@ def test_paper_mainline_budget_contract_blocks_control_task_caps() -> None:
     selection = select_strategies(_args(ids="sympy__sympy-22714"))
     batch_caps = {strategy.name: 1.0 for strategy in selection.strategies}
     budget_modes = {strategy.name: "shared_batch_hard_budget" for strategy in selection.strategies}
-    budget_modes["enterprise_router_baseline"] = "budgetflow_planned_task_budget"
+    budget_modes["bare_t2_baseline"] = "budgetflow_planned_task_budget"
 
     with pytest.raises(SystemExit, match="diagnostic controls require shared_batch_hard_budget"):
         validate_paper_mainline_budget_contract(

@@ -9,6 +9,7 @@ from __future__ import annotations
 from argparse import Namespace
 from dataclasses import dataclass
 import importlib.util
+import math
 from pathlib import Path
 
 from budgetflow.experiments.compare_config import CompareStrategy, paper_mainline_strategy_names
@@ -420,12 +421,12 @@ def build_compare_readiness_report(
                     max_tasks_per_strategy = getattr(args, "max_tasks_per_strategy", None)
                     if max_tasks_per_strategy is not None and max_tasks_per_strategy > 0:
                         staged_run = min(int(max_tasks_per_strategy), len(task_ids))
-                        if prefix_count != staged_run:
+                        if prefix_count > staged_run:
                             blocking.append(
                                 f"stage_prefix_pressure budget plan stage_prefix_count={prefix_count} "
-                                f"does not match --max-tasks-per-strategy={max_tasks_per_strategy} "
-                                f"(staged run={staged_run}); the compiled prefix must cover exactly "
-                                "the tasks the staged execution will run"
+                                f"exceeds --max-tasks-per-strategy={max_tasks_per_strategy} "
+                                f"(staged run={staged_run}); do not run a partial prefix with "
+                                "a cap compiled from tasks that will not execute in this invocation"
                             )
                     if not (0.0 < target_fraction <= 1.0):
                         blocking.append(
@@ -473,18 +474,12 @@ def build_compare_readiness_report(
                         + "; ".join(detail_parts)
                     )
                 elif bp_task_list != task_ids:
-                    if bp_generation_mode == STAGE_PREFIX_PRESSURE_MODE:
-                        blocking.append(
-                            "stage_prefix_pressure budget plan task_ids order must exactly match "
-                            "selected task order; the compiled prefix spend is order-sensitive. "
-                            f"budget_plan_order={bp_task_list[:8]} "
-                            f"selected_order={task_ids[:8]}"
-                        )
-                    else:
-                        warnings.append(
-                            "budget plan task_ids have the same task set but a different order; "
-                            "runtime will use selected task order"
-                        )
+                    blocking.append(
+                        "budget plan task_ids order must exactly match selected task order; "
+                        "planned-task effective caps are order-sensitive under the shared hard budget. "
+                        f"budget_plan_order={bp_task_list[:8]} "
+                        f"selected_order={task_ids[:8]}"
+                    )
                 bp_generation_mode = str(bp.get("generation_mode", "") or "")
             bp_strategy_names = bp.get("strategy_names")
             if isinstance(bp_strategy_names, list) and bp_strategy_names:
@@ -542,6 +537,24 @@ def build_compare_readiness_report(
                                 f"budget plan planned task budgets for {strategy_name} "
                                 f"are missing selected tasks: {preview}{suffix}"
                             )
+                        invalid_caps: list[str] = []
+                        for task_id in task_ids:
+                            if task_id not in strategy_caps:
+                                continue
+                            try:
+                                cap = float(strategy_caps.get(task_id))
+                            except (TypeError, ValueError):
+                                invalid_caps.append(f"{task_id}=non_numeric")
+                                continue
+                            if not math.isfinite(cap) or cap <= 0:
+                                invalid_caps.append(f"{task_id}={cap}")
+                        if invalid_caps:
+                            preview = ", ".join(invalid_caps[:8])
+                            suffix = "" if len(invalid_caps) <= 8 else f", ... +{len(invalid_caps) - 8} more"
+                            blocking.append(
+                                f"budget plan planned task budgets for {strategy_name} "
+                                f"must be finite positive USD values: {preview}{suffix}"
+                            )
 
             task_level_strategy_names = [
                 strategy.name for strategy in strategies if strategy.routing == "value_aware_task_level"
@@ -565,13 +578,32 @@ def build_compare_readiness_report(
                         "regenerate the budget plan with the current Budget Regime Compiler"
                     )
                 else:
+                    if "task_level_model_plan_source" in task_diag:
+                        blocking.append(
+                            "BudgetFlow task-level diagnostics use retired task_level_model_plan_source; "
+                            "regenerate the budget plan with runtime_projection_source"
+                        )
+                    if "projected_tier_counts" in task_diag:
+                        blocking.append(
+                            "BudgetFlow task-level diagnostics use retired projected_tier_counts; "
+                            "regenerate the budget plan with runtime_projected_tier_counts"
+                        )
                     degeneration = str(task_diag.get("degeneration") or "")
+                    stage_prefix_degeneration = str(task_diag.get("stage_prefix_degeneration") or "")
                     if degeneration in {"pure_reference_tier", "pure_strongest_tier"}:
                         blocking.append(
                             f"BudgetFlow task-level runtime projection degenerates to {degeneration}; "
                             "value-aware task-level paid runs must preserve a real T2/T3 frontier. "
                             "Use pure-tier baselines for fixed-tier controls or fix ModelFit/value/cost "
                             "calibration before paid run"
+                        )
+                    if stage_prefix_degeneration in {"pure_reference_tier", "pure_strongest_tier"}:
+                        prefix_count = int(task_diag.get("stage_prefix_count") or 0)
+                        blocking.append(
+                            "BudgetFlow task-level staged prefix runtime projection degenerates to "
+                            f"{stage_prefix_degeneration} over first {prefix_count} tasks; "
+                            "10+10+10 paid runs must preserve a real T2/T3 frontier in the current "
+                            "stage prefix or be relabeled as a pure-tier frontier diagnostic"
                         )
 
             active_revision = active_catalog_revision
@@ -660,6 +692,13 @@ def build_compare_readiness_report(
                     "Use pure-tier baselines for fixed-tier controls or run as an explicit "
                     "frontier diagnostic — main evidence readiness must not silently pass "
                     "near-pure T2/T3 routing"
+                )
+                break
+            if "budgetflow_task_level_stage_prefix_degenerated" in str(violation):
+                blocking.append(
+                    "budget plan pressure contract has budgetflow_task_level_stage_prefix_degenerated; "
+                    "the staged prefix for this paid run is a pure-tier frontier. Regenerate "
+                    "the plan, reorder tasks, or run it only as an explicit frontier diagnostic"
                 )
                 break
             if "budgetflow_under_target" in str(violation):

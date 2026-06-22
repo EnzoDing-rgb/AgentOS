@@ -23,31 +23,21 @@ from budgetflow.experiments.compare_setup import PLANNED_TASK_BUDGET_MODE
 from ..exit_reasons import record_is_budget_exhausted
 from ..defaults import (
     BUDGET_PRESSURE_INIT,
-    MARGINAL_YIELD_PER_DOLLAR_THRESHOLD,
     PRESSURE_MAX,
-    TASK_START_COLD_FRONTIER_EFFORT_THRESHOLD,
-    TASK_START_COLD_FRONTIER_EFFORT_TOLERANCE,
-    TASK_START_DECISIVE_FIT_GAIN,
-    TASK_START_HIGH_EFFORT_THRESHOLD,
-    TASK_START_MIN_VALUE_FOR_DECISIVE_FIT,
-    TASK_START_PAID_UPGRADE_MIN_FIT_GAIN,
-    TASK_START_PRESSURE_THRESHOLD_MULTIPLIER,
-    TASK_START_VALUE_RATIO_GATE,
-    task_start_effort_multiplier,
-    task_start_t3_acceptance_threshold,
 )
-from ..decision_costs import task_level_decision_per_turn_cost
+from ..task_level_routing import task_start_tier_decision
+from ..decision_costs import TASK_LEVEL_DECISION_TURN_INDEX, task_level_decision_per_turn_cost
 from ..model_fit_estimator import ModelFitEvidence, estimate_model_fit_from_jsonl
 from ..model_tiers import (
     MODEL_CATALOG,
     catalog_record_exact_match,
-    catalog_record_compatible,
     catalog_path,
     catalog_revision,
     catalog_source_info,
     estimate_token_cost,
     init_catalog,
 )
+from ..planned_task_budget import effective_planned_task_cap
 
 
 COLD_START_INPUT_TOKENS_PER_EFFORT = 4_500
@@ -430,15 +420,6 @@ def calibrate_budget(
                 "censored_tiers": sorted(evidence.censored_tiers),
                 "reasons": evidence.reasons,
             }
-            task_fit_overrides = _build_same_task_fit_overrides(
-                historical_jsonl,
-                task_ids,
-                value_features,
-                base_fit_overrides=fit_overrides,
-                audit_reasons=plan.reasons,
-            )
-            if task_fit_overrides:
-                plan.model_fit_evidence["task_tier_fit_overrides"] = task_fit_overrides
             plan.reasons.append(
                 f"calibration:model_fit_evidence confidence={evidence.confidence} "
                 f"scope={evidence.scope} from {evidence.evidence_tasks} tasks: "
@@ -1026,19 +1007,44 @@ def _build_projection_diagnostics(
     projected_shared_spent = 0.0
     hard_cap = float(getattr(plan, "hard_cap_usd", 0.0) or 0.0)
     pressure_max = PRESSURE_MAX
-    for task_id in task_ids:
+    stage_prefix_count = 0
+    projection_rebalance_task_ids = list(task_ids)
+    if plan.generation_mode == STAGE_PREFIX_PRESSURE_MODE:
+        raw_prefix = 0
+        if isinstance(plan.budget_pressure_spec, dict):
+            raw_prefix = int(plan.budget_pressure_spec.get("stage_prefix_count") or 0)
+        stage_prefix_count = min(max(0, raw_prefix), len(task_ids))
+        if stage_prefix_count > 0:
+            projection_rebalance_task_ids = list(task_ids[:stage_prefix_count])
+    for index, task_id in enumerate(task_ids):
         pressure = _projected_shared_pressure(
             hard_cap_usd=hard_cap,
             shared_spent=projected_shared_spent,
             pressure_init=BUDGET_PRESSURE_INIT,
             pressure_max=pressure_max,
         )
-        tier, cost = _project_task_level_choice_cost(
+        rebalance_index = (
+            index
+            if task_id in projection_rebalance_task_ids
+            else len(projection_rebalance_task_ids)
+        )
+        effective_task_budget = effective_planned_task_cap(
+            planned_task_caps=planned_task_budgets,
+            remaining_task_ids=projection_rebalance_task_ids[rebalance_index:],
+            task_id=task_id,
+            batch_budget_cap=hard_cap,
+            shared_spent=projected_shared_spent,
+        )
+        tier, cost, routing_reason, routing_scores = _project_task_level_choice_cost(
             task_id,
             value_features,
             reference_cost=float(reference_costs.get(task_id, 0.0) or 0.0),
             strongest_cost=float(strongest_costs.get(task_id, 0.0) or 0.0),
-            planned_task_budget=float(planned_task_budgets.get(task_id, 0.0) or 0.0),
+            planned_task_budget=(
+                float(effective_task_budget)
+                if effective_task_budget is not None
+                else float(planned_task_budgets.get(task_id, 0.0) or 0.0)
+            ),
             fit_overrides=fit_overrides,
             budget_pressure=pressure,
         )
@@ -1046,10 +1052,17 @@ def _build_projection_diagnostics(
         chosen[tier] = chosen.get(tier, 0) + 1
         task_costs[task_id] = cost
         task_choices[task_id] = {
-            "projected_tier": tier,
+            "runtime_projected_tier": tier,
             "projected_cost_usd": round(cost, 4),
             "planned_task_budget_usd": round(float(planned_task_budgets.get(task_id, 0.0) or 0.0), 4),
+            "effective_task_budget_usd": round(
+                float(effective_task_budget) if effective_task_budget is not None else 0.0,
+                4,
+            ),
             "budget_pressure": round(pressure, 4),
+            "routing_reason": routing_reason,
+            "routing_scores": {k: round(float(v), 6) if isinstance(v, (int, float)) else v
+                              for k, v in (routing_scores or {}).items()},
         }
     if task_costs:
         if audit_reasons is not None:
@@ -1060,14 +1073,33 @@ def _build_projection_diagnostics(
     t2_spend = sum(float(reference_costs.get(task_id, 0.0) or 0.0) for task_id in task_ids)
     t3_spend = sum(float(strongest_costs.get(task_id, 0.0) or 0.0) for task_id in task_ids)
     strongest_count = chosen.get(strongest_tier, 0)
+    stage_prefix_chosen: dict[int, int] = {}
+    if stage_prefix_count > 0:
+        for task_id in task_ids[:stage_prefix_count]:
+            choice = task_choices.get(task_id)
+            if not isinstance(choice, dict):
+                continue
+            tier = int(choice.get("runtime_projected_tier") or 0)
+            if tier > 0:
+                stage_prefix_chosen[tier] = stage_prefix_chosen.get(tier, 0) + 1
+    stage_prefix_strongest_count = stage_prefix_chosen.get(strongest_tier, 0)
+    stage_prefix_degen = "not_applicable"
+    if stage_prefix_count > 0:
+        stage_prefix_degen = (
+            "pure_reference_tier"
+            if stage_prefix_strongest_count == 0
+            else "pure_strongest_tier"
+            if stage_prefix_strongest_count == stage_prefix_count
+            else "mixed"
+        )
     diagnostic = {
         "budgetflow_task_level": {
             "source": "runtime_policy_projection",
             "role": "readiness_diagnostic_not_cap_source",
             "reference_tier": 2,
             "strongest_tier": strongest_tier,
-            "projected_tier_counts": {f"tier{tier}": count for tier, count in sorted(chosen.items())},
-            "projected_strongest_task_fraction": round(strongest_count / max(len(task_ids), 1), 4),
+            "runtime_projected_tier_counts": {f"tier{tier}": count for tier, count in sorted(chosen.items())},
+            "runtime_projected_strongest_task_fraction": round(strongest_count / max(len(task_ids), 1), 4),
             "projected_spend_usd": round(projected_spend, 4),
             "reference_spend_usd": round(t2_spend, 4),
             "strongest_spend_usd": round(t3_spend, 4),
@@ -1078,7 +1110,17 @@ def _build_projection_diagnostics(
                 if strongest_count == 0
                 else "pure_strongest_tier" if strongest_count == len(task_ids) else "mixed"
             ),
-            "task_level_model_plan_source": "runtime_policy_projection",
+            "stage_prefix_count": stage_prefix_count,
+            "stage_prefix_runtime_projected_tier_counts": {
+                f"tier{tier}": count for tier, count in sorted(stage_prefix_chosen.items())
+            },
+            "stage_prefix_runtime_projected_strongest_task_fraction": (
+                round(stage_prefix_strongest_count / stage_prefix_count, 4)
+                if stage_prefix_count > 0
+                else None
+            ),
+            "stage_prefix_degeneration": stage_prefix_degen,
+            "runtime_projection_source": "task_level_router_formula",
             "task_choices": task_choices,
         }
     }
@@ -1182,97 +1224,48 @@ def _project_task_level_choice_cost(
     planned_task_budget: float,
     fit_overrides: dict[int, float] | None,
     budget_pressure: float,
-) -> tuple[int, float]:
-    """Compiler-side mirror of task-start T2/T3 choice for cost projection.
+) -> tuple[int, float, str, dict[str, float]]:
+    """Call the shared task-level routing formula for no-paid readiness projection.
 
-    Runtime receives per-turn costs and converts them to expected total cost
-    with task_effort / ModelFit.  The compiler already has whole-task cost
-    estimates for accounting, but it must still use per-turn catalog costs for
-    the task-start tier decision.  Mixing those units is exactly how the 4x25
-    plan mis-projected task-level BudgetFlow as near-all-T2.
+    Both compiler and runtime call task_start_tier_decision so the projection
+    cannot fork from actual runtime behavior.
 
-    Task-local same-task history is annotation-only: it must not feed the
-    projection's tier fit, or the compiler would lock in routes from
-    historical same-task outcomes.
+    Returns (tier, cost, routing_reason, routing_scores).
     """
     if reference_cost <= 0 and strongest_cost <= 0:
-        return 2, 0.0
+        return 2, 0.0, "reference_frontier", {}
     if reference_cost <= 0:
-        return 3, strongest_cost
+        return 3, strongest_cost, "reference_frontier", {}
     if strongest_cost <= 0:
-        return 2, reference_cost
+        return 2, reference_cost, "reference_frontier", {}
+
     strongest_tier = max((cfg.tier for cfg in MODEL_CATALOG.configs), default=3)
-
     task_value = _task_value_for_projection(task_id, value_features)
+    task_effort = _task_effort_for_projection(task_id, value_features)
     median = _median_task_value_for_projection(value_features)
-    reference_fit = _projection_tier_fit(2, fit_overrides)
-    strongest_fit = _projection_tier_fit(strongest_tier, fit_overrides)
-    fit_gain = max(0.0, strongest_fit - reference_fit)
-    effort_units = _task_effort_for_projection(task_id, value_features)
-    reference_decision_cost = _projection_expected_total_cost(
-        tier=2,
-        effort_units=effort_units,
-        fit=reference_fit,
-    )
-    strongest_decision_cost = _projection_expected_total_cost(
-        tier=strongest_tier,
-        effort_units=effort_units,
-        fit=strongest_fit,
-    )
-    budget_allows = planned_task_budget > 0 and strongest_decision_cost <= planned_task_budget
-    reference_unit_cost = reference_decision_cost / max(effort_units, 0.000001)
-    strongest_unit_cost = strongest_decision_cost / max(effort_units, 0.000001)
-    extra_unit_cost = max(0.0, strongest_unit_cost - reference_unit_cost)
-    effort_multiplier = _projection_effort_multiplier(effort_units)
-    if strongest_decision_cost <= reference_decision_cost:
-        marginal_yield = float("inf") if fit_gain > 0 else 0.0
-    else:
-        marginal_yield = task_value * fit_gain * effort_multiplier / max(extra_unit_cost, 0.000001)
-    threshold = MARGINAL_YIELD_PER_DOLLAR_THRESHOLD * median * (
-        1.0 + TASK_START_PRESSURE_THRESHOLD_MULTIPLIER * max(0.0, budget_pressure)
-    )
-    value_ratio = task_value / max(median, 0.000001)
-    metadata_gate = (
-        value_ratio >= TASK_START_VALUE_RATIO_GATE
-        or (
-            effort_units
-            >= TASK_START_COLD_FRONTIER_EFFORT_THRESHOLD
-            * TASK_START_COLD_FRONTIER_EFFORT_TOLERANCE
-            and task_value >= median
-        )
-        or (effort_units >= TASK_START_HIGH_EFFORT_THRESHOLD and task_value >= median)
-    )
-    decisive_fit_gate = (
-        fit_gain >= TASK_START_DECISIVE_FIT_GAIN
-        and task_value >= TASK_START_MIN_VALUE_FOR_DECISIVE_FIT
-    )
-    paid_upgrade_candidate = (
-        strongest_decision_cost <= reference_decision_cost
-        or decisive_fit_gate
-        or (fit_gain >= TASK_START_PAID_UPGRADE_MIN_FIT_GAIN and metadata_gate)
-    )
-    uncertain_probe = (
-        fit_overrides is None
-        and metadata_gate
-        and budget_allows
-        and planned_task_budget > 0
-        and (planned_task_budget - strongest_decision_cost) / max(planned_task_budget, 0.000001) >= 0.10
-        and budget_pressure <= 0.80
-    )
-    if uncertain_probe:
-        return strongest_tier, strongest_cost
-    if (
-        budget_allows
-        and fit_gain > 0
-        and paid_upgrade_candidate
-        and marginal_yield >= task_start_t3_acceptance_threshold(threshold)
-    ):
-        return strongest_tier, strongest_cost
-    return 2, reference_cost
+    t2_fit = _projection_tier_fit(2, fit_overrides)
+    t3_fit = _projection_tier_fit(strongest_tier, fit_overrides)
+    t2_per_turn = _projection_per_turn_cost(2)
+    t3_per_turn = _projection_per_turn_cost(strongest_tier)
 
+    tier, reason, scores = task_start_tier_decision(
+        task_value=task_value,
+        task_effort=task_effort,
+        tier2_fit=t2_fit,
+        tier3_fit=t3_fit,
+        tier2_per_turn_cost=t2_per_turn,
+        tier3_per_turn_cost=t3_per_turn,
+        budget_pressure=budget_pressure,
+        task_budget=planned_task_budget if planned_task_budget > 0 else None,
+        median_task_value=median,
+        has_trusted_model_fit=(fit_overrides is not None),
+        is_cold_start=(fit_overrides is None),
+    )
 
-def _projection_effort_multiplier(effort_units: float) -> float:
-    return task_start_effort_multiplier(effort_units)
+    if tier == 3:
+        return strongest_tier, strongest_cost, reason, scores
+    return 2, reference_cost, reason, scores
+
 
 
 def _projected_shared_pressure(
@@ -1399,30 +1392,42 @@ def _build_pressure_contract(
 
     if bf_task_util > 0 and isinstance(bf_task_diag, dict) and bf_task_diag:
         degeneration = str(bf_task_diag.get("degeneration") or "")
-        tier_counts = bf_task_diag.get("projected_tier_counts") or {}
-        strongest_fraction = float(bf_task_diag.get("projected_strongest_task_fraction") or 0.0)
+        tier_counts = bf_task_diag.get("runtime_projected_tier_counts") or {}
+        strongest_fraction = float(bf_task_diag.get("runtime_projected_strongest_task_fraction") or 0.0)
+        stage_prefix_degeneration = str(bf_task_diag.get("stage_prefix_degeneration") or "")
+        stage_prefix_count = int(bf_task_diag.get("stage_prefix_count") or 0)
+        stage_prefix_counts = bf_task_diag.get("stage_prefix_runtime_projected_tier_counts") or {}
+        if stage_prefix_count > 0 and stage_prefix_degeneration in {
+            "pure_reference_tier",
+            "pure_strongest_tier",
+        }:
+            if stage_prefix_degeneration == "pure_reference_tier":
+                violations.append(
+                    "budgetflow_task_level_stage_prefix_degenerated: "
+                    f"stage-prefix task-level policy uses zero Strongest Model tasks "
+                    f"over the first {stage_prefix_count} staged tasks"
+                )
+            else:
+                violations.append(
+                    "budgetflow_task_level_stage_prefix_degenerated: "
+                    f"stage-prefix task-level policy uses only Strongest Model tasks "
+                    f"over the first {stage_prefix_count} staged tasks"
+                )
+        elif stage_prefix_count > 0:
+            assertions.append(
+                "budgetflow_task_level_stage_prefix_mixed: projected staged prefix uses "
+                f"mixed tiers over first {stage_prefix_count} tasks ({stage_prefix_counts})"
+            )
         if degeneration == "pure_reference_tier":
-            if (plan.frontier_diagnostic or {}).get("posture") == "reference_cost_dominant":
-                assertions.append(
-                    "budgetflow_task_level_frontier_reference: projected task-level policy uses "
-                    "zero Strongest Model tasks because the reference tier is cost-dominant"
-                )
-            else:
-                violations.append(
-                    "budgetflow_task_level_degenerated: projected task-level policy uses "
-                    "zero Strongest Model tasks under compiled task budgets"
-                )
+            violations.append(
+                "budgetflow_task_level_degenerated: projected task-level policy uses "
+                "zero Strongest Model tasks under compiled task budgets"
+            )
         elif degeneration == "pure_strongest_tier":
-            if (plan.frontier_diagnostic or {}).get("posture") == "strongest_cost_dominant":
-                assertions.append(
-                    "budgetflow_task_level_frontier_strongest: projected task-level policy uses "
-                    "only Strongest Model tasks because the Strongest Model is cost-dominant"
-                )
-            else:
-                violations.append(
-                    "budgetflow_task_level_degenerated: projected task-level policy uses "
-                    "only Strongest Model tasks under compiled task budgets"
-                )
+            violations.append(
+                "budgetflow_task_level_degenerated: projected task-level policy uses "
+                "only Strongest Model tasks under compiled task budgets"
+            )
         else:
             assertions.append(
                 "budgetflow_task_level_mixed: projected task-level policy uses "
@@ -1550,8 +1555,6 @@ def _apply_pressure_contract_gate(plan: BudgetBindingPlan) -> None:
 
 
 def _apply_task_level_degeneracy_gate(plan: BudgetBindingPlan) -> None:
-    if not isinstance(plan.model_fit_evidence, dict):
-        return
     task_diag = (
         (plan.projection_diagnostics or {}).get("budgetflow_task_level")
         if isinstance(plan.projection_diagnostics, dict)
@@ -1560,13 +1563,22 @@ def _apply_task_level_degeneracy_gate(plan: BudgetBindingPlan) -> None:
     if not isinstance(task_diag, dict):
         return
     degeneration = str(task_diag.get("degeneration") or "")
-    if degeneration not in {"pure_reference_tier", "pure_strongest_tier"}:
+    stage_prefix_degeneration = str(task_diag.get("stage_prefix_degeneration") or "")
+    if degeneration not in {"pure_reference_tier", "pure_strongest_tier"} and stage_prefix_degeneration not in {
+        "pure_reference_tier",
+        "pure_strongest_tier",
+    }:
         return
     if plan.decision != "BLOCK":
         plan.decision = "BLOCK"
+    blocked_shape = (
+        f"stage_prefix_{stage_prefix_degeneration}"
+        if stage_prefix_degeneration in {"pure_reference_tier", "pure_strongest_tier"}
+        else degeneration
+    )
     plan.reasons.append(
         "TASK_LEVEL_GATE BLOCK: budgetflow_task_level projection degenerates "
-        f"to {degeneration}; value-aware task-level paid plans must preserve "
+        f"to {blocked_shape}; value-aware task-level paid plans must preserve "
         "a real T2/T3 frontier or be run as explicit pure-tier controls"
     )
 
@@ -1757,129 +1769,18 @@ def _latest_records_by_strategy_task(jsonl_path: Path) -> dict[tuple[str, str], 
     return {key: rec for key, (_finished_at, _order, rec) in latest.items()}
 
 
-def _build_same_task_fit_overrides(
-    jsonl_path: Path,
-    task_ids: list[str],
-    value_features: dict[str, dict],
-    *,
-    base_fit_overrides: dict[int, float] | None,
-    audit_reasons: list[str] | None = None,
-) -> dict[str, dict[str, Any]]:
-    """Build task-local ModelFit overrides from clean same-task boundary wins.
-
-    This is deliberately narrow: a clean same-catalog T2 pass that is no more
-    expensive than same-task T3 evidence is evidence that the task sits on the
-    reference frontier.  It is still ModelFit evidence, not a direct model
-    assignment.
-    """
-    latest = _latest_records_by_strategy_task(jsonl_path)
-    by_task: dict[str, list[dict]] = {}
-    for (_strategy, instance_id), rec in latest.items():
-        by_task.setdefault(instance_id, []).append(rec)
-    task_id_set = set(task_ids)
-    overrides: dict[str, dict[str, Any]] = {}
-    strongest_tier = max((cfg.tier for cfg in MODEL_CATALOG.configs), default=3)
-    reference_fit = _projection_tier_fit(2, base_fit_overrides)
-    strongest_fit = _projection_tier_fit(strongest_tier, base_fit_overrides)
-
-    for task_id in task_ids:
-        t2 = _best_clean_single_tier_row(by_task.get(task_id, []), tier=2, require_pass=True)
-        if t2 is None:
-            continue
-        t2_cost = float(t2.get("total_cost") or t2.get("scoreable_cost") or 0.0)
-        if t2_cost <= 0:
-            continue
-        t3 = _best_clean_single_tier_row(by_task.get(task_id, []), tier=strongest_tier, require_pass=True)
-        t3_cost = float(t3.get("total_cost") or t3.get("scoreable_cost") or 0.0) if t3 else 0.0
-        t3_pass = t3 is not None
-        if t3_pass and t3_cost > 0 and t3_cost < t2_cost * 0.95:
-            continue
-
-        effort = _task_effort_for_projection(task_id, value_features)
-        per_turn = _projection_per_turn_cost(2)
-        observed_fit = max(0.001, min(1.0, (effort * per_turn) / t2_cost))
-        # A same-task clean T2 pass with no cheaper clean T3 pass means the
-        # local frontier is at least reference-tier competitive.  Do not let a
-        # workload-level T3 fit prior erase that task-local boundary.
-        anchored_t2_fit = max(reference_fit, observed_fit, strongest_fit)
-        overrides[task_id] = {
-            "tier_fit": {
-                "tier2": round(min(1.0, anchored_t2_fit), 6),
-                f"tier{strongest_tier}": round(min(strongest_fit, anchored_t2_fit), 6),
-            },
-            "source": "same_task_clean_t2_success",
-            "evidence": {
-                "tier2_cost_usd": round(t2_cost, 4),
-                "tier3_cost_usd": round(t3_cost, 4) if t3_cost > 0 else None,
-                "tier3_clean_pass": bool(t3_pass),
-                "tier2_evidence_strategy": str(t2.get("strategy") or ""),
-                "tier3_evidence_strategy": str(t3.get("strategy") or "") if t3 else None,
-            },
-        }
-    if overrides and audit_reasons is not None:
-        in_scope = [task_id for task_id in overrides if task_id in task_id_set]
-        audit_reasons.append(
-            "calibration:task_tier_fit_overrides same_task_clean_t2_success "
-            f"tasks={len(in_scope)}"
-        )
-    return overrides
-
-
-def _best_clean_single_tier_row(rows: list[dict], *, tier: int, require_pass: bool) -> dict | None:
-    candidates: list[dict] = []
-    for row in rows:
-        if require_pass and not _row_is_clean_pass(row):
-            continue
-        if not require_pass:
-            eligible, _reason = _row_is_calibration_eligible(row, allow_budget_exhausted=False)
-            if not eligible:
-                continue
-            catalog_ok, _catalog_reason = catalog_record_exact_match(row.get("catalog") or {})
-            if not catalog_ok:
-                continue
-        if not _row_uses_single_tier(row, tier):
-            continue
-        candidates.append(row)
-    if not candidates:
-        return None
-    return min(candidates, key=lambda row: float(row.get("total_cost") or row.get("scoreable_cost") or 0.0))
-
-
-def _row_uses_single_tier(row: dict, tier: int) -> bool:
-    backend = f"tier{tier}"
-    picks = row.get("backend_picks")
-    if isinstance(picks, list) and picks:
-        return all(str(pick) == backend or str(pick) == str(tier) for pick in picks)
-    strategy = str(row.get("strategy") or "")
-    if tier == 2:
-        return strategy in {"bare_t2_baseline", "budget_only_t2", "all_tier2"}
-    strongest_tier = max((cfg.tier for cfg in MODEL_CATALOG.configs), default=3)
-    if tier == strongest_tier:
-        return strategy in {"bare_t3_baseline", "all_t3", "all_pro", "all_strongest_model"}
-    return False
-
-
-def _row_is_clean_pass(row: dict | None) -> bool:
-    if not isinstance(row, dict):
-        return False
-    eligible, _reason = _row_is_calibration_eligible(row, allow_budget_exhausted=False)
-    if not eligible:
-        return False
-    catalog_ok, _catalog_reason = catalog_record_exact_match(row.get("catalog") or {})
-    if not catalog_ok:
-        return False
-    if str(row.get("score_status") or "") != "pass":
-        return False
-    return True
-
-
 def _row_is_budget_exhausted(row: dict) -> bool:
     return record_is_budget_exhausted(row)
 
 
 def _row_catalog_compatible(row_catalog: dict) -> tuple[bool, str]:
-    """Current cost observations must use the active catalog units."""
-    return catalog_record_compatible(row_catalog)
+    """Active cost calibration requires the same physical catalog."""
+    ok, reason = catalog_record_exact_match(row_catalog)
+    if ok:
+        return True, "clean"
+    if reason == "catalog_physical_mismatch":
+        return False, "catalog_mismatch"
+    return False, reason
 
 
 def _model_fit_catalog_provenance() -> dict[str, str]:
@@ -2109,6 +2010,7 @@ def _cold_start_cost_estimate(
         projection.backend,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
+        turn_index=TASK_LEVEL_DECISION_TURN_INDEX,
     )
 
     def _tier_fit(tier: int, fallback: float) -> float:

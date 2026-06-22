@@ -857,6 +857,27 @@ def test_harness_trust_blocks_host_dependency_version_mismatch() -> None:
     assert trust["harness_owner"] == "infra"
 
 
+def test_harness_trust_blocks_repo_extension_startup_import_failure() -> None:
+    trust = build_harness_trust({
+        "harness_resolved": False,
+        "patch_extracted": True,
+        "patch_source": "workspace_diff",
+        "workspace_patch": "/tmp/workspace.patch",
+        "detail": (
+            "test_patch=ok; fail_before=fail; model_patch=ok; fail_after=fail; "
+            "ConftestImportFailure: ImportError: cannot import name '_c_internal_utils' "
+            "from partially initialized module 'matplotlib' "
+            "(/tmp/budgetflow-runtime/worktrees/matplotlib__matplotlib/wk/lib/matplotlib/__init__.py) "
+            "(from /tmp/budgetflow-runtime/worktrees/matplotlib__matplotlib/wk/lib/matplotlib/tests/conftest.py); "
+            "pass_to_pass=fail"
+        ),
+    })
+
+    assert trust["harness_trust"] == "invalid"
+    assert trust["severity"] == "blocking"
+    assert trust["harness_owner"] == "infra"
+
+
 def test_harness_trust_blocks_foreign_runtime_worktree_log() -> None:
     trust = build_harness_trust({
         "harness_resolved": False,

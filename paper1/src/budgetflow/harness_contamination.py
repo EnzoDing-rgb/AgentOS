@@ -11,6 +11,7 @@ HOST_DEPENDENCY_CONTAMINATION_MARKERS = (
     "host_dependency_contamination:",
     "numpy.dtype size changed",
     "_ARRAY_API not found",
+    "ImportError: cannot import name '_c_internal_utils'",
     "module 'matplotlib.cm' has no attribute 'register_cmap'",
     "opik/evaluation/metrics",
     "site-packages/tensorflow",

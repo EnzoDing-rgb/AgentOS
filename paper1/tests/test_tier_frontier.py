@@ -99,6 +99,7 @@ class TestTierFrontierCalibration:
                     "cost_per_input_token": 0.0003,
                     "cost_per_output_token": 0.0015,
                     "display": "tier1",
+                    "max_turns": 35,
                     "progress_prior": {"localization": 0.5, "repair": 0.38, "validation": 0.45},
                 })(),
                 type("c2", (), {

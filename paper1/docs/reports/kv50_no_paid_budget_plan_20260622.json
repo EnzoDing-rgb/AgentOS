@@ -1,0 +1,391 @@
+{
+  "hard_cap_usd": 10.125,
+  "source": "budget_binding_calibrator",
+  "generation_mode": "target_utilization",
+  "catalog_revision": "2026-06-22-deepseek-v4-pro-t2-t3x5-kv50",
+  "catalog_semantic_revision": "t2-normalized-v1-t3x5-kv50",
+  "catalog_path": "/root/.dev/AgentOS/paper1/docs/config/model_tiers.kv50.json",
+  "catalog_content_hash": "a010638d435c",
+  "historical_source": "bootstrap_estimate",
+  "task_ids": [
+    "sympy__sympy-18199",
+    "sympy__sympy-20322",
+    "sympy__sympy-19254",
+    "sympy__sympy-14308",
+    "sympy__sympy-14317",
+    "sympy__sympy-20049",
+    "sympy__sympy-20639",
+    "sympy__sympy-20154",
+    "sympy__sympy-18835",
+    "sympy__sympy-15011",
+    "sympy__sympy-23117",
+    "sympy__sympy-16792",
+    "sympy__sympy-19007",
+    "sympy__sympy-12419",
+    "sympy__sympy-21055",
+    "sympy__sympy-23191",
+    "sympy__sympy-18698",
+    "sympy__sympy-16503",
+    "sympy__sympy-24909",
+    "sympy__sympy-18087"
+  ],
+  "strategy_names": [
+    "bare_t2_baseline",
+    "bare_t3_baseline",
+    "budgetflow_task_level"
+  ],
+  "projected_spend_by_strategy": {
+    "bare_t2_baseline": 2.3625,
+    "bare_t3_baseline": 8.1,
+    "budgetflow_task_level": 3.2231
+  },
+  "projected_task_cost_by_strategy": {
+    "bare_t2_baseline": {
+      "sympy__sympy-18199": 0.1181,
+      "sympy__sympy-20322": 0.1181,
+      "sympy__sympy-19254": 0.1181,
+      "sympy__sympy-14308": 0.1181,
+      "sympy__sympy-14317": 0.1181,
+      "sympy__sympy-20049": 0.1181,
+      "sympy__sympy-20639": 0.1181,
+      "sympy__sympy-20154": 0.1181,
+      "sympy__sympy-18835": 0.1181,
+      "sympy__sympy-15011": 0.1181,
+      "sympy__sympy-23117": 0.1181,
+      "sympy__sympy-16792": 0.1181,
+      "sympy__sympy-19007": 0.1181,
+      "sympy__sympy-12419": 0.1181,
+      "sympy__sympy-21055": 0.1181,
+      "sympy__sympy-23191": 0.1181,
+      "sympy__sympy-18698": 0.1181,
+      "sympy__sympy-16503": 0.1181,
+      "sympy__sympy-24909": 0.1181,
+      "sympy__sympy-18087": 0.1181
+    },
+    "bare_t3_baseline": {
+      "sympy__sympy-18199": 0.405,
+      "sympy__sympy-20322": 0.405,
+      "sympy__sympy-19254": 0.405,
+      "sympy__sympy-14308": 0.405,
+      "sympy__sympy-14317": 0.405,
+      "sympy__sympy-20049": 0.405,
+      "sympy__sympy-20639": 0.405,
+      "sympy__sympy-20154": 0.405,
+      "sympy__sympy-18835": 0.405,
+      "sympy__sympy-15011": 0.405,
+      "sympy__sympy-23117": 0.405,
+      "sympy__sympy-16792": 0.405,
+      "sympy__sympy-19007": 0.405,
+      "sympy__sympy-12419": 0.405,
+      "sympy__sympy-21055": 0.405,
+      "sympy__sympy-23191": 0.405,
+      "sympy__sympy-18698": 0.405,
+      "sympy__sympy-16503": 0.405,
+      "sympy__sympy-24909": 0.405,
+      "sympy__sympy-18087": 0.405
+    },
+    "budgetflow_task_level": {
+      "sympy__sympy-18199": 0.1181,
+      "sympy__sympy-20322": 0.1181,
+      "sympy__sympy-19254": 0.1181,
+      "sympy__sympy-14308": 0.1181,
+      "sympy__sympy-14317": 0.1181,
+      "sympy__sympy-20049": 0.1181,
+      "sympy__sympy-20639": 0.1181,
+      "sympy__sympy-20154": 0.1181,
+      "sympy__sympy-18835": 0.1181,
+      "sympy__sympy-15011": 0.1181,
+      "sympy__sympy-23117": 0.1181,
+      "sympy__sympy-16792": 0.1181,
+      "sympy__sympy-19007": 0.1181,
+      "sympy__sympy-12419": 0.1181,
+      "sympy__sympy-21055": 0.1181,
+      "sympy__sympy-23191": 0.1181,
+      "sympy__sympy-18698": 0.1181,
+      "sympy__sympy-16503": 0.405,
+      "sympy__sympy-24909": 0.405,
+      "sympy__sympy-18087": 0.405
+    }
+  },
+  "cap_generation_projected_spend_by_strategy": {
+    "bare_t2_baseline": 2.3625,
+    "bare_t3_baseline": 8.1,
+    "budgetflow_task_level": 2.3625
+  },
+  "projected_utilization_by_strategy": {
+    "bare_t2_baseline": 0.2333,
+    "bare_t3_baseline": 0.8,
+    "budgetflow_task_level": 0.3183
+  },
+  "raw_projected_utilization_by_strategy": {
+    "bare_t2_baseline": 0.2333,
+    "bare_t3_baseline": 0.8,
+    "budgetflow_task_level": 0.3183
+  },
+  "reference_spend_usd": 8.1,
+  "strongest_boundary_usd": 8.1,
+  "max_projected_spend_usd": 8.1,
+  "decision": "PASS",
+  "reasons": [
+    "calibration:bare_t2_baseline n=0 (no historical data, projection uses bootstrap_estimate)",
+    "calibration:bare_t3_baseline n=0 (no historical data, projection uses bootstrap_estimate)",
+    "calibration:budgetflow_task_level n=0 (no historical data, projection uses bootstrap_estimate)",
+    "reference_rule: strategy_set_p75_projected_spend = $8.1000",
+    "hard_cap = p75_ref($8.1000) / target_utilization(0.8) = $10.1250",
+    "strongest_runway_floor: hard_cap must be at least $7.6950 so the Strongest Model baseline reaches the final task before budget pressure dominates",
+    "strongest_boundary: bare_t3_baseline projected spend $8.1000; recorded for pressure audit, not a hard cap",
+    "planned_task_budget: BudgetFlow active policies get loose task budgets derived from projected task costs; sums may exceed hard_cap and runtime still enforces the shared batch hard cap",
+    "task_level_policy_projection: planned-budget tier mix tier2=17, tier3=3",
+    "runtime_projection: budgetflow_task_level projected_spend_by_strategy uses task-level runtime-choice diagnostic; cap_generation_projected_spend keeps the pre-routing cap source",
+    "frontier_diagnostic: posture=mixed_or_unproven ratio=3.429 fit_delta=0.1100; projected cost is available without trusted ModelFit; frontier dominance is unproven",
+    "pressure_contract: grade=pass",
+    "pressure_contract: t2_diagnostic: bare_t2_baseline at 23.3%; not a pressure-ordering constraint",
+    "pressure_contract: t3_tight: bare_t3_baseline at 80.0% >= 68% \u2014 budget-constrained as expected",
+    "pressure_contract: budgetflow_task_level_mixed: projected task-level policy uses Strongest Model on 15.0% of tasks ({'tier2': 17, 'tier3': 3})",
+    "decision=PASS: hard_cap=$10.13 from target pressure with strongest boundary, max projected utilization 80.0%",
+    "projection_confidence=unvalidated: no calibration evidence provided. Run one diagnostic calibration audit before relying on projected utilization."
+  ],
+  "pressure_contract": {
+    "pressure_mode": "target_utilization",
+    "target_utilization": 0.8,
+    "target_pressure_fraction": 0.8,
+    "budget_pressure_spec": {
+      "mode": "target_utilization",
+      "target_utilization": 0.8
+    },
+    "shape": {
+      "bare_t2_baseline": 0.2333,
+      "bare_t3_baseline": 0.8,
+      "enterprise_router_baseline": null,
+      "budgetflow_same_enterprise_router": null,
+      "budgetflow_task_level": 0.3183,
+      "budgetflow_segment": null
+    },
+    "assertions": [
+      "t2_diagnostic: bare_t2_baseline at 23.3%; not a pressure-ordering constraint",
+      "t3_tight: bare_t3_baseline at 80.0% >= 68% \u2014 budget-constrained as expected",
+      "budgetflow_task_level_mixed: projected task-level policy uses Strongest Model on 15.0% of tasks ({'tier2': 17, 'tier3': 3})"
+    ],
+    "violations": [],
+    "grade": "pass"
+  },
+  "projection_confidence": "unvalidated",
+  "target_projected_utilization": 0.8,
+  "budget_pressure_spec": {
+    "mode": "target_utilization",
+    "target_utilization": 0.8
+  },
+  "planned_task_budget_by_strategy": {
+    "budgetflow_task_level": {
+      "sympy__sympy-18199": 3.074,
+      "sympy__sympy-20322": 3.074,
+      "sympy__sympy-19254": 3.074,
+      "sympy__sympy-14308": 3.074,
+      "sympy__sympy-14317": 3.074,
+      "sympy__sympy-20049": 3.074,
+      "sympy__sympy-20639": 3.074,
+      "sympy__sympy-20154": 3.074,
+      "sympy__sympy-18835": 3.074,
+      "sympy__sympy-15011": 3.074,
+      "sympy__sympy-23117": 3.074,
+      "sympy__sympy-16792": 3.074,
+      "sympy__sympy-19007": 3.074,
+      "sympy__sympy-12419": 3.074,
+      "sympy__sympy-21055": 3.074,
+      "sympy__sympy-23191": 3.074,
+      "sympy__sympy-18698": 3.074,
+      "sympy__sympy-16503": 3.074,
+      "sympy__sympy-24909": 3.074,
+      "sympy__sympy-18087": 3.074
+    }
+  },
+  "planned_task_budget_policy": {
+    "mode": "budgetflow_planned_task_budget",
+    "source": "projected_task_cost_by_strategy",
+    "multiplier": 2.0,
+    "min_usd": 0.05,
+    "batch_floor_rule": "hard_cap_usd/sqrt(task_count)+cross_strategy_task_cost_ceiling_multiplier",
+    "sum_can_exceed_hard_cap": true,
+    "applies_to": [
+      "budgetflow_task_level"
+    ]
+  },
+  "projection_diagnostics": {
+    "budgetflow_task_level": {
+      "source": "runtime_policy_projection",
+      "role": "readiness_diagnostic_not_cap_source",
+      "reference_tier": 2,
+      "strongest_tier": 3,
+      "runtime_projected_tier_counts": {
+        "tier2": 17,
+        "tier3": 3
+      },
+      "runtime_projected_strongest_task_fraction": 0.15,
+      "projected_spend_usd": 3.2231,
+      "reference_spend_usd": 2.3625,
+      "strongest_spend_usd": 8.1,
+      "projected_to_reference_spend_ratio": 1.3643,
+      "projected_to_strongest_spend_ratio": 0.3979,
+      "degeneration": "mixed",
+      "stage_prefix_count": 0,
+      "stage_prefix_runtime_projected_tier_counts": {},
+      "stage_prefix_runtime_projected_strongest_task_fraction": null,
+      "stage_prefix_degeneration": "not_applicable",
+      "runtime_projection_source": "task_level_router_formula",
+      "task_choices": {
+        "sympy__sympy-18199": {
+          "runtime_projected_tier": 2,
+          "projected_cost_usd": 0.1181,
+          "planned_task_budget_usd": 3.074,
+          "effective_task_budget_usd": 0.5063,
+          "budget_pressure": 0.01
+        },
+        "sympy__sympy-20322": {
+          "runtime_projected_tier": 2,
+          "projected_cost_usd": 0.1181,
+          "planned_task_budget_usd": 3.074,
+          "effective_task_budget_usd": 0.5267,
+          "budget_pressure": 0.0274
+        },
+        "sympy__sympy-19254": {
+          "runtime_projected_tier": 2,
+          "projected_cost_usd": 0.1181,
+          "planned_task_budget_usd": 3.074,
+          "effective_task_budget_usd": 0.5494,
+          "budget_pressure": 0.0448
+        },
+        "sympy__sympy-14308": {
+          "runtime_projected_tier": 2,
+          "projected_cost_usd": 0.1181,
+          "planned_task_budget_usd": 3.074,
+          "effective_task_budget_usd": 0.5747,
+          "budget_pressure": 0.0621
+        },
+        "sympy__sympy-14317": {
+          "runtime_projected_tier": 2,
+          "projected_cost_usd": 0.1181,
+          "planned_task_budget_usd": 3.074,
+          "effective_task_budget_usd": 0.6033,
+          "budget_pressure": 0.0795
+        },
+        "sympy__sympy-20049": {
+          "runtime_projected_tier": 2,
+          "projected_cost_usd": 0.1181,
+          "planned_task_budget_usd": 3.074,
+          "effective_task_budget_usd": 0.6356,
+          "budget_pressure": 0.0969
+        },
+        "sympy__sympy-20639": {
+          "runtime_projected_tier": 2,
+          "projected_cost_usd": 0.1181,
+          "planned_task_budget_usd": 3.074,
+          "effective_task_budget_usd": 0.6726,
+          "budget_pressure": 0.1143
+        },
+        "sympy__sympy-20154": {
+          "runtime_projected_tier": 2,
+          "projected_cost_usd": 0.1181,
+          "planned_task_budget_usd": 3.074,
+          "effective_task_budget_usd": 0.7152,
+          "budget_pressure": 0.1317
+        },
+        "sympy__sympy-18835": {
+          "runtime_projected_tier": 2,
+          "projected_cost_usd": 0.1181,
+          "planned_task_budget_usd": 3.074,
+          "effective_task_budget_usd": 0.765,
+          "budget_pressure": 0.1491
+        },
+        "sympy__sympy-15011": {
+          "runtime_projected_tier": 2,
+          "projected_cost_usd": 0.1181,
+          "planned_task_budget_usd": 3.074,
+          "effective_task_budget_usd": 0.8238,
+          "budget_pressure": 0.1664
+        },
+        "sympy__sympy-23117": {
+          "runtime_projected_tier": 2,
+          "projected_cost_usd": 0.1181,
+          "planned_task_budget_usd": 3.074,
+          "effective_task_budget_usd": 0.8944,
+          "budget_pressure": 0.1838
+        },
+        "sympy__sympy-16792": {
+          "runtime_projected_tier": 2,
+          "projected_cost_usd": 0.1181,
+          "planned_task_budget_usd": 3.074,
+          "effective_task_budget_usd": 0.9806,
+          "budget_pressure": 0.2012
+        },
+        "sympy__sympy-19007": {
+          "runtime_projected_tier": 2,
+          "projected_cost_usd": 0.1181,
+          "planned_task_budget_usd": 3.074,
+          "effective_task_budget_usd": 1.0884,
+          "budget_pressure": 0.2186
+        },
+        "sympy__sympy-12419": {
+          "runtime_projected_tier": 2,
+          "projected_cost_usd": 0.1181,
+          "planned_task_budget_usd": 3.074,
+          "effective_task_budget_usd": 1.2271,
+          "budget_pressure": 0.236
+        },
+        "sympy__sympy-21055": {
+          "runtime_projected_tier": 2,
+          "projected_cost_usd": 0.1181,
+          "planned_task_budget_usd": 3.074,
+          "effective_task_budget_usd": 1.4119,
+          "budget_pressure": 0.2534
+        },
+        "sympy__sympy-23191": {
+          "runtime_projected_tier": 2,
+          "projected_cost_usd": 0.1181,
+          "planned_task_budget_usd": 3.074,
+          "effective_task_budget_usd": 1.6706,
+          "budget_pressure": 0.2707
+        },
+        "sympy__sympy-18698": {
+          "runtime_projected_tier": 2,
+          "projected_cost_usd": 0.1181,
+          "planned_task_budget_usd": 3.074,
+          "effective_task_budget_usd": 2.0588,
+          "budget_pressure": 0.2881
+        },
+        "sympy__sympy-16503": {
+          "runtime_projected_tier": 3,
+          "projected_cost_usd": 0.405,
+          "planned_task_budget_usd": 3.074,
+          "effective_task_budget_usd": 2.7056,
+          "budget_pressure": 0.3055
+        },
+        "sympy__sympy-24909": {
+          "runtime_projected_tier": 3,
+          "projected_cost_usd": 0.405,
+          "planned_task_budget_usd": 3.074,
+          "effective_task_budget_usd": 3.074,
+          "budget_pressure": 0.3651
+        },
+        "sympy__sympy-18087": {
+          "runtime_projected_tier": 3,
+          "projected_cost_usd": 0.405,
+          "planned_task_budget_usd": 3.074,
+          "effective_task_budget_usd": 3.074,
+          "budget_pressure": 0.4247
+        }
+      }
+    }
+  },
+  "frontier_diagnostic": {
+    "posture": "mixed_or_unproven",
+    "reason": "projected cost is available without trusted ModelFit; frontier dominance is unproven",
+    "bare_t2_projected_spend": 2.3625,
+    "bare_t3_projected_spend": 8.1,
+    "t3_over_t2_spend_ratio": 3.4286,
+    "tier2_model_fit": 0.24,
+    "tier3_model_fit": 0.35,
+    "model_fit_delta": 0.11,
+    "fit_confidence": "untrusted",
+    "scope": "projection_only_not_outcome_evidence"
+  }
+}

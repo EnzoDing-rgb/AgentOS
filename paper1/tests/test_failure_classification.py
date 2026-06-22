@@ -145,6 +145,35 @@ def test_harness_dependency_version_mismatch_is_infra_abort_not_model_fail() -> 
     assert score["abort_reason"] == "host_dependency_contamination"
 
 
+def test_repo_extension_startup_import_failure_is_infra_abort_not_model_fail() -> None:
+    record = {
+        "harness_resolved": False,
+        "patch_extracted": True,
+        "patch_source": "workspace_diff",
+        "workspace_patch": "/tmp/workspace.patch",
+        "agent_gold_edited": True,
+        "agent_gold_files": ["lib/matplotlib/figure.py"],
+        "exit_status": "HarnessFailed",
+        "exit_reason": "harness_failed",
+        "detail": (
+            "test_patch=ok; fail_before=fail; model_patch=ok; fail_after=fail; "
+            "ConftestImportFailure: ImportError: cannot import name '_c_internal_utils' "
+            "from partially initialized module 'matplotlib' "
+            "(/tmp/budgetflow-runtime/worktrees/matplotlib__matplotlib/wk/lib/matplotlib/__init__.py) "
+            "(from /tmp/budgetflow-runtime/worktrees/matplotlib__matplotlib/wk/lib/matplotlib/tests/conftest.py); "
+            "pass_to_pass=fail"
+        ),
+        "turn_trace_count": 1,
+        "turn_traces": [{}],
+    }
+
+    assert classify_failure(record) == "infra_fail"
+    score = build_score_status(record)
+    assert score["score_status"] == "abort"
+    assert score["abort_owner"] == "infra"
+    assert score["abort_reason"] == "host_dependency_contamination"
+
+
 def test_model_introduced_missing_module_is_model_fail_not_infra_abort() -> None:
     record = {
         "instance_id": "sympy__sympy-99999",

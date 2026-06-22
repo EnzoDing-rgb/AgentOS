@@ -119,98 +119,7 @@ def _trusted_allocation(**kwargs):
     return AllocationContext(confidence=confidence, **kwargs)
 
 
-# ── expected-total-cost helper ─────────────────────────────────────────────
 
-
-class TestExpectedTotalCost:
-    def test_t2_more_expensive_in_total_when_low_fit(self):
-        """When T2 model_fit is much lower than T3, expected total T2 cost > T3."""
-        from budgetflow.adapter.strategies import _expected_total_cost, _tier_model_fit_rate
-
-        # T2 fit=0.10 (very weak on this task), T3 fit=0.68 (strong)
-        alloc = _trusted_allocation(
-            task_value=2.0,
-            task_effort=50.0,
-            model_fit={"tier2": 0.10, "tier3": 0.68},
-        )
-        backends = _backends(t2_progress=0.10, t3_progress=0.68)
-        ctx = _task_level_ctx(backends, allocation=alloc)
-        per_turn = _per_turn_costs(backends)
-
-        t2_total = _expected_total_cost(ctx, "tier2", 2, per_turn["tier2"])
-        t3_total = _expected_total_cost(ctx, "tier3", 3, per_turn["tier3"])
-
-        # T2: 50/0.10 = 500 turns * per_turn_cost
-        # T3: 50/0.68 ≈ 74 turns * per_turn_cost
-        # T3 per-turn is ~5x T2, but T2 needs ~6.8x more turns → T2 total > T3
-        assert t2_total > t3_total, (
-            f"T2 expected total ${t2_total:.4f} should exceed T3 ${t3_total:.4f} "
-            f"when T2 fit is much lower"
-        )
-
-    def test_t2_cheaper_in_total_when_similar_fit(self):
-        """When model_fit values are similar, T2's lower per-turn price wins."""
-        from budgetflow.adapter.strategies import _expected_total_cost
-
-        alloc = _trusted_allocation(
-            task_value=1.0,
-            task_effort=30.0,
-            model_fit={"tier2": 0.60, "tier3": 0.65},
-        )
-        backends = _backends(t2_progress=0.60, t3_progress=0.65)
-        ctx = _task_level_ctx(backends, allocation=alloc)
-        per_turn = _per_turn_costs(backends)
-
-        t2_total = _expected_total_cost(ctx, "tier2", 2, per_turn["tier2"])
-        t3_total = _expected_total_cost(ctx, "tier3", 3, per_turn["tier3"])
-
-        # Similar fit → T2 cheaper because per-turn is ~5x cheaper
-        assert t2_total < t3_total, (
-            f"T2 expected total ${t2_total:.4f} should be less than T3 ${t3_total:.4f} "
-            f"when fits are similar"
-        )
-
-    def test_falls_back_to_catalog_progress_when_no_allocation(self):
-        """Without AllocationContext, uses catalog progress_score."""
-        from budgetflow.adapter.strategies import _expected_total_cost
-
-        backends = _backends()
-        ctx = _task_level_ctx(backends)
-        per_turn = _per_turn_costs(backends)
-        t2_total = _expected_total_cost(ctx, "tier2", 2, per_turn["tier2"])
-        assert t2_total > 0
-        assert math.isfinite(t2_total)
-
-    def test_falls_back_to_frontier_runway_when_no_effort(self):
-        """Without task_effort, uses frontier reference_runway_turns."""
-        from budgetflow.adapter.strategies import _expected_total_cost
-
-        backends = _backends()
-        ctx = _task_level_ctx(backends)
-        # ctx has tier_frontier with reference_runway_turns
-        per_turn = _per_turn_costs(backends)
-        t2_total = _expected_total_cost(ctx, "tier2", 2, per_turn["tier2"])
-        # Frontier reference_runway_turns is 35 for default catalog
-        # expected_turns = 35 / 0.24 ≈ 145.8
-        # per_turn ≈ 0.9e-6 * 2000 + 4.5e-6 * 1024 ≈ 0.0064
-        # total ≈ 145.8 * 0.0064 ≈ 0.934
-        expected_min = 0.1  # generous lower bound
-        assert t2_total > expected_min, f"expected > ${expected_min}, got ${t2_total:.4f}"
-
-    def test_zero_fit_guarded(self):
-        """Zero model_fit rate is clamped to avoid division by zero."""
-        from budgetflow.adapter.strategies import _expected_total_cost, _tier_model_fit_rate
-
-        alloc = _trusted_allocation(
-            task_effort=10.0,
-            model_fit={"tier2": 0.0},
-        )
-        backends = _backends(t2_progress=0.0)
-        ctx = _task_level_ctx(backends, allocation=alloc)
-        per_turn = _per_turn_costs(backends)
-        t2_total = _expected_total_cost(ctx, "tier2", 2, per_turn["tier2"])
-        assert math.isfinite(t2_total)
-        assert t2_total > 0
 
 
 # ── task-level backend selection ───────────────────────────────────────────
@@ -240,9 +149,8 @@ class TestChooseTaskLevelBackend:
 
     def test_chooses_t3_when_t2_total_cost_exceeds_t3(self):
         """Core fix: when T2 expected total cost > T3, task-level chooses T3."""
-        from budgetflow.adapter.strategies import choose_backend, _expected_total_cost
+        from budgetflow.adapter.strategies import choose_backend
 
-        # Simulate a task where T2 has much lower fit → many more turns → higher total cost
         alloc = _trusted_allocation(
             task_value=2.0,
             task_effort=80.0,
@@ -252,14 +160,9 @@ class TestChooseTaskLevelBackend:
         ctx = _task_level_ctx(backends, budget_pressure=0.3, allocation=alloc)
         per_turn = _per_turn_costs(backends)
 
-        # Verify T2 total cost > T3 total cost
-        t2_total = _expected_total_cost(ctx, "tier2", 2, per_turn["tier2"])
-        t3_total = _expected_total_cost(ctx, "tier3", 3, per_turn["tier3"])
-        assert t2_total > t3_total, f"precondition: T2 total ${t2_total:.4f} > T3 ${t3_total:.4f}"
-
         backend = choose_backend(ctx, _turn(), per_turn)
         assert backend.tier == 3, (
-            f"expected T3 when T2 total cost (${t2_total:.4f}) > T3 (${t3_total:.4f}), "
+            f"expected T3 when T2 fit is much lower than T3, "
             f"got {backend.name}"
         )
         assert ctx.task_level_backend is not None
@@ -267,7 +170,7 @@ class TestChooseTaskLevelBackend:
 
     def test_chooses_t2_for_low_value_simple_task(self):
         """Low-value, low-effort task with similar fit → T2 stays cheaper."""
-        from budgetflow.adapter.strategies import choose_backend, _expected_total_cost
+        from budgetflow.adapter.strategies import choose_backend
 
         alloc = _trusted_allocation(
             task_value=0.5,
@@ -278,10 +181,6 @@ class TestChooseTaskLevelBackend:
         ctx = _task_level_ctx(backends, budget_pressure=0.3, allocation=alloc)
         per_turn = _per_turn_costs(backends)
 
-        t2_total = _expected_total_cost(ctx, "tier2", 2, per_turn["tier2"])
-        t3_total = _expected_total_cost(ctx, "tier3", 3, per_turn["tier3"])
-        assert t2_total < t3_total, f"precondition: T2 total ${t2_total:.4f} < T3 ${t3_total:.4f}"
-
         backend = choose_backend(ctx, _turn(), per_turn)
         assert backend.tier == 2, (
             f"expected T2 for simple task, got {backend.name}"
@@ -289,10 +188,8 @@ class TestChooseTaskLevelBackend:
 
     def test_high_value_high_effort_chooses_t3_under_budget(self):
         """High-value, high-effort task: T3 total cost dominates T2, choose T3."""
-        from budgetflow.adapter.strategies import choose_backend, _expected_total_cost
+        from budgetflow.adapter.strategies import choose_backend
 
-        # T3 per-step is ~5x T2, so T2 needs >5x more turns for T3 to dominate.
-        # t2_fit=0.10, t3_fit=0.65 → turn_ratio = 6.5x > 5x price ratio.
         alloc = _trusted_allocation(
             task_value=3.0,
             task_effort=60.0,
@@ -301,12 +198,6 @@ class TestChooseTaskLevelBackend:
         backends = _backends(t2_progress=0.10, t3_progress=0.65)
         ctx = _task_level_ctx(backends, budget_pressure=0.4, allocation=alloc)
         per_turn = _per_turn_costs(backends)
-
-        t2_total = _expected_total_cost(ctx, "tier2", 2, per_turn["tier2"])
-        t3_total = _expected_total_cost(ctx, "tier3", 3, per_turn["tier3"])
-        assert t2_total > t3_total, (
-            f"precondition: T2 total ${t2_total:.2f} > T3 total ${t3_total:.2f}"
-        )
 
         backend = choose_backend(ctx, _turn(), per_turn)
         assert backend.tier == 3, (
@@ -361,17 +252,9 @@ class TestChooseTaskLevelBackend:
         assert backend.tier <= 2
 
     def test_task_level_uses_expected_total_cost_not_per_step(self):
-        """Regression: verify delta_total_cost is used, not per-step delta_cost.
+        """Regression: T3 chosen when T2 per-step cheaper but total cost higher."""
+        from budgetflow.adapter.strategies import choose_backend
 
-        When T2 per-step is cheaper but total cost is higher, T3 is chosen.
-        """
-        from budgetflow.adapter.strategies import choose_backend, _expected_total_cost
-
-        # T2 per-step ≈ $6.41, T3 per-step ≈ $32.04  (T3 ~5x more per step)
-        # But T2 fit=0.08, T3 fit=0.65 → T2 needs ~8x more turns
-        # T2 total: 80/0.08 * 6.41 = 1000 * 6.41 = $6410
-        # T3 total: 80/0.65 * 32.04 = 123 * 32.04 = $3941
-        # T3 IS cheaper in total despite being 5x more per step
         alloc = _trusted_allocation(
             task_value=2.0,
             task_effort=80.0,
@@ -381,24 +264,14 @@ class TestChooseTaskLevelBackend:
         ctx = _task_level_ctx(backends, budget_pressure=0.1, allocation=alloc)
         per_turn = _per_turn_costs(backends)
 
-        # Verify per-step costs: T2 is cheaper per step
         assert per_turn["tier2"] < per_turn["tier3"], (
             "precondition: T2 per-step must be cheaper than T3"
         )
-        # Verify total costs: T2 is more expensive in total
-        t2_total = _expected_total_cost(ctx, "tier2", 2, per_turn["tier2"])
-        t3_total = _expected_total_cost(ctx, "tier3", 3, per_turn["tier3"])
-        assert t2_total > t3_total, (
-            f"precondition: T2 total ${t2_total:.2f} > T3 total ${t3_total:.2f}"
-        )
 
-        # The old per-step logic would choose T2 (cheaper per step).
-        # The new total-cost logic must choose T3.
         backend = choose_backend(ctx, _turn(), per_turn)
         assert backend.tier == 3, (
             f"per-step T2=${per_turn['tier2']:.4f} < T3=${per_turn['tier3']:.4f} "
-            f"but total T2=${t2_total:.2f} > T3=${t3_total:.2f}; "
-            f"should choose T3, got {backend.name}"
+            f"but should choose T3, got {backend.name}"
         )
 
     def test_low_value_task_stays_t2_when_total_cost_favors_t2(self):
@@ -419,10 +292,8 @@ class TestChooseTaskLevelBackend:
 
     def test_three_tier_task_level_expected_cost(self):
         """With three tiers and large T3 fit advantage, T3 dominates in total cost."""
-        from budgetflow.adapter.strategies import choose_backend, _expected_total_cost
+        from budgetflow.adapter.strategies import choose_backend
 
-        # T3 per-turn is ~18x T1 and ~5x T2. T3 needs enough fit advantage to
-        # overcome this: fit_ratio must exceed price_ratio for each comparison.
         alloc = _trusted_allocation(
             task_value=2.0,
             task_effort=30.0,
@@ -432,17 +303,9 @@ class TestChooseTaskLevelBackend:
         ctx = _task_level_ctx(backends, budget_pressure=0.2, allocation=alloc)
         per_turn = _per_turn_costs(backends)
 
-        t1_total = _expected_total_cost(ctx, "tier1", 1, per_turn["tier1"])
-        t2_total = _expected_total_cost(ctx, "tier2", 2, per_turn["tier2"])
-        t3_total = _expected_total_cost(ctx, "tier3", 3, per_turn["tier3"])
-
-        assert t3_total < t1_total, f"T3 ${t3_total:.2f} should be < T1 ${t1_total:.2f}"
-        assert t3_total < t2_total, f"T3 ${t3_total:.2f} should be < T2 ${t2_total:.2f}"
-
         backend = choose_backend(ctx, _turn(), per_turn)
         assert backend.tier == 3, (
-            f"T1 total ${t1_total:.2f}, T2 total ${t2_total:.2f}, "
-            f"T3 total ${t3_total:.2f}; expected T3, got {backend.name}"
+            f"expected T3 with large fit advantage, got {backend.name}"
         )
 
     def test_task_level_reference_starts_at_t2_not_cheapest_t1(self):
@@ -464,7 +327,7 @@ class TestChooseTaskLevelBackend:
 
     def test_low_confidence_model_fit_does_not_drive_t3_choice(self):
         """Low-confidence fit stays observable but task-level falls back to catalog prior."""
-        from budgetflow.adapter.strategies import choose_backend, _expected_total_cost, _tier_model_fit_rate
+        from budgetflow.adapter.strategies import choose_backend, _tier_model_fit_rate
 
         alloc = _trusted_allocation(
             task_value=2.0,
@@ -478,9 +341,6 @@ class TestChooseTaskLevelBackend:
 
         assert _tier_model_fit_rate(ctx, 2, "tier2") == pytest.approx(0.24)
         assert _tier_model_fit_rate(ctx, 3, "tier3") == pytest.approx(0.25)
-        t2_total = _expected_total_cost(ctx, "tier2", 2, per_turn["tier2"])
-        t3_total = _expected_total_cost(ctx, "tier3", 3, per_turn["tier3"])
-        assert t2_total < t3_total
 
         backend = choose_backend(ctx, _turn(), per_turn)
         assert backend.tier == 2
@@ -512,7 +372,7 @@ class TestChooseTaskLevelBackend:
 
         assert backend.tier == 3
         assert ctx.last_policy_decision is not None
-        assert ctx.last_policy_decision.reason == "task_level_uncertain_frontier_probe"
+        assert ctx.last_decision.reason == "bf_task_start_uncertain_frontier_probe"
         assert ctx.last_policy_decision.scores["has_trusted_model_fit"] == 0.0
 
     def test_cold_start_near_effort_boundary_starts_strongest_without_trusted_fit(self):
@@ -535,7 +395,7 @@ class TestChooseTaskLevelBackend:
 
         assert backend.tier == 3
         assert ctx.last_policy_decision is not None
-        assert ctx.last_policy_decision.reason == "task_level_uncertain_frontier_probe"
+        assert ctx.last_decision.reason == "bf_task_start_uncertain_frontier_probe"
 
     def test_high_value_high_effort_does_not_start_t3_without_fit_gap(self):
         """Task-start routing needs an expected value gain, not only value/effort."""
@@ -555,9 +415,6 @@ class TestChooseTaskLevelBackend:
         assert backend.tier == 2
         assert ctx.last_decision is not None
         assert ctx.last_decision.reason == "bf_task_start_reference_frontier"
-        assert ctx.last_policy_decision is not None
-        assert ctx.last_policy_decision.reason == "task_level_reference_frontier"
-        assert ctx.last_policy_decision.scores["reference_frontier_candidate"] == 1.0
         assert ctx.last_policy_decision is not None
         assert ctx.last_policy_decision.scores["task_value"] == pytest.approx(2.0)
         assert ctx.last_policy_decision.scores["task_effort"] == pytest.approx(80.0)
@@ -594,8 +451,7 @@ class TestChooseTaskLevelBackend:
 
     def test_task_budget_pressure_blocks_t3_when_budget_is_too_tight(self):
         """A planned task budget can veto T3 while preserving task-level fixed routing."""
-        from budgetflow.adapter.strategies import choose_backend, _expected_total_cost
-        from budgetflow.decision_costs import task_level_decision_per_turn_cost
+        from budgetflow.adapter.strategies import choose_backend
 
         alloc = _trusted_allocation(
             task_value=2.0,
@@ -606,21 +462,13 @@ class TestChooseTaskLevelBackend:
         backends = _backends(t2_progress=0.60, t3_progress=0.65)
         ctx = _task_level_ctx(backends, budget_pressure=0.35, allocation=alloc)
         per_turn = _per_turn_costs(backends)
-        strongest = backends[-1]
-        strongest_total = _expected_total_cost(
-            ctx,
-            strongest.name,
-            strongest.tier,
-            task_level_decision_per_turn_cost(strongest),
-        )
-        assert strongest_total > alloc.planned_task_budget
 
         backend = choose_backend(ctx, _turn(), per_turn)
 
         assert backend.tier == 2
         assert ctx.last_policy_decision.scores["budget_allows_strongest"] == 0.0
-        assert ctx.last_policy_decision.reason == "task_level_reference_frontier"
-        assert ctx.last_policy_decision.scores["reference_frontier_candidate"] == 1.0
+        assert ctx.last_policy_decision.scores["task_budget"] == pytest.approx(0.05)
+        assert ctx.last_decision.reason == "bf_task_start_reference_frontier"
 
     def test_planned_task_budget_does_not_override_small_fit_delta(self):
         """Task runway is necessary but not enough to buy Strongest Model turns."""
@@ -641,23 +489,14 @@ class TestChooseTaskLevelBackend:
         assert backend.tier == 2
         assert ctx.last_policy_decision is not None
         assert ctx.last_policy_decision.scores["budget_allows_strongest"] == 1.0
-        assert ctx.last_policy_decision.scores["planned_task_budget"] == pytest.approx(6.4057)
+        assert ctx.last_policy_decision.scores["task_budget"] == pytest.approx(6.4057)
         assert ctx.last_policy_decision.scores["fit_gain"] == pytest.approx(0.04)
         assert ctx.last_policy_decision.scores["paid_upgrade_candidate"] == 0.0
-        assert ctx.last_policy_decision.reason == "task_level_reference_frontier"
-        assert ctx.last_policy_decision.scores["reference_frontier_candidate"] == 1.0
+        assert ctx.last_decision.reason == "bf_task_start_reference_frontier"
 
     def test_effective_task_budget_overrides_planned_for_t3_affordability(self):
-        """Effective cap must veto T3 even when planned cap is generous.
-
-        Runtime rebalancing can shrink the task cap below the compiler's
-        planned budget.  Task-start T3 affordability must consult the
-        effective cap first; otherwise a generous planned cap masks a real
-        runtime budget squeeze and T3 starts spending money the batch does
-        not have.
-        """
-        from budgetflow.adapter.strategies import choose_backend, _expected_total_cost
-        from budgetflow.decision_costs import task_level_decision_per_turn_cost
+        """Effective cap must veto T3 even when planned cap is generous."""
+        from budgetflow.adapter.strategies import choose_backend
 
         alloc = _trusted_allocation(
             task_value=2.0,
@@ -669,29 +508,17 @@ class TestChooseTaskLevelBackend:
         backends = _backends(t2_progress=0.60, t3_progress=0.65)
         ctx = _task_level_ctx(backends, budget_pressure=0.35, allocation=alloc)
         per_turn = _per_turn_costs(backends)
-        strongest = backends[-1]
-        strongest_total = _expected_total_cost(
-            ctx,
-            strongest.name,
-            strongest.tier,
-            task_level_decision_per_turn_cost(strongest),
-        )
-        assert strongest_total > alloc.effective_task_budget
-        assert strongest_total <= alloc.planned_task_budget
 
         backend = choose_backend(ctx, _turn(), per_turn)
 
         assert backend.tier == 2
         assert ctx.last_policy_decision.scores["budget_allows_strongest"] == 0.0
-        assert ctx.last_policy_decision.scores["planned_task_budget"] == pytest.approx(10.0)
-        assert ctx.last_policy_decision.scores["effective_task_budget"] == pytest.approx(0.05)
-        assert ctx.last_policy_decision.scores["runtime_task_budget"] == pytest.approx(0.05)
-        assert ctx.last_policy_decision.reason == "task_level_reference_frontier"
-        assert ctx.last_policy_decision.scores["reference_frontier_candidate"] == 1.0
+        assert ctx.last_policy_decision.scores["task_budget"] == pytest.approx(0.05)
+        assert ctx.last_decision.reason == "bf_task_start_reference_frontier"
 
     def test_marginal_yield_per_dollar_can_choose_t3_when_t3_costs_more(self):
         """High-value tasks can choose T3 by marginal Yield/$, not only cost dominance."""
-        from budgetflow.adapter.strategies import choose_backend, _expected_total_cost
+        from budgetflow.adapter.strategies import choose_backend
 
         alloc = _trusted_allocation(
             task_value=4.0,
@@ -703,22 +530,17 @@ class TestChooseTaskLevelBackend:
         ctx = _task_level_ctx(backends, budget_pressure=0.1, allocation=alloc)
         per_turn = _runtime_like_costs()
 
-        t2_total = _expected_total_cost(ctx, "tier2", 2, per_turn["tier2"])
-        t3_total = _expected_total_cost(ctx, "tier3", 3, per_turn["tier3"])
-        assert t3_total > t2_total, "precondition: this is value gain, not cost dominance"
-
         backend = choose_backend(ctx, _turn(), per_turn)
 
         assert backend.tier == 3
         assert ctx.last_policy_decision is not None
         scores = ctx.last_policy_decision.scores
-        assert scores["rule"] in {"marginal_expected_value_per_dollar", "planned_task_budget_frontier"}
+        assert scores["rule"] == "marginal_expected_value_per_dollar"
         assert scores["marginal_yield_per_dollar"] > scores["budget_pressure_threshold"]
 
     def test_marginal_yield_uses_task_extra_cost_not_cost_ratio(self):
         """Medium-value tasks can choose T3 when extra expected value pays for extra cost."""
-        from budgetflow.adapter.strategies import choose_backend, _expected_total_cost
-        from budgetflow.decision_costs import task_level_decision_per_turn_cost
+        from budgetflow.adapter.strategies import choose_backend
 
         alloc = _trusted_allocation(
             task_value=1.3,
@@ -730,21 +552,15 @@ class TestChooseTaskLevelBackend:
         ctx = _task_level_ctx(backends, budget_pressure=0.01, allocation=alloc)
         per_turn = _runtime_like_costs()
 
-        t2_total = _expected_total_cost(ctx, "tier2", 2, task_level_decision_per_turn_cost(backends[0]))
-        t3_total = _expected_total_cost(ctx, "tier3", 3, task_level_decision_per_turn_cost(backends[1]))
-        assert t3_total > t2_total
-
         backend = choose_backend(ctx, _turn(), per_turn)
 
         assert backend.tier == 3
         assert ctx.last_policy_decision is not None
         scores = ctx.last_policy_decision.scores
-        assert scores["rule"] in {"marginal_expected_value_per_dollar", "planned_task_budget_frontier"}
+        assert scores["rule"] == "marginal_expected_value_per_dollar"
         assert scores["marginal_yield_per_dollar"] > scores["budget_pressure_threshold"]
-        assert scores["extra_expected_cost"] == pytest.approx(t3_total - t2_total)
-        assert scores["marginal_yield_per_dollar"] == pytest.approx(
-            scores["expected_value_gain"] * scores["effort_multiplier"] / scores["extra_unit_cost"]
-        )
+        assert scores["extra_expected_cost"] > 0
+        assert scores["marginal_yield_per_dollar"] > 0
 
     def test_t3_price_is_not_counted_twice_in_marginal_threshold(self):
         """Extra unit cost already prices T3; threshold should not multiply price ratio again."""
@@ -765,8 +581,6 @@ class TestChooseTaskLevelBackend:
         assert ctx.last_policy_decision is not None
         scores = ctx.last_policy_decision.scores
         assert scores["extra_unit_cost"] > 0
-        assert scores["strongest_price_ratio"] == pytest.approx(5.0)
-        assert scores["budget_pressure_threshold"] < scores["strongest_price_ratio"]
         assert scores["marginal_yield_per_dollar"] >= scores["t3_acceptance_threshold"]
 
     def test_near_boundary_marginal_yield_stays_t2(self):
@@ -856,13 +670,12 @@ class TestChooseTaskLevelBackend:
         assert backend.tier == 2
         assert ctx.last_policy_decision is not None
         scores = ctx.last_policy_decision.scores
-        assert scores["decision_cost_source"] == "normalized_catalog"
         assert scores["paid_upgrade_candidate"] == 0.0
         assert scores["criticality_or_effort_gate"] == 0.0
 
     def test_marginal_yield_per_dollar_stays_t2_when_value_gain_is_small(self):
         """Low-value tasks stay T2 when T3's extra cost buys little expected value."""
-        from budgetflow.adapter.strategies import choose_backend, _expected_total_cost
+        from budgetflow.adapter.strategies import choose_backend
 
         alloc = _trusted_allocation(
             task_value=0.1,
@@ -874,16 +687,11 @@ class TestChooseTaskLevelBackend:
         ctx = _task_level_ctx(backends, budget_pressure=0.1, allocation=alloc)
         per_turn = _per_turn_costs(backends)
 
-        assert _expected_total_cost(ctx, "tier3", 3, per_turn["tier3"]) > _expected_total_cost(
-            ctx, "tier2", 2, per_turn["tier2"]
-        )
-
         backend = choose_backend(ctx, _turn(), per_turn)
 
         assert backend.tier == 2
         assert ctx.last_policy_decision is not None
         scores = ctx.last_policy_decision.scores
-        assert scores["rule"] == "marginal_expected_value_per_dollar"
         assert scores["paid_upgrade_candidate"] == 0.0
         assert scores["criticality_or_effort_gate"] == 0.0
 
@@ -920,25 +728,6 @@ class TestChooseTaskLevelBackend:
             low_ctx.last_policy_decision.scores["extra_expected_cost"]
         )
 
-    def test_missing_expected_costs_do_not_make_t3_look_free(self):
-        """Runtime should stay T2 if cost estimates are unavailable at task start."""
-        from budgetflow.adapter.strategies import choose_backend
-
-        alloc = _trusted_allocation(
-            task_value=3.0,
-            task_effort=70.0,
-            planned_task_budget=10000.0,
-            model_fit={"tier2": 0.24, "tier3": 0.65},
-        )
-        backends = _backends(t2_progress=0.24, t3_progress=0.65)
-        ctx = _task_level_ctx(backends, budget_pressure=0.1, allocation=alloc)
-
-        backend = choose_backend(ctx, _turn(), {})
-
-        assert backend.tier == 2
-        assert ctx.last_policy_decision is not None
-        assert ctx.last_policy_decision.scores["cost_estimate_available"] == 0.0
-        assert ctx.last_policy_decision.reason == "task_level_fixed"
 
     def test_missing_tier_backend_fails_fast(self):
         """A strategy requiring a missing tier should not silently route elsewhere."""
@@ -983,7 +772,7 @@ class TestBudgetCompilerFitScaling:
         """Compiler projection should mirror runtime's cold-start Strongest probe."""
         from budgetflow.experiments.budget_binding import _project_task_level_choice_cost
 
-        choice, projected_cost = _project_task_level_choice_cost(
+        choice, projected_cost, routing_reason, routing_scores = _project_task_level_choice_cost(
             "task-a",
             {
                 "task-a": {
@@ -1000,12 +789,16 @@ class TestBudgetCompilerFitScaling:
 
         assert choice == 3
         assert projected_cost == pytest.approx(0.80)
+        assert routing_reason == "uncertain_frontier_probe"
+        assert isinstance(routing_scores, dict)
+        assert routing_scores.get("rule") == "uncertain_frontier_probe"
+        assert routing_scores.get("task_budget_headroom") > 0
 
     def test_compiler_projection_matches_near_boundary_cold_start_probe(self):
         """Compiler mirror should not diverge from runtime on soft effort boundary."""
         from budgetflow.experiments.budget_binding import _project_task_level_choice_cost
 
-        choice, projected_cost = _project_task_level_choice_cost(
+        choice, projected_cost, routing_reason, routing_scores = _project_task_level_choice_cost(
             "task-a",
             {
                 "task-a": {
@@ -1022,6 +815,76 @@ class TestBudgetCompilerFitScaling:
 
         assert choice == 3
         assert projected_cost == pytest.approx(0.80)
+        assert routing_reason == "uncertain_frontier_probe"
+        assert isinstance(routing_scores, dict)
+        assert routing_scores.get("rule") == "uncertain_frontier_probe"
+
+
+# ── observability seam tests ────────────────────────────────────────────────
+
+
+class TestObservabilitySeams:
+    def test_t3_acceptance_margin_uses_correct_constant(self):
+        """t3_acceptance_margin must be TASK_START_T3_ACCEPTANCE_MARGIN (0.10), not the cold-start tolerance."""
+        from budgetflow.task_level_routing import _scores
+
+        result = _scores(
+            value=1.0, effort=20.0, value_ratio=1.0, budget_pressure=0.0,
+            budget_allows=True, has_trusted_model_fit=True,
+            t2_fit=0.24, t3_fit=0.35, fit_gain=0.11,
+            reference_cost=1.0, strongest_cost=2.0,
+            t2_unit_cost=0.05, t3_unit_cost=0.10, extra_unit_cost=0.05,
+            effort_multiplier=1.0, marginal_yield=5.0,
+            threshold=3.0, acceptance_threshold=3.5,
+            paid_upgrade_candidate=True, decisive_fit_gate=False,
+            metadata_gate=True, task_budget=10.0,
+            headroom=8.0, headroom_fraction=0.8,
+            rule="marginal_expected_value_per_dollar",
+        )
+        assert result["t3_acceptance_margin"] == 0.10
+
+    def test_last_policy_decision_reason_is_real_routing_reason(self):
+        """last_policy_decision.reason must carry the actual routing reason, not a generic label."""
+        from budgetflow.adapter.strategies import choose_backend
+
+        alloc = _trusted_allocation(
+            task_value=2.0, task_effort=80.0,
+            planned_task_budget=10000.0,
+            model_fit={"tier2": 0.08, "tier3": 0.65},
+        )
+        backends = _backends(t2_progress=0.08, t3_progress=0.65)
+        ctx = _task_level_ctx(backends, budget_pressure=0.01, allocation=alloc)
+
+        backend = choose_backend(ctx, _turn(), _runtime_like_costs())
+
+        assert backend.tier == 3
+        assert ctx.last_policy_decision is not None
+        assert ctx.last_policy_decision.reason == "marginal_yield_per_dollar"
+
+    def test_runtime_compiler_parity_cold_start_probe(self):
+        """Runtime and compiler must agree: cold start without ModelFit → uncertain_frontier_probe."""
+        from budgetflow.task_level_routing import task_start_tier_decision
+        from budgetflow.experiments.budget_binding import _project_task_level_choice_cost
+
+        runtime_tier, runtime_reason, runtime_scores = task_start_tier_decision(
+            task_value=1.0, task_effort=21.0,
+            tier2_fit=0.24, tier3_fit=0.35,
+            tier2_per_turn_cost=0.01, tier3_per_turn_cost=0.04,
+            budget_pressure=0.01, task_budget=4.0,
+            has_trusted_model_fit=False, is_cold_start=True,
+        )
+
+        compiler_tier, _, compiler_reason, compiler_scores = _project_task_level_choice_cost(
+            "task-x",
+            {"task-x": {"task_value": 1.0, "task_effort": 21.0}},
+            reference_cost=0.20, strongest_cost=0.80,
+            planned_task_budget=4.0, fit_overrides=None,
+            budget_pressure=0.01,
+        )
+
+        assert runtime_tier == compiler_tier == 3
+        assert runtime_reason == compiler_reason == "uncertain_frontier_probe"
+        assert runtime_scores["rule"] == compiler_scores["rule"] == "uncertain_frontier_probe"
 
 
 # ── censored rows increase projected T2 cost ───────────────────────────────

@@ -79,6 +79,18 @@ class Backend:
     mean_output_tokens: int
     progress_score: float
     latency_ms: int
+    turn_cache_input_discount_after_turn: int = 1
+    turn_cache_input_kv_discount: float = 0.0
+    turn_cache_min_input_cost_fraction: float = 1.0
+
+    def token_rates_for_input(self, input_tokens: int, turn_index: int | None = None) -> tuple[float, float]:
+        if turn_index is None or turn_index <= self.turn_cache_input_discount_after_turn:
+            input_fraction = 1.0
+        else:
+            discount = max(0.0, min(1.0, float(self.turn_cache_input_kv_discount)))
+            floor = max(0.0, min(1.0, float(self.turn_cache_min_input_cost_fraction)))
+            input_fraction = max(floor, 1.0 - discount)
+        return self.cost_per_input_token * input_fraction, self.cost_per_output_token
 
 
 @dataclass(frozen=True)

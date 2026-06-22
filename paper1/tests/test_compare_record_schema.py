@@ -13,7 +13,11 @@ from budgetflow.experiments.compare_persistence import (
 )
 from budgetflow.experiments.compare_config import CompareStrategy
 from budgetflow.experiments.compare_execution import run_strategy_batch, run_task_record
-from budgetflow.experiments.compare_execution import _effective_planned_task_cap, _shared_batch_pressure
+from budgetflow.experiments.compare_execution import (
+    _effective_planned_task_cap,
+    _remaining_task_ids_for_planned_cap,
+    _shared_batch_pressure,
+)
 from budgetflow.experiments.compare_summary import (
     _append_summary,
     _format_live_snapshot,
@@ -300,12 +304,7 @@ def test_runner_threads_budget_plan_model_fit_into_allocation_context(monkeypatc
 
 
 def test_runner_ignores_task_local_model_fit_override(monkeypatch) -> None:
-    """Same-task history must not lock runtime routing.
-
-    The compiler may publish ``task_tier_fit_overrides`` as annotation, but
-    runtime AllocationContext.model_fit must only carry the workload-level
-    calibrated fit.  Task-local overrides are diagnostic-only.
-    """
+    """Runtime AllocationContext.model_fit is workload-level only."""
     import budgetflow.adapter.runner as runner
 
     seen = {}
@@ -782,6 +781,21 @@ def test_effective_planned_task_cap_rebalances_against_remaining_planned_demand(
     assert first_cap == pytest.approx(0.4)
     assert later_cap == pytest.approx(0.55)
     assert final_cap == pytest.approx(0.5)
+
+
+def test_remaining_task_ids_for_planned_cap_uses_plan_prefix_on_resume() -> None:
+    selected = ["task-10", "task-11", "task-12"]
+    plan_order = [f"task-{index:02d}" for index in range(30)]
+
+    remaining = _remaining_task_ids_for_planned_cap(
+        selected_task_ids=selected,
+        task_index=1,
+        task_id="task-10",
+        planned_task_order=plan_order,
+        planned_rebalance_task_limit=10,
+    )
+
+    assert remaining == []
 
 
 def test_planned_task_budget_uses_shared_batch_pressure() -> None:

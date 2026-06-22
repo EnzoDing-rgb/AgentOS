@@ -38,6 +38,7 @@ from budgetflow.heartbeat import run_with_heartbeat
 from budgetflow.ledger import WorkflowLedgerStore
 from budgetflow.observability import build_observability_status, parse_harness_evidence
 from budgetflow.observability import build_harness_trust
+from budgetflow.planned_task_budget import effective_planned_task_cap
 from budgetflow.run_guards import CompareRunGuards
 from budgetflow.run_trace import TraceConsoleLevel
 from budgetflow.types import WorkflowSegment
@@ -68,21 +69,33 @@ def _effective_planned_task_cap(
     batch_budget_cap: float,
     shared_spent: float,
 ) -> float | None:
-    planned_cap = float(planned_task_caps.get(task_id, 0.0) or 0.0)
-    if planned_cap <= 0:
-        return None
-    shared_remaining = max(0.0, float(batch_budget_cap) - max(0.0, float(shared_spent)))
-    if shared_remaining <= 0:
-        return 0.0
-    remaining_planned = sum(
-        max(0.0, float(planned_task_caps.get(str(remaining_id), 0.0) or 0.0))
-        for remaining_id in remaining_task_ids
+    return effective_planned_task_cap(
+        planned_task_caps=planned_task_caps,
+        remaining_task_ids=remaining_task_ids,
+        task_id=task_id,
+        batch_budget_cap=batch_budget_cap,
+        shared_spent=shared_spent,
     )
-    if remaining_planned <= 0:
-        return min(planned_cap, shared_remaining)
-    if remaining_planned <= shared_remaining:
-        return min(planned_cap, shared_remaining)
-    return min(planned_cap, shared_remaining * planned_cap / remaining_planned)
+
+
+def _remaining_task_ids_for_planned_cap(
+    *,
+    selected_task_ids: list[str],
+    task_index: int,
+    task_id: str,
+    planned_task_order: list[str] | None,
+    planned_rebalance_task_limit: int | None,
+) -> list[str]:
+    """Return the remaining demand set used for planned-task cap clipping."""
+    current_remaining = list(selected_task_ids[max(0, task_index - 1):])
+    if not planned_task_order or not planned_rebalance_task_limit:
+        return current_remaining
+
+    rebalance_order = list(planned_task_order[:max(0, int(planned_rebalance_task_limit))])
+    if task_id not in rebalance_order:
+        return []
+    current_remaining_set = set(current_remaining)
+    return [remaining_id for remaining_id in rebalance_order if remaining_id in current_remaining_set]
 
 
 def _shared_batch_pressure(
@@ -342,6 +355,8 @@ def run_strategy_batch(
     value_context: ValueEfficiencyContext,
     per_task_cap: float | None = None,
     planned_task_caps: dict[str, float] | None = None,
+    planned_task_order: list[str] | None = None,
+    planned_rebalance_task_limit: int | None = None,
     planned_task_budget_source: str = "budget_plan:planned_task_budget_by_strategy",
     soft_budget: float | None = None,
     max_overrun: float = 0.0,
@@ -504,7 +519,13 @@ def run_strategy_batch(
                         budget_plan_task_cap = float(raw_planned_cap)
                     task_cap = _effective_planned_task_cap(
                         planned_task_caps=planned_task_caps,
-                        remaining_task_ids=selected_task_ids[task_index - 1:],
+                        remaining_task_ids=_remaining_task_ids_for_planned_cap(
+                            selected_task_ids=selected_task_ids,
+                            task_index=task_index,
+                            task_id=str(task.instance_id),
+                            planned_task_order=planned_task_order,
+                            planned_rebalance_task_limit=planned_rebalance_task_limit,
+                        ),
                         task_id=str(task.instance_id),
                         batch_budget_cap=batch_budget_cap,
                         shared_spent=shared_spent,

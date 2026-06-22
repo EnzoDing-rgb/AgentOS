@@ -10,8 +10,11 @@ class DecisionCostModel(Protocol):
     cost_per_output_token: float
     mean_output_tokens: int
 
+    def token_rates_for_input(self, input_tokens: int, turn_index: int | None = None) -> tuple[float, float]: ...
+
 
 TASK_LEVEL_DECISION_INPUT_TOKENS = 2000
+TASK_LEVEL_DECISION_TURN_INDEX = 2
 
 
 def task_level_decision_per_turn_cost(model: DecisionCostModel) -> float:
@@ -21,7 +24,11 @@ def task_level_decision_per_turn_cost(model: DecisionCostModel) -> float:
     task-start routing decision must use this stable catalog shape so compiler
     projections and runtime decisions cannot diverge on first-turn token noise.
     """
+    input_rate, output_rate = model.token_rates_for_input(
+        TASK_LEVEL_DECISION_INPUT_TOKENS,
+        turn_index=TASK_LEVEL_DECISION_TURN_INDEX,
+    )
     return (
-        float(model.cost_per_input_token) * TASK_LEVEL_DECISION_INPUT_TOKENS
-        + float(model.cost_per_output_token) * int(model.mean_output_tokens)
+        float(input_rate) * TASK_LEVEL_DECISION_INPUT_TOKENS
+        + float(output_rate) * int(model.mean_output_tokens)
     )

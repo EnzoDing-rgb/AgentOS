@@ -78,6 +78,14 @@ question: "How tight should this shared budget be for this workload?" The
 runtime answers the scheduler question: "Given that budget and the available
 models, where should the next model opportunity go?"
 
+For the current paper mainline, the Budget Regime Compiler does not assign
+model tiers. It may publish a runtime-policy projection showing how many tasks
+the current task-level router is expected to start on T2 or T3 under the frozen
+budget, ValueSource, Task Effort, Model Fit, and CostSource. That projection is
+a no-paid readiness diagnostic, not a route lock. Runtime makes the actual
+task-start model choice through the same task-level routing formula and the
+same effective task-cap calculation.
+
 ## Claims And Metrics
 
 | Claim | Main question | Primary evidence |
@@ -122,6 +130,13 @@ reference tier spins, high-value tasks where stronger-tier spend is justified,
 and ceiling tasks where neither tier should consume the shared budget for long.
 If every task is dominated by one tier, BudgetFlow should say so rather than
 manufacture routing savings.
+
+The current paid mainline uses three policies: pure T2, pure T3, and
+BudgetFlow task-level. Static enterprise-router plans remain useful diagnostic
+controls, but they are not part of the default Claim 1 paid evidence set. The
+headline question for this run is whether BudgetFlow beats at least one pure
+mechanical boundary while preserving or improving Yield per Dollar under the
+same shared hard budget.
 
 ## Value And Cost Discipline
 
@@ -441,12 +456,12 @@ infra, learning loop, or mechanism.
   become the standard artifact path, with explicit submitted patches kept as
   auxiliary evidence.
 - Harness and observability refactors must preserve the BudgetFlow mechanism.
-  For task-level BudgetFlow, the Budget Regime Compiler supplies both the
-  shared hard budget and pre-registered per-task runway. It may publish
-  runtime-projection diagnostics, but it must not assign a model tier to each
-  task. Runtime uses that per-task runway, Task Value, Task Effort, Model Fit,
-  and CostSource to choose a fixed model tier before the task starts, while the
-  shared hard budget still controls the batch. A run where task-level
+  For task-level BudgetFlow, the Budget Regime Compiler supplies the shared
+  hard budget and pre-registered per-task runway. It may publish
+  runtime-policy projection diagnostics, but it must not assign a model tier to
+  each task. Runtime uses that per-task runway, Task Value, Task Effort, Model
+  Fit, and CostSource to choose a fixed model tier before each task starts,
+  while the shared hard budget still controls the batch. A run where task-level
   BudgetFlow silently degenerates into a pure-tier baseline is a mechanism
   failure, not a weak positive signal.
 - Worktree isolation must be auditable. Resetting to `base_commit` and cleaning
