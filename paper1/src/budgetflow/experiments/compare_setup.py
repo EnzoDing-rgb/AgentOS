@@ -210,7 +210,68 @@ def load_tasks_for_compare(args: Namespace, *, tasks_n: int) -> list:
         tasks = load_swebench_lite_tasks(instance_ids=DIAGNOSTIC_3X3_IDS)
     else:
         tasks = load_compare_easy_tasks(tasks_n)
-    return list(tasks)
+    return stratify_task_order(list(tasks))
+
+
+def stratify_task_order(tasks: list) -> list:
+    """Return deterministic repo/effort-mixed task order for staged diagnostics."""
+    if len(tasks) < 10:
+        return tasks
+    by_repo: dict[str, list[tuple[int, object]]] = {}
+    for original_index, task in enumerate(tasks):
+        by_repo.setdefault(_task_repo(task), []).append((original_index, task))
+    for repo_tasks in by_repo.values():
+        repo_tasks.sort(key=lambda item: (_task_effort_score(item[1]), -item[0]), reverse=True)
+
+    repo_order = sorted(
+        by_repo,
+        key=lambda repo: (
+            max(_task_effort_score(task) for _, task in by_repo[repo]),
+            repo,
+        ),
+        reverse=True,
+    )
+    repo_positions = {repo: 0 for repo in repo_order}
+    mixed: list[tuple[int, object]] = []
+    while len(mixed) < len(tasks):
+        advanced = False
+        for repo in repo_order:
+            pos = repo_positions[repo]
+            if pos >= len(by_repo[repo]):
+                continue
+            mixed.append(by_repo[repo][pos])
+            repo_positions[repo] += 1
+            advanced = True
+            if len(mixed) >= len(tasks):
+                break
+        if not advanced:
+            break
+    return [task for _, task in mixed]
+
+
+def _task_repo(task) -> str:
+    repo = str(getattr(task, "repo", "") or "")
+    if repo:
+        return repo
+    instance_id = str(getattr(task, "instance_id", "") or "")
+    return instance_id.split("__", 1)[0]
+
+
+def _task_effort_score(task) -> float:
+    patch_lines = len(str(getattr(task, "patch", "") or "").splitlines())
+    f2p = len(getattr(task, "fail_to_pass", ()) or ())
+    p2p = len(getattr(task, "pass_to_pass", ()) or ())
+    problem_words = len(str(getattr(task, "problem_statement", "") or "").split())
+    gold_files = len(getattr(task, "gold_files", ()) or ())
+    import math
+    return (
+        1.0
+        + patch_lines
+        + 2.0 * f2p
+        + math.log1p(p2p)
+        + 0.01 * problem_words
+        + 1.5 * gold_files
+    )
 
 
 def select_stage_batch_tasks(

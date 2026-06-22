@@ -30,6 +30,7 @@ class ValueEfficiencyContext:
     matrix_path: str | None = None
     lookup: dict[str, float] | None = None
     effort_lookup: dict[str, float] | None = None
+    task_metadata_lookup: dict[str, dict] | None = None
     median_task_value: float = 1.0
     source_info: ValueSourceInfo = ValueSourceInfo(
         kind="equal_sanity",
@@ -73,6 +74,7 @@ class ValueEfficiencyContext:
         self.matrix_path = value_matrix_path
         self.lookup = None
         self.effort_lookup = None
+        self.task_metadata_lookup = None
         self.median_task_value = 1.0
         artifact: dict | None = None
         if value_matrix_path:
@@ -88,6 +90,7 @@ class ValueEfficiencyContext:
                 )
             # Load effort heuristic (diagnostic only, not Claim 1 value).
             self.effort_lookup = _extract_effort_lookup(artifact)
+            self.task_metadata_lookup = _extract_task_metadata_lookup(artifact)
         self.source_info = _resolve_value_source_info(
             profile=value_profile,
             value_matrix_path=value_matrix_path,
@@ -143,6 +146,11 @@ class ValueEfficiencyContext:
         record["task_value"] = task_value
         record["task_effort"] = task_effort
         record["task_effort_source"] = effort_source
+        metadata = (self.task_metadata_lookup or {}).get(instance_id, {})
+        record["criticality_level"] = metadata.get("criticality_level")
+        record["criticality_source"] = metadata.get("criticality_source")
+        record["criticality_override"] = metadata.get("criticality_override")
+        record["task_effort_override"] = metadata.get("task_effort_override")
         record["resolved_value"] = resolved_value
         record["scoreable_cost"] = scoreable_cost
         record["value_source"] = value_source
@@ -221,12 +229,39 @@ def _extract_effort_lookup(artifact: dict) -> dict[str, float] | None:
                 continue
             te = task_data.get("task_effort")
             if isinstance(te, dict):
-                effort = te.get("bootstrap_heuristic")
+                effort = te.get("final_task_effort", te.get("bootstrap_heuristic"))
                 if effort is not None:
                     lookup[instance_id] = float(effort)
         if lookup:
             return lookup
     return None
+
+
+def _extract_task_metadata_lookup(artifact: dict) -> dict[str, dict] | None:
+    tasks = artifact.get("tasks")
+    if not isinstance(tasks, dict) or not tasks:
+        return None
+    lookup: dict[str, dict] = {}
+    for instance_id, task_data in tasks.items():
+        if not isinstance(task_data, dict):
+            continue
+        metadata: dict = {}
+        for key in (
+            "criticality_level",
+            "criticality_source",
+            "criticality_override",
+            "task_effort_override",
+        ):
+            if key in task_data:
+                metadata[key] = task_data[key]
+        te = task_data.get("task_effort")
+        if isinstance(te, dict):
+            for key in ("base_task_effort", "task_effort_multiplier", "final_task_effort"):
+                if key in te:
+                    metadata[key] = te[key]
+        if metadata:
+            lookup[str(instance_id)] = metadata
+    return lookup or None
 
 
 def _resolve_value_source_info(

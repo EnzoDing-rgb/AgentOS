@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -195,5 +196,6 @@ def task_set_kind(*, task_set: str, ids: str | None = None) -> str:
 
 
 def workspace_key(cfg: CompareStrategy, instance_id: str) -> str:
-    safe = cfg.name.replace("/", "_")
-    return f"{safe}_{instance_id}"
+    digest = hashlib.sha256(f"{cfg.name}:{instance_id}".encode("utf-8")).hexdigest()[:16]
+    safe_instance = instance_id.replace("/", "_").replace(":", "_")
+    return f"wk_{digest}_{safe_instance}"

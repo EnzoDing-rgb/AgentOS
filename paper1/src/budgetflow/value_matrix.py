@@ -218,47 +218,108 @@ def bootstrap_task_effort(task) -> dict[str, float | str | dict[str, int]]:
         + 0.01 * features["problem_words"]
         + 1.5 * features["gold_file_count"]
     )
+    base_task_effort = round(raw, 4)
     return {
-        "bootstrap_heuristic": round(raw, 4),
+        "base_task_effort": base_task_effort,
+        "task_effort_multiplier": 1.0,
+        "final_task_effort": base_task_effort,
+        "bootstrap_heuristic": base_task_effort,
         "source": "task_metadata_formula",
         "features": features,
     }
 
 
-MANUAL_VALUE_FORMULA_V1 = (
-    "verification_breadth_v1: round(clamp(0.60,1.00,"
-    "0.60 + 0.20*min(f2p_count/75,1) + "
-    "0.20*min(log1p(p2p_count)/log1p(2000),1)),2)"
+def apply_criticality_override(
+    entry: dict[str, Any],
+    *,
+    level: str,
+    source: str,
+    reason: str,
+) -> None:
+    """Apply a pre-run human/business criticality override to a matrix entry."""
+    if level not in CRITICALITY_VALUE_MAP:
+        raise ValueError(f"unknown criticality_level={level!r}")
+    previous = str(entry.get("criticality_level") or "normal")
+    entry["criticality_level"] = level
+    entry["criticality_source"] = source
+    entry["criticality_override"] = {
+        "from": previous,
+        "to": level,
+        "source": source,
+        "reason": reason,
+    }
+    task_value = entry.setdefault("task_value", {})
+    task_value["criticality_value"] = CRITICALITY_VALUE_MAP[level]
+
+
+def apply_task_effort_override(
+    entry: dict[str, Any],
+    *,
+    multiplier: float,
+    source: str,
+    reason: str,
+) -> None:
+    """Apply a pre-run task-effort multiplier override to a matrix entry."""
+    if multiplier <= 0:
+        raise ValueError("task_effort_multiplier must be positive")
+    task_effort = entry.setdefault("task_effort", {})
+    base = float(
+        task_effort.get("base_task_effort")
+        or task_effort.get("final_task_effort")
+        or task_effort.get("bootstrap_heuristic")
+        or 1.0
+    )
+    previous = float(task_effort.get("task_effort_multiplier") or 1.0)
+    task_effort["base_task_effort"] = base
+    task_effort["task_effort_multiplier"] = float(multiplier)
+    task_effort["final_task_effort"] = round(base * float(multiplier), 4)
+    task_effort["bootstrap_heuristic"] = task_effort["final_task_effort"]
+    entry["task_effort_override"] = {
+        "from": previous,
+        "to": float(multiplier),
+        "source": source,
+        "reason": reason,
+    }
+
+
+CRITICALITY_VALUE_MAP = {
+    "normal": 1.0,
+    "high": 1.5,
+    "critical": 2.5,
+}
+
+CRITICALITY_FORMULA_V1 = (
+    "criticality_v1: critical when f2p_count>=20 or p2p_count>=400; "
+    "high when f2p_count>=5 or p2p_count>=50; normal otherwise. "
+    "Task Value mapping: normal=1.0, high=1.5, critical=2.5."
 )
 
 
-def bootstrap_manual_value(features: dict[str, int]) -> float:
-    """Pre-registered manual value proxy from verifier breadth only.
+def bootstrap_criticality_level(features: dict[str, int]) -> str:
+    """Pre-registered criticality level from verifier breadth only.
 
     This is outcome-free: it uses fail-to-pass and pass-to-pass test breadth,
     not model outcomes, costs, repo names, or task IDs.
     """
-    import math
-
-    f2p_component = min(float(features["f2p_count"]) / 75.0, 1.0)
-    p2p_component = min(
-        math.log1p(float(features["p2p_count"])) / math.log1p(2000.0),
-        1.0,
-    )
-    raw = 0.60 + 0.20 * f2p_component + 0.20 * p2p_component
-    return round(max(0.60, min(1.00, raw)), 2)
+    f2p_count = int(features["f2p_count"])
+    p2p_count = int(features["p2p_count"])
+    if f2p_count >= 20 or p2p_count >= 400:
+        return "critical"
+    if f2p_count >= 5 or p2p_count >= 50:
+        return "high"
+    return "normal"
 
 
 def build_bootstrap_value_matrix(
     tasks: list,
     *,
     task_source: str,
-    include_manual_value: bool = False,
+    include_criticality_value: bool = False,
 ) -> dict[str, Any]:
     """Build value matrix for a selected task set without historical outcomes.
 
     Schema (North Star aligned):
-      - ``task_value``: Claim 1 value profiles (equal, manual_value, ...).
+      - ``task_value``: Claim 1 value profiles (equal, criticality_value, ...).
       - ``task_effort``: Task Effort diagnostic (bootstrap_heuristic).
       - ``model_fit``: reserved, null for bootstrap matrices.
 
@@ -267,7 +328,7 @@ def build_bootstrap_value_matrix(
     """
     import math as _math
 
-    task_value_profiles = ["equal", "manual_value"] if include_manual_value else ["equal"]
+    task_value_profiles = ["equal", "criticality_value"] if include_criticality_value else ["equal"]
     matrix: dict[str, Any] = {
         "meta": {
             "task_count": len(tasks),
@@ -276,7 +337,7 @@ def build_bootstrap_value_matrix(
             "source": task_source,
             "source_class": (
                 "pre_registered_formula_plus_metadata"
-                if include_manual_value else "bootstrap_pre_registered_metadata"
+                if include_criticality_value else "bootstrap_pre_registered_metadata"
             ),
             "outcome_free": True,
             "note": (
@@ -293,9 +354,10 @@ def build_bootstrap_value_matrix(
         },
         "tasks": {},
     }
-    if include_manual_value:
+    if include_criticality_value:
         matrix["meta"]["value_source_kind"] = "pre_registered_manual"
-        matrix["meta"]["manual_value_formula"] = MANUAL_VALUE_FORMULA_V1
+        matrix["meta"]["criticality_formula"] = CRITICALITY_FORMULA_V1
+        matrix["meta"]["criticality_value_map"] = CRITICALITY_VALUE_MAP
     for task in tasks:
         features = bootstrap_task_features(task)
         effort = bootstrap_task_effort(task)
@@ -308,9 +370,12 @@ def build_bootstrap_value_matrix(
             "model_fit": None,
             "features": features,
         }
-        if include_manual_value:
-            task_value["manual_value"] = bootstrap_manual_value(features)
-            entry["value_formula"] = "verification_breadth_v1"
+        if include_criticality_value:
+            criticality_level = bootstrap_criticality_level(features)
+            task_value["criticality_value"] = CRITICALITY_VALUE_MAP[criticality_level]
+            entry["criticality_level"] = criticality_level
+            entry["criticality_source"] = "criticality_v1"
+            entry["value_formula"] = "criticality_v1"
         matrix["tasks"][task.instance_id] = {
             **entry,
         }
@@ -338,17 +403,18 @@ def build_bootstrap_value_matrix(
         }
         for index, (iid, entry) in enumerate(ranked_effort)
     ]
-    if include_manual_value:
+    if include_criticality_value:
         ranked_manual = sorted(
             matrix["tasks"].items(),
-            key=lambda item: item[1]["task_value"]["manual_value"],
+            key=lambda item: item[1]["task_value"]["criticality_value"],
             reverse=True,
         )
-        matrix["rankings"]["manual_value"] = [
+        matrix["rankings"]["criticality_value"] = [
             {
                 "rank": index + 1,
                 "instance_id": iid,
-                "value": entry["task_value"]["manual_value"],
+                "criticality_level": entry["criticality_level"],
+                "value": entry["task_value"]["criticality_value"],
             }
             for index, (iid, entry) in enumerate(ranked_manual)
         ]
@@ -909,8 +975,8 @@ def _make_parser() -> argparse.ArgumentParser:
                    help="Build a no-outcome bootstrap matrix for a compare task set")
     p.add_argument("--ids", default=None,
                    help="Comma-separated task IDs for a no-outcome bootstrap matrix")
-    p.add_argument("--include-manual-value", action="store_true",
-                   help="Include outcome-free manual_value profile from verifier breadth")
+    p.add_argument("--include-criticality-value", action="store_true",
+                   help="Include outcome-free criticality_value profile from verifier breadth")
     p.add_argument("--limit", type=int, default=None,
                    help="Task count for --task-set bootstrap matrix")
     return p
@@ -942,7 +1008,7 @@ def main(argv: list[str] | None = None) -> dict:
         matrix = build_bootstrap_value_matrix(
             tasks,
             task_source=task_source,
-            include_manual_value=args.include_manual_value,
+            include_criticality_value=args.include_criticality_value,
         )
         output_text = json.dumps(matrix, indent=2, ensure_ascii=False)
         if args.output == "-":

@@ -44,14 +44,14 @@ def test_task_value_and_effort_in_separate_namespaces() -> None:
 
 
 def test_task_value_only_has_known_profiles() -> None:
-    """task_value namespace: only equal and manual_value profiles."""
+    """task_value namespace: only equal and criticality_value profiles."""
     matrix = build_bootstrap_value_matrix(
         [_FakeTask(instance_id="test__task-2", repo="test/test")],
         task_source="test",
     )
     tv = matrix["tasks"]["test__task-2"].get("task_value", {})
     for key in tv:
-        assert key in {"equal", "manual_value"}, (
+        assert key in {"equal", "criticality_value"}, (
             f"task_value namespace polluted by {key!r}"
         )
 

@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
 from typing import Any
 
 
 STRONGEST_TRANCHE_FRACTION = 1.0 / 3.0
 PREFERRED_MODEL_RULE = (
-    "tier3 for the top one-third by 0.5*manual_value_percentile "
-    "+ 0.5*bootstrap_effort_percentile; tier2 otherwise"
+    "tier3 for the top one-third by 0.5*criticality_value_percentile "
+    "+ 0.5*task_effort_percentile; tier2 otherwise"
 )
 
 
@@ -50,7 +51,7 @@ def build_router_only_plan(
         raise ValueError("value matrix must contain a non-empty tasks object")
     plan: dict[str, dict[str, int | str]] = {}
     missing: list[str] = []
-    manual_values: dict[str, float] = {}
+    task_values: dict[str, float] = {}
     effort_values: dict[str, float] = {}
     for task_id in task_ids:
         entry = tasks.get(task_id)
@@ -59,28 +60,34 @@ def build_router_only_plan(
             continue
         task_value = entry.get("task_value") if isinstance(entry.get("task_value"), dict) else {}
         task_effort = entry.get("task_effort") if isinstance(entry.get("task_effort"), dict) else {}
-        manual_value = float(task_value.get("manual_value", task_value.get("equal", 1.0)) or 1.0)
-        bootstrap_effort = float(task_effort.get("bootstrap_heuristic", 0.0) or 0.0)
-        manual_values[task_id] = manual_value
-        effort_values[task_id] = bootstrap_effort
+        task_value_score = float(
+            task_value.get("criticality_value", task_value.get("equal", 1.0)) or 1.0
+        )
+        task_effort_score = float(
+            task_effort.get("final_task_effort", task_effort.get("bootstrap_heuristic", 0.0)) or 0.0
+        )
+        task_values[task_id] = task_value_score
+        effort_values[task_id] = task_effort_score
     if missing:
         preview = ", ".join(missing[:8])
         suffix = "" if len(missing) <= 8 else f", ... +{len(missing) - 8} more"
         raise ValueError(f"value matrix missing selected tasks: {preview}{suffix}")
 
-    value_ranks = _percentile_ranks(manual_values)
+    value_ranks = _percentile_ranks(task_values)
     effort_ranks = _percentile_ranks(effort_values)
     router_scores = {
         task_id: 0.5 * value_ranks[task_id] + 0.5 * effort_ranks[task_id]
         for task_id in task_ids
     }
-    strongest_slots = max(1, round(len(task_ids) * STRONGEST_TRANCHE_FRACTION))
+    strongest_slots = max(1, math.ceil(len(task_ids) * STRONGEST_TRANCHE_FRACTION))
+    if len(task_ids) >= 3:
+        strongest_slots = max(2, strongest_slots)
     strongest_slots = min(strongest_slots, len(task_ids))
     ranked = sorted(
         task_ids,
         key=lambda task_id: (
             router_scores[task_id],
-            manual_values[task_id],
+            task_values[task_id],
             effort_values[task_id],
             task_id,
         ),

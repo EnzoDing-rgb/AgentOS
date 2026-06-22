@@ -315,11 +315,16 @@ def _task_effort_for(value_features: dict[str, dict], task_id: str, rec: dict | 
     features = value_features.get(task_id, {})
     if features:
         if "bootstrap_difficulty" in features:
-            return float(features["bootstrap_difficulty"])
+            raise ValueError(
+                f"value features for {task_id} use retired bootstrap_difficulty; "
+                "expected normalized task_effort"
+            )
         if isinstance(features.get("task_effort"), dict):
             raise ValueError(
                 f"value features for {task_id} are not normalized; call _load_value_features first"
             )
+        if "task_effort" in features:
+            return float(features["task_effort"])
     if rec is not None:
         row_effort = rec.get("task_effort")
         if row_effort is not None:

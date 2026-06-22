@@ -3,7 +3,7 @@
 **Boundary: this is the pre-registered ValueSource for paper runs.**
 
 Task value comes from a value matrix JSON file created BEFORE the run.
-Profiles (equal, manual_value) are fixed in the matrix.
+Profiles (equal, criticality_value) are fixed in the matrix.
 The matrix is the canonical value source — it is not inferred from run outcomes.
 
 TaskAdapter (``swebench_task.py``) calls ``SwebenchValueAdapter.estimate()`` to

@@ -29,7 +29,7 @@ def test_bootstrap_value_matrix_uses_only_pre_registered_task_features() -> None
     assert "avg_cost" not in entry
 
 
-def test_bootstrap_value_matrix_can_emit_manual_value_profile() -> None:
+def test_bootstrap_value_matrix_can_emit_criticality_value_profile() -> None:
     task = SimpleNamespace(
         instance_id="repo__task",
         repo="repo/project",
@@ -43,13 +43,14 @@ def test_bootstrap_value_matrix_can_emit_manual_value_profile() -> None:
     matrix = build_bootstrap_value_matrix(
         [task],
         task_source="unit",
-        include_manual_value=True,
+        include_criticality_value=True,
     )
     entry = matrix["tasks"]["repo__task"]
 
     assert matrix["meta"]["value_source_kind"] == "pre_registered_manual"
-    assert matrix["meta"]["manual_value_formula"].startswith("verification_breadth_v1")
-    assert matrix["meta"]["task_value_profiles"] == ["equal", "manual_value"]
-    assert 0.6 <= entry["task_value"]["manual_value"] <= 1.0
-    assert entry["value_formula"] == "verification_breadth_v1"
-    assert "manual_value" in matrix["rankings"]
+    assert matrix["meta"]["criticality_formula"].startswith("criticality_v1")
+    assert matrix["meta"]["task_value_profiles"] == ["equal", "criticality_value"]
+    assert entry["criticality_level"] == "high"
+    assert entry["task_value"]["criticality_value"] == 1.5
+    assert entry["value_formula"] == "criticality_v1"
+    assert "criticality_value" in matrix["rankings"]

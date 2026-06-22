@@ -52,7 +52,7 @@ BUDGETFLOW_PLANNED_TASK_BUDGET_STRATEGIES = frozenset({
     "budgetflow_task_level",
     "budgetflow_segment",
 })
-DEFAULT_TASK_DIFFICULTY = 30.0
+DEFAULT_TASK_EFFORT = 30.0
 DEFAULT_TASK_VALUE = 1.0
 
 
@@ -356,7 +356,7 @@ def calibrate_budget(
                 "source": evidence.source,
                 "scope": evidence.scope,
                 "confidence": evidence.confidence,
-                "catalog": catalog_source_info(),
+                "catalog": _model_fit_catalog_provenance(),
                 "evidence_tasks": evidence.evidence_tasks,
                 "tier_evidence_counts": {
                     f"tier{tier}": count
@@ -893,7 +893,7 @@ def _task_level_strongest_uplift_score(
     strongest_tier = max((cfg.tier for cfg in MODEL_CATALOG.configs), default=3)
     strongest_fit = _projection_tier_fit(strongest_tier, fit_overrides)
     fit_gain = max(0.0, strongest_fit - reference_fit)
-    effort_units = _task_difficulty_for_projection(task_id, value_features)
+    effort_units = _task_effort_for_projection(task_id, value_features)
     reference_decision_cost = _projection_expected_total_cost(
         tier=2,
         effort_units=effort_units,
@@ -998,7 +998,7 @@ def _project_task_level_choice_cost(
     reference_fit = _projection_tier_fit(2, fit_overrides)
     strongest_fit = _projection_tier_fit(strongest_tier, fit_overrides)
     fit_gain = max(0.0, strongest_fit - reference_fit)
-    effort_units = _task_difficulty_for_projection(task_id, value_features)
+    effort_units = _task_effort_for_projection(task_id, value_features)
     reference_decision_cost = _projection_expected_total_cost(
         tier=2,
         effort_units=effort_units,
@@ -1057,15 +1057,15 @@ def _projected_shared_pressure(
     return pressure_init + used * (pressure_max - pressure_init)
 
 
-def _task_difficulty_for_projection(task_id: str, value_features: dict[str, dict]) -> float:
+def _task_effort_for_projection(task_id: str, value_features: dict[str, dict]) -> float:
     features = value_features.get(task_id, {})
     if not isinstance(features, dict):
-        return DEFAULT_TASK_DIFFICULTY
+        return DEFAULT_TASK_EFFORT
     if isinstance(features.get("task_effort"), dict):
         raise ValueError(
             f"value features for {task_id} are not normalized; call _load_value_features first"
         )
-    return float(features.get("bootstrap_difficulty", DEFAULT_TASK_DIFFICULTY) or DEFAULT_TASK_DIFFICULTY)
+    return float(features.get("task_effort", DEFAULT_TASK_EFFORT) or DEFAULT_TASK_EFFORT)
 
 
 def _task_value_for_projection(task_id: str, value_features: dict[str, dict]) -> float:
@@ -1442,6 +1442,15 @@ def _row_catalog_compatible(row_catalog: dict) -> tuple[bool, str]:
     return catalog_record_compatible(row_catalog)
 
 
+def _model_fit_catalog_provenance() -> dict[str, str]:
+    catalog = catalog_source_info()
+    return {
+        "catalog_revision": str(catalog.get("catalog_revision") or ""),
+        "catalog_semantic_revision": str(catalog.get("catalog_semantic_revision") or ""),
+        "catalog_content_hash": str(catalog.get("catalog_content_hash") or ""),
+    }
+
+
 def _load_value_features(value_matrix_path: Path) -> dict[str, dict]:
     """Extract the compiler's flat per-task value features from value matrix."""
     with value_matrix_path.open() as f:
@@ -1459,22 +1468,22 @@ def _load_value_features(value_matrix_path: Path) -> dict[str, dict]:
         task_value = DEFAULT_TASK_VALUE
         tv = entry.get("task_value")
         if isinstance(tv, dict):
-            if tv.get("manual_value") is not None:
-                task_value = float(tv["manual_value"])
+            if tv.get("criticality_value") is not None:
+                task_value = float(tv["criticality_value"])
             elif tv.get("equal") is not None:
                 task_value = float(tv["equal"])
         elif tv is not None:
             raise ValueError(
                 f"value matrix task {tid} has non-canonical task_value; "
-                "expected task_value.manual_value or task_value.equal"
+                "expected task_value.criticality_value or task_value.equal"
             )
 
-        bootstrap_difficulty = DEFAULT_TASK_DIFFICULTY
+        task_effort = DEFAULT_TASK_EFFORT
         te = entry.get("task_effort")
         if isinstance(te, dict):
-            heuristic = te.get("bootstrap_heuristic")
+            heuristic = te.get("final_task_effort", te.get("bootstrap_heuristic"))
             if heuristic is not None:
-                bootstrap_difficulty = float(heuristic)
+                task_effort = float(heuristic)
         elif te is not None:
             raise ValueError(
                 f"value matrix task {tid} has non-canonical task_effort; "
@@ -1483,7 +1492,7 @@ def _load_value_features(value_matrix_path: Path) -> dict[str, dict]:
 
         normalized[str(tid)] = {
             "task_value": task_value,
-            "bootstrap_difficulty": bootstrap_difficulty,
+            "task_effort": task_effort,
         }
     return normalized
 
@@ -1501,13 +1510,13 @@ def _bootstrap_cost_estimate(
     do not provide budget caps to the compiler.
     """
     features = value_features.get(task_id, {})
-    difficulty = (
-        features.get("bootstrap_difficulty", 30.0)
+    task_effort = (
+        features.get("task_effort", DEFAULT_TASK_EFFORT)
         if features else 30.0
     )
 
     return _cold_start_cost_estimate(
-        difficulty,
+        task_effort,
         fit_overrides=fit_overrides,
         fixed_projection_tier=_fixed_projection_tier_for_strategy(strategy),
     )

@@ -129,12 +129,16 @@ Task Value is a proxy, so every paid run must make the proxy auditable.
 
 - Freeze the ValueSource before execution. Do not change task values after
   seeing outcomes.
-- Pre-registered manual value belongs to the ValueSource/value matrix, not to
-  the frozen router plan. A frozen router plan may choose a preferred model from
-  task value and effort, but it does not define Task Value.
-- Manual value, when used, is a pre-registered researcher value proxy based on
-  task priority, expected user impact, scope, and benchmark diversity. Treat it
-  as a proxy, not ground truth.
+- Pre-registered criticality belongs to the ValueSource/value matrix, not to
+  the frozen router plan. The current paper profile uses
+  `criticality_level = normal | high | critical` with a fixed mapping
+  `normal=1.0`, `high=1.5`, and `critical=2.5`. A frozen router plan may choose
+  a preferred model from task value and effort, but it does not define Task
+  Value.
+- Manual overrides may change only `criticality_level` or
+  `task_effort_multiplier`, and each override must record from, to, source, and
+  reason. Overrides must not directly write model_fit, expected uplift, route to
+  a model tier, or budget cap.
 - Report at least equal value and the chosen Task Value profile. Task Effort
   diagnostics can be reported separately, but they must not be presented as
   Claim 1 value.
@@ -166,6 +170,16 @@ Task Effort and cost follow the same rule.
 - Keep Task Effort separate from Task Value. Metadata heuristics, historical
   cost, turns, test counts, patch size, and repo priors estimate runway or
   expected cost; they do not define outcome utility.
+- Active value matrices expose Task Effort through one normalized path:
+  `base_task_effort`, `task_effort_multiplier`, and `final_task_effort`.
+  Runtime, compiler, and Model Fit estimation consume the final Task Effort
+  value; retired fields must not re-enter active routing.
+- Model Fit is physical-model evidence. Provider-swapped historical rows may be
+  useful forensic evidence, but they cannot calibrate runtime Model Fit unless
+  the recorded physical catalog hash or revision matches the active catalog.
+- Mainline catalog costs should not include asymmetric KV-cache discounts. Cache
+  discounts belong in explicit sensitivity catalogs or reports, not the primary
+  evidence catalog.
 - Treat pure T2 and pure T3 baselines as boundary diagnostics. If a pure tier is
   best for a task distribution and model catalog, BudgetFlow should diagnose
   and absorb the reusable principle through Tier Boundary Selection, not weaken

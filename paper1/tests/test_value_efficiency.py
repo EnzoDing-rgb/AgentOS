@@ -123,6 +123,53 @@ def test_bootstrap_effort_is_diagnostic_not_task_value(tmp_path) -> None:
     assert record["task_effort_source"] == "bootstrap_heuristic"
 
 
+def test_criticality_value_and_overrides_are_observable(tmp_path) -> None:
+    matrix = tmp_path / "value_matrix.json"
+    matrix.write_text(json.dumps({
+        "meta": {"value_source_kind": "pre_registered_manual"},
+        "tasks": {
+            "task-a": {
+                "criticality_level": "critical",
+                "criticality_source": "human_review",
+                "criticality_override": {
+                    "from": "normal",
+                    "to": "critical",
+                    "source": "human_review",
+                    "reason": "high user-visible blast radius",
+                },
+                "task_value": {"criticality_value": 2.5},
+                "task_effort": {
+                    "base_task_effort": 20.0,
+                    "task_effort_multiplier": 1.5,
+                    "final_task_effort": 30.0,
+                },
+                "task_effort_override": {
+                    "from": 1.0,
+                    "to": 1.5,
+                    "source": "human_review",
+                    "reason": "multi-file repair likely",
+                },
+            },
+        },
+    }))
+    ctx = ValueEfficiencyContext()
+    ctx.init(value_profile="criticality_value", value_matrix_path=str(matrix))
+
+    record = ctx.enrich_record({
+        "instance_id": "task-a",
+        "routing": "value_aware_task_level",
+        "harness_resolved": True,
+        "total_cost": 0.5,
+    })
+
+    assert record["task_value"] == 2.5
+    assert record["criticality_level"] == "critical"
+    assert record["criticality_source"] == "human_review"
+    assert record["criticality_override"]["from"] == "normal"
+    assert record["task_effort"] == 30.0
+    assert record["task_effort_override"]["to"] == 1.5
+
+
 def test_matrix_metadata_can_mark_pre_registered_manual_value_source(tmp_path) -> None:
     matrix = tmp_path / "value_matrix.json"
     matrix.write_text(json.dumps({

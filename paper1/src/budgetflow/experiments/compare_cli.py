@@ -101,7 +101,7 @@ def parse_compare_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--value-profile",
         choices=(
             "equal",
-            "manual_value",
+            "criticality_value",
             "difficulty",
             "discriminative_rarity",
             "unsolved_difficulty",

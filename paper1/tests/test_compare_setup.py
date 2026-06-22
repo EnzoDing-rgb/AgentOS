@@ -11,6 +11,7 @@ from budgetflow.experiments.compare_config import (
     CompareStrategy,
     required_backends_for_strategies,
     task_set_kind,
+    workspace_key,
 )
 from budgetflow.experiments.compare_setup import (
     build_batch_budget_modes,
@@ -20,6 +21,7 @@ from budgetflow.experiments.compare_setup import (
     resolve_task_count,
     select_stage_batch_tasks,
     select_strategies,
+    stratify_task_order,
     trace_console_from_args,
     validate_paper_mainline_budget_contract,
 )
@@ -63,7 +65,7 @@ def test_medium_task_set_uses_medium_pool_not_3x3_preset() -> None:
     }
 
 
-def test_load_tasks_preserves_registered_task_order(monkeypatch) -> None:
+def test_load_tasks_stratifies_registered_task_order(monkeypatch) -> None:
     hard_first = SimpleNamespace(
         instance_id="repo__hard_first",
         patch="\n".join(str(i) for i in range(25)),
@@ -90,10 +92,43 @@ def test_load_tasks_preserves_registered_task_order(monkeypatch) -> None:
     ]
 
 
+def test_stratify_task_order_mixes_repo_blocks_for_staged_prefixes() -> None:
+    tasks = []
+    for repo_index, repo in enumerate(("a/repo", "b/repo", "c/repo")):
+        for effort in range(10):
+            tasks.append(SimpleNamespace(
+                instance_id=f"{repo.split('/')[0]}__{effort}",
+                repo=repo,
+                patch="\n".join("x" for _ in range(1 + repo_index * 10 + effort)),
+                fail_to_pass=[],
+                pass_to_pass=[],
+                problem_statement="",
+                gold_files=[],
+            ))
+
+    ordered = stratify_task_order(tasks)
+    first_ten_repos = {task.repo for task in ordered[:10]}
+
+    assert len(first_ten_repos) >= 3
+    assert [task.instance_id for task in ordered] != [task.instance_id for task in tasks]
+
+
 def test_task_set_kind_labels_experiment_groups() -> None:
     assert task_set_kind(task_set="easy") == "familiar"
     assert task_set_kind(task_set="medium") == "unseen"
     assert task_set_kind(task_set="easy", ids="repo__task") == "custom"
+
+
+def test_workspace_key_does_not_expose_strategy_identity() -> None:
+    key = workspace_key(
+        CompareStrategy("budgetflow_task_level", "value_aware_task_level"),
+        "repo__task-1",
+    )
+
+    assert key.startswith("wk_")
+    assert "budgetflow" not in key
+    assert "value_aware" not in key
+    assert key.endswith("_repo__task-1")
 
 
 def test_budget_plan_uses_defaults_and_scales() -> None:

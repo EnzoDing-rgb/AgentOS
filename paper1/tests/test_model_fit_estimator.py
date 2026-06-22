@@ -81,7 +81,7 @@ class TestModelFitEstimation:
             evidence = estimate_model_fit_from_jsonl(
                 path,
                 ["task-a"],
-                {"task-a": {"bootstrap_difficulty": 20.0}},
+                {"task-a": {"task_effort": 20.0}},
             )
 
             assert evidence.evidence_tasks == 0
@@ -184,7 +184,7 @@ class TestModelFitEstimation:
                 path = Path(f.name)
             _write_jsonl(path, records)
 
-            value_features = {"task-a": {"bootstrap_difficulty": 23.35}}
+            value_features = {"task-a": {"task_effort": 23.35}}
             evidence = estimate_model_fit_from_jsonl(path, ["task-a"], value_features)
 
             # Both tiers should have fit estimates
@@ -230,7 +230,7 @@ class TestModelFitEstimation:
             evidence = estimate_model_fit_from_jsonl(
                 path,
                 ["task-a"],
-                {"task-a": {"bootstrap_difficulty": 50.0}},
+                {"task-a": {"task_effort": 50.0}},
             )
 
             assert 0.25 < evidence.tier_fit[3] < 1.0
@@ -275,7 +275,7 @@ class TestModelFitEstimation:
             _write_jsonl(path, records)
 
             task_ids = ["easy-reference"] + [f"strong-{i}" for i in range(7)]
-            value_features = {task_id: {"bootstrap_difficulty": 20.0} for task_id in task_ids}
+            value_features = {task_id: {"task_effort": 20.0} for task_id in task_ids}
             evidence = estimate_model_fit_from_jsonl(path, task_ids, value_features)
 
             assert evidence.tier_fit[3] > evidence.tier_fit[2]
@@ -323,7 +323,7 @@ class TestModelFitEstimation:
             evidence = estimate_model_fit_from_jsonl(
                 path,
                 ["task-a"],
-                {"task-a": {"bootstrap_difficulty": 20.0}},
+                {"task-a": {"task_effort": 20.0}},
             )
 
             assert evidence.tier_fit[2] < 0.24
@@ -376,8 +376,8 @@ class TestModelFitEstimation:
             _write_jsonl(path, records)
 
             value_features = {
-                "task-a": {"bootstrap_difficulty": 23.35},
-                "task-b": {"bootstrap_difficulty": 20.0},
+                "task-a": {"task_effort": 23.35},
+                "task-b": {"task_effort": 20.0},
             }
             evidence = estimate_model_fit_from_jsonl(path, ["task-a", "task-b"], value_features)
 
@@ -428,7 +428,7 @@ class TestModelFitEstimation:
                 path = Path(f.name)
             _write_jsonl(path, records)
 
-            value_features = {"task-a": {"bootstrap_difficulty": 23.35}}
+            value_features = {"task-a": {"task_effort": 23.35}}
             evidence = estimate_model_fit_from_jsonl(path, ["task-a"], value_features)
 
             # T2 has ONLY censored evidence on task-a (no completed T2 rows)
@@ -487,7 +487,7 @@ class TestModelFitEstimation:
                 path = Path(f.name)
             _write_jsonl(path, records)
 
-            value_features = {"task-a": {"bootstrap_difficulty": 30.0}}
+            value_features = {"task-a": {"task_effort": 30.0}}
             evidence = estimate_model_fit_from_jsonl(path, ["task-a"], value_features)
             # No scoreable evidence → fallback to catalog
             assert evidence.evidence_tasks == 0
@@ -530,7 +530,7 @@ class TestModelFitEstimation:
                 path = Path(f.name)
             _write_jsonl(path, records)
 
-            value_features = {"task-a": {"bootstrap_difficulty": 30.0}}
+            value_features = {"task-a": {"task_effort": 30.0}}
             evidence = estimate_model_fit_from_jsonl(path, ["task-a"], value_features)
             assert evidence.evidence_tasks == 0
             assert evidence.confidence == "low"
@@ -562,7 +562,7 @@ class TestModelFitEstimation:
                 path = Path(f.name)
             _write_jsonl(path, records)
 
-            value_features = {"task-a": {"bootstrap_difficulty": 30.0}}
+            value_features = {"task-a": {"task_effort": 30.0}}
             evidence = estimate_model_fit_from_jsonl(path, ["task-a"], value_features)
             assert evidence.evidence_tasks == 0
             assert evidence.confidence == "low"
@@ -595,7 +595,7 @@ class TestModelFitEstimation:
                 path = Path(f.name)
             _write_jsonl(path, records)
 
-            value_features = {"task-a": {"bootstrap_difficulty": 30.0}}
+            value_features = {"task-a": {"task_effort": 30.0}}
             evidence = estimate_model_fit_from_jsonl(path, ["task-a"], value_features)
             assert evidence.evidence_tasks == 0
             assert evidence.censored_tiers == set()
@@ -635,7 +635,7 @@ class TestModelFitEstimation:
             evidence = estimate_model_fit_from_jsonl(
                 path,
                 ["task-a"],
-                {"task-a": {"bootstrap_difficulty": 25.0}},
+                {"task-a": {"task_effort": 25.0}},
             )
 
             assert 2 in evidence.censored_tiers
@@ -679,7 +679,7 @@ class TestModelFitEstimation:
             _write_jsonl(path, records)
 
             task_ids = ["task-t2"] + [f"task-t3-{i}" for i in range(7)]
-            value_features = {task_id: {"bootstrap_difficulty": 20.0} for task_id in task_ids}
+            value_features = {task_id: {"task_effort": 20.0} for task_id in task_ids}
             evidence = estimate_model_fit_from_jsonl(path, task_ids, value_features)
 
             assert evidence.tier_evidence_counts[2] == 1
@@ -727,7 +727,7 @@ class TestModelFitEstimation:
                 path = Path(f.name)
             _write_jsonl(path, records)
 
-            value_features = {"task-a": {"bootstrap_difficulty": 30.0}}
+            value_features = {"task-a": {"task_effort": 30.0}}
             evidence = estimate_model_fit_from_jsonl(path, ["task-a"], value_features)
             assert evidence.evidence_tasks == 0
 
@@ -757,7 +757,7 @@ class TestModelFitEstimation:
                 path = Path(f.name)
             _write_jsonl(path, records)
 
-            value_features = {"task-a": {"bootstrap_difficulty": 30.0}}
+            value_features = {"task-a": {"task_effort": 30.0}}
             evidence = estimate_model_fit_from_jsonl(path, ["task-a"], value_features)
             # budgetflow_task_level has ambiguous tier → no evidence
             assert evidence.evidence_tasks == 0
@@ -798,9 +798,9 @@ class TestModelFitEstimation:
             _write_jsonl(path, records)
 
             value_features = {
-                "task-a": {"bootstrap_difficulty": 20.0},
-                "task-b": {"bootstrap_difficulty": 25.0},
-                "task-c": {"bootstrap_difficulty": 30.0},
+                "task-a": {"task_effort": 20.0},
+                "task-b": {"task_effort": 25.0},
+                "task-c": {"task_effort": 30.0},
             }
             evidence = estimate_model_fit_from_jsonl(
                 path, ["task-a", "task-b", "task-c"], value_features
@@ -882,8 +882,8 @@ class TestSixByFiveLikeScenario:
             _write_jsonl(path, records)
 
             value_features = {
-                "task-hard": {"bootstrap_difficulty": 23.35},
-                "task-easy": {"bootstrap_difficulty": 10.0},
+                "task-hard": {"task_effort": 23.35},
+                "task-easy": {"task_effort": 10.0},
             }
             evidence = estimate_model_fit_from_jsonl(
                 path, ["task-hard", "task-easy"], value_features
@@ -992,7 +992,7 @@ class TestSixByFiveLikeScenario:
                 jsonl_path = Path(f.name)
             _write_jsonl(jsonl_path, records)
 
-            value_features = {"task-x": {"bootstrap_difficulty": 23.35}}
+            value_features = {"task-x": {"task_effort": 23.35}}
             evidence = estimate_model_fit_from_jsonl(
                 jsonl_path, ["task-x"], value_features
             )
@@ -1076,7 +1076,7 @@ class TestSixByFiveLikeScenario:
             evidence = estimate_model_fit_from_jsonl(
                 path,
                 ["task-a"],
-                {"task-a": {"bootstrap_difficulty": 30.0}},
+                {"task-a": {"task_effort": 30.0}},
             )
 
             assert evidence.evidence_tasks == 0
@@ -1217,7 +1217,7 @@ class TestSixByFiveLikeScenario:
             evidence = estimate_model_fit_from_jsonl(
                 jsonl_path,
                 ["target-new"],
-                {"target-new": {"bootstrap_difficulty": 20.0}},
+                {"target-new": {"task_effort": 20.0}},
                 calibration_scope="historical_jsonl",
             )
 

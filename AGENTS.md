@@ -9,6 +9,7 @@ This file is the repo-level operating contract for Codex-style agents working in
 - Claim 2 is the mechanism claim: BudgetFlow's value-aware budget allocation, routing, escalation, stop, and learning mechanisms explain how Claim 1 is achieved and must improve or preserve value/cost efficiency against strong diagnostic controls.
 - Claim 2 serves Claim 1. Do not optimize routing savings, model-tier switching, or stop-loss behavior in a way that reduces value-weighted outcomes.
 - Treat T1/T2/T3 as normalized model-tier slots. Provider/model endpoint swaps inside a catalog semantic revision change base URL, token, and physical backend, but they do not by themselves change normalized cost or routing semantics.
+- ModelFit calibration is physical-model evidence. Semantic-compatible history can inform diagnosis, but runtime ModelFit must not trust rows from a different physical catalog hash/revision.
 
 ## Experiment Gold Standard
 
@@ -53,6 +54,9 @@ These are the short-form checks every worker should keep in view:
 - Historical JSONL and historical reports are immutable evidence. Mark old artifacts forensic-only when needed; do not patch them in place.
 - Runtime artifacts under `paper1/data/` are not source code. Do not commit trace, heartbeat, checkpoint, or run-output files unless explicitly requested.
 - Model pricing and capability priors belong in a versioned tier catalog. Do not recalibrate paper experiments from public provider prices during a paid-run line; use the frozen normalized catalog unless the run is explicitly a new CostSource study. Paid-run execution must use the pre-registered catalog and stop if cost/progress confidence is missing or stale.
+- Mainline task values use `criticality_level = normal | high | critical` mapped through the frozen ValueSource. Manual overrides may change only `criticality_level` and `task_effort_multiplier`, with from/to/source/reason recorded. Do not directly override model_fit, expected uplift, route, or budget cap.
+- Use Task Effort as the single term and active schema path. Runtime, compiler, and ModelFit estimation consume final Task Effort; do not add new Difficulty aliases or revive retired effort fields.
+- The mainline catalog must not hide asymmetric KV-cache discounts. Cache discount experiments belong in explicit sensitivity catalogs/reports.
 - Local harness results are part of the evidence system. Because nested Docker is not assumed available, local harness adapters, compat patches, host dependencies, and checker invalidation rules must be treated as first-class evaluation risks.
 
 ## Current Vocabulary
