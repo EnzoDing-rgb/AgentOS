@@ -101,6 +101,8 @@ def validate_tier_catalog(configs: tuple[TierConfig, ...] | None = None) -> list
                 f"{cfg.backend}: unsupported action protocol {cfg.protocol!r}; "
                 "active BudgetFlow runs require tool_call"
             )
+        if cfg.max_turns is None:
+            issues.append(f"{cfg.backend}: missing max_turns")
         for stage, value in cfg.progress_prior.items():
             if not 0.0 <= value <= 1.0:
                 issues.append(f"{cfg.backend}: invalid progress_prior {stage}={value}")
@@ -483,6 +485,30 @@ def catalog_record_compatible(row_catalog: dict) -> tuple[bool, str]:
 
     if row_revision and active_revision:
         return (True, "clean") if row_revision == active_revision else (False, "catalog_mismatch")
+    return False, "missing_catalog"
+
+
+def catalog_record_exact_match(row_catalog: dict) -> tuple[bool, str]:
+    """Return whether a historical row matches the active physical catalog.
+
+    Semantic compatibility is useful for forensic comparisons, but ModelFit
+    evidence is physical-model evidence. Provider/model swaps must not enter
+    runtime routing as calibrated ModelFit unless the recorded catalog exactly
+    matches the active catalog.
+    """
+
+    if not isinstance(row_catalog, dict) or not row_catalog:
+        return False, "missing_catalog"
+    active_catalog = catalog_source_info()
+    row_hash = str(row_catalog.get("catalog_content_hash") or "")
+    active_hash = str(active_catalog.get("catalog_content_hash") or "")
+    if row_hash and active_hash:
+        return (True, "clean") if row_hash == active_hash else (False, "catalog_physical_mismatch")
+
+    row_revision = str(row_catalog.get("catalog_revision") or "")
+    active_revision = str(active_catalog.get("catalog_revision") or "")
+    if row_revision and active_revision:
+        return (True, "clean") if row_revision == active_revision else (False, "catalog_physical_mismatch")
     return False, "missing_catalog"
 
 

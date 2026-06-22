@@ -10,6 +10,7 @@ import pytest
 import budgetflow.experiments.compare_readiness as readiness
 from budgetflow.experiments.compare_config import CompareStrategy, paper_mainline_strategies
 from budgetflow.experiments.compare_readiness import build_compare_readiness_report
+from budgetflow.defaults import PAID_MAINLINE_STEP_LIMIT
 from budgetflow.model_tiers import DEFAULT_CATALOG_PATH, init_catalog
 from budgetflow.value_efficiency import ValueEfficiencyContext
 
@@ -27,7 +28,7 @@ def _args(**overrides):
         trace_turns=True,
         diagnostic_catalog=False,
         frozen_plan=None,
-        step_limit=60,
+        step_limit=PAID_MAINLINE_STEP_LIMIT,
     )
     base.update(overrides)
     return Namespace(**base)
@@ -164,7 +165,10 @@ def test_paper_mainline_blocks_step_limit_above_paid_safety_cap() -> None:
     )
 
     assert not report.ok
-    assert any("step_limit=150" in issue and "paid safety cap 60" in issue for issue in report.blocking)
+    assert any(
+        f"step_limit=150" in issue and f"paid safety cap {PAID_MAINLINE_STEP_LIMIT}" in issue
+        for issue in report.blocking
+    )
 
 
 def test_paper_mainline_blocks_non_tool_call_catalog(monkeypatch) -> None:

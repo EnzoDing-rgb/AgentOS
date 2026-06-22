@@ -285,16 +285,16 @@ def test_cost_basis_trace_fields_use_cost_adapter_contract() -> None:
     assert fields["cost_output_per_1m"] > 0
 
 
-def test_cost_basis_trace_fields_apply_t2_input_kv_cache_discount_after_first_turn() -> None:
+def test_cost_basis_trace_fields_report_t2_mainline_cache_policy() -> None:
     first = cost_basis_trace_fields("tier2", input_tokens=1000, turn_index=1)
     second = cost_basis_trace_fields("tier2", input_tokens=1000, turn_index=2)
 
     assert first["turn_cache_input_fraction"] == 1.0
-    assert second["turn_cache_input_fraction"] == 0.5
-    assert second["turn_cache_policy"]["input_kv_cache_discount"] == 0.5
-    assert second["cost_input_per_1m"] == pytest.approx(first["cost_input_per_1m"] * 0.5)
+    assert second["turn_cache_input_fraction"] == 1.0
+    assert second["turn_cache_policy"]["input_kv_cache_discount"] == 0.0
+    assert second["cost_input_per_1m"] == pytest.approx(first["cost_input_per_1m"])
     assert second["cost_output_per_1m"] == first["cost_output_per_1m"]
-    assert second["cost_estimate_usd"] < first["cost_estimate_usd"]
+    assert second["cost_estimate_usd"] == pytest.approx(first["cost_estimate_usd"])
 
 
 def test_action_trace_fields_capture_current_tool_call_action() -> None:

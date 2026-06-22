@@ -247,6 +247,7 @@ def test_resolve_budget_plan_from_budget_plan_json(tmp_path) -> None:
 
 def test_budget_plan_model_fit_evidence_parsed_as_global_runtime_signal(tmp_path) -> None:
     import json
+    from budgetflow.model_tiers import catalog_source_info
 
     bp_path = tmp_path / "bp.json"
     bp_path.write_text(json.dumps({
@@ -255,6 +256,7 @@ def test_budget_plan_model_fit_evidence_parsed_as_global_runtime_signal(tmp_path
         "model_fit_evidence": {
             "source": "historical_jsonl",
             "confidence": "medium",
+            "catalog": catalog_source_info(),
             "tier_fit": {"2": 0.08, "3": 0.65},
         },
     }))
@@ -264,6 +266,32 @@ def test_budget_plan_model_fit_evidence_parsed_as_global_runtime_signal(tmp_path
     assert fit == {"tier2": 0.08, "tier3": 0.65}
     assert source == "budget_plan:historical_jsonl"
     assert confidence == "medium"
+
+
+def test_budget_plan_model_fit_rejects_stale_physical_catalog(tmp_path) -> None:
+    import json
+    from budgetflow.model_tiers import catalog_source_info
+
+    stale_catalog = dict(catalog_source_info())
+    stale_catalog["catalog_content_hash"] = "old-glm-hash"
+    stale_catalog["catalog_revision"] = "2026-06-17-glm51-t2-t3x5"
+    bp_path = tmp_path / "bp.json"
+    bp_path.write_text(json.dumps({
+        "hard_cap_usd": 1.2262,
+        "generation_mode": "target_utilization",
+        "model_fit_evidence": {
+            "source": "historical_jsonl",
+            "confidence": "high",
+            "catalog": stale_catalog,
+            "tier_fit": {"2": 0.08, "3": 0.65},
+        },
+    }))
+
+    fit, source, confidence = calibrated_model_fit_from_budget_plan(bp_path)
+
+    assert fit is None
+    assert source == "budget_plan_model_fit_rejected:catalog_physical_mismatch"
+    assert confidence == "unvalidated"
 
 
 def test_resolve_budget_plan_explicit_budget_overrides_budget_plan(tmp_path) -> None:

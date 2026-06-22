@@ -42,7 +42,7 @@ def test_run_sensitivity_dedup_keeps_last_row(tmp_path: Path) -> None:
     assert stats["pass"] == 1
 
 
-def test_recost_applies_t2_input_kv_cache_discount_after_first_turn() -> None:
+def test_recost_uses_catalog_t2_cache_policy() -> None:
     recosted = recost_record(
         {
             "strategy": "budgetflow_task_level",
@@ -56,6 +56,6 @@ def test_recost_applies_t2_input_kv_cache_discount_after_first_turn() -> None:
     )
 
     # Turn 1 input: 1000 * 0.90 / 1M.
-    # Turn 2 input: same tokens with input_kv_cache_discount=0.50.
-    assert recosted["total_cost"] == 0.00135
-    assert recosted["recost_input_kv_cache_discount"] == 0.5
+    # Turn 2 input: same tokens with mainline input_kv_cache_discount=0.0.
+    assert recosted["total_cost"] == 0.0018
+    assert recosted["recost_input_kv_cache_discount"] == 0.0

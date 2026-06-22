@@ -20,6 +20,7 @@ from budgetflow.experiments.compare_config import (
     strategy_catalog,
 )
 from budgetflow.lite_tasks import load_compare_easy_tasks, load_compare_medium_tasks, load_swebench_lite_tasks
+from budgetflow.model_tiers import catalog_record_exact_match
 
 TraceConsole = Literal["quiet", "milestones", "verbose"]
 PLANNED_TASK_BUDGET_MODE = "budgetflow_planned_task_budget"
@@ -115,6 +116,10 @@ def calibrated_model_fit_from_budget_plan(
     evidence = data.get("model_fit_evidence") or {}
     if not isinstance(evidence, dict):
         return None, "catalog_progress_prior", "none"
+    evidence_catalog = evidence.get("catalog") or {}
+    catalog_ok, catalog_reason = catalog_record_exact_match(evidence_catalog)
+    if not catalog_ok:
+        return None, f"budget_plan_model_fit_rejected:{catalog_reason}", "unvalidated"
     tier_fit = evidence.get("tier_fit") or {}
     if not isinstance(tier_fit, dict):
         return None, "catalog_progress_prior", "none"

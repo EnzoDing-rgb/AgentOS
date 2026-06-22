@@ -328,10 +328,10 @@ def _task_effort_for(value_features: dict[str, dict], task_id: str, rec: dict | 
 
 
 def _catalog_compatible(row_catalog: dict) -> bool:
-    """Check whether a row's catalog matches the currently loaded catalog."""
-    from .model_tiers import catalog_record_compatible
+    """Check whether a row's physical catalog matches the active catalog."""
+    from .model_tiers import catalog_record_exact_match
 
-    return catalog_record_compatible(row_catalog)[0]
+    return catalog_record_exact_match(row_catalog)[0]
 
 
 def _is_clean_run(rec: dict) -> bool:

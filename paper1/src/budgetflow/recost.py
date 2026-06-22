@@ -19,13 +19,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-# Reference token prices (per-token, not per-1M) from normalized experiment units.
-# These are routing/cost-sensitivity units, not provider billing rates.
-_REF_T2_INPUT = 0.90 / 1_000_000
-_REF_T2_OUTPUT = 4.50 / 1_000_000
-_REF_T3_INPUT = 4.50 / 1_000_000
-_REF_T3_OUTPUT = 22.50 / 1_000_000
-_T2_INPUT_KV_CACHE_DISCOUNT = 0.50
+from .model_tiers import MODEL_CATALOG, token_cost_rates
 
 # Default T3/T2 ratios to test (diagnostic sweep).
 DEFAULT_RATIOS = (1.5, 2.0, 3.0, 5.0, 10.0)
@@ -63,16 +57,29 @@ def recost_record(record: dict, *, t3_multiplier: float) -> dict:
     for turn_index, pick in enumerate(backend_picks, start=1):
         tier = str(pick)
         if tier in ("tier3", "3"):
-            new_cost += input_per_turn * _REF_T3_INPUT * t3_multiplier
-            new_cost += output_per_turn * _REF_T3_OUTPUT * t3_multiplier
+            input_rate, output_rate = token_cost_rates(
+                "tier3",
+                int(input_per_turn),
+                turn_index=turn_index,
+            )
+            new_cost += input_per_turn * input_rate * t3_multiplier
+            new_cost += output_per_turn * output_rate * t3_multiplier
         elif tier in ("tier2", "2"):
-            input_fraction = 1.0 if turn_index <= 1 else 1.0 - _T2_INPUT_KV_CACHE_DISCOUNT
-            new_cost += input_per_turn * _REF_T2_INPUT * input_fraction
-            new_cost += output_per_turn * _REF_T2_OUTPUT
+            input_rate, output_rate = token_cost_rates(
+                "tier2",
+                int(input_per_turn),
+                turn_index=turn_index,
+            )
+            new_cost += input_per_turn * input_rate
+            new_cost += output_per_turn * output_rate
         else:
-            # T1: use reference T1 prices
-            new_cost += input_per_turn * 0.30 / 1_000_000
-            new_cost += output_per_turn * 1.50 / 1_000_000
+            input_rate, output_rate = token_cost_rates(
+                "tier1",
+                int(input_per_turn),
+                turn_index=turn_index,
+            )
+            new_cost += input_per_turn * input_rate
+            new_cost += output_per_turn * output_rate
 
     rec["total_cost"] = round(new_cost, 6)
     rec["budget_spent"] = round(new_cost, 6)
@@ -84,7 +91,9 @@ def recost_record(record: dict, *, t3_multiplier: float) -> dict:
     # Tag the recost metadata
     rec["recost_t3_multiplier"] = t3_multiplier
     rec["recost_t3_turns"] = t3_turns
-    rec["recost_input_kv_cache_discount"] = _T2_INPUT_KV_CACHE_DISCOUNT
+    rec["recost_input_kv_cache_discount"] = (
+        MODEL_CATALOG.require_config("tier2").turn_cache_policy.input_kv_cache_discount
+    )
 
     return rec
 

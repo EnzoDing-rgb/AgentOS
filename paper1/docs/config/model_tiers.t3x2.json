@@ -47,7 +47,7 @@
         "validation": 0.45
       },
       "escalation_patience": 4,
-      "max_turns": 20,
+      "max_turns": 40,
       "protocol": "tool_call",
       "cost_source": "BudgetFlow normalized experimental cost unit for Qwen3-Coder-Flash T1",
       "cost_updated": "2026-06-16",
@@ -82,7 +82,7 @@
         "validation": 0.63
       },
       "escalation_patience": 5,
-      "max_turns": 35,
+      "max_turns": 40,
       "protocol": "tool_call",
       "cost_source": "BudgetFlow normalized experimental cost unit for DeepSeek V4 Pro T2",
       "cost_updated": "2026-06-20",
@@ -112,7 +112,7 @@
         "validation": 0.66
       },
       "escalation_patience": 5,
-      "max_turns": null,
+      "max_turns": 40,
       "protocol": "tool_call",
       "cost_source": "BudgetFlow normalized experimental cost unit for GPT-5.4 T3 (2x T2)",
       "cost_updated": "2026-06-16",

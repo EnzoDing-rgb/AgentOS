@@ -47,7 +47,7 @@
         "validation": 0.45
       },
       "escalation_patience": 4,
-      "max_turns": 20,
+      "max_turns": 40,
       "protocol": "tool_call",
       "cost_source": "BudgetFlow normalized experimental cost unit for Qwen3-Coder-Flash T1",
       "cost_updated": "2026-06-16",
@@ -75,8 +75,8 @@
       ],
       "turn_cache_policy": {
         "input_discount_after_turn": 1,
-        "input_kv_cache_discount": 0.5,
-        "min_input_cost_fraction": 0.5
+        "input_kv_cache_discount": 0.0,
+        "min_input_cost_fraction": 1.0
       },
       "mean_output_tokens": 1024,
       "progress_score": 0.24,
@@ -87,11 +87,11 @@
         "validation": 0.63
       },
       "escalation_patience": 5,
-      "max_turns": 35,
+      "max_turns": 40,
       "protocol": "tool_call",
       "cost_source": "BudgetFlow normalized experimental cost unit for DeepSeek V4 Pro T2",
       "cost_updated": "2026-06-20",
-      "cost_notes": "Virtual experiment units, not public provider billing. T2 is fixed at approximately 3x T1; later task turns apply input_kv_cache_discount=0.50 to input tokens only; output tokens remain full price.",
+      "cost_notes": "Virtual experiment units, not public provider billing. T2 is fixed at approximately 3x T1; mainline cost accounting does not apply a KV-cache discount. Cache discounts belong in explicit sensitivity catalogs, not the primary evidence catalog.",
       "progress_source": "BudgetFlow tier-level heuristic prior for DeepSeek V4 Pro T2; not outcome-calibrated",
       "progress_updated": "2026-06-20",
       "progress_notes": "T2 uses DeepSeek V4 Pro while preserving T2 normalized cost semantics. Provider access must pass signature preflight before paid runs."
@@ -117,7 +117,7 @@
         "validation": 0.66
       },
       "escalation_patience": 5,
-      "max_turns": null,
+      "max_turns": 40,
       "protocol": "tool_call",
       "cost_source": "BudgetFlow normalized experimental cost unit for GPT-5.4 T3",
       "cost_updated": "2026-06-16",

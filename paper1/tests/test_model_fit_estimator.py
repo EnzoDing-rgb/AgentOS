@@ -52,6 +52,44 @@ def _restore_catalog(original: dict):
 
 
 class TestModelFitEstimation:
+    def test_model_fit_rejects_semantic_compatible_provider_swap_history(self):
+        """Provider-swapped history is forensic-only and cannot calibrate ModelFit."""
+        from budgetflow.model_fit_estimator import estimate_model_fit_from_jsonl
+        import budgetflow.model_tiers as mt
+
+        current = mt.catalog_source_info()
+        records = [
+            {
+                "strategy": "bare_t2_baseline",
+                "instance_id": "task-a",
+                "total_cost": 0.05,
+                "catalog": {
+                    "catalog_revision": "2026-06-17-glm51-t2-t3x5",
+                    "catalog_semantic_revision": current["catalog_semantic_revision"],
+                    "catalog_content_hash": "old-glm-hash",
+                },
+                "score_status": "pass",
+                "exit_status": "HarnessResolved",
+                "row_finished_at": 1,
+            },
+        ]
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+            path = Path(f.name)
+        try:
+            _write_jsonl(path, records)
+
+            evidence = estimate_model_fit_from_jsonl(
+                path,
+                ["task-a"],
+                {"task-a": {"bootstrap_difficulty": 20.0}},
+            )
+
+            assert evidence.evidence_tasks == 0
+            assert evidence.confidence == "low"
+            assert evidence.tier_fit[2] == pytest.approx(0.24)
+        finally:
+            path.unlink()
+
     def test_rejects_raw_value_feature_task_effort_schema(self):
         """ModelFit consumes normalized compiler features, not raw value matrix schema."""
         from budgetflow.model_fit_estimator import estimate_model_fit_from_jsonl

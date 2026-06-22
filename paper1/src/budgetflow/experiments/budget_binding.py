@@ -356,6 +356,7 @@ def calibrate_budget(
                 "source": evidence.source,
                 "scope": evidence.scope,
                 "confidence": evidence.confidence,
+                "catalog": catalog_source_info(),
                 "evidence_tasks": evidence.evidence_tasks,
                 "tier_evidence_counts": {
                     f"tier{tier}": count
