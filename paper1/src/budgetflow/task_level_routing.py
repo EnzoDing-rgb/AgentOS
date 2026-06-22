@@ -19,6 +19,7 @@ from .defaults import (
     TASK_START_MIN_VALUE_FOR_DECISIVE_FIT,
     TASK_START_PAID_UPGRADE_MIN_FIT_GAIN,
     TASK_START_PRESSURE_THRESHOLD_MULTIPLIER,
+    TASK_START_STRONGEST_MIN_BUDGET_COVERAGE,
     TASK_START_T3_ACCEPTANCE_MARGIN,
     TASK_START_VALUE_RATIO_GATE,
     task_start_effort_multiplier,
@@ -77,6 +78,12 @@ def task_start_tier_decision(
         if budget_value is not None
         else True
     )
+    budget_coverage = _budget_coverage(budget_value, strongest_cost)
+    budget_soft_allows = (
+        budget_allows
+        or budget_value is None
+        or budget_coverage >= TASK_START_STRONGEST_MIN_BUDGET_COVERAGE
+    )
 
     # ── marginal yield ───────────────────────────────────────────────────
     effort_mult = task_start_effort_multiplier(effort, reference_runway_turns=reference_runway_turns)
@@ -111,7 +118,7 @@ def task_start_tier_decision(
 
     # ── marginal yield path ──────────────────────────────────────────────
     if (
-        budget_allows
+        budget_soft_allows
         and has_trusted_model_fit
         and fit_gain > 0
         and paid_upgrade_candidate
@@ -142,6 +149,8 @@ def task_start_tier_decision(
             task_budget=budget_value,
             headroom=_headroom(budget_value, strongest_cost),
             headroom_fraction=_headroom_fraction(budget_value, strongest_cost),
+            budget_coverage=budget_coverage,
+            budget_soft_allows=budget_soft_allows,
             rule="marginal_expected_value_per_dollar",
         )
 
@@ -149,9 +158,15 @@ def task_start_tier_decision(
     if _uncertain_probe(
         is_cold_start=is_cold_start,
         budget_allows=budget_allows,
+        budget_soft_allows=budget_soft_allows,
+        budget_coverage=budget_coverage,
         headroom_fraction=_headroom_fraction(budget_value, strongest_cost),
         pressure=pressure,
         value_ratio=value_ratio,
+        fit_gain=fit_gain,
+        paid_upgrade_candidate=paid_upgrade_candidate,
+        marginal_yield=marginal_yield,
+        acceptance=acceptance,
         effort=effort,
         value=value,
         median=median,
@@ -181,6 +196,8 @@ def task_start_tier_decision(
             task_budget=budget_value,
             headroom=_headroom(budget_value, strongest_cost),
             headroom_fraction=_headroom_fraction(budget_value, strongest_cost),
+            budget_coverage=budget_coverage,
+            budget_soft_allows=budget_soft_allows,
             rule="uncertain_frontier_probe",
         )
 
@@ -210,6 +227,8 @@ def task_start_tier_decision(
         task_budget=budget_value,
         headroom=_headroom(budget_value, strongest_cost),
         headroom_fraction=_headroom_fraction(budget_value, strongest_cost),
+        budget_coverage=budget_coverage,
+        budget_soft_allows=budget_soft_allows,
         rule="reference_frontier",
     )
 
@@ -229,22 +248,43 @@ def _headroom_fraction(task_budget: float | None, strongest_cost: float) -> floa
     return _headroom(task_budget, strongest_cost) / max(task_budget, 0.000001)
 
 
+def _budget_coverage(task_budget: float | None, strongest_cost: float) -> float:
+    if task_budget is None:
+        return 1.0
+    if task_budget <= 0:
+        return 0.0
+    return min(1.0, float(task_budget) / max(strongest_cost, 0.000001))
+
+
 def _uncertain_probe(
     *,
     is_cold_start: bool,
     budget_allows: bool,
+    budget_soft_allows: bool,
+    budget_coverage: float,
     headroom_fraction: float,
     pressure: float,
     value_ratio: float,
+    fit_gain: float,
+    paid_upgrade_candidate: bool,
+    marginal_yield: float,
+    acceptance: float,
     effort: float,
     value: float,
     median: float,
 ) -> bool:
     if not is_cold_start:
         return False
-    if not budget_allows:
+    if not budget_soft_allows:
         return False
-    if headroom_fraction < 0.10:
+    if not budget_allows and not (
+        paid_upgrade_candidate
+        and fit_gain > 0
+        and marginal_yield >= acceptance
+        and budget_coverage >= TASK_START_STRONGEST_MIN_BUDGET_COVERAGE
+    ):
+        return False
+    if budget_allows and headroom_fraction < 0.10:
         return False
     if pressure > 0.80:
         return False
@@ -285,6 +325,8 @@ def _scores(
     task_budget: float | None,
     headroom: float,
     headroom_fraction: float,
+    budget_coverage: float,
+    budget_soft_allows: bool,
     rule: str,
 ) -> dict[str, float]:
     return {
@@ -293,6 +335,9 @@ def _scores(
         "value_ratio": round(value_ratio, 6),
         "budget_pressure": budget_pressure,
         "budget_allows_strongest": 1.0 if budget_allows else 0.0,
+        "budget_soft_allows_strongest": 1.0 if budget_soft_allows else 0.0,
+        "strongest_budget_coverage": budget_coverage,
+        "strongest_min_budget_coverage": TASK_START_STRONGEST_MIN_BUDGET_COVERAGE,
         "has_trusted_model_fit": 1.0 if has_trusted_model_fit else 0.0,
         "reference_fit": t2_fit,
         "strongest_fit": t3_fit,

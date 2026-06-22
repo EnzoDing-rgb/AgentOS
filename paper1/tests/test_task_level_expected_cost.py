@@ -467,8 +467,40 @@ class TestChooseTaskLevelBackend:
 
         assert backend.tier == 2
         assert ctx.last_policy_decision.scores["budget_allows_strongest"] == 0.0
+        assert ctx.last_policy_decision.scores["budget_soft_allows_strongest"] == 0.0
         assert ctx.last_policy_decision.scores["task_budget"] == pytest.approx(0.05)
         assert ctx.last_decision.reason == "bf_task_start_reference_frontier"
+
+    def test_soft_budget_gate_allows_high_value_cold_start_t3_probe(self):
+        """High-value cold-start tasks can probe T3 when forecast coverage is reasonable."""
+        from budgetflow.adapter.strategies import choose_backend
+
+        alloc = _trusted_allocation(
+            task_value=1.5,
+            task_effort=23.1727,
+            planned_task_budget=2.4936,
+            effective_task_budget=1.078647,
+            model_fit=None,
+            confidence={"model_fit": "none"},
+        )
+        backends = _backends(t2_progress=0.24, t3_progress=0.35)
+        ctx = _task_level_ctx(
+            backends,
+            budget_pressure=0.020295,
+            median_task_value=1.0,
+            allocation=alloc,
+        )
+
+        backend = choose_backend(ctx, _turn(), _runtime_like_costs())
+
+        assert backend.tier == 3
+        assert ctx.last_policy_decision is not None
+        scores = ctx.last_policy_decision.scores
+        assert scores["budget_allows_strongest"] == 0.0
+        assert scores["budget_soft_allows_strongest"] == 1.0
+        assert scores["strongest_budget_coverage"] >= 0.50
+        assert scores["marginal_yield_per_dollar"] >= scores["t3_acceptance_threshold"]
+        assert ctx.last_decision.reason == "bf_task_start_uncertain_frontier_probe"
 
     def test_planned_task_budget_does_not_override_small_fit_delta(self):
         """Task runway is necessary but not enough to buy Strongest Model turns."""
@@ -513,6 +545,7 @@ class TestChooseTaskLevelBackend:
 
         assert backend.tier == 2
         assert ctx.last_policy_decision.scores["budget_allows_strongest"] == 0.0
+        assert ctx.last_policy_decision.scores["budget_soft_allows_strongest"] == 0.0
         assert ctx.last_policy_decision.scores["task_budget"] == pytest.approx(0.05)
         assert ctx.last_decision.reason == "bf_task_start_reference_frontier"
 
@@ -839,6 +872,7 @@ class TestObservabilitySeams:
             paid_upgrade_candidate=True, decisive_fit_gate=False,
             metadata_gate=True, task_budget=10.0,
             headroom=8.0, headroom_fraction=0.8,
+            budget_coverage=1.0, budget_soft_allows=True,
             rule="marginal_expected_value_per_dollar",
         )
         assert result["t3_acceptance_margin"] == 0.10

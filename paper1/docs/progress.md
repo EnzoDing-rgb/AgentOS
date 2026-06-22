@@ -4,6 +4,17 @@
 
 ## 2026-06-22 — Current status (in progress, not final evidence)
 
+- **2026-06-23 / 3x30 task-start budget gate routefix:** stopped
+  `mainline_3x30_lhm_cycle_kv50_20260623` after early evidence showed
+  BudgetFlow routing a high-value Seaborn task to T2 even though pure T3 solved
+  it faster and cheaper. Root cause was a task-start hard veto:
+  conservative `strongest_expected_total_cost > effective_task_budget` overrode
+  the marginal Yield/$ frontier. The shared compiler/runtime entry point now
+  exposes `budget_soft_allows_strongest` with a 50% strongest-cost coverage
+  floor while preserving hard blocks for tiny caps. Recompiled routefix KV50
+  plan is PASS with first-10 `5 T2 / 5 T3` and full-30 `17 T2 / 13 T3`;
+  readiness 10/20/30 passes. Prior stopped 3x30 runs are forensic-only; the
+  next paid attempt should use a new stem.
 - **2026-06-22 / Agent-shell contamination fix:** the cold 4x30 stage-1 paid
   run `mainline_4x30_cold_contractfix_stage1_20260622` halted correctly on
   `host_dependency_contamination` after a runtime worktree editable Matplotlib
