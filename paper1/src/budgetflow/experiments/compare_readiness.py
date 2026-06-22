@@ -484,6 +484,12 @@ def build_compare_readiness_report(
             task_level_strategy_names = [
                 strategy.name for strategy in strategies if strategy.routing == "value_aware_task_level"
             ]
+            frontier_diagnostic = bp.get("frontier_diagnostic")
+            frontier_posture = (
+                str(frontier_diagnostic.get("posture") or "")
+                if isinstance(frontier_diagnostic, dict)
+                else ""
+            )
             if task_level_strategy_names:
                 projection_diagnostics = bp.get("projection_diagnostics")
                 task_diag = (
@@ -498,7 +504,13 @@ def build_compare_readiness_report(
                     )
                 else:
                     degeneration = str(task_diag.get("degeneration") or "")
-                    if degeneration in {"pure_reference_tier", "pure_strongest_tier"}:
+                    if degeneration == "pure_reference_tier" and frontier_posture == "reference_cost_dominant":
+                        warnings.append(
+                            "BudgetFlow task-level runtime projection collapses to the reference tier because "
+                            "frontier_diagnostic=reference_cost_dominant; treat this run as frontier-selection "
+                            "diagnostic evidence, not strong tier-routing evidence"
+                        )
+                    elif degeneration in {"pure_reference_tier", "pure_strongest_tier"}:
                         blocking.append(
                             f"BudgetFlow task-level runtime projection degenerates to {degeneration}; "
                             "fix ModelFit/value/cost calibration before paid run"
@@ -584,10 +596,23 @@ def build_compare_readiness_report(
             )
         for violation in pressure_contract.get("violations", []) if isinstance(pressure_contract, dict) else []:
             if "budgetflow_task_level_degenerated" in str(violation):
-                blocking.append(
-                    "budget plan pressure contract has budgetflow_task_level_degenerated; "
-                    "BudgetFlow task-level projection uses zero Strongest Model tasks under compiled task budgets"
+                frontier_posture = (
+                    str(frontier_diagnostic.get("posture") or "")
+                    if isinstance(frontier_diagnostic, dict)
+                    else ""
                 )
+                if "zero Strongest Model" in str(violation) and frontier_posture == "reference_cost_dominant":
+                    warnings.append(
+                        "budget plan pressure contract reports budgetflow_task_level_degenerated, "
+                        "but frontier_diagnostic=reference_cost_dominant makes pure reference-tier routing "
+                        "a diagnostic frontier-selection outcome rather than a paid-run blocker"
+                    )
+                else:
+                    blocking.append(
+                        "budget plan pressure contract has budgetflow_task_level_degenerated; "
+                        "BudgetFlow task-level projection uses a fixed-tier frontier without a matching "
+                        "frontier dominance diagnostic"
+                    )
                 break
             if "budgetflow_under_target" in str(violation):
                 warnings.append(
