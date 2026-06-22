@@ -92,6 +92,24 @@ def test_load_tasks_stratifies_registered_task_order(monkeypatch) -> None:
     ]
 
 
+def test_load_tasks_preserves_explicit_ids_order(monkeypatch) -> None:
+    loaded = [
+        SimpleNamespace(instance_id="task-b"),
+        SimpleNamespace(instance_id="task-a"),
+        SimpleNamespace(instance_id="task-c"),
+    ]
+
+    def fake_load(*, instance_ids):
+        assert instance_ids == ("task-b", "task-a", "task-c")
+        return loaded
+
+    monkeypatch.setattr(compare_setup, "load_swebench_lite_tasks", fake_load)
+
+    tasks = load_tasks_for_compare(_args(ids="task-b,task-a,task-c"), tasks_n=3)
+
+    assert [task.instance_id for task in tasks] == ["task-b", "task-a", "task-c"]
+
+
 def test_stratify_task_order_mixes_repo_blocks_for_staged_prefixes() -> None:
     tasks = []
     for repo_index, repo in enumerate(("a/repo", "b/repo", "c/repo")):

@@ -556,7 +556,7 @@ def test_readiness_blocks_budget_plan_missing_selected_tasks(tmp_path) -> None:
     )
 
     assert not report.ok
-    assert any("budget plan task_ids must exactly match selected tasks/order" in issue for issue in report.blocking)
+    assert any("budget plan task_ids must exactly match selected task set" in issue for issue in report.blocking)
     assert any("missing selected tasks: task-b" in issue for issue in report.blocking)
 
 
@@ -873,12 +873,13 @@ def test_readiness_blocks_budget_plan_superset_for_short_run(tmp_path) -> None:
     assert any("extra budget-plan tasks: task-c" in issue for issue in report.blocking)
 
 
-def test_readiness_blocks_budget_plan_task_order_drift(tmp_path) -> None:
+def test_readiness_warns_budget_plan_task_order_drift(tmp_path) -> None:
     bp = tmp_path / "budget_plan.json"
     bp.write_text(
         '{"hard_cap_usd":1.0,"source":"budget_binding_calibrator",'
         '"generation_mode":"target_utilization","decision":"PASS",'
-        '"task_ids":["task-b","task-a"]}'
+        '"task_ids":["task-b","task-a"],'
+        '"planned_task_budget_by_strategy":{"budgetflow_segment":{"task-a":1.0,"task-b":1.0}}}'
     )
     value_context = ValueEfficiencyContext()
     value_context.init(value_profile="equal")
@@ -897,8 +898,9 @@ def test_readiness_blocks_budget_plan_task_order_drift(tmp_path) -> None:
         budget_plan_path=bp,
     )
 
-    assert not report.ok
-    assert any("same task set but different order" in issue for issue in report.blocking)
+    assert report.ok
+    assert any("same task set but a different order" in issue for issue in report.warnings)
+    assert not any("different order" in issue for issue in report.blocking)
 
 
 def test_readiness_blocks_diagnostic_catalog_without_explicit_opt_in(tmp_path) -> None:

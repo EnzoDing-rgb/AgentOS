@@ -203,7 +203,7 @@ def select_strategies(args: Namespace) -> StrategySelection:
 def load_tasks_for_compare(args: Namespace, *, tasks_n: int) -> list:
     if args.ids:
         ids = tuple(s.strip() for s in args.ids.split(",") if s.strip())
-        tasks = load_swebench_lite_tasks(instance_ids=ids)
+        return list(load_swebench_lite_tasks(instance_ids=ids))
     elif args.task_set == "medium":
         tasks = load_compare_medium_tasks(tasks_n)
     elif args.preset == "3x3":

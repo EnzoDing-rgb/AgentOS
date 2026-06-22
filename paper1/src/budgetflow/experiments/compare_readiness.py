@@ -405,9 +405,11 @@ def build_compare_readiness_report(
             if isinstance(bp_task_ids, list) and bp_task_ids:
                 bp_task_list = [str(task_id) for task_id in bp_task_ids]
                 facts.append(f"budget_plan_task_ids={len(bp_task_list)}")
-                if bp_task_list != task_ids:
-                    missing_budget_tasks = [task_id for task_id in task_ids if task_id not in set(bp_task_list)]
-                    extra_budget_tasks = [task_id for task_id in bp_task_list if task_id not in set(task_ids)]
+                selected_set = set(task_ids)
+                budget_set = set(bp_task_list)
+                if budget_set != selected_set:
+                    missing_budget_tasks = [task_id for task_id in task_ids if task_id not in budget_set]
+                    extra_budget_tasks = [task_id for task_id in bp_task_list if task_id not in selected_set]
                     detail_parts: list[str] = []
                     if missing_budget_tasks:
                         preview = ", ".join(missing_budget_tasks[:8])
@@ -420,8 +422,13 @@ def build_compare_readiness_report(
                     if not detail_parts:
                         detail_parts.append("same task set but different order")
                     blocking.append(
-                        "budget plan task_ids must exactly match selected tasks/order; "
+                        "budget plan task_ids must exactly match selected task set; "
                         + "; ".join(detail_parts)
+                    )
+                elif bp_task_list != task_ids:
+                    warnings.append(
+                        "budget plan task_ids have the same task set but a different order; "
+                        "runtime will use selected task order"
                     )
                 bp_generation_mode = str(bp.get("generation_mode", "") or "")
             bp_strategy_names = bp.get("strategy_names")
