@@ -16,7 +16,6 @@ HOST_DEPENDENCY_CONTAMINATION_MARKERS = (
     "opik/evaluation/metrics",
     "site-packages/tensorflow",
     "site-packages/keras",
-    "site-packages/pandas",
     "/tmp/budgetflow-task-scout/runtime/worktrees/",
     "runtime worktree paths",
 )

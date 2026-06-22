@@ -145,6 +145,36 @@ def test_harness_dependency_version_mismatch_is_infra_abort_not_model_fail() -> 
     assert score["abort_reason"] == "host_dependency_contamination"
 
 
+def test_isolated_harness_venv_pandas_traceback_is_model_fail_not_contamination() -> None:
+    record = {
+        "harness_resolved": False,
+        "patch_extracted": True,
+        "patch_source": "workspace_diff",
+        "workspace_patch": "/tmp/workspace.patch",
+        "agent_gold_edited": True,
+        "agent_gold_files": ["seaborn/_core/scales.py"],
+        "exit_status": "HarnessFailed",
+        "exit_reason": "harness_failed",
+        "detail": (
+            "test_patch=ok; fail_before=fail; model_patch=ok; fail_after=fail; "
+            "../../../harness_venvs/mwaskom__seaborn/lib/python3.11/"
+            "site-packages/pandas/core/computation/expressions.py:70: TypeError; "
+            "pass_to_pass=pass"
+        ),
+        "turn_trace_count": 1,
+        "turn_traces": [{}],
+    }
+
+    assert classify_failure(record) == "repair_fail"
+    verdict = build_verdict(record)
+    assert verdict["verdict_axis"] == "model_fail"
+    assert verdict["failure_owner"] == "model"
+
+    score = build_score_status(record)
+    assert score["score_status"] == "true_fail"
+    assert score["abort_reason"] == ""
+
+
 def test_repo_extension_startup_import_failure_is_infra_abort_not_model_fail() -> None:
     record = {
         "harness_resolved": False,
