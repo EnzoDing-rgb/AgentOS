@@ -63,9 +63,12 @@ def build_router_only_plan(
         task_value_score = float(
             task_value.get("criticality_value", task_value.get("equal", 1.0)) or 1.0
         )
-        task_effort_score = float(
-            task_effort.get("final_task_effort", task_effort.get("bootstrap_heuristic", 0.0)) or 0.0
-        )
+        if "bootstrap_heuristic" in task_effort and "final_task_effort" not in task_effort:
+            raise ValueError(
+                f"value matrix task {task_id} uses retired task_effort.bootstrap_heuristic; "
+                "expected task_effort.final_task_effort"
+            )
+        task_effort_score = float(task_effort.get("final_task_effort", 0.0) or 0.0)
         task_values[task_id] = task_value_score
         effort_values[task_id] = task_effort_score
     if missing:

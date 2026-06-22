@@ -223,7 +223,6 @@ def bootstrap_task_effort(task) -> dict[str, float | str | dict[str, int]]:
         "base_task_effort": base_task_effort,
         "task_effort_multiplier": 1.0,
         "final_task_effort": base_task_effort,
-        "bootstrap_heuristic": base_task_effort,
         "source": "task_metadata_formula",
         "features": features,
     }
@@ -263,17 +262,16 @@ def apply_task_effort_override(
     if multiplier <= 0:
         raise ValueError("task_effort_multiplier must be positive")
     task_effort = entry.setdefault("task_effort", {})
-    base = float(
-        task_effort.get("base_task_effort")
-        or task_effort.get("final_task_effort")
-        or task_effort.get("bootstrap_heuristic")
-        or 1.0
-    )
+    if "bootstrap_heuristic" in task_effort and "base_task_effort" not in task_effort:
+        raise ValueError(
+            "retired task_effort.bootstrap_heuristic cannot be used as override base; "
+            "expected task_effort.base_task_effort"
+        )
+    base = float(task_effort.get("base_task_effort") or task_effort.get("final_task_effort") or 1.0)
     previous = float(task_effort.get("task_effort_multiplier") or 1.0)
     task_effort["base_task_effort"] = base
     task_effort["task_effort_multiplier"] = float(multiplier)
     task_effort["final_task_effort"] = round(base * float(multiplier), 4)
-    task_effort["bootstrap_heuristic"] = task_effort["final_task_effort"]
     entry["task_effort_override"] = {
         "from": previous,
         "to": float(multiplier),
@@ -320,10 +318,10 @@ def build_bootstrap_value_matrix(
 
     Schema (North Star aligned):
       - ``task_value``: Claim 1 value profiles (equal, criticality_value, ...).
-      - ``task_effort``: Task Effort diagnostic (bootstrap_heuristic).
+      - ``task_effort``: Task Effort diagnostic (final_task_effort).
       - ``model_fit``: reserved, null for bootstrap matrices.
 
-    The ``bootstrap_heuristic`` is a metadata-based effort proxy.  It is NOT
+    The ``final_task_effort`` is a metadata-based effort proxy.  It is NOT
     a Task Value profile and must not be selected via --value-profile.
     """
     import math as _math
@@ -348,7 +346,7 @@ def build_bootstrap_value_matrix(
                 "No strategy outcome, cost, solve rarity, or BudgetFlow signal is used."
             ),
             "effort_formula": (
-                "bootstrap_heuristic = 1 + patch_lines + 2*f2p_count + "
+                "base_task_effort = 1 + patch_lines + 2*f2p_count + "
                 "log1p(p2p_count) + 0.01*problem_words + 1.5*gold_file_count"
             ),
         },
@@ -389,17 +387,17 @@ def build_bootstrap_value_matrix(
         {"rank": index + 1, "instance_id": iid, "value": 1.0}
         for index, (iid, entry) in enumerate(ranked_equal)
     ]
-    # Effort ranking: by bootstrap_heuristic (diagnostic only, not Claim 1).
+    # Effort ranking: by final_task_effort (diagnostic only, not Claim 1).
     ranked_effort = sorted(
         matrix["tasks"].items(),
-        key=lambda item: item[1]["task_effort"]["bootstrap_heuristic"],
+        key=lambda item: item[1]["task_effort"]["final_task_effort"],
         reverse=True,
     )
-    matrix["rankings"]["bootstrap_heuristic"] = [
+    matrix["rankings"]["final_task_effort"] = [
         {
             "rank": index + 1,
             "instance_id": iid,
-            "effort": entry["task_effort"]["bootstrap_heuristic"],
+            "effort": entry["task_effort"]["final_task_effort"],
         }
         for index, (iid, entry) in enumerate(ranked_effort)
     ]

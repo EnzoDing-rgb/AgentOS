@@ -683,7 +683,9 @@ class TestChooseTaskLevelBackend:
 
         assert backend.tier == 2
         assert ctx.last_policy_decision.scores["budget_allows_strongest"] == 0.0
-        assert ctx.last_policy_decision.scores["planned_task_budget"] == pytest.approx(0.05)
+        assert ctx.last_policy_decision.scores["planned_task_budget"] == pytest.approx(10.0)
+        assert ctx.last_policy_decision.scores["effective_task_budget"] == pytest.approx(0.05)
+        assert ctx.last_policy_decision.scores["runtime_task_budget"] == pytest.approx(0.05)
         assert ctx.last_policy_decision.reason == "task_level_reference_frontier"
         assert ctx.last_policy_decision.scores["reference_frontier_candidate"] == 1.0
 
@@ -1121,7 +1123,7 @@ class TestCensoredCostProjection:
             with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
                 f.write(json.dumps({
                     "tasks": {
-                        "task-x": {"task_effort": {"bootstrap_heuristic": 30.0}},
+                        "task-x": {"task_effort": {"final_task_effort": 30.0}},
                     }
                 }))
                 vm_path = Path(f.name)

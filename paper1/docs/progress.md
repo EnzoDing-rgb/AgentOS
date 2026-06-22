@@ -4,18 +4,28 @@
 
 ## 2026-06-22 — Current status (in progress, not final evidence)
 
+- **2026-06-22 / Pre-paid 4x30 contract fixes:** closed three paid-run
+  blockers before any next run: compiler/runtime task-start effort scaling now
+  shares one catalog-runway helper, task-start observability separates planned,
+  effective, and runtime task budgets, and active Task Effort inputs now consume
+  `final_task_effort` without falling back to retired
+  `task_effort.bootstrap_heuristic`. Current 4x30 artifacts were regenerated
+  without retired effort fields. The historical-calibrated stage-pressure plan
+  is correctly **BLOCKED** as pure Strongest Model (`30 T3 / 0 T2`); the
+  cold/no-history stage-pressure plan is readiness **PASS** with mixed
+  `15 T2 / 15 T3`, but remains `projection_confidence=unvalidated`.
 - **2026-06-22 / Stage-pressure Budget Compiler ready:** added a single
   compiler entrypoint for tight budget regimes:
   `budget_binding calibrate --stage-prefix-count N
   --stage-target-budget-fraction X --stage-reference-strategy STRATEGY`.
-  The new 4x30 plan
+  The historical-calibrated 4x30 plan
   `paper1/docs/reports/mainline_4x30_stage_pressure35_budget_plan_20260622.json`
   sets hard cap `$9.6933` so the first 10 tasks' bare T3 projected spend is
-  exactly 35% of total budget; full projected raw utilization is now over cap
-  for all four policies. Paid-readiness-only passes. Warnings remain explicit:
-  projection confidence is diagnostic/unvalidated and task-level BudgetFlow
-  currently projects pure Strongest Model because the frontier is
-  `strongest_cost_dominant`.
+  exactly 35% of total budget, but paid-readiness correctly blocks it because
+  task-level BudgetFlow projects pure Strongest Model under historical
+  calibration. The cold/no-history stage-pressure plan is the only current
+  readiness-pass candidate, and it remains diagnostic because projection
+  confidence is unvalidated.
 - **2026-06-22 / No-paid gate fixes before 4x30 reset:** restored
   shared-cap-aware planned task budget rebalance, split compiler planned task
   runway from runtime effective task cap, added completed-prefix calibration
@@ -102,4 +112,3 @@
 - **Evidence status:** this is harness/observability validation, not paper-scale
   Claim 1 evidence. It is the new rollback/forward point for patch extraction
   behavior after the earlier `7b63b23` rollback checkpoint.
-

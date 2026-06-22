@@ -11,8 +11,6 @@ from ..defaults import (
     TASK_START_COLD_FRONTIER_EFFORT_THRESHOLD,
     TASK_START_COLD_FRONTIER_EFFORT_TOLERANCE,
     TASK_START_DECISIVE_FIT_GAIN,
-    TASK_START_EFFORT_MULTIPLIER_MAX,
-    TASK_START_EFFORT_MULTIPLIER_MIN,
     TASK_START_HIGH_EFFORT_THRESHOLD,
     TASK_START_MIN_VALUE_FOR_DECISIVE_FIT,
     TASK_START_PAID_UPGRADE_MIN_FIT_GAIN,
@@ -23,6 +21,7 @@ from ..defaults import (
     active_w_i,
     active_w_i_profile_name,
     progress_table,
+    task_start_effort_multiplier,
     task_start_t3_acceptance_threshold,
     tier_escalation_patience,
 )
@@ -280,13 +279,9 @@ def _task_start_effort_multiplier(ctx: RoutingContext, effort_units: float) -> f
     reference = (
         float(ctx.tier_frontier.reference_runway_turns)
         if ctx.tier_frontier is not None
-        else 35.0
+        else None
     )
-    reference = max(1.0, reference)
-    return max(
-        TASK_START_EFFORT_MULTIPLIER_MIN,
-        min(TASK_START_EFFORT_MULTIPLIER_MAX, effort_units / reference),
-    )
+    return task_start_effort_multiplier(effort_units, reference_runway_turns=reference)
 
 
 def _strongest_price_ratio(ctx: RoutingContext, reference: Backend, strongest: Backend) -> float:
@@ -396,13 +391,27 @@ def _task_start_t3_score(
     )
     acceptance_threshold = task_start_t3_acceptance_threshold(threshold)
     runtime_task_budget = _runtime_task_budget(allocation)
-    planned_task_budget = runtime_task_budget if runtime_task_budget is not None else 0.0
-    task_budget_headroom = (
-        planned_task_budget - strongest_total_cost
-        if planned_task_budget > 0
+    planned_task_budget = (
+        float(allocation.planned_task_budget)
+        if allocation is not None and allocation.planned_task_budget is not None
         else 0.0
     )
-    task_budget_headroom_fraction = task_budget_headroom / max(planned_task_budget, 0.000001) if planned_task_budget > 0 else 0.0
+    effective_task_budget = (
+        float(allocation.effective_task_budget)
+        if allocation is not None and allocation.effective_task_budget is not None
+        else 0.0
+    )
+    runtime_task_budget_value = runtime_task_budget if runtime_task_budget is not None else 0.0
+    task_budget_headroom = (
+        runtime_task_budget_value - strongest_total_cost
+        if runtime_task_budget_value > 0
+        else 0.0
+    )
+    task_budget_headroom_fraction = (
+        task_budget_headroom / max(runtime_task_budget_value, 0.000001)
+        if runtime_task_budget_value > 0
+        else 0.0
+    )
     metadata_gate = (
         value_ratio >= TASK_START_VALUE_RATIO_GATE
         or (effort_units >= TASK_START_HIGH_EFFORT_THRESHOLD and task_value >= median)
@@ -461,6 +470,8 @@ def _task_start_t3_score(
         "t3_acceptance_threshold": acceptance_threshold,
         "t3_acceptance_margin": TASK_START_T3_ACCEPTANCE_MARGIN,
         "planned_task_budget": planned_task_budget,
+        "effective_task_budget": effective_task_budget,
+        "runtime_task_budget": runtime_task_budget_value,
         "task_budget_headroom": task_budget_headroom,
         "task_budget_headroom_fraction": task_budget_headroom_fraction,
         "decision_cost_source": "normalized_catalog",

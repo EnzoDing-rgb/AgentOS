@@ -76,8 +76,8 @@ def test_calibrate_target_utilization_has_no_frozen_plan_input(tmp_path: Path) -
     vm = tmp_path / "vm.json"
     vm.write_text(json.dumps({
         "tasks": {
-            "task-a": {"task_effort": {"bootstrap_heuristic": 50.0}},
-            "task-b": {"task_effort": {"bootstrap_heuristic": 50.0}},
+            "task-a": {"task_effort": {"final_task_effort": 50.0}},
+            "task-b": {"task_effort": {"final_task_effort": 50.0}},
         }
     }))
     plan = calibrate_budget(
@@ -113,7 +113,7 @@ def test_calibrate_stage_prefix_pressure_sets_cap_from_reference_stage(tmp_path:
     vm = tmp_path / "vm.json"
     vm.write_text(json.dumps({
         "tasks": {
-            f"task-{i}": {"task_effort": {"bootstrap_heuristic": 30.0}}
+            f"task-{i}": {"task_effort": {"final_task_effort": 30.0}}
             for i in range(1, 5)
         }
     }))
@@ -210,7 +210,7 @@ def test_budget_plan_model_fit_evidence_is_global_not_per_task_assignment(tmp_pa
         + "\n"
     )
     vm = tmp_path / "vm.json"
-    vm.write_text(json.dumps({"tasks": {"task-a": {"task_effort": {"bootstrap_heuristic": 10.0}}}}))
+    vm.write_text(json.dumps({"tasks": {"task-a": {"task_effort": {"final_task_effort": 10.0}}}}))
 
     plan = calibrate_budget(
         ["task-a"],
@@ -289,8 +289,8 @@ def test_calibrate_emits_loose_budgetflow_task_budgets(tmp_path: Path) -> None:
     vm = tmp_path / "vm.json"
     vm.write_text(json.dumps({
         "tasks": {
-            "task-a": {"task_effort": {"bootstrap_heuristic": 10.0}},
-            "task-b": {"task_effort": {"bootstrap_heuristic": 80.0}},
+            "task-a": {"task_effort": {"final_task_effort": 10.0}},
+            "task-b": {"task_effort": {"final_task_effort": 80.0}},
         }
     }))
 
@@ -489,12 +489,23 @@ def test_value_matrix_schema_is_normalized_at_single_projection_entry(tmp_path: 
     with pytest.raises(ValueError, match="not normalized"):
         _task_effort_for_projection(
             "raw-task",
-            {"raw-task": {"task_effort": {"bootstrap_heuristic": 24.7926}}},
+            {"raw-task": {"task_effort": {"final_task_effort": 24.7926}}},
         )
     with pytest.raises(ValueError, match="retired bootstrap_difficulty"):
         old_vm = tmp_path / "old-vm.json"
         old_vm.write_text(json.dumps({"tasks": {"old-task": {"bootstrap_difficulty": 24.7926}}}))
         _load_value_features(old_vm)
+
+
+def test_projection_effort_multiplier_uses_catalog_reference_runway() -> None:
+    """Compiler task-start mirror must use the catalog runway, not a magic 35."""
+    from budgetflow.defaults import task_start_reference_runway_turns
+    from budgetflow.experiments.budget_binding import _projection_effort_multiplier
+
+    assert task_start_reference_runway_turns() == pytest.approx(60.0)
+    assert _projection_effort_multiplier(30.0) == pytest.approx(0.5)
+    assert _projection_effort_multiplier(60.0) == pytest.approx(1.0)
+    assert _projection_effort_multiplier(120.0) == pytest.approx(2.0)
 
 
 def test_small_historical_sample_cannot_collapse_large_workload_cap(tmp_path: Path) -> None:
@@ -523,7 +534,7 @@ def test_small_historical_sample_cannot_collapse_large_workload_cap(tmp_path: Pa
     vm = tmp_path / "vm.json"
     vm.write_text(json.dumps({
         "tasks": {
-            f"task-{i}": {"task_effort": {"bootstrap_heuristic": 30.0}}
+            f"task-{i}": {"task_effort": {"final_task_effort": 30.0}}
             for i in range(25)
         }
     }))
@@ -581,7 +592,7 @@ def test_calibrate_reuses_current_catalog_historical_cost_without_repricing(tmp_
     })
     jsonl.write_text(json.dumps(row) + "\n")
     vm = tmp_path / "vm.json"
-    vm.write_text(json.dumps({"tasks": {"task-a": {"task_effort": {"bootstrap_heuristic": 10.0}}}}))
+    vm.write_text(json.dumps({"tasks": {"task-a": {"task_effort": {"final_task_effort": 10.0}}}}))
 
     plan = calibrate_budget(
         ["task-a"],
@@ -604,8 +615,8 @@ def test_enterprise_router_projection_uses_frozen_preferred_model_mix(tmp_path: 
     vm = tmp_path / "vm.json"
     vm.write_text(json.dumps({
         "tasks": {
-            "task-a": {"task_effort": {"bootstrap_heuristic": 30.0}},
-            "task-b": {"task_effort": {"bootstrap_heuristic": 30.0}},
+            "task-a": {"task_effort": {"final_task_effort": 30.0}},
+            "task-b": {"task_effort": {"final_task_effort": 30.0}},
         }
     }))
     frozen_plan = tmp_path / "frozen.json"
@@ -649,7 +660,7 @@ def test_calibrate_uses_budget_exhausted_rows_as_floor_not_observed_sample(tmp_p
         "row_finished_at": 1,
     })) + "\n")
     vm = tmp_path / "vm.json"
-    vm.write_text(json.dumps({"tasks": {"task-a": {"task_effort": {"bootstrap_heuristic": 10.0}}}}))
+    vm.write_text(json.dumps({"tasks": {"task-a": {"task_effort": {"final_task_effort": 10.0}}}}))
 
     signals = _load_historical_cost_signals(jsonl)
     assert signals.observed_costs == {}
@@ -775,8 +786,8 @@ def test_calibrate_projects_censored_task_with_remaining_runway(tmp_path: Path) 
     vm = tmp_path / "vm.json"
     vm.write_text(json.dumps({
         "tasks": {
-            "task-a": {"task_effort": {"bootstrap_heuristic": 100.0}},
-            "task-b": {"task_effort": {"bootstrap_heuristic": 100.0}},
+            "task-a": {"task_effort": {"final_task_effort": 100.0}},
+            "task-b": {"task_effort": {"final_task_effort": 100.0}},
         }
     }))
 
@@ -796,7 +807,7 @@ def test_calibrate_projects_censored_task_with_remaining_runway(tmp_path: Path) 
 
 def test_cold_start_prices_fixed_tier_controls_without_assigning_budgetflow_tiers(tmp_path: Path) -> None:
     vm = tmp_path / "vm.json"
-    vm.write_text(json.dumps({"tasks": {"task-a": {"task_effort": {"bootstrap_heuristic": 50.0}}}}))
+    vm.write_text(json.dumps({"tasks": {"task-a": {"task_effort": {"final_task_effort": 50.0}}}}))
 
     plan = calibrate_budget(
         ["task-a"],
@@ -835,9 +846,9 @@ def test_calibrate_cap_allows_strongest_model_to_reach_final_task(tmp_path: Path
     vm = tmp_path / "vm.json"
     vm.write_text(json.dumps({
         "tasks": {
-            "task-a": {"task_effort": {"bootstrap_heuristic": 100.0}},
-            "task-b": {"task_effort": {"bootstrap_heuristic": 100.0}},
-            "task-c": {"task_effort": {"bootstrap_heuristic": 100.0}},
+            "task-a": {"task_effort": {"final_task_effort": 100.0}},
+            "task-b": {"task_effort": {"final_task_effort": 100.0}},
+            "task-c": {"task_effort": {"final_task_effort": 100.0}},
         }
     }))
 
@@ -881,7 +892,7 @@ def test_calibrate_does_not_clip_cap_to_underestimated_strongest_projection(tmp_
     ]
     jsonl.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
     vm = tmp_path / "vm.json"
-    vm.write_text(json.dumps({"tasks": {"task-a": {"task_effort": {"bootstrap_heuristic": 100.0}}}}))
+    vm.write_text(json.dumps({"tasks": {"task-a": {"task_effort": {"final_task_effort": 100.0}}}}))
 
     plan = calibrate_budget(
         ["task-a"],

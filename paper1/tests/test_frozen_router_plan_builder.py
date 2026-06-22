@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from budgetflow.frozen_router_plan_builder import build_router_only_plan
 
 
@@ -40,3 +42,18 @@ def test_build_router_only_plan_uses_value_effort_without_budget_caps() -> None:
     assert plan["plan"]["high_effort"]["priority"] > plan["plan"]["easy"]["priority"]
     assert "hard_cap_usd" not in plan["meta"]
     assert "base_cap" not in plan["plan"]["easy"]
+
+
+def test_build_router_only_plan_rejects_retired_effort_fallback() -> None:
+    matrix = {
+        "meta": {"name": "unit_matrix"},
+        "tasks": {
+            "old": {
+                "task_value": {"criticality_value": 1.0},
+                "task_effort": {"bootstrap_heuristic": 20.0},
+            },
+        },
+    }
+
+    with pytest.raises(ValueError, match="final_task_effort"):
+        build_router_only_plan(matrix, task_ids=["old"], name="unit_router")

@@ -49,7 +49,7 @@
     "bare_t2_baseline": 26.6669,
     "bare_t3_baseline": 14.9224,
     "enterprise_router_baseline": 16.9587,
-    "budgetflow_task_level": 15.3753
+    "budgetflow_task_level": 14.9224
   },
   "projected_task_cost_by_strategy": {
     "bare_t2_baseline": {
@@ -151,13 +151,13 @@
     "budgetflow_task_level": {
       "django__django-15814": 0.2132,
       "matplotlib__matplotlib-25433": 0.3695,
-      "mwaskom__seaborn-3407": 0.4986,
+      "mwaskom__seaborn-3407": 0.5817,
       "pylint-dev__pylint-7993": 0.2684,
       "sphinx-doc__sphinx-8282": 0.6069,
       "sympy__sympy-18621": 0.179,
       "mwaskom__seaborn-3010": 0.1916,
       "sphinx-doc__sphinx-7738": 0.4831,
-      "django__django-15851": 0.6897,
+      "django__django-15851": 0.1538,
       "django__django-11049": 0.3455,
       "django__django-13447": 0.3589,
       "pylint-dev__pylint-5859": 0.4638,
@@ -197,12 +197,12 @@
     "bare_t2_baseline": 2.7511,
     "bare_t3_baseline": 1.5395,
     "enterprise_router_baseline": 1.7495,
-    "budgetflow_task_level": 1.5862
+    "budgetflow_task_level": 1.5395
   },
   "reference_spend_usd": 3.3926,
   "strongest_boundary_usd": 14.9224,
   "max_projected_spend_usd": 26.6669,
-  "decision": "PASS",
+  "decision": "BLOCK",
   "reasons": [
     "calibration:excluded 2 contaminated rows: harness_trust:incomplete=1, protocol_retry_overhead=1",
     "calibration:task_tier_fit_overrides same_task_clean_t2_success tasks=2",
@@ -220,18 +220,18 @@
     "hard_cap = stage_prefix_ref($3.3926) / stage_target_budget_fraction(0.35) = $9.6933",
     "strongest_boundary: bare_t3_baseline projected spend $14.9224; recorded for pressure audit, not a hard cap",
     "planned_task_budget: BudgetFlow active policies get loose task budgets derived from projected task costs; sums may exceed hard_cap and runtime still enforces the shared batch hard cap",
-    "task_level_policy_projection: planned-budget tier mix tier2=2, tier3=28",
+    "task_level_policy_projection: planned-budget tier mix tier3=30",
     "runtime_projection: budgetflow_task_level projected_spend_by_strategy uses task-level runtime-choice diagnostic; cap_generation_projected_spend keeps the pre-routing cap source",
     "frontier_diagnostic: posture=strongest_cost_dominant ratio=0.560 fit_delta=0.7479; Strongest Model projected no more expensive and ModelFit uplift is positive",
     "pressure_contract: grade=pass",
     "pressure_contract: t2_diagnostic: bare_t2_baseline at 100.0%; not a pressure-ordering constraint",
     "pressure_contract: t3_tight: bare_t3_baseline at 100.0% >= 30% \u2014 budget-constrained as expected",
-    "pressure_contract: budgetflow_task_level_mixed: projected task-level policy uses Strongest Model on 93.3% of tasks ({'tier2': 2, 'tier3': 28})",
+    "pressure_contract: budgetflow_task_level_frontier_strongest: projected task-level policy uses only Strongest Model tasks because the Strongest Model is cost-dominant",
+    "TASK_LEVEL_GATE BLOCK: budgetflow_task_level projection degenerates to pure_strongest_tier; value-aware task-level paid plans must preserve a real T2/T3 frontier or be run as explicit pure-tier controls",
     "tight_budget_warning: bare_t2_baseline projected spend $26.67 > hard_cap $9.69 (275.1% utilization) \u2014 strategy may not complete within shared budget",
     "tight_budget_warning: bare_t3_baseline projected spend $14.92 > hard_cap $9.69 (153.9% utilization) \u2014 strategy may not complete within shared budget",
     "tight_budget_warning: enterprise_router_baseline projected spend $16.96 > hard_cap $9.69 (175.0% utilization) \u2014 strategy may not complete within shared budget",
-    "tight_budget_warning: budgetflow_task_level projected spend $15.38 > hard_cap $9.69 (158.6% utilization) \u2014 strategy may not complete within shared budget",
-    "decision=PASS: hard_cap=$9.69 from stage-prefix pressure, max projected utilization 100.0%",
+    "tight_budget_warning: budgetflow_task_level projected spend $14.92 > hard_cap $9.69 (153.9% utilization) \u2014 strategy may not complete within shared budget",
     "projection_confidence=unvalidated: no calibration evidence provided. Run one diagnostic calibration audit before relying on projected utilization."
   ],
   "pressure_contract": {
@@ -255,7 +255,7 @@
     "assertions": [
       "t2_diagnostic: bare_t2_baseline at 100.0%; not a pressure-ordering constraint",
       "t3_tight: bare_t3_baseline at 100.0% >= 30% \u2014 budget-constrained as expected",
-      "budgetflow_task_level_mixed: projected task-level policy uses Strongest Model on 93.3% of tasks ({'tier2': 2, 'tier3': 28})"
+      "budgetflow_task_level_frontier_strongest: projected task-level policy uses only Strongest Model tasks because the Strongest Model is cost-dominant"
     ],
     "violations": [],
     "grade": "pass"
@@ -392,16 +392,15 @@
       "reference_tier": 2,
       "strongest_tier": 3,
       "projected_tier_counts": {
-        "tier2": 2,
-        "tier3": 28
+        "tier3": 30
       },
-      "projected_strongest_task_fraction": 0.9333,
-      "projected_spend_usd": 15.3753,
+      "projected_strongest_task_fraction": 1.0,
+      "projected_spend_usd": 14.9224,
       "reference_spend_usd": 26.6669,
       "strongest_spend_usd": 14.9224,
-      "projected_to_reference_spend_ratio": 0.5766,
-      "projected_to_strongest_spend_ratio": 1.0303,
-      "degeneration": "mixed",
+      "projected_to_reference_spend_ratio": 0.5596,
+      "projected_to_strongest_spend_ratio": 1.0,
+      "degeneration": "pure_strongest_tier",
       "task_level_model_plan_source": "runtime_policy_projection",
       "task_choices": {
         "django__django-15814": {
@@ -417,120 +416,118 @@
           "budget_pressure": 0.0428
         },
         "mwaskom__seaborn-3407": {
-          "projected_tier": 2,
-          "projected_cost_usd": 0.4986,
+          "projected_tier": 3,
+          "projected_cost_usd": 0.5817,
           "planned_task_budget_usd": 2.9331,
-          "budget_pressure": 0.0996,
-          "tier_boundary_source": "same_task_clean_t2_success"
+          "budget_pressure": 0.0996
         },
         "pylint-dev__pylint-7993": {
           "projected_tier": 3,
           "projected_cost_usd": 0.2684,
           "planned_task_budget_usd": 4.7006,
-          "budget_pressure": 0.1762
+          "budget_pressure": 0.189
         },
         "sphinx-doc__sphinx-8282": {
           "projected_tier": 3,
           "projected_cost_usd": 0.6069,
           "planned_task_budget_usd": 2.9834,
-          "budget_pressure": 0.2175
+          "budget_pressure": 0.2302
         },
         "sympy__sympy-18621": {
           "projected_tier": 3,
           "projected_cost_usd": 0.179,
           "planned_task_budget_usd": 3.0299,
-          "budget_pressure": 0.3107
+          "budget_pressure": 0.3235
         },
         "mwaskom__seaborn-3010": {
           "projected_tier": 3,
           "projected_cost_usd": 0.1916,
           "planned_task_budget_usd": 2.9563,
-          "budget_pressure": 0.3383
+          "budget_pressure": 0.351
         },
         "sphinx-doc__sphinx-7738": {
           "projected_tier": 3,
           "projected_cost_usd": 0.4831,
           "planned_task_budget_usd": 5.2291,
-          "budget_pressure": 0.3677
+          "budget_pressure": 0.3805
         },
         "django__django-15851": {
-          "projected_tier": 2,
-          "projected_cost_usd": 0.6897,
+          "projected_tier": 3,
+          "projected_cost_usd": 0.1538,
           "planned_task_budget_usd": 3.1492,
-          "budget_pressure": 0.442,
-          "tier_boundary_source": "same_task_clean_t2_success"
+          "budget_pressure": 0.4548
         },
         "django__django-11049": {
           "projected_tier": 3,
           "projected_cost_usd": 0.3455,
           "planned_task_budget_usd": 3.0263,
-          "budget_pressure": 0.548
+          "budget_pressure": 0.4784
         },
         "django__django-13447": {
           "projected_tier": 3,
           "projected_cost_usd": 0.3589,
           "planned_task_budget_usd": 2.9127,
-          "budget_pressure": 0.6011
+          "budget_pressure": 0.5315
         },
         "pylint-dev__pylint-5859": {
           "projected_tier": 3,
           "projected_cost_usd": 0.4638,
           "planned_task_budget_usd": 3.2467,
-          "budget_pressure": 0.6563
+          "budget_pressure": 0.5867
         },
         "mwaskom__seaborn-2848": {
           "projected_tier": 3,
           "projected_cost_usd": 0.5387,
           "planned_task_budget_usd": 3.485,
-          "budget_pressure": 0.7276
+          "budget_pressure": 0.658
         },
         "django__django-12908": {
           "projected_tier": 3,
           "projected_cost_usd": 0.4346,
           "planned_task_budget_usd": 3.1537,
-          "budget_pressure": 0.8104
+          "budget_pressure": 0.7408
         },
         "pallets__flask-4045": {
           "projected_tier": 3,
           "projected_cost_usd": 0.8766,
           "planned_task_budget_usd": 4.5609,
-          "budget_pressure": 0.8772
+          "budget_pressure": 0.8076
         },
         "sphinx-doc__sphinx-8595": {
           "projected_tier": 3,
           "projected_cost_usd": 0.3479,
           "planned_task_budget_usd": 2.8775,
-          "budget_pressure": 1.0119
+          "budget_pressure": 0.9423
         },
         "django__django-13964": {
           "projected_tier": 3,
           "projected_cost_usd": 0.4507,
           "planned_task_budget_usd": 3.2048,
-          "budget_pressure": 1.0654
+          "budget_pressure": 0.9958
         },
         "sympy__sympy-24102": {
           "projected_tier": 3,
           "projected_cost_usd": 0.4155,
           "planned_task_budget_usd": 3.0927,
-          "budget_pressure": 1.1347
+          "budget_pressure": 1.0651
         },
         "sphinx-doc__sphinx-7686": {
           "projected_tier": 3,
           "projected_cost_usd": 1.7762,
           "planned_task_budget_usd": 7.4253,
-          "budget_pressure": 1.1986
+          "budget_pressure": 1.129
         },
         "django__django-11179": {
           "projected_tier": 3,
           "projected_cost_usd": 0.3926,
           "planned_task_budget_usd": 3.0197,
-          "budget_pressure": 1.4716
+          "budget_pressure": 1.402
         },
         "sympy__sympy-12171": {
           "projected_tier": 3,
           "projected_cost_usd": 0.4088,
           "planned_task_budget_usd": 3.0715,
-          "budget_pressure": 1.5
+          "budget_pressure": 1.4623
         },
         "pylint-dev__pylint-6506": {
           "projected_tier": 3,

@@ -1013,7 +1013,7 @@ class TestSixByFiveLikeScenario:
             # Now test full calibrate_budget pipeline
             with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
                 vm_path = Path(f.name)
-                f.write(json.dumps({"tasks": {"task-x": {"task_effort": {"bootstrap_heuristic": 23.35}}}}))
+                f.write(json.dumps({"tasks": {"task-x": {"task_effort": {"final_task_effort": 23.35}}}}))
 
             plan = calibrate_budget(
                 ["task-x"],
@@ -1129,7 +1129,7 @@ class TestSixByFiveLikeScenario:
                 f.write(json.dumps({
                     "tasks": {
                         "target-new": {
-                            "task_effort": {"bootstrap_heuristic": 23.35}
+                            "task_effort": {"final_task_effort": 23.35}
                         }
                     }
                 }))

@@ -113,7 +113,7 @@ class ValueEfficiencyContext:
     def task_effort(self, instance_id: str) -> tuple[float | None, str]:
         """Return (effort_heuristic, effort_source) or (None, \"none\")."""
         if self.effort_lookup is not None and instance_id in self.effort_lookup:
-            return float(self.effort_lookup[instance_id]), "bootstrap_heuristic"
+            return float(self.effort_lookup[instance_id]), "final_task_effort"
         return None, "none"
 
     def missing_task_values(self, instance_ids: list[str] | tuple[str, ...]) -> list[str]:
@@ -216,9 +216,9 @@ def _extract_lookup(artifact: dict, profile: str) -> dict[str, float] | None:
 
 
 def _extract_effort_lookup(artifact: dict) -> dict[str, float] | None:
-    """Extract per-task effort heuristic from value matrix.
+    """Extract per-task final Task Effort from value matrix.
 
-    Reads ``task_effort.bootstrap_heuristic`` (North Star schema).
+    Reads ``task_effort.final_task_effort`` (North Star schema).
     Returns None when no effort data is present.
     """
     tasks = artifact.get("tasks")
@@ -229,9 +229,13 @@ def _extract_effort_lookup(artifact: dict) -> dict[str, float] | None:
                 continue
             te = task_data.get("task_effort")
             if isinstance(te, dict):
-                effort = te.get("final_task_effort", te.get("bootstrap_heuristic"))
-                if effort is not None:
-                    lookup[instance_id] = float(effort)
+                if "bootstrap_heuristic" in te and "final_task_effort" not in te:
+                    raise ValueError(
+                        f"value matrix task {instance_id} uses retired "
+                        "task_effort.bootstrap_heuristic; expected task_effort.final_task_effort"
+                    )
+                if te.get("final_task_effort") is not None:
+                    lookup[instance_id] = float(te["final_task_effort"])
         if lookup:
             return lookup
     return None

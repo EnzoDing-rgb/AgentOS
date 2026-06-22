@@ -24,7 +24,7 @@ def test_bootstrap_value_matrix_uses_only_pre_registered_task_features() -> None
     assert matrix["meta"]["outcome_free"] is True
     assert entry["features"]["patch_lines"] == 2
     assert entry["task_value"]["equal"] == 1.0
-    assert entry["task_effort"]["bootstrap_heuristic"] > 1.0
+    assert entry["task_effort"]["final_task_effort"] > 1.0
     assert "resolved_rows" not in entry
     assert "avg_cost" not in entry
 

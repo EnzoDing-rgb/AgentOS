@@ -25,7 +25,7 @@ class _FakeTask:
 # ── P0: concept separation ──────────────────────────────────────────────
 
 def test_task_value_and_effort_in_separate_namespaces() -> None:
-    """bootstrap_heuristic lives under task_effort, not task_value."""
+    """final_task_effort lives under task_effort, not task_value."""
     matrix = build_bootstrap_value_matrix(
         [_FakeTask(instance_id="test__task-1", repo="test/test")],
         task_source="test",
@@ -34,13 +34,15 @@ def test_task_value_and_effort_in_separate_namespaces() -> None:
 
     tv = task.get("task_value", {})
     assert "bootstrap_heuristic" not in tv
+    assert "final_task_effort" not in tv
     assert "bootstrap_difficulty" not in tv
     assert "equal" in tv
 
     te = task.get("task_effort")
     assert te is not None
-    assert "bootstrap_heuristic" in te
-    assert isinstance(te["bootstrap_heuristic"], (int, float))
+    assert "final_task_effort" in te
+    assert "bootstrap_heuristic" not in te
+    assert isinstance(te["final_task_effort"], (int, float))
 
 
 def test_task_value_only_has_known_profiles() -> None:
@@ -84,12 +86,12 @@ def test_task_value_lookup() -> None:
 
 
 def test_effort_lookup() -> None:
-    """_extract_effort_lookup reads task_effort.bootstrap_heuristic."""
+    """_extract_effort_lookup reads task_effort.final_task_effort."""
     from budgetflow.value_efficiency import _extract_effort_lookup
 
     artifact = {
         "tasks": {
-            "effort__task-1": {"task_effort": {"bootstrap_heuristic": 42.0}}
+            "effort__task-1": {"task_effort": {"final_task_effort": 42.0}}
         }
     }
     assert _extract_effort_lookup(artifact) == {"effort__task-1": 42.0}
@@ -111,11 +113,11 @@ def test_allocation_context_defaults() -> None:
 
 
 def test_allocation_context_has_effort() -> None:
-    ctx = AllocationContext(task_effort=25.0, effort_source="bootstrap_heuristic")
+    ctx = AllocationContext(task_effort=25.0, effort_source="final_task_effort")
     assert ctx.has_effort
     meta = ctx.to_metadata()
     assert meta["task_effort"] == 25.0
-    assert meta["effort_source"] == "bootstrap_heuristic"
+    assert meta["effort_source"] == "final_task_effort"
 
 
 def test_allocation_context_has_model_fit() -> None:
@@ -147,7 +149,7 @@ def test_allocation_context_to_metadata() -> None:
         task_effort=15.0,
         model_fit={"tier2": 0.5},
         value_source="value_matrix",
-        effort_source="bootstrap_heuristic",
+        effort_source="final_task_effort",
         model_fit_source="catalog_progress_prior",
     )
     meta = ctx.to_metadata()
@@ -165,10 +167,11 @@ def test_bootstrap_task_effort_structure() -> None:
         {"instance_id": "x", "repo": "a/b",
          "patch": "", "problem_statement": "", "hints_text": ""}
     )
-    assert "bootstrap_heuristic" in result
+    assert "final_task_effort" in result
+    assert "bootstrap_heuristic" not in result
     assert result["source"] == "task_metadata_formula"
     assert "features" in result
-    assert isinstance(result["bootstrap_heuristic"], float)
+    assert isinstance(result["final_task_effort"], float)
 
 
 # ── TierFrontier: ModelFit-based advisory scoring ────────────────────────

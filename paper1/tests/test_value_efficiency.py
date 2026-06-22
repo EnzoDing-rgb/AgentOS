@@ -83,18 +83,18 @@ def test_pre_registered_manual_value_source_is_primary_t1_evidence(tmp_path) -> 
     assert record["task_value_primary_t1"] is True
 
 
-def test_bootstrap_effort_is_diagnostic_not_task_value(tmp_path) -> None:
-    """task_effort.bootstrap_heuristic is readable but never a task_value profile."""
+def test_final_task_effort_is_diagnostic_not_task_value(tmp_path) -> None:
+    """task_effort.final_task_effort is readable but never a task_value profile."""
     matrix = tmp_path / "value_matrix.json"
     matrix.write_text(json.dumps({
         "tasks": {
             "task-a": {
                 "task_value": {"equal": 1.0},
-                "task_effort": {"bootstrap_heuristic": 4.0},
+                "task_effort": {"final_task_effort": 4.0},
             },
             "task-b": {
                 "task_value": {"equal": 1.0},
-                "task_effort": {"bootstrap_heuristic": 2.0},
+                "task_effort": {"final_task_effort": 2.0},
             },
         }
     }))
@@ -108,7 +108,7 @@ def test_bootstrap_effort_is_diagnostic_not_task_value(tmp_path) -> None:
 
     effort, source = ctx.task_effort("task-a")
     assert effort == 4.0
-    assert source == "bootstrap_heuristic"
+    assert source == "final_task_effort"
 
     # task_value stays equal-sanity, NOT polluted by effort heuristic.
     record = ctx.enrich_record({
@@ -120,7 +120,22 @@ def test_bootstrap_effort_is_diagnostic_not_task_value(tmp_path) -> None:
     assert record["task_value"] == 1.0
     assert record["value_source"] == "value_matrix"
     assert record["task_effort"] == 4.0
-    assert record["task_effort_source"] == "bootstrap_heuristic"
+    assert record["task_effort_source"] == "final_task_effort"
+
+
+def test_retired_bootstrap_heuristic_is_not_active_task_effort(tmp_path) -> None:
+    matrix = tmp_path / "value_matrix.json"
+    matrix.write_text(json.dumps({
+        "tasks": {
+            "task-a": {
+                "task_value": {"equal": 1.0},
+                "task_effort": {"bootstrap_heuristic": 4.0},
+            },
+        }
+    }))
+    ctx = ValueEfficiencyContext()
+    with pytest.raises(ValueError, match="final_task_effort"):
+        ctx.init(value_profile="equal", value_matrix_path=str(matrix))
 
 
 def test_criticality_value_and_overrides_are_observable(tmp_path) -> None:

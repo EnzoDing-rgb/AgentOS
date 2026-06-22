@@ -28,13 +28,12 @@ from ..defaults import (
     TASK_START_COLD_FRONTIER_EFFORT_THRESHOLD,
     TASK_START_COLD_FRONTIER_EFFORT_TOLERANCE,
     TASK_START_DECISIVE_FIT_GAIN,
-    TASK_START_EFFORT_MULTIPLIER_MAX,
-    TASK_START_EFFORT_MULTIPLIER_MIN,
     TASK_START_HIGH_EFFORT_THRESHOLD,
     TASK_START_MIN_VALUE_FOR_DECISIVE_FIT,
     TASK_START_PAID_UPGRADE_MIN_FIT_GAIN,
     TASK_START_PRESSURE_THRESHOLD_MULTIPLIER,
     TASK_START_VALUE_RATIO_GATE,
+    task_start_effort_multiplier,
     task_start_t3_acceptance_threshold,
 )
 from ..decision_costs import task_level_decision_per_turn_cost
@@ -1273,10 +1272,7 @@ def _project_task_level_choice_cost(
 
 
 def _projection_effort_multiplier(effort_units: float) -> float:
-    return max(
-        TASK_START_EFFORT_MULTIPLIER_MIN,
-        min(TASK_START_EFFORT_MULTIPLIER_MAX, max(1.0, effort_units) / 35.0),
-    )
+    return task_start_effort_multiplier(effort_units)
 
 
 def _projected_shared_pressure(
@@ -1907,7 +1903,7 @@ def _load_value_features(value_matrix_path: Path) -> dict[str, dict]:
         if "bootstrap_difficulty" in entry:
             raise ValueError(
                 f"value matrix task {tid} uses retired bootstrap_difficulty; "
-                "expected task_effort.bootstrap_heuristic"
+                "expected task_effort.final_task_effort"
             )
         task_value = DEFAULT_TASK_VALUE
         tv = entry.get("task_value")
@@ -1925,13 +1921,17 @@ def _load_value_features(value_matrix_path: Path) -> dict[str, dict]:
         task_effort = DEFAULT_TASK_EFFORT
         te = entry.get("task_effort")
         if isinstance(te, dict):
-            heuristic = te.get("final_task_effort", te.get("bootstrap_heuristic"))
-            if heuristic is not None:
-                task_effort = float(heuristic)
+            if "bootstrap_heuristic" in te and "final_task_effort" not in te:
+                raise ValueError(
+                    f"value matrix task {tid} uses retired task_effort.bootstrap_heuristic; "
+                    "expected task_effort.final_task_effort"
+                )
+            if te.get("final_task_effort") is not None:
+                task_effort = float(te["final_task_effort"])
         elif te is not None:
             raise ValueError(
                 f"value matrix task {tid} has non-canonical task_effort; "
-                "expected task_effort.bootstrap_heuristic"
+                "expected task_effort.final_task_effort"
             )
 
         normalized[str(tid)] = {

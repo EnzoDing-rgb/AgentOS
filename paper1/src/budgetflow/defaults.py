@@ -148,6 +148,33 @@ TASK_START_COLD_FRONTIER_EFFORT_THRESHOLD = 20.0
 TASK_START_COLD_FRONTIER_EFFORT_TOLERANCE = 0.95
 
 
+def task_start_reference_runway_turns() -> float:
+    """Return the reference-tier runway used by task-start routing math."""
+    configs = sorted(MODEL_CATALOG.configs, key=lambda config: config.tier)
+    if not configs:
+        return float(FRONTIER_DEFAULT_RUNWAY_TURNS)
+    reference = configs[1] if len(configs) >= 3 else configs[0]
+    return float(reference.max_turns or FRONTIER_DEFAULT_RUNWAY_TURNS)
+
+
+def task_start_effort_multiplier(
+    effort_units: float,
+    *,
+    reference_runway_turns: float | None = None,
+) -> float:
+    """Bounded need multiplier shared by compiler projection and runtime."""
+    reference = (
+        task_start_reference_runway_turns()
+        if reference_runway_turns is None
+        else float(reference_runway_turns)
+    )
+    reference = max(1.0, reference)
+    return max(
+        TASK_START_EFFORT_MULTIPLIER_MIN,
+        min(TASK_START_EFFORT_MULTIPLIER_MAX, max(1.0, float(effort_units)) / reference),
+    )
+
+
 def task_start_t3_acceptance_threshold(base_threshold: float) -> float:
     """Return the robust T3-start threshold above the break-even frontier.
 
