@@ -212,6 +212,15 @@ _FORMAT_RETRY_PROMPT = (
 )
 
 
+def _format_retry_assistant_message(response) -> dict[str, str]:
+    """Return an OpenAI-valid assistant message for protocol retry history."""
+    raw = response.choices[0].message.model_dump()
+    content = raw.get("content")
+    if not isinstance(content, str) or not content.strip():
+        content = "The previous response contained invalid tool calls and was not executed."
+    return {"role": "assistant", "content": content}
+
+
 def _classify_format_reason(exc: Exception, response) -> str:
     """Classify a FormatError into a stable reason code for observability."""
     # Extract action count from FormatError payload
@@ -778,7 +787,7 @@ class BudgetFlowLitellmModel:
                     ))
                 # Attempt retry
                 try:
-                    assistant_msg = message
+                    assistant_msg = _format_retry_assistant_message(response)
                     retry_user_msg = {"role": "user", "content": _FORMAT_RETRY_PROMPT}
                     retry_messages = list(messages) + [assistant_msg, retry_user_msg]
                     retry_input_tokens = estimate_input_tokens(retry_messages)

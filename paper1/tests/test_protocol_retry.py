@@ -254,3 +254,19 @@ def test_parse_actions_invalid_tool_call_accumulates_streak():
     assert model._protocol_retry_reason == "invalid_tool_call"
     assert model._protocol_retry_limit == 3
     assert model._format_error_streak == 3
+
+
+@requires_minisweagent
+def test_format_retry_assistant_message_strips_tool_calls():
+    from budgetflow.adapter.mini_swe_proxy import _format_retry_assistant_message
+
+    response = _FakeResponse(
+        content="",
+        tool_calls=[MagicMock(id="bad_call")],
+    )
+
+    message = _format_retry_assistant_message(response)
+
+    assert message["role"] == "assistant"
+    assert "invalid tool calls" in message["content"]
+    assert "tool_calls" not in message
