@@ -1,0 +1,441 @@
+{
+  "meta": {
+    "name": "mainline_4x30_stratified_task_order_20260622",
+    "notes": [
+      "Stage 1 starts with low/medium tasks and includes high tasks later, not first.",
+      "Every stage contains low, medium, and high Task Effort tasks.",
+      "Historical exposure is used only for ordering diagnostics, not task value or routing."
+    ],
+    "ordering_policy": "stratify each 10-task stage by Task Effort level, repo diversity, criticality, and historical exposure; avoid front-loading hardest or most-repeated tasks",
+    "source_task_ids": "/tmp/budgetflow_4x30_task_ids_20260622.txt",
+    "task_set_changed": false,
+    "value_matrix": "paper1/docs/reports/mainline_4x30_criticality_value_matrix_20260622.json"
+  },
+  "stages": [
+    {
+      "avg_effort": 24.0853,
+      "effort_level_counts": {
+        "high": 3,
+        "low": 4,
+        "medium": 3
+      },
+      "historical_rows_seen_total": 140,
+      "repo_counts": {
+        "django/django": 3,
+        "matplotlib/matplotlib": 1,
+        "mwaskom/seaborn": 2,
+        "pylint-dev/pylint": 1,
+        "sphinx-doc/sphinx": 2,
+        "sympy/sympy": 1
+      },
+      "stage": 1,
+      "task_count": 10,
+      "tasks": [
+        {
+          "criticality_level": "normal",
+          "effort": 20.8912,
+          "effort_level": "low",
+          "historical_passes_seen": 2,
+          "historical_rows_seen": 11,
+          "instance_id": "django__django-15814",
+          "position": 1,
+          "repo": "django/django",
+          "task_value": 1.0
+        },
+        {
+          "criticality_level": "high",
+          "effort": 21.7854,
+          "effort_level": "medium",
+          "historical_passes_seen": 0,
+          "historical_rows_seen": 7,
+          "instance_id": "matplotlib__matplotlib-25433",
+          "position": 2,
+          "repo": "matplotlib/matplotlib",
+          "task_value": 1.5
+        },
+        {
+          "criticality_level": "high",
+          "effort": 25.5558,
+          "effort_level": "high",
+          "historical_passes_seen": 4,
+          "historical_rows_seen": 12,
+          "instance_id": "mwaskom__seaborn-3407",
+          "position": 3,
+          "repo": "mwaskom/seaborn",
+          "task_value": 1.5
+        },
+        {
+          "criticality_level": "normal",
+          "effort": 21.6879,
+          "effort_level": "medium",
+          "historical_passes_seen": 8,
+          "historical_rows_seen": 10,
+          "instance_id": "pylint-dev__pylint-7993",
+          "position": 4,
+          "repo": "pylint-dev/pylint",
+          "task_value": 1.0
+        },
+        {
+          "criticality_level": "normal",
+          "effort": 42.3732,
+          "effort_level": "high",
+          "historical_passes_seen": 0,
+          "historical_rows_seen": 3,
+          "instance_id": "sphinx-doc__sphinx-8282",
+          "position": 5,
+          "repo": "sphinx-doc/sphinx",
+          "task_value": 1.0
+        },
+        {
+          "criticality_level": "normal",
+          "effort": 21.2526,
+          "effort_level": "low",
+          "historical_passes_seen": 36,
+          "historical_rows_seen": 55,
+          "instance_id": "sympy__sympy-18621",
+          "position": 6,
+          "repo": "sympy/sympy",
+          "task_value": 1.0
+        },
+        {
+          "criticality_level": "normal",
+          "effort": 24.5686,
+          "effort_level": "high",
+          "historical_passes_seen": 7,
+          "historical_rows_seen": 9,
+          "instance_id": "mwaskom__seaborn-3010",
+          "position": 7,
+          "repo": "mwaskom/seaborn",
+          "task_value": 1.0
+        },
+        {
+          "criticality_level": "normal",
+          "effort": 21.334,
+          "effort_level": "low",
+          "historical_passes_seen": 1,
+          "historical_rows_seen": 9,
+          "instance_id": "sphinx-doc__sphinx-7738",
+          "position": 8,
+          "repo": "sphinx-doc/sphinx",
+          "task_value": 1.0
+        },
+        {
+          "criticality_level": "normal",
+          "effort": 21.6672,
+          "effort_level": "medium",
+          "historical_passes_seen": 2,
+          "historical_rows_seen": 10,
+          "instance_id": "django__django-15851",
+          "position": 9,
+          "repo": "django/django",
+          "task_value": 1.0
+        },
+        {
+          "criticality_level": "normal",
+          "effort": 19.7372,
+          "effort_level": "low",
+          "historical_passes_seen": 3,
+          "historical_rows_seen": 14,
+          "instance_id": "django__django-11049",
+          "position": 10,
+          "repo": "django/django",
+          "task_value": 1.0
+        }
+      ]
+    },
+    {
+      "avg_effort": 30.2858,
+      "effort_level_counts": {
+        "high": 3,
+        "low": 4,
+        "medium": 3
+      },
+      "historical_rows_seen_total": 312,
+      "repo_counts": {
+        "django/django": 4,
+        "mwaskom/seaborn": 1,
+        "pallets/flask": 1,
+        "pylint-dev/pylint": 1,
+        "sphinx-doc/sphinx": 2,
+        "sympy/sympy": 1
+      },
+      "stage": 2,
+      "task_count": 10,
+      "tasks": [
+        {
+          "criticality_level": "normal",
+          "effort": 17.9518,
+          "effort_level": "low",
+          "historical_passes_seen": 13,
+          "historical_rows_seen": 24,
+          "instance_id": "django__django-13447",
+          "position": 1,
+          "repo": "django/django",
+          "task_value": 1.0
+        },
+        {
+          "criticality_level": "normal",
+          "effort": 23.1979,
+          "effort_level": "medium",
+          "historical_passes_seen": 0,
+          "historical_rows_seen": 19,
+          "instance_id": "pylint-dev__pylint-5859",
+          "position": 2,
+          "repo": "pylint-dev/pylint",
+          "task_value": 1.0
+        },
+        {
+          "criticality_level": "high",
+          "effort": 26.9418,
+          "effort_level": "high",
+          "historical_passes_seen": 8,
+          "historical_rows_seen": 13,
+          "instance_id": "mwaskom__seaborn-2848",
+          "position": 3,
+          "repo": "mwaskom/seaborn",
+          "task_value": 1.5
+        },
+        {
+          "criticality_level": "normal",
+          "effort": 21.7381,
+          "effort_level": "medium",
+          "historical_passes_seen": 12,
+          "historical_rows_seen": 19,
+          "instance_id": "django__django-12908",
+          "position": 4,
+          "repo": "django/django",
+          "task_value": 1.0
+        },
+        {
+          "criticality_level": "high",
+          "effort": 43.8418,
+          "effort_level": "high",
+          "historical_passes_seen": 1,
+          "historical_rows_seen": 56,
+          "instance_id": "pallets__flask-4045",
+          "position": 5,
+          "repo": "pallets/flask",
+          "task_value": 1.5
+        },
+        {
+          "criticality_level": "normal",
+          "effort": 17.4,
+          "effort_level": "low",
+          "historical_passes_seen": 6,
+          "historical_rows_seen": 14,
+          "instance_id": "sphinx-doc__sphinx-8595",
+          "position": 6,
+          "repo": "sphinx-doc/sphinx",
+          "task_value": 1.0
+        },
+        {
+          "criticality_level": "normal",
+          "effort": 22.5409,
+          "effort_level": "medium",
+          "historical_passes_seen": 6,
+          "historical_rows_seen": 21,
+          "instance_id": "django__django-13964",
+          "position": 7,
+          "repo": "django/django",
+          "task_value": 1.0
+        },
+        {
+          "criticality_level": "normal",
+          "effort": 20.78,
+          "effort_level": "low",
+          "historical_passes_seen": 0,
+          "historical_rows_seen": 100,
+          "instance_id": "sympy__sympy-24102",
+          "position": 8,
+          "repo": "sympy/sympy",
+          "task_value": 1.0
+        },
+        {
+          "criticality_level": "normal",
+          "effort": 88.8326,
+          "effort_level": "high",
+          "historical_passes_seen": 0,
+          "historical_rows_seen": 18,
+          "instance_id": "sphinx-doc__sphinx-7686",
+          "position": 9,
+          "repo": "sphinx-doc/sphinx",
+          "task_value": 1.0
+        },
+        {
+          "criticality_level": "normal",
+          "effort": 19.6336,
+          "effort_level": "low",
+          "historical_passes_seen": 15,
+          "historical_rows_seen": 28,
+          "instance_id": "django__django-11179",
+          "position": 10,
+          "repo": "django/django",
+          "task_value": 1.0
+        }
+      ]
+    },
+    {
+      "avg_effort": 27.3787,
+      "effort_level_counts": {
+        "high": 4,
+        "low": 2,
+        "medium": 4
+      },
+      "historical_rows_seen_total": 729,
+      "repo_counts": {
+        "mwaskom/seaborn": 1,
+        "pallets/flask": 1,
+        "pylint-dev/pylint": 1,
+        "sphinx-doc/sphinx": 1,
+        "sympy/sympy": 6
+      },
+      "stage": 3,
+      "task_count": 10,
+      "tasks": [
+        {
+          "criticality_level": "normal",
+          "effort": 20.4472,
+          "effort_level": "low",
+          "historical_passes_seen": 0,
+          "historical_rows_seen": 135,
+          "instance_id": "sympy__sympy-12171",
+          "position": 1,
+          "repo": "sympy/sympy",
+          "task_value": 1.0
+        },
+        {
+          "criticality_level": "normal",
+          "effort": 23.2459,
+          "effort_level": "medium",
+          "historical_passes_seen": 0,
+          "historical_rows_seen": 24,
+          "instance_id": "pylint-dev__pylint-6506",
+          "position": 2,
+          "repo": "pylint-dev/pylint",
+          "task_value": 1.0
+        },
+        {
+          "criticality_level": "normal",
+          "effort": 50.8644,
+          "effort_level": "high",
+          "historical_passes_seen": 1,
+          "historical_rows_seen": 65,
+          "instance_id": "pallets__flask-4992",
+          "position": 3,
+          "repo": "pallets/flask",
+          "task_value": 1.0
+        },
+        {
+          "criticality_level": "high",
+          "effort": 23.1727,
+          "effort_level": "medium",
+          "historical_passes_seen": 4,
+          "historical_rows_seen": 10,
+          "instance_id": "mwaskom__seaborn-3190",
+          "position": 4,
+          "repo": "mwaskom/seaborn",
+          "task_value": 1.5
+        },
+        {
+          "criticality_level": "high",
+          "effort": 22.9538,
+          "effort_level": "medium",
+          "historical_passes_seen": 51,
+          "historical_rows_seen": 72,
+          "instance_id": "sympy__sympy-13647",
+          "position": 5,
+          "repo": "sympy/sympy",
+          "task_value": 1.5
+        },
+        {
+          "criticality_level": "normal",
+          "effort": 41.4263,
+          "effort_level": "high",
+          "historical_passes_seen": 0,
+          "historical_rows_seen": 17,
+          "instance_id": "sphinx-doc__sphinx-8273",
+          "position": 6,
+          "repo": "sphinx-doc/sphinx",
+          "task_value": 1.0
+        },
+        {
+          "criticality_level": "normal",
+          "effort": 21.8855,
+          "effort_level": "medium",
+          "historical_passes_seen": 22,
+          "historical_rows_seen": 78,
+          "instance_id": "sympy__sympy-15346",
+          "position": 7,
+          "repo": "sympy/sympy",
+          "task_value": 1.0
+        },
+        {
+          "criticality_level": "normal",
+          "effort": 20.3949,
+          "effort_level": "low",
+          "historical_passes_seen": 134,
+          "historical_rows_seen": 171,
+          "instance_id": "sympy__sympy-22714",
+          "position": 8,
+          "repo": "sympy/sympy",
+          "task_value": 1.0
+        },
+        {
+          "criticality_level": "high",
+          "effort": 24.6038,
+          "effort_level": "high",
+          "historical_passes_seen": 0,
+          "historical_rows_seen": 33,
+          "instance_id": "sympy__sympy-13177",
+          "position": 9,
+          "repo": "sympy/sympy",
+          "task_value": 1.5
+        },
+        {
+          "criticality_level": "normal",
+          "effort": 24.7926,
+          "effort_level": "high",
+          "historical_passes_seen": 53,
+          "historical_rows_seen": 124,
+          "instance_id": "sympy__sympy-17655",
+          "position": 10,
+          "repo": "sympy/sympy",
+          "task_value": 1.0
+        }
+      ]
+    }
+  ],
+  "task_ids": [
+    "django__django-15814",
+    "matplotlib__matplotlib-25433",
+    "mwaskom__seaborn-3407",
+    "pylint-dev__pylint-7993",
+    "sphinx-doc__sphinx-8282",
+    "sympy__sympy-18621",
+    "mwaskom__seaborn-3010",
+    "sphinx-doc__sphinx-7738",
+    "django__django-15851",
+    "django__django-11049",
+    "django__django-13447",
+    "pylint-dev__pylint-5859",
+    "mwaskom__seaborn-2848",
+    "django__django-12908",
+    "pallets__flask-4045",
+    "sphinx-doc__sphinx-8595",
+    "django__django-13964",
+    "sympy__sympy-24102",
+    "sphinx-doc__sphinx-7686",
+    "django__django-11179",
+    "sympy__sympy-12171",
+    "pylint-dev__pylint-6506",
+    "pallets__flask-4992",
+    "mwaskom__seaborn-3190",
+    "sympy__sympy-13647",
+    "sphinx-doc__sphinx-8273",
+    "sympy__sympy-15346",
+    "sympy__sympy-22714",
+    "sympy__sympy-13177",
+    "sympy__sympy-17655"
+  ],
+  "task_ids_csv": "django__django-15814,matplotlib__matplotlib-25433,mwaskom__seaborn-3407,pylint-dev__pylint-7993,sphinx-doc__sphinx-8282,sympy__sympy-18621,mwaskom__seaborn-3010,sphinx-doc__sphinx-7738,django__django-15851,django__django-11049,django__django-13447,pylint-dev__pylint-5859,mwaskom__seaborn-2848,django__django-12908,pallets__flask-4045,sphinx-doc__sphinx-8595,django__django-13964,sympy__sympy-24102,sphinx-doc__sphinx-7686,django__django-11179,sympy__sympy-12171,pylint-dev__pylint-6506,pallets__flask-4992,mwaskom__seaborn-3190,sympy__sympy-13647,sphinx-doc__sphinx-8273,sympy__sympy-15346,sympy__sympy-22714,sympy__sympy-13177,sympy__sympy-17655"
+}
