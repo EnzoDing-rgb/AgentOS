@@ -4,6 +4,15 @@
 
 ## 2026-06-22 — Current status (in progress, not final evidence)
 
+- **2026-06-22 / 4x30 stage-1 stopped for mechanism diagnosis:** staged
+  `mainline_4x30_tasklevel_frontier_20260622-0` was stopped after 38/40 stage-1
+  rows. BudgetFlow task-level completed 10/10 with Yield 5.0, cost $3.1007,
+  Yield/$ 1.6125; pure T3 completed 10/10 with Yield 6.0, cost $3.3926,
+  Yield/$ 1.7685. BudgetFlow beat enterprise and partial pure T2 on Yield/$
+  but did not beat the pure T3 frontier, so do not continue stage 2 with this
+  policy. The main diagnosis is T2 turn inflation and task-level frontier
+  misroutes, not provider/infra failure. Offline KV-cache sensitivity for T2/T3
+  multi-turn input discounts did not flip the ranking.
 - **2026-06-22 / Frontier-boundary routing contract:** current work is
   studying BudgetFlow task-level left/right boundaries, not tuning for one run.
   The left boundary is reference-tier dominance or mostly-T2 with bounded

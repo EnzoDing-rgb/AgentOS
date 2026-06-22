@@ -1,0 +1,54 @@
+{
+  "source": "paper1/data/runs/mainline_4x30_tasklevel_frontier_20260622-0.jsonl",
+  "ratios_tested": [
+    "1.0x"
+  ],
+  "note": "Only cost fields recalculated. Outcomes, verdicts, and patches are unchanged.",
+  "input_kv_cache_discount": 0.5,
+  "input_discount_after_turn": 1,
+  "min_input_cost_fraction": 0.5,
+  "results": {
+    "1.0x": {
+      "budgetflow_task_level": {
+        "pass": 5,
+        "total": 10,
+        "total_cost": 1.7927,
+        "total_value": 11.0,
+        "resolved_value": 5.0,
+        "yield": 5.0,
+        "yield_per_dollar": 2.7891,
+        "pass_rate": 0.5
+      },
+      "bare_t3_baseline": {
+        "pass": 6,
+        "total": 10,
+        "total_cost": 1.9974,
+        "total_value": 11.0,
+        "resolved_value": 6.0,
+        "yield": 6.0,
+        "yield_per_dollar": 3.0039,
+        "pass_rate": 0.6
+      },
+      "enterprise_router_baseline": {
+        "pass": 5,
+        "total": 10,
+        "total_cost": 2.4811,
+        "total_value": 11.0,
+        "resolved_value": 5.0,
+        "yield": 5.0,
+        "yield_per_dollar": 2.0152,
+        "pass_rate": 0.5
+      },
+      "bare_t2_baseline": {
+        "pass": 4,
+        "total": 8,
+        "total_cost": 4.2807,
+        "total_value": 9.0,
+        "resolved_value": 4.5,
+        "yield": 4.5,
+        "yield_per_dollar": 1.0512,
+        "pass_rate": 0.5
+      }
+    }
+  }
+}

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 from budgetflow.recost import run_sensitivity
@@ -59,3 +61,78 @@ def test_recost_uses_catalog_t2_cache_policy() -> None:
     # Turn 2 input: same tokens with mainline input_kv_cache_discount=0.0.
     assert recosted["total_cost"] == 0.0018
     assert recosted["recost_input_kv_cache_discount"] == 0.0
+
+
+def test_recost_can_apply_sensitivity_kv_discount_to_t2_and_t3_turns() -> None:
+    recosted = recost_record(
+        {
+            "strategy": "budgetflow_task_level",
+            "instance_id": "task-a",
+            "backend_picks": ["tier2", "tier2", "tier3", "tier3"],
+            "turn_traces": [
+                {"final_backend": "tier2", "prompt_tokens": 1000, "completion_tokens": 100},
+                {"final_backend": "tier2", "prompt_tokens": 1000, "completion_tokens": 100},
+                {"final_backend": "tier3", "prompt_tokens": 1000, "completion_tokens": 100},
+                {"final_backend": "tier3", "prompt_tokens": 1000, "completion_tokens": 100},
+            ],
+            "prompt_tokens_total": 4000,
+            "completion_tokens_total": 400,
+            "llm_turns": 4,
+        },
+        t3_multiplier=1.0,
+        input_kv_cache_discount=0.5,
+        input_discount_after_turn=1,
+        min_input_cost_fraction=0.5,
+    )
+
+    # T2 input: 0.0009 + 0.00045. T2 output: 2 * 100 * 4.5 / 1M.
+    # T3 input: 0.0045 + 0.00225. T3 output: 2 * 100 * 22.5 / 1M.
+    assert recosted["total_cost"] == 0.0135
+    assert recosted["recost_input_kv_cache_discount"] == 0.5
+    assert recosted["recost_kv_discount_applies_to"] == ["tier2", "tier3"]
+
+
+def test_recost_cli_accepts_kv_discount(tmp_path: Path) -> None:
+    jsonl = tmp_path / "run.jsonl"
+    output = tmp_path / "report.json"
+    jsonl.write_text(
+        json.dumps({
+            "strategy": "budgetflow_task_level",
+            "instance_id": "task-a",
+            "score_status": "pass",
+            "task_value": 1.0,
+            "backend_picks": ["tier2", "tier2"],
+            "turn_traces": [
+                {"final_backend": "tier2", "prompt_tokens": 1000, "completion_tokens": 0},
+                {"final_backend": "tier2", "prompt_tokens": 1000, "completion_tokens": 0},
+            ],
+            "prompt_tokens_total": 2000,
+            "completion_tokens_total": 0,
+            "llm_turns": 2,
+            "row_finished_at": 1,
+        })
+        + "\n"
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "budgetflow.recost",
+            str(jsonl),
+            str(output),
+            "--ratios",
+            "1.0",
+            "--kv-discount",
+            "0.5",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    report = json.loads(output.read_text())
+    stats = report["results"]["1.0x"]["budgetflow_task_level"]
+    assert stats["total_cost"] == 0.0014
+    assert report["input_kv_cache_discount"] == 0.5
