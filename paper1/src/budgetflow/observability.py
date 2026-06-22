@@ -262,13 +262,15 @@ def _harness_owner(
                     "resolved_but_fail_after_not_passed", "resolved_but_pass_to_pass_not_ok"}
     model_gaps = {"submitted_without_attempt", "attempted_but_not_submitted",
                   "gold_edited_but_no_files_listed", "model_patch_failed"}
-    protocol_gaps = {"no_patch_extracted", "workspace_patch_path_missing", "unknown_patch_source"}
+    protocol_gaps = {"workspace_patch_path_missing", "unknown_patch_source"}
 
     issue_set = set(issues)
     if "host_dependency_contamination" in issue_set:
         return "infra"
     if issue_set & harness_gaps:
         return "harness"
+    if "no_patch_extracted" in issue_set:
+        return "model"
     if issue_set & protocol_gaps or any(issue.startswith("unknown_patch_source:") for issue in issues):
         return "protocol"
     if issue_set & model_gaps:

@@ -745,6 +745,29 @@ def test_format_error_text_action_no_patch_is_abort() -> None:
     assert classify_failure(rec) == "extract_fail"
 
 
+def test_turn_limit_no_patch_is_scoreable_model_failure_not_protocol_abort() -> None:
+    rec = {
+        "harness_resolved": False,
+        "patch_extracted": False,
+        "agent_gold_edited": False,
+        "exit_status": "LimitsExceeded",
+        "exit_reason": None,
+        "detail": "no model patch extracted",
+        "turn_trace_count": 60,
+    }
+
+    verdict = build_verdict(rec)
+    assert verdict["verdict_axis"] == "model_fail"
+    assert verdict["failure_owner"] == "model"
+    assert verdict["failure_stage"] == "localization"
+
+    score = build_score_status(rec)
+    assert score["score_status"] == "true_fail"
+    assert score["scoreable"] is True
+    assert score["abort_owner"] == ""
+    assert score["true_fail_reason"] == "model_fail"
+
+
 def test_harness_fail_blocking_incomplete_is_abort() -> None:
     """Genuine harness_fail with blocking severity stays abort."""
     rec = {

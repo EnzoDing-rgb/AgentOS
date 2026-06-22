@@ -621,10 +621,7 @@ def build_verdict(record: dict[str, Any]) -> dict[str, Any]:
         axis = "protocol_fail"
     elif _is_infra_exit(status) or _is_provider_unavailable(status, reason, errors):
         axis = "infra_fail"
-    elif (
-        not patch_extracted
-        and (reason.startswith("stagnation_") or is_fixed_tier_turn_cap_reason(reason))
-    ):
+    elif not patch_extracted:
         axis = "model_fail"
     elif not evidence.evidence_complete and not resolved:
         # Harness couldn't verify the result properly
@@ -632,8 +629,6 @@ def build_verdict(record: dict[str, Any]) -> dict[str, Any]:
             axis = "harness_fail"
         else:
             axis = "model_fail"
-    elif not patch_extracted:
-        axis = "protocol_fail"
     elif not gold_edited:
         axis = "model_fail"
     elif evidence.model_patch_ok is False or evidence.fail_after_passed is False:
