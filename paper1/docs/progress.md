@@ -4,6 +4,14 @@
 
 ## 2026-06-22 — Current status (in progress, not final evidence)
 
+- **2026-06-22 / Agent-shell contamination fix:** the cold 4x30 stage-1 paid
+  run `mainline_4x30_cold_contractfix_stage1_20260622` halted correctly on
+  `host_dependency_contamination` after a runtime worktree editable Matplotlib
+  install leaked into global site-packages. Added per-worktree agent-shell venvs
+  so agent `pip install -e .` commands write into task-local environments, not
+  global Python. Cleaned the host contamination; detector now reports zero
+  contamination. Trusted pre-halt scoreable rows remain diagnostic evidence;
+  invalid abort rows must be retried and excluded from learning/paper metrics.
 - **2026-06-22 / Pre-paid 4x30 contract fixes:** closed three paid-run
   blockers before any next run: compiler/runtime task-start effort scaling now
   shares one catalog-runway helper, task-start observability separates planned,

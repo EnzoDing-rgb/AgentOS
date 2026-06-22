@@ -685,6 +685,60 @@ def _merge_agent_pythonpath(prefixes: list[Path], existing: str) -> str:
     return os.pathsep.join(entries)
 
 
+def _agent_shell_venv_dir(repo_dir: Path, runtime_root: Path) -> Path | None:
+    try:
+        rel = repo_dir.resolve().relative_to((runtime_root / "worktrees").resolve())
+    except ValueError:
+        return None
+    return runtime_root / "agent_shell_venvs" / rel
+
+
+def _ensure_agent_shell_venv(repo_dir: Path) -> Path | None:
+    """Return a per-worktree venv for agent shell commands.
+
+    Agents may run ``pip install -e .`` while exploring a task.  In this
+    container, writing that editable install into the global interpreter leaves
+    stale worktree paths in site-packages and contaminates later harness runs.
+    A system-site venv preserves available test dependencies while redirecting
+    pip writes into a task-local environment.
+    """
+    runtime_root = get_runtime_root()
+    venv_dir = _agent_shell_venv_dir(repo_dir, runtime_root)
+    if venv_dir is None:
+        return None
+    python = venv_dir / "bin" / "python"
+    ready = venv_dir / ".budgetflow_ready"
+    if ready.is_file() and python.is_file():
+        return venv_dir
+
+    lock_dir = runtime_root / "locks"
+    lock_dir.mkdir(parents=True, exist_ok=True)
+    lock_name = hashlib.sha256(str(venv_dir).encode()).hexdigest()[:16]
+    lock_path = lock_dir / f"agent-shell-venv-{lock_name}.lock"
+    with lock_path.open("w") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        if ready.is_file() and python.is_file():
+            return venv_dir
+        if venv_dir.exists():
+            shutil.rmtree(venv_dir, ignore_errors=True)
+        venv_dir.parent.mkdir(parents=True, exist_ok=True)
+        venv.EnvBuilder(with_pip=True, clear=True, system_site_packages=True).create(venv_dir)
+        ready.write_text("ok\n")
+        return venv_dir
+
+
+def _apply_agent_shell_venv(env: dict[str, str], repo_dir: Path) -> None:
+    venv_dir = _ensure_agent_shell_venv(repo_dir)
+    if venv_dir is None:
+        return
+    bin_dir = venv_dir / "bin"
+    path = env.get("PATH") or os.environ.get("PATH", "")
+    env["VIRTUAL_ENV"] = str(venv_dir)
+    env["PATH"] = f"{bin_dir}{os.pathsep}{path}" if path else str(bin_dir)
+    env["PYTHONNOUSERSITE"] = "1"
+    env["PIP_REQUIRE_VIRTUALENV"] = "1"
+
+
 def build_agent_shell_env(
     repo_dir: Path,
     adapter: RepoHarnessAdapter | None = None,
@@ -698,12 +752,15 @@ def build_agent_shell_env(
     """
     adapter = adapter or DefaultHAdapter()
     env = dict(base_env or {})
+    _apply_agent_shell_venv(env, repo_dir)
     existing_pythonpath = env.get("PYTHONPATH") or os.environ.get("PYTHONPATH", "")
     env["PYTHONPATH"] = _merge_agent_pythonpath(
         adapter.agent_pythonpath_prefixes(repo_dir),
         existing_pythonpath,
     )
     env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
+    env.setdefault("PYTHONNOUSERSITE", "1")
+    env.setdefault("PIP_REQUIRE_VIRTUALENV", "1")
     env.update(adapter.pytest_env())
     env.update(adapter.harness_env(repo_dir))
     return env

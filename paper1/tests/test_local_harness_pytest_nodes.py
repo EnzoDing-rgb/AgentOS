@@ -149,6 +149,28 @@ def test_run_pytest_filters_runtime_worktrees_from_pythonpath(tmp_path: Path, mo
     assert str(stale) not in pythonpath
 
 
+def test_default_agent_shell_env_uses_isolated_venv(tmp_path: Path, monkeypatch) -> None:
+    runtime_root = tmp_path / "runtime"
+    repo_dir = runtime_root / "worktrees" / "repo__project" / "wk_task"
+    repo_dir.mkdir(parents=True)
+    monkeypatch.setattr(
+        "budgetflow.local_harness_adapters.get_runtime_root",
+        lambda: runtime_root,
+    )
+
+    env = build_agent_shell_env(
+        repo_dir,
+        DefaultHAdapter(),
+        base_env={"PATH": "/usr/bin", "PIP_REQUIRE_VIRTUALENV": "1"},
+    )
+
+    venv_dir = runtime_root / "agent_shell_venvs" / "repo__project" / "wk_task"
+    assert env["VIRTUAL_ENV"] == str(venv_dir)
+    assert env["PATH"].split(":")[0] == str(venv_dir / "bin")
+    assert env["PIP_REQUIRE_VIRTUALENV"] == "1"
+    assert env["PYTHONNOUSERSITE"] == "1"
+
+
 def test_evaluate_local_harness_fails_fast_on_runtime_worktree_contamination(
     tmp_path: Path,
     monkeypatch,
