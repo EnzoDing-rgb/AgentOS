@@ -183,12 +183,13 @@ class CompareRunGuards:
             and self._task_level_single_tier
         ):
             fixed_tier = self._task_level_single_tier
-            self._abort_all_reason = (
+            reason = (
                 "mechanism_guard strategy=budgetflow_task_level "
                 f"rows={self._task_level_rows} fixed_tier=T{fixed_tier}; "
                 "task-level routing degenerated into a fixed-tier run"
             )
-            return GuardAction(halt_all=True, reason=self._abort_all_reason)
+            self._halted_strategies.add("budgetflow_task_level")
+            return GuardAction(halt_strategy="budgetflow_task_level", reason=reason)
         return GuardAction()
 
     def record_upstream_error(self, message: str, *, backend: str) -> GuardAction:

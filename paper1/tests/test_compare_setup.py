@@ -21,6 +21,8 @@ from budgetflow.experiments.compare_setup import (
     resolve_task_count,
     select_stage_batch_tasks,
     select_strategies,
+    stage_execution_total_runs,
+    stage_task_prefix,
     stratify_task_order,
     trace_console_from_args,
     validate_paper_mainline_budget_contract,
@@ -206,6 +208,38 @@ def test_select_stage_batch_tasks_returns_empty_when_stage_already_reached() -> 
     )
 
     assert selected == []
+
+
+def test_stage_task_prefix_returns_current_stage_prefix() -> None:
+    tasks = [SimpleNamespace(instance_id=f"task-{index:02d}") for index in range(12)]
+
+    assert [task.instance_id for task in stage_task_prefix(tasks, 5)] == [
+        "task-00",
+        "task-01",
+        "task-02",
+        "task-03",
+        "task-04",
+    ]
+
+
+def test_stage_execution_total_runs_accounts_for_resume_retries() -> None:
+    tasks = [SimpleNamespace(instance_id=f"task-{index:02d}") for index in range(10)]
+    strategies = ["bare_t2_baseline", "budgetflow_task_level"]
+    completed = {
+        ("bare_t2_baseline", "task-00"),
+        ("budgetflow_task_level", "task-00"),
+        ("budgetflow_task_level", "task-01"),
+    }
+
+    total = stage_execution_total_runs(
+        tasks,
+        strategy_names=strategies,
+        completed=completed,
+        rows_done=5,
+        max_tasks_per_strategy=3,
+    )
+
+    assert total == 8
 
 
 def test_3x3_selects_mechanism_isolation_strategies_and_parallel_jobs() -> None:

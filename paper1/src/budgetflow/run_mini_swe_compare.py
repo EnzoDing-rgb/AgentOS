@@ -68,6 +68,8 @@ from budgetflow.experiments.compare_setup import (  # noqa: E402
     resolve_budget_plan,
     resolve_task_count,
     select_strategies,
+    stage_execution_total_runs,
+    stage_task_prefix,
     select_stage_batch_tasks,
     trace_console_from_args,
     validate_paper_mainline_budget_contract,
@@ -279,11 +281,12 @@ def main() -> None:
                 + ", ".join(f"{r.backend}:{r.error_type or r.status_code}" for r in failed)
             )
 
-    total_runs = len(tasks) * len(strategies)
+    stage_tasks = stage_task_prefix(tasks, args.max_tasks_per_strategy)
+    contract_total_runs = len(stage_tasks) * len(strategies)
     expected_run_keys = {
         (strategy.name, task.instance_id)
         for strategy in strategies
-        for task in tasks
+        for task in stage_tasks
     }
     task_set_kind = _task_set_kind(task_set=args.task_set, ids=args.ids)
     out_stem, stem_mode, series_base, run_series = resolve_run_identity(
@@ -292,7 +295,7 @@ def main() -> None:
         strategies_n=len(strategies),
         task_set=args.task_set,
         resume=args.resume,
-        total_runs=total_runs,
+        total_runs=contract_total_runs,
         expected_keys=expected_run_keys,
         normalize_strategy=_normalize_strategy,
         explicit_stem=args.out_stem,
@@ -323,8 +326,15 @@ def main() -> None:
     checkpoint = CompareCheckpointStore(
         checkpoint_path,
         stem=out_stem,
-        total_runs=total_runs,
+        total_runs=contract_total_runs,
         completed_floor=len(completed),
+    )
+    total_runs = stage_execution_total_runs(
+        tasks,
+        strategy_names=strategy_names,
+        completed=completed,
+        rows_done=0,
+        max_tasks_per_strategy=args.max_tasks_per_strategy,
     )
     # ── Frozen router plan for mechanism isolation ─────────────────────────
     frozen_plan = None
@@ -413,7 +423,7 @@ def main() -> None:
     print(f"{dim('trace_console=' + trace_console + '; heartbeat every ' + str(args.heartbeat) + 's')}", flush=True)
     if args.max_tasks_per_strategy is not None:
         print(
-            f"{dim('stage_cap=max_tasks_per_strategy=' + str(args.max_tasks_per_strategy) + '/' + str(len(tasks)))}",
+            f"{dim('stage_cap=max_tasks_per_strategy=' + str(args.max_tasks_per_strategy) + '/' + str(len(tasks)) + '; stage_runs=' + str(total_runs))}",
             flush=True,
         )
     print(f"{dim('run_id=' + out_stem)}", flush=True)
@@ -478,6 +488,13 @@ def main() -> None:
         print(f"{tag('resume', bold=False)} rebuilt state from jsonl runs={state.runs_done}", flush=True)
     else:
         state = CompareRunState.empty(header_lines)
+    total_runs = stage_execution_total_runs(
+        tasks,
+        strategy_names=strategy_names,
+        completed=completed,
+        rows_done=state.runs_done,
+        max_tasks_per_strategy=args.max_tasks_per_strategy,
+    )
     started = time.time()
     io_lock = threading.Lock()
     print_lock = threading.Lock() if policy_jobs > 1 else None
@@ -501,7 +518,7 @@ def main() -> None:
         started=started,
         out_path=out_path,
         total_runs=total_runs,
-        tasks_per_strategy=len(tasks),
+        tasks_per_strategy=len(stage_tasks),
         global_line=global_progress.format_global(scoreboard),
         value_profile=value_context.profile,
     )
@@ -549,7 +566,7 @@ def main() -> None:
                 handle=handle,
                 io_lock=io_lock,
                 total_runs=total_runs,
-                tasks_per_strategy=len(tasks),
+                tasks_per_strategy=len(stage_tasks),
                 global_progress=global_progress,
                 scoreboard=scoreboard,
                 summary_path=summary_path,
@@ -629,7 +646,7 @@ def main() -> None:
                         started=started,
                         out_path=out_path,
                         total_runs=total_runs,
-                        tasks_per_strategy=len(tasks),
+                        tasks_per_strategy=len(stage_tasks),
                         io_lock=io_lock,
                         global_progress=global_progress,
                         value_profile=value_context.profile,
@@ -656,7 +673,7 @@ def main() -> None:
                             started=started,
                             out_path=out_path,
                             total_runs=total_runs,
-                            tasks_per_strategy=len(tasks),
+                            tasks_per_strategy=len(stage_tasks),
                             io_lock=io_lock,
                             global_progress=global_progress,
                             value_profile=value_context.profile,
@@ -677,7 +694,7 @@ def main() -> None:
         started=started,
         out_path=out_path,
         total_runs=total_runs,
-        tasks_per_strategy=len(tasks),
+        tasks_per_strategy=len(stage_tasks),
         global_line=global_progress.format_global(scoreboard),
         value_profile=value_context.profile,
     )
@@ -733,7 +750,7 @@ def main() -> None:
                 started=started,
                 out_path=out_path,
                 total_runs=total_runs,
-                tasks_per_strategy=len(tasks),
+                tasks_per_strategy=len(stage_tasks),
                 global_line=global_progress.format_global(scoreboard),
                 value_profile=value_context.profile,
             )

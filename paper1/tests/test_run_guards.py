@@ -109,7 +109,7 @@ def test_task_level_short_prefix_does_not_trigger_degeneracy_guard() -> None:
     assert not g.is_aborted()
 
 
-def test_task_level_all_t2_degeneracy_halts_all() -> None:
+def test_task_level_all_t2_degeneracy_halts_task_level_strategy_only() -> None:
     g = CompareRunGuards(task_level_tier_mix_min_rows=5)
     action = GuardAction()
     for i in range(5):
@@ -122,8 +122,11 @@ def test_task_level_all_t2_degeneracy_halts_all() -> None:
             }
         )
 
-    assert action.halt_all
+    assert not action.halt_all
+    assert action.halt_strategy == "budgetflow_task_level"
     assert "degenerated into a fixed-tier run" in action.reason
+    assert g.is_strategy_halted("budgetflow_task_level")
+    assert not g.is_aborted()
 
 
 def test_task_level_t3_use_satisfies_mechanism_guard() -> None:
@@ -141,7 +144,7 @@ def test_task_level_t3_use_satisfies_mechanism_guard() -> None:
     assert not g.is_aborted()
 
 
-def test_task_level_all_t3_degeneracy_halts_all() -> None:
+def test_task_level_all_t3_degeneracy_halts_task_level_strategy_only() -> None:
     g = CompareRunGuards(task_level_tier_mix_min_rows=5)
     action = GuardAction()
     for i in range(5):
@@ -154,9 +157,12 @@ def test_task_level_all_t3_degeneracy_halts_all() -> None:
             }
         )
 
-    assert action.halt_all
+    assert not action.halt_all
+    assert action.halt_strategy == "budgetflow_task_level"
     assert "fixed_tier=T3" in action.reason
     assert "degenerated into a fixed-tier run" in action.reason
+    assert g.is_strategy_halted("budgetflow_task_level")
+    assert not g.is_aborted()
 
 
 def test_pytest_rootdir_under_runtime_worktree_does_not_halt_all() -> None:

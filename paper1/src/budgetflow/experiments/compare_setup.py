@@ -299,6 +299,44 @@ def select_stage_batch_tasks(
     ]
 
 
+def stage_task_prefix(tasks: list, max_tasks_per_strategy: int | None) -> list:
+    """Return the task prefix that belongs to the current staged execution."""
+    if max_tasks_per_strategy is None:
+        return list(tasks)
+    if max_tasks_per_strategy <= 0:
+        raise ValueError("max_tasks_per_strategy must be positive")
+    return list(tasks[:max_tasks_per_strategy])
+
+
+def stage_execution_total_runs(
+    tasks: list,
+    *,
+    strategy_names: list[str],
+    completed: set[tuple[str, str]],
+    rows_done: int,
+    max_tasks_per_strategy: int | None,
+) -> int:
+    """Return the observable row target for this invocation.
+
+    Stage contracts are defined by unique scoreable strategy-task pairs.
+    Resume execution can legitimately append retry rows for earlier aborts, so
+    heartbeat and live progress need the raw row target for this invocation.
+    """
+    contract_runs = len(stage_task_prefix(tasks, max_tasks_per_strategy)) * len(strategy_names)
+    remaining_runs = sum(
+        len(
+            select_stage_batch_tasks(
+                tasks,
+                strategy_name=strategy_name,
+                completed=completed,
+                max_tasks_per_strategy=max_tasks_per_strategy,
+            )
+        )
+        for strategy_name in strategy_names
+    )
+    return max(contract_runs, rows_done + remaining_runs)
+
+
 def build_batch_budget_modes(
     *,
     strategies: tuple[CompareStrategy, ...],
