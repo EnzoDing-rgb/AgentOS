@@ -227,6 +227,94 @@ def test_compare_runner_records_workspace_patch_as_scoreable_artifact(monkeypatc
     assert record["harness_trust"] == "trusted"
 
 
+def test_compare_runner_records_task_start_decision_for_task_level(monkeypatch) -> None:
+    import budgetflow.adapter.runner as runner
+
+    def fake_run_mini_swe_task(*args, **kwargs):
+        return SimpleNamespace(
+            instance_id="sympy__sympy-13480",
+            total_cost=0.01,
+            harness_resolved=True,
+            patch_text="diff --git a/x b/x\n",
+            patch_source="workspace_diff",
+            submitted_patch_path=None,
+            workspace_patch_path="/tmp/workspace.patch",
+            trace_dir="/tmp/trace",
+            trace_steps_path="/tmp/trace/steps.jsonl",
+            exit_status="HarnessResolved",
+            exit_reason="harness_resolved",
+            agent_exit_status="Submitted",
+            agent_exit_reason="submitted",
+            backend_picks=["tier3"],
+            llm_turns=2,
+            violations=[],
+            harness_detail="test_patch=ok; fail_before=fail; model_patch=ok; fail_after=pass; pass_to_pass=pass",
+            agent_gold_edited=False,
+            agent_gold_files=[],
+            agent_attempted_submit=True,
+            agent_submitted=True,
+            prompt_tokens_total=10,
+            completion_tokens_total=2,
+            provider_usage_turns=2,
+            estimated_usage_turns=0,
+            usage_source="provider",
+            cost_mode="catalog_provider_usage",
+            turn_trace_count=2,
+            turn_traces=[],
+            protocol_retry_used=False,
+            protocol_retry_success=False,
+            protocol_retry_reason="",
+            protocol_retry_attempts=0,
+            protocol_retry_limit=4,
+            protocol="tool_call",
+            parser="parse_toolcall_actions",
+            provider_error_kind="",
+            provider_retryable=None,
+            task_start_decision={
+                "task_start_decision_schema": "v1",
+                "task_start_selected_backend": "tier3",
+                "task_start_selected_tier": 3,
+                "task_start_reason": "uncertain_frontier_probe",
+                "task_start_scores": {
+                    "pre_cap_selected_tier": 3.0,
+                    "final_selected_tier": 3.0,
+                    "marginal_yield_per_dollar": 1.48,
+                },
+                "task_start_confidence": {
+                    "pre_cap_reason": "uncertain_frontier_probe",
+                    "max_tier": 3,
+                },
+            },
+        )
+
+    monkeypatch.setattr(runner, "run_mini_swe_task", fake_run_mini_swe_task)
+    governor = BudgetGovernor(GovernorConfig(total_budget=1.0, default_max_output_tokens=4096), WorkflowLedgerStore())
+    task = SimpleNamespace(
+        instance_id="sympy__sympy-13480",
+        patch="diff --git a/x b/x\n",
+        fail_to_pass=("tests/test_x.py::test_y",),
+        pass_to_pass=(),
+    )
+
+    record = run_task_record(
+        task,
+        cfg=CompareStrategy("budgetflow_task_level", "value_aware_task_level"),
+        batch_budget_cap=1.0,
+        governor=governor,
+        ledger=WorkflowLedgerStore(),
+        task_index=1,
+        step_limit=1,
+        value_context=_value_context(),
+    )
+
+    assert record["task_start_decision_schema"] == "v1"
+    assert record["task_start_selected_backend"] == "tier3"
+    assert record["task_start_selected_tier"] == 3
+    assert record["task_start_reason"] == "uncertain_frontier_probe"
+    assert record["task_start_scores"]["final_selected_tier"] == pytest.approx(3.0)
+    assert record["task_start_confidence"]["pre_cap_reason"] == "uncertain_frontier_probe"
+
+
 def test_runner_threads_budget_plan_model_fit_into_allocation_context(monkeypatch) -> None:
     import budgetflow.adapter.runner as runner
 

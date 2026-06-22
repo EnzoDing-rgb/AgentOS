@@ -327,6 +327,8 @@ def _choose_task_level_backend(ctx: RoutingContext, expected_costs: dict[str, fl
         is_cold_start=is_cold,
         reference_runway_turns=ref_runway,
     )
+    pre_cap_tier = tier
+    policy_reason = reason
 
     if tier == 3:
         current = strongest
@@ -342,8 +344,16 @@ def _choose_task_level_backend(ctx: RoutingContext, expected_costs: dict[str, fl
     if current.tier > max_tier:
         current = reference
         reason_label = "bf_task_start_reference_frontier"
+        policy_reason = "max_tier_cap_reference_frontier"
 
     ctx.task_level_backend = current
+    policy_scores = {
+        k: float(v) if isinstance(v, (int, float)) else v
+        for k, v in scores.items()
+    }
+    policy_scores["pre_cap_selected_tier"] = float(pre_cap_tier)
+    policy_scores["final_selected_tier"] = float(current.tier)
+    policy_scores["max_tier"] = float(max_tier)
     ctx.last_decision = RouterDecision(
         backend=current,
         reason=reason_label,
@@ -354,8 +364,14 @@ def _choose_task_level_backend(ctx: RoutingContext, expected_costs: dict[str, fl
     if ctx.bootstrap_policy is not None:
         ctx.last_policy_decision = PolicyDecision(
             backend=current.name,
-            reason=reason,
-            scores={k: float(v) if isinstance(v, (int, float)) else v for k, v in scores.items()},
+            reason=policy_reason,
+            scores=policy_scores,
+            confidence={
+                "pre_cap_reason": reason,
+                "pre_cap_selected_tier": pre_cap_tier,
+                "final_selected_tier": current.tier,
+                "max_tier": max_tier,
+            },
         )
     return current
 

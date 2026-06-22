@@ -894,6 +894,31 @@ class TestObservabilitySeams:
         assert backend.tier == 3
         assert ctx.last_policy_decision is not None
         assert ctx.last_policy_decision.reason == "marginal_yield_per_dollar"
+        assert ctx.last_policy_decision.scores["pre_cap_selected_tier"] == pytest.approx(3.0)
+        assert ctx.last_policy_decision.scores["final_selected_tier"] == pytest.approx(3.0)
+        assert ctx.last_policy_decision.confidence["pre_cap_reason"] == "marginal_yield_per_dollar"
+
+    def test_last_policy_decision_explains_max_tier_cap(self):
+        """If the safety cap blocks T3, the task-start observability must say so."""
+        from budgetflow.adapter.strategies import choose_backend
+
+        alloc = _trusted_allocation(
+            task_value=2.0, task_effort=80.0,
+            planned_task_budget=10000.0,
+            model_fit={"tier2": 0.08, "tier3": 0.65},
+        )
+        backends = _three_backends()
+        ctx = _task_level_ctx(backends, budget_pressure=1.5, allocation=alloc)
+        ctx.tier_frontier = None
+
+        backend = choose_backend(ctx, _turn(), _runtime_like_costs())
+
+        assert backend.tier == 2
+        assert ctx.last_policy_decision is not None
+        assert ctx.last_policy_decision.reason == "max_tier_cap_reference_frontier"
+        assert ctx.last_policy_decision.scores["pre_cap_selected_tier"] == pytest.approx(3.0)
+        assert ctx.last_policy_decision.scores["final_selected_tier"] == pytest.approx(2.0)
+        assert ctx.last_policy_decision.confidence["pre_cap_reason"] == "marginal_yield_per_dollar"
 
     def test_runtime_compiler_parity_cold_start_probe(self):
         """Runtime and compiler must agree: cold start without ModelFit → uncertain_frontier_probe."""

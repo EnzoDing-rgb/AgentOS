@@ -5,7 +5,7 @@ import time
 import os
 import subprocess
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..runtime import get_trace_dir, resolve_mini_swe_src
@@ -102,6 +102,7 @@ class MiniSweRunResult:
     provider_error_kind: str = ""
     provider_retryable: bool | None = None
     agent_environment_issues: tuple[str, ...] = ()
+    task_start_decision: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -255,6 +256,37 @@ def _row_cost_observability(model: BudgetFlowLitellmModel, total_cost: float) ->
     if float(total_cost or 0.0) == 0.0:
         return "none", "no_provider_call"
     return "unknown", "cost_unattributed"
+
+
+def _task_start_decision_observability(strategy: str, routing) -> dict[str, object]:
+    if strategy != "value_aware_task_level":
+        return {}
+    decision = getattr(routing, "last_policy_decision", None)
+    if decision is None:
+        return {
+            "task_start_decision_schema": "v1",
+            "task_start_selected_backend": "",
+            "task_start_selected_tier": None,
+            "task_start_reason": "",
+            "task_start_scores": {},
+            "task_start_confidence": {},
+        }
+    backend_name = str(getattr(decision, "backend", "") or "")
+    selected_tier = None
+    for backend in getattr(routing, "backends", ()) or ():
+        if getattr(backend, "name", None) == backend_name:
+            selected_tier = getattr(backend, "tier", None)
+            break
+    scores = getattr(decision, "scores", {}) or {}
+    confidence = getattr(decision, "confidence", {}) or {}
+    return {
+        "task_start_decision_schema": "v1",
+        "task_start_selected_backend": backend_name,
+        "task_start_selected_tier": selected_tier,
+        "task_start_reason": str(getattr(decision, "reason", "") or ""),
+        "task_start_scores": dict(scores) if isinstance(scores, dict) else {},
+        "task_start_confidence": dict(confidence) if isinstance(confidence, dict) else {},
+    }
 
 
 def _harness_exit_label(
@@ -589,4 +621,5 @@ def run_mini_swe_task(
         provider_error_kind=str(first_provider_error.get("provider_error_kind") or ""),
         provider_retryable=first_provider_error.get("provider_retryable"),
         agent_environment_issues=tuple(str(i) for i in (agent_summary.get("agent_environment_issues") or ())),
+        task_start_decision=_task_start_decision_observability(strategy, routing),
     )

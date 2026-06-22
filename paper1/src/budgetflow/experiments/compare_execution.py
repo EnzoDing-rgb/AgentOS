@@ -290,6 +290,16 @@ def run_task_record(
     record["parser"] = result.parser
     record["provider_error_kind"] = result.provider_error_kind
     record["provider_retryable"] = result.provider_retryable
+    if cfg.routing == "value_aware_task_level":
+        task_start_decision = dict(getattr(result, "task_start_decision", {}) or {})
+        record.update({
+            "task_start_decision_schema": task_start_decision.get("task_start_decision_schema", "v1"),
+            "task_start_selected_backend": task_start_decision.get("task_start_selected_backend", ""),
+            "task_start_selected_tier": task_start_decision.get("task_start_selected_tier"),
+            "task_start_reason": task_start_decision.get("task_start_reason", ""),
+            "task_start_scores": task_start_decision.get("task_start_scores", {}),
+            "task_start_confidence": task_start_decision.get("task_start_confidence", {}),
+        })
     if adaptive is not None:
         prior = adaptive.prior_summary_for_trace()
         record["memory_mode"] = getattr(adaptive, "memory_mode", "off")
