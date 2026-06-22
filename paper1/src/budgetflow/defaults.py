@@ -115,12 +115,12 @@ VALUE_TRIGGERED_ESCALATION_MIN_HEADROOM_FRAC = 0.12
 # Tier frontier fallback when a catalog tier omits max_turns. Normal runs use
 # the reference tier's catalog max_turns, so this is a portability default, not
 # a benchmark-specific tuning knob.
-FRONTIER_DEFAULT_RUNWAY_TURNS = 40
+FRONTIER_DEFAULT_RUNWAY_TURNS = 60
 
 # Paid mainline task cap. Catalog tier max_turns, CLI defaults, and readiness
 # gates consume this single contract so paid runs cannot drift into hidden
 # per-tier turn ceilings.
-PAID_MAINLINE_STEP_LIMIT = 40
+PAID_MAINLINE_STEP_LIMIT = 60
 
 # PolicyMemory regret threshold: when full_vs_baseline_regret exceeds this,
 # budgetflow_segment receives stronger budget-pressure correction.

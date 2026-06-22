@@ -69,14 +69,14 @@ def test_default_t2_uses_deepseek_v4_pro_provider() -> None:
     assert tier2.api_key_env == "DEEPSEEK_API_KEY"
     assert tier2.display == "DeepSeek-V4-Pro"
     assert tier2.protocol == "tool_call"
-    assert tier2.max_turns == 40
+    assert tier2.max_turns == 60
     assert info["catalog_semantic_revision"] == "t2-normalized-v1-t3x5"
 
 
 def test_default_catalog_uses_unified_mainline_turn_cap() -> None:
     import budgetflow.model_tiers as mt
 
-    assert {cfg.max_turns for cfg in mt.MODEL_CATALOG.configs} == {40}
+    assert {cfg.max_turns for cfg in mt.MODEL_CATALOG.configs} == {60}
 
 
 def test_default_catalog_accepts_provider_only_t2_swap_history() -> None:
