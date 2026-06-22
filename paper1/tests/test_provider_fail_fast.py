@@ -17,6 +17,7 @@ from budgetflow.adapter.strategies import build_routing_context  # noqa: E402
 from budgetflow.defaults import TIER3_BACKEND  # noqa: E402
 from budgetflow.governor import BudgetGovernor  # noqa: E402
 from budgetflow.ledger import WorkflowLedgerStore  # noqa: E402
+from budgetflow.run_guards import CompareRunGuards, record_billing_halt, set_active_guard  # noqa: E402
 from budgetflow.types import GovernorConfig  # noqa: E402
 
 
@@ -95,6 +96,34 @@ def test_provider_unavailable_releases_reservation_and_fails_fast(monkeypatch) -
     assert model.turn_traces[0]["final_backend"] == TIER3_BACKEND
     assert model.turn_traces[0]["provider_error_kind"] == "transient_provider"
     assert model.backend_picks == [TIER3_BACKEND]
+
+
+def test_global_billing_halt_stops_next_turn_before_provider_call(monkeypatch) -> None:
+    monkeypatch.setattr("budgetflow.adapter.mini_swe_proxy.load_env_file", lambda: None)
+    monkeypatch.setenv("DASHSCOPE_API_KEY", "test")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test")
+    monkeypatch.setenv("AICODE007_API_KEY", "test")
+    model, governor = _model("all_t3")
+    attempts: list[str] = []
+
+    def fake_completion(messages, *, backend_name, **kwargs):
+        attempts.append(backend_name)
+        return _Response()
+
+    model._completion = fake_completion
+    set_active_guard(CompareRunGuards())
+    try:
+        record_billing_halt("OpenAIException - Insufficient Balance", backend="tier2")
+        with pytest.raises(BudgetFlowUpstreamError) as excinfo:
+            model.query([{"role": "user", "content": "please inspect"}])
+    finally:
+        set_active_guard(None)
+
+    assert "billing_guard" in excinfo.value.exit_reason
+    assert attempts == []
+    assert model.backend_picks == []
+    assert governor.state.reserved_budget == pytest.approx(0.0)
+    assert governor.state.spent_budget == pytest.approx(0.0)
 
 
 def test_completion_uses_configurable_short_timeout(monkeypatch) -> None:

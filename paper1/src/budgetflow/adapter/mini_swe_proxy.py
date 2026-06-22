@@ -32,7 +32,7 @@ from ..console_log import backend_tier_label, bold, dim, routing_stage_label, ta
 from ..governor import BudgetGovernor
 from ..types import Backend, Stage, TurnInfo, WorkflowSegment, WorkflowStatus
 from .errors import BudgetFlowBudgetError, BudgetFlowStagnationError, BudgetFlowUpstreamError
-from ..run_guards import is_fatal_billing_error, record_billing_halt, record_upstream_error
+from ..run_guards import get_active_guard, is_fatal_billing_error, record_billing_halt, record_upstream_error
 from ..adapters import SwebenchProgressAdapter
 from ..routing_sets import (
     ADAPTIVE_ROUTINGS,
@@ -350,6 +350,18 @@ class BudgetFlowLitellmModel:
 
     def query(self, messages: list[dict[str, str]], **kwargs) -> dict:
         self.step_index += 1
+        active_guard = get_active_guard()
+        if active_guard is not None and active_guard.is_aborted():
+            reason = active_guard.abort_reason() or "global_run_guard"
+            self.last_exit_reason = reason
+            self.last_budget_snapshot = self.governor.budget_snapshot()
+            raise BudgetFlowUpstreamError(
+                self.workflow_id,
+                exit_reason=reason,
+                step_index=self.step_index,
+                backend=self.last_backend_name if self.last_backend_name != "-" else None,
+                sample="global run guard halted before provider call",
+            )
         turn_protocol_retry_used = False
         turn_protocol_retry_success = False
         turn_protocol_retry_reason = ""
