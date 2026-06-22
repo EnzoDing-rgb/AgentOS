@@ -549,6 +549,32 @@ class TestChooseTaskLevelBackend:
         assert ctx.last_policy_decision.scores["task_budget"] == pytest.approx(0.05)
         assert ctx.last_decision.reason == "bf_task_start_reference_frontier"
 
+    def test_decisive_marginal_yield_can_override_low_task_budget_coverage(self):
+        """Task cap coverage is a runway signal, not a veto over decisive Claim-1 value."""
+        from budgetflow.task_level_routing import task_start_tier_decision
+
+        tier, reason, scores = task_start_tier_decision(
+            task_value=1.0,
+            task_effort=54.8672,
+            tier2_fit=0.205221,
+            tier3_fit=0.711557,
+            tier2_per_turn_cost=0.0055079983,
+            tier3_per_turn_cost=0.027539997,
+            budget_pressure=0.01,
+            task_budget=0.648961,
+            median_task_value=1.0,
+            has_trusted_model_fit=True,
+            is_cold_start=False,
+        )
+
+        assert tier == 3
+        assert reason == "decisive_marginal_yield_budget_override"
+        assert scores["budget_allows_strongest"] == 0.0
+        assert scores["strongest_budget_coverage"] < scores["strongest_min_budget_coverage"]
+        assert scores["budget_soft_allows_strongest"] == 1.0
+        assert scores["decisive_marginal_budget_override"] == 1.0
+        assert scores["marginal_yield_per_dollar"] >= scores["t3_acceptance_threshold"] * 3.0
+
     def test_marginal_yield_per_dollar_can_choose_t3_when_t3_costs_more(self):
         """High-value tasks can choose T3 by marginal Yield/$, not only cost dominance."""
         from budgetflow.adapter.strategies import choose_backend

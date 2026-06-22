@@ -79,7 +79,7 @@ def task_start_tier_decision(
         else True
     )
     budget_coverage = _budget_coverage(budget_value, strongest_cost)
-    budget_soft_allows = (
+    coverage_soft_allows = (
         budget_allows
         or budget_value is None
         or budget_coverage >= TASK_START_STRONGEST_MIN_BUDGET_COVERAGE
@@ -115,16 +115,35 @@ def task_start_tier_decision(
         or decisive_fit_gate
         or (fit_gain >= TASK_START_PAID_UPGRADE_MIN_FIT_GAIN and metadata_gate)
     )
+    marginal_candidate = (
+        has_trusted_model_fit
+        and fit_gain > 0
+        and paid_upgrade_candidate
+        and marginal_yield >= acceptance
+    )
+    decisive_marginal_override = (
+        not coverage_soft_allows
+        and marginal_candidate
+        and decisive_fit_gate
+        and metadata_gate
+        and pressure <= 0.50
+        and (
+            marginal_yield >= acceptance * 3.0
+            or strongest_cost <= reference_cost
+        )
+    )
+    budget_soft_allows = coverage_soft_allows or decisive_marginal_override
 
     # ── marginal yield path ──────────────────────────────────────────────
     if (
         budget_soft_allows
-        and has_trusted_model_fit
-        and fit_gain > 0
-        and paid_upgrade_candidate
-        and marginal_yield >= acceptance
+        and marginal_candidate
     ):
-        return 3, "marginal_yield_per_dollar", _scores(
+        return 3, (
+            "decisive_marginal_yield_budget_override"
+            if decisive_marginal_override
+            else "marginal_yield_per_dollar"
+        ), _scores(
             value=value,
             effort=effort,
             value_ratio=value_ratio,
@@ -151,6 +170,7 @@ def task_start_tier_decision(
             headroom_fraction=_headroom_fraction(budget_value, strongest_cost),
             budget_coverage=budget_coverage,
             budget_soft_allows=budget_soft_allows,
+            decisive_marginal_budget_override=decisive_marginal_override,
             rule="marginal_expected_value_per_dollar",
         )
 
@@ -198,6 +218,7 @@ def task_start_tier_decision(
             headroom_fraction=_headroom_fraction(budget_value, strongest_cost),
             budget_coverage=budget_coverage,
             budget_soft_allows=budget_soft_allows,
+            decisive_marginal_budget_override=decisive_marginal_override,
             rule="uncertain_frontier_probe",
         )
 
@@ -229,6 +250,7 @@ def task_start_tier_decision(
         headroom_fraction=_headroom_fraction(budget_value, strongest_cost),
         budget_coverage=budget_coverage,
         budget_soft_allows=budget_soft_allows,
+        decisive_marginal_budget_override=decisive_marginal_override,
         rule="reference_frontier",
     )
 
@@ -328,6 +350,7 @@ def _scores(
     budget_coverage: float,
     budget_soft_allows: bool,
     rule: str,
+    decisive_marginal_budget_override: bool = False,
 ) -> dict[str, float]:
     return {
         "task_value": value,
@@ -336,6 +359,9 @@ def _scores(
         "budget_pressure": budget_pressure,
         "budget_allows_strongest": 1.0 if budget_allows else 0.0,
         "budget_soft_allows_strongest": 1.0 if budget_soft_allows else 0.0,
+        "decisive_marginal_budget_override": (
+            1.0 if decisive_marginal_budget_override else 0.0
+        ),
         "strongest_budget_coverage": budget_coverage,
         "strongest_min_budget_coverage": TASK_START_STRONGEST_MIN_BUDGET_COVERAGE,
         "has_trusted_model_fit": 1.0 if has_trusted_model_fit else 0.0,

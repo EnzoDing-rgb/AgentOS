@@ -334,7 +334,10 @@ def _choose_task_level_backend(ctx: RoutingContext, expected_costs: dict[str, fl
         current = strongest
         reason_label = (
             "bf_task_start_marginal_yield_t3"
-            if reason == "marginal_yield_per_dollar"
+            if reason in {
+                "marginal_yield_per_dollar",
+                "decisive_marginal_yield_budget_override",
+            }
             else "bf_task_start_uncertain_frontier_probe"
         )
     else:
