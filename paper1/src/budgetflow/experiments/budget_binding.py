@@ -90,6 +90,7 @@ class BudgetBindingPlan:
     planned_task_budget_by_strategy: dict[str, dict[str, float]] = field(default_factory=dict)
     planned_task_budget_policy: dict[str, Any] = field(default_factory=dict)
     projection_diagnostics: dict[str, Any] = field(default_factory=dict)
+    frontier_diagnostic: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         d: dict = {
@@ -147,6 +148,8 @@ class BudgetBindingPlan:
             d["planned_task_budget_policy"] = dict(self.planned_task_budget_policy)
         if self.projection_diagnostics:
             d["projection_diagnostics"] = self.projection_diagnostics
+        if self.frontier_diagnostic:
+            d["frontier_diagnostic"] = self.frontier_diagnostic
         return d
 
     @classmethod
@@ -182,6 +185,7 @@ class BudgetBindingPlan:
             planned_task_budget_by_strategy=d.get("planned_task_budget_by_strategy", {}),
             planned_task_budget_policy=d.get("planned_task_budget_policy", {}),
             projection_diagnostics=d.get("projection_diagnostics", {}),
+            frontier_diagnostic=d.get("frontier_diagnostic", {}),
         )
 
 
@@ -524,6 +528,7 @@ def calibrate_budget(
         plan.projected_utilization_by_strategy[strategy] = min(raw_util, 1.0)
 
     _build_pressure_contract(plan, strategies)
+    _build_frontier_diagnostic(plan, fit_overrides)
     _apply_pressure_contract_gate(plan)
 
     for strategy in strategies:
@@ -1228,6 +1233,52 @@ def _build_pressure_contract(
         plan.reasons.append(f"pressure_contract: {a}")
     for v in violations:
         plan.reasons.append(f"pressure_contract VIOLATION: {v}")
+
+
+def _build_frontier_diagnostic(
+    plan: BudgetBindingPlan,
+    fit_overrides: dict[int, float] | None,
+) -> None:
+    """Record whether the projected model frontier has an allocation problem."""
+    t2_spend = float(plan.projected_spend_by_strategy.get("bare_t2_baseline") or 0.0)
+    t3_spend = float(plan.projected_spend_by_strategy.get("bare_t3_baseline") or 0.0)
+    if t2_spend <= 0 or t3_spend <= 0:
+        plan.frontier_diagnostic = {
+            "posture": "insufficient_boundary_data",
+            "reason": "requires bare_t2_baseline and bare_t3_baseline projections",
+        }
+        return
+
+    t2_fit = _projection_tier_fit(2, fit_overrides)
+    strongest_tier = max((cfg.tier for cfg in MODEL_CATALOG.configs), default=3)
+    t3_fit = _projection_tier_fit(strongest_tier, fit_overrides)
+    cost_ratio = t3_spend / max(t2_spend, 0.000001)
+    fit_delta = t3_fit - t2_fit
+    if cost_ratio >= 1.0 and fit_delta <= 0.02:
+        posture = "reference_cost_dominant"
+        reason = "reference tier projected cheaper and ModelFit uplift is weak"
+    elif cost_ratio <= 1.0 and fit_delta >= 0.02:
+        posture = "strongest_cost_dominant"
+        reason = "Strongest Model projected no more expensive and ModelFit uplift is positive"
+    else:
+        posture = "mixed_or_unproven"
+        reason = "projected cost and ModelFit do not show a pure frontier dominance posture"
+
+    plan.frontier_diagnostic = {
+        "posture": posture,
+        "reason": reason,
+        "bare_t2_projected_spend": round(t2_spend, 4),
+        "bare_t3_projected_spend": round(t3_spend, 4),
+        "t3_over_t2_spend_ratio": round(cost_ratio, 4),
+        "tier2_model_fit": round(t2_fit, 6),
+        "tier3_model_fit": round(t3_fit, 6),
+        "model_fit_delta": round(fit_delta, 6),
+        "scope": "projection_only_not_outcome_evidence",
+    }
+    plan.reasons.append(
+        "frontier_diagnostic: "
+        f"posture={posture} ratio={cost_ratio:.3f} fit_delta={fit_delta:.4f}; {reason}"
+    )
 
 
 def _apply_pressure_contract_gate(plan: BudgetBindingPlan) -> None:

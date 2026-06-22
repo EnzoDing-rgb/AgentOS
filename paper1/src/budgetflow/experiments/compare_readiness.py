@@ -543,6 +543,7 @@ def build_compare_readiness_report(
         proj_conf = bp2.get("projection_confidence", "unvalidated") if isinstance(bp2, dict) else "unvalidated"
         per_strat_util = bp2.get("projected_utilization_by_strategy", {}) if isinstance(bp2, dict) else {}
         pressure_contract = bp2.get("pressure_contract", {}) if isinstance(bp2, dict) else {}
+        frontier_diagnostic = bp2.get("frontier_diagnostic", {}) if isinstance(bp2, dict) else {}
 
         if proj_conf == "unvalidated":
             warnings.append(
@@ -592,6 +593,20 @@ def build_compare_readiness_report(
                 warnings.append(
                     "budget plan pressure contract has budgetflow_under_target; "
                     "treat BudgetFlow projected utilization as a pressure warning"
+                )
+        if isinstance(frontier_diagnostic, dict):
+            posture = str(frontier_diagnostic.get("posture") or "")
+            if posture:
+                facts.append(f"frontier_posture={posture}")
+            if posture == "reference_cost_dominant":
+                warnings.append(
+                    "frontier diagnostic: reference tier is projected cheaper with weak ModelFit uplift; "
+                    "treat the run as diagnostic for tier-boundary selection, not as strong tier-routing evidence"
+                )
+            elif posture == "strongest_cost_dominant":
+                warnings.append(
+                    "frontier diagnostic: Strongest Model is projected cost-dominant; "
+                    "BudgetFlow must justify not collapsing to the strongest tier"
                 )
 
     # ── Protocol health gate ───────────────────────────────────────────────

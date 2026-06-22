@@ -1016,6 +1016,37 @@ def test_pressure_contract_healthy_shape_grade_pass() -> None:
     assert any("budgetflow_pressure_ready" in a for a in plan.pressure_contract["assertions"])
 
 
+def test_frontier_diagnostic_reports_reference_cost_dominance() -> None:
+    from budgetflow.experiments.budget_binding import _build_frontier_diagnostic
+
+    plan = BudgetBindingPlan(hard_cap_usd=5.0)
+    plan.projected_spend_by_strategy = {
+        "bare_t2_baseline": 1.0,
+        "bare_t3_baseline": 2.0,
+    }
+
+    _build_frontier_diagnostic(plan, {2: 0.30, 3: 0.31})
+
+    assert plan.frontier_diagnostic["posture"] == "reference_cost_dominant"
+    assert plan.frontier_diagnostic["scope"] == "projection_only_not_outcome_evidence"
+    assert any("frontier_diagnostic" in reason for reason in plan.reasons)
+
+
+def test_frontier_diagnostic_reports_strongest_cost_dominance() -> None:
+    from budgetflow.experiments.budget_binding import _build_frontier_diagnostic
+
+    plan = BudgetBindingPlan(hard_cap_usd=5.0)
+    plan.projected_spend_by_strategy = {
+        "bare_t2_baseline": 2.0,
+        "bare_t3_baseline": 1.0,
+    }
+
+    _build_frontier_diagnostic(plan, {2: 0.30, 3: 0.45})
+
+    assert plan.frontier_diagnostic["posture"] == "strongest_cost_dominant"
+    assert plan.frontier_diagnostic["model_fit_delta"] == pytest.approx(0.15)
+
+
 def test_calibrate_requires_target_utilization() -> None:
     import pytest
 

@@ -771,6 +771,43 @@ def test_readiness_blocks_task_level_projected_pure_strongest_degeneration(tmp_p
     assert any("pure_strongest_tier" in issue for issue in report.blocking)
 
 
+def test_readiness_warns_reference_cost_dominant_frontier(tmp_path) -> None:
+    bp = tmp_path / "budget_plan.json"
+    bp.write_text(
+        '{"hard_cap_usd":1.0,"source":"budget_binding_calibrator","decision":"PASS",'
+        '"generation_mode":"target_utilization",'
+        '"task_ids":["task-a"],'
+        '"strategy_names":["bare_t2_baseline","bare_t3_baseline","budgetflow_task_level"],'
+        '"planned_task_budget_by_strategy":{"budgetflow_task_level":{"task-a":0.8}},'
+        '"projection_diagnostics":{"budgetflow_task_level":{'
+        '"degeneration":"mixed","projected_tier_counts":{"tier2":1,"tier3":1},'
+        '"projected_strongest_task_fraction":0.5}},'
+        '"frontier_diagnostic":{"posture":"reference_cost_dominant",'
+        '"scope":"projection_only_not_outcome_evidence"}}'
+    )
+    value_context = ValueEfficiencyContext()
+    value_context.init(value_profile="equal")
+
+    report = build_compare_readiness_report(
+        args=_args(),
+        tasks=[SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",))],
+        strategies=(
+            CompareStrategy("bare_t2_baseline", "all_tier2"),
+            CompareStrategy("bare_t3_baseline", "bare_t3"),
+            CompareStrategy("budgetflow_task_level", "value_aware_task_level"),
+        ),
+        policy_jobs=3,
+        value_context=value_context,
+        catalog_issues=[],
+        runtime_root=Path("/tmp/budgetflow-runtime"),
+        budget_plan_path=bp,
+    )
+
+    assert report.ok
+    assert "frontier_posture=reference_cost_dominant" in report.facts
+    assert any("reference tier is projected cheaper" in warning for warning in report.warnings)
+
+
 def test_readiness_blocks_budget_plan_superset_for_short_run(tmp_path) -> None:
     bp = tmp_path / "budget_plan.json"
     bp.write_text(
