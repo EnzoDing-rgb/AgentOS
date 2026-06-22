@@ -26,6 +26,7 @@ from ..decision_costs import task_level_decision_per_turn_cost
 from ..adapter.strategies import (
     MARGINAL_YIELD_PER_DOLLAR_THRESHOLD,
     TASK_START_COLD_FRONTIER_EFFORT_THRESHOLD,
+    TASK_START_COLD_FRONTIER_EFFORT_TOLERANCE,
     TASK_START_DECISIVE_FIT_GAIN,
     TASK_START_EFFORT_MULTIPLIER_MAX,
     TASK_START_EFFORT_MULTIPLIER_MIN,
@@ -58,6 +59,7 @@ BUDGETFLOW_PLANNED_TASK_BUDGET_STRATEGIES = frozenset({
     "budgetflow_task_level",
     "budgetflow_segment",
 })
+BINDING_STRONGEST_STAGE_UTILIZATION_MIN = 0.90
 DEFAULT_TASK_EFFORT = 30.0
 DEFAULT_TASK_VALUE = 1.0
 
@@ -606,6 +608,7 @@ def audit_calibration(
     actual_utilization: dict[str, float] = {}
     raw_actual_utilization: dict[str, float] = {}
     strategy_task_counts: dict[str, int] = {}
+    strategy_task_ids: dict[str, set[str]] = {}
     budget_exhausted_by_strategy: dict[str, int] = {}
 
     latest_records: dict[tuple[str, str], tuple[float, int, dict]] = {}
@@ -635,6 +638,7 @@ def audit_calibration(
         cost = float(rec.get("total_cost") or 0)
         actual_spend[strategy] = actual_spend.get(strategy, 0.0) + cost
         strategy_task_counts[strategy] = strategy_task_counts.get(strategy, 0) + 1
+        strategy_task_ids.setdefault(strategy, set()).add(str(_instance_id))
         if _row_is_budget_exhausted(rec):
             budget_exhausted_by_strategy[strategy] = budget_exhausted_by_strategy.get(strategy, 0) + 1
 
@@ -659,7 +663,18 @@ def audit_calibration(
     n_strategies = 0
 
     for strategy in plan.projected_spend_by_strategy:
-        projected = plan.projected_spend_by_strategy.get(strategy, 0.0)
+        full_projected = plan.projected_spend_by_strategy.get(strategy, 0.0)
+        completed_task_ids = strategy_task_ids.get(strategy, set())
+        task_projection = plan.projected_task_cost_by_strategy.get(strategy, {})
+        if completed_task_ids and task_projection:
+            projected = sum(
+                float(task_projection.get(task_id, 0.0) or 0.0)
+                for task_id in completed_task_ids
+            )
+            projection_scope = "completed_task_subset"
+        else:
+            projected = full_projected
+            projection_scope = "full_strategy"
         actual = actual_spend.get(strategy, 0.0)
         if projected <= 0 and actual <= 0:
             continue
@@ -667,8 +682,16 @@ def audit_calibration(
         error_pct = abs(projected - actual) / max(projected, 0.001)
         total_abs_error += error_pct
         cap = per_strategy_cap.get(strategy) if per_strategy_cap else plan.hard_cap_usd
+        completed_count = strategy_task_counts.get(strategy, 0)
+        completed_fraction = (
+            completed_count / max(len(plan.task_ids), 1)
+            if plan.task_ids else 1.0
+        )
         strategy_errors[strategy] = {
             "projected": round(projected, 4),
+            "full_projected": round(full_projected, 4),
+            "completed_projected": round(projected, 4),
+            "projection_scope": projection_scope,
             "actual": round(actual, 4),
             "error_pct": round(error_pct, 4),
             "strategy_cap": round(cap, 4) if cap else None,
@@ -680,8 +703,16 @@ def audit_calibration(
             "actual_utilization": actual_utilization.get(strategy, 0.0),
             "raw_actual_utilization": raw_actual_utilization.get(strategy, 0.0),
             "budget_exhausted_rows": budget_exhausted_by_strategy.get(strategy, 0),
-            "task_count": strategy_task_counts.get(strategy, 0),
+            "task_count": completed_count,
+            "completed_task_fraction": round(completed_fraction, 4),
         }
+        if cap and cap > 0 and completed_fraction > 0:
+            stage_share = cap * completed_fraction
+            strategy_errors[strategy]["stage_budget_share"] = round(stage_share, 4)
+            strategy_errors[strategy]["stage_share_actual_utilization"] = round(
+                actual / max(stage_share, 0.000001),
+                4,
+            )
 
     overall_mape = total_abs_error / max(n_strategies, 1)
 
@@ -737,6 +768,21 @@ def audit_calibration(
             f"({', '.join(sorted(saturated_primary))}). Projection error alone is not enough "
             "to certify the target utilization regime; widen or recalibrate the budget plan "
             "before treating policy strength as interpretable."
+        )
+
+    strongest_stage = strategy_errors.get("bare_t3_baseline", {})
+    strongest_stage_util = float(strongest_stage.get("stage_share_actual_utilization") or 0.0)
+    if (
+        strongest_stage
+        and strongest_stage.get("stage_budget_share") is not None
+        and strongest_stage_util < BINDING_STRONGEST_STAGE_UTILIZATION_MIN
+    ):
+        confidence = "unvalidated"
+        recommendations.append(
+            "BLOCK: stage strongest utilization "
+            f"{strongest_stage_util:.1%} is below "
+            f"{BINDING_STRONGEST_STAGE_UTILIZATION_MIN:.0%}; budget regime is too loose "
+            "for Yield per Dollar evidence. Recompile the hard cap before the next paid stage."
         )
 
     audit = CalibrationAudit(
@@ -1035,7 +1081,12 @@ def _project_task_level_choice_cost(
     value_ratio = task_value / max(median, 0.000001)
     metadata_gate = (
         value_ratio >= TASK_START_VALUE_RATIO_GATE
-        or (effort_units >= TASK_START_COLD_FRONTIER_EFFORT_THRESHOLD and task_value >= median)
+        or (
+            effort_units
+            >= TASK_START_COLD_FRONTIER_EFFORT_THRESHOLD
+            * TASK_START_COLD_FRONTIER_EFFORT_TOLERANCE
+            and task_value >= median
+        )
         or (effort_units >= TASK_START_HIGH_EFFORT_THRESHOLD and task_value >= median)
     )
     decisive_fit_gate = (

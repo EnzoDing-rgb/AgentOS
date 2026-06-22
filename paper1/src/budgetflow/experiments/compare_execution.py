@@ -74,7 +74,15 @@ def _effective_planned_task_cap(
     shared_remaining = max(0.0, float(batch_budget_cap) - max(0.0, float(shared_spent)))
     if shared_remaining <= 0:
         return 0.0
-    return min(planned_cap, shared_remaining)
+    remaining_planned = sum(
+        max(0.0, float(planned_task_caps.get(str(remaining_id), 0.0) or 0.0))
+        for remaining_id in remaining_task_ids
+    )
+    if remaining_planned <= 0:
+        return min(planned_cap, shared_remaining)
+    if remaining_planned <= shared_remaining:
+        return min(planned_cap, shared_remaining)
+    return min(planned_cap, shared_remaining * planned_cap / remaining_planned)
 
 
 def _shared_batch_pressure(
@@ -161,7 +169,12 @@ def run_task_record(
         effort_source=effort_source,
         model_fit_source=model_fit_source,
         budget_source=budget_source,
-        planned_task_budget=per_task_cap if per_task_cap is not None and per_task_cap >= 0 else None,
+        planned_task_budget=(
+            budget_plan_task_cap
+            if budget_plan_task_cap is not None and budget_plan_task_cap >= 0
+            else per_task_cap if per_task_cap is not None and per_task_cap >= 0 else None
+        ),
+        effective_task_budget=per_task_cap if per_task_cap is not None and per_task_cap >= 0 else None,
         confidence={"model_fit": calibrated_model_fit_confidence},
     )
     result = mini_swe_runner.run_mini_swe_task(

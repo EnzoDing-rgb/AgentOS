@@ -515,6 +515,28 @@ class TestChooseTaskLevelBackend:
         assert ctx.last_policy_decision.reason == "task_level_uncertain_frontier_probe"
         assert ctx.last_policy_decision.scores["has_trusted_model_fit"] == 0.0
 
+    def test_cold_start_near_effort_boundary_starts_strongest_without_trusted_fit(self):
+        """Cold-start effort gates should tolerate small Task Effort estimator noise."""
+        from budgetflow.adapter.strategies import choose_backend
+        from budgetflow.allocation import AllocationContext
+
+        alloc = AllocationContext(
+            task_value=1.0,
+            task_effort=19.5,
+            planned_task_budget=4.0,
+            effort_source="unit_test",
+            model_fit_source="catalog_progress_prior",
+            confidence={"model_fit": "none"},
+        )
+        backends = _backends(t2_progress=0.24, t3_progress=0.25)
+        ctx = _task_level_ctx(backends, budget_pressure=0.45, allocation=alloc)
+
+        backend = choose_backend(ctx, _turn(), _runtime_like_costs())
+
+        assert backend.tier == 3
+        assert ctx.last_policy_decision is not None
+        assert ctx.last_policy_decision.reason == "task_level_uncertain_frontier_probe"
+
     def test_high_value_high_effort_does_not_start_t3_without_fit_gap(self):
         """Task-start routing needs an expected value gain, not only value/effort."""
         from budgetflow.adapter.strategies import choose_backend
@@ -932,6 +954,28 @@ class TestBudgetCompilerFitScaling:
             planned_task_budget=4.0,
             fit_overrides=None,
             budget_pressure=0.01,
+        )
+
+        assert choice == 3
+        assert projected_cost == pytest.approx(0.80)
+
+    def test_compiler_projection_matches_near_boundary_cold_start_probe(self):
+        """Compiler mirror should not diverge from runtime on soft effort boundary."""
+        from budgetflow.experiments.budget_binding import _project_task_level_choice_cost
+
+        choice, projected_cost = _project_task_level_choice_cost(
+            "task-a",
+            {
+                "task-a": {
+                    "task_value": 1.0,
+                    "task_effort": 19.5,
+                }
+            },
+            reference_cost=0.20,
+            strongest_cost=0.80,
+            planned_task_budget=4.0,
+            fit_overrides=None,
+            budget_pressure=0.45,
         )
 
         assert choice == 3

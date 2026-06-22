@@ -43,6 +43,9 @@ class AllocationContext:
     planned_task_budget: float | None = None
     """Optional BudgetFlow-only task spend boundary compiled before runtime."""
 
+    effective_task_budget: float | None = None
+    """Runtime effective task cap after shared-budget rebalancing."""
+
     # Confidence per input
     confidence: dict[str, str] = field(default_factory=dict)
 
@@ -81,6 +84,7 @@ class AllocationContext:
             "effort_source": self.effort_source,
             "budget_source": self.budget_source,
             "planned_task_budget": self.planned_task_budget,
+            "effective_task_budget": self.effective_task_budget,
             "has_model_fit": self.has_model_fit,
             "has_trusted_model_fit": self.has_trusted_model_fit,
             "model_fit_confidence": self.confidence.get("model_fit", "none"),

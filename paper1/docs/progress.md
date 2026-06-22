@@ -4,6 +4,14 @@
 
 ## 2026-06-22 — Current status (in progress, not final evidence)
 
+- **2026-06-22 / No-paid gate fixes before 4x30 reset:** restored
+  shared-cap-aware planned task budget rebalance, split compiler planned task
+  runway from runtime effective task cap, added completed-prefix calibration
+  audit for 10+10+10 stages, and softened the cold-start task-level effort
+  boundary so near-threshold hard SWE tasks can use bounded Strongest Model
+  probes. Re-audit of the stopped 4x30 stage-1 now blocks continuation because
+  pure T3 used only 54.4% of its stage budget share; the next paid attempt must
+  be a clean restart with a recompiled tighter budget plan.
 - **2026-06-22 / 4x30 stage-1 stopped for mechanism diagnosis:** staged
   `mainline_4x30_tasklevel_frontier_20260622-0` was stopped after 38/40 stage-1
   rows. BudgetFlow task-level completed 10/10 with Yield 5.0, cost $3.1007,

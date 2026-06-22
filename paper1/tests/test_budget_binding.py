@@ -1135,6 +1135,44 @@ def test_audit_calibration_dedup_keeps_last_row(tmp_path: Path) -> None:
     assert audit.strategy_errors["bare_t3_baseline"]["task_count"] == 1
 
 
+def test_audit_calibration_compares_completed_task_subset_projection(tmp_path: Path) -> None:
+    jsonl = tmp_path / "run.jsonl"
+    jsonl.write_text(
+        "\n".join(
+            json.dumps({
+                "strategy": "bare_t3_baseline",
+                "instance_id": task_id,
+                "total_cost": cost,
+                "row_finished_at": i,
+            })
+            for i, (task_id, cost) in enumerate(
+                [("task-a", 0.10), ("task-b", 0.20)],
+                start=1,
+            )
+        )
+        + "\n"
+    )
+    plan = BudgetBindingPlan(hard_cap_usd=1.0, target_projected_utilization=0.90)
+    plan.task_ids = ["task-a", "task-b", "task-c"]
+    plan.projected_spend_by_strategy = {"bare_t3_baseline": 0.60}
+    plan.projected_task_cost_by_strategy = {
+        "bare_t3_baseline": {"task-a": 0.10, "task-b": 0.20, "task-c": 0.30}
+    }
+    plan.projected_utilization_by_strategy = {"bare_t3_baseline": 0.60}
+    plan.raw_projected_utilization_by_strategy = {"bare_t3_baseline": 0.60}
+
+    audit = audit_calibration(jsonl, plan)
+
+    err = audit.strategy_errors["bare_t3_baseline"]
+    assert err["projected"] == 0.30
+    assert err["full_projected"] == 0.60
+    assert err["completed_projected"] == 0.30
+    assert err["completed_task_fraction"] == pytest.approx(0.6667)
+    assert err["stage_budget_share"] == pytest.approx(0.6667)
+    assert err["stage_share_actual_utilization"] == pytest.approx(0.45)
+    assert audit.overall_mape == pytest.approx(0.0)
+
+
 def test_historical_cost_loader_dedup_keeps_latest_row(tmp_path: Path) -> None:
     jsonl = tmp_path / "hist.jsonl"
     jsonl.write_text(
@@ -1477,6 +1515,36 @@ def test_audit_records_raw_utilization_and_budget_exhaustion(tmp_path: Path) -> 
     assert err["raw_actual_utilization"] == 1.4
     assert err["budget_exhausted_rows"] == 1
     assert audit.budget_exhausted_by_strategy == {"bare_t3_baseline": 1}
+
+
+def test_audit_recommends_recompile_when_stage_t3_under_uses_budget_share(tmp_path: Path) -> None:
+    jsonl = tmp_path / "run.jsonl"
+    rows = [
+        {
+            "strategy": "bare_t3_baseline",
+            "instance_id": f"task-{i}",
+            "total_cost": 0.10,
+            "row_finished_at": i,
+        }
+        for i in range(1, 11)
+    ]
+    jsonl.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
+    plan = BudgetBindingPlan(hard_cap_usd=6.0, target_projected_utilization=0.90)
+    plan.task_ids = [f"task-{i}" for i in range(1, 31)]
+    plan.projected_spend_by_strategy = {"bare_t3_baseline": 3.0}
+    plan.projected_task_cost_by_strategy = {
+        "bare_t3_baseline": {f"task-{i}": 0.10 for i in range(1, 31)}
+    }
+    plan.projected_utilization_by_strategy = {"bare_t3_baseline": 0.50}
+
+    audit = audit_calibration(jsonl, plan)
+
+    err = audit.strategy_errors["bare_t3_baseline"]
+    assert err["stage_budget_share"] == pytest.approx(2.0)
+    assert err["stage_share_actual_utilization"] == pytest.approx(0.5)
+    assert audit.projection_confidence == "unvalidated"
+    assert any("stage strongest utilization" in rec for rec in audit.recommendations)
+    assert any("budget regime is too loose" in rec for rec in audit.recommendations)
 
 
 def test_cli_calibrate_accepts_calibration_evidence_audit(tmp_path: Path) -> None:
