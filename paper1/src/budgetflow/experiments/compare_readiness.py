@@ -14,6 +14,7 @@ from pathlib import Path
 from budgetflow.experiments.compare_config import CompareStrategy, paper_mainline_strategy_names
 from budgetflow.experiments.compare_setup import BUDGETFLOW_ACTIVE_ROUTINGS, PLANNED_TASK_BUDGET_MODE
 from budgetflow.defaults import PAID_MAINLINE_STEP_LIMIT
+from budgetflow.failure_classification import build_score_status, build_verdict
 from budgetflow.frozen_router import load_frozen_plan
 from budgetflow.harness_contamination import (
     find_runtime_worktree_python_contamination,
@@ -75,7 +76,7 @@ def _find_existing_jsonl(run_series: str | None, runs_dir: Path | None) -> Path 
 
 
 def _compute_protocol_health(jsonl_path: Path) -> dict:
-    """Compute protocol health from existing JSONL using current row fields."""
+    """Compute protocol health from existing JSONL using current classifiers."""
     import json as _json
 
     total_rows = 0
@@ -94,10 +95,12 @@ def _compute_protocol_health(jsonl_path: Path) -> dict:
                 continue
             total_rows += 1
 
-            score_status = str(row.get("score_status") or "")
-            failure_owner = str(row.get("failure_owner") or "")
-            abort_owner = str(row.get("abort_owner") or "")
-            exit_owner = str(row.get("exit_owner") or "")
+            verdict = build_verdict(row)
+            score = build_score_status(row)
+            score_status = str(score.get("score_status") or "")
+            failure_owner = str(verdict.get("failure_owner") or "")
+            abort_owner = str(score.get("abort_owner") or "")
+            exit_owner = str(score.get("exit_owner") or "")
             exit_reason = str(row.get("exit_reason") or "")
             if (
                 score_status == "abort"

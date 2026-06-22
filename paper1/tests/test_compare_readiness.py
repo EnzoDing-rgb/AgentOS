@@ -34,6 +34,42 @@ def _args(**overrides):
     return Namespace(**base)
 
 
+def test_protocol_health_uses_current_classifier_for_archived_rows(tmp_path) -> None:
+    jsonl = tmp_path / "run.jsonl"
+    rows = [
+        {
+            "score_status": "abort",
+            "failure_owner": "protocol",
+            "abort_owner": "protocol",
+            "harness_resolved": False,
+            "patch_extracted": False,
+            "agent_gold_edited": False,
+            "exit_status": "LimitsExceeded",
+            "exit_reason": None,
+            "detail": "no model patch extracted",
+            "turn_trace_count": 60,
+        },
+        {
+            "score_status": "abort",
+            "failure_owner": "protocol",
+            "abort_owner": "protocol",
+            "harness_resolved": False,
+            "patch_extracted": False,
+            "agent_gold_edited": False,
+            "exit_status": "FormatError",
+            "exit_reason": "format_error_text_action",
+            "detail": "no model patch extracted",
+            "turn_trace_count": 1,
+        },
+    ]
+    jsonl.write_text("".join(json.dumps(row) + "\n" for row in rows))
+
+    stats = readiness._compute_protocol_health(jsonl)
+
+    assert stats["total_rows"] == 2
+    assert stats["protocol_abort_rate"] == 0.5
+
+
 def test_readiness_blocks_uncovered_non_equal_value_matrix(tmp_path) -> None:
     matrix = tmp_path / "value_matrix.json"
     matrix.write_text('{"tasks":{"covered":{"task_value":{"difficulty":0.2}}}}')
