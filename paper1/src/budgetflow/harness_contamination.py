@@ -61,6 +61,28 @@ def has_host_dependency_contamination(detail: str) -> bool:
     return bool(missing_modules & KNOWN_HOST_MISSING_MODULES)
 
 
+def host_dependency_contamination_requires_global_halt(detail: str) -> bool:
+    """Return True only for contamination that can poison unrelated tasks.
+
+    Row-level harness dependency problems should make that row untrusted or
+    retryable, but they should not stop all policies. Global Python path state
+    is different: a stale editable install can contaminate every later task.
+    """
+    text = detail or ""
+    if "host_dependency_contamination:" not in text:
+        return False
+    return any(
+        marker in text
+        for marker in (
+            "runtime worktree paths",
+            "editable finder maps into",
+            "editable install from",
+            "PYTHONPATH:",
+            "sys.path:",
+        )
+    )
+
+
 def _python_path_contamination_marker(text: str, runtime_root: Path) -> str:
     runtime_worktrees = str((runtime_root / "worktrees").resolve())
     if runtime_worktrees in text:

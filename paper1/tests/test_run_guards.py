@@ -82,7 +82,10 @@ def test_host_dependency_contamination_halts_all() -> None:
         {
             "strategy": "budgetflow_task_level",
             "instance_id": "mwaskom__seaborn-3407",
-            "detail": "host_dependency_contamination: budgetflow-runtime/worktrees/matplotlib stale path",
+            "detail": (
+                "host_dependency_contamination: runtime worktree paths in Python "
+                "environment: editable finder maps into /tmp/budgetflow-runtime/worktrees"
+            ),
             "score_status": "abort",
         }
     )
@@ -90,6 +93,24 @@ def test_host_dependency_contamination_halts_all() -> None:
     assert action.halt_all
     assert "host_dependency_contamination" in action.reason
     assert g.is_aborted()
+
+
+def test_row_level_harness_contamination_does_not_halt_all() -> None:
+    g = CompareRunGuards()
+    action = g.record_task(
+        {
+            "strategy": "bare_t2_baseline",
+            "instance_id": "mwaskom__seaborn-3190",
+            "detail": (
+                "host_dependency_contamination: ModuleNotFoundError: "
+                "No module named 'matplotlib'"
+            ),
+            "score_status": "abort",
+        }
+    )
+
+    assert not action.halt_all
+    assert not g.is_aborted()
 
 
 def test_task_level_short_prefix_does_not_trigger_degeneracy_guard() -> None:
