@@ -968,6 +968,32 @@ def test_pressure_contract_flags_task_level_pure_strongest_degeneration() -> Non
     assert any("budgetflow_task_level_degenerated" in v for v in plan.pressure_contract["violations"])
 
 
+def test_pressure_contract_allows_strongest_frontier_diagnostic() -> None:
+    plan = BudgetBindingPlan(
+        hard_cap_usd=10.0,
+        generation_mode="target_utilization",
+        target_projected_utilization=0.80,
+        frontier_diagnostic={"posture": "strongest_cost_dominant"},
+    )
+    plan.projected_utilization_by_strategy = {
+        "bare_t2_baseline": 0.96,
+        "bare_t3_baseline": 0.88,
+        "budgetflow_task_level": 0.88,
+    }
+    plan.projection_diagnostics = {
+        "budgetflow_task_level": {
+            "degeneration": "pure_strongest_tier",
+            "projected_tier_counts": {"tier3": 30},
+            "projected_strongest_task_fraction": 1.0,
+        }
+    }
+
+    _build_pressure_contract(plan, ("bare_t2_baseline", "bare_t3_baseline", "budgetflow_task_level"))
+
+    assert not any("budgetflow_task_level_degenerated" in v for v in plan.pressure_contract["violations"])
+    assert any("budgetflow_task_level_frontier_strongest" in a for a in plan.pressure_contract["assertions"])
+
+
 def test_pressure_contract_accepts_mixed_task_level_projection_below_util_target() -> None:
     plan = BudgetBindingPlan(
         hard_cap_usd=10.0,

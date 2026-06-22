@@ -30,6 +30,11 @@ TASK_START_PRESSURE_THRESHOLD_MULTIPLIER = 0.5
 TASK_START_EFFORT_MULTIPLIER_MIN = 0.5
 TASK_START_EFFORT_MULTIPLIER_MAX = 2.0
 TASK_START_T3_ACCEPTANCE_MARGIN = 0.10
+TASK_START_PAID_UPGRADE_MIN_FIT_GAIN = 0.10
+TASK_START_DECISIVE_FIT_GAIN = 0.30
+TASK_START_MIN_VALUE_FOR_DECISIVE_FIT = 0.50
+TASK_START_VALUE_RATIO_GATE = 1.25
+TASK_START_HIGH_EFFORT_THRESHOLD = 40.0
 
 @dataclass
 class RoutingContext:
@@ -135,7 +140,11 @@ def build_routing_context(
 
 
 def _backend_by_tier(backends: list[Backend], tier: int) -> Backend:
-    return next((backend for backend in backends if backend.tier == tier), backends[-1])
+    for backend in backends:
+        if backend.tier == tier:
+            return backend
+    available = ", ".join(f"T{backend.tier}:{backend.name}" for backend in backends)
+    raise KeyError(f"missing backend for tier T{tier}; available=[{available}]")
 
 
 def _task_level_reference_backend(backends: list[Backend]) -> Backend:
@@ -376,7 +385,6 @@ def _task_start_t3_score(
     threshold = (
         MARGINAL_YIELD_PER_DOLLAR_THRESHOLD
         * median
-        * price_ratio
         * (1.0 + TASK_START_PRESSURE_THRESHOLD_MULTIPLIER * pressure_penalty)
     )
     acceptance_threshold = task_start_t3_acceptance_threshold(threshold)
@@ -391,6 +399,29 @@ def _task_start_t3_score(
         else 0.0
     )
     task_budget_headroom_fraction = task_budget_headroom / max(planned_task_budget, 0.000001) if planned_task_budget > 0 else 0.0
+    metadata_gate = (
+        value_ratio >= TASK_START_VALUE_RATIO_GATE
+        or (effort_units >= TASK_START_HIGH_EFFORT_THRESHOLD and task_value >= median)
+    )
+    decisive_fit_gate = (
+        fit_gain >= TASK_START_DECISIVE_FIT_GAIN
+        and task_value >= TASK_START_MIN_VALUE_FOR_DECISIVE_FIT
+    )
+    paid_upgrade_candidate = (
+        strongest_total_cost <= reference_total_cost
+        or decisive_fit_gate
+        or (fit_gain >= TASK_START_PAID_UPGRADE_MIN_FIT_GAIN and metadata_gate)
+    )
+    reference_frontier_candidate = (
+        cost_estimate_available
+        and has_trusted_fit
+        and (
+            not budget_allows
+            or fit_gain <= 0
+            or not paid_upgrade_candidate
+            or marginal_yield < acceptance_threshold
+        )
+    )
     score = marginal_yield - threshold
     expected_value_gain = task_value * fit_gain
     details: dict[str, float | str | bool] = {
@@ -404,6 +435,13 @@ def _task_start_t3_score(
         "reference_fit": reference_fit,
         "strongest_fit": strongest_fit,
         "fit_gain": fit_gain,
+        "min_fit_gain_for_paid_upgrade": TASK_START_PAID_UPGRADE_MIN_FIT_GAIN,
+        "decisive_fit_gain": TASK_START_DECISIVE_FIT_GAIN,
+        "value_ratio_gate": TASK_START_VALUE_RATIO_GATE,
+        "criticality_or_effort_gate": 1.0 if metadata_gate else 0.0,
+        "decisive_fit_gate": 1.0 if decisive_fit_gate else 0.0,
+        "paid_upgrade_candidate": 1.0 if paid_upgrade_candidate else 0.0,
+        "reference_frontier_candidate": 1.0 if reference_frontier_candidate else 0.0,
         "reference_expected_total_cost": reference_total_cost,
         "strongest_expected_total_cost": strongest_total_cost,
         "extra_expected_cost": extra_expected_cost,
@@ -426,9 +464,51 @@ def _task_start_t3_score(
     }
     return (
         score
-        if cost_estimate_available and budget_allows and has_trusted_fit and fit_gain > 0
+        if (
+            cost_estimate_available
+            and budget_allows
+            and has_trusted_fit
+            and fit_gain > 0
+            and paid_upgrade_candidate
+        )
         else -1.0
     ), details
+
+
+def _uncertain_frontier_probe_candidate(
+    ctx: RoutingContext,
+    details: dict[str, float | str | bool],
+    *,
+    max_tier: int,
+) -> bool:
+    """Allow bounded T3 exploration when ModelFit is not yet trusted.
+
+    This is not a per-task assignment and not a paper-evidence shortcut.  It
+    prevents cold-start catalog priors from collapsing task-level BudgetFlow
+    into pure T2 before the run has enough current-catalog evidence to learn.
+    """
+    allocation = ctx.allocation
+    if allocation is not None and allocation.has_model_fit:
+        return False
+    strongest_tier = ModelCatalog.strongest(ctx.backends).tier
+    if max_tier < strongest_tier:
+        return False
+    if float(details.get("cost_estimate_available", 0.0) or 0.0) <= 0:
+        return False
+    if float(details.get("budget_allows_strongest", 0.0) or 0.0) <= 0:
+        return False
+    if float(details.get("task_budget_headroom_fraction", 0.0) or 0.0) < 0.10:
+        return False
+    if float(details.get("budget_pressure", 0.0) or 0.0) > 0.80:
+        return False
+    value_ratio = float(details.get("value_ratio", 1.0) or 1.0)
+    task_effort = float(details.get("task_effort", 0.0) or 0.0)
+    task_value = float(details.get("task_value", 1.0) or 1.0)
+    median = task_value / max(value_ratio, 0.000001)
+    return (
+        value_ratio >= TASK_START_VALUE_RATIO_GATE
+        or (task_effort >= TASK_START_HIGH_EFFORT_THRESHOLD and task_value >= median)
+    )
 
 
 def _choose_task_level_backend(ctx: RoutingContext, expected_costs: dict[str, float]) -> Backend:
@@ -504,6 +584,29 @@ def _choose_task_level_backend(ctx: RoutingContext, expected_costs: dict[str, fl
             )
         return current
 
+    if _uncertain_frontier_probe_candidate(ctx, task_start_details, max_tier=max_tier):
+        current = strongest
+        current_score = 0.0
+        ctx.task_level_backend = current
+        ctx.last_decision = RouterDecision(
+            backend=current,
+            reason="bf_task_start_uncertain_frontier_probe",
+            scores={current.name: current_score},
+            pressure=ctx.budget_pressure,
+            branch="value_aware_task_level",
+        )
+        if ctx.bootstrap_policy is not None:
+            scores = {
+                **task_start_details,
+                "rule": "uncertain_frontier_probe",
+            }
+            ctx.last_policy_decision = PolicyDecision(
+                backend=current.name,
+                reason="task_level_uncertain_frontier_probe",
+                scores={k: float(v) if isinstance(v, (int, float)) else v for k, v in scores.items()},
+            )
+        return current
+
     for next_backend in ordered[1:]:
         if not cost_estimate_available:
             # Cost dominance is only meaningful when both reference and
@@ -532,12 +635,20 @@ def _choose_task_level_backend(ctx: RoutingContext, expected_costs: dict[str, fl
 
     ctx.task_level_backend = current
     strongest_tier = ModelCatalog.strongest(ctx.backends).tier
+    reference_frontier = (
+        current.tier == reference.tier
+        and float(task_start_details.get("reference_frontier_candidate", 0.0) or 0.0) > 0
+    )
     ctx.last_decision = RouterDecision(
         backend=current,
         reason=(
             f"bf_task_fixed_max_tier={max_tier}"
             if max_tier < strongest_tier
-            else "bf_task_fixed_strongest_allowed"
+            else (
+                "bf_task_start_reference_frontier"
+                if reference_frontier
+                else "bf_task_fixed_strongest_allowed"
+            )
         ),
         scores={current.name: current_score},
         pressure=ctx.budget_pressure,
@@ -550,7 +661,7 @@ def _choose_task_level_backend(ctx: RoutingContext, expected_costs: dict[str, fl
         }
         ctx.last_policy_decision = PolicyDecision(
             backend=current.name,
-            reason="task_level_fixed",
+            reason="task_level_reference_frontier" if reference_frontier else "task_level_fixed",
             scores=scores,
         )
     return current

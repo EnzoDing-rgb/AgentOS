@@ -165,6 +165,62 @@ def test_task_level_all_t3_degeneracy_halts_task_level_strategy_only() -> None:
     assert not g.is_aborted()
 
 
+def test_task_level_explained_frontier_collapse_does_not_halt() -> None:
+    g = CompareRunGuards(task_level_tier_mix_min_rows=5)
+    action = GuardAction()
+    for i in range(5):
+        action = g.record_task(
+            {
+                "strategy": "budgetflow_task_level",
+                "instance_id": f"task-{i}",
+                "score_status": "true_fail",
+                "backend_picks": ["tier3", "tier3"],
+                "turn_traces": [
+                    {
+                        "router_reason": "bf_task_start_marginal_yield_t3",
+                        "policy_decision": {
+                            "reason": "task_level_fixed_task_start",
+                            "scores": {"paid_upgrade_candidate": 1.0},
+                        },
+                    }
+                ],
+            }
+        )
+
+    assert not action.halt_all
+    assert not action.halt_strategy
+    assert not g.is_strategy_halted("budgetflow_task_level")
+    assert not g.is_aborted()
+
+
+def test_task_level_explained_reference_frontier_collapse_does_not_halt() -> None:
+    g = CompareRunGuards(task_level_tier_mix_min_rows=5)
+    action = GuardAction()
+    for i in range(5):
+        action = g.record_task(
+            {
+                "strategy": "budgetflow_task_level",
+                "instance_id": f"task-{i}",
+                "score_status": "true_fail",
+                "backend_picks": ["tier2", "tier2"],
+                "turn_traces": [
+                    {
+                        "router_reason": "bf_task_start_reference_frontier",
+                        "policy_decision": {
+                            "reason": "task_level_reference_frontier",
+                            "scores": {"reference_frontier_candidate": 1.0},
+                        },
+                    }
+                ],
+            }
+        )
+
+    assert not action.halt_all
+    assert not action.halt_strategy
+    assert not g.is_strategy_halted("budgetflow_task_level")
+    assert not g.is_aborted()
+
+
 def test_pytest_rootdir_under_runtime_worktree_does_not_halt_all() -> None:
     g = CompareRunGuards()
     action = g.record_task(

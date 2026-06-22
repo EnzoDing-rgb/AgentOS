@@ -520,6 +520,12 @@ def build_compare_readiness_report(
                             "frontier_diagnostic=reference_cost_dominant; treat this run as frontier-selection "
                             "diagnostic evidence, not strong tier-routing evidence"
                         )
+                    elif degeneration == "pure_strongest_tier" and frontier_posture == "strongest_cost_dominant":
+                        warnings.append(
+                            "BudgetFlow task-level runtime projection collapses to the Strongest Model because "
+                            "frontier_diagnostic=strongest_cost_dominant; treat this run as frontier-selection "
+                            "diagnostic evidence, not strong mixed-routing evidence"
+                        )
                     elif degeneration in {"pure_reference_tier", "pure_strongest_tier"}:
                         blocking.append(
                             f"BudgetFlow task-level runtime projection degenerates to {degeneration}; "
@@ -615,6 +621,12 @@ def build_compare_readiness_report(
                     warnings.append(
                         "budget plan pressure contract reports budgetflow_task_level_degenerated, "
                         "but frontier_diagnostic=reference_cost_dominant makes pure reference-tier routing "
+                        "a diagnostic frontier-selection outcome rather than a paid-run blocker"
+                    )
+                elif "only Strongest Model" in str(violation) and frontier_posture == "strongest_cost_dominant":
+                    warnings.append(
+                        "budget plan pressure contract reports budgetflow_task_level_degenerated, "
+                        "but frontier_diagnostic=strongest_cost_dominant makes pure strongest-tier routing "
                         "a diagnostic frontier-selection outcome rather than a paid-run blocker"
                     )
                 else:

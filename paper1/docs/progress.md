@@ -2,7 +2,28 @@
 
 > 单一入口：进度、跑法、历史结果。
 
-## 2026-06-21 — Current status (in progress, not final evidence)
+## 2026-06-22 — Current status (in progress, not final evidence)
+
+- **2026-06-22 / Frontier-boundary routing contract:** current work is
+  studying BudgetFlow task-level left/right boundaries, not tuning for one run.
+  The left boundary is reference-tier dominance or mostly-T2 with bounded
+  Strongest Model probes; the right boundary is Strongest Model dominance when
+  it is projected cheaper in total and materially higher fit. Fixed-tier
+  BudgetFlow is now acceptable only when trace/readiness explains it as an
+  explicit frontier decision; silent pure T2 or pure T3 still trips guards.
+- **No-paid fixes completed:** task-start marginal Yield no longer double-counts
+  the T3 price ratio, compiler/runtime use the same paid-upgrade gates, cold
+  start can do bounded uncertainty probes, missing tier backends fail fast, and
+  readiness treats reference-cost-dominant and strongest-cost-dominant
+  frontiers symmetrically. The pressure contract now builds after frontier
+  diagnostics so a frontier assertion is not also reported as degeneration.
+- **Dry-run boundary checks:** cold-start 4x30 projection is mixed
+  `24 T2 / 6 T3` with `reference_cost_dominant` warning and readiness PASS.
+  Stage-1-calibrated projection is pure T3 with `strongest_cost_dominant`
+  warning and readiness PASS. Both are diagnostic, not paper evidence.
+- **Verification:** focused no-paid tests passed (`145 passed`), broader related
+  suite passed (`142 passed, 5 skipped`), edited modules passed `py_compile`,
+  and `git diff --check` passed before this documentation update.
 
 - **Previous agent:** hardened paid-run harness gates; switched scoring to
   workspace-diff-only; raised the step limit to 60; fixed planned-task-budget

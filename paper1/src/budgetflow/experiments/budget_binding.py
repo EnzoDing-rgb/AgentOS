@@ -25,9 +25,14 @@ from ..defaults import BUDGET_PRESSURE_INIT, PRESSURE_MAX
 from ..decision_costs import task_level_decision_per_turn_cost
 from ..adapter.strategies import (
     MARGINAL_YIELD_PER_DOLLAR_THRESHOLD,
+    TASK_START_DECISIVE_FIT_GAIN,
     TASK_START_EFFORT_MULTIPLIER_MAX,
     TASK_START_EFFORT_MULTIPLIER_MIN,
+    TASK_START_HIGH_EFFORT_THRESHOLD,
+    TASK_START_MIN_VALUE_FOR_DECISIVE_FIT,
+    TASK_START_PAID_UPGRADE_MIN_FIT_GAIN,
     TASK_START_PRESSURE_THRESHOLD_MULTIPLIER,
+    TASK_START_VALUE_RATIO_GATE,
     task_start_t3_acceptance_threshold,
 )
 from ..model_fit_estimator import ModelFitEvidence, estimate_model_fit_from_jsonl
@@ -527,8 +532,8 @@ def calibrate_budget(
         plan.raw_projected_utilization_by_strategy[strategy] = raw_util
         plan.projected_utilization_by_strategy[strategy] = min(raw_util, 1.0)
 
-    _build_pressure_contract(plan, strategies)
     _build_frontier_diagnostic(plan, fit_overrides)
+    _build_pressure_contract(plan, strategies)
     _apply_pressure_contract_gate(plan)
 
     for strategy in strategies:
@@ -1024,10 +1029,38 @@ def _project_task_level_choice_cost(
     else:
         marginal_yield = task_value * fit_gain * effort_multiplier / max(extra_unit_cost, 0.000001)
     threshold = MARGINAL_YIELD_PER_DOLLAR_THRESHOLD * median * (
-        _projection_price_ratio(2, strongest_tier)
-        * (1.0 + TASK_START_PRESSURE_THRESHOLD_MULTIPLIER * max(0.0, budget_pressure))
+        1.0 + TASK_START_PRESSURE_THRESHOLD_MULTIPLIER * max(0.0, budget_pressure)
     )
-    if budget_allows and fit_gain > 0 and marginal_yield >= task_start_t3_acceptance_threshold(threshold):
+    value_ratio = task_value / max(median, 0.000001)
+    metadata_gate = (
+        value_ratio >= TASK_START_VALUE_RATIO_GATE
+        or (effort_units >= TASK_START_HIGH_EFFORT_THRESHOLD and task_value >= median)
+    )
+    decisive_fit_gate = (
+        fit_gain >= TASK_START_DECISIVE_FIT_GAIN
+        and task_value >= TASK_START_MIN_VALUE_FOR_DECISIVE_FIT
+    )
+    paid_upgrade_candidate = (
+        strongest_decision_cost <= reference_decision_cost
+        or decisive_fit_gate
+        or (fit_gain >= TASK_START_PAID_UPGRADE_MIN_FIT_GAIN and metadata_gate)
+    )
+    uncertain_probe = (
+        fit_overrides is None
+        and metadata_gate
+        and budget_allows
+        and planned_task_budget > 0
+        and (planned_task_budget - strongest_decision_cost) / max(planned_task_budget, 0.000001) >= 0.10
+        and budget_pressure <= 0.80
+    )
+    if uncertain_probe:
+        return strongest_tier, strongest_cost
+    if (
+        budget_allows
+        and fit_gain > 0
+        and paid_upgrade_candidate
+        and marginal_yield >= task_start_t3_acceptance_threshold(threshold)
+    ):
         return strongest_tier, strongest_cost
     return 2, reference_cost
 
@@ -1037,16 +1070,6 @@ def _projection_effort_multiplier(effort_units: float) -> float:
         TASK_START_EFFORT_MULTIPLIER_MIN,
         min(TASK_START_EFFORT_MULTIPLIER_MAX, max(1.0, effort_units) / 35.0),
     )
-
-
-def _projection_price_ratio(reference_tier: int, strongest_tier: int) -> float:
-    reference = next((cfg for cfg in MODEL_CATALOG.configs if cfg.tier == reference_tier), None)
-    strongest = next((cfg for cfg in MODEL_CATALOG.configs if cfg.tier == strongest_tier), None)
-    if reference is None or strongest is None:
-        return 1.0
-    input_ratio = strongest.cost_per_input_token / max(reference.cost_per_input_token, 0.000001)
-    output_ratio = strongest.cost_per_output_token / max(reference.cost_per_output_token, 0.000001)
-    return max(1.0, input_ratio, output_ratio)
 
 
 def _projected_shared_pressure(
@@ -1171,15 +1194,27 @@ def _build_pressure_contract(
         tier_counts = bf_task_diag.get("projected_tier_counts") or {}
         strongest_fraction = float(bf_task_diag.get("projected_strongest_task_fraction") or 0.0)
         if degeneration == "pure_reference_tier":
-            violations.append(
-                "budgetflow_task_level_degenerated: projected task-level policy uses "
-                "zero Strongest Model tasks under compiled task budgets"
-            )
+            if (plan.frontier_diagnostic or {}).get("posture") == "reference_cost_dominant":
+                assertions.append(
+                    "budgetflow_task_level_frontier_reference: projected task-level policy uses "
+                    "zero Strongest Model tasks because the reference tier is cost-dominant"
+                )
+            else:
+                violations.append(
+                    "budgetflow_task_level_degenerated: projected task-level policy uses "
+                    "zero Strongest Model tasks under compiled task budgets"
+                )
         elif degeneration == "pure_strongest_tier":
-            violations.append(
-                "budgetflow_task_level_degenerated: projected task-level policy uses "
-                "only Strongest Model tasks under compiled task budgets"
-            )
+            if (plan.frontier_diagnostic or {}).get("posture") == "strongest_cost_dominant":
+                assertions.append(
+                    "budgetflow_task_level_frontier_strongest: projected task-level policy uses "
+                    "only Strongest Model tasks because the Strongest Model is cost-dominant"
+                )
+            else:
+                violations.append(
+                    "budgetflow_task_level_degenerated: projected task-level policy uses "
+                    "only Strongest Model tasks under compiled task budgets"
+                )
         else:
             assertions.append(
                 "budgetflow_task_level_mixed: projected task-level policy uses "

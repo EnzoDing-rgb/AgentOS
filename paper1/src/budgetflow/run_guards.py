@@ -182,6 +182,8 @@ class CompareRunGuards:
             self._task_level_rows >= self.task_level_tier_mix_min_rows
             and self._task_level_single_tier
         ):
+            if _task_level_frontier_selection_explained(record):
+                return GuardAction()
             fixed_tier = self._task_level_single_tier
             reason = (
                 "mechanism_guard strategy=budgetflow_task_level "
@@ -262,6 +264,36 @@ def _is_pipeline_failure(record: dict[str, Any]) -> bool:
         return True
     if status == "StagnationExit":
         return True
+    return False
+
+
+def _task_level_frontier_selection_explained(record: dict[str, Any]) -> bool:
+    """Return True when fixed-tier use is an explicit frontier decision."""
+    for trace in record.get("turn_traces") or []:
+        if not isinstance(trace, dict):
+            continue
+        reason = str(trace.get("router_reason") or "")
+        if reason in {
+            "bf_task_start_marginal_yield_t3",
+            "bf_task_start_uncertain_frontier_probe",
+            "bf_task_start_reference_frontier",
+        }:
+            return True
+        policy = trace.get("policy_decision")
+        if not isinstance(policy, dict):
+            continue
+        policy_reason = str(policy.get("reason") or "")
+        if policy_reason in {
+            "task_level_fixed_task_start",
+            "task_level_uncertain_frontier_probe",
+            "task_level_reference_frontier",
+        }:
+            return True
+        scores = policy.get("scores")
+        if isinstance(scores, dict) and float(scores.get("paid_upgrade_candidate") or 0.0) > 0:
+            return True
+        if isinstance(scores, dict) and float(scores.get("reference_frontier_candidate") or 0.0) > 0:
+            return True
     return False
 
 

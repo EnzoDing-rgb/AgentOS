@@ -502,7 +502,10 @@ class TestChooseTaskLevelBackend:
 
         assert backend.tier == 2
         assert ctx.last_decision is not None
-        assert "task_start" not in ctx.last_decision.reason
+        assert ctx.last_decision.reason == "bf_task_start_reference_frontier"
+        assert ctx.last_policy_decision is not None
+        assert ctx.last_policy_decision.reason == "task_level_reference_frontier"
+        assert ctx.last_policy_decision.scores["reference_frontier_candidate"] == 1.0
         assert ctx.last_policy_decision is not None
         assert ctx.last_policy_decision.scores["task_value"] == pytest.approx(2.0)
         assert ctx.last_policy_decision.scores["task_effort"] == pytest.approx(80.0)
@@ -564,6 +567,8 @@ class TestChooseTaskLevelBackend:
 
         assert backend.tier == 2
         assert ctx.last_policy_decision.scores["budget_allows_strongest"] == 0.0
+        assert ctx.last_policy_decision.reason == "task_level_reference_frontier"
+        assert ctx.last_policy_decision.scores["reference_frontier_candidate"] == 1.0
 
     def test_planned_task_budget_does_not_override_small_fit_delta(self):
         """Task runway is necessary but not enough to buy Strongest Model turns."""
@@ -585,10 +590,10 @@ class TestChooseTaskLevelBackend:
         assert ctx.last_policy_decision is not None
         assert ctx.last_policy_decision.scores["budget_allows_strongest"] == 1.0
         assert ctx.last_policy_decision.scores["planned_task_budget"] == pytest.approx(6.4057)
-        assert (
-            ctx.last_policy_decision.scores["marginal_yield_per_dollar"]
-            < ctx.last_policy_decision.scores["budget_pressure_threshold"]
-        )
+        assert ctx.last_policy_decision.scores["fit_gain"] == pytest.approx(0.04)
+        assert ctx.last_policy_decision.scores["paid_upgrade_candidate"] == 0.0
+        assert ctx.last_policy_decision.reason == "task_level_reference_frontier"
+        assert ctx.last_policy_decision.scores["reference_frontier_candidate"] == 1.0
 
     def test_marginal_yield_per_dollar_can_choose_t3_when_t3_costs_more(self):
         """High-value tasks can choose T3 by marginal Yield/$, not only cost dominance."""
@@ -647,6 +652,29 @@ class TestChooseTaskLevelBackend:
             scores["expected_value_gain"] * scores["effort_multiplier"] / scores["extra_unit_cost"]
         )
 
+    def test_t3_price_is_not_counted_twice_in_marginal_threshold(self):
+        """Extra unit cost already prices T3; threshold should not multiply price ratio again."""
+        from budgetflow.adapter.strategies import choose_backend
+
+        alloc = _trusted_allocation(
+            task_value=1.0,
+            task_effort=35.0,
+            planned_task_budget=10.0,
+            model_fit={"tier2": 0.67, "tier3": 1.0},
+        )
+        backends = _backends(t2_progress=0.67, t3_progress=1.0)
+        ctx = _task_level_ctx(backends, budget_pressure=0.01, allocation=alloc)
+
+        backend = choose_backend(ctx, _turn(), _runtime_like_costs())
+
+        assert backend.tier == 3
+        assert ctx.last_policy_decision is not None
+        scores = ctx.last_policy_decision.scores
+        assert scores["extra_unit_cost"] > 0
+        assert scores["strongest_price_ratio"] == pytest.approx(5.0)
+        assert scores["budget_pressure_threshold"] < scores["strongest_price_ratio"]
+        assert scores["marginal_yield_per_dollar"] >= scores["t3_acceptance_threshold"]
+
     def test_near_boundary_marginal_yield_stays_t2(self):
         """Near-threshold T3 starts stay on T2 instead of flipping on cost noise."""
         from budgetflow.adapter.strategies import choose_backend
@@ -675,7 +703,8 @@ class TestChooseTaskLevelBackend:
         assert ctx.last_policy_decision is not None
         scores = ctx.last_policy_decision.scores
         assert scores["marginal_yield_per_dollar"] > scores["budget_pressure_threshold"]
-        assert scores["marginal_yield_per_dollar"] < scores["t3_acceptance_threshold"]
+        assert scores["paid_upgrade_candidate"] == 0.0
+        assert scores["criticality_or_effort_gate"] == 0.0
 
     def test_decisive_marginal_yield_still_starts_t3(self):
         """A clear T3 opportunity still starts on T3 after the ambiguity band."""
@@ -734,7 +763,8 @@ class TestChooseTaskLevelBackend:
         assert ctx.last_policy_decision is not None
         scores = ctx.last_policy_decision.scores
         assert scores["decision_cost_source"] == "normalized_catalog"
-        assert scores["marginal_yield_per_dollar"] < scores["t3_acceptance_threshold"]
+        assert scores["paid_upgrade_candidate"] == 0.0
+        assert scores["criticality_or_effort_gate"] == 0.0
 
     def test_marginal_yield_per_dollar_stays_t2_when_value_gain_is_small(self):
         """Low-value tasks stay T2 when T3's extra cost buys little expected value."""
@@ -760,7 +790,8 @@ class TestChooseTaskLevelBackend:
         assert ctx.last_policy_decision is not None
         scores = ctx.last_policy_decision.scores
         assert scores["rule"] == "marginal_expected_value_per_dollar"
-        assert scores["marginal_yield_per_dollar"] < scores["budget_pressure_threshold"]
+        assert scores["paid_upgrade_candidate"] == 0.0
+        assert scores["criticality_or_effort_gate"] == 0.0
 
     def test_task_start_marginal_yield_uses_unit_extra_cost(self):
         """Same value/fit/cost signals should not become worse only because effort is higher."""
@@ -813,6 +844,17 @@ class TestChooseTaskLevelBackend:
         assert backend.tier == 2
         assert ctx.last_policy_decision is not None
         assert ctx.last_policy_decision.scores["cost_estimate_available"] == 0.0
+        assert ctx.last_policy_decision.reason == "task_level_fixed"
+
+    def test_missing_tier_backend_fails_fast(self):
+        """A strategy requiring a missing tier should not silently route elsewhere."""
+        from budgetflow.adapter.strategies import choose_backend
+
+        ctx = _task_level_ctx(_backends())
+        ctx.strategy = "all_flash"
+
+        with pytest.raises(KeyError, match="missing backend for tier T1"):
+            choose_backend(ctx, _turn(), _runtime_like_costs())
 
 
 # ── budget compiler cold-start with model-fit scaling ──────────────────────
