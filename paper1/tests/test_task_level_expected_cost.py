@@ -485,6 +485,36 @@ class TestChooseTaskLevelBackend:
         backend = choose_backend(ctx, _turn(), per_turn)
         assert backend.tier == 2
 
+    def test_cold_start_effortful_task_starts_strongest_without_trusted_fit(self):
+        """Cold-start task-level should lean Strongest on effortful SWE tasks.
+
+        Without trusted ModelFit, flat catalog priors (T2=0.24, T3=0.25) are
+        not evidence that the cheaper-per-turn tier is cheaper in total.  The
+        task-level frontier should probe Strongest when the task has meaningful
+        effort and the planned task budget can absorb the projected Strongest
+        start.
+        """
+        from budgetflow.adapter.strategies import choose_backend
+        from budgetflow.allocation import AllocationContext
+
+        alloc = AllocationContext(
+            task_value=1.0,
+            task_effort=21.0,
+            planned_task_budget=4.0,
+            effort_source="unit_test",
+            model_fit_source="catalog_progress_prior",
+            confidence={"model_fit": "none"},
+        )
+        backends = _backends(t2_progress=0.24, t3_progress=0.25)
+        ctx = _task_level_ctx(backends, budget_pressure=0.01, allocation=alloc)
+
+        backend = choose_backend(ctx, _turn(), _runtime_like_costs())
+
+        assert backend.tier == 3
+        assert ctx.last_policy_decision is not None
+        assert ctx.last_policy_decision.reason == "task_level_uncertain_frontier_probe"
+        assert ctx.last_policy_decision.scores["has_trusted_model_fit"] == 0.0
+
     def test_high_value_high_effort_does_not_start_t3_without_fit_gap(self):
         """Task-start routing needs an expected value gain, not only value/effort."""
         from budgetflow.adapter.strategies import choose_backend
@@ -884,6 +914,28 @@ class TestBudgetCompilerFitScaling:
             f"fit scaling should increase reference projection; "
             f"catalog=${catalog_cost:.4f}, fit_scaled=${fit_scaled_cost:.4f}"
         )
+
+    def test_compiler_projection_matches_effortful_cold_start_probe(self):
+        """Compiler projection should mirror runtime's cold-start Strongest probe."""
+        from budgetflow.experiments.budget_binding import _project_task_level_choice_cost
+
+        choice, projected_cost = _project_task_level_choice_cost(
+            "task-a",
+            {
+                "task-a": {
+                    "task_value": 1.0,
+                    "task_effort": 21.0,
+                }
+            },
+            reference_cost=0.20,
+            strongest_cost=0.80,
+            planned_task_budget=4.0,
+            fit_overrides=None,
+            budget_pressure=0.01,
+        )
+
+        assert choice == 3
+        assert projected_cost == pytest.approx(0.80)
 
 
 # ── censored rows increase projected T2 cost ───────────────────────────────

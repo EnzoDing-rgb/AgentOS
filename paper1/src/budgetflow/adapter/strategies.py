@@ -35,6 +35,7 @@ TASK_START_DECISIVE_FIT_GAIN = 0.30
 TASK_START_MIN_VALUE_FOR_DECISIVE_FIT = 0.50
 TASK_START_VALUE_RATIO_GATE = 1.25
 TASK_START_HIGH_EFFORT_THRESHOLD = 40.0
+TASK_START_COLD_FRONTIER_EFFORT_THRESHOLD = 20.0
 
 @dataclass
 class RoutingContext:
@@ -507,6 +508,7 @@ def _uncertain_frontier_probe_candidate(
     median = task_value / max(value_ratio, 0.000001)
     return (
         value_ratio >= TASK_START_VALUE_RATIO_GATE
+        or (task_effort >= TASK_START_COLD_FRONTIER_EFFORT_THRESHOLD and task_value >= median)
         or (task_effort >= TASK_START_HIGH_EFFORT_THRESHOLD and task_value >= median)
     )
 

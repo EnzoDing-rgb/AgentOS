@@ -25,6 +25,7 @@ from ..defaults import BUDGET_PRESSURE_INIT, PRESSURE_MAX
 from ..decision_costs import task_level_decision_per_turn_cost
 from ..adapter.strategies import (
     MARGINAL_YIELD_PER_DOLLAR_THRESHOLD,
+    TASK_START_COLD_FRONTIER_EFFORT_THRESHOLD,
     TASK_START_DECISIVE_FIT_GAIN,
     TASK_START_EFFORT_MULTIPLIER_MAX,
     TASK_START_EFFORT_MULTIPLIER_MIN,
@@ -1034,6 +1035,7 @@ def _project_task_level_choice_cost(
     value_ratio = task_value / max(median, 0.000001)
     metadata_gate = (
         value_ratio >= TASK_START_VALUE_RATIO_GATE
+        or (effort_units >= TASK_START_COLD_FRONTIER_EFFORT_THRESHOLD and task_value >= median)
         or (effort_units >= TASK_START_HIGH_EFFORT_THRESHOLD and task_value >= median)
     )
     decisive_fit_gate = (
@@ -1289,7 +1291,11 @@ def _build_frontier_diagnostic(
     t3_fit = _projection_tier_fit(strongest_tier, fit_overrides)
     cost_ratio = t3_spend / max(t2_spend, 0.000001)
     fit_delta = t3_fit - t2_fit
-    if cost_ratio >= 1.0 and fit_delta <= 0.02:
+    has_fit_evidence = bool(fit_overrides)
+    if not has_fit_evidence:
+        posture = "mixed_or_unproven"
+        reason = "projected cost is available without trusted ModelFit; frontier dominance is unproven"
+    elif cost_ratio >= 1.0 and fit_delta <= 0.02:
         posture = "reference_cost_dominant"
         reason = "reference tier projected cheaper and ModelFit uplift is weak"
     elif cost_ratio <= 1.0 and fit_delta >= 0.02:
@@ -1308,6 +1314,7 @@ def _build_frontier_diagnostic(
         "tier2_model_fit": round(t2_fit, 6),
         "tier3_model_fit": round(t3_fit, 6),
         "model_fit_delta": round(fit_delta, 6),
+        "fit_confidence": "trusted" if has_fit_evidence else "untrusted",
         "scope": "projection_only_not_outcome_evidence",
     }
     plan.reasons.append(

@@ -1058,6 +1058,22 @@ def test_frontier_diagnostic_reports_reference_cost_dominance() -> None:
     assert any("frontier_diagnostic" in reason for reason in plan.reasons)
 
 
+def test_frontier_diagnostic_does_not_claim_reference_dominance_without_fit_evidence() -> None:
+    from budgetflow.experiments.budget_binding import _build_frontier_diagnostic
+
+    plan = BudgetBindingPlan(hard_cap_usd=5.0)
+    plan.projected_spend_by_strategy = {
+        "bare_t2_baseline": 1.0,
+        "bare_t3_baseline": 2.0,
+    }
+
+    _build_frontier_diagnostic(plan, None)
+
+    assert plan.frontier_diagnostic["posture"] == "mixed_or_unproven"
+    assert "without trusted ModelFit" in plan.frontier_diagnostic["reason"]
+    assert plan.frontier_diagnostic["fit_confidence"] == "untrusted"
+
+
 def test_frontier_diagnostic_reports_strongest_cost_dominance() -> None:
     from budgetflow.experiments.budget_binding import _build_frontier_diagnostic
 
