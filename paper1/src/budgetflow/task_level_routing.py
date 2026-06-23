@@ -14,12 +14,15 @@ from .defaults import (
     MARGINAL_YIELD_PER_DOLLAR_THRESHOLD,
     TASK_START_COLD_FRONTIER_EFFORT_THRESHOLD,
     TASK_START_COLD_FRONTIER_EFFORT_TOLERANCE,
+    TASK_START_CRITICAL_VALUE_RATIO_GATE,
     TASK_START_DECISIVE_FIT_GAIN,
     TASK_START_HIGH_EFFORT_THRESHOLD,
+    TASK_START_HIGH_PRESSURE_PROBE_MARGIN,
     TASK_START_MIN_VALUE_FOR_DECISIVE_FIT,
     TASK_START_PAID_UPGRADE_MIN_FIT_GAIN,
     TASK_START_PRESSURE_THRESHOLD_MULTIPLIER,
     TASK_START_STRONGEST_MIN_BUDGET_COVERAGE,
+    TASK_START_STRONGEST_MIN_PROBE_TURNS,
     TASK_START_T3_ACCEPTANCE_MARGIN,
     TASK_START_VALUE_RATIO_GATE,
     task_start_effort_multiplier,
@@ -36,7 +39,8 @@ def task_start_tier_decision(
     tier2_per_turn_cost: float,
     tier3_per_turn_cost: float,
     budget_pressure: float,
-    task_budget: float | None,
+    planned_task_budget: float | None = None,
+    effective_task_budget: float | None = None,
     median_task_value: float = 1.0,
     has_trusted_model_fit: bool = False,
     is_cold_start: bool = False,
@@ -68,22 +72,33 @@ def task_start_tier_decision(
     extra_unit_cost = max(0.0, t3_unit_cost - t2_unit_cost)
 
     # ── budget gating ────────────────────────────────────────────────────
-    budget_value = (
-        float(task_budget)
-        if task_budget is not None and task_budget > 0
-        else None
+    planned_budget_value = _non_negative_or_none(planned_task_budget)
+    effective_budget_value = _non_negative_or_none(
+        effective_task_budget if effective_task_budget is not None else planned_budget_value
     )
+    affordability_budget = planned_budget_value
     budget_allows = (
-        strongest_cost <= budget_value
-        if budget_value is not None
+        strongest_cost <= affordability_budget
+        if affordability_budget is not None
         else True
     )
-    budget_coverage = _budget_coverage(budget_value, strongest_cost)
+    strongest_probe_cost = max(0.000001, float(tier3_per_turn_cost)) * max(
+        1.0,
+        float(TASK_START_STRONGEST_MIN_PROBE_TURNS),
+    )
+    budget_allows_probe = (
+        strongest_probe_cost <= affordability_budget
+        if affordability_budget is not None
+        else True
+    )
+    budget_coverage = _budget_coverage(affordability_budget, strongest_cost)
+    effective_budget_coverage = _budget_coverage(effective_budget_value, strongest_cost)
     coverage_soft_allows = (
         budget_allows
-        or budget_value is None
+        or affordability_budget is None
         or budget_coverage >= TASK_START_STRONGEST_MIN_BUDGET_COVERAGE
     )
+    has_positive_runway = effective_budget_value is None or effective_budget_value > 0.0
 
     # ── marginal yield ───────────────────────────────────────────────────
     effort_mult = task_start_effort_multiplier(effort, reference_runway_turns=reference_runway_turns)
@@ -123,6 +138,8 @@ def task_start_tier_decision(
     )
     decisive_marginal_override = (
         not coverage_soft_allows
+        and has_positive_runway
+        and budget_allows_probe
         and marginal_candidate
         and decisive_fit_gate
         and metadata_gate
@@ -132,7 +149,75 @@ def task_start_tier_decision(
             or strongest_cost <= reference_cost
         )
     )
-    budget_soft_allows = coverage_soft_allows or decisive_marginal_override
+    critical_value_probe = (
+        not coverage_soft_allows
+        and has_positive_runway
+        and budget_allows_probe
+        and value_ratio >= TASK_START_CRITICAL_VALUE_RATIO_GATE
+        and paid_upgrade_candidate
+        and fit_gain >= TASK_START_PAID_UPGRADE_MIN_FIT_GAIN
+        and marginal_yield >= acceptance
+    )
+    high_pressure_efficiency_probe = (
+        is_cold_start
+        and pressure > 0.80
+        and has_positive_runway
+        and budget_allows_probe
+        and budget_coverage >= TASK_START_STRONGEST_MIN_BUDGET_COVERAGE
+        and paid_upgrade_candidate
+        and metadata_gate
+        and fit_gain >= TASK_START_PAID_UPGRADE_MIN_FIT_GAIN
+        and marginal_yield >= acceptance * TASK_START_HIGH_PRESSURE_PROBE_MARGIN
+    )
+    budget_soft_allows = (
+        has_positive_runway
+        and (
+            coverage_soft_allows
+            or decisive_marginal_override
+            or critical_value_probe
+            or high_pressure_efficiency_probe
+        )
+    )
+    headroom = _headroom(affordability_budget, strongest_cost)
+    headroom_fraction = _headroom_fraction(affordability_budget, strongest_cost)
+
+    def scores(rule: str) -> dict[str, float]:
+        return _scores(
+            value=value,
+            effort=effort,
+            value_ratio=value_ratio,
+            budget_pressure=pressure,
+            budget_allows=budget_allows,
+            has_trusted_model_fit=has_trusted_model_fit,
+            t2_fit=t2_fit,
+            t3_fit=t3_fit,
+            fit_gain=fit_gain,
+            reference_cost=reference_cost,
+            strongest_cost=strongest_cost,
+            t2_unit_cost=t2_unit_cost,
+            t3_unit_cost=t3_unit_cost,
+            extra_unit_cost=extra_unit_cost,
+            effort_multiplier=effort_mult,
+            marginal_yield=marginal_yield,
+            threshold=threshold,
+            acceptance_threshold=acceptance,
+            paid_upgrade_candidate=paid_upgrade_candidate,
+            decisive_fit_gate=decisive_fit_gate,
+            metadata_gate=metadata_gate,
+            planned_task_budget=planned_budget_value,
+            effective_task_budget=effective_budget_value,
+            headroom=headroom,
+            headroom_fraction=headroom_fraction,
+            budget_coverage=budget_coverage,
+            effective_budget_coverage=effective_budget_coverage,
+            budget_soft_allows=budget_soft_allows,
+            decisive_marginal_budget_override=decisive_marginal_override,
+            critical_value_probe=critical_value_probe,
+            high_pressure_efficiency_probe=high_pressure_efficiency_probe,
+            strongest_probe_cost=strongest_probe_cost,
+            budget_allows_probe=budget_allows_probe,
+            rule=rule,
+        )
 
     # ── marginal yield path ──────────────────────────────────────────────
     if (
@@ -143,44 +228,19 @@ def task_start_tier_decision(
             "decisive_marginal_yield_budget_override"
             if decisive_marginal_override
             else "marginal_yield_per_dollar"
-        ), _scores(
-            value=value,
-            effort=effort,
-            value_ratio=value_ratio,
-            budget_pressure=pressure,
-            budget_allows=budget_allows,
-            has_trusted_model_fit=has_trusted_model_fit,
-            t2_fit=t2_fit,
-            t3_fit=t3_fit,
-            fit_gain=fit_gain,
-            reference_cost=reference_cost,
-            strongest_cost=strongest_cost,
-            t2_unit_cost=t2_unit_cost,
-            t3_unit_cost=t3_unit_cost,
-            extra_unit_cost=extra_unit_cost,
-            effort_multiplier=effort_mult,
-            marginal_yield=marginal_yield,
-            threshold=threshold,
-            acceptance_threshold=acceptance,
-            paid_upgrade_candidate=paid_upgrade_candidate,
-            decisive_fit_gate=decisive_fit_gate,
-            metadata_gate=metadata_gate,
-            task_budget=budget_value,
-            headroom=_headroom(budget_value, strongest_cost),
-            headroom_fraction=_headroom_fraction(budget_value, strongest_cost),
-            budget_coverage=budget_coverage,
-            budget_soft_allows=budget_soft_allows,
-            decisive_marginal_budget_override=decisive_marginal_override,
-            rule="marginal_expected_value_per_dollar",
-        )
+        ), scores("marginal_expected_value_per_dollar")
+
+    # ── critical value probe ─────────────────────────────────────────────
+    if critical_value_probe:
+        return 3, "critical_value_probe", scores("critical_value_probe")
 
     # ── uncertain frontier probe (cold start) ────────────────────────────
-    if _uncertain_probe(
+    if high_pressure_efficiency_probe or _uncertain_probe(
         is_cold_start=is_cold_start,
         budget_allows=budget_allows,
         budget_soft_allows=budget_soft_allows,
         budget_coverage=budget_coverage,
-        headroom_fraction=_headroom_fraction(budget_value, strongest_cost),
+        headroom_fraction=_headroom_fraction(affordability_budget, strongest_cost),
         pressure=pressure,
         value_ratio=value_ratio,
         fit_gain=fit_gain,
@@ -191,71 +251,25 @@ def task_start_tier_decision(
         value=value,
         median=median,
     ):
-        return 3, "uncertain_frontier_probe", _scores(
-            value=value,
-            effort=effort,
-            value_ratio=value_ratio,
-            budget_pressure=pressure,
-            budget_allows=budget_allows,
-            has_trusted_model_fit=has_trusted_model_fit,
-            t2_fit=t2_fit,
-            t3_fit=t3_fit,
-            fit_gain=fit_gain,
-            reference_cost=reference_cost,
-            strongest_cost=strongest_cost,
-            t2_unit_cost=t2_unit_cost,
-            t3_unit_cost=t3_unit_cost,
-            extra_unit_cost=extra_unit_cost,
-            effort_multiplier=effort_mult,
-            marginal_yield=marginal_yield,
-            threshold=threshold,
-            acceptance_threshold=acceptance,
-            paid_upgrade_candidate=paid_upgrade_candidate,
-            decisive_fit_gate=decisive_fit_gate,
-            metadata_gate=metadata_gate,
-            task_budget=budget_value,
-            headroom=_headroom(budget_value, strongest_cost),
-            headroom_fraction=_headroom_fraction(budget_value, strongest_cost),
-            budget_coverage=budget_coverage,
-            budget_soft_allows=budget_soft_allows,
-            decisive_marginal_budget_override=decisive_marginal_override,
-            rule="uncertain_frontier_probe",
-        )
+        return 3, (
+            "high_pressure_efficiency_probe"
+            if high_pressure_efficiency_probe
+            else "uncertain_frontier_probe"
+        ), scores("uncertain_frontier_probe")
 
     # ── default: reference tier ──────────────────────────────────────────
-    return 2, "reference_frontier", _scores(
-        value=value,
-        effort=effort,
-        value_ratio=value_ratio,
-        budget_pressure=pressure,
-        budget_allows=budget_allows,
-        has_trusted_model_fit=has_trusted_model_fit,
-        t2_fit=t2_fit,
-        t3_fit=t3_fit,
-        fit_gain=fit_gain,
-        reference_cost=reference_cost,
-        strongest_cost=strongest_cost,
-        t2_unit_cost=t2_unit_cost,
-        t3_unit_cost=t3_unit_cost,
-        extra_unit_cost=extra_unit_cost,
-        effort_multiplier=effort_mult,
-        marginal_yield=marginal_yield,
-        threshold=threshold,
-        acceptance_threshold=acceptance,
-        paid_upgrade_candidate=paid_upgrade_candidate,
-        decisive_fit_gate=decisive_fit_gate,
-        metadata_gate=metadata_gate,
-        task_budget=budget_value,
-        headroom=_headroom(budget_value, strongest_cost),
-        headroom_fraction=_headroom_fraction(budget_value, strongest_cost),
-        budget_coverage=budget_coverage,
-        budget_soft_allows=budget_soft_allows,
-        decisive_marginal_budget_override=decisive_marginal_override,
-        rule="reference_frontier",
-    )
+    return 2, "reference_frontier", scores("reference_frontier")
 
 
 # ── helpers ────────────────────────────────────────────────────────────────
+
+
+def _non_negative_or_none(value: float | None) -> float | None:
+    if value is None:
+        return None
+    if float(value) < 0:
+        return None
+    return float(value)
 
 
 def _headroom(task_budget: float | None, strongest_cost: float) -> float:
@@ -344,13 +358,19 @@ def _scores(
     paid_upgrade_candidate: bool,
     decisive_fit_gate: bool,
     metadata_gate: bool,
-    task_budget: float | None,
     headroom: float,
     headroom_fraction: float,
     budget_coverage: float,
+    effective_budget_coverage: float,
     budget_soft_allows: bool,
     rule: str,
+    planned_task_budget: float | None,
+    effective_task_budget: float | None,
     decisive_marginal_budget_override: bool = False,
+    critical_value_probe: bool = False,
+    high_pressure_efficiency_probe: bool = False,
+    strongest_probe_cost: float = 0.0,
+    budget_allows_probe: bool = False,
 ) -> dict[str, float]:
     return {
         "task_value": value,
@@ -362,6 +382,13 @@ def _scores(
         "decisive_marginal_budget_override": (
             1.0 if decisive_marginal_budget_override else 0.0
         ),
+        "critical_value_probe": 1.0 if critical_value_probe else 0.0,
+        "high_pressure_efficiency_probe": 1.0 if high_pressure_efficiency_probe else 0.0,
+        "high_pressure_probe_margin": TASK_START_HIGH_PRESSURE_PROBE_MARGIN,
+        "critical_value_ratio_gate": TASK_START_CRITICAL_VALUE_RATIO_GATE,
+        "budget_allows_strongest_probe": 1.0 if budget_allows_probe else 0.0,
+        "strongest_probe_cost": strongest_probe_cost,
+        "strongest_min_probe_turns": TASK_START_STRONGEST_MIN_PROBE_TURNS,
         "strongest_budget_coverage": budget_coverage,
         "strongest_min_budget_coverage": TASK_START_STRONGEST_MIN_BUDGET_COVERAGE,
         "has_trusted_model_fit": 1.0 if has_trusted_model_fit else 0.0,
@@ -385,8 +412,10 @@ def _scores(
         "budget_pressure_threshold": threshold,
         "t3_acceptance_threshold": acceptance_threshold,
         "t3_acceptance_margin": TASK_START_T3_ACCEPTANCE_MARGIN,
-        "task_budget": float(task_budget) if task_budget is not None else 0.0,
+        "planned_task_budget": float(planned_task_budget) if planned_task_budget is not None else 0.0,
+        "effective_task_budget": float(effective_task_budget) if effective_task_budget is not None else 0.0,
         "task_budget_headroom": headroom,
         "task_budget_headroom_fraction": headroom_fraction,
+        "effective_budget_coverage": effective_budget_coverage,
         "rule": rule,
     }

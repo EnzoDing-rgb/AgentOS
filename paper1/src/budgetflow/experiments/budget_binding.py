@@ -45,7 +45,7 @@ COLD_START_OUTPUT_TOKENS_PER_EFFORT = 150
 BUDGETFLOW_PLANNED_TASK_BUDGET_MODE = PLANNED_TASK_BUDGET_MODE
 BUDGETFLOW_PLANNED_TASK_BUDGET_MULTIPLIER = 2.0
 BUDGETFLOW_PLANNED_TASK_BUDGET_MIN_USD = 0.05
-BUDGETFLOW_PLANNED_TASK_BUDGET_BATCH_FLOOR_RULE = "hard_cap_usd/sqrt(task_count)+cross_strategy_task_cost_ceiling_multiplier"
+BUDGETFLOW_PLANNED_TASK_BUDGET_BATCH_FLOOR_RULE = "runway_weight = hard_cap_usd/sqrt(task_count)+cross_strategy_task_cost_ceiling_multiplier"
 BUDGETFLOW_PLANNED_TASK_BUDGET_STRATEGIES = frozenset({
     "budgetflow_task_level",
     "budgetflow_segment",
@@ -559,12 +559,17 @@ def calibrate_budget(
             "min_usd": BUDGETFLOW_PLANNED_TASK_BUDGET_MIN_USD,
             "batch_floor_rule": BUDGETFLOW_PLANNED_TASK_BUDGET_BATCH_FLOOR_RULE,
             "sum_can_exceed_hard_cap": True,
+            "runtime_semantics": (
+                "runway_signal_for_routing_stall_observability; "
+                "shared_batch_hard_cap_remains_the_only spend cap"
+            ),
             "applies_to": sorted(plan.planned_task_budget_by_strategy),
         }
         plan.reasons.append(
-            "planned_task_budget: BudgetFlow active policies get loose task budgets "
-            "derived from projected task costs; sums may exceed hard_cap and runtime "
-            "still enforces the shared batch hard cap"
+            "planned_task_budget: BudgetFlow active policies get per-task runway "
+            "signals derived from projected task costs; sums may exceed hard_cap. "
+            "Runtime uses them for routing, stall, and observability while the "
+            "policy-local shared batch hard cap remains the spend cap."
         )
     plan.projection_diagnostics = _build_projection_diagnostics(
         plan,
@@ -1008,14 +1013,11 @@ def _build_projection_diagnostics(
     hard_cap = float(getattr(plan, "hard_cap_usd", 0.0) or 0.0)
     pressure_max = PRESSURE_MAX
     stage_prefix_count = 0
-    projection_rebalance_task_ids = list(task_ids)
     if plan.generation_mode == STAGE_PREFIX_PRESSURE_MODE:
         raw_prefix = 0
         if isinstance(plan.budget_pressure_spec, dict):
             raw_prefix = int(plan.budget_pressure_spec.get("stage_prefix_count") or 0)
         stage_prefix_count = min(max(0, raw_prefix), len(task_ids))
-        if stage_prefix_count > 0:
-            projection_rebalance_task_ids = list(task_ids[:stage_prefix_count])
     for index, task_id in enumerate(task_ids):
         pressure = _projected_shared_pressure(
             hard_cap_usd=hard_cap,
@@ -1023,14 +1025,9 @@ def _build_projection_diagnostics(
             pressure_init=BUDGET_PRESSURE_INIT,
             pressure_max=pressure_max,
         )
-        rebalance_index = (
-            index
-            if task_id in projection_rebalance_task_ids
-            else len(projection_rebalance_task_ids)
-        )
         effective_task_budget = effective_planned_task_cap(
             planned_task_caps=planned_task_budgets,
-            remaining_task_ids=projection_rebalance_task_ids[rebalance_index:],
+            remaining_task_ids=task_ids[index:],
             task_id=task_id,
             batch_budget_cap=hard_cap,
             shared_spent=projected_shared_spent,
@@ -1040,11 +1037,8 @@ def _build_projection_diagnostics(
             value_features,
             reference_cost=float(reference_costs.get(task_id, 0.0) or 0.0),
             strongest_cost=float(strongest_costs.get(task_id, 0.0) or 0.0),
-            planned_task_budget=(
-                float(effective_task_budget)
-                if effective_task_budget is not None
-                else float(planned_task_budgets.get(task_id, 0.0) or 0.0)
-            ),
+            planned_task_budget=float(planned_task_budgets.get(task_id, 0.0) or 0.0),
+            effective_task_budget=effective_task_budget,
             fit_overrides=fit_overrides,
             budget_pressure=pressure,
         )
@@ -1095,7 +1089,7 @@ def _build_projection_diagnostics(
     diagnostic = {
         "budgetflow_task_level": {
             "source": "runtime_policy_projection",
-            "role": "readiness_diagnostic_not_cap_source",
+            "role": "runtime_policy_dry_run",
             "reference_tier": 2,
             "strongest_tier": strongest_tier,
             "runtime_projected_tier_counts": {f"tier{tier}": count for tier, count in sorted(chosen.items())},
@@ -1127,41 +1121,6 @@ def _build_projection_diagnostics(
     return diagnostic
 
 
-def _task_level_strongest_uplift_score(
-    task_id: str,
-    value_features: dict[str, dict],
-    *,
-    reference_cost: float,
-    strongest_cost: float,
-    planned_task_budget: float,
-    fit_overrides: dict[int, float] | None,
-) -> float:
-    task_value = _task_value_for_projection(task_id, value_features)
-    reference_fit = _projection_tier_fit(2, fit_overrides)
-    strongest_tier = max((cfg.tier for cfg in MODEL_CATALOG.configs), default=3)
-    strongest_fit = _projection_tier_fit(strongest_tier, fit_overrides)
-    fit_gain = max(0.0, strongest_fit - reference_fit)
-    effort_units = _task_effort_for_projection(task_id, value_features)
-    reference_decision_cost = _projection_expected_total_cost(
-        tier=2,
-        effort_units=effort_units,
-        fit=reference_fit,
-    )
-    strongest_decision_cost = _projection_expected_total_cost(
-        tier=strongest_tier,
-        effort_units=effort_units,
-        fit=strongest_fit,
-    )
-    if planned_task_budget <= 0 or strongest_decision_cost > planned_task_budget:
-        return float("-inf")
-    extra_unit_cost = max(
-        0.000001,
-        (strongest_decision_cost - reference_decision_cost) / max(effort_units, 0.000001),
-    )
-    cost_saving = max(0.0, reference_cost - strongest_cost)
-    return task_value * fit_gain / extra_unit_cost + cost_saving
-
-
 def _load_frozen_preferred_models(frozen_plan_path: Path | None) -> dict[str, str]:
     if frozen_plan_path is None:
         return {}
@@ -1180,11 +1139,11 @@ def _apply_runtime_projection_diagnostics(
 ) -> None:
     """Promote runtime-choice projections into the main projected spend table.
 
-    ``cap_generation_projected_spend_by_strategy`` preserves the raw cost
-    estimates used to pick the shared hard cap.  After planned task budgets are
-    known, BudgetFlow task-level has a more precise runtime-choice projection.
-    Readiness and later audits should read that final strategy projection from
-    ``projected_spend_by_strategy`` rather than a cap-source placeholder.
+    BudgetFlow task-level has no fixed model tier.  Its active spend projection
+    is the same task-start router dry-run used for readiness and runtime
+    observability.  ``cap_generation_projected_spend_by_strategy`` remains a
+    forensic snapshot of the raw pre-routing projections; active pressure
+    contracts consume ``projected_spend_by_strategy`` after this promotion.
     """
     bf_diag = (plan.projection_diagnostics or {}).get("budgetflow_task_level")
     if not isinstance(bf_diag, dict):
@@ -1210,8 +1169,8 @@ def _apply_runtime_projection_diagnostics(
         ]
     plan.reasons.append(
         "runtime_projection: budgetflow_task_level projected_spend_by_strategy "
-        "uses task-level runtime-choice diagnostic; cap_generation_projected_spend "
-        "keeps the pre-routing cap source"
+        "uses the task-level runtime-policy dry-run; "
+        "cap_generation_projected_spend_by_strategy is forensic pre-routing input"
     )
 
 
@@ -1222,6 +1181,7 @@ def _project_task_level_choice_cost(
     reference_cost: float,
     strongest_cost: float,
     planned_task_budget: float,
+    effective_task_budget: float | None = None,
     fit_overrides: dict[int, float] | None,
     budget_pressure: float,
 ) -> tuple[int, float, str, dict[str, float]]:
@@ -1256,7 +1216,8 @@ def _project_task_level_choice_cost(
         tier2_per_turn_cost=t2_per_turn,
         tier3_per_turn_cost=t3_per_turn,
         budget_pressure=budget_pressure,
-        task_budget=planned_task_budget if planned_task_budget > 0 else None,
+        planned_task_budget=planned_task_budget,
+        effective_task_budget=effective_task_budget,
         median_task_value=median,
         has_trusted_model_fit=(fit_overrides is not None),
         is_cold_start=(fit_overrides is None),

@@ -11,7 +11,7 @@ from budgetflow.experiments.compare_config import fmt_usd as _fmt_usd
 from budgetflow.failure_classification import classify_failure
 from budgetflow.model_tiers import parse_tier_label
 
-_PLANNED_CAP_MODES = frozenset({"per_task_cap", "budgetflow_planned_task_budget"})
+_CAP_DISPLAY_MODES = frozenset({"per_task_cap", "budgetflow_planned_task_budget"})
 _SUMMARY_EVENT_OMIT_KEYS = frozenset({
     "budget_input",
     "budget_plan",
@@ -192,9 +192,14 @@ def _format_strategy_totals(
     batch_caps: dict[str, float | None],
     budget_modes: dict[str, str] | None = None,
 ) -> list[str]:
-    has_per_task = any(mode in _PLANNED_CAP_MODES for mode in (budget_modes or {}).values())
-    cap_label = "planned_cap" if has_per_task else "batch_cap"
-    mode_label = "per-task cap" if has_per_task else "shared pool"
+    has_cap_variant = any(mode in _CAP_DISPLAY_MODES for mode in (budget_modes or {}).values())
+    has_planned_runway = any(
+        mode == "budgetflow_planned_task_budget" for mode in (budget_modes or {}).values()
+    )
+    cap_label = "planned_cap" if has_cap_variant else "batch_cap"
+    mode_label = "shared pool + planned runway" if has_planned_runway else (
+        "per-task cap" if has_cap_variant else "shared pool"
+    )
     lines = [f"=== BATCH RESOLVED + COST BY STRATEGY (governor units, {mode_label}) ==="]
     header = (
         f"{'strategy':<28} {'resolved':>8} {'batch_spent':>11} {cap_label:>10} "
@@ -273,7 +278,7 @@ def _format_live_snapshot(
         f"{'strategy':<28} {'done':>4} {'plan':>4} {'PASS':>5} {'TRUEFAIL':>9} {'ABORT':>5} {'rate':>6} "
         f"{'avg_cost':>8} {'avg_turn':>7} {'tiers':>24} "
         f"{'batch_spent':>11} "
-        f"{'planned_cap' if any(mode in _PLANNED_CAP_MODES for mode in (budget_modes or {}).values()) else 'batch_cap':>10}"
+        f"{'planned_cap' if any(mode in _CAP_DISPLAY_MODES for mode in (budget_modes or {}).values()) else 'batch_cap':>10}"
     )
     lines.append("-" * 110)
     for name in strategy_names:

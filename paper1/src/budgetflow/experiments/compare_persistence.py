@@ -176,11 +176,9 @@ def completed_keys(
         task = record.get("instance_id")
         if not strategy or not task:
             continue
+        score_status = str(record.get("score_status") or "")
         if record.get("exit_status") == "BadRequestError":
             continue
-        if record.get("total_cost", 1) == 0 and record.get("llm_turns", 0) <= 1:
-            continue
-        score_status = str(record.get("score_status") or "")
         if score_status in {"pass", "true_fail"}:
             done.add((strategy, str(task)))
     return done

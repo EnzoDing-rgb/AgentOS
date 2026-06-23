@@ -221,7 +221,6 @@ def main() -> None:
     _budget_plan_data: dict | None = None
     planned_task_caps_by_strategy: dict[str, dict[str, float]] = {}
     planned_task_order: list[str] | None = None
-    planned_rebalance_task_limit: int | None = None
     budget_plan_path = Path(args.budget_plan) if getattr(args, "budget_plan", None) else None
     if budget_plan_path is not None and budget_plan_path.exists():
         import json as _json
@@ -229,15 +228,6 @@ def main() -> None:
         raw_task_ids = _budget_plan_data.get("task_ids") or []
         if isinstance(raw_task_ids, list):
             planned_task_order = [str(task_id) for task_id in raw_task_ids]
-        pressure_spec = _budget_plan_data.get("budget_pressure_spec") or {}
-        if (
-            isinstance(pressure_spec, dict)
-            and str(pressure_spec.get("mode") or _budget_plan_data.get("generation_mode") or "")
-            == "stage_prefix_pressure"
-        ):
-            raw_prefix = int(pressure_spec.get("stage_prefix_count") or 0)
-            if raw_prefix > 0:
-                planned_rebalance_task_limit = raw_prefix
         raw_planned_caps = _budget_plan_data.get("planned_task_budget_by_strategy") or {}
         if isinstance(raw_planned_caps, dict):
             planned_task_caps_by_strategy = {
@@ -618,7 +608,6 @@ def main() -> None:
             per_task_cap=args.per_task_cap if args.per_task_cap and args.per_task_cap > 0 else None,
             planned_task_caps=planned_task_caps_by_strategy.get(cfg.name),
             planned_task_order=planned_task_order,
-            planned_rebalance_task_limit=planned_rebalance_task_limit,
             soft_budget=args.soft_budget,
             max_overrun=max_overrun,
             step_limit=args.step_limit,

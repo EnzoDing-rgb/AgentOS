@@ -23,10 +23,10 @@ _POST_PATCH_STOP_STRATEGIES = frozenset(
     }
 )
 
-# Strategies that enable the BudgetFlow stall guard (check_stagnation).
-# Bare baselines (all_tier2, bare_t3) and enterprise_router must NOT
-# be truncated by BudgetFlow-specific stop-loss — they should exhibit
-# vanilla mini-swe-agent behavior for clean evidence.
+# Strategies that enable the legacy BudgetFlow stall guard (check_stagnation).
+# Claim-1 task-level routing must not be truncated by a BudgetFlow-only
+# no-progress stop: its spend is governed by the shared batch hard cap and
+# catalog turn caps, while no-progress remains an observability signal.
 _STALL_GUARD_STRATEGIES = frozenset(
     {
         "budgetflow_segment",
@@ -35,7 +35,6 @@ _STALL_GUARD_STRATEGIES = frozenset(
         "budgetflow_equal_weight",
         "stage_blind",
         "budgetflow_same_router",
-        "value_aware_task_level",
     }
 )
 

@@ -41,10 +41,10 @@ class AllocationContext:
     budget_source: str = "shared_batch_hard_budget"
 
     planned_task_budget: float | None = None
-    """Optional BudgetFlow-only task spend boundary compiled before runtime."""
+    """Compiled task-level runway signal used for routing and observability."""
 
     effective_task_budget: float | None = None
-    """Runtime effective task cap after shared-budget rebalancing."""
+    """Live shared-budget runway signal after rebalancing remaining demand."""
 
     # Confidence per input
     confidence: dict[str, str] = field(default_factory=dict)

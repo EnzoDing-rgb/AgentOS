@@ -260,22 +260,6 @@ def _task_effort_units(ctx: RoutingContext) -> float:
     return 1.0
 
 
-def _runtime_task_budget(allocation: AllocationContext | None) -> float | None:
-    """Return the runtime task cap, effective-first.
-
-    ``effective_task_budget`` is the live post-rebalance cap; when present it
-    supersedes the compiler's ``planned_task_budget``.  Returning None means
-    no runtime cap is in play and strongest-tier affordability is unconstrained.
-    """
-    if allocation is None:
-        return None
-    if allocation.effective_task_budget is not None:
-        return float(allocation.effective_task_budget)
-    if allocation.planned_task_budget is not None:
-        return float(allocation.planned_task_budget)
-    return None
-
-
 def _choose_task_level_backend(ctx: RoutingContext, expected_costs: dict[str, float]) -> Backend:
     """Choose one backend for the whole task via shared task_start_tier_decision.
 
@@ -304,7 +288,16 @@ def _choose_task_level_backend(ctx: RoutingContext, expected_costs: dict[str, fl
     t3_fit = _tier_model_fit_rate(ctx, 3, strongest.name)
     t2_per_turn = task_level_decision_per_turn_cost(reference)
     t3_per_turn = task_level_decision_per_turn_cost(strongest)
-    task_budget = _runtime_task_budget(allocation)
+    planned_task_budget = (
+        float(allocation.planned_task_budget)
+        if allocation is not None and allocation.planned_task_budget is not None
+        else None
+    )
+    effective_task_budget = (
+        float(allocation.effective_task_budget)
+        if allocation is not None and allocation.effective_task_budget is not None
+        else None
+    )
     has_trusted = bool(allocation is not None and allocation.has_trusted_model_fit)
     is_cold = not (allocation is not None and allocation.has_model_fit)
     ref_runway = (
@@ -321,7 +314,8 @@ def _choose_task_level_backend(ctx: RoutingContext, expected_costs: dict[str, fl
         tier2_per_turn_cost=t2_per_turn,
         tier3_per_turn_cost=t3_per_turn,
         budget_pressure=ctx.budget_pressure,
-        task_budget=task_budget,
+        planned_task_budget=planned_task_budget,
+        effective_task_budget=effective_task_budget,
         median_task_value=ctx.median_task_value,
         has_trusted_model_fit=has_trusted,
         is_cold_start=is_cold,
@@ -338,6 +332,10 @@ def _choose_task_level_backend(ctx: RoutingContext, expected_costs: dict[str, fl
                 "marginal_yield_per_dollar",
                 "decisive_marginal_yield_budget_override",
             }
+            else "bf_task_start_critical_value_probe"
+            if reason == "critical_value_probe"
+            else "bf_task_start_high_pressure_efficiency_probe"
+            if reason == "high_pressure_efficiency_probe"
             else "bf_task_start_uncertain_frontier_probe"
         )
     else:

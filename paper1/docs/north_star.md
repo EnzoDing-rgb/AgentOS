@@ -96,6 +96,19 @@ a no-paid readiness diagnostic, not a route lock. Runtime makes the actual
 task-start model choice through the same task-level routing formula and the
 same effective task-cap calculation.
 
+In staged runs, `stage_prefix_count` defines only the pressure reference used
+to compile the shared hard cap. It must not shorten the runtime planned-budget
+rebalance horizon. BudgetFlow task-level effective caps reserve runway across
+the full frozen task order so a 10+10+10 run cannot spend the third stage's
+planned demand during the first or second stage.
+
+`planned_task_budget` and the live `effective_task_budget` are per-task runway
+signals for routing, stall guards, and observability. They are not separate
+hard task caps in the Claim 1 shared-budget mainline. The only spend cap is the
+policy-local shared batch hard cap, so BudgetFlow can borrow unused runway from
+easy tasks while still reporting when a task consumed more or less than its
+planned runway.
+
 ## Claims And Metrics
 
 | Claim | Main question | Primary evidence |
@@ -123,6 +136,24 @@ stage/segment-aware router, a learned memory input, or a hybrid. BudgetFlow
 Segment Routing is therefore a Claim 2 policy variant, not a requirement for
 accepting a Claim 1 run. Memory-based continual learning is another possible
 Claim 2 variant, not a requirement for every Claim 1 run.
+
+For the active Claim 1 mainline, BudgetFlow task-level means the model tier is
+chosen at task start and then held fixed for that task. Do not introduce
+stage/segment-level tier switching, mid-task escalation, or repair-stage rescue
+as an unannounced fix to a Claim 1 run. Stage-boundary changes to BudgetFlow are
+allowed when they fix observability, value/cost accounting, or task-start
+routing bugs, but they must remain auditable against the unchanged pure T2 and
+pure T3 controls.
+
+For the active Claim 1 task-level mainline, no-progress/stall signals are
+observability and learning signals, not proof that a model tier cannot solve a
+task. They must not terminate `value_aware_task_level` by themselves. A
+task-level run stops on the policy-local shared hard cap, catalog/runtime turn
+limits, provider failures, harness completion, or strategy-agnostic agent-loop
+guards. If a task should use the Strongest Model, that decision belongs in the
+task-start router through Task Value, Task Effort, ModelFit, CostSource, budget
+pressure, and effective runway. Stop-loss or escalation based on live progress
+is Claim 2 mechanism evidence and must be evaluated as an explicit variant.
 
 Routing savings, stage-aware routing, Tier Boundary Selection, stop-loss,
 escalation, and learning inputs are useful only when they protect or improve

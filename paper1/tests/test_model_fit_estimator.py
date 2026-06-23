@@ -836,7 +836,6 @@ class TestSixByFiveLikeScenario:
         from budgetflow.adapter.strategies import (
             build_routing_context,
             choose_backend,
-            _expected_total_cost,
         )
         from budgetflow.allocation import AllocationContext
         from budgetflow.types import Stage, TurnInfo
@@ -931,14 +930,6 @@ class TestSixByFiveLikeScenario:
                 for b in backends
             }
 
-            # Verify T2 expected total cost > T3
-            t2_total = _expected_total_cost(ctx, "tier2", 2, per_turn["tier2"])
-            t3_total = _expected_total_cost(ctx, "tier3", 3, per_turn["tier3"])
-            assert t2_total > t3_total, (
-                f"T2 total ${t2_total:.4f} should exceed T3 ${t3_total:.4f} "
-                f"with derived ModelFit"
-            )
-
             turn = TurnInfo(
                 workflow_id="task-hard",
                 step_index=1,
@@ -951,6 +942,9 @@ class TestSixByFiveLikeScenario:
                 f"6x5-like: expected T3 for hard task with long-tail T2 evidence, "
                 f"got {backend.name}"
             )
+            assert ctx.last_policy_decision is not None
+            scores = ctx.last_policy_decision.scores
+            assert scores["reference_expected_total_cost"] > scores["strongest_expected_total_cost"]
 
             path.unlink()
         finally:

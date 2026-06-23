@@ -97,11 +97,7 @@ def _check_partial_run(records: list[dict], runs_dir: Path | None = None) -> lis
 
 
 def _is_per_task_budget_series(recs: list[dict]) -> bool:
-    if any(str(r.get("budget_mode") or "").startswith("per_task") for r in recs):
-        return True
-    if any(r.get("per_task_cap") not in (None, "", 0, 0.0) for r in recs):
-        return True
-    return False
+    return any(str(r.get("budget_mode") or "") == "per_task_cap" for r in recs)
 
 
 def _check_shared_cap_starvation(records: list[dict]) -> list[str]:

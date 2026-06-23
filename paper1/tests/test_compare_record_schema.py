@@ -609,7 +609,7 @@ def test_runner_threads_planned_task_budget_into_allocation_context(monkeypatch)
         step_limit=1,
         value_context=_value_context(),
         budget_mode="budgetflow_planned_task_budget",
-        per_task_cap=0.4,
+        effective_task_budget=0.4,
         budget_plan_task_cap=0.8,
         planned_task_budget_source="budget_plan:planned_task_budget_by_strategy",
     )
@@ -618,21 +618,22 @@ def test_runner_threads_planned_task_budget_into_allocation_context(monkeypatch)
     assert seen["allocation"].effective_task_budget == 0.4
     assert seen["allocation"].budget_source == "budget_plan:planned_task_budget_by_strategy"
     assert record["budget_mode"] == "budgetflow_planned_task_budget"
-    assert record["per_task_cap"] == 0.4
+    assert record["per_task_cap"] is None
+    assert record["effective_task_budget"] == 0.4
     assert record["budget_plan_task_cap"] == 0.8
     assert record["planned_task_budget_source"] == "budget_plan:planned_task_budget_by_strategy"
 
 
-def test_run_strategy_batch_planned_caps_prorate_across_remaining_tasks(monkeypatch) -> None:
+def test_run_strategy_batch_planned_caps_are_runway_signals_not_task_governors(monkeypatch) -> None:
     import pytest
     from budgetflow.experiments import compare_execution
 
-    seen_caps: list[float] = []
+    seen_runways: list[float] = []
     costs = {"task-a": 0.2, "task-b": 0.8}
 
     def fake_run_task_record(task, **kwargs):
-        task_cap = float(kwargs["per_task_cap"])
-        seen_caps.append(task_cap)
+        assert kwargs["per_task_cap"] is None
+        seen_runways.append(float(kwargs["effective_task_budget"]))
         assert kwargs["budget_plan_task_cap"] == 0.8
         return {
             "instance_id": task.instance_id,
@@ -668,7 +669,7 @@ def test_run_strategy_batch_planned_caps_prorate_across_remaining_tasks(monkeypa
         global_progress=SimpleNamespace(
             total=2,
             start_task=lambda: None,
-            finish_task=lambda: len(seen_caps),
+            finish_task=lambda: len(seen_runways),
             format_banner=lambda scoreboard=None: "test",
             format_global=lambda scoreboard=None: "test",
         ),
@@ -676,8 +677,9 @@ def test_run_strategy_batch_planned_caps_prorate_across_remaining_tasks(monkeypa
         print_lock=None,
     )
 
-    assert seen_caps == pytest.approx([0.5, 0.8])
+    assert seen_runways == pytest.approx([0.5, 0.8])
     assert spent == pytest.approx(1.0)
+    assert sum(r["total_cost"] for r in records) == pytest.approx(1.0)
     assert records[0]["batch_spent"] == pytest.approx(0.2)
     assert records[1]["batch_spent"] == pytest.approx(1.0)
     assert records[1]["batch_available"] == pytest.approx(0.0)
@@ -871,7 +873,7 @@ def test_effective_planned_task_cap_rebalances_against_remaining_planned_demand(
     assert final_cap == pytest.approx(0.5)
 
 
-def test_remaining_task_ids_for_planned_cap_uses_plan_prefix_on_resume() -> None:
+def test_remaining_task_ids_for_planned_cap_uses_full_plan_suffix_on_resume() -> None:
     selected = ["task-10", "task-11", "task-12"]
     plan_order = [f"task-{index:02d}" for index in range(30)]
 
@@ -880,10 +882,9 @@ def test_remaining_task_ids_for_planned_cap_uses_plan_prefix_on_resume() -> None
         task_index=1,
         task_id="task-10",
         planned_task_order=plan_order,
-        planned_rebalance_task_limit=10,
     )
 
-    assert remaining == []
+    assert remaining == [f"task-{index:02d}" for index in range(10, 30)]
 
 
 def test_planned_task_budget_uses_shared_batch_pressure() -> None:
@@ -1151,6 +1152,26 @@ def test_completed_keys_keeps_success_after_bad_provider_retry(tmp_path) -> None
     keys = completed_keys(path, normalize_strategy=lambda name: name, skip_bad=True)
 
     assert keys == {("budgetflow_segment", "task-a")}
+
+
+def test_completed_keys_keeps_zero_cost_budget_exhausted_true_fail(tmp_path) -> None:
+    path = tmp_path / "run.jsonl"
+    path.write_text(
+        json.dumps(
+            _record(
+                instance_id="task-budget-exhausted",
+                score_status="true_fail",
+                exit_status="BudgetFlowBudgetError",
+                total_cost=0.0,
+                llm_turns=1,
+            )
+        )
+        + "\n"
+    )
+
+    keys = completed_keys(path, normalize_strategy=lambda name: name, skip_bad=True)
+
+    assert keys == {("budgetflow_segment", "task-budget-exhausted")}
 
 
 def test_persisted_jsonl_contains_t1_t2_observability(tmp_path) -> None:

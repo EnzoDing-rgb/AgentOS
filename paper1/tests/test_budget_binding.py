@@ -289,8 +289,8 @@ def test_calibrate_emits_loose_budgetflow_task_budgets(tmp_path: Path) -> None:
     assert plan.planned_task_budget_policy["mode"] == PLANNED_TASK_BUDGET_MODE
 
 
-def test_task_level_projection_diagnostic_uses_compiled_budget_without_rewriting_cap_costs(tmp_path: Path) -> None:
-    """Compiler predicts runtime tier mix as diagnostics, not cap source."""
+def test_task_level_projection_diagnostic_uses_runtime_policy_dry_run(tmp_path: Path) -> None:
+    """Compiler predicts runtime tier mix through the shared task-start router."""
     catalog = catalog_source_info()
     jsonl = tmp_path / "hist.jsonl"
     rows = []
@@ -344,11 +344,9 @@ def test_task_level_projection_diagnostic_uses_compiled_budget_without_rewriting
 
     task_budget = plan.planned_task_budget_by_strategy["budgetflow_task_level"]["task-a"]
     t3_cost = plan.projected_task_cost_by_strategy["bare_t3_baseline"]["task-a"]
-    cap_generation_task_level = plan.cap_generation_projected_spend_by_strategy["budgetflow_task_level"]
     diagnostic = plan.projection_diagnostics["budgetflow_task_level"]
 
     assert task_budget > t3_cost
-    assert cap_generation_task_level < t3_cost
     assert plan.projected_spend_by_strategy["budgetflow_task_level"] == pytest.approx(
         plan.projected_task_cost_by_strategy["bare_t2_baseline"]["task-a"],
         rel=1e-4,
@@ -358,9 +356,33 @@ def test_task_level_projection_diagnostic_uses_compiled_budget_without_rewriting
         plan.projected_task_cost_by_strategy["bare_t2_baseline"]["task-a"],
         rel=1e-4,
     )
-    assert diagnostic["role"] == "readiness_diagnostic_not_cap_source"
+    assert diagnostic["role"] == "runtime_policy_dry_run"
     assert any("task_level_policy_projection" in reason for reason in plan.reasons)
     assert any("runtime_projection: budgetflow_task_level" in reason for reason in plan.reasons)
+
+
+def test_stage_prefix_projection_rebalances_budget_over_full_task_order(tmp_path: Path) -> None:
+    """stage_prefix_count defines pressure, not the runtime budget horizon."""
+    vm = tmp_path / "vm.json"
+    vm.write_text(json.dumps({
+        "tasks": {
+            f"task-{i}": {"task_effort": {"final_task_effort": 30.0}}
+            for i in range(1, 13)
+        }
+    }))
+
+    plan = calibrate_budget(
+        [f"task-{i}" for i in range(1, 13)],
+        value_matrix_path=vm,
+        strategies=("bare_t2_baseline", "bare_t3_baseline", "budgetflow_task_level"),
+        stage_prefix_count=3,
+        stage_target_budget_fraction=0.8,
+        stage_reference_strategy="bare_t3_baseline",
+    )
+
+    choices = plan.projection_diagnostics["budgetflow_task_level"]["task_choices"]
+    assert choices["task-4"]["effective_task_budget_usd"] > 0.0
+    assert choices["task-12"]["effective_task_budget_usd"] > 0.0
 
 
 def test_task_level_projection_uses_runtime_policy_without_model_plan(tmp_path: Path) -> None:
@@ -431,8 +453,8 @@ def test_task_level_projection_uses_runtime_policy_without_model_plan(tmp_path: 
     assert not any("task_level_model_plan:" in reason for reason in plan.reasons)
 
 
-def test_task_level_projection_uses_effective_shared_cap_not_raw_planned_cap() -> None:
-    """Projection must match runtime's effective task cap under shared budget."""
+def test_task_level_projection_reports_effective_shared_runway_without_hard_veto() -> None:
+    """Projection must expose live runway without turning it into a hidden task cap."""
     plan = BudgetBindingPlan(
         hard_cap_usd=3.0,
         projection_diagnostics={},
@@ -456,8 +478,15 @@ def test_task_level_projection_uses_effective_shared_cap_not_raw_planned_cap() -
     task_diag = diagnostics["budgetflow_task_level"]["task_choices"]["task-a"]
     assert task_diag["planned_task_budget_usd"] == pytest.approx(10.0)
     assert task_diag["effective_task_budget_usd"] == pytest.approx(1.5)
-    assert task_diag["runtime_projected_tier"] == 2
-    assert diagnostics["budgetflow_task_level"]["degeneration"] == "pure_reference_tier"
+    assert task_diag["runtime_projected_tier"] == 3
+    assert task_diag["routing_reason"] in {
+        "uncertain_frontier_probe",
+        "marginal_yield_per_dollar",
+    }
+    scores = task_diag["routing_scores"]
+    assert scores["planned_task_budget"] == pytest.approx(10.0)
+    assert scores["effective_task_budget"] == pytest.approx(1.5)
+    assert diagnostics["budgetflow_task_level"]["degeneration"] == "pure_strongest_tier"
 
 
 def test_value_matrix_schema_is_normalized_at_single_projection_entry(tmp_path: Path) -> None:

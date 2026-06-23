@@ -275,6 +275,7 @@ def _task_level_frontier_selection_explained(record: dict[str, Any]) -> bool:
         reason = str(trace.get("router_reason") or "")
         if reason in {
             "bf_task_start_marginal_yield_t3",
+            "bf_task_start_critical_value_probe",
             "bf_task_start_uncertain_frontier_probe",
             "bf_task_start_reference_frontier",
         }:
@@ -284,7 +285,9 @@ def _task_level_frontier_selection_explained(record: dict[str, Any]) -> bool:
             continue
         policy_reason = str(policy.get("reason") or "")
         if policy_reason in {
+            "critical_value_probe",
             "task_level_fixed_task_start",
+            "task_level_critical_value_probe",
             "task_level_uncertain_frontier_probe",
             "task_level_reference_frontier",
         }:

@@ -84,18 +84,17 @@ def _remaining_task_ids_for_planned_cap(
     task_index: int,
     task_id: str,
     planned_task_order: list[str] | None,
-    planned_rebalance_task_limit: int | None,
 ) -> list[str]:
     """Return the remaining demand set used for planned-task cap clipping."""
     current_remaining = list(selected_task_ids[max(0, task_index - 1):])
-    if not planned_task_order or not planned_rebalance_task_limit:
+    if not planned_task_order:
         return current_remaining
 
-    rebalance_order = list(planned_task_order[:max(0, int(planned_rebalance_task_limit))])
-    if task_id not in rebalance_order:
-        return []
-    current_remaining_set = set(current_remaining)
-    return [remaining_id for remaining_id in rebalance_order if remaining_id in current_remaining_set]
+    try:
+        current_index = planned_task_order.index(task_id)
+    except ValueError:
+        return current_remaining
+    return list(planned_task_order[current_index:])
 
 
 def _shared_batch_pressure(
@@ -136,6 +135,7 @@ def run_task_record(
     policy_lane: str = "",
     budget_mode: str = "shared",
     per_task_cap: float | None = None,
+    effective_task_budget: float | None = None,
     budget_plan_task_cap: float | None = None,
     planned_task_budget_source: str | None = None,
     budget_input: dict[str, Any] | None = None,
@@ -187,7 +187,11 @@ def run_task_record(
             if budget_plan_task_cap is not None and budget_plan_task_cap >= 0
             else per_task_cap if per_task_cap is not None and per_task_cap >= 0 else None
         ),
-        effective_task_budget=per_task_cap if per_task_cap is not None and per_task_cap >= 0 else None,
+        effective_task_budget=(
+            effective_task_budget
+            if effective_task_budget is not None and effective_task_budget >= 0
+            else per_task_cap if per_task_cap is not None and per_task_cap >= 0 else None
+        ),
         confidence={"model_fit": calibrated_model_fit_confidence},
     )
     result = mini_swe_runner.run_mini_swe_task(
@@ -267,6 +271,7 @@ def run_task_record(
         "budget_mode": budget_mode,
         "per_task_cap": per_task_cap,
         "budget_plan_task_cap": budget_plan_task_cap,
+        "effective_task_budget": effective_task_budget,
         "planned_task_budget_source": planned_task_budget_source,
         "task_order_index": task_index,
         "task_features": task_features,
@@ -367,7 +372,6 @@ def run_strategy_batch(
     per_task_cap: float | None = None,
     planned_task_caps: dict[str, float] | None = None,
     planned_task_order: list[str] | None = None,
-    planned_rebalance_task_limit: int | None = None,
     planned_task_budget_source: str = "budget_plan:planned_task_budget_by_strategy",
     soft_budget: float | None = None,
     max_overrun: float = 0.0,
@@ -436,7 +440,7 @@ def run_strategy_batch(
     shared_spent = max(0.0, float(initial_spent or 0.0))
     ledger = WorkflowLedgerStore()
     governor: BudgetGovernor | None = None
-    if not use_per_task and not use_planned_task_caps:
+    if not use_per_task:
         governor = BudgetGovernor(
             GovernorConfig(
                 total_budget=batch_budget_cap,
@@ -523,19 +527,19 @@ def run_strategy_batch(
             effective_batch_cap = batch_budget_cap
             task_cap: float | None = None
             budget_plan_task_cap: float | None = None
+            effective_task_budget: float | None = None
             if cfg.budgeted:
                 if use_planned_task_caps:
                     raw_planned_cap = planned_task_caps.get(str(task.instance_id))
                     if raw_planned_cap is not None and raw_planned_cap > 0:
                         budget_plan_task_cap = float(raw_planned_cap)
-                    task_cap = _effective_planned_task_cap(
+                    effective_task_budget = _effective_planned_task_cap(
                         planned_task_caps=planned_task_caps,
                         remaining_task_ids=_remaining_task_ids_for_planned_cap(
                             selected_task_ids=selected_task_ids,
                             task_index=task_index,
                             task_id=str(task.instance_id),
                             planned_task_order=planned_task_order,
-                            planned_rebalance_task_limit=planned_rebalance_task_limit,
                         ),
                         task_id=str(task.instance_id),
                         batch_budget_cap=batch_budget_cap,
@@ -591,11 +595,14 @@ def run_strategy_batch(
                     "per_task_cap" if task_cap is not None
                     else "shared"
                 ),
-                per_task_cap=task_cap,
+                per_task_cap=(
+                    task_cap if task_cap is not None else None
+                ),
+                effective_task_budget=effective_task_budget,
                 budget_plan_task_cap=budget_plan_task_cap,
                 planned_task_budget_source=(
                     planned_task_budget_source
-                    if use_planned_task_caps and task_cap is not None
+                    if use_planned_task_caps and effective_task_budget is not None
                     else None
                 ),
                 task_set=task_set,

@@ -46,6 +46,7 @@ def test_task_level_no_progress_limit_scales_with_task_effort() -> None:
 
 
 def test_task_level_stagnation_uses_scaled_no_progress_limit() -> None:
+    assert stall_guard_enabled("value_aware_task_level") is False
     stop, reason, _ = check_stagnation(
         strategy="value_aware_task_level",
         no_progress_streak=12,
@@ -55,52 +56,6 @@ def test_task_level_stagnation_uses_scaled_no_progress_limit() -> None:
     assert stop is False
     assert reason == ""
 
-    stop, reason, _ = check_stagnation(
-        strategy="value_aware_task_level",
-        no_progress_streak=36,
-        recent_commands=deque(["grep -R x"]),
-        task_effort=80,
-    )
-    assert stop is True
-    assert reason == "stagnation_no_progress"
-
-
-def test_task_level_stagnation_waits_for_task_budget_spend() -> None:
-    stop, reason, _ = check_stagnation(
-        strategy="value_aware_task_level",
-        no_progress_streak=36,
-        recent_commands=deque(["grep -R x"]),
-        task_effort=20,
-        task_spent=0.05,
-        task_budget_cap=1.0,
-    )
-    assert stop is False
-    assert reason == ""
-
-    stop, reason, _ = check_stagnation(
-        strategy="value_aware_task_level",
-        no_progress_streak=36,
-        recent_commands=deque(["grep -R x"]),
-        task_effort=20,
-        task_spent=1.0,
-        task_budget_cap=1.0,
-    )
-    assert stop is True
-    assert reason == "stagnation_no_progress"
-
-
-def test_task_level_stagnation_can_stop_before_full_task_budget_when_no_progress_persists() -> None:
-    stop, reason, _ = check_stagnation(
-        strategy="value_aware_task_level",
-        no_progress_streak=36,
-        recent_commands=deque(["grep -R x"]),
-        task_effort=20,
-        task_spent=0.35,
-        task_budget_cap=1.0,
-    )
-
-    assert stop is True
-    assert reason == "stagnation_no_progress"
 
 
 def test_check_stagnation_no_progress() -> None:
@@ -250,7 +205,7 @@ def test_git_diff_digest_tracks_stable_patch(tmp_path: Path) -> None:
 
 
 def test_stall_guard_enabled_for_budgetflow_strategies() -> None:
-    """BudgetFlow strategies must have stall guard enabled."""
+    """Legacy segment BudgetFlow strategies keep stall guard enabled."""
     for strat in (
         "budgetflow_segment",
         "budgetflow_conservative",
@@ -263,8 +218,9 @@ def test_stall_guard_enabled_for_budgetflow_strategies() -> None:
 
 
 def test_stall_guard_disabled_for_bare_baselines() -> None:
-    """Bare baselines and enterprise router must NOT have stall guard."""
+    """Claim-1 task-level routing and bare baselines must not get BF-only early stop."""
     for strat in (
+        "value_aware_task_level",
         "all_tier2",
         "bare_t3",
         "enterprise_router",

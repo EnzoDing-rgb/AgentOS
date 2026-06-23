@@ -468,7 +468,8 @@ class TestChooseTaskLevelBackend:
         assert backend.tier == 2
         assert ctx.last_policy_decision.scores["budget_allows_strongest"] == 0.0
         assert ctx.last_policy_decision.scores["budget_soft_allows_strongest"] == 0.0
-        assert ctx.last_policy_decision.scores["task_budget"] == pytest.approx(0.05)
+        assert ctx.last_policy_decision.scores["planned_task_budget"] == pytest.approx(0.05)
+        assert ctx.last_policy_decision.scores["effective_task_budget"] == pytest.approx(0.05)
         assert ctx.last_decision.reason == "bf_task_start_reference_frontier"
 
     def test_soft_budget_gate_allows_high_value_cold_start_t3_probe(self):
@@ -496,11 +497,45 @@ class TestChooseTaskLevelBackend:
         assert backend.tier == 3
         assert ctx.last_policy_decision is not None
         scores = ctx.last_policy_decision.scores
-        assert scores["budget_allows_strongest"] == 0.0
+        assert scores["budget_allows_strongest"] == 1.0
+        assert scores["planned_task_budget"] == pytest.approx(2.4936)
+        assert scores["effective_task_budget"] == pytest.approx(1.078647)
         assert scores["budget_soft_allows_strongest"] == 1.0
         assert scores["strongest_budget_coverage"] >= 0.50
         assert scores["marginal_yield_per_dollar"] >= scores["t3_acceptance_threshold"]
         assert ctx.last_decision.reason == "bf_task_start_uncertain_frontier_probe"
+
+    def test_critical_value_probe_can_buy_minimum_t3_window_under_prorated_budget(self):
+        """Critical tasks can buy a small T3 probe even when full-cost forecasts are conservative."""
+        from budgetflow.adapter.strategies import choose_backend
+
+        alloc = _trusted_allocation(
+            task_value=2.5,
+            task_effort=50.8644,
+            planned_task_budget=2.1906,
+            effective_task_budget=0.7507,
+            model_fit=None,
+            confidence={"model_fit": "none"},
+        )
+        backends = _backends(t2_progress=0.24, t3_progress=0.35)
+        ctx = _task_level_ctx(
+            backends,
+            budget_pressure=0.0639,
+            median_task_value=1.0,
+            allocation=alloc,
+        )
+
+        backend = choose_backend(ctx, _turn(), _runtime_like_costs())
+
+        assert backend.tier == 3
+        assert ctx.last_policy_decision is not None
+        scores = ctx.last_policy_decision.scores
+        assert scores["budget_allows_strongest"] == 0.0
+        assert scores["strongest_budget_coverage"] < scores["strongest_min_budget_coverage"]
+        assert scores["budget_allows_strongest_probe"] == 1.0
+        assert scores["critical_value_probe"] == 1.0
+        assert scores["rule"] == "critical_value_probe"
+        assert ctx.last_decision.reason == "bf_task_start_critical_value_probe"
 
     def test_planned_task_budget_does_not_override_small_fit_delta(self):
         """Task runway is necessary but not enough to buy Strongest Model turns."""
@@ -521,33 +556,67 @@ class TestChooseTaskLevelBackend:
         assert backend.tier == 2
         assert ctx.last_policy_decision is not None
         assert ctx.last_policy_decision.scores["budget_allows_strongest"] == 1.0
-        assert ctx.last_policy_decision.scores["task_budget"] == pytest.approx(6.4057)
+        assert ctx.last_policy_decision.scores["planned_task_budget"] == pytest.approx(6.4057)
+        assert ctx.last_policy_decision.scores["effective_task_budget"] == pytest.approx(6.4057)
         assert ctx.last_policy_decision.scores["fit_gain"] == pytest.approx(0.04)
         assert ctx.last_policy_decision.scores["paid_upgrade_candidate"] == 0.0
         assert ctx.last_decision.reason == "bf_task_start_reference_frontier"
 
-    def test_effective_task_budget_overrides_planned_for_t3_affordability(self):
-        """Effective cap must veto T3 even when planned cap is generous."""
+    def test_effective_task_budget_is_not_a_hard_t3_veto_when_planned_runway_supports_probe(self):
+        """Live runway is pressure, not a T3 veto when planned runway supports a probe."""
         from budgetflow.adapter.strategies import choose_backend
 
         alloc = _trusted_allocation(
-            task_value=2.0,
-            task_effort=80.0,
-            planned_task_budget=10.0,
-            effective_task_budget=0.05,
-            model_fit={"tier2": 1.0, "tier3": 1.0},
+            task_value=1.5,
+            task_effort=26.9418,
+            planned_task_budget=1.5446,
+            effective_task_budget=0.12339578305573606,
+            model_fit=None,
+            confidence={"model_fit": "none"},
         )
-        backends = _backends(t2_progress=0.60, t3_progress=0.65)
-        ctx = _task_level_ctx(backends, budget_pressure=0.35, allocation=alloc)
-        per_turn = _per_turn_costs(backends)
+        backends = _backends(t2_progress=0.24, t3_progress=0.35)
+        ctx = _task_level_ctx(
+            backends,
+            budget_pressure=1.0368203490851284,
+            median_task_value=1.0,
+            allocation=alloc,
+        )
 
-        backend = choose_backend(ctx, _turn(), per_turn)
+        backend = choose_backend(ctx, _turn(), _runtime_like_costs())
 
-        assert backend.tier == 2
+        assert backend.tier == 3
+        assert ctx.last_policy_decision is not None
+        scores = ctx.last_policy_decision.scores
         assert ctx.last_policy_decision.scores["budget_allows_strongest"] == 0.0
-        assert ctx.last_policy_decision.scores["budget_soft_allows_strongest"] == 0.0
-        assert ctx.last_policy_decision.scores["task_budget"] == pytest.approx(0.05)
-        assert ctx.last_decision.reason == "bf_task_start_reference_frontier"
+        assert scores["planned_task_budget"] == pytest.approx(1.5446)
+        assert scores["effective_task_budget"] == pytest.approx(0.12339578305573606)
+        assert scores["strongest_budget_coverage"] >= scores["strongest_min_budget_coverage"]
+        assert scores["budget_allows_strongest_probe"] == 1.0
+        assert scores["high_pressure_efficiency_probe"] == 1.0
+        assert ctx.last_decision.reason == "bf_task_start_high_pressure_efficiency_probe"
+
+    def test_zero_effective_task_budget_vetoes_t3_cost_dominance(self):
+        """A task with no runway must not project a strongest-tier start."""
+        from budgetflow.task_level_routing import task_start_tier_decision
+
+        tier, reason, scores = task_start_tier_decision(
+            task_value=2.5,
+            task_effort=40.0,
+            tier2_fit=0.30,
+            tier3_fit=0.95,
+            tier2_per_turn_cost=0.01,
+            tier3_per_turn_cost=0.02,
+            budget_pressure=1.0,
+            planned_task_budget=0.0,
+            effective_task_budget=0.0,
+            median_task_value=1.0,
+            has_trusted_model_fit=True,
+            is_cold_start=False,
+        )
+
+        assert tier == 2
+        assert reason == "reference_frontier"
+        assert scores["budget_soft_allows_strongest"] == 0.0
 
     def test_decisive_marginal_yield_can_override_low_task_budget_coverage(self):
         """Task cap coverage is a runway signal, not a veto over decisive Claim-1 value."""
@@ -561,7 +630,8 @@ class TestChooseTaskLevelBackend:
             tier2_per_turn_cost=0.0055079983,
             tier3_per_turn_cost=0.027539997,
             budget_pressure=0.01,
-            task_budget=0.648961,
+            planned_task_budget=0.648961,
+            effective_task_budget=0.648961,
             median_task_value=1.0,
             has_trusted_model_fit=True,
             is_cold_start=False,
@@ -896,9 +966,12 @@ class TestObservabilitySeams:
             effort_multiplier=1.0, marginal_yield=5.0,
             threshold=3.0, acceptance_threshold=3.5,
             paid_upgrade_candidate=True, decisive_fit_gate=False,
-            metadata_gate=True, task_budget=10.0,
+            metadata_gate=True,
+            planned_task_budget=10.0,
+            effective_task_budget=10.0,
             headroom=8.0, headroom_fraction=0.8,
-            budget_coverage=1.0, budget_soft_allows=True,
+            budget_coverage=1.0, effective_budget_coverage=1.0,
+            budget_soft_allows=True,
             rule="marginal_expected_value_per_dollar",
         )
         assert result["t3_acceptance_margin"] == 0.10
@@ -955,7 +1028,9 @@ class TestObservabilitySeams:
             task_value=1.0, task_effort=21.0,
             tier2_fit=0.24, tier3_fit=0.35,
             tier2_per_turn_cost=0.01, tier3_per_turn_cost=0.04,
-            budget_pressure=0.01, task_budget=4.0,
+            budget_pressure=0.01,
+            planned_task_budget=4.0,
+            effective_task_budget=4.0,
             has_trusted_model_fit=False, is_cold_start=True,
         )
 
@@ -970,6 +1045,28 @@ class TestObservabilitySeams:
         assert runtime_tier == compiler_tier == 3
         assert runtime_reason == compiler_reason == "uncertain_frontier_probe"
         assert runtime_scores["rule"] == compiler_scores["rule"] == "uncertain_frontier_probe"
+
+    def test_compiler_projection_preserves_zero_task_budget(self):
+        """Compiler dry-run must not turn a zero effective cap into unlimited budget."""
+        from budgetflow.experiments.budget_binding import _project_task_level_choice_cost
+
+        tier, _, reason, scores = _project_task_level_choice_cost(
+            "task-x",
+            {"task-x": {"task_value": 2.5, "task_effort": 60.0}},
+            reference_cost=0.20,
+            strongest_cost=0.80,
+            planned_task_budget=0.0,
+            fit_overrides=None,
+            budget_pressure=1.5,
+        )
+
+        assert tier == 2
+        assert reason == "reference_frontier"
+        assert scores["planned_task_budget"] == pytest.approx(0.0)
+        assert scores["effective_task_budget"] == pytest.approx(0.0)
+        assert scores["budget_allows_strongest"] == 0.0
+        assert scores["budget_allows_strongest_probe"] == 0.0
+        assert scores["budget_soft_allows_strongest"] == 0.0
 
 
 # ── censored rows increase projected T2 cost ───────────────────────────────
