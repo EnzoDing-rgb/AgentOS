@@ -4,6 +4,56 @@
 
 ## 2026-06-22 — Current status (in progress, not final evidence)
 
+- **2026-06-23 / Claim 1 sensitivity baseline for draft:** current draft can
+  stand on the corrected 3x30 fixed-workload readout plus three offline
+  sensitivity views. All use the same completed task set, keep base CostSource
+  fixed, and apply documented patch-cleaner forensic corrections only in
+  derived analysis.
+
+  **KV Cache Sensitivity, current ValueSource**
+
+  | KV input discount | pure T2 Cost / Y$ | pure T3 Cost / Y$ | BF Cost / Y$ | Yield Winner | Efficiency Winner |
+  |---:|---:|---:|---:|---|---|
+  | 0% | `$17.9595 / 1.0858` | `$8.7395 / 2.0024` | `$12.7868 / 1.7205` | BF `22.0` | pure T3 |
+  | 50% | `$9.7729 / 1.9953` | `$5.1336 / 3.4089` | `$7.1727 / 3.0672` | BF `22.0` | pure T3 |
+  | 80% | `$4.8610 / 4.0116` | `$2.9701 / 5.8921` | `$3.8043 / 5.7830` | BF `22.0` | pure T3 |
+  | 90% | `$3.2236 / 6.0491` | `$2.2489 / 7.7816` | `$2.6814 / 8.2045` | BF `22.0` | BF |
+  | 98% | `$1.9138 / 10.1893` | `$1.6720 / 10.4667` | `$1.7832 / 12.3374` | BF `22.0` | BF |
+  | 99% | `$1.7500 / 11.1426` | `$1.5998 / 10.9385` | `$1.6709 / 13.1664` | BF `22.0` | BF |
+
+  **Value Sensitivity, KV50**
+
+  | Value profile | pure T2 Yield | pure T3 Yield | BF Yield | BF vs best baseline |
+  |---|---:|---:|---:|---:|
+  | `equal` | 18.0 | 16.0 | 20.0 | +2.0 |
+  | `current` | 19.5 | 17.5 | 22.0 | +2.5 |
+  | `current_high_to_2.0` | 21.0 | 19.0 | 24.0 | +3.0 |
+  | `current_high_to_2.5` | 22.5 | 20.5 | 26.0 | +3.5 |
+  | `top20_effort_critical` | 22.5 | 20.5 | 25.0 | +2.5 |
+  | `top33_effort_critical` | 24.5 | 21.5 | 28.5 | +4.0 |
+  | `effort_tertiles_1_1.5_2.5` | 27.5 | 24.0 | 31.5 | +4.0 |
+  | `both_fail_critical` | 19.5 | 17.5 | 23.5 | +4.0 |
+  | `top10_effort_critical` | 24.5 | 21.5 | 28.5 | +4.0 |
+
+  **Budget Cap Sensitivity, KV50 and current ValueSource**
+
+  | Cap | pure T2 Yield / Cost / Y$ | pure T3 Yield / Cost / Y$ | BF Yield / Cost / Y$ | Yield Winner | Efficiency Winner |
+  |---:|---:|---:|---:|---|---|
+  | `$3.00` | `9.5 / $2.9401 / 3.2312` | `10.0 / $2.9445 / 3.3961` | `13.5 / $2.9813 / 4.5283` | BF | BF |
+  | `$4.00` | `12.5 / $3.9541 / 3.1612` | `14.5 / $3.9682 / 3.6540` | `16.0 / $3.9972 / 4.0028` | BF | BF |
+  | `$5.00` | `12.5 / $4.9650 / 2.5176` | `17.5 / $4.9101 / 3.5641` | `18.0 / $4.9581 / 3.6304` | BF | BF |
+  | `$6.00` | `13.5 / $5.9444 / 2.2710` | `17.5 / $5.1336 / 3.4089` | `20.0 / $5.9992 / 3.3338` | BF | pure T3 |
+  | `$7.00` | `15.5 / $6.9965 / 2.2154` | `17.5 / $5.1336 / 3.4089` | `22.0 / $6.9740 / 3.1546` | BF | pure T3 |
+  | `$8.00` | `17.5 / $7.9361 / 2.2051` | `17.5 / $5.1336 / 3.4089` | `22.0 / $7.1727 / 3.0672` | BF | pure T3 |
+  | `$9.00` | `17.5 / $8.9609 / 1.9529` | `17.5 / $5.1336 / 3.4089` | `22.0 / $7.1727 / 3.0672` | BF | pure T3 |
+  | `$11.02` | `19.5 / $9.7729 / 1.9953` | `17.5 / $5.1336 / 3.4089` | `22.0 / $7.1727 / 3.0672` | BF | pure T3 |
+
+  Readout: BF's corrected Yield advantage is stable across value profiles and
+  KV assumptions. The budget mechanism is strongest when cap is actually
+  binding: in offline KV50 replay at `$3-$5`, BF wins both Yield and Yield/$.
+  The next paid run should therefore be pre-registered as binding cap plus a
+  wider ValueSource, rather than another loose-cap repetition.
+
 - **2026-06-23 / Claim 1 offline sensitivity and recost fix:** fixed the
   offline `budgetflow.recost` sensitivity tool so `--ratios 5.0` means target
   `T3 = 5x T2`, not an extra multiplier on an already-5x catalog; high KV
