@@ -23,24 +23,25 @@ from typing import Any
 
 from .model_tiers import MODEL_CATALOG, TurnCachePolicy, token_cost_rates
 
-# Default T3/T2 ratios to test (diagnostic sweep).
+# Default target T3/T2 price ratios to test (diagnostic sweep).
 DEFAULT_RATIOS = (1.5, 2.0, 3.0, 5.0, 10.0)
 
 
 def recost_record(
     record: dict,
     *,
-    t3_multiplier: float,
+    t3_target_ratio: float,
     input_kv_cache_discount: float | None = None,
     input_discount_after_turn: int = 1,
-    min_input_cost_fraction: float = 1.0,
+    min_input_cost_fraction: float = 0.0,
 ) -> dict:
-    """Return a copy of *record* with costs recalculated for *t3_multiplier*.
+    """Return a copy of *record* with costs recalculated for a target T3/T2 ratio.
 
-    The multiplier is applied to T3 turns only.  T1 and T2 turn costs are
-    recomputed from reference prices but not multiplied.  When
-    ``input_kv_cache_discount`` is set, it is applied as an explicit
-    sensitivity policy to repeated input tokens for T2 and T3 turns.
+    T1 and T2 turn costs are recomputed from catalog prices. T3 turn costs
+    are derived from T2 prices multiplied by ``t3_target_ratio`` so a 5.0
+    sensitivity means "T3 is 5x T2", not "multiply the catalog T3 by 5
+    again". When ``input_kv_cache_discount`` is set, it is applied as an
+    explicit sensitivity policy to repeated input tokens for T2 and T3 turns.
 
     Only modifies: ``total_cost``, ``batch_spent``, ``budget_spent``.
     Does NOT modify: ``harness_resolved``, ``score_status``, ``verdict_axis``,
@@ -77,20 +78,24 @@ def recost_record(
         tier_turn_counts[backend] += 1
         input_tokens = int(turn["input_tokens"])
         output_tokens = int(turn["output_tokens"])
-        input_rate, output_rate = token_cost_rates(
-            backend,
-            input_tokens,
-            turn_index=tier_turn_counts[backend],
-        )
+        if backend == "tier3":
+            input_rate, output_rate = _target_t3_rates(input_tokens, t3_target_ratio)
+        else:
+            input_rate, output_rate = token_cost_rates(
+                backend,
+                input_tokens,
+                turn_index=tier_turn_counts[backend],
+            )
         if sensitivity_cache_policy is not None and backend in {"tier2", "tier3"}:
-            cfg = MODEL_CATALOG.require_config(backend)
+            cfg = MODEL_CATALOG.require_config("tier2" if backend == "tier3" else backend)
             base_input_rate = _base_input_rate(cfg, input_tokens)
+            if backend == "tier3":
+                base_input_rate *= t3_target_ratio
             input_rate = base_input_rate * sensitivity_cache_policy.input_cost_fraction(
                 tier_turn_counts[backend]
             )
-        multiplier = t3_multiplier if backend == "tier3" else 1.0
-        new_cost += input_tokens * input_rate * multiplier
-        new_cost += output_tokens * output_rate * multiplier
+        new_cost += input_tokens * input_rate
+        new_cost += output_tokens * output_rate
 
     rec["total_cost"] = round(new_cost, 6)
     rec["budget_spent"] = round(new_cost, 6)
@@ -100,7 +105,7 @@ def recost_record(
         rec["batch_spent"] = round(new_cost, 6)
 
     # Tag the recost metadata
-    rec["recost_t3_multiplier"] = t3_multiplier
+    rec["recost_t3_target_ratio"] = t3_target_ratio
     rec["recost_t3_turns"] = t3_turns
     rec["recost_input_kv_cache_discount"] = round(
         float(
@@ -172,13 +177,21 @@ def _base_input_rate(config: Any, input_tokens: int) -> float:
     return config.cost_per_input_token
 
 
+def _target_t3_rates(input_tokens: int, t3_target_ratio: float) -> tuple[float, float]:
+    """Return T3 rates as a target multiple of current T2 rates."""
+    t2_cfg = MODEL_CATALOG.require_config("tier2")
+    input_rate = _base_input_rate(t2_cfg, input_tokens) * t3_target_ratio
+    output_rate = t2_cfg.cost_per_output_token * t3_target_ratio
+    return input_rate, output_rate
+
+
 def run_sensitivity(
     jsonl_path: Path,
     *,
     ratios: tuple[float, ...] = DEFAULT_RATIOS,
     input_kv_cache_discount: float | None = None,
     input_discount_after_turn: int = 1,
-    min_input_cost_fraction: float = 1.0,
+    min_input_cost_fraction: float = 0.0,
     output_path: Path | None = None,
 ) -> dict:
     """Recost a JSONL under multiple T3/T2 price ratios.
@@ -220,7 +233,7 @@ def run_sensitivity(
         for rec in records:
             r = recost_record(
                 rec,
-                t3_multiplier=ratio,
+                t3_target_ratio=ratio,
                 input_kv_cache_discount=input_kv_cache_discount,
                 input_discount_after_turn=input_discount_after_turn,
                 min_input_cost_fraction=min_input_cost_fraction,
@@ -319,7 +332,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--kv-min-input-fraction",
         type=float,
-        default=0.5,
+        default=0.0,
         help="minimum charged input-token fraction when --kv-discount is set",
     )
     args = parser.parse_args()

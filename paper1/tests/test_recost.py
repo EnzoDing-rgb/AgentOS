@@ -54,7 +54,7 @@ def test_recost_uses_catalog_t2_cache_policy() -> None:
             "completion_tokens_total": 0,
             "llm_turns": 2,
         },
-        t3_multiplier=3.0,
+        t3_target_ratio=3.0,
     )
 
     # Turn 1 input: 1000 * 0.90 / 1M.
@@ -79,7 +79,7 @@ def test_recost_can_apply_sensitivity_kv_discount_to_t2_and_t3_turns() -> None:
             "completion_tokens_total": 400,
             "llm_turns": 4,
         },
-        t3_multiplier=1.0,
+        t3_target_ratio=5.0,
         input_kv_cache_discount=0.5,
         input_discount_after_turn=1,
         min_input_cost_fraction=0.5,
@@ -90,6 +90,49 @@ def test_recost_can_apply_sensitivity_kv_discount_to_t2_and_t3_turns() -> None:
     assert recosted["total_cost"] == 0.0135
     assert recosted["recost_input_kv_cache_discount"] == 0.5
     assert recosted["recost_kv_discount_applies_to"] == ["tier2", "tier3"]
+
+
+def test_recost_t3_target_ratio_is_not_extra_multiplier() -> None:
+    recosted = recost_record(
+        {
+            "strategy": "bare_t3_baseline",
+            "instance_id": "task-a",
+            "backend_picks": ["tier3"],
+            "turn_traces": [
+                {"final_backend": "tier3", "prompt_tokens": 1000, "completion_tokens": 100},
+            ],
+            "prompt_tokens_total": 1000,
+            "completion_tokens_total": 100,
+            "llm_turns": 1,
+        },
+        t3_target_ratio=5.0,
+    )
+
+    # T3 ratio 5.0 means T2 rates multiplied by 5, not catalog T3 rates
+    # multiplied by another 5.
+    assert recosted["total_cost"] == 0.00675
+
+
+def test_recost_kv90_requires_lower_min_input_fraction() -> None:
+    recosted = recost_record(
+        {
+            "strategy": "bare_t2_baseline",
+            "instance_id": "task-a",
+            "backend_picks": ["tier2", "tier2"],
+            "turn_traces": [
+                {"final_backend": "tier2", "prompt_tokens": 1000, "completion_tokens": 0},
+                {"final_backend": "tier2", "prompt_tokens": 1000, "completion_tokens": 0},
+            ],
+            "prompt_tokens_total": 2000,
+            "completion_tokens_total": 0,
+            "llm_turns": 2,
+        },
+        t3_target_ratio=5.0,
+        input_kv_cache_discount=0.9,
+        min_input_cost_fraction=0.1,
+    )
+
+    assert recosted["total_cost"] == 0.00099
 
 
 def test_recost_cli_accepts_kv_discount(tmp_path: Path) -> None:

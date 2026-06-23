@@ -35,6 +35,7 @@ budget.
 | ValueSource | Versioned input that defines or estimates task value for one run or deployment. |
 | Frozen Router Plan | Pre-registered static router prior for diagnostic controls. It may contain task IDs, preferred model tier, priority/order, and router rules. It must not contain or imply budget caps. |
 | CostSource | Versioned input that defines or estimates model cost for one run or deployment. |
+| KV Cache Sensitivity | Explicit CostSource sensitivity that discounts post-first-turn repeated input tokens while leaving base tier prices and physical model bindings fixed. KV sensitivity is allowed as a pre-registered analysis or catalog variant; it must not be hidden inside the main CostSource. |
 | TaskAdapter | Adapter that turns external work into standard BudgetFlow task inputs: identity, description, features, difficulty/value hints, and value-source metadata. |
 | BudgetAdapter | Adapter that turns customer or experiment budget input into a standard budget window, hard/soft cap, shared scope, allowed model pool, source, and confidence. |
 | CostAdapter | Adapter that turns public price catalogs, provider estimates, invoices, enterprise rate cards, or manual overrides into a standard cost signal. |
@@ -107,6 +108,13 @@ Value-Driven Budget Allocation: it defines the shared budget regime before any
 policy comparison. The Runtime is the execution part: it allocates model
 opportunities within that regime while preserving the pre-registered task
 order.
+
+Claim 1 evidence must report whether the shared hard budget is binding. If a
+pure Strongest Model control completes the fixed workload far below the cap,
+the result is still a fixed-workload value readout, but it does not establish a
+scarcity mechanism. The next paid-run candidate should therefore use a
+pre-registered tighter cap or larger/harder workload that puts pure T3 under
+real budget pressure.
 
 Claim 2 is mechanism analysis about the allocation policy that produced the
 Claim 1 outcome. For the initial draft it is explicitly out of scope. Later,

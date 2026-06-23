@@ -1,0 +1,2020 @@
+{
+  "source": "paper1/data/runs/mainline_3x30_lhm_cycle_routefix_kv50_20260623.jsonl",
+  "value_matrix": "paper1/docs/reports/mainline_3x30_lhm_cycle_criticality_value_matrix_20260623.json",
+  "corrections": [
+    {
+      "instance_id": "django__django-11049",
+      "strategy": "bare_t2_baseline",
+      "score_status": "pass"
+    },
+    {
+      "instance_id": "django__django-11049",
+      "strategy": "bare_t3_baseline",
+      "score_status": "pass"
+    },
+    {
+      "instance_id": "django__django-11049",
+      "strategy": "budgetflow_task_level",
+      "score_status": "pass"
+    },
+    {
+      "instance_id": "sphinx-doc__sphinx-8801",
+      "strategy": "budgetflow_task_level",
+      "score_status": "pass"
+    }
+  ],
+  "cost_model": {
+    "t2_input_per_1m": 0.9,
+    "t2_output_per_1m": 4.5,
+    "t3_ratio": 5.0,
+    "kv_discount_applies": "post-first-turn input tokens for tier2/tier3"
+  },
+  "kv_value_summary": {
+    "0.0": {
+      "equal": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 18.0,
+          "cost": 17.9595,
+          "yield_per_dollar": 1.0023,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 16.0,
+          "cost": 8.7395,
+          "yield_per_dollar": 1.8308,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 20.0,
+          "cost": 12.7868,
+          "yield_per_dollar": 1.5641,
+          "turns": 615
+        }
+      },
+      "current": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 19.5,
+          "cost": 17.9595,
+          "yield_per_dollar": 1.0858,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 17.5,
+          "cost": 8.7395,
+          "yield_per_dollar": 2.0024,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 22.0,
+          "cost": 12.7868,
+          "yield_per_dollar": 1.7205,
+          "turns": 615
+        }
+      },
+      "current_high_to_2.0": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 21.0,
+          "cost": 17.9595,
+          "yield_per_dollar": 1.1693,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 19.0,
+          "cost": 8.7395,
+          "yield_per_dollar": 2.174,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 24.0,
+          "cost": 12.7868,
+          "yield_per_dollar": 1.8769,
+          "turns": 615
+        }
+      },
+      "current_high_to_2.5": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 22.5,
+          "cost": 17.9595,
+          "yield_per_dollar": 1.2528,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 20.5,
+          "cost": 8.7395,
+          "yield_per_dollar": 2.3457,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 26.0,
+          "cost": 12.7868,
+          "yield_per_dollar": 2.0333,
+          "turns": 615
+        }
+      },
+      "top20_effort_critical": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 22.5,
+          "cost": 17.9595,
+          "yield_per_dollar": 1.2528,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 20.5,
+          "cost": 8.7395,
+          "yield_per_dollar": 2.3457,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 25.0,
+          "cost": 12.7868,
+          "yield_per_dollar": 1.9551,
+          "turns": 615
+        }
+      },
+      "top33_effort_critical": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 24.5,
+          "cost": 17.9595,
+          "yield_per_dollar": 1.3642,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 21.5,
+          "cost": 8.7395,
+          "yield_per_dollar": 2.4601,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 28.5,
+          "cost": 12.7868,
+          "yield_per_dollar": 2.2289,
+          "turns": 615
+        }
+      },
+      "effort_tertiles_1_1.5_2.5": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 27.5,
+          "cost": 17.9595,
+          "yield_per_dollar": 1.5312,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 24.0,
+          "cost": 8.7395,
+          "yield_per_dollar": 2.7461,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 31.5,
+          "cost": 12.7868,
+          "yield_per_dollar": 2.4635,
+          "turns": 615
+        }
+      },
+      "both_fail_critical": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 19.5,
+          "cost": 17.9595,
+          "yield_per_dollar": 1.0858,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 17.5,
+          "cost": 8.7395,
+          "yield_per_dollar": 2.0024,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 23.5,
+          "cost": 12.7868,
+          "yield_per_dollar": 1.8378,
+          "turns": 615
+        }
+      },
+      "top10_effort_critical": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 24.5,
+          "cost": 17.9595,
+          "yield_per_dollar": 1.3642,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 21.5,
+          "cost": 8.7395,
+          "yield_per_dollar": 2.4601,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 28.5,
+          "cost": 12.7868,
+          "yield_per_dollar": 2.2289,
+          "turns": 615
+        }
+      }
+    },
+    "0.5": {
+      "equal": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 18.0,
+          "cost": 9.7729,
+          "yield_per_dollar": 1.8418,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 16.0,
+          "cost": 5.1336,
+          "yield_per_dollar": 3.1167,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 20.0,
+          "cost": 7.1727,
+          "yield_per_dollar": 2.7883,
+          "turns": 615
+        }
+      },
+      "current": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 19.5,
+          "cost": 9.7729,
+          "yield_per_dollar": 1.9953,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 17.5,
+          "cost": 5.1336,
+          "yield_per_dollar": 3.4089,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 22.0,
+          "cost": 7.1727,
+          "yield_per_dollar": 3.0672,
+          "turns": 615
+        }
+      },
+      "current_high_to_2.0": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 21.0,
+          "cost": 9.7729,
+          "yield_per_dollar": 2.1488,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 19.0,
+          "cost": 5.1336,
+          "yield_per_dollar": 3.7011,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 24.0,
+          "cost": 7.1727,
+          "yield_per_dollar": 3.346,
+          "turns": 615
+        }
+      },
+      "current_high_to_2.5": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 22.5,
+          "cost": 9.7729,
+          "yield_per_dollar": 2.3023,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 20.5,
+          "cost": 5.1336,
+          "yield_per_dollar": 3.9933,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 26.0,
+          "cost": 7.1727,
+          "yield_per_dollar": 3.6248,
+          "turns": 615
+        }
+      },
+      "top20_effort_critical": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 22.5,
+          "cost": 9.7729,
+          "yield_per_dollar": 2.3023,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 20.5,
+          "cost": 5.1336,
+          "yield_per_dollar": 3.9933,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 25.0,
+          "cost": 7.1727,
+          "yield_per_dollar": 3.4854,
+          "turns": 615
+        }
+      },
+      "top33_effort_critical": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 24.5,
+          "cost": 9.7729,
+          "yield_per_dollar": 2.5069,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 21.5,
+          "cost": 5.1336,
+          "yield_per_dollar": 4.1881,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 28.5,
+          "cost": 7.1727,
+          "yield_per_dollar": 3.9734,
+          "turns": 615
+        }
+      },
+      "effort_tertiles_1_1.5_2.5": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 27.5,
+          "cost": 9.7729,
+          "yield_per_dollar": 2.8139,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 24.0,
+          "cost": 5.1336,
+          "yield_per_dollar": 4.6751,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 31.5,
+          "cost": 7.1727,
+          "yield_per_dollar": 4.3916,
+          "turns": 615
+        }
+      },
+      "both_fail_critical": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 19.5,
+          "cost": 9.7729,
+          "yield_per_dollar": 1.9953,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 17.5,
+          "cost": 5.1336,
+          "yield_per_dollar": 3.4089,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 23.5,
+          "cost": 7.1727,
+          "yield_per_dollar": 3.2763,
+          "turns": 615
+        }
+      },
+      "top10_effort_critical": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 24.5,
+          "cost": 9.7729,
+          "yield_per_dollar": 2.5069,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 21.5,
+          "cost": 5.1336,
+          "yield_per_dollar": 4.1881,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 28.5,
+          "cost": 7.1727,
+          "yield_per_dollar": 3.9734,
+          "turns": 615
+        }
+      }
+    },
+    "0.8": {
+      "equal": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 18.0,
+          "cost": 4.861,
+          "yield_per_dollar": 3.703,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 16.0,
+          "cost": 2.9701,
+          "yield_per_dollar": 5.3871,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 20.0,
+          "cost": 3.8043,
+          "yield_per_dollar": 5.2572,
+          "turns": 615
+        }
+      },
+      "current": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 19.5,
+          "cost": 4.861,
+          "yield_per_dollar": 4.0116,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 17.5,
+          "cost": 2.9701,
+          "yield_per_dollar": 5.8921,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 22.0,
+          "cost": 3.8043,
+          "yield_per_dollar": 5.783,
+          "turns": 615
+        }
+      },
+      "current_high_to_2.0": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 21.0,
+          "cost": 4.861,
+          "yield_per_dollar": 4.3201,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 19.0,
+          "cost": 2.9701,
+          "yield_per_dollar": 6.3971,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 24.0,
+          "cost": 3.8043,
+          "yield_per_dollar": 6.3087,
+          "turns": 615
+        }
+      },
+      "current_high_to_2.5": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 22.5,
+          "cost": 4.861,
+          "yield_per_dollar": 4.6287,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 20.5,
+          "cost": 2.9701,
+          "yield_per_dollar": 6.9022,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 26.0,
+          "cost": 3.8043,
+          "yield_per_dollar": 6.8344,
+          "turns": 615
+        }
+      },
+      "top20_effort_critical": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 22.5,
+          "cost": 4.861,
+          "yield_per_dollar": 4.6287,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 20.5,
+          "cost": 2.9701,
+          "yield_per_dollar": 6.9022,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 25.0,
+          "cost": 3.8043,
+          "yield_per_dollar": 6.5716,
+          "turns": 615
+        }
+      },
+      "top33_effort_critical": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 24.5,
+          "cost": 4.861,
+          "yield_per_dollar": 5.0402,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 21.5,
+          "cost": 2.9701,
+          "yield_per_dollar": 7.2389,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 28.5,
+          "cost": 3.8043,
+          "yield_per_dollar": 7.4916,
+          "turns": 615
+        }
+      },
+      "effort_tertiles_1_1.5_2.5": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 27.5,
+          "cost": 4.861,
+          "yield_per_dollar": 5.6573,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 24.0,
+          "cost": 2.9701,
+          "yield_per_dollar": 8.0806,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 31.5,
+          "cost": 3.8043,
+          "yield_per_dollar": 8.2802,
+          "turns": 615
+        }
+      },
+      "both_fail_critical": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 19.5,
+          "cost": 4.861,
+          "yield_per_dollar": 4.0116,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 17.5,
+          "cost": 2.9701,
+          "yield_per_dollar": 5.8921,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 23.5,
+          "cost": 3.8043,
+          "yield_per_dollar": 6.1773,
+          "turns": 615
+        }
+      },
+      "top10_effort_critical": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 24.5,
+          "cost": 4.861,
+          "yield_per_dollar": 5.0402,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 21.5,
+          "cost": 2.9701,
+          "yield_per_dollar": 7.2389,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 28.5,
+          "cost": 3.8043,
+          "yield_per_dollar": 7.4916,
+          "turns": 615
+        }
+      }
+    },
+    "0.9": {
+      "equal": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 18.0,
+          "cost": 3.2236,
+          "yield_per_dollar": 5.5838,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 16.0,
+          "cost": 2.2489,
+          "yield_per_dollar": 7.1146,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 20.0,
+          "cost": 2.6814,
+          "yield_per_dollar": 7.4587,
+          "turns": 615
+        }
+      },
+      "current": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 19.5,
+          "cost": 3.2236,
+          "yield_per_dollar": 6.0491,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 17.5,
+          "cost": 2.2489,
+          "yield_per_dollar": 7.7816,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 22.0,
+          "cost": 2.6814,
+          "yield_per_dollar": 8.2045,
+          "turns": 615
+        }
+      },
+      "current_high_to_2.0": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 21.0,
+          "cost": 3.2236,
+          "yield_per_dollar": 6.5144,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 19.0,
+          "cost": 2.2489,
+          "yield_per_dollar": 8.4486,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 24.0,
+          "cost": 2.6814,
+          "yield_per_dollar": 8.9504,
+          "turns": 615
+        }
+      },
+      "current_high_to_2.5": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 22.5,
+          "cost": 3.2236,
+          "yield_per_dollar": 6.9797,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 20.5,
+          "cost": 2.2489,
+          "yield_per_dollar": 9.1156,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 26.0,
+          "cost": 2.6814,
+          "yield_per_dollar": 9.6962,
+          "turns": 615
+        }
+      },
+      "top20_effort_critical": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 22.5,
+          "cost": 3.2236,
+          "yield_per_dollar": 6.9797,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 20.5,
+          "cost": 2.2489,
+          "yield_per_dollar": 9.1156,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 25.0,
+          "cost": 2.6814,
+          "yield_per_dollar": 9.3233,
+          "turns": 615
+        }
+      },
+      "top33_effort_critical": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 24.5,
+          "cost": 3.2236,
+          "yield_per_dollar": 7.6001,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 21.5,
+          "cost": 2.2489,
+          "yield_per_dollar": 9.5602,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 28.5,
+          "cost": 2.6814,
+          "yield_per_dollar": 10.6286,
+          "turns": 615
+        }
+      },
+      "effort_tertiles_1_1.5_2.5": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 27.5,
+          "cost": 3.2236,
+          "yield_per_dollar": 8.5307,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 24.0,
+          "cost": 2.2489,
+          "yield_per_dollar": 10.6719,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 31.5,
+          "cost": 2.6814,
+          "yield_per_dollar": 11.7474,
+          "turns": 615
+        }
+      },
+      "both_fail_critical": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 19.5,
+          "cost": 3.2236,
+          "yield_per_dollar": 6.0491,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 17.5,
+          "cost": 2.2489,
+          "yield_per_dollar": 7.7816,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 23.5,
+          "cost": 2.6814,
+          "yield_per_dollar": 8.7639,
+          "turns": 615
+        }
+      },
+      "top10_effort_critical": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 24.5,
+          "cost": 3.2236,
+          "yield_per_dollar": 7.6001,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 21.5,
+          "cost": 2.2489,
+          "yield_per_dollar": 9.5602,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 28.5,
+          "cost": 2.6814,
+          "yield_per_dollar": 10.6286,
+          "turns": 615
+        }
+      }
+    },
+    "0.98": {
+      "equal": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 18.0,
+          "cost": 1.9138,
+          "yield_per_dollar": 9.4055,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 16.0,
+          "cost": 1.672,
+          "yield_per_dollar": 9.5696,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 20.0,
+          "cost": 1.7832,
+          "yield_per_dollar": 11.2158,
+          "turns": 615
+        }
+      },
+      "current": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 19.5,
+          "cost": 1.9138,
+          "yield_per_dollar": 10.1893,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 17.5,
+          "cost": 1.672,
+          "yield_per_dollar": 10.4667,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 22.0,
+          "cost": 1.7832,
+          "yield_per_dollar": 12.3374,
+          "turns": 615
+        }
+      },
+      "current_high_to_2.0": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 21.0,
+          "cost": 1.9138,
+          "yield_per_dollar": 10.973,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 19.0,
+          "cost": 1.672,
+          "yield_per_dollar": 11.3639,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 24.0,
+          "cost": 1.7832,
+          "yield_per_dollar": 13.459,
+          "turns": 615
+        }
+      },
+      "current_high_to_2.5": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 22.5,
+          "cost": 1.9138,
+          "yield_per_dollar": 11.7568,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 20.5,
+          "cost": 1.672,
+          "yield_per_dollar": 12.261,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 26.0,
+          "cost": 1.7832,
+          "yield_per_dollar": 14.5806,
+          "turns": 615
+        }
+      },
+      "top20_effort_critical": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 22.5,
+          "cost": 1.9138,
+          "yield_per_dollar": 11.7568,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 20.5,
+          "cost": 1.672,
+          "yield_per_dollar": 12.261,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 25.0,
+          "cost": 1.7832,
+          "yield_per_dollar": 14.0198,
+          "turns": 615
+        }
+      },
+      "top33_effort_critical": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 24.5,
+          "cost": 1.9138,
+          "yield_per_dollar": 12.8019,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 21.5,
+          "cost": 1.672,
+          "yield_per_dollar": 12.8591,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 28.5,
+          "cost": 1.7832,
+          "yield_per_dollar": 15.9825,
+          "turns": 615
+        }
+      },
+      "effort_tertiles_1_1.5_2.5": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 27.5,
+          "cost": 1.9138,
+          "yield_per_dollar": 14.3695,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 24.0,
+          "cost": 1.672,
+          "yield_per_dollar": 14.3544,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 31.5,
+          "cost": 1.7832,
+          "yield_per_dollar": 17.6649,
+          "turns": 615
+        }
+      },
+      "both_fail_critical": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 19.5,
+          "cost": 1.9138,
+          "yield_per_dollar": 10.1893,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 17.5,
+          "cost": 1.672,
+          "yield_per_dollar": 10.4667,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 23.5,
+          "cost": 1.7832,
+          "yield_per_dollar": 13.1786,
+          "turns": 615
+        }
+      },
+      "top10_effort_critical": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 24.5,
+          "cost": 1.9138,
+          "yield_per_dollar": 12.8019,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 21.5,
+          "cost": 1.672,
+          "yield_per_dollar": 12.8591,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 28.5,
+          "cost": 1.7832,
+          "yield_per_dollar": 15.9825,
+          "turns": 615
+        }
+      }
+    },
+    "0.99": {
+      "equal": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 18.0,
+          "cost": 1.75,
+          "yield_per_dollar": 10.2854,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 16.0,
+          "cost": 1.5998,
+          "yield_per_dollar": 10.001,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 20.0,
+          "cost": 1.6709,
+          "yield_per_dollar": 11.9695,
+          "turns": 615
+        }
+      },
+      "current": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 19.5,
+          "cost": 1.75,
+          "yield_per_dollar": 11.1426,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 17.5,
+          "cost": 1.5998,
+          "yield_per_dollar": 10.9385,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 22.0,
+          "cost": 1.6709,
+          "yield_per_dollar": 13.1664,
+          "turns": 615
+        }
+      },
+      "current_high_to_2.0": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 21.0,
+          "cost": 1.75,
+          "yield_per_dollar": 11.9997,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 19.0,
+          "cost": 1.5998,
+          "yield_per_dollar": 11.8761,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 24.0,
+          "cost": 1.6709,
+          "yield_per_dollar": 14.3634,
+          "turns": 615
+        }
+      },
+      "current_high_to_2.5": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 22.5,
+          "cost": 1.75,
+          "yield_per_dollar": 12.8568,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 20.5,
+          "cost": 1.5998,
+          "yield_per_dollar": 12.8137,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 26.0,
+          "cost": 1.6709,
+          "yield_per_dollar": 15.5603,
+          "turns": 615
+        }
+      },
+      "top20_effort_critical": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 22.5,
+          "cost": 1.75,
+          "yield_per_dollar": 12.8568,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 20.5,
+          "cost": 1.5998,
+          "yield_per_dollar": 12.8137,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 25.0,
+          "cost": 1.6709,
+          "yield_per_dollar": 14.9618,
+          "turns": 615
+        }
+      },
+      "top33_effort_critical": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 24.5,
+          "cost": 1.75,
+          "yield_per_dollar": 13.9996,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 21.5,
+          "cost": 1.5998,
+          "yield_per_dollar": 13.4388,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 28.5,
+          "cost": 1.6709,
+          "yield_per_dollar": 17.0565,
+          "turns": 615
+        }
+      },
+      "effort_tertiles_1_1.5_2.5": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 27.5,
+          "cost": 1.75,
+          "yield_per_dollar": 15.7139,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 24.0,
+          "cost": 1.5998,
+          "yield_per_dollar": 15.0014,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 31.5,
+          "cost": 1.6709,
+          "yield_per_dollar": 18.8519,
+          "turns": 615
+        }
+      },
+      "both_fail_critical": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 19.5,
+          "cost": 1.75,
+          "yield_per_dollar": 11.1426,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 17.5,
+          "cost": 1.5998,
+          "yield_per_dollar": 10.9385,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 23.5,
+          "cost": 1.6709,
+          "yield_per_dollar": 14.0641,
+          "turns": 615
+        }
+      },
+      "top10_effort_critical": {
+        "bare_t2_baseline": {
+          "passes": 18,
+          "yield": 24.5,
+          "cost": 1.75,
+          "yield_per_dollar": 13.9996,
+          "turns": 969
+        },
+        "bare_t3_baseline": {
+          "passes": 16,
+          "yield": 21.5,
+          "cost": 1.5998,
+          "yield_per_dollar": 13.4388,
+          "turns": 226
+        },
+        "budgetflow_task_level": {
+          "passes": 20,
+          "yield": 28.5,
+          "cost": 1.6709,
+          "yield_per_dollar": 17.0565,
+          "turns": 615
+        }
+      }
+    }
+  },
+  "frontier_kv50_current": [
+    {
+      "task": "django__django-11049",
+      "bucket": "both_pass",
+      "effort": 19.7372,
+      "value": 1.0,
+      "t2_pass": true,
+      "t3_pass": true,
+      "bf_pass": true,
+      "bf_route": "tier3",
+      "t2_cost": 0.073976,
+      "t3_cost": 0.124567,
+      "bf_cost": 0.108497,
+      "t2_turns": 16,
+      "t3_turns": 7,
+      "bf_turns": 7,
+      "cheapest_solver": "tier2"
+    },
+    {
+      "task": "django__django-11179",
+      "bucket": "both_pass",
+      "effort": 19.6336,
+      "value": 1.0,
+      "t2_pass": true,
+      "t3_pass": true,
+      "bf_pass": true,
+      "bf_route": "tier3",
+      "t2_cost": 0.112883,
+      "t3_cost": 0.094309,
+      "bf_cost": 0.08111,
+      "t2_turns": 21,
+      "t3_turns": 8,
+      "bf_turns": 6,
+      "cheapest_solver": "tier3"
+    },
+    {
+      "task": "django__django-12908",
+      "bucket": "both_pass",
+      "effort": 21.7381,
+      "value": 1.0,
+      "t2_pass": true,
+      "t3_pass": true,
+      "bf_pass": true,
+      "bf_route": "tier2",
+      "t2_cost": 0.145523,
+      "t3_cost": 0.098384,
+      "bf_cost": 0.110844,
+      "t2_turns": 30,
+      "t3_turns": 6,
+      "bf_turns": 24,
+      "cheapest_solver": "tier3"
+    },
+    {
+      "task": "django__django-13447",
+      "bucket": "both_pass",
+      "effort": 17.9518,
+      "value": 1.0,
+      "t2_pass": true,
+      "t3_pass": true,
+      "bf_pass": true,
+      "bf_route": "tier2",
+      "t2_cost": 0.089018,
+      "t3_cost": 0.14004,
+      "bf_cost": 0.119421,
+      "t2_turns": 20,
+      "t3_turns": 7,
+      "bf_turns": 24,
+      "cheapest_solver": "tier2"
+    },
+    {
+      "task": "django__django-13964",
+      "bucket": "both_pass",
+      "effort": 22.5409,
+      "value": 1.0,
+      "t2_pass": true,
+      "t3_pass": true,
+      "bf_pass": true,
+      "bf_route": "tier2",
+      "t2_cost": 0.546545,
+      "t3_cost": 0.149103,
+      "bf_cost": 0.828167,
+      "t2_turns": 42,
+      "t3_turns": 8,
+      "bf_turns": 60,
+      "cheapest_solver": "tier3"
+    },
+    {
+      "task": "django__django-15814",
+      "bucket": "both_pass",
+      "effort": 20.8912,
+      "value": 1.0,
+      "t2_pass": true,
+      "t3_pass": true,
+      "bf_pass": true,
+      "bf_route": "tier2",
+      "t2_cost": 0.906608,
+      "t3_cost": 0.108704,
+      "bf_cost": 0.418819,
+      "t2_turns": 58,
+      "t3_turns": 6,
+      "bf_turns": 39,
+      "cheapest_solver": "tier3"
+    },
+    {
+      "task": "django__django-15851",
+      "bucket": "both_pass",
+      "effort": 21.6672,
+      "value": 1.0,
+      "t2_pass": true,
+      "t3_pass": true,
+      "bf_pass": true,
+      "bf_route": "tier3",
+      "t2_cost": 0.056255,
+      "t3_cost": 0.061794,
+      "bf_cost": 0.047788,
+      "t2_turns": 14,
+      "t3_turns": 5,
+      "bf_turns": 4,
+      "cheapest_solver": "tier2"
+    },
+    {
+      "task": "mwaskom__seaborn-2848",
+      "bucket": "both_pass",
+      "effort": 26.9418,
+      "value": 1.5,
+      "t2_pass": true,
+      "t3_pass": true,
+      "bf_pass": true,
+      "bf_route": "tier3",
+      "t2_cost": 0.8123,
+      "t3_cost": 0.217044,
+      "bf_cost": 0.193219,
+      "t2_turns": 55,
+      "t3_turns": 7,
+      "bf_turns": 7,
+      "cheapest_solver": "tier3"
+    },
+    {
+      "task": "mwaskom__seaborn-3010",
+      "bucket": "both_pass",
+      "effort": 24.5686,
+      "value": 1.0,
+      "t2_pass": true,
+      "t3_pass": true,
+      "bf_pass": true,
+      "bf_route": "tier3",
+      "t2_cost": 0.055731,
+      "t3_cost": 0.108405,
+      "bf_cost": 0.157273,
+      "t2_turns": 15,
+      "t3_turns": 5,
+      "bf_turns": 8,
+      "cheapest_solver": "tier2"
+    },
+    {
+      "task": "mwaskom__seaborn-3190",
+      "bucket": "t3_only",
+      "effort": 23.1727,
+      "value": 1.5,
+      "t2_pass": false,
+      "t3_pass": true,
+      "bf_pass": true,
+      "bf_route": "tier3",
+      "t2_cost": 0.324617,
+      "t3_cost": 0.177145,
+      "bf_cost": 0.173228,
+      "t2_turns": 39,
+      "t3_turns": 8,
+      "bf_turns": 7,
+      "cheapest_solver": "tier3"
+    },
+    {
+      "task": "mwaskom__seaborn-3407",
+      "bucket": "t2_only",
+      "effort": 25.5558,
+      "value": 1.5,
+      "t2_pass": true,
+      "t3_pass": false,
+      "bf_pass": true,
+      "bf_route": "tier2",
+      "t2_cost": 0.267541,
+      "t3_cost": 0.200243,
+      "bf_cost": 0.268912,
+      "t2_turns": 33,
+      "t3_turns": 8,
+      "bf_turns": 33,
+      "cheapest_solver": "tier2"
+    },
+    {
+      "task": "pallets__flask-4045",
+      "bucket": "both_fail",
+      "effort": 43.8418,
+      "value": 1.5,
+      "t2_pass": false,
+      "t3_pass": false,
+      "bf_pass": false,
+      "bf_route": "tier3",
+      "t2_cost": 0.150941,
+      "t3_cost": 0.169882,
+      "bf_cost": 0.146785,
+      "t2_turns": 18,
+      "t3_turns": 7,
+      "bf_turns": 8,
+      "cheapest_solver": null
+    },
+    {
+      "task": "pallets__flask-4992",
+      "bucket": "both_fail",
+      "effort": 50.8644,
+      "value": 1.0,
+      "t2_pass": false,
+      "t3_pass": false,
+      "bf_pass": false,
+      "bf_route": "tier2",
+      "t2_cost": 0.066149,
+      "t3_cost": 0.141374,
+      "bf_cost": 0.066862,
+      "t2_turns": 16,
+      "t3_turns": 7,
+      "bf_turns": 12,
+      "cheapest_solver": null
+    },
+    {
+      "task": "pylint-dev__pylint-6506",
+      "bucket": "both_fail",
+      "effort": 23.2459,
+      "value": 1.0,
+      "t2_pass": false,
+      "t3_pass": false,
+      "bf_pass": false,
+      "bf_route": "tier3",
+      "t2_cost": 0.170083,
+      "t3_cost": 0.113483,
+      "bf_cost": 0.102161,
+      "t2_turns": 23,
+      "t3_turns": 6,
+      "bf_turns": 5,
+      "cheapest_solver": null
+    },
+    {
+      "task": "pylint-dev__pylint-7993",
+      "bucket": "both_pass",
+      "effort": 21.6879,
+      "value": 1.0,
+      "t2_pass": true,
+      "t3_pass": true,
+      "bf_pass": true,
+      "bf_route": "tier2",
+      "t2_cost": 0.416573,
+      "t3_cost": 0.126326,
+      "bf_cost": 0.299044,
+      "t2_turns": 40,
+      "t3_turns": 6,
+      "bf_turns": 29,
+      "cheapest_solver": "tier3"
+    },
+    {
+      "task": "sphinx-doc__sphinx-7686",
+      "bucket": "both_fail",
+      "effort": 88.8326,
+      "value": 1.0,
+      "t2_pass": false,
+      "t3_pass": false,
+      "bf_pass": false,
+      "bf_route": "tier3",
+      "t2_cost": 1.072581,
+      "t3_cost": 0.309688,
+      "bf_cost": 0.292541,
+      "t2_turns": 60,
+      "t3_turns": 11,
+      "bf_turns": 12,
+      "cheapest_solver": null
+    },
+    {
+      "task": "sphinx-doc__sphinx-7738",
+      "bucket": "both_fail",
+      "effort": 21.334,
+      "value": 1.0,
+      "t2_pass": false,
+      "t3_pass": false,
+      "bf_pass": false,
+      "bf_route": "tier3",
+      "t2_cost": 0.296291,
+      "t3_cost": 0.244652,
+      "bf_cost": 0.249293,
+      "t2_turns": 28,
+      "t3_turns": 10,
+      "bf_turns": 8,
+      "cheapest_solver": null
+    },
+    {
+      "task": "sphinx-doc__sphinx-7975",
+      "bucket": "both_pass",
+      "effort": 41.4294,
+      "value": 1.0,
+      "t2_pass": true,
+      "t3_pass": true,
+      "bf_pass": true,
+      "bf_route": "tier2",
+      "t2_cost": 0.210209,
+      "t3_cost": 0.207864,
+      "bf_cost": 0.187095,
+      "t2_turns": 20,
+      "t3_turns": 8,
+      "bf_turns": 22,
+      "cheapest_solver": "tier3"
+    },
+    {
+      "task": "sphinx-doc__sphinx-8273",
+      "bucket": "both_fail",
+      "effort": 41.4263,
+      "value": 1.0,
+      "t2_pass": false,
+      "t3_pass": false,
+      "bf_pass": false,
+      "bf_route": "tier2",
+      "t2_cost": 0.061731,
+      "t3_cost": 0.13043,
+      "bf_cost": 0.19872,
+      "t2_turns": 13,
+      "t3_turns": 6,
+      "bf_turns": 26,
+      "cheapest_solver": null
+    },
+    {
+      "task": "sphinx-doc__sphinx-8282",
+      "bucket": "both_fail",
+      "effort": 42.3732,
+      "value": 1.0,
+      "t2_pass": false,
+      "t3_pass": false,
+      "bf_pass": false,
+      "bf_route": "tier2",
+      "t2_cost": 0.410384,
+      "t3_cost": 0.219179,
+      "bf_cost": 0.468882,
+      "t2_turns": 40,
+      "t3_turns": 8,
+      "bf_turns": 40,
+      "cheapest_solver": null
+    },
+    {
+      "task": "sphinx-doc__sphinx-8595",
+      "bucket": "t2_only",
+      "effort": 17.4,
+      "value": 1.0,
+      "t2_pass": true,
+      "t3_pass": false,
+      "bf_pass": true,
+      "bf_route": "tier2",
+      "t2_cost": 0.07609,
+      "t3_cost": 0.212904,
+      "bf_cost": 0.080972,
+      "t2_turns": 20,
+      "t3_turns": 10,
+      "bf_turns": 21,
+      "cheapest_solver": "tier2"
+    },
+    {
+      "task": "sphinx-doc__sphinx-8801",
+      "bucket": "both_pass",
+      "effort": 54.8672,
+      "value": 1.0,
+      "t2_pass": true,
+      "t3_pass": true,
+      "bf_pass": true,
+      "bf_route": "tier3",
+      "t2_cost": 0.729317,
+      "t3_cost": 0.411149,
+      "bf_cost": 0.219488,
+      "t2_turns": 56,
+      "t3_turns": 13,
+      "bf_turns": 7,
+      "cheapest_solver": "tier3"
+    },
+    {
+      "task": "sympy__sympy-12171",
+      "bucket": "both_fail",
+      "effort": 20.4472,
+      "value": 1.0,
+      "t2_pass": false,
+      "t3_pass": false,
+      "bf_pass": false,
+      "bf_route": "tier2",
+      "t2_cost": 0.288916,
+      "t3_cost": 0.101626,
+      "bf_cost": 0.322518,
+      "t2_turns": 34,
+      "t3_turns": 6,
+      "bf_turns": 38,
+      "cheapest_solver": null
+    },
+    {
+      "task": "sympy__sympy-13177",
+      "bucket": "both_fail",
+      "effort": 24.6038,
+      "value": 1.5,
+      "t2_pass": false,
+      "t3_pass": false,
+      "bf_pass": false,
+      "bf_route": "tier2",
+      "t2_cost": 0.139651,
+      "t3_cost": 0.093064,
+      "bf_cost": 0.048906,
+      "t2_turns": 25,
+      "t3_turns": 7,
+      "bf_turns": 11,
+      "cheapest_solver": null
+    },
+    {
+      "task": "sympy__sympy-13647",
+      "bucket": "both_pass",
+      "effort": 22.9538,
+      "value": 1.5,
+      "t2_pass": true,
+      "t3_pass": true,
+      "bf_pass": true,
+      "bf_route": "tier2",
+      "t2_cost": 0.140041,
+      "t3_cost": 0.103606,
+      "bf_cost": 0.122653,
+      "t2_turns": 25,
+      "t3_turns": 5,
+      "bf_turns": 20,
+      "cheapest_solver": "tier3"
+    },
+    {
+      "task": "sympy__sympy-15346",
+      "bucket": "t2_only",
+      "effort": 21.8855,
+      "value": 1.0,
+      "t2_pass": true,
+      "t3_pass": false,
+      "bf_pass": true,
+      "bf_route": "tier3",
+      "t2_cost": 0.628756,
+      "t3_cost": 0.331297,
+      "bf_cost": 0.747077,
+      "t2_turns": 54,
+      "t3_turns": 9,
+      "bf_turns": 17,
+      "cheapest_solver": "tier2"
+    },
+    {
+      "task": "sympy__sympy-17655",
+      "bucket": "both_fail",
+      "effort": 24.7926,
+      "value": 1.0,
+      "t2_pass": false,
+      "t3_pass": false,
+      "bf_pass": true,
+      "bf_route": "tier2",
+      "t2_cost": 0.676417,
+      "t3_cost": 0.239852,
+      "bf_cost": 0.623042,
+      "t2_turns": 60,
+      "t3_turns": 11,
+      "bf_turns": 60,
+      "cheapest_solver": null
+    },
+    {
+      "task": "sympy__sympy-18621",
+      "bucket": "both_pass",
+      "effort": 21.2526,
+      "value": 1.0,
+      "t2_pass": true,
+      "t3_pass": true,
+      "bf_pass": true,
+      "bf_route": "tier2",
+      "t2_cost": 0.400474,
+      "t3_cost": 0.157815,
+      "bf_cost": 0.14666,
+      "t2_turns": 42,
+      "t3_turns": 7,
+      "bf_turns": 23,
+      "cheapest_solver": "tier3"
+    },
+    {
+      "task": "sympy__sympy-22714",
+      "bucket": "both_pass",
+      "effort": 20.3949,
+      "value": 1.0,
+      "t2_pass": true,
+      "t3_pass": true,
+      "bf_pass": true,
+      "bf_route": "tier3",
+      "t2_cost": 0.107503,
+      "t3_cost": 0.131769,
+      "bf_cost": 0.117369,
+      "t2_turns": 17,
+      "t3_turns": 7,
+      "bf_turns": 6,
+      "cheapest_solver": "tier2"
+    },
+    {
+      "task": "sympy__sympy-24102",
+      "bucket": "both_fail",
+      "effort": 20.78,
+      "value": 1.0,
+      "t2_pass": false,
+      "t3_pass": false,
+      "bf_pass": false,
+      "bf_route": "tier2",
+      "t2_cost": 0.339816,
+      "t3_cost": 0.207922,
+      "bf_cost": 0.225379,
+      "t2_turns": 35,
+      "t3_turns": 7,
+      "bf_turns": 31,
+      "cheapest_solver": null
+    }
+  ],
+  "routing_metrics_kv50_current": {
+    "t3_only": {
+      "tp": 1,
+      "fp": 12,
+      "fn": 0,
+      "precision": 0.0769,
+      "recall": 1.0,
+      "f1": 0.1429
+    },
+    "t3_cheapest_solver": {
+      "tp": 4,
+      "fp": 9,
+      "fn": 7,
+      "precision": 0.3077,
+      "recall": 0.3636,
+      "f1": 0.3333
+    },
+    "high_effort_ge_40": {
+      "tp": 3,
+      "fp": 10,
+      "fn": 4,
+      "precision": 0.2308,
+      "recall": 0.4286,
+      "f1": 0.3
+    },
+    "any_solver_route_relevance": {
+      "tp": 7,
+      "fp": 0,
+      "fn": 12,
+      "precision": 1.0,
+      "recall": 0.3684,
+      "f1": 0.5385
+    }
+  },
+  "binding_cap_replay_kv50_current": {
+    "3.0": {
+      "bare_t2_baseline": {
+        "attempted": 15,
+        "passes": 9,
+        "yield": 9.5,
+        "cost": 2.9401,
+        "yield_per_dollar": 3.2312
+      },
+      "bare_t3_baseline": {
+        "attempted": 17,
+        "passes": 9,
+        "yield": 10.0,
+        "cost": 2.9445,
+        "yield_per_dollar": 3.3961
+      },
+      "budgetflow_task_level": {
+        "attempted": 17,
+        "passes": 12,
+        "yield": 13.5,
+        "cost": 2.9813,
+        "yield_per_dollar": 4.5283
+      }
+    },
+    "4.0": {
+      "bare_t2_baseline": {
+        "attempted": 18,
+        "passes": 11,
+        "yield": 12.5,
+        "cost": 3.9541,
+        "yield_per_dollar": 3.1612
+      },
+      "bare_t3_baseline": {
+        "attempted": 23,
+        "passes": 13,
+        "yield": 14.5,
+        "cost": 3.9682,
+        "yield_per_dollar": 3.654
+      },
+      "budgetflow_task_level": {
+        "attempted": 19,
+        "passes": 14,
+        "yield": 16.0,
+        "cost": 3.9972,
+        "yield_per_dollar": 4.0028
+      }
+    },
+    "5.0": {
+      "bare_t2_baseline": {
+        "attempted": 18,
+        "passes": 11,
+        "yield": 12.5,
+        "cost": 4.965,
+        "yield_per_dollar": 2.5176
+      },
+      "bare_t3_baseline": {
+        "attempted": 28,
+        "passes": 16,
+        "yield": 17.5,
+        "cost": 4.9101,
+        "yield_per_dollar": 3.5641
+      },
+      "budgetflow_task_level": {
+        "attempted": 22,
+        "passes": 16,
+        "yield": 18.0,
+        "cost": 4.9581,
+        "yield_per_dollar": 3.6304
+      }
+    },
+    "6.0": {
+      "bare_t2_baseline": {
+        "attempted": 21,
+        "passes": 12,
+        "yield": 13.5,
+        "cost": 5.9444,
+        "yield_per_dollar": 2.271
+      },
+      "bare_t3_baseline": {
+        "attempted": 30,
+        "passes": 16,
+        "yield": 17.5,
+        "cost": 5.1336,
+        "yield_per_dollar": 3.4089
+      },
+      "budgetflow_task_level": {
+        "attempted": 27,
+        "passes": 18,
+        "yield": 20.0,
+        "cost": 5.9992,
+        "yield_per_dollar": 3.3338
+      }
+    },
+    "7.0": {
+      "bare_t2_baseline": {
+        "attempted": 23,
+        "passes": 14,
+        "yield": 15.5,
+        "cost": 6.9965,
+        "yield_per_dollar": 2.2154
+      },
+      "bare_t3_baseline": {
+        "attempted": 30,
+        "passes": 16,
+        "yield": 17.5,
+        "cost": 5.1336,
+        "yield_per_dollar": 3.4089
+      },
+      "budgetflow_task_level": {
+        "attempted": 29,
+        "passes": 20,
+        "yield": 22.0,
+        "cost": 6.974,
+        "yield_per_dollar": 3.1546
+      }
+    },
+    "8.0": {
+      "bare_t2_baseline": {
+        "attempted": 25,
+        "passes": 16,
+        "yield": 17.5,
+        "cost": 7.9361,
+        "yield_per_dollar": 2.2051
+      },
+      "bare_t3_baseline": {
+        "attempted": 30,
+        "passes": 16,
+        "yield": 17.5,
+        "cost": 5.1336,
+        "yield_per_dollar": 3.4089
+      },
+      "budgetflow_task_level": {
+        "attempted": 30,
+        "passes": 20,
+        "yield": 22.0,
+        "cost": 7.1727,
+        "yield_per_dollar": 3.0672
+      }
+    },
+    "9.0": {
+      "bare_t2_baseline": {
+        "attempted": 26,
+        "passes": 16,
+        "yield": 17.5,
+        "cost": 8.9609,
+        "yield_per_dollar": 1.9529
+      },
+      "bare_t3_baseline": {
+        "attempted": 30,
+        "passes": 16,
+        "yield": 17.5,
+        "cost": 5.1336,
+        "yield_per_dollar": 3.4089
+      },
+      "budgetflow_task_level": {
+        "attempted": 30,
+        "passes": 20,
+        "yield": 22.0,
+        "cost": 7.1727,
+        "yield_per_dollar": 3.0672
+      }
+    },
+    "11.02": {
+      "bare_t2_baseline": {
+        "attempted": 30,
+        "passes": 18,
+        "yield": 19.5,
+        "cost": 9.7729,
+        "yield_per_dollar": 1.9953
+      },
+      "bare_t3_baseline": {
+        "attempted": 30,
+        "passes": 16,
+        "yield": 17.5,
+        "cost": 5.1336,
+        "yield_per_dollar": 3.4089
+      },
+      "budgetflow_task_level": {
+        "attempted": 30,
+        "passes": 20,
+        "yield": 22.0,
+        "cost": 7.1727,
+        "yield_per_dollar": 3.0672
+      }
+    }
+  }
+}
