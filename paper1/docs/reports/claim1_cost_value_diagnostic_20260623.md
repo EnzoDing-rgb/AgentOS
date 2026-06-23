@@ -71,8 +71,52 @@ This is a threat to validity. However, the direction of the Claim 1 Yield signal
 | current values | 19.5 | 17.5 | 22.0 |
 | top 20% Task Effort as critical | 21.0 | 19.0 | 23.0 |
 | top 33% Task Effort as critical | 24.0 | 20.5 | 27.5 |
+| effort tertiles as 1.0 / 1.5 / 2.5 | 27.5 | 24.0 | 31.5 |
+| both-fail tasks critical, else current | 19.5 | 17.5 | 23.5 |
+| top 10 Task Effort critical, else current | 24.5 | 21.5 | 28.5 |
 
 Interpretation: the current Claim 1 signal is not caused only by the 1.0/1.5 value spread. A broader pre-registered criticality profile would likely strengthen BudgetFlow's Yield advantage on this run, but should be presented as sensitivity unless rerun as a new pre-registered ValueSource.
+
+## Routing Diagnostic
+
+Capability buckets after correction:
+
+| Bucket | Tasks | Avg Task Effort | Avg current value |
+|---|---:|---:|---:|
+| both pass | 15 | 25.22 | 1.07 |
+| T2 only | 3 | 21.61 | 1.17 |
+| T3 only | 1 | 23.17 | 1.50 |
+| both fail | 11 | 36.59 | 1.09 |
+
+BudgetFlow route by bucket:
+
+| Bucket | BF routed T2 | BF routed T3 |
+|---|---:|---:|
+| both pass | 8 | 7 |
+| T2 only | 2 | 1 |
+| T3 only | 0 | 1 |
+| both fail | 7 | 4 |
+
+If "should start T3" is defined as the rare T3-only task, BudgetFlow has full recall but low precision: `tp=1`, `fp=12`, `fn=0`, precision `0.077`, recall `1.0`, F1 `0.143`. That metric is intentionally harsh because this task set has only one T3-only task. More useful diagnostics are:
+
+| T3-positive definition | Precision | Recall | F1 |
+|---|---:|---:|---:|
+| T3-only | 0.077 | 1.000 | 0.143 |
+| T3-solved high-value tasks | 0.154 | 0.667 | 0.250 |
+| high Task Effort >= 40 | 0.231 | 0.429 | 0.300 |
+| high Task Effort and T2 fails | 0.154 | 0.400 | 0.222 |
+| both-fail tasks as probe/stop targets | 0.308 | 0.364 | 0.333 |
+
+The next routing issue is therefore not simple T3 recall. It is precision and stop discipline: avoid spending long T2 runs on ceiling tasks, preserve T2 wins where T2 is enough, and use T3 probes only when value/effort/fit justify the attempt.
+
+## Next Paid-Run Hypothesis
+
+Do not change CostSource. The current result already shows T3 is often cheaper in total because it uses far fewer turns, even though its per-turn price is higher. Moving cost would make the evidence less defensible.
+
+The next paid-run candidate should change two pre-registered inputs/mechanisms instead:
+
+1. ValueSource sensitivity: use a wider but auditable criticality gradient, such as `normal=1.0`, `high=1.5`, and `critical=2.5`, with criticality assigned before execution from Task Effort, historical ceiling risk, or explicit task metadata. This is a sensitivity profile, not post-hoc outcome fitting.
+2. Runtime stop-loss precision: for high-effort tasks that show no patch/progress evidence after a bounded window, stop earlier or require a stronger-tier probe rather than allowing long T2 spins. The goal is higher Yield under the same shared budget, not cosmetic tier diversity.
 
 ## Draft Position
 
