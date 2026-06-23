@@ -1,0 +1,40 @@
+name: Build PDF
+
+on:
+  push:
+    paths:
+      - 'paper1/docs/draft.md'
+      - '.github/workflows/build-pdf.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: pandoc/extra:latest-ubuntu
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build PDF
+        run: |
+          pandoc paper1/docs/draft.md \
+            -o paper1/docs/paper.pdf \
+            --from markdown \
+            --template eisvogel \
+            --pdf-engine xelatex \
+            --number-sections \
+            --metadata date="$(date +%Y-%m-%d)" \
+            --metadata linkcolor=blue \
+            --metadata codeblock-number-font="DejaVu Sans Mono"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: paper-pdf
+          path: paper1/docs/paper.pdf
+          retention-days: 30
