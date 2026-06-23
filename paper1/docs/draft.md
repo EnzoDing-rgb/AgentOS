@@ -9,6 +9,8 @@ number-sections: true
 linkcolor: blue
 ---
 
+# BudgetFlow: Value-Aware Budget Allocation for LLM Agent Tasks Under a Shared Hard Cap
+
 ## Abstract
 
 We introduce BudgetFlow, a budget governance layer that maximizes normalized verified resolved value (Yield) under a single shared hard budget across a fixed batch of tasks. Existing approaches to cost-efficient LLM deployment—cascade routing, per-example budget enforcement, and budget-aware agent frameworks—operate at the level of individual queries or agent runs. None address the allocation problem that arises when a fixed task batch must share one hard budget: which tasks deserve scarce model opportunities, and how should runtime model selection reflect pre-registered task value? BudgetFlow answers this with two components: a pre-run budget regime compiler that translates a hard cap into an auditable allocation scheme, and a runtime value-aware policy that selects models at task start based on expected verified value. In experiments using a fixed 30-task SWE-bench workload under a shared budget, BudgetFlow achieves 17/30 pass, Yield 21.0, Cost $6.0000, and Yield/$ 3.5000, compared to T2-only (12/30, Yield 14.5, Yield/$ 2.4167) and T3-only (16/30, Yield 18.5, Yield/$ 3.1731) baselines. The results hold directionally across KV-cache discount levels, value profiles, and budget cap settings. BudgetFlow demonstrates that shared-budget value maximization, rather than per-query cost minimization, is the appropriate objective when a batch of heterogeneous tasks competes for one hard budget.
