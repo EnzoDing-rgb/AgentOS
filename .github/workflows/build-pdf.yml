@@ -33,8 +33,12 @@ jobs:
             --metadata codeblock-number-font="DejaVu Sans Mono"
 
       - name: Commit PDF
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          apt-get update -qq && apt-get install -y -qq git
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git add paper1/docs/paper.pdf
           if git diff --cached --quiet; then
             echo "PDF unchanged, skip commit."
