@@ -4,6 +4,8 @@
 
 ## 2026-06-22 — Current status (in progress, not final evidence)
 
+- **2026-06-23 / Claim 1 cost-value diagnostic:** the corrected full 3x30 run is complete (90 scoreable rows). BudgetFlow's extra turns come from T2-routed tasks, not from a systemic all-T3 runtime slowdown: on the 13 tasks where BF used all T3, BF turns were 102 vs pure T3's 103. On the 17 BF-all-T2 tasks, BF used 512 turns vs pure T3's 123 on those same tasks. Value sensitivity does not flip the Claim 1 Yield result: equal values give BF 20.0 vs pure T2 18.0 and pure T3 16.0; current values give BF 22.0 vs 19.5/17.5. Short report: `paper1/docs/reports/claim1_cost_value_diagnostic_20260623.md`.
+
 - **2026-06-23 / Patch-cleaner false-negative fixed; Claim 1 re-read:**
   found and fixed an evaluation bug where `clean_scoreable_patch()` used
   `.rstrip()` and could remove a trailing blank-context line from a valid git
