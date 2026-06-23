@@ -8,6 +8,15 @@ docs, prompts, handoffs, reports, and reviewer-facing prose.
 Use **Claim 1** and **Claim 2** for paper claims. Reserve **T1/T2/T3** for model
 tiers only.
 
+## Current Draft Scope
+
+For the initial paper draft, **Claim 1 is the active claim**. Claim 2 is parked
+as follow-up mechanism analysis and should not block the near-term draft or the
+current Claim 1 evidence readout. Mechanism observations still matter as
+diagnostics and residual risks, but the draft headline is whether BudgetFlow
+resolves more normalized verified value under the same compiled shared hard
+budget.
+
 | Term | Meaning |
 |---|---|
 | BudgetFlow | Value-aware budget governance for multi-step agent workflows under shared hard budgets. |
@@ -90,8 +99,8 @@ same effective task-cap calculation.
 
 | Claim | Main question | Primary evidence |
 |---|---|---|
-| Claim 1 | Under the same compiled shared hard-budget regime, does BudgetFlow resolve more normalized task value? | Yield and Yield per Dollar at fixed budget, with budget-plan confidence and actual utilization reported. |
-| Claim 2 | Which budget-aware allocation policy explains the Claim 1 result, and is that policy reusable? | Resolution-cost frontier, Strongest Model productive use, Tier Boundary Selection, stop-loss behavior, task-level vs stage/segment-aware controls, optional memory effect when enabled, and failure attribution. |
+| Claim 1 | Under the same compiled shared hard-budget regime, does BudgetFlow resolve more normalized task value? | Yield at fixed budget, with Yield per Dollar, budget-plan confidence, and actual utilization reported as required diagnostics. |
+| Claim 2 | Which budget-aware allocation policy explains the Claim 1 result, and is that policy reusable? | Parked for the initial draft. Later mechanism evidence can include resolution-cost frontier, Strongest Model productive use, Tier Boundary Selection, stop-loss behavior, task-level vs stage/segment-aware controls, optional memory effect when enabled, and failure attribution. |
 
 Claim 1 is the objective. The Budget Regime Compiler is the pre-run part of
 Value-Driven Budget Allocation: it defines the shared budget regime before any
@@ -100,22 +109,21 @@ opportunities within that regime while preserving the pre-registered task
 order.
 
 Claim 2 is mechanism analysis about the allocation policy that produced the
-Claim 1 outcome. That policy can come from a task-level tier choice, a
+Claim 1 outcome. For the initial draft it is explicitly out of scope. Later,
+that mechanism story can come from a task-level tier choice, a
 stage/segment-aware router, a learned memory input, or a hybrid. BudgetFlow
-Segment Routing is therefore a Claim 2 policy variant: it is useful evidence
-only if its stage/segment signals improve or preserve Yield and Yield per
-Dollar against task-level or per-request controls under the same budget.
-Memory-based continual learning is another possible Claim 2 variant, not a
-requirement for every Claim 1 run.
+Segment Routing is therefore a Claim 2 policy variant, not a requirement for
+accepting a Claim 1 run. Memory-based continual learning is another possible
+Claim 2 variant, not a requirement for every Claim 1 run.
 
 Routing savings, stage-aware routing, Tier Boundary Selection, stop-loss,
 escalation, and learning inputs are useful only when they protect or improve
 Claim 1. Do not optimize mechanism diagnostics in a way that reduces
 value-weighted outcomes.
 
-Resolved task count, pass rate, Pass per Dollar, average turns, and no-patch
-rate are diagnostics. They must not replace Yield or Yield per Dollar as the
-main claim metric.
+Resolved task count, pass rate, Yield per Dollar, Pass per Dollar, average
+turns, and no-patch rate are diagnostics for the initial draft. They must not
+replace Yield as the Claim 1 headline metric.
 
 Pure-tier controls can expose a real model frontier change. If the Strongest
 Model is both more capable and cheaper in total for nearly every task under the

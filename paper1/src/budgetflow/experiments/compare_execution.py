@@ -259,6 +259,7 @@ def run_task_record(
         "turn_trace_count": result.turn_trace_count,
         "trace_dir": result.trace_dir,
         "trace_steps": result.trace_steps_path,
+        "workspace_patch_drop_reason": getattr(result, "workspace_patch_drop_reason", ""),
         "turn_traces": truncate_turn_traces(result.turn_traces, trace_max_turns, trace_truncate_chars)
         if enable_turn_trace and result.turn_traces else None,
         "run_series": run_series,

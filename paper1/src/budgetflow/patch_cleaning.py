@@ -58,8 +58,10 @@ def clean_scoreable_patch(patch: str | None) -> str:
             skip_current = True
 
     flush()
-    cleaned = "".join(kept).rstrip()
-    return f"{cleaned}\n" if cleaned else ""
+    cleaned = "".join(kept)
+    if not cleaned.strip():
+        return ""
+    return cleaned if cleaned.endswith("\n") else f"{cleaned}\n"
 
 
 def _paths_from_diff_header(line: str) -> tuple[str, ...]:

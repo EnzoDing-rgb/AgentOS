@@ -113,6 +113,32 @@ def test_workspace_patch_cleans_setup_lock_binary_and_non_ascii_noise(tmp_path: 
     assert "unicod" not in workspace_patch.text
 
 
+def test_workspace_patch_rejects_patch_that_cannot_reverse_apply(tmp_path: Path, monkeypatch) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    _git(repo, "config", "user.name", "Test")
+    (repo / "app.py").write_text("old\n \n")
+    _git(repo, "add", "app.py")
+    _git(repo, "commit", "-m", "base")
+
+    baseline = runner._capture_workspace_baseline(repo)
+    (repo / "app.py").write_text("fixed\n \n")
+
+    def corrupt_trailing_context(patch: str | None) -> str:
+        assert patch is not None
+        return patch.rstrip() + "\n"
+
+    monkeypatch.setattr(runner, "clean_scoreable_patch", corrupt_trailing_context)
+
+    workspace_patch = runner._collect_workspace_patch(repo, baseline_ref=baseline.ref)
+
+    assert workspace_patch.text is None
+    assert workspace_patch.source == "none"
+    assert workspace_patch.changed_files == ("app.py",)
+
+
 def test_scoreable_patch_prefers_workspace_diff_over_submission() -> None:
     workspace_patch = runner.WorkspacePatch(
         text="diff --git a/app.py b/app.py\n+workspace\n",

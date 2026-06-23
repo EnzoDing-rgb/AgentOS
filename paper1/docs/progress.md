@@ -4,6 +4,19 @@
 
 ## 2026-06-22 — Current status (in progress, not final evidence)
 
+- **2026-06-23 / Patch-cleaner false-negative fixed; Claim 1 re-read:**
+  found and fixed an evaluation bug where `clean_scoreable_patch()` used
+  `.rstrip()` and could remove a trailing blank-context line from a valid git
+  diff, causing `model_patch=error: corrupt patch`. Canonical case:
+  `sphinx-doc__sphinx-8801` BF task-level selected T3 and originally failed
+  patch apply; re-evaluating the original submitted patch after the cleaner fix
+  resolves. Historical JSONL remains immutable; forensic re-read of the full
+  30-task run `mainline_3x30_lhm_cycle_routefix_kv50_20260623` gives corrected
+  Yield: pure T2 `19.5`, pure T3 `17.5`, BudgetFlow task-level `22.0`.
+  Corrected Yield/$: pure T2 `1.9953`, pure T3 `3.4089`, BudgetFlow
+  task-level `3.0672`. Initial draft scope is now Claim 1 only; Claim 2 is
+  parked. Short report:
+  `paper1/docs/reports/patch_cleaner_false_negative_fix_20260623.md`.
 - **2026-06-23 / 3x30 stage 2+3 completed after soft-gate fix:** completed
   `mainline_3x30_lhm_cycle_stage23_softgate_kv50_20260623` (60/60 rows).
   Stage 2 showed a real cost-efficiency signal: BF task-level matched pure T3

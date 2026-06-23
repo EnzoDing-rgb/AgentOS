@@ -88,6 +88,7 @@ class MiniSweRunResult:
     patch_source: str = "none"
     submitted_patch_path: str | None = None
     workspace_patch_path: str | None = None
+    workspace_patch_drop_reason: str = ""
     trace_dir: str = ""
     trace_steps_path: str = ""
     turn_trace_count: int = 0
@@ -116,6 +117,7 @@ class WorkspacePatch:
     text: str | None
     source: str
     changed_files: tuple[str, ...]
+    drop_reason: str = ""
 
 
 @dataclass(frozen=True)
@@ -124,6 +126,7 @@ class ScoreablePatch:
     patch_source: str
     submitted_patch_text: str | None
     workspace_patch_text: str | None
+    workspace_patch_drop_reason: str = ""
 
 
 _AUXILIARY_WORKSPACE_PATCH_NAMES = frozenset({
@@ -224,8 +227,38 @@ def _collect_workspace_patch(repo_dir: Path, *, baseline_ref: str) -> WorkspaceP
     )
     patch_text = clean_scoreable_patch(result.stdout)
     if not patch_text.strip():
-        return WorkspacePatch(text=None, source="none", changed_files=changed_files)
+        return WorkspacePatch(
+            text=None,
+            source="none",
+            changed_files=changed_files,
+            drop_reason="cleaned_patch_empty",
+        )
+    if not _workspace_patch_reverse_applies(repo_dir, patch_text):
+        return WorkspacePatch(
+            text=None,
+            source="none",
+            changed_files=changed_files,
+            drop_reason="cleaned_patch_reverse_check_failed",
+        )
     return WorkspacePatch(text=patch_text, source="workspace_diff", changed_files=changed_files)
+
+
+def _workspace_patch_reverse_applies(repo_dir: Path, patch_text: str) -> bool:
+    if not patch_text.strip():
+        return False
+    with tempfile.NamedTemporaryFile("w", suffix=".patch", delete=False) as handle:
+        handle.write(patch_text)
+        patch_path = Path(handle.name)
+    try:
+        result = subprocess.run(
+            ["git", "apply", "--check", "--reverse", str(patch_path)],
+            cwd=repo_dir,
+            capture_output=True,
+            text=True,
+        )
+        return result.returncode == 0
+    finally:
+        patch_path.unlink(missing_ok=True)
 
 
 def _select_scoreable_patch(
@@ -239,12 +272,14 @@ def _select_scoreable_patch(
             patch_source=workspace_patch.source,
             submitted_patch_text=submitted_patch_text,
             workspace_patch_text=workspace_patch.text,
+            workspace_patch_drop_reason=workspace_patch.drop_reason,
         )
     return ScoreablePatch(
         patch_text=None,
         patch_source="none",
         submitted_patch_text=submitted_patch_text,
         workspace_patch_text=None,
+        workspace_patch_drop_reason=workspace_patch.drop_reason,
     )
 
 
@@ -609,6 +644,7 @@ def run_mini_swe_task(
         turn_traces=trace_rows if trace_rows else None,
         submitted_patch_path=str(submitted_patch) if submitted_patch is not None else None,
         workspace_patch_path=str(workspace_patch_path) if workspace_patch_path is not None else None,
+        workspace_patch_drop_reason=scoreable_patch.workspace_patch_drop_reason,
         trace_dir=str(trace_dir),
         trace_steps_path=str(trace.steps_path),
         protocol_retry_used=model._protocol_retry_used,

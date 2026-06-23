@@ -67,6 +67,7 @@ These are the short-form checks every worker should keep in view:
 - Use Value-Triggered Escalation for the high-value pre-patch T3 window.
 - Use Strongest Model for the strongest configured tier. Prefer model-tier diagnostics unless a specific runtime field is explicitly tier-specific.
 - Say infra. Do not introduce infer, info, or other speech-to-text artifacts as project concepts.
+- The user often uses speech input. Treat odd symbols, malformed words, and sudden unfamiliar terms as possible speech-to-text noise unless the user explicitly introduces them as new vocabulary, concepts, symbols, or terms. Filter obvious noise silently; when meaning is unclear, ask the user instead of adopting the noisy phrase into project terminology.
 
 ## Agent Workflow
 
