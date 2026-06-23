@@ -124,7 +124,7 @@ Each task carries a pre-registered value. We evaluate under three value profiles
 
 ### 4.2 Shared Budget
 
-A single hard budget cap $B$ is set before the batch begins. Once set, the cap is binding: total spending across all 30 tasks must not exceed $B$. The cap is chosen such that a T2-only policy operates well below it (leaving headroom) while a T3-only policy operates near or at the cap. BudgetFlow's regime compiler receives the same cap and must allocate within it.
+A single hard budget cap $B$ is set before the batch begins. Once set, the cap is binding: total spending across all 30 tasks must not exceed $B$. The cap is chosen to be active: T2-only and BudgetFlow reach the full $6.0000 cap, while T3-only finishes at $5.8303. BudgetFlow's regime compiler receives the same cap and must allocate within it.
 
 ### 4.3 Baselines
 
@@ -157,7 +157,7 @@ We evaluate BudgetFlow's robustness across three sensitivity dimensions:
 
 ### 5.1 Main Result
 
-Table 1 reports the primary comparison under the current value profile and binding budget cap.
+Table 1 reports the primary comparison under the current value profile and the active budget cap.
 
 | Policy | Pass (out of 30) | Yield | Total Cost | Yield/$ |
 |---|---|---|---|---|
@@ -169,7 +169,7 @@ Table 1 reports the primary comparison under the current value profile and bindi
 
 BudgetFlow achieves 17/30 pass, compared to 16/30 (T3-only) and 12/30 (T2-only). Yield reaches 21.0, exceeding T3-only (18.5) by 13.5% and T2-only (14.5) by 44.8%. BudgetFlow and T2-only both record total cost of $6.0000 at the cap, but BudgetFlow extracts substantially more verified value from the same budget. Yield/$ for BudgetFlow is 3.5000, compared to 3.1731 (T3-only) and 2.4167 (T2-only).
 
-These results illustrate a central dynamic of shared-budget allocation. T2-only under-spends: it leaves budget headroom that could have been deployed on stronger models for high-value tasks. T3-only cannot differentiate: it grants the same model to every task, missing the opportunity to conserve budget on low-value tasks and concentrate spend on high-value ones. BudgetFlow allocates the budget where expected verified value justifies the spend.
+These results illustrate a central dynamic of shared-budget allocation. T2-only and BudgetFlow both spend the full cap ($6.0000), but BudgetFlow extracts substantially more verified value from the same budget—Yield 21.0 vs. 14.5, Yield/$ 3.5000 vs. 2.4167. T3-only cannot differentiate: it grants the same model to every task, missing the opportunity to conserve budget on low-value tasks and concentrate spend on high-value ones. Its lower total cost ($5.8303) does not translate into higher efficiency.
 
 ### 5.2 Cost Is Not Token Price
 
@@ -177,7 +177,7 @@ The T3-only baseline records a lower total cost ($5.8303) than BudgetFlow ($6.00
 
 BudgetFlow is not a cheapest-model fallback policy. It is a value-aware budget allocation policy: it may spend more when expected verified value justifies the spend, as long as it remains under the shared cap. In agentic repair, token price is not task-level cost; a nominally cheaper model can become more expensive when it takes more turns or stalls, while a stronger model can fail quickly and cheaply. Therefore, the central comparison is whether a policy converts the shared budget into more normalized verified value.
 
-BudgetFlow spends the full budget and produces more verified value. T3-only leaves budget unspent while producing less value. The operator's objective is not to minimize spend—it is to maximize verified value under the cap. On that objective, BudgetFlow is the dominant policy.
+BudgetFlow spends the full cap and produces more verified value. T3-only is a strong efficiency baseline with higher Yield/$ than T2-only; however, its lower spend does not dominate when BudgetFlow achieves both higher Yield (21.0 vs. 18.5) and higher Yield/$ (3.5000 vs. 3.1731) within the same shared cap. The operator's objective is to maximize verified value under the cap. On that objective, BudgetFlow is the best policy on the paper's primary metric, Yield, and also improves Yield/$ in this readout.
 
 ### 5.3 Sensitivity Analysis
 
@@ -209,9 +209,9 @@ This is a governance choice, not merely an engineering optimization. The budget 
 
 ### 6.2 When BudgetFlow Spends More
 
-In the current results, BudgetFlow spends the full cap ($6.0000) while T3-only spends $5.8303. The $0.1697 difference represents budget that T3-only left on the table. That unspent budget is not a savings—it is a missed opportunity. If the operator's objective is to maximize verified value under the cap, then leaving budget unspent while value remains unrealized is a policy failure, not a victory.
+In the current results, BudgetFlow and T2-only both spend the full cap ($6.0000), but BudgetFlow achieves substantially higher Yield (21.0 vs. 14.5). T3-only spends $5.8303. The $0.1697 difference between BudgetFlow and T3-only is not a policy failure—T3-only is a strong efficiency baseline with higher Yield/$ than T2-only. However, the fact that lower spend does not translate into higher verified value reinforces the central point: cost minimization is not the right objective under a shared budget cap.
 
-BudgetFlow's runtime policy may select T3 for high-value tasks even when T2 would be cheaper, because the expected gain in verified value outweighs the expected additional cost. Conversely, it may select T2 for low-value tasks even when budget remains, because the value at stake does not justify the spend. This is the allocation decision, and it is what produces the higher Yield and Yield/$ in Table 1.
+BudgetFlow's runtime policy may select T3 for high-value tasks even when T2 would be cheaper in expectation, because the expected gain in verified value outweighs the expected additional cost. Conversely, it may select T2 for low-value tasks even when budget remains, because the value at stake does not justify the spend. This is the allocation decision, and it is what produces the higher Yield and Yield/$ in Table 1.
 
 ### 6.3 Relationship to Prior Work
 
@@ -229,7 +229,7 @@ BudgetFlow's current scope (Claim 1) covers task-start model selection under the
 
 BudgetFlow demonstrates that under a shared hard budget, value-aware allocation across a fixed task batch achieves higher normalized verified resolved value (Yield) and higher Yield per Dollar than uniform-tier baselines. On a 30-task SWE-bench workload, BudgetFlow achieves 17/30 pass, Yield 21.0, and Yield/$ 3.5000, exceeding T3-only (16/30, Yield 18.5, Yield/$ 3.1731) and T2-only (12/30, Yield 14.5, Yield/$ 2.4167). The directional advantage persists across KV-cache discount levels, value profiles, and budget cap sensitivities.
 
-The core insight is that shared-budget allocation is a value maximization problem, not a cost minimization problem. A nominally stronger model is not "too expensive" if it converts budget into verified value more effectively. A nominally cheaper model is not "efficient" if it leaves budget unspent while value remains unrealized. BudgetFlow treats the budget as a governance constraint—auditable, pre-declared, and binding—and the allocation policy as the mechanism for converting that constraint into the most verified value possible.
+The core insight is that shared-budget allocation is a value maximization problem, not a cost minimization problem. A nominally stronger model is not "too expensive" if it converts budget into verified value more effectively. BudgetFlow treats the budget as a governance constraint—auditable, pre-declared, and active—and the allocation policy as the mechanism for converting that constraint into the most verified value possible.
 
 ---
 
