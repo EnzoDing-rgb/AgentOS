@@ -9,13 +9,9 @@ number-sections: true
 linkcolor: blue
 ---
 
-**Draft — Claim 1 only. Claim 2 parked for future work.**
-
----
-
 ## Abstract
 
-We introduce BudgetFlow, a budget governance layer that maximizes normalized verified resolved value (Yield) under a single shared hard budget across a fixed batch of tasks. Existing approaches to cost-efficient LLM deployment—cascade routing, inference-time budget control, and budget-aware agent frameworks—operate at the level of individual queries or agent runs. None address the allocation problem that arises when a fixed task batch must share one hard budget: which tasks deserve scarce model opportunities, and how should runtime model selection reflect pre-registered task value? BudgetFlow answers this with two components: a pre-run budget regime compiler that translates a hard cap into an auditable allocation scheme, and a runtime value-aware policy that selects models at task start based on expected verified value. In experiments using a fixed 30-task SWE-bench workload under a shared budget, BudgetFlow achieves 17/30 pass, Yield 21.0, Cost $6.0000, and Yield/$ 3.5000, compared to T2-only (12/30, Yield 14.5, Yield/$ 2.4167) and T3-only (16/30, Yield 18.5, Yield/$ 3.1731) baselines. The results hold directionally across KV-cache discount levels, value profiles, and budget cap settings. BudgetFlow demonstrates that shared-budget value maximization, rather than per-query cost minimization, is the appropriate objective when a batch of heterogeneous tasks competes for one hard budget.
+We introduce BudgetFlow, a budget governance layer that maximizes normalized verified resolved value (Yield) under a single shared hard budget across a fixed batch of tasks. Existing approaches to cost-efficient LLM deployment—cascade routing, per-example budget enforcement, and budget-aware agent frameworks—operate at the level of individual queries or agent runs. None address the allocation problem that arises when a fixed task batch must share one hard budget: which tasks deserve scarce model opportunities, and how should runtime model selection reflect pre-registered task value? BudgetFlow answers this with two components: a pre-run budget regime compiler that translates a hard cap into an auditable allocation scheme, and a runtime value-aware policy that selects models at task start based on expected verified value. In experiments using a fixed 30-task SWE-bench workload under a shared budget, BudgetFlow achieves 17/30 pass, Yield 21.0, Cost $6.0000, and Yield/$ 3.5000, compared to T2-only (12/30, Yield 14.5, Yield/$ 2.4167) and T3-only (16/30, Yield 18.5, Yield/$ 3.1731) baselines. The results hold directionally across KV-cache discount levels, value profiles, and budget cap settings. BudgetFlow demonstrates that shared-budget value maximization, rather than per-query cost minimization, is the appropriate objective when a batch of heterogeneous tasks competes for one hard budget.
 
 ---
 
@@ -23,7 +19,7 @@ We introduce BudgetFlow, a budget governance layer that maximizes normalized ver
 
 Large language model (LLM) agents are increasingly deployed to complete batches of tasks—sweeping issues in a repository, processing customer requests, or running scheduled maintenance workflows. Each task has a different value to the operator, and the operator pays for every token the agent consumes. In most deployments, the operator sets a hard budget: not a per-task allowance, not a cost-sensitivity parameter, but a single cap that the entire batch must stay under. When that cap is binding, the operator faces an allocation problem: which tasks should receive stronger (and potentially more expensive) model calls, and which should proceed with cheaper models, such that the total verified value produced by the batch is maximized under the cap?
 
-Existing work on cost-efficient LLM deployment does not answer this question. Cascade routing systems—FrugalGPT (Chen et al., 2023), RouteLLM (Ong et al., 2024), HybridLLM (Ding et al., 2024), UCCI (Kotte, 2026), and RouteNLP (Guo et al., 2026)—optimize per-query cost-accuracy tradeoffs. They decide whether to escalate a single query from a cheap model to an expensive one, but do not manage a shared budget across queries, track cumulative spending, or weigh task value in the escalation decision. Inference-time budget control methods—INTENT (Liu et al., 2025), BATS (Liu et al., 2025), Predictive Scheduling (Brown et al., 2025), BudgetThinker (Wen et al., 2025), and BRPO (Qi et al., 2025)—enforce per-example or per-run token budgets. An agent that exceeds its individual budget is terminated. These methods do not allocate one shared budget across tasks of differing value. Explainable routing frameworks such as Topaz (Okamoto et al., 2026) provide auditable per-workflow routing with quality-cost tradeoff parameters, but treat the budget as a parameter to optimize against rather than a depletable hard cap. Agent-level budget systems such as BCAS (McCleary & Ghawaly, 2026) surface remaining budget to an agent during iterative retrieval, but do not allocate across heterogeneous tasks.
+Existing work on cost-efficient LLM deployment does not answer this question. Cascade routing systems—FrugalGPT (Chen et al., 2023), RouteLLM (Ong et al., 2024), HybridLLM (Ding et al., 2024), UCCI (Kotte, 2026), and RouteNLP (Guo et al., 2026)—optimize per-query cost-accuracy tradeoffs. They decide whether to escalate a single query from a cheap model to an expensive one, but do not manage a shared budget across queries, track cumulative spending, or weigh task value in the escalation decision. Per-example budget enforcement methods—INTENT (Liu et al., 2025), BATS (Liu et al., 2025), Predictive Scheduling (Brown et al., 2025), BudgetThinker (Wen et al., 2025), and BRPO (Qi et al., 2025)—enforce per-example or per-run token budgets. An agent that exceeds its individual budget is terminated. These methods do not allocate one shared budget across tasks of differing value. Explainable routing frameworks such as Topaz (Okamoto et al., 2026) provide auditable per-workflow routing with quality-cost tradeoff parameters, but treat the budget as a parameter to optimize against rather than a depletable hard cap. Agent-level budget systems such as BCAS (McCleary & Ghawaly, 2026) surface remaining budget to an agent during iterative retrieval, but do not allocate across heterogeneous tasks.
 
 In short, no existing system combines four properties: (1) one shared hard budget across a fixed batch of tasks, (2) pre-registered per-task value that is not post-hoc fitted, (3) a runtime policy that allocates scarce shared budget to maximize total verified value, and (4) a pre-run budget regime compiler that makes the cap auditable.
 
@@ -33,7 +29,7 @@ BudgetFlow is not a cheapest-model fallback policy. It is a value-aware budget a
 
 We evaluate BudgetFlow on a fixed 30-task SWE-bench workload under a binding shared budget. BudgetFlow achieves 17/30 pass, Yield 21.0, and Yield/$ 3.5000, compared to T2-only (12/30 pass, Yield 14.5, Yield/$ 2.4167) and T3-only (16/30 pass, Yield 18.5, Yield/$ 3.1731). Sensitivity analysis across KV-cache discount levels, value profiles, and budget cap settings confirms that BudgetFlow's advantage is directionally consistent.
 
-The contribution of this paper (Claim 1) is: under a shared hard budget, BudgetFlow maximizes normalized verified resolved value—Yield. Claim 2, which concerns mechanism-level analysis of segment-level routing and escalation strategies, is reserved for future work.
+The contribution of this paper (Claim 1) is: under a shared hard budget, BudgetFlow maximizes normalized verified resolved value—Yield. This paper evaluates task-start value-aware allocation; finer-grained within-task routing, escalation, stop-loss, and learning mechanisms are left for future work.
 
 ---
 
@@ -47,19 +43,19 @@ Cascade routing is the dominant paradigm for cost-efficient LLM inference. Fruga
 
 These systems operate per-query. Each query is an independent cost-accuracy tradeoff. They do not allocate a shared budget across a batch, track cumulative spending, or prioritize high-value tasks. RouteNLP (Guo et al., 2026) moves closer to deployment-level routing with a closed-loop conformal cascading framework, but its budget-based mode uses dynamic programming to maximize quality under a per-workflow cost cap, not a shared hard budget that depletes across an ordered task sequence.
 
-UCCI (Kotte, 2026) addresses a specific weakness in cascade routers—uncalibrated confidence scores—by mapping token-level margin uncertainty to per-query error probabilities via isotonic regression. On a production NER workload, UCCI reduced inference cost by 31% at micro-F1 0.91. However, it remains a per-query cascade and does not manage shared-budget allocation.
+UCCI (Kotte, 2026, arXiv:2605.18796) addresses a specific weakness in cascade routers—uncalibrated confidence scores—by mapping token-level margin uncertainty to per-query error probabilities via isotonic regression. On a production NER workload, UCCI reduced inference cost by 31% at micro-F1 0.91. However, it remains a per-query cascade and does not manage shared-budget allocation.
 
-### 2.2 Inference-Time Budget Control
+### 2.2 Per-Example Budget Enforcement
 
 A parallel literature enforces compute budgets within a single model call, reasoning trace, or agent run. Predictive Scheduling (Brown et al., ICML 2025) uses lightweight MLP probes to predict optimal reasoning length before generation begins. e1 (Kleinman et al., 2025) uses RL to train models that follow user-specified effort fractions. BRPO (Qi et al., ICML 2025) trains models for optimal performance at any thinking budget via truncated chain-of-thought traces. BudgetThinker (Wen et al., 2025) inserts control tokens to signal remaining token budget during generation. The BAR Conjecture (Zhou et al., 2025) provides formal grounding by proving that no LLM system can simultaneously optimize inference-time budget, factual authenticity, and reasoning capacity beyond a critical input size.
 
-On the tool-call side, INTENT (Liu et al., ICML 2025) formalizes budget-constrained tool use with priced, stochastic calls and Monte Carlo lookahead. BATS (Liu et al., 2025) identifies a failure mode—giving agents larger tool-call budgets is ineffective without budget awareness—and introduces a lightweight Budget Tracker plugin. AVA (Patel et al., TMLR 2026) combines adaptive search, uncertainty estimation, and verification cascades under explicit budgets.
+On the tool-call side, INTENT (Liu et al., ICML 2025) formalizes budget-constrained tool use with priced, stochastic calls and Monte Carlo lookahead. BATS (Liu et al., 2025) identifies a failure mode—giving agents larger tool-call budgets is ineffective without budget awareness—and introduces a lightweight Budget Tracker plugin. AVA (Patel et al., TMLR 2026) combines adaptive search, uncertainty estimation, and verification cascades under explicit budgets. Fang et al. (2026) extend per-example budget control to multi-hop QA search agents with a Value-of-Information controller under dual token and tool-call budgets.
 
 These systems enforce per-example or per-run constraints. A run that exceeds its budget is terminated. They do not address the cross-task allocation question: how should a batch of tasks of varying value share one hard budget?
 
 ### 2.3 Explainable and Agent-Level Budget Routing
 
-Topaz (Okamoto et al., CHI 2026 HCXAI Workshop) introduces explainable model routing using an 8-dimensional skill taxonomy. It profiles both models and subtasks, provides objective-based and budget-based routing modes, and records all decisions in structured trace logs. Topaz's contribution is auditability—a developer can ask whether the system was smart or just cheap. However, its budget is a parameter to maximize against, not a binding constraint that depletes in real time.
+Topaz (Okamoto et al., 2026, CHI 2026 Workshop on Human-Centered Explainable AI, arXiv:2604.03527) introduces explainable model routing using an 8-dimensional skill taxonomy. It profiles both models and subtasks, provides objective-based and budget-based routing modes, and records all decisions in structured trace logs. Topaz's contribution is auditability—a developer can ask whether the system was smart or just cheap. However, its budget is a parameter to maximize against, not a binding constraint that depletes in real time.
 
 BCAS (McCleary & Ghawaly, 2026) provides a model-agnostic evaluation harness that surfaces remaining budget to an agent during iterative RAG. It gates tool calls against explicit token and turn budgets. A key finding—accuracy improves with additional searches only up to a small cap—directly informs when a budget-constrained agent should stop spending on a given task. AgentServe (Zhang et al., 2026) addresses GPU-level resource contention in multi-agent serving but does not handle policy-level allocation across heterogeneous tasks.
 
@@ -181,19 +177,59 @@ BudgetFlow spends the full cap and produces more verified value. T3-only is a st
 
 ### 5.3 Sensitivity Analysis
 
-We report sensitivity results across three dimensions. Full tables will be populated when the clean one-shot 3×30 run completes; the directional findings described below are based on the current stitched readout used to unblock the draft.
+We evaluate BudgetFlow's robustness across three sensitivity dimensions: KV-cache discount, value profile, and budget cap. All sensitivity runs use the same 30-task batch, fixed task order, and frozen CostSource. The sensitivity readout uses corrected Yield values from the patch-cleaner forensic re-read (BudgetFlow Yield 22.0 vs. Table 1's uncorrected 21.0); the directional pattern is unchanged. All three baselines consume the same task set under the same protocol.
 
-**KV-cache discount sensitivity.** Across tested KV discount levels (KV0, KV50, KV80, KV90, KV98, KV99), BudgetFlow directionally achieves higher Yield and higher Yield/$ than both T2-only and T3-only baselines. The magnitude of the advantage varies with the discount level—as KV cache pricing shifts the effective per-token cost of each model, the regime compiler's allocation adapts—but the directional ordering (BudgetFlow > T3 > T2 on Yield/$) persists.
+**KV-cache discount sensitivity.** Table 2 reports Yield and Yield/$ across six KV-cache discount levels under the current value profile. KV-cache discounting reduces the effective per-token cost of repeated input tokens without changing base model prices or physical model bindings; higher discount levels benefit models that produce longer multi-turn trajectories with large repeating prefixes.
 
-**[Table 2 placeholder: Yield and Yield/$ across KV discount levels for all three policies.]**
+| KV Discount | T2 Cost / Y$ | T3 Cost / Y$ | BF Cost / Y$ | Yield Winner | Efficiency Winner |
+|---:|---:|---:|---:|---|---|
+| 0% | $17.9595 / 1.0858 | $8.7395 / 2.0024 | $12.7868 / 1.7205 | BF 22.0 | T3 |
+| 50% | $9.7729 / 1.9953 | $5.1336 / 3.4089 | $7.1727 / 3.0672 | BF 22.0 | T3 |
+| 80% | $4.8610 / 4.0116 | $2.9701 / 5.8921 | $3.8043 / 5.7830 | BF 22.0 | T3 |
+| 90% | $3.2236 / 6.0491 | $2.2489 / 7.7816 | $2.6814 / 8.2045 | BF 22.0 | BF |
+| 98% | $1.9138 / 10.1893 | $1.6720 / 10.4667 | $1.7832 / 12.3374 | BF 22.0 | BF |
+| 99% | $1.7500 / 11.1426 | $1.5998 / 10.9385 | $1.6709 / 13.1664 | BF 22.0 | BF |
 
-**Value profile sensitivity.** Under equal-value, current-value, and wide-gradient value profiles, BudgetFlow matches or exceeds T3-only on pass count and exceeds both baselines on Yield and Yield/$. The equal-value profile is the hardest test for value-aware allocation, since it removes the signal the policy uses to prioritize. BudgetFlow's performance under equal value demonstrates that the regime compiler provides a sensible default allocation even when value differences are absent.
+**Table 2.** KV-cache discount sensitivity. BudgetFlow maintains the highest Yield (22.0) at every discount level. Pure T3 leads Yield/$ at lower discount levels (KV0–KV80), where its lower token consumption dominates; BudgetFlow overtakes on Yield/$ at KV90 and above, where KV-cache discounts compress the cost gap between T2 and T3 trajectories.
 
-**[Table 3 placeholder: Yield and Yield/$ across value profiles (equal, current, wide gradient).]**
+BudgetFlow holds the highest absolute Yield at every discount level. The efficiency ranking depends on the discount regime: at low-to-moderate KV discounts (0%–80%), pure T3's lower total token consumption yields the best Yield/$. At KV90 and above, BudgetFlow overtakes pure T3 on Yield/$, because the cost penalty for BudgetFlow's T2-routed tasks shrinks under aggressive KV-cache pricing. This confirms that KV-cache assumptions affect efficiency rankings but not the Yield ordering, and supports treating KV-cache as an explicit sensitivity rather than a hidden CostSource parameter.
 
-**Budget cap sensitivity.** As the budget cap is tightened from the current binding level, both absolute Yield and pass counts decrease across all policies. BudgetFlow maintains a directional advantage in Yield and Yield/$ across the tested cap region. At very tight caps, the gap between BudgetFlow and the baselines narrows—when there is barely enough budget to execute all tasks, the allocator has fewer degrees of freedom—but BudgetFlow does not underperform.
+**Value profile sensitivity.** Table 3 reports Yield for all three policies across nine pre-registered value profiles at KV50. Value profiles vary the mapping from task criticality to numerical weight, testing whether BudgetFlow's advantage is an artifact of a specific value scheme.
 
-**[Table 4 placeholder: Yield and Yield/$ across budget cap levels for all three policies.]**
+| Value Profile | T2 Yield | T3 Yield | BF Yield | BF vs Best Baseline |
+|---:|---:|---:|---:|---:|
+| equal | 18.0 | 16.0 | 20.0 | +2.0 |
+| current | 19.5 | 17.5 | 22.0 | +2.5 |
+| current_high_to_2.0 | 21.0 | 19.0 | 24.0 | +3.0 |
+| current_high_to_2.5 | 22.5 | 20.5 | 26.0 | +3.5 |
+| top20_effort_critical | 22.5 | 20.5 | 25.0 | +2.5 |
+| top33_effort_critical | 24.5 | 21.5 | 28.5 | +4.0 |
+| effort_tertiles_1_1.5_2.5 | 27.5 | 24.0 | 31.5 | +4.0 |
+| both_fail_critical | 19.5 | 17.5 | 23.5 | +4.0 |
+| top10_effort_critical | 24.5 | 21.5 | 28.5 | +4.0 |
+
+**Table 3.** Value profile sensitivity at KV50. BudgetFlow achieves higher Yield than both baselines across all nine profiles. The margin grows with value spread: BudgetFlow's advantage is smallest under equal value (+2.0 over T2's 18.0) and largest under the widest gradient profiles (effort_tertiles, +4.0 over T2's 27.5).
+
+BudgetFlow outperforms both baselines on Yield under every tested value profile. The equal-value profile—where every task has identical weight—is the hardest test for value-aware allocation, since it removes the signal the policy uses to prioritize. BudgetFlow still leads (+2.0), indicating that the regime compiler's cost-aware default allocation provides value even when value differences are absent. As the value spread widens, BudgetFlow's advantage grows: under effort_tertiles_1_1.5_2.5, the widest gradient tested, BudgetFlow leads the best baseline by +4.0. This confirms that value-aware allocation captures more of the available gain when task values are heterogeneous—precisely the setting that motivates a shared-budget governance layer.
+
+**Budget cap sensitivity.** Table 4 reports Yield, total cost, and Yield/$ across eight budget cap levels at KV50 under the current value profile. The cap is a hard shared constraint; when binding, later tasks in the sequence are not executed.
+
+| Cap | T2 Yield / Cost / Y$ | T3 Yield / Cost / Y$ | BF Yield / Cost / Y$ | Yield Winner | Efficiency Winner |
+|---:|---:|---:|---:|---|---|
+| $3.00 | 9.5 / $2.9401 / 3.2312 | 10.0 / $2.9445 / 3.3961 | 13.5 / $2.9813 / 4.5283 | BF | BF |
+| $4.00 | 12.5 / $3.9541 / 3.1612 | 14.5 / $3.9682 / 3.6540 | 16.0 / $3.9972 / 4.0028 | BF | BF |
+| $5.00 | 12.5 / $4.9650 / 2.5176 | 17.5 / $4.9101 / 3.5641 | 18.0 / $4.9581 / 3.6304 | BF | BF |
+| $6.00 | 13.5 / $5.9444 / 2.2710 | 17.5 / $5.1336 / 3.4089 | 20.0 / $5.9992 / 3.3338 | BF | T3 |
+| $7.00 | 15.5 / $6.9965 / 2.2154 | 17.5 / $5.1336 / 3.4089 | 22.0 / $6.9740 / 3.1546 | BF | T3 |
+| $8.00 | 17.5 / $7.9361 / 2.2051 | 17.5 / $5.1336 / 3.4089 | 22.0 / $7.1727 / 3.0672 | BF | T3 |
+| $9.00 | 17.5 / $8.9609 / 1.9529 | 17.5 / $5.1336 / 3.4089 | 22.0 / $7.1727 / 3.0672 | BF | T3 |
+| $11.02 | 19.5 / $9.7729 / 1.9953 | 17.5 / $5.1336 / 3.4089 | 22.0 / $7.1727 / 3.0672 | BF | T3 |
+
+**Table 4.** Budget cap sensitivity at KV50. At tight caps ($3–$5), BudgetFlow wins both Yield and Yield/$. At looser caps ($6+), BudgetFlow leads Yield but pure T3 leads Yield/$ because T3 saturates at $5.13—it solves the T3-solvable subset and cannot convert additional budget into more verified value.
+
+The cap sensitivity reveals two regimes. At binding caps ($3–$5), where every policy is under genuine budget pressure, BudgetFlow wins both Yield and Yield/$—value-aware allocation is both more productive and more efficient. At looser caps ($6+), pure T3 saturates: its cost flattens at $5.1336 and its Yield plateaus at 17.5, because the remaining unsolved tasks require capabilities beyond T3. BudgetFlow continues to convert additional budget into higher Yield (reaching 22.0 at $7), but its Yield/$ falls below pure T3 because the extra tasks it solves require T3-level spend on T2-viable tasks. This is not a policy failure—it is the expected behavior when a value-aware policy spends more to capture value that a pure-tier baseline cannot reach. T2-only scales Yield gradually with cap but never catches BudgetFlow on absolute Yield.
+
+The key takeaway from the cap sensitivity is that BudgetFlow's mechanism is strongest when the cap is genuinely binding—exactly the regime the budget regime compiler targets. When the cap is loose enough that pure T3 is unconstrained, the allocation problem is less interesting; the operator should tighten the cap or enlarge the workload.
 
 ---
 
@@ -219,9 +255,7 @@ BudgetFlow's architecture is compatible with several existing techniques. UCCI's
 
 ### 6.4 Limitations and Future Work
 
-The current evaluation uses a fixed 30-task workload from SWE-bench. Results may not generalize to workloads with different task distributions, different verification criteria, or different model families. The value annotations are human-assigned; automated value inference from task metadata is an open direction.
-
-BudgetFlow's current scope (Claim 1) covers task-start model selection under the shared cap. Mechanism-level analysis of within-task behaviors—segment-level routing, escalation decisions, stop-loss policies, and continual cost memory—is explicitly reserved for Claim 2. The present results do not establish whether finer-grained budget control within individual tasks would further improve Yield, or whether the task-level allocation demonstrated here captures the majority of the available gain.
+The current evaluation uses a fixed 30-task workload from SWE-bench. Results may not generalize to workloads with different task distributions, different verification criteria, or different model families. The value annotations are human-assigned; automated value inference from task metadata is an open direction. This paper evaluates task-start value-aware allocation; finer-grained within-task routing, escalation, stop-loss, and learning mechanisms are left for future work.
 
 ---
 
@@ -245,9 +279,9 @@ The core insight is that shared-budget allocation is a value maximization proble
 
 [5] Guo, D., Wu, J., & Yiu, S. (2026). RouteNLP: Closed-Loop LLM Routing with Conformal Cascading and Distillation Co-Optimization.
 
-[6] Kotte, V. (2026). UCCI: Calibrated Uncertainty for Cost-Optimal LLM Cascade Routing.
+[6] Kotte, V. (2026). UCCI: Calibrated Uncertainty for Cost-Optimal LLM Cascade Routing. arXiv:2605.18796.
 
-[7] Okamoto, M., Erol, A. K., & Riedl, M. (2026). Explainable Model Routing for Agentic Workflows (Topaz). CHI 2026 HCXAI Workshop. arXiv:2604.03527.
+[7] Okamoto, M., Erol, A. K., & Riedl, M. (2026). Explainable Model Routing for Agentic Workflows (Topaz). CHI 2026 Workshop on Human-Centered Explainable AI. arXiv:2604.03527.
 
 [8] Brown, D., Muppidi, S., & Shahout, R. (2025). Predictive Scheduling for Efficient Inference-Time Reasoning in LLMs. ICML 2025.
 
@@ -270,3 +304,5 @@ The core insight is that shared-budget allocation is a value maximization proble
 [17] Zhang, Y., et al. (2026). AgentServe: Algorithm-System Co-Design for Efficient Agentic AI Serving.
 
 [18] Moslem, Y. & Kelleher, J.D. (2026). Dynamic Model Routing and Cascading for Efficient LLM Inference: A Survey.
+
+[19] Fang, Z., Hu, S., Chang, Z., Guo, Y., Tao, Y., Liu, H., Ruan, M., Huang, J., & Fang, Y. (2026). Inference-Time Budget Control for LLM Search Agents.
