@@ -212,24 +212,24 @@
 <h1>BudgetFlow 周报</h1>
 <p class="subtitle">2026-06-22 — 2026-06-24 · 3×30 Claim 1 readout · 三维敏感性 · 论文定位</p>
 
-<h2 id="sec-boundary">(0) 论文价值与边界</h2>
+<h2 id="sec-boundary">(0) Claim 1 与论文边界</h2>
 <div class="judgment">
-  <strong>不要把论文写成“又一个模型路由器”。</strong>
-  模型路由已经工业化。BudgetFlow 的问题更具体：一批任务共享一个硬预算时，怎样用预注册任务价值和 Budget Compiler，把钱花成更多 verified value。
+  <strong>Claim 1：</strong>在一个共享硬预算下，BudgetFlow 最大化 normalized verified resolved value，也就是 Yield。
+  这篇论文最有价值的部分，是把模型选择问题变成一个可审计的 shared-budget value allocation 问题。
 </div>
 
 <div class="card-row">
   <div class="card">
-    <h3>如何 justify 泛化性</h3>
+    <h3>为什么不是普通 routing</h3>
+    <p>模型路由已经工业化。BudgetFlow 关心的是一批任务共用一个预算时，怎样按任务价值分配模型机会，并用 verified outcome 结算。</p>
+  </div>
+  <div class="card">
+    <h3>如何泛化</h3>
     <p>泛化性来自接口：ValueSource、Task Effort、Model Catalog、Budget Cap、Verifier 都可替换。SWE-bench 是当前压力测试，不是机制边界。</p>
   </div>
   <div class="card">
-    <h3>为什么 AgentOS 需要 run</h3>
-    <p>企业 AgentOS 不是只省单条 prompt 的钱，而是让一批任务共享预算。它需要决定哪些任务值得花钱，并留下可审计记录。</p>
-  </div>
-  <div class="card">
-    <h3>冷启动方案</h3>
-    <p>冷启动可以人工注入任务价值，也可以让 Budget Compiler 按任务元数据拆预算。关键是运行前冻结，不能按结果回填。</p>
+    <h3>冷启动怎么做</h3>
+    <p>业务方可以注入任务价值；Budget Compiler 可以按任务元数据拆预算。关键是运行前冻结价值和规则，运行后只做审计。</p>
   </div>
 </div>
 
@@ -360,8 +360,8 @@
   </div>
   <div class="metric-box">
     <div class="label">BF Yield</div>
-    <div class="big-number">21.0</div>
-    <div class="delta">vs best baseline +2.5</div>
+    <div class="big-number">21.00</div>
+    <div class="delta">vs best baseline +2.50</div>
   </div>
   <div class="metric-box">
     <div class="label">BF Yield / Dollar</div>
@@ -371,7 +371,7 @@
   <div class="metric-box">
     <div class="label">Shared Cap</div>
     <div class="big-number">$6.00</div>
-    <div class="delta">BF 100% · T3 97.2%</div>
+    <div class="delta">BF 100% · T3 97.20%</div>
   </div>
 </div>
 
@@ -384,30 +384,30 @@
       <td>pure T2 baseline</td>
       <td>12</td>
       <td>18</td>
-      <td>$6.0000</td>
-      <td>14.5</td>
-      <td>2.4167</td>
-      <td>100.0%</td>
+      <td>$6.00</td>
+      <td>14.50</td>
+      <td>2.42</td>
+      <td>100.00%</td>
       <td>T2 有时便宜，但长回合会烧预算，并且解决价值最低。</td>
     </tr>
     <tr>
       <td>pure T3 baseline</td>
       <td>16</td>
       <td>14</td>
-      <td>$5.8303</td>
-      <td>18.5</td>
-      <td>3.1731</td>
-      <td>97.2%</td>
+      <td>$5.83</td>
+      <td>18.50</td>
+      <td>3.17</td>
+      <td>97.20%</td>
       <td>强 baseline；T3 token 单价高，但 turn-efficient，任务级成本不一定高。</td>
     </tr>
     <tr class="best">
       <td>BudgetFlow task-level</td>
       <td><b>17</b></td>
       <td>13</td>
-      <td><b>$6.0000</b></td>
-      <td><b>21.0</b></td>
-      <td><b>3.5000</b></td>
-      <td><b>100.0%</b></td>
+      <td><b>$6.00</b></td>
+      <td><b>21.00</b></td>
+      <td><b>3.50</b></td>
+      <td><b>100.00%</b></td>
       <td><b>同时赢 Yield 和 Yield/$：多解决 1 个任务，且多解决的是高价值任务。</b></td>
     </tr>
   </tbody>
@@ -415,7 +415,7 @@
 
 <div class="judgment">
   <strong>一句话解释：</strong>BudgetFlow 不是因为“总是省钱”获胜，而是因为它在同一预算下把钱花到了更高 verified value 的任务上。
-  T3-only 几乎耗尽预算但停在 18.5 Yield；BudgetFlow 用满 $6.00 后达到 21.0 Yield 和 3.50 Yield/$。
+  T3-only 几乎耗尽预算但停在 18.50 Yield；BudgetFlow 用满 $6.00 后达到 21.00 Yield 和 3.50 Yield/$。
 </div>
 
 <h3 id="sec-kv">(1.2) KV Cache 敏感性 · 4 档即可</h3>
@@ -443,9 +443,9 @@
     <tr><th>Value Profile</th><th>pure T2 Yield / Y$</th><th>pure T3 Yield / Y$</th><th>BudgetFlow Yield / Y$</th><th>Readout</th></tr>
   </thead>
   <tbody>
-    <tr><td>Equal value (all 1.0)</td><td>12.0 / 2.00</td><td>16.0 / 2.74</td><td class="win">17.0 / 2.83</td><td>去掉价值权重后，BF 仍略赢 T3。</td></tr>
-    <tr class="best"><td>Current value</td><td>14.5 / 2.42</td><td>18.5 / 3.17</td><td class="win">21.0 / 3.50</td><td>主 ValueSource：BF 优势最清楚。</td></tr>
-    <tr><td>Wider effort tertiles</td><td>19.0 / 3.17</td><td>25.0 / 4.29</td><td class="win">26.0 / 4.33</td><td>更宽价值梯度下方向不变，但优势不夸大。</td></tr>
+    <tr><td>Equal value (all 1.00)</td><td>12.00 / 2.00</td><td>16.00 / 2.74</td><td class="win">17.00 / 2.83</td><td>去掉价值权重后，BF 仍略赢 T3。</td></tr>
+    <tr class="best"><td>Current value</td><td>14.50 / 2.42</td><td>18.50 / 3.17</td><td class="win">21.00 / 3.50</td><td>主 ValueSource：BF 优势最清楚。</td></tr>
+    <tr><td>Wider effort tertiles</td><td>19.00 / 3.17</td><td>25.00 / 4.29</td><td class="win">26.00 / 4.33</td><td>更宽价值梯度下方向不变，但优势不夸大。</td></tr>
   </tbody>
 </table>
 
@@ -458,10 +458,10 @@
     <tr><th>Cap</th><th>pure T2 Yield / Cost / Y$</th><th>pure T3 Yield / Cost / Y$</th><th>BudgetFlow Yield / Cost / Y$</th><th>Winner</th></tr>
   </thead>
   <tbody>
-    <tr><td>$3</td><td>8.5 / $3.00 / 2.84</td><td>9.5 / $2.70 / 3.52</td><td class="win">15.5 / $2.97 / 5.22</td><td class="win">BF wins both</td></tr>
-    <tr><td>$4</td><td>10.0 / $3.87 / 2.58</td><td>12.0 / $3.70 / 3.25</td><td class="win">16.5 / $3.87 / 4.26</td><td class="win">BF wins both</td></tr>
-    <tr><td>$5</td><td>13.5 / $4.91 / 2.75</td><td>15.5 / $4.91 / 3.15</td><td class="win">20.0 / $4.84 / 4.13</td><td class="win">BF wins both</td></tr>
-    <tr class="best"><td>$6 (main)</td><td>14.5 / $6.00 / 2.42</td><td>18.5 / $5.83 / 3.17</td><td class="win">21.0 / $6.00 / 3.50</td><td class="win">BF wins both</td></tr>
+    <tr><td>$3</td><td>8.50 / $3.00 / 2.84</td><td>9.50 / $2.70 / 3.52</td><td class="win">15.50 / $2.97 / 5.22</td><td class="win">BF wins both</td></tr>
+    <tr><td>$4</td><td>10.00 / $3.87 / 2.58</td><td>12.00 / $3.70 / 3.25</td><td class="win">16.50 / $3.87 / 4.26</td><td class="win">BF wins both</td></tr>
+    <tr><td>$5</td><td>13.50 / $4.91 / 2.75</td><td>15.50 / $4.91 / 3.15</td><td class="win">20.00 / $4.84 / 4.13</td><td class="win">BF wins both</td></tr>
+    <tr class="best"><td>$6 (main)</td><td>14.50 / $6.00 / 2.42</td><td>18.50 / $5.83 / 3.17</td><td class="win">21.00 / $6.00 / 3.50</td><td class="win">BF wins both</td></tr>
   </tbody>
 </table>
 
@@ -494,7 +494,7 @@
 </p>
 
 <div class="judgment">
-  <strong>导师版 justification：</strong>OpenRouter 证明“模型路由”已经是重要基础设施，因此我们不能把 novelty 放在普通 routing 上。
+  <strong>Justification：</strong>OpenRouter 证明“模型路由”已经是重要基础设施，因此我们不能把 novelty 放在普通 routing 上。
   BudgetFlow 的 novelty 是 shared hard budget + value registration + verified outcome accounting。
   工业系统解决在线请求分发；本文解决批量任务资源分配和可审计评估，两者相邻但不是同一个研究问题。
 </div>
@@ -527,7 +527,7 @@
 <div class="card-row">
   <div class="card">
     <h3>3×30 Claim 1 readout <span class="tag tag-blue">done</span></h3>
-    <p>90/90 scoreable。主结果统一为 cap $6.00：T2 14.5 Yield / 2.4167 Y$, T3 18.5 / 3.1731, BF 21.0 / 3.5000。</p>
+    <p>90/90 scoreable。主结果统一为 cap $6.00：T2 14.50 Yield / 2.42 Y$, T3 18.50 / 3.17, BF 21.00 / 3.50。</p>
   </div>
   <div class="card">
     <h3>Sensitivity 简化 <span class="tag tag-blue">done</span></h3>
