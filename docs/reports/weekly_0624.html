@@ -58,8 +58,7 @@
   nav .toc-l2 { padding-left: 18px; font-size: 13px; }
   nav hr { border: 0; border-top: 1px solid rgba(255,255,255,.1); margin: 14px 0; }
   main {
-    width: calc(100% - 220px);
-    max-width: 1120px;
+    width: min(1360px, calc(100vw - 220px));
     margin-left: 220px;
     padding: 36px 42px 60px;
   }
@@ -171,6 +170,8 @@
   .tag-gray { background: #eef2f7; color: #465568; }
   .tag-red { background: #fee4e2; color: var(--danger); }
   .win { color: var(--win); font-weight: 750; }
+  .win-red { color: var(--danger); font-weight: 750; }
+  .signal-red { color: var(--danger); font-weight: 750; }
   .muted { color: var(--muted); }
   .danger { color: var(--danger); font-weight: 700; }
   code {
@@ -202,7 +203,7 @@
   <a href="#sec-value" class="toc-l2">(1.3) 价值敏感性</a>
   <a href="#sec-cap" class="toc-l2">(1.4) 预算敏感性</a>
   <hr>
-  <a href="#sec-openrouter" class="toc-l1">(2) OpenRouter 对照</a>
+  <a href="#sec-openrouter" class="toc-l1">(2) 工业界对照</a>
   <a href="#sec-risks" class="toc-l1">(3) 风险与解释</a>
   <a href="#sec-work" class="toc-l1">(4) 本周工作</a>
 </nav>
@@ -210,7 +211,6 @@
 <main>
 
 <h1>BudgetFlow 周报</h1>
-<p class="subtitle">2026-06-22 — 2026-06-24 · 3×30 Claim 1 readout · 三维敏感性 · 论文定位</p>
 
 <h2 id="sec-boundary">(0) Claim 1 与论文边界</h2>
 <div class="judgment">
@@ -233,10 +233,34 @@
   </div>
 </div>
 
+<table>
+  <thead>
+    <tr><th>模块</th><th>它做什么</th><th>它不做什么</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><span class="signal-red">Budget Compiler</span></td>
+      <td>在运行前把任务价值、任务特征和总预算编译成一个共享预算方案。</td>
+      <td>它不负责具体挑哪个模型，也不负责执行任务。</td>
+    </tr>
+    <tr>
+      <td><span class="signal-red">BudgetFlow</span></td>
+      <td>在运行时按这个预算方案分配模型机会，决定哪些任务值得花更多预算。</td>
+      <td>它不回写价值标签，也不重写预算规则。</td>
+    </tr>
+    <tr>
+      <td><span class="signal-red">两者的边界</span></td>
+      <td>一个负责先定预算框架，一个负责在框架内花钱。</td>
+      <td>这样可以避免循环论证，也让审计更清楚。</td>
+    </tr>
+  </tbody>
+</table>
+
 <h3 id="sec-related">(0.1) Related Work 快速定位</h3>
 <p class="note">
   一句话：别人多在做 per-query / per-run routing；我们做 shared-budget 下的 value allocation。
-  核心机制是 <b>Value-Aware allocation</b> + <b>Budget Compiler</b>。
+  核心机制是 <span class="signal-red">Value-Aware allocation</span> + <span class="signal-red">Budget Compiler</span>。
+  <span class="signal-red">Budget Compiler</span> 负责运行前定预算框架，<span class="signal-red">BudgetFlow</span> 负责运行时在框架内分配模型机会。
 </p>
 <table>
   <thead>
@@ -247,38 +271,38 @@
       <td>FrugalGPT (2023), RouteLLM (2024), HybridLLM / AutoMix (2024), UCCI (2026), RouteNLP (2026)</td>
       <td>每个 query 选便宜模型还是强模型。</td>
       <td>没有 batch-level hard cap，也没有预注册 task value。</td>
-      <td><b>Value-Aware：</b>先冻结任务价值，再决定预算花在哪里。</td>
+      <td><span class="signal-red">Value-Aware</span>：先冻结任务价值，再决定预算花在哪里。</td>
     </tr>
     <tr>
       <td>Predictive Scheduling (ICML 2025), e1 / BRPO / BudgetThinker (2025)</td>
       <td>控制单次推理的 token/compute budget。</td>
       <td>预算是 per-example，不是多个任务共享。</td>
-      <td><b>Budget Compiler：</b>把 shared cap 编译成可审计的 batch plan。</td>
+      <td><span class="signal-red">Budget Compiler</span>：把 shared cap 编译成可审计的 batch plan。</td>
     </tr>
     <tr>
       <td>INTENT (ICML 2025), BATS (2025), AVA (TMLR 2026), BCAS (2026)</td>
       <td>让单个 agent run 感知工具、token 或金钱预算。</td>
       <td>更像 Claim 2 机制，不是 Claim 1 的跨任务分配。</td>
-      <td>我们先钉死 Claim 1：同一预算下是否比 pure T2/T3 产生更多 Yield。</td>
+      <td>我们先钉死 <span class="signal-red">Claim 1</span>：同一预算下是否比 pure T2/T3 产生更多 <span class="signal-red">Yield</span>。</td>
     </tr>
     <tr>
       <td>Topaz (CHI 2026 HCXAI Workshop), AgentServe (2026)</td>
       <td>解释性 routing 或 serving 资源控制。</td>
       <td>没有把 task value、shared cap、verified Yield 绑成一个主实验。</td>
-      <td><b>Mechanism 可审计：</b>价值、成本、compiler、policy、verifier 分开检查。</td>
+      <td><span class="signal-red">Mechanism 可审计</span>：价值、成本、compiler、policy、verifier 分开检查。</td>
     </tr>
     <tr>
-      <td>OpenRouter Auto Router / provider routing (industrial)</td>
+      <td>OpenRouter 等工业界模型路由平台</td>
       <td>在线请求级模型选择和 provider fallback。</td>
       <td>说明 routing 有工业价值，但不是 batch-level 科研评估。</td>
-      <td>我们不是 claim “会 routing”，而是 claim “shared budget 下能多产出 verified value”。</td>
+      <td>我们不是 claim “会 routing”，而是 claim <span class="signal-red">“shared budget 下能多产出 verified value”</span>。</td>
     </tr>
   </tbody>
 </table>
 
 <div class="judgment">
   <strong>可发表性定位：</strong>不要争“routing novelty”。要争的是：
-  shared hard budget + task value + Budget Compiler + verified Yield。这个组合现有工作没有正面回答。
+  <span class="signal-red">shared hard budget</span> + <span class="signal-red">task value</span> + <span class="signal-red">Budget Compiler</span> + <span class="signal-red">verified Yield</span>。这个组合现有工作没有正面回答。
 </div>
 
 <h3>Claim 2 Future Work</h3>
@@ -301,7 +325,7 @@
   <tbody>
     <tr>
       <td>“你们是不是过拟合 SWE-bench？”</td>
-      <td>报告 equal/current/wider value、KV、budget cap 三类 sensitivity；指标只看冻结任务集上的 verified Yield 和 Yield/$。</td>
+      <td>报告三类 sensitivity：等权价值、当前价值、更宽价值梯度；再加 KV 与 budget cap。指标只看冻结任务集上的 verified Yield 和 Yield / Dollar。</td>
       <td>目前仍只验证了 SWE-bench 30-task batch；其他任务域需要后续 run。</td>
     </tr>
     <tr>
@@ -347,37 +371,14 @@
 </table>
 
 <div class="judgment warn">
-  <strong>数据边界：</strong>当前 3×30 总表已经显示 BudgetFlow 赢 Yield 和 Yield/$。
+  <strong>数据边界：</strong>当前 3×30 总表已经显示 BudgetFlow 赢 Yield 和 Yield / Dollar。
   但第三阶段单独看没有打出理想优势，说明策略稳定性还需要更完美的一把过结果来巩固。
 </div>
 
 <h3 id="sec-mainline">(1.1) 3×30 主结果 · 先看 baseline 对比</h3>
-<div class="card-row four">
-  <div class="metric-box">
-    <div class="label">BF Pass</div>
-    <div class="big-number">17/30</div>
-    <div class="delta">T2 12/30 · T3 16/30</div>
-  </div>
-  <div class="metric-box">
-    <div class="label">BF Yield</div>
-    <div class="big-number">21.00</div>
-    <div class="delta">vs best baseline +2.50</div>
-  </div>
-  <div class="metric-box">
-    <div class="label">BF Yield / Dollar</div>
-    <div class="big-number">3.50</div>
-    <div class="delta">T2 2.42 · T3 3.17</div>
-  </div>
-  <div class="metric-box">
-    <div class="label">Shared Cap</div>
-    <div class="big-number">$6.00</div>
-    <div class="delta">BF 100% · T3 97.20%</div>
-  </div>
-</div>
-
 <table>
   <thead>
-    <tr><th>Strategy</th><th>Pass</th><th>Fail</th><th>Cost</th><th>Yield</th><th>Yield/$</th><th>Cap Util.</th><th>Interpretation</th></tr>
+    <tr><th>Strategy</th><th>Pass</th><th>Fail</th><th>Cost</th><th>Yield</th><th>Yield / Dollar</th><th>Cap Util.</th><th>Interpretation</th></tr>
   </thead>
   <tbody>
     <tr>
@@ -408,27 +409,27 @@
       <td><b>21.00</b></td>
       <td><b>3.50</b></td>
       <td><b>100.00%</b></td>
-      <td><b>同时赢 Yield 和 Yield/$：多解决 1 个任务，且多解决的是高价值任务。</b></td>
+      <td><b>同时赢 Yield 和 Yield / Dollar：多解决 1 个任务，且多解决的是高价值任务。</b></td>
     </tr>
   </tbody>
 </table>
 
 <div class="judgment">
   <strong>一句话解释：</strong>BudgetFlow 不是因为“总是省钱”获胜，而是因为它在同一预算下把钱花到了更高 verified value 的任务上。
-  T3-only 几乎耗尽预算但停在 18.50 Yield；BudgetFlow 用满 $6.00 后达到 21.00 Yield 和 3.50 Yield/$。
+  T3-only 几乎耗尽预算但停在 18.50 Yield；BudgetFlow 用满 $6.00 后达到 21.00 Yield 和 3.50 Yield / Dollar。
 </div>
 
 <h3 id="sec-kv">(1.2) KV Cache 敏感性 · 4 档即可</h3>
 <p class="note">
-  KV sensitivity 只改变重复输入 token 的成本核算，不改变 pass/fail。它回答的是：如果部署环境有不同缓存命中率，Yield/$ 排名是否会翻转？
+  KV sensitivity 只改变重复输入 token 的成本核算，不改变 pass/fail。它回答的是：如果部署环境有不同缓存命中率，Yield / Dollar 排名是否会翻转？
 </p>
 <table>
   <thead>
-    <tr><th>KV 折扣</th><th>pure T2 Cost / Y$</th><th>pure T3 Cost / Y$</th><th>BudgetFlow Cost / Y$</th><th>Readout</th></tr>
+    <tr><th>KV 折扣</th><th>pure T2: Cost / Yield / Dollar</th><th>pure T3: Cost / Yield / Dollar</th><th>BudgetFlow: Cost / Yield / Dollar</th><th>Readout</th></tr>
   </thead>
   <tbody>
     <tr><td>0%</td><td>$11.08 / 1.31</td><td>$9.98 / 1.85</td><td class="win">$10.77 / 1.95</td><td>无缓存下 BF 仍是效率赢家。</td></tr>
-    <tr class="best"><td>50% (main)</td><td>$6.00 / 2.42</td><td>$5.83 / 3.17</td><td class="win">$6.00 / 3.50</td><td>主结果：BF 同时赢 Yield 和 Yield/$。</td></tr>
+    <tr class="best"><td>50% (main)</td><td>$6.00 / 2.42</td><td>$5.83 / 3.17</td><td class="win">$6.00 / 3.50</td><td>主结果：BF 同时赢 Yield 和 Yield / Dollar。</td></tr>
     <tr><td>90%</td><td>$1.94 / 7.46</td><td>$2.51 / 7.38</td><td class="win">$2.20 / 9.56</td><td>高缓存下，T2 长回合成本被摊薄，BF 优势扩大。</td></tr>
     <tr><td>99%</td><td>$1.03 / 14.08</td><td>$1.76 / 10.51</td><td class="win">$1.34 / 15.69</td><td>极高缓存是部署上限假设，只作 sensitivity。</td></tr>
   </tbody>
@@ -440,12 +441,12 @@
 </p>
 <table>
   <thead>
-    <tr><th>Value Profile</th><th>pure T2 Yield / Y$</th><th>pure T3 Yield / Y$</th><th>BudgetFlow Yield / Y$</th><th>Readout</th></tr>
+    <tr><th>Value Profile</th><th>pure T2: Yield / Dollar</th><th>pure T3: Yield / Dollar</th><th>BudgetFlow: Yield / Dollar</th><th>Readout</th></tr>
   </thead>
   <tbody>
     <tr><td>Equal value (all 1.00)</td><td>12.00 / 2.00</td><td>16.00 / 2.74</td><td class="win">17.00 / 2.83</td><td>去掉价值权重后，BF 仍略赢 T3。</td></tr>
     <tr class="best"><td>Current value</td><td>14.50 / 2.42</td><td>18.50 / 3.17</td><td class="win">21.00 / 3.50</td><td>主 ValueSource：BF 优势最清楚。</td></tr>
-    <tr><td>Wider effort tertiles</td><td>19.00 / 3.17</td><td>25.00 / 4.29</td><td class="win">26.00 / 4.33</td><td>更宽价值梯度下方向不变，但优势不夸大。</td></tr>
+    <tr><td>Wider value gradient</td><td>19.00 / 3.17</td><td>25.00 / 4.29</td><td class="win">26.00 / 4.33</td><td>把高价值任务再拉开后，方向仍然一致。</td></tr>
   </tbody>
 </table>
 
@@ -455,25 +456,28 @@
 </p>
 <table>
   <thead>
-    <tr><th>Cap</th><th>pure T2 Yield / Cost / Y$</th><th>pure T3 Yield / Cost / Y$</th><th>BudgetFlow Yield / Cost / Y$</th><th>Winner</th></tr>
+    <tr><th>Cap</th><th>pure T2: Yield / Cost / Dollar</th><th>pure T3: Yield / Cost / Dollar</th><th>BudgetFlow: Yield / Cost / Dollar</th><th>Winner</th></tr>
   </thead>
   <tbody>
-    <tr><td>$3</td><td>8.50 / $3.00 / 2.84</td><td>9.50 / $2.70 / 3.52</td><td class="win">15.50 / $2.97 / 5.22</td><td class="win">BF wins both</td></tr>
-    <tr><td>$4</td><td>10.00 / $3.87 / 2.58</td><td>12.00 / $3.70 / 3.25</td><td class="win">16.50 / $3.87 / 4.26</td><td class="win">BF wins both</td></tr>
-    <tr><td>$5</td><td>13.50 / $4.91 / 2.75</td><td>15.50 / $4.91 / 3.15</td><td class="win">20.00 / $4.84 / 4.13</td><td class="win">BF wins both</td></tr>
-    <tr class="best"><td>$6 (main)</td><td>14.50 / $6.00 / 2.42</td><td>18.50 / $5.83 / 3.17</td><td class="win">21.00 / $6.00 / 3.50</td><td class="win">BF wins both</td></tr>
+    <tr><td>$3</td><td>8.50 / $3.00 / 2.84</td><td>9.50 / $2.70 / 3.52</td><td class="win">15.50 / $2.97 / 5.22</td><td class="win-red">BF wins both</td></tr>
+    <tr><td>$4</td><td>10.00 / $3.87 / 2.58</td><td>12.00 / $3.70 / 3.25</td><td class="win">16.50 / $3.87 / 4.26</td><td class="win-red">BF wins both</td></tr>
+    <tr><td>$5</td><td>13.50 / $4.91 / 2.75</td><td>15.50 / $4.91 / 3.15</td><td class="win">20.00 / $4.84 / 4.13</td><td class="win-red">BF wins both</td></tr>
+    <tr class="best"><td>$6 (main)</td><td>14.50 / $6.00 / 2.42</td><td>18.50 / $5.83 / 3.17</td><td class="win">21.00 / $6.00 / 3.50</td><td class="win-red">BF wins both</td></tr>
   </tbody>
 </table>
 
-<h2 id="sec-openrouter">(2) OpenRouter 对照：工业界已有路由，论文还剩什么价值</h2>
+<h2 id="sec-openrouter">(2) 工业界对照：OpenRouter 已有路由，论文还剩什么价值</h2>
+<p class="note">
+  OpenRouter 这类工业界模型路由平台的机制很直接：它在请求级别按 prompt、供应商状态、价格、延迟和 fallback 规则来选模型或供应商，目标是让单次请求更稳、更快或更便宜。
+</p>
 <table>
   <thead>
-    <tr><th>OpenRouter / industrial model routing</th><th>BudgetFlow paper</th></tr>
+    <tr><th>OpenRouter / industrial routing</th><th>BudgetFlow paper</th></tr>
   </thead>
   <tbody>
     <tr>
       <td>请求级产品优化：统一 API、provider routing、fallback、价格/延迟/吞吐/可用性排序；Auto Router 可按 prompt 选择模型，并提供 cost-quality tradeoff。</td>
-      <td>研究级 allocation problem：固定任务 batch、共享硬预算、预注册 task value、verified task outcome，并和 pure T2/T3 baseline 计算 Yield 与 Yield/$。</td>
+      <td>研究级 allocation problem：固定任务 batch、共享硬预算、预注册 task value、verified task outcome，并和 pure T2/T3 baseline 计算 Yield 与 Yield / Dollar。</td>
     </tr>
     <tr>
       <td>目标是让单次请求更可靠、更便宜或更快；失败时换 provider 或 fallback model。</td>
@@ -487,15 +491,13 @@
 </table>
 <p class="note">
   Sources:
-  <a href="https://openrouter.ai/docs/guides/routing/routers/auto-router">OpenRouter Auto Router</a>,
-  <a href="https://openrouter.ai/docs/guides/routing/provider-selection">Provider Selection</a>,
-  <a href="https://openrouter.ai/docs/guides/routing/model-fallbacks">Model Fallbacks</a>,
-  <a href="https://openrouter.ai/blog/insights/model-routing/">Model Routing overview</a>.
+  Auto Router / Provider Selection / Model Fallbacks / Model Routing overview.
 </p>
 
 <div class="judgment">
-  <strong>Justification：</strong>OpenRouter 证明“模型路由”已经是重要基础设施，因此我们不能把 novelty 放在普通 routing 上。
+  <strong>Justification：</strong>工业界已经证明“模型路由”很重要，因此我们不能把 novelty 放在普通 routing 上。
   BudgetFlow 的 novelty 是 shared hard budget + value registration + verified outcome accounting。
+  <span class="signal-red">Budget Compiler</span> 先把总预算编译成批量任务的预算框架，<span class="signal-red">BudgetFlow</span> 再在运行时决定预算怎么花。
   工业系统解决在线请求分发；本文解决批量任务资源分配和可审计评估，两者相邻但不是同一个研究问题。
 </div>
 
@@ -512,12 +514,12 @@
     </tr>
     <tr>
       <td>BudgetFlow 花满预算是否难解释？</td>
-      <td>它的目标不是省钱，而是在 hard cap 内最大化 verified value。主表里 BF 用满 $6.00，但 Yield/$ 仍高于 T3。</td>
+      <td>它的目标不是省钱，而是在 hard cap 内最大化 verified value。主表里 BF 用满 $6.00，但 Yield / Dollar 仍高于 T3。</td>
       <td>Claim 1 写成 fixed shared-budget value maximization，不写 unlimited throughput claim。</td>
     </tr>
     <tr>
       <td>第三阶段没有单独打赢，是否削弱结论？</td>
-      <td>削弱稳定性，不推翻总表。当前 3×30 总体上 BF 同时赢 Yield 和 Yield/$，但 stage-level 方差说明策略还不够稳。</td>
+      <td>削弱稳定性，不推翻总表。当前 3×30 总体上 BF 同时赢 Yield 和 Yield / Dollar，但 stage-level 方差说明策略还不够稳。</td>
       <td>论文主表写 3×30 aggregate；讨论部分承认 stage-level stability 需要更完美的后续 run。</td>
     </tr>
   </tbody>
@@ -527,7 +529,7 @@
 <div class="card-row">
   <div class="card">
     <h3>3×30 Claim 1 readout <span class="tag tag-blue">done</span></h3>
-    <p>90/90 scoreable。主结果统一为 cap $6.00：T2 14.50 Yield / 2.42 Y$, T3 18.50 / 3.17, BF 21.00 / 3.50。</p>
+    <p>90/90 scoreable。主结果统一为 cap $6.00：T2 14.50 Yield / 2.42 Yield / Dollar，T3 18.50 Yield / 3.17 Yield / Dollar，BF 21.00 Yield / 3.50 Yield / Dollar。</p>
   </div>
   <div class="card">
     <h3>Sensitivity 简化 <span class="tag tag-blue">done</span></h3>
@@ -538,7 +540,7 @@
     <p>明确避开“便宜弱模型 vs 昂贵强模型”的错误叙事，改为 heterogeneous model fit under shared hard budget。</p>
   </div>
   <div class="card">
-    <h3>OpenRouter 对照 <span class="tag tag-gray">positioning</span></h3>
+    <h3>工业界对照 <span class="tag tag-gray">positioning</span></h3>
     <p>工业界已有请求级模型路由；论文价值必须定位为 batch-level value-aware budget allocation 和 verified outcome accounting。</p>
   </div>
   <div class="card">
