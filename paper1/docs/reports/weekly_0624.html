@@ -215,7 +215,9 @@
 <h2 id="sec-boundary">(0) Claim 1 与论文边界</h2>
 <div class="judgment">
   <strong>Claim 1：</strong>在一个共享硬预算下，BudgetFlow 最大化 normalized verified resolved value，也就是 Yield。
-  这篇论文最有价值的部分，是把模型选择问题变成一个可审计的 shared-budget value allocation 问题。
+  BudgetFlow 把“模型路由”从单次请求的省钱问题，提升成一批任务共享硬预算时的价值分配问题。
+  核心不是永远选便宜模型，也不是永远选强模型，而是在预算会耗尽的情况下，把强模型机会和预算花到更高价值、更可能产出 verified result 的任务上。
+  这篇论文要证明的是：在同一个 shared cap 下，value-aware allocation 可以比 pure T2 / pure T3 baseline 产生更高的 verified Yield，并且这个过程是可解释、可审计、可复现的。
 </div>
 
 <div class="card-row">
