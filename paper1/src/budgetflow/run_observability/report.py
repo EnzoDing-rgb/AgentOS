@@ -62,31 +62,35 @@ def format_compact_audit(audit: dict) -> str:
             f"{_format_tier_turns(s.get('tier_turns') or {}):>18} {s['suspicious']:>4}"
         )
 
-    if any("yield_score" in s for s in audit["by_strategy"].values()):
+    if any(
+        "yield_score" in s or "total_resolved_value" in s
+        for s in audit["by_strategy"].values()
+    ):
         lines.append(banner)
         lines.append("PAPER METRICS")
         lines.append(
-            f"{'strategy':<26} {'res_value':>9} {'task_value':>10} {'Yield':>7} "
-            f"{'coverage':>8} {'Yield/total$':>13} {'Yield/score$':>13} {'abort$':>8}"
+            f"{'strategy':<26} {'res_value':>9} {'task_value':>10} "
+            f"{'Total Resolved Value':>20} {'coverage':>8} "
+            f"{'Resolved Value/total$':>20} {'Resolved Value/score$':>20} {'abort$':>8}"
         )
-        lines.append("-" * 64)
+        lines.append("-" * 120)
         for strat in sorted(audit["by_strategy"]):
             s = audit["by_strategy"][strat]
             lines.append(
                 f"{strat:<26} {s.get('resolved_value', 0.0):>9.2f} "
                 f"{s.get('total_task_value', 0.0):>10.2f} "
-                f"{s.get('yield_score', 0.0):>7.2f} "
+                f"{s.get('total_resolved_value', s.get('yield_score', 0.0)):>20.2f} "
                 f"{s.get('yield_coverage', 0.0):>8.2f} "
-                f"{s.get('yield_per_total_dollar', s.get('yield_per_dollar', 0.0)):>13.2f} "
-                f"{s.get('yield_per_scoreable_dollar', s.get('yield_per_dollar', 0.0)):>13.2f} "
+                f"{s.get('yield_per_total_dollar', s.get('total_resolved_value_per_dollar', s.get('yield_per_dollar', 0.0))):>20.4f} "
+                f"{s.get('yield_per_scoreable_dollar', s.get('yield_per_dollar', 0.0)):>20.4f} "
                 f"${s.get('abort_cost', 0.0):>7.2f}"
             )
 
     if audit.get("task_set_metrics"):
         lines.append(banner)
         lines.append("TASK SET METRICS")
-        lines.append(f"{'kind':<10} {'task_set':<14} {'strategy':<26} {'rows':>5} {'P':>3} {'F':>3} {'A':>3} {'cost':>8} {'Yield':>7} {'Yield/score$':>10}")
-        lines.append("-" * 104)
+        lines.append(f"{'kind':<10} {'task_set':<14} {'strategy':<26} {'rows':>5} {'P':>3} {'F':>3} {'A':>3} {'cost':>8} {'Total Resolved Value':>20} {'Resolved Value/score$':>20}")
+        lines.append("-" * 134)
         for kind in sorted(audit["task_set_metrics"]):
             for task_set in sorted(audit["task_set_metrics"][kind]):
                 for strategy in sorted(audit["task_set_metrics"][kind][task_set]):
@@ -94,7 +98,7 @@ def format_compact_audit(audit: dict) -> str:
                     lines.append(
                         f"{kind:<10} {task_set:<14} {strategy:<26} {s['rows']:>5} {s['pass']:>3} "
                         f"{s.get('true_fail', 0):>3} {s.get('abort', 0):>3} "
-                        f"${s['cost']:>7.2f} {s['yield_score']:>7.2f} {s['yield_per_dollar']:>9.2f}"
+                        f"${s['cost']:>7.2f} {s.get('total_resolved_value', s.get('yield_score', 0)):>20.2f} {s.get('total_resolved_value_per_dollar', s.get('yield_per_dollar', 0.0)):>19.2f}"
                     )
 
     # Common-task comparison
@@ -118,15 +122,15 @@ def format_compact_audit(audit: dict) -> str:
             f"{control_delta['mechanism_strategy']} - {control_delta['baseline_strategy']}: "
             f"delta_pass={control_delta['delta_pass']} "
             f"delta_cost=${control_delta['delta_cost']:.4f} "
-            f"delta_yield={control_delta['delta_yield']:.4f} "
-            f"delta_yield_per_dollar={control_delta['delta_yield_per_dollar']:.4f} "
-            f"delta_yield_per_total_dollar={control_delta.get('delta_yield_per_total_dollar', 0.0):.4f}"
+            f"delta_total_resolved_value={control_delta.get('delta_total_resolved_value', control_delta.get('delta_yield', 0.0)):.4f} "
+            f"delta_total_resolved_value_per_dollar={control_delta.get('delta_total_resolved_value_per_dollar', control_delta.get('delta_yield_per_dollar', 0.0)):.4f} "
+            f"delta_resolved_value_per_total_dollar={control_delta.get('delta_yield_per_total_dollar', 0.0):.4f}"
         )
         if "bare_t3_pass" in control_delta:
             lines.append(
                 f"  bare_t3_baseline: pass={control_delta['bare_t3_pass']} "
                 f"cost=${control_delta['bare_t3_cost']:.4f} "
-                f"yield={control_delta['bare_t3_yield']:.4f}"
+                f"total_resolved_value={control_delta.get('bare_t3_yield', 0.0):.4f}"
             )
 
     # Failure axis
@@ -301,7 +305,7 @@ def format_compact_audit(audit: dict) -> str:
         lines.append("FRONTIER / MODEL-FIT DIAGNOSTICS")
         lines.append(
             f"{'strategy':<26} {'rec':>4} {'tr':>4} {'allow':>5} {'block':>5} "
-            f"{'open':>4} {'same':>4} {'avg_score':>9} {'fit_gain':>8} {'yield/$':>8} {'thr':>7}"
+            f"{'open':>4} {'same':>4} {'avg_score':>9} {'fit_gain':>8} {'ResVal/$':>8} {'thr':>7}"
         )
         lines.append("-" * 96)
         for strategy in sorted(frontier):

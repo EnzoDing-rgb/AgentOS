@@ -314,9 +314,9 @@ def _format_live_snapshot(
         lines.append("=== VALUE SUMMARY ===")
         lines.append(
             f"{'strategy':<28} {'pass':>8} {'cost':>8} {'abort':>6} {'res_value':>9} "
-            f"{'Yield':>7} {'coverage':>8} {'Yield/$':>9} {'v_profile':>12}"
+            f"{'Total Resolved Value':>20} {'coverage':>8} {'Resolved Value/$':>16} {'v_profile':>12}"
         )
-        lines.append("-" * 100)
+        lines.append("-" * 118)
         for name in strategy_names:
             rv_list = resolved_value_by_strategy.get(name, [])
             tv_list = task_value_by_strategy.get(name, [])
@@ -328,16 +328,17 @@ def _format_live_snapshot(
             ]
             resolved_val = sum(rv_list[i] for i in scoreable_indexes if i < len(rv_list))
             total_val = sum(tv_list[i] for i in scoreable_indexes if i < len(tv_list))
-            total_cost = sum(costs[i] for i in scoreable_indexes if i < len(costs))
+            scoreable_cost = sum(costs[i] for i in scoreable_indexes if i < len(costs))
+            total_cost = sum(costs)
             abort_n = sum(1 for status in statuses if status == "abort")
-            yield_score = resolved_val
+            total_resolved_value = resolved_val  # North Star name
             yield_coverage = resolved_val / total_val if total_val > 0 else 0.0
-            yield_per_dollar = resolved_val / total_cost if total_cost > 0 else 0.0
+            resolved_value_per_dollar = resolved_val / total_cost if total_cost > 0 else 0.0
             pass_n, _, _ = _status_counts(statuses, resolved_by_strategy.get(name, []))
             lines.append(
                 f"{name:<28} {pass_n:>8} "
-                f"{_fmt_usd(total_cost):>8} {abort_n:>6} {resolved_val:>9.2f} "
-                f"{yield_score:>7.2f} {yield_coverage:>8.2f} {yield_per_dollar:>9.2f} {value_profile:>12}"
+                f"{_fmt_usd(scoreable_cost):>8} {abort_n:>6} {resolved_val:>9.2f} "
+                f"{total_resolved_value:>20.2f} {yield_coverage:>8.2f} {resolved_value_per_dollar:>15.2f} {value_profile:>12}"
             )
         lines.append("")
     warning = _task_level_calibration_warning(
@@ -373,9 +374,9 @@ def _task_level_calibration_warning(
         return []
 
     task_t3_ratio = _strategy_tier_ratio(tier_mix_by_strategy.get(task_name, []), 3)
-    t3_pass = _strategy_pass_rate(t3_name, resolved_by_strategy, score_status_by_strategy)
-    task_pass = _strategy_pass_rate(task_name, resolved_by_strategy, score_status_by_strategy)
-    t2_pass = _strategy_pass_rate(t2_name, resolved_by_strategy, score_status_by_strategy)
+    t3_pass = _strategy_resolved_rate(t3_name, resolved_by_strategy, score_status_by_strategy)
+    task_pass = _strategy_resolved_rate(task_name, resolved_by_strategy, score_status_by_strategy)
+    t2_pass = _strategy_resolved_rate(t2_name, resolved_by_strategy, score_status_by_strategy)
 
     if task_t3_ratio >= 0.05:
         return []
@@ -390,7 +391,7 @@ def _task_level_calibration_warning(
     ]
 
 
-def _strategy_pass_rate(
+def _strategy_resolved_rate(
     strategy: str,
     resolved_by_strategy: dict[str, list[bool]],
     score_status_by_strategy: dict[str, list[str]],

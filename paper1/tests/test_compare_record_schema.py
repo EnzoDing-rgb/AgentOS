@@ -1300,10 +1300,11 @@ def test_value_summary_reports_primary_normalized_value_metric(tmp_path) -> None
     )
 
     text = "\n".join(lines)
-    assert "Yield" in text
-    assert "Yield/$" in text
+    assert "Total Resolved Value" in text
+    assert "Resolved Value/$" in text
     assert "0.60" in text
-    assert "3.00" in text
+    # Resolved Value/$ uses total spend, including abort cost.
+    assert "2.00" in text
     assert "abort=1" in text
 
 

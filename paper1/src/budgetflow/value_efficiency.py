@@ -1,8 +1,13 @@
 """Value-driven token-efficiency metrics for BudgetFlow.
 
-Tier 1 primary metric is Yield: total resolved task value at a fixed budget.
-Yield per Dollar is the main efficiency diagnostic. Resolved task count and
-coverage are supporting diagnostics, not the objective.
+Primary Claim 1 objective: Total Resolved Value = sum(pre-registered task
+value for resolved tasks).  Total Resolved Value per Dollar is the main
+efficiency diagnostic.
+
+Legacy field names (yield_score, yield_per_dollar, etc.) are retained as
+aliases for backward compatibility with historical JSONL artifacts.
+New report output MUST use the North Star field names defined in
+``metrics_reporting.py``.
 """
 
 from __future__ import annotations
@@ -12,6 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .failure_classification import is_score_abort, is_score_pass, is_score_true_fail
+from .metrics_reporting import build_standard_metrics
 
 
 @dataclass(frozen=True)
@@ -175,6 +181,14 @@ class ValueEfficiencyContext:
         abort_cost = sum(float(r.get("total_cost") or 0) for r in records if is_score_abort(r))
         resolved_value = sum(float(r.get("resolved_value") or 0) for r in records if not is_score_abort(r))
         total_task_value = sum(float(r.get("task_value") or 1.0) for r in records if not is_score_abort(r))
+        total_spend = total_cost + abort_cost
+        standard_metrics = build_standard_metrics(
+            resolved_count=resolved_count,
+            total_tasks=resolved_count + true_fail_count,
+            total_spend=total_spend,
+            total_resolved_value=resolved_value,
+        )
+        # Legacy aliases (retain for backward compat with historical data)
         yield_per_dollar = resolved_value / total_cost if total_cost > 0 else 0.0
         yield_coverage = resolved_value / total_task_value if total_task_value > 0 else 0.0
         return {
@@ -186,6 +200,9 @@ class ValueEfficiencyContext:
             "total_cost": round(total_cost, 6),
             "resolved_value": round(resolved_value, 6),
             "total_task_value": round(total_task_value, 6),
+            # North Star fields
+            **standard_metrics,
+            # Legacy aliases (kept for test/historical compatibility)
             "yield_score": round(resolved_value, 6),
             "yield_coverage": round(yield_coverage, 6),
             "yield_per_dollar": round(yield_per_dollar, 6),

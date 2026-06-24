@@ -1,7 +1,7 @@
 """Offline recost / sensitivity tool for model-cost experiments.
 
-Recalculates Yield, Yield/$, and strategy rankings from any completed
-JSONL under different T3/T2 price multipliers and optional multi-turn
+Recalculates resolved value, value per dollar, and strategy rankings from any
+completed JSONL under different T3/T2 price multipliers and optional multi-turn
 input-cache discounts.  Only cost fields are changed; outcomes (resolved,
 patch, verdict) are never modified.
 
@@ -21,6 +21,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+from .metrics_reporting import build_standard_metrics
 from .model_tiers import MODEL_CATALOG, TurnCachePolicy, token_cost_rates
 
 # Default target T3/T2 price ratios to test (diagnostic sweep).
@@ -259,12 +260,21 @@ def run_sensitivity(
         for strat, stats in by_strategy.items():
             cost = stats["total_cost"]
             resolved_value = stats.get("resolved_value", 0.0)
+            standard_metrics = build_standard_metrics(
+                resolved_count=stats["pass"],
+                total_tasks=stats["total"],
+                total_spend=cost,
+                total_resolved_value=resolved_value,
+            )
             summary[strat] = {
                 "pass": stats["pass"],
                 "total": stats["total"],
                 "total_cost": round(cost, 4),
                 "total_value": round(stats["total_value"], 4),
                 "resolved_value": round(resolved_value, 4),
+                # North Star fields (v1)
+                **standard_metrics,
+                # Legacy aliases (kept for backward compat)
                 "yield": round(resolved_value, 4),
                 "yield_per_dollar": round(resolved_value / cost, 4) if cost > 0 else 0.0,
                 "pass_rate": round(stats["pass"] / stats["total"], 4) if stats["total"] > 0 else 0.0,
@@ -290,7 +300,7 @@ def run_sensitivity(
     return report
 
 
-def rank_strategies(sensitivity_report: dict, metric: str = "yield_per_dollar") -> dict:
+def rank_strategies(sensitivity_report: dict, metric: str = "total_resolved_value_per_dollar") -> dict:
     """Rank strategies within each ratio by *metric*."""
     rankings: dict[str, list[tuple[str, float]]] = {}
     for ratio_key, strategies in sensitivity_report["results"].items():
@@ -363,8 +373,8 @@ if __name__ == "__main__":
             print(
                 f"  {strat:40s} pass={stats['pass']}/{stats['total']} "
                 f"cost=${stats['total_cost']:.4f} "
-                f"yield={stats['yield']:.4f} "
-                f"yield/$={stats['yield_per_dollar']:.4f}"
+                f"total_resolved_value={stats['total_resolved_value']:.4f} "
+                f"resolved_value/$={stats['total_resolved_value_per_dollar']:.4f}"
             )
-        print(f"  Ranking by yield/$: {', '.join(f'{s}({v:.2f})' for s, v in rankings[ratio_key])}")
+        print(f"  Ranking by resolved_value/$: {', '.join(f'{s}({v:.2f})' for s, v in rankings[ratio_key])}")
         print()

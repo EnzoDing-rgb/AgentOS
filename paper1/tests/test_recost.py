@@ -5,6 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from budgetflow.recost import rank_strategies
 from budgetflow.recost import run_sensitivity
 from budgetflow.recost import recost_record
 
@@ -42,6 +43,34 @@ def test_run_sensitivity_dedup_keeps_last_row(tmp_path: Path) -> None:
 
     assert stats["total"] == 1
     assert stats["pass"] == 1
+    assert stats["resolved_count"] == 1
+    assert stats["resolved_rate"] == 1.0
+    assert stats["total_spend"] == 0.4
+    assert stats["cost_per_resolved_task"] == 0.4
+    assert stats["total_resolved_value"] == 1.0
+    assert stats["total_resolved_value_per_dollar"] == 2.5
+
+
+def test_recost_ranks_by_total_resolved_value_per_dollar_by_default() -> None:
+    report = {
+        "results": {
+            "3.0x": {
+                "high_value": {
+                    "yield_per_dollar": 1.0,
+                    "total_resolved_value_per_dollar": 3.0,
+                },
+                "legacy_only": {
+                    "yield_per_dollar": 2.0,
+                    "total_resolved_value_per_dollar": 1.0,
+                },
+            }
+        }
+    }
+
+    assert rank_strategies(report)["3.0x"] == [
+        ("high_value", 3.0),
+        ("legacy_only", 1.0),
+    ]
 
 
 def test_recost_uses_catalog_t2_cache_policy() -> None:

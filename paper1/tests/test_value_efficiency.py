@@ -214,6 +214,10 @@ def test_summary_reports_primary_fixed_budget_value_metric() -> None:
     assert summary["yield_score"] == 3.0
     assert summary["yield_coverage"] == 0.75
     assert summary["yield_per_dollar"] == 10.0
+    # North Star fields present alongside legacy
+    assert summary["total_resolved_value"] == 3.0
+    assert summary["total_resolved_value_per_dollar"] == 10.0
+    assert summary["resolved_rate"] == 0.5
     assert summary["task_value_primary_t1"] is False
 
 
@@ -247,6 +251,8 @@ def test_abort_rows_are_reported_but_excluded_from_paper_metrics() -> None:
     assert summary["total_cost"] == 0.25
     assert summary["abort_cost"] == 0.75
     assert summary["yield_per_dollar"] == 4.0
+    # total_resolved_value_per_dollar = resolved_value / total_spend (incl abort)
+    assert summary["total_resolved_value_per_dollar"] == 1.0
 
 
 def test_missing_non_equal_task_fails_fast(tmp_path) -> None:

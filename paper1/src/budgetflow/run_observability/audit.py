@@ -12,6 +12,7 @@ from budgetflow.failure_classification import (
     is_score_pass,
     is_score_true_fail,
 )
+from budgetflow.metrics_reporting import build_standard_metrics
 from budgetflow.model_tiers import MODEL_CATALOG, parse_tier_label
 from budgetflow.observability import build_harness_trust
 
@@ -246,6 +247,16 @@ def _mechanism_isolation_delta(by_strategy: dict[str, dict]) -> dict:
         "baseline_strategy": "Enterprise Router Baseline",
         "delta_pass": int(mechanism.get("pass", 0)) - int(baseline.get("pass", 0)),
         "delta_cost": float(mechanism.get("cost", 0.0)) - float(baseline.get("cost", 0.0)),
+        # North Star delta fields
+        "delta_total_resolved_value": (
+            float(mechanism.get("total_resolved_value", mechanism.get("yield_score", 0.0)))
+            - float(baseline.get("total_resolved_value", baseline.get("yield_score", 0.0)))
+        ),
+        "delta_total_resolved_value_per_dollar": (
+            float(mechanism.get("total_resolved_value_per_dollar", mechanism.get("yield_per_total_dollar", mechanism.get("yield_per_dollar", 0.0))))
+            - float(baseline.get("total_resolved_value_per_dollar", baseline.get("yield_per_total_dollar", baseline.get("yield_per_dollar", 0.0))))
+        ),
+        # Legacy delta aliases
         "delta_yield": (
             float(mechanism.get("yield_score", 0.0))
             - float(baseline.get("yield_score", 0.0))
@@ -563,6 +574,7 @@ def _task_set_metrics(records: list[dict]) -> dict[str, dict[str, dict[str, dict
                 abort_cost = sum(float(row.get("total_cost") or 0.0) for row in rows if is_score_abort(row))
                 resolved_value = sum(float(row.get("resolved_value") or 0.0) for row in scoreable_rows)
                 task_value = sum(float(row.get("task_value") or 1.0) for row in scoreable_rows)
+                total_spend = cost + abort_cost
                 result[kind][task_set][strategy] = {
                     "rows": len(rows),
                     "pass": sum(1 for row in rows if is_score_pass(row)),
@@ -570,6 +582,14 @@ def _task_set_metrics(records: list[dict]) -> dict[str, dict[str, dict[str, dict
                     "abort": sum(1 for row in rows if is_score_abort(row)),
                     "cost": cost,
                     "abort_cost": abort_cost,
+                    # North Star fields
+                    **build_standard_metrics(
+                        resolved_count=sum(1 for row in rows if is_score_pass(row)),
+                        total_tasks=sum(1 for row in rows if is_score_pass(row) or is_score_true_fail(row)),
+                        total_spend=total_spend,
+                        total_resolved_value=resolved_value,
+                    ),
+                    # Legacy aliases
                     "yield_score": resolved_value,
                     "yield_coverage": resolved_value / task_value if task_value > 0 else 0.0,
                     "yield_per_dollar": resolved_value / cost if cost > 0 else 0.0,
@@ -693,7 +713,8 @@ def _per_task_comparison(records: list[dict], t3_tier: int) -> list[dict]:
             "score_status": str(record.get("score_status") or ""),
             "cost": float(record.get("total_cost") or 0),
             "task_value": float(record.get("task_value") or 1.0),
-            "yield_score": float(record.get("resolved_value") or 0.0),
+            "total_resolved_value": float(record.get("resolved_value") or 0.0),
+            "yield_score": float(record.get("resolved_value") or 0.0),  # legacy alias
             "turns": int(record.get("llm_turns") or 0),
             "first_backend": str(first_pick),
             "first_tier": first_tier,
@@ -915,15 +936,25 @@ def build_compact_audit(records: list[dict]) -> dict:
         if sev and sev != "none":
             ht_severity_counts[sev] = ht_severity_counts.get(sev, 0) + 1
 
-    strategy_metrics = {
-        strat: {
+    strategy_metrics = {}
+    for strat, s in by_strategy.items():
+        total_spend = s["cost"] + s["abort_cost"]
+        standard_metrics = build_standard_metrics(
+            resolved_count=s["pass"],
+            total_tasks=s["pass"] + s["fail"],
+            total_spend=total_spend,
+            total_resolved_value=s["resolved_value"],
+        )
+        strategy_metrics[strat] = {
             "total": s["total"], "pass": s["pass"], "fail": s["fail"],
             "cost": s["cost"], "abort_cost": s["abort_cost"],
             "scoreable_cost": s["cost"],
-            "total_spend": s["cost"] + s["abort_cost"],
             "avg_turns": s["turns"] / max(s["total"], 1),
             "resolved_value": s["resolved_value"],
             "total_task_value": s["task_value"],
+            # North Star fields
+            **standard_metrics,
+            # Legacy aliases (retain for backward compat)
             "yield_score": s["resolved_value"],
             "yield_coverage": (
                 s["resolved_value"] / s["task_value"] if s["task_value"] > 0 else 0.0
@@ -946,8 +977,6 @@ def build_compact_audit(records: list[dict]) -> dict:
             "suspicious": s["suspicious"], "no_trace": s["no_trace"],
             "abort": s["abort"],
         }
-        for strat, s in by_strategy.items()
-    }
 
     return {
         "total": total,

@@ -189,14 +189,20 @@ def test_compact_audit_reports_value_metrics() -> None:
     assert stats["yield_score"] == 0.6
     assert stats["yield_coverage"] == 0.6
     assert stats["yield_per_dollar"] == pytest.approx(2.0)
+    assert stats["total_resolved_value"] == 0.6
+    assert stats["total_resolved_value_per_dollar"] == pytest.approx(1.0)
+    assert stats["resolved_rate"] == pytest.approx(0.5)
+    assert stats["cost_per_resolved_task"] == pytest.approx(0.6)
+    # Legacy display names still readable from summary dicts
     assert stats["yield_per_scoreable_dollar"] == pytest.approx(2.0)
     assert stats["yield_per_total_dollar"] == pytest.approx(1.0)
     assert stats["total_spend"] == pytest.approx(0.6)
     assert stats["scoreable_cost"] == pytest.approx(0.3)
     assert stats["abort_cost"] == pytest.approx(0.3)
     assert "PAPER METRICS" in format_compact_audit(audit)
-    assert "Yield/total$" in format_compact_audit(audit)
-    assert "Yield/score$" in format_compact_audit(audit)
+    assert "Resolved Value/total$" in format_compact_audit(audit)
+    assert "Resolved Value/score$" in format_compact_audit(audit)
+    assert "Total Resolved Value" in format_compact_audit(audit)
 
 
 def test_compact_audit_counts_actionable_decision_issues() -> None:
@@ -697,6 +703,7 @@ def test_compact_audit_reports_mechanism_isolation_delta() -> None:
     assert audit["common_task_count"] == 2
     assert delta["delta_pass"] == 1
     assert delta["delta_yield"] == pytest.approx(2.0)
+    assert delta["delta_total_resolved_value"] == pytest.approx(2.0)
     assert delta["delta_yield_coverage"] == pytest.approx(2 / 3)
     assert "COMMON-TASK POLICY COMPARISON" in text
     assert "MECHANISM ISOLATION DELTA" in text
@@ -738,7 +745,9 @@ def test_compact_audit_reports_task_set_metrics() -> None:
     unseen = audit["task_set_metrics"]["unseen"]["medium"]["budgetflow_segment"]
 
     assert familiar["yield_score"] == pytest.approx(3.0)
+    assert familiar["total_resolved_value"] == pytest.approx(3.0)
     assert familiar["yield_per_dollar"] == pytest.approx(6.0)
+    assert familiar["total_resolved_value_per_dollar"] == pytest.approx(6.0)
     assert unseen["pass"] == 0
     assert "TASK SET METRICS" in format_compact_audit(audit)
 
