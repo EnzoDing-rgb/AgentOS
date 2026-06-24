@@ -7,7 +7,7 @@ docs, prompts, handoffs, reports, and reviewer-facing prose.
 
 The current 3x30 Claim 1 readout is enough to write the initial draft, but it is
 not enough to treat the evidence story as finished. The draft must be explicit
-about three evidence bars.
+about four evidence bars.
 
 First, historical spend should not be used as Task Value. If a task costs many
 turns or dollars, that is evidence that the task may be harder or needs more
@@ -21,19 +21,37 @@ strong baselines. They answer whether BudgetFlow beats uniform-tier frontiers
 under the same shared cap. They do not answer whether BudgetFlow beats existing
 routing ideas from related work.
 
-Third, the draft must plan for a related-work-style routing baseline. The
-baseline should use the same fixed task set, same T2/T3 backend pool, same
-shared cap, and same verifier. If that router spends past the cap, the
-BudgetFlow backend should stop serving it. This keeps the comparison honest:
-per-task routers may choose T2 or T3, but they must live under the same shared
-budget. Claim 1 becomes much stronger only if BudgetFlow beats these routing
-baselines, not just pure-tier controls.
+Third, the draft-critical related-work baseline is a RouteLLM-inspired learned
+task router. It should learn, offline, which tasks look like they need T3 from
+task features and historical outcomes. It should not use Task Value as an input,
+because that would collapse the baseline into BudgetFlow's value-aware claim.
+The trained router should write a FrozenRouterPlan that chooses T2 or T3 at
+task start. At runtime it receives the same fixed task set, same T2/T3 backend
+pool, same shared cap, and same verifier as BudgetFlow. If it spends past the
+cap, execution stops. This keeps the comparison honest: the learned router may
+choose T2 or T3 per task, but it must live under the same shared budget.
 
-Do not lock a specific related-work baseline before the audit is complete. The
-near-term requirement is to state this evidence bar in the draft and then run a
-focused related-work baseline audit: identify what baselines and metrics those
-papers use, map which ones can be attached to our T2/T3 backends, and compare
-them under the same cap and verifier.
+Do not call this "RouteLLM" without qualification. The original RouteLLM routes
+single queries using preference data and a strong-model-call threshold; it does
+not manage a shared budget. The paper baseline is "RouteLLM-inspired learned
+task router" or "RouteLLM-inspired supervised task router." Its value is to test
+whether BudgetFlow's value-aware shared-budget allocation beats a strong normal
+model-router baseline, not merely pure-tier controls.
+
+Fourth, the paper must not hide custom metrics behind standard-sounding names.
+SWE-bench's community-standard metric is Resolved Count and Resolved Rate.
+Cost-aware coding-agent evaluation does not yet have a stable community
+standard. BudgetFlow therefore reports both the standard SWE-bench view and the
+paper-defined value view. The paper-defined Claim 1 objective is Total Resolved
+Value:
+
+`Total Resolved Value = sum(pre-registered task value for resolved tasks)`.
+
+This is not an official SWE-bench metric and must be described as
+paper-defined. The main table should report Resolved Count, Resolved Rate,
+Total Spend, Cost per Resolved Task, Total Resolved Value, and Total Resolved
+Value per Dollar. Equal-value sensitivity is required to show that the result
+does not depend only on a favorable value profile.
 
 ## Core Terminology
 
@@ -52,10 +70,16 @@ budget.
 | Term | Meaning |
 |---|---|
 | BudgetFlow | Value-aware budget governance for multi-step agent workflows under shared hard budgets. |
-| Claim 1 | Under one shared hard budget, BudgetFlow maximizes normalized verified resolved value, called Yield. |
+| Claim 1 | Under one shared hard budget, BudgetFlow maximizes Total Resolved Value, a paper-defined value-weighted objective over verified resolved tasks. |
 | Claim 2 | BudgetFlow's budget-aware allocation policy explains how Claim 1 is achieved: it chooses when to spend, stop, continue, route, or escalate under the compiled budget, and must improve or preserve value/cost efficiency against strong diagnostic controls. The policy may be task-level, stage/segment-aware, learned from memory, or a hybrid; no single source is assumed correct by definition. |
-| Yield | Total resolved task value within a shared budget window. It is not raw task count. |
-| Yield per Dollar | Total resolved task value divided by model spend. It is the main efficiency diagnostic. |
+| Resolved Count | Number of tasks whose generated patch satisfies the SWE-bench verifier. This is the standard SWE-bench count metric. |
+| Resolved Rate | Resolved Count divided by total tasks. This is the standard SWE-bench rate metric. |
+| Total Spend | Total model spend within the shared budget window. |
+| Cost per Resolved Task | Total Spend divided by Resolved Count. It is an accessible cost diagnostic, not the Claim 1 objective. |
+| Total Resolved Value | Paper-defined Claim 1 objective: sum of pre-registered Task Value over resolved tasks. It is not an official SWE-bench metric and should not be renamed as if it were community standard. |
+| Total Resolved Value per Dollar | Total Resolved Value divided by Total Spend. It is a value-weighted cost-efficiency diagnostic, not the only headline. |
+| Yield | Retired paper/reporting term for Total Resolved Value. It may remain in historical artifacts or internal compatibility fields, but new reviewer-facing prose and reports should use Total Resolved Value. |
+| Yield per Dollar | Retired paper/reporting term for Total Resolved Value per Dollar. It may remain in historical artifacts or internal compatibility fields, but new reviewer-facing prose and reports should use Total Resolved Value per Dollar. |
 | Value-Driven Budget Allocation | Two-layer mechanism: first compile a shared hard-budget regime for a fixed task sequence; then allocate model opportunities, turns, continue/stop decisions, and spend within that regime. |
 | Budget Regime Compiler | Pre-run mechanism that turns a fixed task set, fixed task order, ValueSource, Task Effort, reference cost scale, clean frozen calibration evidence when available, and target pressure into a pre-registered shared hard budget plan with confidence and audit fields. It is part of Claim 1, not a separate claim, and it must not assign model tiers to individual tasks. |
 | BudgetFlow Runtime | Runtime policy that executes the same task order as every control and allocates scarce model opportunities within the compiled shared budget. It decides when to spend, continue, stop, or use a stronger tier; it does not reorder tasks to chase value. |
@@ -73,7 +97,7 @@ budget.
 | CostAdapter | Adapter that turns public price catalogs, provider estimates, invoices, enterprise rate cards, or manual overrides into a standard cost signal. |
 | ProgressAdapter | Adapter that turns process evidence and final acceptance into standard progress/outcome signals. Intermediate progress can be unknown; final acceptance defines resolved. |
 | Policy Backend | Pluggable strategy that recommends cap, model tier, escalation, de-escalation, stop, and continue decisions. |
-| Cost Memory | Optional learning input for cost, cap sufficiency, task value, and Yield per Dollar evidence. It is not a required Claim 1 input and should be enabled only in an explicit learning configuration. |
+| Cost Memory | Optional learning input for cost, cap sufficiency, task value, and Total Resolved Value per Dollar evidence. It is not a required Claim 1 input and should be enabled only in an explicit learning configuration. |
 | Routing Memory | Optional learning input for backend choices, stage/segment outcomes, failure axes, and route effectiveness. It can inform a learned or hybrid Claim 2 policy, but it is not synonymous with Claim 2. |
 | Escalation Memory | Optional learning input for whether Strongest Model turns were productive. It mainly applies to policies with escalation windows; task-level policies may not use it. |
 | Value-Triggered Escalation | Bounded use of a stronger model tier for high-value tasks when expected marginal value justifies it. |
@@ -145,8 +169,24 @@ planned runway.
 
 | Claim | Main question | Primary evidence |
 |---|---|---|
-| Claim 1 | Under the same compiled shared hard-budget regime, does BudgetFlow resolve more normalized task value? | Yield at fixed budget, with Yield per Dollar, budget-plan confidence, and actual utilization reported as required diagnostics. |
+| Claim 1 | Under the same compiled shared hard-budget regime, does BudgetFlow resolve more pre-registered task value? | Total Resolved Value at fixed budget, with Resolved Count, Resolved Rate, Total Spend, Cost per Resolved Task, Total Resolved Value per Dollar, budget-plan confidence, and actual utilization reported as required diagnostics. |
 | Claim 2 | Which budget-aware allocation policy explains the Claim 1 result, and is that policy reusable? | Parked for the initial draft. Later mechanism evidence can include resolution-cost frontier, Strongest Model productive use, Tier Boundary Selection, stop-loss behavior, task-level vs stage/segment-aware controls, optional memory effect when enabled, and failure attribution. |
+
+SWE-bench's standard metric is Resolved Rate. BudgetFlow must always report
+Resolved Count and Resolved Rate in the main result table. Because Claim 1 is
+about heterogeneous task value under one shared hard budget, BudgetFlow also
+defines Total Resolved Value as a paper-specific objective. Do not present
+Total Resolved Value as a community-standard SWE-bench metric. Define the
+formula in the paper body and show the pre-registered value source.
+
+The main Claim 1 table should use these columns:
+
+`Resolved`, `Rate`, `Spend`, `Cost per Resolved Task`, `Total Resolved Value`,
+and `Total Resolved Value per Dollar`.
+
+Equal-value sensitivity is mandatory. It shows whether the direction holds when
+all task values are set to 1.0 and prevents the value-weighted objective from
+looking post-hoc fitted.
 
 Claim 1 is the objective. The Budget Regime Compiler is the pre-run part of
 Value-Driven Budget Allocation: it defines the shared budget regime before any
@@ -192,9 +232,10 @@ escalation, and learning inputs are useful only when they protect or improve
 Claim 1. Do not optimize mechanism diagnostics in a way that reduces
 value-weighted outcomes.
 
-Resolved task count, pass rate, Yield per Dollar, Pass per Dollar, average
-turns, and no-patch rate are diagnostics for the initial draft. They must not
-replace Yield as the Claim 1 headline metric.
+Average turns, no-patch rate, per-task cost, tasks skipped due to budget
+exhaustion, and value-tier breakdowns are diagnostics for the initial draft.
+They must not replace Total Resolved Value as the Claim 1 objective or Resolved
+Rate as the standard SWE-bench metric.
 
 Pure-tier controls can expose a real model frontier change. If the Strongest
 Model is both more capable and cheaper in total for nearly every task under the
@@ -214,8 +255,8 @@ The current paid mainline uses three policies: pure T2, pure T3, and
 BudgetFlow task-level. Static enterprise-router plans remain useful diagnostic
 controls, but they are not part of the default Claim 1 paid evidence set. The
 headline question for this run is whether BudgetFlow beats at least one pure
-mechanical boundary while preserving or improving Yield per Dollar under the
-same shared hard budget.
+mechanical boundary while preserving or improving Total Resolved Value per
+Dollar under the same shared hard budget.
 
 ## Value And Cost Discipline
 
@@ -327,10 +368,11 @@ generous cap.
 
 The Runtime must not win by changing task order. For policy comparisons, every
 strategy executes the same pre-registered task sequence. Otherwise a high-value
-first ordering could inflate Yield under early budget exhaustion and confound
-the allocation claim. Value awareness is allowed inside routing, continue/stop,
-retry, and stronger-tier access decisions; it is not allowed to reorder the
-batch unless task ordering itself is the declared experimental intervention.
+first ordering could inflate Total Resolved Value under early budget exhaustion
+and confound the allocation claim. Value awareness is allowed inside routing,
+continue/stop, retry, and stronger-tier access decisions; it is not allowed to
+reorder the batch unless task ordering itself is the declared experimental
+intervention.
 
 ## Calibration Discipline
 
@@ -414,9 +456,9 @@ constant, segment signal, or memory rule is universally correct. It should argue
 that a customer can provide or calibrate ValueSource, Task Effort, Model Fit,
 and CostSource for its own workload, and BudgetFlow turns those inputs into an
 auditable shared-budget allocation problem whose evidence is measured by
-verified Yield and Yield per Dollar. Continual learning can be added as a
-separate policy source when its memory effect is cleanly isolated and improves
-the same objective.
+Resolved Rate, Total Resolved Value, and Total Resolved Value per Dollar.
+Continual learning can be added as a separate policy source when its memory
+effect is cleanly isolated and improves the same objective.
 
 The clean policy semantics are:
 
@@ -426,7 +468,7 @@ The clean policy semantics are:
 - Progress urgency measures being stuck. No-progress streaks, repair evidence,
   and validation failure can trigger bounded escalation or rescue windows.
 - Value density combines Task Value, Model Fit gain, and extra model cost. It
-  explains when spending more can improve Yield per Dollar.
+explains when spending more can improve Total Resolved Value per Dollar.
 
 These signals must stay separate in code and traces. A variable named budget
 pressure must not simultaneously mean "budget is scarce" and "upgrade because
@@ -481,9 +523,11 @@ shape Claim 2 diagnostics, but they do not replace Claim 1.
 
 | Work | What it studies | Boundary against BudgetFlow |
 |---|---|---|
-| Inference-Time Budget Control | Controls tool and token budgets inside one search or QA example. A run that exceeds the per-example budget fails. | Useful contrast for per-request budget control. It does not allocate one shared hard budget across a batch of valued tasks or report frozen-value Yield. |
+| Inference-Time Budget Control | Controls tool and token budgets inside one search or QA example. A run that exceeds the per-example budget fails. | Useful contrast for per-request budget control. It does not allocate one shared hard budget across a batch of valued tasks or report paper-defined Total Resolved Value. |
+| RouteLLM | Learns a per-query router that predicts whether a strong model should handle a prompt, using preference data and a threshold that controls the share of strong-model calls. | Strong baseline inspiration, not directly reusable. BudgetFlow needs a RouteLLM-inspired task router trained for SWE-bench task outcomes, attached to T2/T3 through a FrozenRouterPlan, and evaluated under the same shared cap. |
+| RouteNLP | Deployment-level four-tier cascade routing that minimizes cost while meeting per-task quality constraints, with conformal cascading and distillation co-optimization. | Strong Related Work positioning anchor. It proves industrial routing matters, but it solves the inverse problem: quality floor -> minimize cost. BudgetFlow solves fixed shared budget -> maximize verified task value. RouteNLP has no shared cap, no cross-task budget depletion, and no Task Value. |
 | UCCI | Uses calibrated uncertainty in a two-model cascade to decide when to upgrade from a cheaper model to a stronger model under a quality or F1 constraint. | Strong Claim 2 neighbor for Model Fit, uncertainty, and escalation calibration. It is not shared workload budget governance and does not optimize verified task value across a pre-registered value set. |
-| Topaz | Builds an auditable routing layer with skill profiles, budget assignment, and explanation traces, mainly in customer-support style case studies and demos. | Useful Claim 2 neighbor for auditability and routing explanations. BudgetFlow still needs verified task execution, frozen ValueSource, shared ledger accounting, and Yield under the same hard budget. |
+| Topaz | Builds an auditable routing layer with skill profiles, budget assignment, and explanation traces, mainly in customer-support style case studies and demos. | Useful Claim 2 neighbor for auditability and routing explanations. BudgetFlow still needs verified task execution, frozen ValueSource, shared ledger accounting, and Total Resolved Value under the same hard budget. |
 
 The paper's core distinction is: BudgetFlow asks how a batch of tasks should
 share a hard budget so model capability flows toward the highest verified task
