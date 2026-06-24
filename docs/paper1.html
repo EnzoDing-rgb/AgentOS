@@ -12,21 +12,23 @@
   --bg: #f8f9fb; --card: #fff; --text: #1f2933; --muted: #5f6b7a;
   --border: #e2e5ea; --accent: #0f766e; --accent2: #245b9f;
   --good: #14804d; --warn: #9a5800; --hdr: #1e293b;
-  --sidebar-w: 220px;
+  --sidebar-w: 200px; --page-max: 1100px;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html { scroll-behavior: smooth; }
 body {
   font-family: "Charter", "Georgia", "Times New Roman", serif;
-  background: var(--bg); color: var(--text); display: flex; min-height: 100vh;
-  font-size: 16px; line-height: 1.7;
+  background: var(--bg); color: var(--text); font-size: 16px; line-height: 1.7;
 }
+
+/* ── Page wrapper: centers everything ── */
+.page { display: flex; max-width: var(--page-max); margin: 0 auto; min-height: 100vh; }
 
 /* ── Sidebar ── */
 nav {
-  position: fixed; left: 0; top: 0; width: var(--sidebar-w); height: 100vh;
-  background: var(--hdr); color: #c8cdd5; padding: 24px 16px; font-size: 13.5px;
-  overflow-y: auto; z-index: 10; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  width: var(--sidebar-w); min-width: var(--sidebar-w); position: sticky; top: 0;
+  height: 100vh; background: var(--hdr); color: #c8cdd5; padding: 24px 16px;
+  font-size: 13px; overflow-y: auto; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
 }
 nav h4 {
   color: #fff; font-size: 11px; text-transform: uppercase; letter-spacing: 0.7px;
@@ -35,61 +37,78 @@ nav h4 {
 nav a { display: block; color: #94a3b8; text-decoration: none; padding: 4px 8px; border-radius: 4px; margin: 1px 0; }
 nav a:hover { color: #fff; background: rgba(255,255,255,0.07); }
 nav a.active { color: #fff; background: rgba(255,255,255,0.12); font-weight: 600; }
-nav .toc-l2 { padding-left: 18px; font-size: 12.5px; }
+nav .toc-l2 { padding-left: 18px; font-size: 12px; }
 nav hr { border: 0; border-top: 1px solid rgba(255,255,255,0.08); margin: 14px 0; }
 
-/* ── Main ── */
-main {
-  margin-left: var(--sidebar-w); width: calc(100% - var(--sidebar-w));
-  padding: 40px 52px 80px; max-width: 960px;
-}
+/* ── Main content ── */
+main { flex: 1; padding: 40px 48px 80px; max-width: calc(var(--page-max) - var(--sidebar-w)); min-width: 0; }
 
 /* ── Typography ── */
-h1 { font-size: 28px; font-weight: 700; margin-bottom: 4px; line-height: 1.3; color: #111; }
+h1 { font-size: 26px; font-weight: 700; margin-bottom: 4px; line-height: 1.3; color: #111; }
 h2 {
-  font-size: 20px; font-weight: 650; margin: 42px 0 14px; padding-bottom: 8px;
+  font-size: 19px; font-weight: 650; margin: 38px 0 12px; padding-bottom: 7px;
   border-bottom: 2px solid var(--border); color: #1a1a1a;
 }
-h3 { font-size: 16px; font-weight: 650; margin: 24px 0 8px; color: #2a2a2a; }
+h3 { font-size: 15px; font-weight: 650; margin: 22px 0 8px; color: #2a2a2a; }
+h4 { font-size: 14px; font-weight: 650; margin: 22px 0 10px; color: var(--accent); }
 p { margin: 0 0 12px; text-align: justify; hyphens: auto; }
 .abstract {
   background: var(--card); border: 1px solid var(--border); border-radius: 8px;
-  padding: 20px 24px; margin: 18px 0 24px; font-size: 15.5px; line-height: 1.65;
+  padding: 20px 24px; margin: 18px 0 24px; font-size: 15px; line-height: 1.65;
 }
 .abstract .label { font-weight: 700; color: var(--accent); text-transform: uppercase; font-size: 12px; letter-spacing: 0.6px; }
 
-/* ── Tables ── */
+/* ── Tables (base) ── */
+.table-wrap { overflow-x: auto; margin: 14px 0 22px; }
 table {
-  width: 100%; border-collapse: collapse; background: var(--card);
-  border-radius: 6px; overflow: hidden; border: 1px solid var(--border);
-  margin: 12px 0 20px; font-size: 14px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  width: 100%; border-collapse: separate; border-spacing: 0;
+  background: var(--card); border-radius: 8px; overflow: hidden;
+  border: 1px solid var(--border); font-size: 13.5px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
 }
-th, td { padding: 10px 14px; text-align: center; vertical-align: middle; line-height: 1.5; border-bottom: 1px solid var(--border); }
-th { background: var(--hdr); color: #fff; font-weight: 600; white-space: nowrap; font-size: 13px; }
+th, td { padding: 9px 14px; text-align: center; vertical-align: middle; line-height: 1.45; }
+th {
+  background: var(--hdr); color: #e2e8f0; font-weight: 600; white-space: nowrap;
+  font-size: 12.5px; letter-spacing: 0.3px;
+}
+td { border-bottom: 1px solid #eef0f3; }
 tr:last-child td { border-bottom: 0; }
-td:first-child, th:first-child { text-align: left; font-weight: 600; }
+th:first-child, td:first-child { text-align: left; font-weight: 600; }
+tr:nth-child(even) td { background: #fafbfc; }
 tr.best td { background: #e6f7f0; border-bottom-color: #c0dfd8; }
 tr.best td:first-child { font-weight: 700; color: var(--accent); }
-tr:nth-child(even):not(.best) td { background: #fafbfc; }
-sup { font-size: 0.75em; }
+tr.best:nth-child(even) td { background: #e6f7f0; }
 
-/* ── Positioning Table ── */
-.pos-table td:first-child { background: #f2f4f7; color: #243447; }
+/* Winner cells */
+.win { color: var(--good); font-weight: 700; }
+.win-sub { color: var(--good); font-weight: 600; }
+
+/* Table caption */
+caption {
+  caption-side: bottom; text-align: left; font-size: 12.5px; color: var(--muted);
+  margin-top: 8px; line-height: 1.5;
+}
+caption strong { color: var(--text); }
+
+/* ── Positioning Table (Related Work) ── */
+.pos-table td:first-child { background: #f2f4f7; color: #243447; font-size: 12.5px; }
 .pos-table td:last-child { background: #eefcf8; color: #115e59; font-weight: 520; }
+.pos-table th { font-size: 11.5px; }
 
-/* ── Cards ── */
+/* ── Simple 2-col tables (baselines, metrics, sensitivity dims) ── */
+.t2col td:first-child { width: 180px; }
+
+/* ── Cards / Callouts ── */
 .callout {
   background: var(--card); border-left: 4px solid var(--accent); border-radius: 6px;
   padding: 16px 20px; margin: 16px 0 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);
 }
-.callout p { margin: 0; font-size: 15px; }
-.callout .title { font-weight: 700; color: var(--accent); margin-bottom: 4px; }
-
-/* ── Claims ── */
+.callout .title { font-weight: 700; color: var(--accent); margin-bottom: 4px; font-size: 14px; }
+.callout p { margin: 0; font-size: 14.5px; }
 .claim-num {
   display: inline-block; background: var(--accent); color: #fff; border-radius: 50%;
-  width: 22px; height: 22px; text-align: center; font-size: 12px; font-weight: 700;
-  line-height: 22px; margin-right: 6px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  width: 20px; height: 20px; text-align: center; font-size: 11px; font-weight: 700;
+  line-height: 20px; margin-right: 5px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
 }
 
 /* ── Meta bar ── */
@@ -98,22 +117,33 @@ sup { font-size: 0.75em; }
   margin-bottom: 16px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
 }
 
+/* ── Ordered lists ── */
+main ol { margin: 8px 0 14px 24px; line-height: 1.8; padding-left: 16px; }
+
+/* ── Refs ── */
+.refs { font-size: 13.5px; line-height: 1.9; color: var(--muted); padding-left: 20px; }
+
 /* ── Responsive ── */
-@media (max-width: 900px) {
+@media (max-width: 860px) {
   nav { display: none; }
-  main { margin-left: 0; width: 100%; padding: 24px 20px 60px; }
+  .page { display: block; }
+  main { max-width: 100%; padding: 20px 18px 60px; }
+  h1 { font-size: 22px; }
 }
 
 /* ── Print ── */
 @media print {
   nav { display: none; }
-  main { margin-left: 0; width: 100%; padding: 0; }
+  .page { display: block; }
+  main { max-width: 100%; padding: 0; }
   body { font-size: 12px; }
   .abstract { border: 1px solid #ccc; }
 }
 </style>
 </head>
 <body>
+
+<div class="page">
 
 <!-- ═══════════ SIDEBAR ═══════════ -->
 <nav id="sidebar">
@@ -126,30 +156,26 @@ sup { font-size: 0.75em; }
   <a href="#sec2-2" class="toc-l2">2.2 Per-Example Budget</a>
   <a href="#sec2-3" class="toc-l2">2.3 Explainable Routing</a>
   <a href="#sec2-4" class="toc-l2">2.4 Positioning</a>
-  <a href="#sec3" class="toc-l1">3. BudgetFlow Framework</a>
-  <a href="#sec3-1" class="toc-l2">3.1 Task Value &amp; Budget</a>
+  <a href="#sec3" class="toc-l1">3. Framework</a>
+  <a href="#sec3-1" class="toc-l2">3.1 Value &amp; Budget</a>
   <a href="#sec3-2" class="toc-l2">3.2 Regime Compiler</a>
   <a href="#sec3-3" class="toc-l2">3.3 Runtime Policy</a>
-  <a href="#sec4" class="toc-l1">4. Experimental Setup</a>
-  <a href="#sec4-1" class="toc-l2">4.1 Task Workload</a>
+  <a href="#sec4" class="toc-l1">4. Experiments</a>
+  <a href="#sec4-1" class="toc-l2">4.1 Workload</a>
   <a href="#sec4-2" class="toc-l2">4.2 Shared Budget</a>
   <a href="#sec4-3" class="toc-l2">4.3 Baselines</a>
   <a href="#sec4-4" class="toc-l2">4.4 Metrics</a>
   <a href="#sec4-5" class="toc-l2">4.5 Sensitivity</a>
   <a href="#sec5" class="toc-l1">5. Results</a>
   <a href="#sec5-1" class="toc-l2">5.1 Main Result</a>
-  <a href="#sec5-2" class="toc-l2">5.2 Cost ≠ Token Price</a>
-  <a href="#sec5-3" class="toc-l2">5.3 Sensitivity Analysis</a>
+  <a href="#sec5-2" class="toc-l2">5.2 Cost &ne; Price</a>
+  <a href="#sec5-3" class="toc-l2">5.3 Sensitivity</a>
   <a href="#sec6" class="toc-l1">6. Discussion</a>
-  <a href="#sec6-1" class="toc-l2">6.1 Value Maximization</a>
-  <a href="#sec6-2" class="toc-l2">6.2 When BF Spends More</a>
-  <a href="#sec6-3" class="toc-l2">6.3 Prior Work</a>
-  <a href="#sec6-4" class="toc-l2">6.4 Limitations</a>
   <a href="#sec7" class="toc-l1">7. Conclusion</a>
   <a href="#references" class="toc-l1">References</a>
 </nav>
 
-<!-- ═══════════ MAIN ═══════════ -->
+<!-- ═══════════ MAIN CONTENT ═══════════ -->
 <main>
 
 <h1>BudgetFlow: Value-Aware Budget Allocation for LLM Agent Tasks Under a Shared Hard Cap</h1>
@@ -163,7 +189,7 @@ sup { font-size: 0.75em; }
 <div class="abstract" id="abstract">
   <div class="label">Abstract</div>
   <p>
-    We introduce <strong>BudgetFlow</strong>, a budget governance layer that maximizes <em>normalized verified resolved value</em> (Yield) under a single shared hard budget across a fixed batch of tasks. Existing approaches to cost-efficient LLM deployment—cascade routing, per-example budget enforcement, and budget-aware agent frameworks—operate at the level of individual queries or agent runs. None address the allocation problem that arises when a fixed task batch must share one hard budget: which tasks deserve scarce model opportunities, and how should runtime model selection reflect pre-registered task value? BudgetFlow answers this with two components: a pre-run <strong>budget regime compiler</strong> that translates a hard cap into an auditable allocation scheme, and a <strong>runtime value-aware policy</strong> that selects models at task start based on expected verified value. In experiments using a fixed 30-task SWE-bench workload under a shared budget, BudgetFlow achieves <strong>17/30 pass, Yield 21.0, Cost $6.0000, and Yield/$ 3.5000</strong>, compared to T2-only (12/30, Yield 14.5, Yield/$ 2.4167) and T3-only (16/30, Yield 18.5, Yield/$ 3.1731) baselines. The results hold directionally across KV-cache discount levels, value profiles, and budget cap settings. BudgetFlow demonstrates that shared-budget value maximization, rather than per-query cost minimization, is the appropriate objective when a batch of heterogeneous tasks competes for one hard budget.
+    We introduce <strong>BudgetFlow</strong>, a budget governance layer that maximizes <em>normalized verified resolved value</em> (Yield) under a single shared hard budget across a fixed batch of tasks. Existing approaches to cost-efficient LLM deployment—cascade routing, per-example budget enforcement, and budget-aware agent frameworks—operate at the level of individual queries or agent runs. None address the allocation problem that arises when a fixed task batch must share one hard budget: which tasks deserve scarce model opportunities, and how should runtime model selection reflect pre-registered task value? BudgetFlow answers this with two components: a pre-run <strong>budget regime compiler</strong> that translates a hard cap into an auditable allocation scheme, and a <strong>runtime value-aware policy</strong> that selects models at task start based on expected verified value. In experiments using a fixed 30-task SWE-bench workload under a shared budget, BudgetFlow achieves <strong>17/30 pass, Yield 21.0, Cost &#36;6.0000, and Yield/&#36; 3.5000</strong>, compared to T2-only (12/30, Yield 14.5, Yield/&#36; 2.4167) and T3-only (16/30, Yield 18.5, Yield/&#36; 3.1731) baselines. The results hold directionally across KV-cache discount levels, value profiles, and budget cap settings. BudgetFlow demonstrates that shared-budget value maximization, rather than per-query cost minimization, is the appropriate objective when a batch of heterogeneous tasks competes for one hard budget.
   </p>
 </div>
 
@@ -194,7 +220,7 @@ BudgetFlow is <em>not</em> a cheapest-model fallback policy. It is a value-aware
 </p>
 
 <p>
-We evaluate BudgetFlow on a fixed 30-task SWE-bench workload under a binding shared budget. BudgetFlow achieves 17/30 pass, Yield 21.0, and Yield/$ 3.5000, compared to T2-only (12/30 pass, Yield 14.5, Yield/$ 2.4167) and T3-only (16/30 pass, Yield 18.5, Yield/$ 3.1731). Sensitivity analysis across KV-cache discount levels, value profiles, and budget cap settings confirms that BudgetFlow's advantage is directionally consistent.
+We evaluate BudgetFlow on a fixed 30-task SWE-bench workload under a binding shared budget. BudgetFlow achieves 17/30 pass, Yield 21.0, and Yield/&#36; 3.5000, compared to T2-only (12/30 pass, Yield 14.5, Yield/&#36; 2.4167) and T3-only (16/30 pass, Yield 18.5, Yield/&#36; 3.1731). Sensitivity analysis across KV-cache discount levels, value profiles, and budget cap settings confirms that BudgetFlow's advantage is directionally consistent.
 </p>
 
 <div class="callout" style="border-left-color: var(--accent2);">
@@ -251,23 +277,25 @@ BCAS (McCleary &amp; Ghawaly, 2026) provides a model-agnostic evaluation harness
 
 <h3 id="sec2-4">2.4 Positioning</h3>
 
+<div class="table-wrap">
 <table class="pos-table">
   <thead>
-    <tr><th>Approach</th><th>Decision Unit</th><th>Budget Scope</th><th>Value Awareness</th><th>Verified Outcomes</th></tr>
+    <tr><th>Approach</th><th>Decision Unit</th><th>Budget Scope</th><th>Value Aware</th><th>Verified</th></tr>
   </thead>
   <tbody>
-    <tr><td>FrugalGPT / RouteLLM / HybridLLM</td><td>Per-query</td><td>Cost minimization</td><td>No</td><td>No</td></tr>
-    <tr><td>UCCI</td><td>Per-query</td><td>Cost minimization</td><td>No</td><td>No</td></tr>
-    <tr><td>RouteNLP</td><td>Per-workflow</td><td>Per-workflow cap</td><td>Quality sensitivity</td><td>No</td></tr>
-    <tr><td>Predictive Scheduling / e1 / BRPO / BudgetThinker</td><td>Per-trace</td><td>Per-example budget</td><td>No</td><td>No</td></tr>
-    <tr><td>INTENT / BATS / AVA</td><td>Per-agent-run</td><td>Per-run budget</td><td>Binary</td><td>Task success</td></tr>
-    <tr><td>Topaz</td><td>Per-subtask</td><td>Cost-sensitivity parameter</td><td>Indirect</td><td>No</td></tr>
-    <tr><td>BCAS</td><td>Per-agent-session</td><td>Token/turn budget</td><td>No</td><td>No</td></tr>
-    <tr class="best"><td><strong>BudgetFlow</strong></td><td><strong>Per-task in fixed batch</strong></td><td><strong>Shared hard budget</strong></td><td><strong>Pre-registered value</strong></td><td><strong>Verified resolution</strong></td></tr>
+    <tr><td>FrugalGPT / RouteLLM / HybridLLM</td><td>Per-query</td><td>Cost minimization</td><td>&mdash;</td><td>&mdash;</td></tr>
+    <tr><td>UCCI</td><td>Per-query</td><td>Cost minimization</td><td>&mdash;</td><td>&mdash;</td></tr>
+    <tr><td>RouteNLP</td><td>Per-workflow</td><td>Per-workflow cap</td><td>Quality</td><td>&mdash;</td></tr>
+    <tr><td>Predictive Scheduling / e1 / BRPO / BudgetThinker</td><td>Per-trace</td><td>Per-example budget</td><td>&mdash;</td><td>&mdash;</td></tr>
+    <tr><td>INTENT / BATS / AVA</td><td>Per-agent-run</td><td>Per-run budget</td><td>Binary</td><td>Pass/fail</td></tr>
+    <tr><td>Topaz</td><td>Per-subtask</td><td>Cost parameter</td><td>Indirect</td><td>&mdash;</td></tr>
+    <tr><td>BCAS</td><td>Per-session</td><td>Token/turn budget</td><td>&mdash;</td><td>&mdash;</td></tr>
+    <tr class="best"><td><strong>BudgetFlow</strong></td><td><strong>Per-task in batch</strong></td><td><strong>Shared hard budget</strong></td><td><strong>Pre-registered</strong></td><td><strong>Verified resolution</strong></td></tr>
   </tbody>
 </table>
+</div>
 
-<!-- ═══════════ 3. BUDGETFLOW FRAMEWORK ═══════════ -->
+<!-- ═══════════ 3. FRAMEWORK ═══════════ -->
 <h2 id="sec3">3. BudgetFlow Framework</h2>
 
 <p>
@@ -277,25 +305,25 @@ BudgetFlow consists of two components: a pre-run <strong>budget regime compiler<
 <h3 id="sec3-1">3.1 Task Value and Budget Model</h3>
 
 <p>
-Let a batch of <span class="katex">n</span> tasks <span class="katex">T = \{t_1, \ldots, t_n\}</span> be submitted for execution. Each task <span class="katex">t_i</span> carries a pre-registered value <span class="katex">v_i > 0</span>, which reflects the operator's judgment of the task's importance. This value is declared before execution begins—it is not estimated, inferred, or fitted post-hoc.
+Let a batch of \(n\) tasks \(T = \{t_1, \ldots, t_n\}\) be submitted for execution. Each task \(t_i\) carries a pre-registered value \(v_i > 0\), which reflects the operator's judgment of the task's importance. This value is declared before execution begins—it is not estimated, inferred, or fitted post-hoc.
 </p>
 
 <p>
-The operator sets a hard budget <span class="katex">B</span>, a single cap on total token-level expenditure across all tasks in the batch. Once the batch starts executing, total spending must not exceed <span class="katex">B</span>. If the budget is exhausted before all tasks are processed, remaining tasks are not executed. The objective is to maximize total verified resolved value (Yield) across the batch, where a task contributes its pre-registered value <span class="katex">v_i</span> if and only if its output passes verification:
+The operator sets a hard budget \(B\), a single cap on total token-level expenditure across all tasks in the batch. Once the batch starts executing, total spending must not exceed \(B\). If the budget is exhausted before all tasks are processed, remaining tasks are not executed. The objective is to maximize total verified resolved value (Yield) across the batch, where a task contributes its pre-registered value \(v_i\) if and only if its output passes verification:
 </p>
 
 <p style="text-align:center; font-size:17px; margin: 16px 0;">
-  <span class="katex">\text{Yield} = \sum_{i: \text{task } t_i \text{ passes verification}} v_i</span>
+  \[\text{Yield} = \sum_{i: \text{task } t_i \text{ passes verification}} v_i\]
 </p>
 
 <p>
-The operator's problem is therefore: given <span class="katex">T</span>, <span class="katex">\{v_i\}</span>, and <span class="katex">B</span>, select a model assignment policy that maximizes expected Yield.
+The operator's problem is therefore: given \(T\), \(\{v_i\}\), and \(B\), select a model assignment policy that maximizes expected Yield.
 </p>
 
 <h3 id="sec3-2">3.2 Budget Regime Compiler</h3>
 
 <p>
-The budget regime compiler takes the budget cap <span class="katex">B</span>, the task batch <span class="katex">T</span>, and the value annotations <span class="katex">\{v_i\}</span> and produces a <strong>regime</strong>—a structured plan that partitions the budget into allocation tiers and specifies, for each tier, which model options are available and under what conditions they may be selected.
+The budget regime compiler takes the budget cap \(B\), the task batch \(T\), and the value annotations \(\{v_i\}\) and produces a <strong>regime</strong>—a structured plan that partitions the budget into allocation tiers and specifies, for each tier, which model options are available and under what conditions they may be selected.
 </p>
 
 <p>
@@ -305,17 +333,17 @@ The compiler does not execute tasks. It produces an auditable artifact that can 
 <h3 id="sec3-3">3.3 Runtime Value-Aware Policy</h3>
 
 <p>
-At the start of each task <span class="katex">t_i</span>, the runtime policy reads the task's pre-registered value <span class="katex">v_i</span>, the current remaining budget <span class="katex">B_{\text{rem}}</span>, and the budget regime. It selects a model <span class="katex">m \in \mathcal{M}</span> that is eligible under the regime for tasks of value <span class="katex">v_i</span>, considering:
+At the start of each task \(t_i\), the runtime policy reads the task's pre-registered value \(v_i\), the current remaining budget \(B_{\text{rem}}\), and the budget regime. It selects a model \(m \in \mathcal{M}\) that is eligible under the regime for tasks of value \(v_i\), considering:
 </p>
 
-<ol style="margin: 8px 0 14px 24px; line-height: 1.8;">
-  <li>The expected cost of executing <span class="katex">t_i</span> with model <span class="katex">m</span>, given historical cost data for similar tasks.</li>
-  <li>The expected probability that <span class="katex">t_i</span> will pass verification if executed with model <span class="katex">m</span>.</li>
+<ol>
+  <li>The expected cost of executing \(t_i\) with model \(m\), given historical cost data for similar tasks.</li>
+  <li>The expected probability that \(t_i\) will pass verification if executed with model \(m\).</li>
   <li>The remaining budget headroom: a model that is otherwise optimal may be skipped if selecting it would leave insufficient budget for higher-value downstream tasks.</li>
 </ol>
 
 <p>
-The policy may select a stronger model when the expected verified value gain justifies the additional expected cost, and may select a cheaper model when the value at stake does not warrant the spend. The policy tracks cumulative spending and updates <span class="katex">B_{\text{rem}}</span> after each completed task, allowing downstream decisions to tighten as the budget depletes.
+The policy may select a stronger model when the expected verified value gain justifies the additional expected cost, and may select a cheaper model when the value at stake does not warrant the spend. The policy tracks cumulative spending and updates \(B_{\text{rem}}\) after each completed task, allowing downstream decisions to tighten as the budget depletes.
 </p>
 
 <div class="callout" style="border-left-color: var(--warn);">
@@ -345,54 +373,57 @@ Each task carries a pre-registered value. We evaluate under three value profiles
 <h3 id="sec4-2">4.2 Shared Budget</h3>
 
 <p>
-A single hard budget cap <span class="katex">B</span> is set before the batch begins. Once set, the cap is binding: total spending across all 30 tasks must not exceed <span class="katex">B</span>. The cap is chosen to be active: T2-only and BudgetFlow reach the full $6.0000 cap, while T3-only finishes at $5.8303. BudgetFlow's regime compiler receives the same cap and must allocate within it.
+A single hard budget cap \(B\) is set before the batch begins. Once set, the cap is binding: total spending across all 30 tasks must not exceed \(B\). The cap is chosen to be active: T2-only and BudgetFlow reach the full &#36;6.0000 cap, while T3-only finishes at &#36;5.8303. BudgetFlow's regime compiler receives the same cap and must allocate within it.
 </p>
 
 <h3 id="sec4-3">4.3 Baselines</h3>
 
-<table>
+<div class="table-wrap">
+<table class="t2col">
   <thead>
     <tr><th>Policy</th><th>Description</th></tr>
   </thead>
   <tbody>
-    <tr><td><strong>T2-only</strong></td><td>Every task is executed with model T2. Spending is typically below the cap; unused budget is wasted.</td></tr>
-    <tr><td><strong>T3-only</strong></td><td>Every task is executed with model T3. Spending may approach or reach the cap, but every task receives the same model regardless of value.</td></tr>
-    <tr class="best"><td><strong>BudgetFlow</strong></td><td>The budget regime compiler produces a regime for the given cap and value profile. The runtime policy selects T2 or T3 at task start based on task value, expected cost, expected verification probability, and remaining budget.</td></tr>
+    <tr><td><strong>T2-only</strong></td><td>Every task executed with model T2. Spending is typically below the cap; unused budget is wasted.</td></tr>
+    <tr><td><strong>T3-only</strong></td><td>Every task executed with model T3. May approach or reach the cap, but every task receives the same model regardless of value.</td></tr>
+    <tr class="best"><td><strong>BudgetFlow</strong></td><td>Regime compiler produces allocation plan; runtime policy selects T2 or T3 at task start based on task value, expected cost, expected verification probability, and remaining budget.</td></tr>
   </tbody>
 </table>
-
-<p>All policies operate under identical task order, identical verification criteria, and the same hard budget cap.</p>
+</div>
+<p style="margin-top: 4px;">All policies operate under identical task order, identical verification criteria, and the same hard budget cap.</p>
 
 <h3 id="sec4-4">4.4 Metrics</h3>
 
-<table>
+<div class="table-wrap">
+<table class="t2col">
   <thead>
     <tr><th>Metric</th><th>Definition</th></tr>
   </thead>
   <tbody>
     <tr><td><strong>Pass count</strong></td><td>Number of tasks (out of 30) whose agent-produced patch passes verification.</td></tr>
     <tr><td><strong>Yield</strong></td><td>Sum of pre-registered values of all passing tasks. <em>Primary metric</em>—directly measures verified value produced under the budget.</td></tr>
-    <tr><td><strong>Yield/$</strong></td><td>Yield divided by total cost. Measures budget efficiency—how much verified value each dollar of the shared budget produces.</td></tr>
+    <tr><td><strong>Yield/&#36;</strong></td><td>Yield divided by total cost. Measures budget efficiency.</td></tr>
     <tr><td><strong>Total Cost</strong></td><td>Aggregate token expenditure across all 30 tasks, at or below the cap.</td></tr>
   </tbody>
 </table>
+</div>
 
 <h3 id="sec4-5">4.5 Sensitivity Dimensions</h3>
 
-<p>
-We evaluate BudgetFlow's robustness across three sensitivity dimensions:
-</p>
+<p>We evaluate BudgetFlow's robustness across three sensitivity dimensions:</p>
 
-<table>
+<div class="table-wrap">
+<table class="t2col">
   <thead>
     <tr><th>Dimension</th><th>Description</th></tr>
   </thead>
   <tbody>
-    <tr><td><strong>KV-cache discount</strong></td><td>Different KV-cache pricing levels (KV0, KV50, KV80, KV90, KV98, KV99) affect the token-level cost accounting of each model.</td></tr>
-    <tr><td><strong>Value profile</strong></td><td>Equal-value, current-value, and wide-gradient value annotations test whether BudgetFlow's advantage depends on a specific value distribution.</td></tr>
-    <tr><td><strong>Budget cap</strong></td><td>Tighter and more binding caps test whether BudgetFlow maintains its directional advantage as budget pressure increases.</td></tr>
+    <tr><td><strong>KV-cache discount</strong></td><td>KV-cache pricing levels (KV0, KV50, KV80, KV90, KV98, KV99) affect token-level cost accounting.</td></tr>
+    <tr><td><strong>Value profile</strong></td><td>Equal-value, current-value, and wide-gradient annotations test dependence on value distribution.</td></tr>
+    <tr><td><strong>Budget cap</strong></td><td>Tighter caps test whether BudgetFlow's advantage persists under increased budget pressure.</td></tr>
   </tbody>
 </table>
+</div>
 
 <!-- ═══════════ 5. RESULTS ═══════════ -->
 <h2 id="sec5">5. Results</h2>
@@ -401,35 +432,35 @@ We evaluate BudgetFlow's robustness across three sensitivity dimensions:
 
 <p>Table 1 reports the primary comparison under the current value profile and the active budget cap.</p>
 
+<div class="table-wrap">
 <table>
-  <caption style="caption-side: bottom; text-align: left; font-size: 13px; color: var(--muted); margin-top: 6px;">
-    <strong>Table 1.</strong> Main result on the 30-task SWE-bench workload under a shared hard budget cap. BudgetFlow achieves the highest pass count, highest Yield, and highest Yield per Dollar.
-  </caption>
+  <caption><strong>Table 1.</strong> Main result on the 30-task SWE-bench workload under a shared hard budget cap. BudgetFlow achieves the highest pass count, Yield, and Yield per Dollar.</caption>
   <thead>
-    <tr><th>Policy</th><th>Pass (out of 30)</th><th>Yield</th><th>Total Cost</th><th>Yield/$</th></tr>
+    <tr><th>Policy</th><th>Pass / 30</th><th>Yield</th><th>Total Cost</th><th>Yield/&#36;</th></tr>
   </thead>
   <tbody>
-    <tr><td>T2-only</td><td>12</td><td>14.5</td><td>$6.0000</td><td>2.4167</td></tr>
-    <tr><td>T3-only</td><td>16</td><td>18.5</td><td>$5.8303</td><td>3.1731</td></tr>
-    <tr class="best"><td><strong>BudgetFlow</strong></td><td><strong>17</strong></td><td><strong>21.0</strong></td><td>$6.0000</td><td><strong>3.5000</strong></td></tr>
+    <tr><td>T2-only</td><td>12</td><td>14.5</td><td>&#36;6.0000</td><td>2.4167</td></tr>
+    <tr><td>T3-only</td><td>16</td><td>18.5</td><td>&#36;5.8303</td><td>3.1731</td></tr>
+    <tr class="best"><td><strong>BudgetFlow</strong></td><td><strong>17</strong></td><td><strong>21.0</strong></td><td>&#36;6.0000</td><td><strong>3.5000</strong></td></tr>
   </tbody>
 </table>
+</div>
 
 <p>
-BudgetFlow achieves 17/30 pass, compared to 16/30 (T3-only) and 12/30 (T2-only). Yield reaches 21.0, exceeding T3-only (18.5) by <strong>+13.5%</strong> and T2-only (14.5) by <strong>+44.8%</strong>. BudgetFlow and T2-only both record total cost of $6.0000 at the cap, but BudgetFlow extracts substantially more verified value from the same budget. Yield/$ for BudgetFlow is 3.5000, compared to 3.1731 (T3-only) and 2.4167 (T2-only).
+BudgetFlow achieves 17/30 pass, compared to 16/30 (T3-only) and 12/30 (T2-only). Yield reaches 21.0, exceeding T3-only (18.5) by <strong>+13.5%</strong> and T2-only (14.5) by <strong>+44.8%</strong>. BudgetFlow and T2-only both record total cost of &#36;6.0000 at the cap, but BudgetFlow extracts substantially more verified value from the same budget. Yield/&#36; for BudgetFlow is 3.5000, compared to 3.1731 (T3-only) and 2.4167 (T2-only).
 </p>
 
 <div class="callout">
   <div class="title">Key Dynamic</div>
   <p>
-    T2-only and BudgetFlow both spend the full cap ($6.0000), but BudgetFlow extracts substantially more verified value from the same budget—Yield 21.0 vs. 14.5, Yield/$ 3.5000 vs. 2.4167. T3-only cannot differentiate: it grants the same model to every task, missing the opportunity to conserve budget on low-value tasks and concentrate spend on high-value ones. Its lower total cost ($5.8303) does <em>not</em> translate into higher efficiency.
+    T2-only and BudgetFlow both spend the full cap (&#36;6.0000), but BudgetFlow extracts substantially more verified value from the same budget—Yield 21.0 vs. 14.5, Yield/&#36; 3.5000 vs. 2.4167. T3-only cannot differentiate: it grants the same model to every task, missing the opportunity to conserve budget on low-value tasks and concentrate spend on high-value ones. Its lower total cost (&#36;5.8303) does <em>not</em> translate into higher efficiency.
   </p>
 </div>
 
 <h3 id="sec5-2">5.2 Cost Is Not Token Price</h3>
 
 <p>
-The T3-only baseline records a lower total cost ($5.8303) than BudgetFlow ($6.0000). A naive reading would favor T3-only for being cheaper. <strong>This reading is incorrect.</strong>
+The T3-only baseline records a lower total cost (&#36;5.8303) than BudgetFlow (&#36;6.0000). A naive reading would favor T3-only for being cheaper. <strong>This reading is incorrect.</strong>
 </p>
 
 <p>
@@ -437,108 +468,102 @@ BudgetFlow is not a cheapest-model fallback policy. It is a value-aware budget a
 </p>
 
 <p>
-BudgetFlow spends the full cap and produces more verified value. T3-only is a strong efficiency baseline with higher Yield/$ than T2-only; however, its lower spend does not dominate when BudgetFlow achieves both higher Yield (21.0 vs. 18.5) and higher Yield/$ (3.5000 vs. 3.1731) within the same shared cap. The operator's objective is to maximize verified value under the cap. On that objective, BudgetFlow is the best policy on the paper's primary metric, Yield, and also improves Yield/$ in this readout.
+BudgetFlow spends the full cap and produces more verified value. T3-only is a strong efficiency baseline with higher Yield/&#36; than T2-only; however, its lower spend does not dominate when BudgetFlow achieves both higher Yield (21.0 vs. 18.5) and higher Yield/&#36; (3.5000 vs. 3.1731) within the same shared cap. The operator's objective is to maximize verified value under the cap. On that objective, BudgetFlow is the best policy on the paper's primary metric, Yield, and also improves Yield/&#36; in this readout.
 </p>
 
 <h3 id="sec5-3">5.3 Sensitivity Analysis</h3>
 
 <p>
-We evaluate BudgetFlow's robustness across three sensitivity dimensions: KV-cache discount, value profile, and budget cap. All sensitivity runs use the same 30-task batch, fixed task order, and frozen CostSource. The sensitivity readout uses corrected Yield values from the patch-cleaner forensic re-read (BudgetFlow Yield 22.0 vs. Table 1's uncorrected 21.0); the directional pattern is unchanged. All three baselines consume the same task set under the same protocol.
+We evaluate BudgetFlow's robustness across three sensitivity dimensions: KV-cache discount, value profile, and budget cap. All sensitivity runs use the same 30-task batch, fixed task order, and frozen CostSource. The sensitivity readout uses corrected Yield values from the patch-cleaner forensic re-read (BudgetFlow Yield 22.0 vs. Table 1's uncorrected 21.0); the directional pattern is unchanged.
 </p>
 
-<!-- KV-cache -->
-<h4 style="font-size:15px; font-weight:650; margin: 22px 0 10px; color: var(--accent);">KV-Cache Discount Sensitivity</h4>
+<!-- ── KV-Cache ── -->
+<h4>KV-Cache Discount Sensitivity</h4>
 
 <p>
-Table 2 reports Yield and Yield/$ across six KV-cache discount levels under the current value profile. KV-cache discounting reduces the effective per-token cost of repeated input tokens without changing base model prices or physical model bindings; higher discount levels benefit models that produce longer multi-turn trajectories with large repeating prefixes.
+Table 2 reports Yield and Yield/&#36; across six KV-cache discount levels. KV-cache discounting reduces the effective per-token cost of repeated input tokens without changing base model prices; higher discount levels benefit models that produce longer multi-turn trajectories with large repeating prefixes.
 </p>
 
-<div style="overflow-x: auto;">
+<div class="table-wrap">
 <table>
-  <caption style="caption-side: bottom; text-align: left; font-size: 13px; color: var(--muted); margin-top: 6px;">
-    <strong>Table 2.</strong> KV-cache discount sensitivity. BudgetFlow maintains the highest Yield (22.0) at every discount level.
-  </caption>
+  <caption><strong>Table 2.</strong> KV-cache discount sensitivity. BudgetFlow maintains the highest Yield (22.0) at every discount level.</caption>
   <thead>
-    <tr><th>KV Discount</th><th>T2 Cost / Y$</th><th>T3 Cost / Y$</th><th>BF Cost / Y$</th><th>Yield Winner</th><th>Efficiency Winner</th></tr>
+    <tr><th>KV</th><th>T2 Cost</th><th>T2 Y&#36;</th><th>T3 Cost</th><th>T3 Y&#36;</th><th>BF Cost</th><th>BF Y&#36;</th><th>Yield</th><th>Y&#36;</th></tr>
   </thead>
   <tbody>
-    <tr><td>0%</td><td>$17.9595 / 1.0858</td><td>$8.7395 / 2.0024</td><td>$12.7868 / 1.7205</td><td><strong>BF 22.0</strong></td><td>T3</td></tr>
-    <tr><td>50%</td><td>$9.7729 / 1.9953</td><td>$5.1336 / 3.4089</td><td>$7.1727 / 3.0672</td><td><strong>BF 22.0</strong></td><td>T3</td></tr>
-    <tr><td>80%</td><td>$4.8610 / 4.0116</td><td>$2.9701 / 5.8921</td><td>$3.8043 / 5.7830</td><td><strong>BF 22.0</strong></td><td>T3</td></tr>
-    <tr><td>90%</td><td>$3.2236 / 6.0491</td><td>$2.2489 / 7.7816</td><td>$2.6814 / 8.2045</td><td><strong>BF 22.0</strong></td><td><strong>BF</strong></td></tr>
-    <tr><td>98%</td><td>$1.9138 / 10.1893</td><td>$1.6720 / 10.4667</td><td>$1.7832 / 12.3374</td><td><strong>BF 22.0</strong></td><td><strong>BF</strong></td></tr>
-    <tr><td>99%</td><td>$1.7500 / 11.1426</td><td>$1.5998 / 10.9385</td><td>$1.6709 / 13.1664</td><td><strong>BF 22.0</strong></td><td><strong>BF</strong></td></tr>
+    <tr><td>0%</td><td>&#36;17.96</td><td>1.09</td><td>&#36;8.74</td><td>2.00</td><td>&#36;12.79</td><td>1.72</td><td class="win">BF 22.0</td><td>T3</td></tr>
+    <tr><td>50%</td><td>&#36;9.77</td><td>2.00</td><td>&#36;5.13</td><td>3.41</td><td>&#36;7.17</td><td>3.07</td><td class="win">BF 22.0</td><td>T3</td></tr>
+    <tr><td>80%</td><td>&#36;4.86</td><td>4.01</td><td>&#36;2.97</td><td>5.89</td><td>&#36;3.80</td><td>5.78</td><td class="win">BF 22.0</td><td>T3</td></tr>
+    <tr><td>90%</td><td>&#36;3.22</td><td>6.05</td><td>&#36;2.25</td><td>7.78</td><td>&#36;2.68</td><td>8.20</td><td class="win">BF 22.0</td><td class="win">BF</td></tr>
+    <tr><td>98%</td><td>&#36;1.91</td><td>10.19</td><td>&#36;1.67</td><td>10.47</td><td>&#36;1.78</td><td>12.34</td><td class="win">BF 22.0</td><td class="win">BF</td></tr>
+    <tr><td>99%</td><td>&#36;1.75</td><td>11.14</td><td>&#36;1.60</td><td>10.94</td><td>&#36;1.67</td><td>13.17</td><td class="win">BF 22.0</td><td class="win">BF</td></tr>
   </tbody>
 </table>
 </div>
 
 <p>
-BudgetFlow holds the highest absolute Yield at every discount level. The efficiency ranking depends on the discount regime: at low-to-moderate KV discounts (0%–80%), pure T3's lower total token consumption yields the best Yield/$. At KV90 and above, BudgetFlow overtakes pure T3 on Yield/$, because the cost penalty for BudgetFlow's T2-routed tasks shrinks under aggressive KV-cache pricing. This confirms that KV-cache assumptions affect efficiency rankings but not the Yield ordering, and supports treating KV-cache as an explicit sensitivity rather than a hidden CostSource parameter.
+BudgetFlow holds the highest absolute Yield at every discount level. The efficiency ranking depends on the discount regime: at low-to-moderate KV discounts (0%–80%), pure T3's lower total token consumption yields the best Yield/&#36;. At KV90 and above, BudgetFlow overtakes pure T3 on Yield/&#36;, because the cost penalty for BudgetFlow's T2-routed tasks shrinks under aggressive KV-cache pricing. This confirms that KV-cache assumptions affect efficiency rankings but not the Yield ordering.
 </p>
 
-<!-- Value Profile -->
-<h4 style="font-size:15px; font-weight:650; margin: 22px 0 10px; color: var(--accent);">Value Profile Sensitivity</h4>
+<!-- ── Value Profile ── -->
+<h4>Value Profile Sensitivity</h4>
 
 <p>
-Table 3 reports Yield for all three policies across nine pre-registered value profiles at KV50. Value profiles vary the mapping from task criticality to numerical weight, testing whether BudgetFlow's advantage is an artifact of a specific value scheme.
+Table 3 reports Yield for all three policies across nine pre-registered value profiles at KV50. Value profiles vary the mapping from task criticality to numerical weight.
 </p>
 
-<div style="overflow-x: auto;">
+<div class="table-wrap">
 <table>
-  <caption style="caption-side: bottom; text-align: left; font-size: 13px; color: var(--muted); margin-top: 6px;">
-    <strong>Table 3.</strong> Value profile sensitivity at KV50. BudgetFlow achieves higher Yield than both baselines across all nine profiles.
-  </caption>
+  <caption><strong>Table 3.</strong> Value profile sensitivity at KV50. BudgetFlow achieves higher Yield than both baselines across all nine profiles.</caption>
   <thead>
-    <tr><th>Value Profile</th><th>T2 Yield</th><th>T3 Yield</th><th>BF Yield</th><th>BF vs Best Baseline</th></tr>
+    <tr><th>Value Profile</th><th>T2 Yield</th><th>T3 Yield</th><th>BF Yield</th><th>&Delta; vs Best Baseline</th></tr>
   </thead>
   <tbody>
-    <tr><td>equal</td><td>18.0</td><td>16.0</td><td><strong>20.0</strong></td><td style="color:var(--good); font-weight:700;">+2.0</td></tr>
-    <tr><td>current</td><td>19.5</td><td>17.5</td><td><strong>22.0</strong></td><td style="color:var(--good); font-weight:700;">+2.5</td></tr>
-    <tr><td>current_high_to_2.0</td><td>21.0</td><td>19.0</td><td><strong>24.0</strong></td><td style="color:var(--good); font-weight:700;">+3.0</td></tr>
-    <tr><td>current_high_to_2.5</td><td>22.5</td><td>20.5</td><td><strong>26.0</strong></td><td style="color:var(--good); font-weight:700;">+3.5</td></tr>
-    <tr><td>top20_effort_critical</td><td>22.5</td><td>20.5</td><td><strong>25.0</strong></td><td style="color:var(--good); font-weight:700;">+2.5</td></tr>
-    <tr><td>top33_effort_critical</td><td>24.5</td><td>21.5</td><td><strong>28.5</strong></td><td style="color:var(--good); font-weight:700;">+4.0</td></tr>
-    <tr class="best"><td>effort_tertiles_1_1.5_2.5</td><td>27.5</td><td>24.0</td><td><strong>31.5</strong></td><td style="color:var(--good); font-weight:700;">+4.0</td></tr>
-    <tr><td>both_fail_critical</td><td>19.5</td><td>17.5</td><td><strong>23.5</strong></td><td style="color:var(--good); font-weight:700;">+4.0</td></tr>
-    <tr><td>top10_effort_critical</td><td>24.5</td><td>21.5</td><td><strong>28.5</strong></td><td style="color:var(--good); font-weight:700;">+4.0</td></tr>
+    <tr><td>equal</td><td>18.0</td><td>16.0</td><td class="win">20.0</td><td class="win">+2.0</td></tr>
+    <tr><td>current</td><td>19.5</td><td>17.5</td><td class="win">22.0</td><td class="win">+2.5</td></tr>
+    <tr><td>current_high_to_2.0</td><td>21.0</td><td>19.0</td><td class="win">24.0</td><td class="win">+3.0</td></tr>
+    <tr><td>current_high_to_2.5</td><td>22.5</td><td>20.5</td><td class="win">26.0</td><td class="win">+3.5</td></tr>
+    <tr><td>top20_effort_critical</td><td>22.5</td><td>20.5</td><td class="win">25.0</td><td class="win">+2.5</td></tr>
+    <tr><td>top33_effort_critical</td><td>24.5</td><td>21.5</td><td class="win">28.5</td><td class="win">+4.0</td></tr>
+    <tr class="best"><td>effort_tertiles_1_1.5_2.5</td><td>27.5</td><td>24.0</td><td class="win">31.5</td><td class="win">+4.0</td></tr>
+    <tr><td>both_fail_critical</td><td>19.5</td><td>17.5</td><td class="win">23.5</td><td class="win">+4.0</td></tr>
+    <tr><td>top10_effort_critical</td><td>24.5</td><td>21.5</td><td class="win">28.5</td><td class="win">+4.0</td></tr>
   </tbody>
 </table>
 </div>
 
 <p>
-BudgetFlow outperforms both baselines on Yield under every tested value profile. The equal-value profile—where every task has identical weight—is the hardest test for value-aware allocation, since it removes the signal the policy uses to prioritize. BudgetFlow still leads (+2.0), indicating that the regime compiler's cost-aware default allocation provides value even when value differences are absent. As the value spread widens, BudgetFlow's advantage grows: under effort_tertiles_1_1.5_2.5, the widest gradient tested, BudgetFlow leads the best baseline by +4.0. This confirms that value-aware allocation captures more of the available gain when task values are heterogeneous—precisely the setting that motivates a shared-budget governance layer.
+BudgetFlow outperforms both baselines on Yield under every tested value profile. The equal-value profile—where every task has identical weight—is the hardest test for value-aware allocation, since it removes the signal the policy uses to prioritize. BudgetFlow still leads (+2.0), indicating that the regime compiler's cost-aware default allocation provides value even when value differences are absent. As the value spread widens, BudgetFlow's advantage grows: under effort_tertiles_1_1.5_2.5, the widest gradient tested, BudgetFlow leads the best baseline by +4.0.
 </p>
 
-<!-- Budget Cap -->
-<h4 style="font-size:15px; font-weight:650; margin: 22px 0 10px; color: var(--accent);">Budget Cap Sensitivity</h4>
+<!-- ── Budget Cap ── -->
+<h4>Budget Cap Sensitivity</h4>
 
 <p>
-Table 4 reports Yield, total cost, and Yield/$ across eight budget cap levels at KV50 under the current value profile. The cap is a hard shared constraint; when binding, later tasks in the sequence are not executed.
+Table 4 reports Yield, total cost, and Yield/&#36; across eight budget cap levels at KV50. The cap is a hard shared constraint; when binding, later tasks in the sequence are not executed.
 </p>
 
-<div style="overflow-x: auto;">
+<div class="table-wrap">
 <table>
-  <caption style="caption-side: bottom; text-align: left; font-size: 13px; color: var(--muted); margin-top: 6px;">
-    <strong>Table 4.</strong> Budget cap sensitivity at KV50. At tight caps ($3–$5), BudgetFlow wins both Yield and Yield/$. At looser caps ($6+), BudgetFlow leads Yield but pure T3 leads Yield/$.
-  </caption>
+  <caption><strong>Table 4.</strong> Budget cap sensitivity at KV50. At tight caps (&#36;3–&#36;5), BudgetFlow wins both Yield and Yield/&#36;. At looser caps (&#36;6+), BudgetFlow leads Yield but pure T3 leads Yield/&#36; due to T3 saturation.</caption>
   <thead>
-    <tr><th>Cap</th><th>T2 Yield / Cost / Y$</th><th>T3 Yield / Cost / Y$</th><th>BF Yield / Cost / Y$</th><th>Yield Winner</th><th>Efficiency Winner</th></tr>
+    <tr><th>Cap</th><th>T2 Yield</th><th>T2 Cost</th><th>T2 Y&#36;</th><th>T3 Yield</th><th>T3 Cost</th><th>T3 Y&#36;</th><th>BF Yield</th><th>BF Cost</th><th>BF Y&#36;</th><th>Yield</th><th>Y&#36;</th></tr>
   </thead>
   <tbody>
-    <tr><td>$3.00</td><td>9.5 / $2.9401 / 3.2312</td><td>10.0 / $2.9445 / 3.3961</td><td><strong>13.5 / $2.9813 / 4.5283</strong></td><td><strong>BF</strong></td><td><strong>BF</strong></td></tr>
-    <tr><td>$4.00</td><td>12.5 / $3.9541 / 3.1612</td><td>14.5 / $3.9682 / 3.6540</td><td><strong>16.0 / $3.9972 / 4.0028</strong></td><td><strong>BF</strong></td><td><strong>BF</strong></td></tr>
-    <tr><td>$5.00</td><td>12.5 / $4.9650 / 2.5176</td><td>17.5 / $4.9101 / 3.5641</td><td><strong>18.0 / $4.9581 / 3.6304</strong></td><td><strong>BF</strong></td><td><strong>BF</strong></td></tr>
-    <tr><td>$6.00</td><td>13.5 / $5.9444 / 2.2710</td><td>17.5 / $5.1336 / 3.4089</td><td><strong>20.0 / $5.9992 / 3.3338</strong></td><td><strong>BF</strong></td><td>T3</td></tr>
-    <tr><td>$7.00</td><td>15.5 / $6.9965 / 2.2154</td><td>17.5 / $5.1336 / 3.4089</td><td><strong>22.0 / $6.9740 / 3.1546</strong></td><td><strong>BF</strong></td><td>T3</td></tr>
-    <tr><td>$8.00</td><td>17.5 / $7.9361 / 2.2051</td><td>17.5 / $5.1336 / 3.4089</td><td><strong>22.0 / $7.1727 / 3.0672</strong></td><td><strong>BF</strong></td><td>T3</td></tr>
-    <tr><td>$9.00</td><td>17.5 / $8.9609 / 1.9529</td><td>17.5 / $5.1336 / 3.4089</td><td><strong>22.0 / $7.1727 / 3.0672</strong></td><td><strong>BF</strong></td><td>T3</td></tr>
-    <tr><td>$11.02</td><td>19.5 / $9.7729 / 1.9953</td><td>17.5 / $5.1336 / 3.4089</td><td><strong>22.0 / $7.1727 / 3.0672</strong></td><td><strong>BF</strong></td><td>T3</td></tr>
+    <tr><td>&#36;3.00</td><td>9.5</td><td>&#36;2.94</td><td>3.23</td><td>10.0</td><td>&#36;2.94</td><td>3.40</td><td class="win">13.5</td><td>&#36;2.98</td><td>4.53</td><td class="win">BF</td><td class="win">BF</td></tr>
+    <tr><td>&#36;4.00</td><td>12.5</td><td>&#36;3.95</td><td>3.16</td><td>14.5</td><td>&#36;3.97</td><td>3.65</td><td class="win">16.0</td><td>&#36;4.00</td><td>4.00</td><td class="win">BF</td><td class="win">BF</td></tr>
+    <tr><td>&#36;5.00</td><td>12.5</td><td>&#36;4.97</td><td>2.52</td><td>17.5</td><td>&#36;4.91</td><td>3.56</td><td class="win">18.0</td><td>&#36;4.96</td><td>3.63</td><td class="win">BF</td><td class="win">BF</td></tr>
+    <tr><td>&#36;6.00</td><td>13.5</td><td>&#36;5.94</td><td>2.27</td><td>17.5</td><td>&#36;5.13</td><td>3.41</td><td class="win">20.0</td><td>&#36;6.00</td><td>3.33</td><td class="win">BF</td><td>T3</td></tr>
+    <tr><td>&#36;7.00</td><td>15.5</td><td>&#36;7.00</td><td>2.22</td><td>17.5</td><td>&#36;5.13</td><td>3.41</td><td class="win">22.0</td><td>&#36;6.97</td><td>3.15</td><td class="win">BF</td><td>T3</td></tr>
+    <tr><td>&#36;8.00</td><td>17.5</td><td>&#36;7.94</td><td>2.21</td><td>17.5</td><td>&#36;5.13</td><td>3.41</td><td class="win">22.0</td><td>&#36;7.17</td><td>3.07</td><td class="win">BF</td><td>T3</td></tr>
+    <tr><td>&#36;9.00</td><td>17.5</td><td>&#36;8.96</td><td>1.95</td><td>17.5</td><td>&#36;5.13</td><td>3.41</td><td class="win">22.0</td><td>&#36;7.17</td><td>3.07</td><td class="win">BF</td><td>T3</td></tr>
+    <tr><td>&#36;11.02</td><td>19.5</td><td>&#36;9.77</td><td>2.00</td><td>17.5</td><td>&#36;5.13</td><td>3.41</td><td class="win">22.0</td><td>&#36;7.17</td><td>3.07</td><td class="win">BF</td><td>T3</td></tr>
   </tbody>
 </table>
 </div>
 
 <p>
-The cap sensitivity reveals two regimes. At <strong>binding caps</strong> ($3–$5), where every policy is under genuine budget pressure, BudgetFlow wins both Yield and Yield/$—value-aware allocation is both more productive and more efficient. At <strong>looser caps</strong> ($6+), pure T3 saturates: its cost flattens at $5.1336 and its Yield plateaus at 17.5, because the remaining unsolved tasks require capabilities beyond T3. BudgetFlow continues to convert additional budget into higher Yield (reaching 22.0 at $7), but its Yield/$ falls below pure T3 because the extra tasks it solves require T3-level spend on T2-viable tasks. This is not a policy failure—it is the expected behavior when a value-aware policy spends more to capture value that a pure-tier baseline cannot reach.
+The cap sensitivity reveals two regimes. At <strong>binding caps</strong> (&#36;3–&#36;5), where every policy is under genuine budget pressure, BudgetFlow wins both Yield and Yield/&#36;—value-aware allocation is both more productive and more efficient. At <strong>looser caps</strong> (&#36;6+), pure T3 saturates: its cost flattens at &#36;5.1336 and its Yield plateaus at 17.5, because the remaining unsolved tasks require capabilities beyond T3. BudgetFlow continues to convert additional budget into higher Yield (reaching 22.0 at &#36;7), but its Yield/&#36; falls below pure T3 because the extra tasks it solves require T3-level spend on T2-viable tasks. This is not a policy failure—it is the expected behavior when a value-aware policy spends more to capture value that a pure-tier baseline cannot reach.
 </p>
 
 <div class="callout" style="border-left-color: var(--accent2);">
@@ -568,11 +593,11 @@ This is a governance choice, not merely an engineering optimization. The budget 
 <h3 id="sec6-2">6.2 When BudgetFlow Spends More</h3>
 
 <p>
-In the current results, BudgetFlow and T2-only both spend the full cap ($6.0000), but BudgetFlow achieves substantially higher Yield (21.0 vs. 14.5). T3-only spends $5.8303. The $0.1697 difference between BudgetFlow and T3-only is not a policy failure—T3-only is a strong efficiency baseline with higher Yield/$ than T2-only. However, the fact that lower spend does not translate into higher verified value reinforces the central point: <strong>cost minimization is not the right objective under a shared budget cap</strong>.
+In the current results, BudgetFlow and T2-only both spend the full cap (&#36;6.0000), but BudgetFlow achieves substantially higher Yield (21.0 vs. 14.5). T3-only spends &#36;5.8303. The &#36;0.1697 difference between BudgetFlow and T3-only is not a policy failure—T3-only is a strong efficiency baseline with higher Yield/&#36; than T2-only. However, the fact that lower spend does not translate into higher verified value reinforces the central point: <strong>cost minimization is not the right objective under a shared budget cap</strong>.
 </p>
 
 <p>
-BudgetFlow's runtime policy may select T3 for high-value tasks even when T2 would be cheaper in expectation, because the expected gain in verified value outweighs the expected additional cost. Conversely, it may select T2 for low-value tasks even when budget remains, because the value at stake does not justify the spend. This is the allocation decision, and it is what produces the higher Yield and Yield/$ in Table 1.
+BudgetFlow's runtime policy may select T3 for high-value tasks even when T2 would be cheaper in expectation, because the expected gain in verified value outweighs the expected additional cost. Conversely, it may select T2 for low-value tasks even when budget remains, because the value at stake does not justify the spend. This is the allocation decision, and it is what produces the higher Yield and Yield/&#36; in Table 1.
 </p>
 
 <h3 id="sec6-3">6.3 Relationship to Prior Work</h3>
@@ -591,7 +616,7 @@ The current evaluation uses a fixed 30-task workload from SWE-bench. Results may
 <h2 id="sec7">7. Conclusion</h2>
 
 <p>
-BudgetFlow demonstrates that under a shared hard budget, value-aware allocation across a fixed task batch achieves higher normalized verified resolved value (Yield) and higher Yield per Dollar than uniform-tier baselines. On a 30-task SWE-bench workload, BudgetFlow achieves 17/30 pass, Yield 21.0, and Yield/$ 3.5000, exceeding T3-only (16/30, Yield 18.5, Yield/$ 3.1731) and T2-only (12/30, Yield 14.5, Yield/$ 2.4167). The directional advantage persists across KV-cache discount levels, value profiles, and budget cap sensitivities.
+BudgetFlow demonstrates that under a shared hard budget, value-aware allocation across a fixed task batch achieves higher normalized verified resolved value (Yield) and higher Yield per Dollar than uniform-tier baselines. On a 30-task SWE-bench workload, BudgetFlow achieves 17/30 pass, Yield 21.0, and Yield/&#36; 3.5000, exceeding T3-only (16/30, Yield 18.5, Yield/&#36; 3.1731) and T2-only (12/30, Yield 14.5, Yield/&#36; 2.4167). The directional advantage persists across KV-cache discount levels, value profiles, and budget cap sensitivities.
 </p>
 
 <div class="callout" style="border-left-color: var(--accent);">
@@ -604,7 +629,7 @@ BudgetFlow demonstrates that under a shared hard budget, value-aware allocation 
 <!-- ═══════════ REFERENCES ═══════════ -->
 <h2 id="references">References</h2>
 
-<ol style="font-size: 14px; line-height: 1.8; color: var(--muted); padding-left: 20px;">
+<ol class="refs">
   <li>Chen, L., Zaharia, M., &amp; Zou, J. (2023). FrugalGPT: How to Use Large Language Models While Reducing Cost and Improving Performance. <em>arXiv:2305.05176</em>.</li>
   <li>Ong, I., et al. (2024). RouteLLM: Learning to Route LLMs with Preference Data. <em>arXiv:2406.18665</em>.</li>
   <li>Ding, S., et al. (2024). HybridLLM: Dynamic Model Selection for Cost-Efficient LLM Applications.</li>
@@ -627,14 +652,15 @@ BudgetFlow demonstrates that under a shared hard budget, value-aware allocation 
 </ol>
 
 </main>
+</div><!-- /.page -->
 
 <!-- ═══════════ SCRIPTS ═══════════ -->
 <script>
-// Render KaTeX
+// Render KaTeX — using \(…\) for inline and \[…\] for display math
 renderMathInElement(document.body, {
   delimiters: [
-    {left: '$$', right: '$$', display: true},
-    {left: '$', right: '$', display: false},
+    {left: '\\[', right: '\\]', display: true},
+    {left: '\\(', right: '\\)', display: false},
   ],
   throwOnError: false
 });
