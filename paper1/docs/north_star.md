@@ -3,6 +3,38 @@
 This file is the project vocabulary and paper-claim source. Use it for current
 docs, prompts, handoffs, reports, and reviewer-facing prose.
 
+## Draft-Critical Evidence Bar Memo
+
+The current 3x30 Claim 1 readout is enough to write the initial draft, but it is
+not enough to treat the evidence story as finished. The draft must be explicit
+about three evidence bars.
+
+First, historical spend should not be used as Task Value. If a task costs many
+turns or dollars, that is evidence that the task may be harder or needs more
+runway. It belongs in Task Effort, Cost Memory, or calibration evidence. Task
+Value still means "what is this verified resolution worth if solved?" and should
+come from a pre-registered value source or business priority, not from how much
+the model happened to spend.
+
+Second, pure T2 and pure T3 are necessary boundary controls, not sufficient
+strong baselines. They answer whether BudgetFlow beats uniform-tier frontiers
+under the same shared cap. They do not answer whether BudgetFlow beats existing
+routing ideas from related work.
+
+Third, the draft must plan for a related-work-style routing baseline. The
+baseline should use the same fixed task set, same T2/T3 backend pool, same
+shared cap, and same verifier. If that router spends past the cap, the
+BudgetFlow backend should stop serving it. This keeps the comparison honest:
+per-task routers may choose T2 or T3, but they must live under the same shared
+budget. Claim 1 becomes much stronger only if BudgetFlow beats these routing
+baselines, not just pure-tier controls.
+
+Do not lock a specific related-work baseline before the audit is complete. The
+near-term requirement is to state this evidence bar in the draft and then run a
+focused related-work baseline audit: identify what baselines and metrics those
+papers use, map which ones can be attached to our T2/T3 backends, and compare
+them under the same cap and verifier.
+
 ## Core Terminology
 
 Use **Claim 1** and **Claim 2** for paper claims. Reserve **T1/T2/T3** for model

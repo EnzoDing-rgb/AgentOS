@@ -1,0 +1,87 @@
+{
+  "strategy_errors": {
+    "bare_t2_baseline": {
+      "projected": 3.4208,
+      "full_projected": 3.4209,
+      "completed_projected": 3.4208,
+      "projection_scope": "completed_task_subset",
+      "actual": 6.0,
+      "error_pct": 0.754,
+      "strategy_cap": 5.9681,
+      "projected_utilization": 0.5732,
+      "raw_projected_utilization": 0.5732,
+      "actual_utilization": 1.0,
+      "raw_actual_utilization": 1.0053,
+      "budget_exhausted_rows": 11,
+      "task_count": 30,
+      "completed_task_fraction": 1.0,
+      "stage_budget_share": 5.9681,
+      "stage_share_actual_utilization": 1.0053
+    },
+    "bare_t3_baseline": {
+      "projected": 11.7291,
+      "full_projected": 11.729,
+      "completed_projected": 11.7291,
+      "projection_scope": "completed_task_subset",
+      "actual": 5.8303,
+      "error_pct": 0.5029,
+      "strategy_cap": 5.9681,
+      "projected_utilization": 1.0,
+      "raw_projected_utilization": 1.9653,
+      "actual_utilization": 0.9769,
+      "raw_actual_utilization": 0.9769,
+      "budget_exhausted_rows": 0,
+      "task_count": 30,
+      "completed_task_fraction": 1.0,
+      "stage_budget_share": 5.9681,
+      "stage_share_actual_utilization": 0.9769
+    },
+    "budgetflow_task_level": {
+      "projected": 7.0489,
+      "full_projected": 7.049,
+      "completed_projected": 7.0489,
+      "projection_scope": "completed_task_subset",
+      "actual": 6.0,
+      "error_pct": 0.1488,
+      "strategy_cap": 5.9681,
+      "projected_utilization": 1.0,
+      "raw_projected_utilization": 1.1811,
+      "actual_utilization": 1.0,
+      "raw_actual_utilization": 1.0053,
+      "budget_exhausted_rows": 6,
+      "task_count": 30,
+      "completed_task_fraction": 1.0,
+      "stage_budget_share": 5.9681,
+      "stage_share_actual_utilization": 1.0053
+    }
+  },
+  "overall_mape": 0.4686,
+  "max_error_strategy": "bare_t2_baseline",
+  "max_error_pct": 0.754,
+  "projection_confidence": "low",
+  "recommendations": [
+    "WARNING: projection error MAPE=46.9%. Treat the next run as diagnostic calibration evidence."
+  ],
+  "generation_mode": "stage_prefix_pressure",
+  "target_utilization": null,
+  "actual_utilization_by_strategy": {
+    "bare_t2_baseline": 1.0,
+    "bare_t3_baseline": 0.9769,
+    "budgetflow_task_level": 1.0
+  },
+  "raw_actual_utilization_by_strategy": {
+    "bare_t2_baseline": 1.0053,
+    "bare_t3_baseline": 0.9769,
+    "budgetflow_task_level": 1.0053
+  },
+  "budget_exhausted_by_strategy": {
+    "bare_t2_baseline": 11,
+    "budgetflow_task_level": 6
+  },
+  "budget_pressure_spec": {
+    "mode": "stage_prefix_pressure",
+    "stage_prefix_count": 10,
+    "stage_target_budget_fraction": 0.6,
+    "stage_reference_strategy": "bare_t3_baseline"
+  }
+}
