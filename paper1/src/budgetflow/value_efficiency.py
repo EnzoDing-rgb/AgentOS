@@ -4,8 +4,8 @@ Primary Claim 1 objective: Total Resolved Value = sum(pre-registered task
 value for resolved tasks).  Total Resolved Value per Dollar is the main
 efficiency diagnostic.
 
-Legacy field names (yield_score, yield_per_dollar, etc.) are retained as
-aliases for backward compatibility with historical JSONL artifacts.
+Legacy value metric field names (yield_score, yield_per_dollar, etc.) are
+retained as aliases for historical JSONL artifacts.
 New report output MUST use the North Star field names defined in
 ``metrics_reporting.py``.
 """
@@ -27,7 +27,7 @@ class ValueSourceInfo:
     kind: str
     evidence_role: str
     confidence: str
-    primary_t1: bool
+    primary_claim1: bool
 
 
 @dataclass
@@ -42,12 +42,12 @@ class ValueEfficiencyContext:
         kind="equal_sanity",
         evidence_role="sanity_fallback",
         confidence="none",
-        primary_t1=False,
+        primary_claim1=False,
     )
 
     @property
     def objective(self) -> str:
-        return "t1_value_efficiency" if self.source_info.primary_t1 else "t2_value_source_diagnostic"
+        return "claim1_value_efficiency" if self.source_info.primary_claim1 else "value_source_diagnostic"
 
     @property
     def source_class(self) -> str:
@@ -67,7 +67,7 @@ class ValueEfficiencyContext:
 
     @property
     def is_primary_value_evidence(self) -> bool:
-        return self.source_info.primary_t1
+        return self.source_info.primary_claim1
 
     def init(
         self,
@@ -148,7 +148,7 @@ class ValueEfficiencyContext:
         record["task_value_source_class"] = self.source_class
         record["task_value_evidence_role"] = self.evidence_role
         record["task_value_confidence"] = self.confidence
-        record["task_value_primary_t1"] = self.is_primary_value_evidence
+        record["task_value_primary_claim1"] = self.is_primary_value_evidence
         record["task_value"] = task_value
         record["task_effort"] = task_effort
         record["task_effort_source"] = effort_source
@@ -210,7 +210,7 @@ class ValueEfficiencyContext:
             "task_value_source_class": self.source_class,
             "task_value_evidence_role": self.evidence_role,
             "task_value_confidence": self.confidence,
-            "task_value_primary_t1": self.is_primary_value_evidence,
+            "task_value_primary_claim1": self.is_primary_value_evidence,
             "value_source": self.matrix_path or "equal_sanity",
             "value_objective": self.objective,
         }
@@ -233,7 +233,7 @@ def _extract_lookup(artifact: dict, profile: str) -> dict[str, float] | None:
 
 
 def _extract_effort_lookup(artifact: dict) -> dict[str, float] | None:
-    """Extract per-task final Task Effort from value matrix.
+    """Extract per-task final Estimated Task Token Demand from value matrix.
 
     Reads ``task_effort.final_task_effort`` (North Star schema).
     Returns None when no effort data is present.
@@ -316,7 +316,7 @@ def _resolve_value_source_info(
             kind="equal_sanity",
             evidence_role="sanity_fallback",
             confidence="none",
-            primary_t1=False,
+            primary_claim1=False,
         )
     if requested == "bootstrap_heuristic":
         if profile == "equal" or lookup is None:
@@ -328,7 +328,7 @@ def _resolve_value_source_info(
             kind="bootstrap_heuristic",
             evidence_role="heuristic_bootstrap",
             confidence="medium",
-            primary_t1=False,
+            primary_claim1=False,
         )
     if requested == "pre_registered_manual":
         if profile == "equal" or not value_matrix_path or lookup is None:
@@ -338,9 +338,9 @@ def _resolve_value_source_info(
             )
         return ValueSourceInfo(
             kind="pre_registered_manual",
-            evidence_role="primary_t1",
+            evidence_role="primary_claim1",
             confidence="manual",
-            primary_t1=True,
+            primary_claim1=True,
         )
     if requested == "learned_calibrated":
         if profile == "equal" or not value_matrix_path or lookup is None:
@@ -350,9 +350,9 @@ def _resolve_value_source_info(
             )
         return ValueSourceInfo(
             kind="learned_calibrated",
-            evidence_role="learned_t1",
+            evidence_role="learned_claim1",
             confidence="high",
-            primary_t1=True,
+            primary_claim1=True,
         )
     if profile == "equal" or lookup is None:
         raise SystemExit(
@@ -363,7 +363,7 @@ def _resolve_value_source_info(
         kind="value_matrix_diagnostic",
         evidence_role="value_matrix_diagnostic",
         confidence="medium",
-        primary_t1=False,
+        primary_claim1=False,
     )
 
 

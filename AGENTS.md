@@ -5,7 +5,7 @@ This file is the repo-level operating contract for Codex-style agents working in
 ## North Star
 
 - Use Claim 1 and Claim 2 for paper claims. Reserve T1/T2/T3 for model tiers only.
-- Claim 1 is the compass: under a shared hard budget, BudgetFlow maximizes normalized verified resolved value (Yield).
+- Claim 1 is the compass: under a shared hard budget, BudgetFlow maximizes Total Resolved Value, the paper-defined sum of pre-registered Task Value over verified resolved tasks.
 - Claim 2 is the mechanism claim: BudgetFlow's value-aware budget allocation, routing, escalation, stop, and learning mechanisms explain how Claim 1 is achieved and must improve or preserve value/cost efficiency against strong diagnostic controls.
 - Claim 2 serves Claim 1. Do not optimize routing savings, model-tier switching, or stop-loss behavior in a way that reduces value-weighted outcomes.
 - Treat T1/T2/T3 as normalized model-tier slots. Provider/model endpoint swaps inside a catalog semantic revision change base URL, token, and physical backend, but they do not by themselves change normalized cost or routing semantics.
@@ -30,7 +30,7 @@ After every experiment, inspect artifacts before drawing conclusions:
 
 These are the short-form checks every worker should keep in view:
 
-1. Claim 1 first: under a fixed shared hard budget, maximize normalized verified resolved value. Report Yield and Yield per Dollar before mechanism storytelling.
+1. Claim 1 first: under a fixed shared hard budget, maximize Total Resolved Value. Report Resolved Count, Resolved Rate, Total Spend, Cost per Resolved Task, Total Resolved Value, and Total Resolved Value per Dollar before mechanism storytelling.
 2. Claim 2 explains Claim 1: compare verified resolution, cost efficiency, and Strongest Model productive use under the same budget. Routing savings are useful only when they protect or improve Claim 1.
 3. Strong baselines stay strong: when BudgetFlow loses to pure-tier, budget-only, or static-router controls, diagnose what the control exposed and absorb only the reusable principle. Keep tasks fixed and values frozen.
 4. Checker first: inspect JSONL, trace, checker, compact audit, harness trust, value source, cost source, and memory inputs before drawing conclusions.
@@ -43,19 +43,19 @@ These are the short-form checks every worker should keep in view:
 ## Run Discipline
 
 - Fix known infra, learning, observability, value-source, or harness bugs before running paid experiments.
-- For policy comparisons, tasks are serial within each policy and policies run in parallel. For three strategies, `--jobs 3` is the default unless a concrete blocker is documented.
+- For policy comparisons, tasks are serial within each policy and policies run in parallel. For the current four-policy Claim 1 mainline, `--jobs 4` is the default unless a concrete blocker is documented.
 - Before paid runs, check strategy count, task count, `--jobs`, value profile, value matrix path, budget mode, output stem, provider, runtime root, worktree isolation, trace, and checker path.
 - Runtime/I/O discipline: keep source code, configs, docs, value matrices, frozen/budget plans, and final JSONL/checkpoint/summary evidence in the repo. Put high-churn regenerable files under local scratch, normally `/tmp/budgetflow-runtime`: git worktrees, repo mirrors, locks, trace scratch, pytest caches, editable installs, temporary build trees, and agent temp files. `/tmp` is acceptable scratch but not the only evidence store.
 - Do not use `/Lishun` or other NFS paths for runtime root, worktree root, repo cache, locks, trace scratch, mini-swe-agent source, or SWE-bench export fallback. If a needed dependency is only on NFS, localize it into the repo or `/tmp` scratch and make the resolver fail fast instead of silently falling back.
-- Small paid runs, such as 3 policies x 3-5 tasks, are infra and learning diagnostics. Do not treat them as paper-level evidence.
+- Small paid runs, such as 4 policies x 3-5 tasks, are infra and learning diagnostics. Do not treat them as paper-level evidence.
 - When segment-aware routing is a suspect root cause, include a task-level or per-request routing control. A four-policy diagnostic is acceptable when it cleanly separates baseline, segment-aware routing, value-aware segment routing, and value-aware task-level routing.
-- Paper-level evidence should scale beyond the recurring gold-pass task set. The target shape is at least three policies across roughly 30-50 tasks per policy, after the infra and learning gates are trustworthy.
+- Paper-level evidence should scale beyond the recurring gold-pass task set. The current Claim 1 target shape is four policies across roughly 30-50 tasks per policy, after the infra and learning gates are trustworthy.
 - Stop on provider billing/auth/model-access/preflight blockers. Do not reinterpret provider failures as model or routing evidence.
 - Historical JSONL and historical reports are immutable evidence. Mark old artifacts forensic-only when needed; do not patch them in place.
 - Runtime artifacts under `paper1/data/` are not source code. Do not commit trace, heartbeat, checkpoint, or run-output files unless explicitly requested.
 - Model pricing and capability priors belong in a versioned tier catalog. Do not recalibrate paper experiments from public provider prices during a paid-run line; use the frozen normalized catalog unless the run is explicitly a new CostSource study. Paid-run execution must use the pre-registered catalog and stop if cost/progress confidence is missing or stale.
-- Mainline task values use `criticality_level = normal | high | critical` mapped through the frozen ValueSource. Manual overrides may change only `criticality_level` and `task_effort_multiplier`, with from/to/source/reason recorded. Do not directly override model_fit, expected uplift, route, or budget cap.
-- Use Task Effort as the single term and active schema path. Runtime, compiler, and ModelFit estimation consume final Task Effort; do not add new Difficulty aliases or revive retired effort fields.
+- Mainline task values use `criticality_level = normal | high | critical` mapped through the frozen ValueSource. Manual overrides may change only `criticality_level` and Estimated Task Token Demand fields, with from/to/source/reason recorded. Do not directly override model_fit, expected uplift, route, or budget cap.
+- Use Estimated Task Token Demand in prose for the run-before estimate of token/runway need. The active schema path remains `task_effort_multiplier` / `final_task_effort` until the code schema is renamed. Runtime, compiler, and ModelFit estimation consume final estimated token demand through that path; do not add Difficulty aliases or revive retired effort fields.
 - The mainline catalog must not hide asymmetric KV-cache discounts. Cache discount experiments belong in explicit sensitivity catalogs/reports.
 - Local harness results are part of the evidence system. Because nested Docker is not assumed available, local harness adapters, compat patches, host dependencies, and checker invalidation rules must be treated as first-class evaluation risks.
 

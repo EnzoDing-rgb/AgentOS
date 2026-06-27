@@ -137,6 +137,7 @@ def test_calibrate_defaults_to_paper_mainline_policy_set(tmp_path: Path) -> None
     assert list(plan.projected_spend_by_strategy) == [
         "bare_t2_baseline",
         "bare_t3_baseline",
+        "routellm_learned_router_baseline",
         "budgetflow_task_level",
     ]
     assert plan.strategy_names == list(plan.projected_spend_by_strategy)
@@ -672,7 +673,49 @@ def test_enterprise_router_projection_uses_frozen_preferred_model_mix(tmp_path: 
 
     assert plan.projected_spend_by_strategy["enterprise_router_baseline"] == pytest.approx(expected)
     assert "hard_cap_usd" not in json.loads(frozen_plan.read_text())["meta"]
-    assert any("enterprise_router_projection uses frozen preferred_model mix" in reason for reason in plan.reasons)
+    assert any("enterprise_router_baseline_projection uses frozen preferred_model mix" in reason for reason in plan.reasons)
+
+
+def test_routellm_learned_router_projection_uses_frozen_preferred_model_mix(tmp_path: Path) -> None:
+    vm = tmp_path / "vm.json"
+    vm.write_text(json.dumps({
+        "tasks": {
+            "task-a": {"task_effort": {"final_task_effort": 30.0}},
+            "task-b": {"task_effort": {"final_task_effort": 30.0}},
+        }
+    }))
+    frozen_plan = tmp_path / "learned_router.json"
+    frozen_plan.write_text(json.dumps({
+        "meta": {
+            "name": "learned_router",
+            "source_class": "routellm_inspired_value_blind_learned_router",
+            "uses_task_value": False,
+            "uses_budget_state": False,
+        },
+        "plan": {
+            "task-a": {"preferred_model": "tier2", "priority": 10},
+            "task-b": {"preferred_model": "tier3", "priority": 90},
+        },
+    }))
+
+    plan = calibrate_budget(
+        ["task-a", "task-b"],
+        value_matrix_path=vm,
+        frozen_plan_path=frozen_plan,
+        strategies=("bare_t2_baseline", "bare_t3_baseline", "routellm_learned_router_baseline"),
+        target_utilization=1.0,
+    )
+
+    expected = (
+        plan.projected_task_cost_by_strategy["bare_t2_baseline"]["task-a"]
+        + plan.projected_task_cost_by_strategy["bare_t3_baseline"]["task-b"]
+    )
+
+    assert plan.projected_spend_by_strategy["routellm_learned_router_baseline"] == pytest.approx(expected)
+    assert any(
+        "routellm_learned_router_baseline_projection uses frozen preferred_model mix" in reason
+        for reason in plan.reasons
+    )
 
 
 def test_calibrate_uses_budget_exhausted_rows_as_floor_not_observed_sample(tmp_path: Path) -> None:

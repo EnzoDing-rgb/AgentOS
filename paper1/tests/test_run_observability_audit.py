@@ -149,7 +149,7 @@ def test_compact_audit_reports_value_metrics() -> None:
             "task_value": 0.6,
             "resolved_value": 0.6,
             "task_value_profile": "difficulty",
-            "value_objective": "t1_value_efficiency",
+            "value_objective": "claim1_value_efficiency",
         },
         {
             "instance_id": "repo__task-b",
@@ -163,7 +163,7 @@ def test_compact_audit_reports_value_metrics() -> None:
             "task_value": 0.4,
             "resolved_value": 0.0,
             "task_value_profile": "difficulty",
-            "value_objective": "t1_value_efficiency",
+            "value_objective": "claim1_value_efficiency",
         },
         {
             "instance_id": "repo__task-c",
@@ -179,7 +179,7 @@ def test_compact_audit_reports_value_metrics() -> None:
             "task_value": 0.5,
             "resolved_value": 0.0,
             "task_value_profile": "difficulty",
-            "value_objective": "t1_value_efficiency",
+            "value_objective": "claim1_value_efficiency",
         },
     ])
 

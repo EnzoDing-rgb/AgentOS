@@ -890,7 +890,8 @@ def test_budget_exhausted_with_blocking_harness_gap_is_budget_true_fail() -> Non
 
     Missing harness evidence matters for provider/protocol/harness failures, but
     shared-budget exhaustion is the policy outcome itself. Otherwise a policy
-    can spend the cap and have the unresolved tail silently removed from Yield.
+    can spend the cap and have the unresolved tail silently removed from
+    Total Resolved Value.
     """
     rec = _model_fail_repair_nameerror_record(
         exit_status="BudgetFlowBudgetError",

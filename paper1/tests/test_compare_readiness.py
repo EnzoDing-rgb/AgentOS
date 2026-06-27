@@ -93,7 +93,7 @@ def test_readiness_blocks_uncovered_non_equal_value_matrix(tmp_path) -> None:
     assert any("missing 1 selected task values" in issue for issue in report.blocking)
 
 
-def test_readiness_warns_equal_value_is_not_t1_evidence() -> None:
+def test_readiness_warns_equal_value_is_not_primary_claim1_evidence() -> None:
     value_context = ValueEfficiencyContext()
     value_context.init(value_profile="equal")
 
@@ -108,13 +108,13 @@ def test_readiness_warns_equal_value_is_not_t1_evidence() -> None:
     )
 
     assert report.ok
-    assert any("not T1 value evidence" in warning for warning in report.warnings)
+    assert any("not primary Claim 1 value evidence" in warning for warning in report.warnings)
     assert "value_source_class=equal_sanity" in report.facts
     assert "value_evidence=sanity_fallback" in report.facts
-    assert "value_primary_t1=false" in report.facts
+    assert "value_primary_claim1=false" in report.facts
 
 
-def test_readiness_warns_plain_matrix_is_not_primary_t1_evidence(tmp_path) -> None:
+def test_readiness_warns_plain_matrix_is_not_primary_claim1_evidence(tmp_path) -> None:
     matrix = tmp_path / "value_matrix.json"
     matrix.write_text('{"tasks":{"task-a":{"task_value":{"difficulty":0.2}}}}')
     value_context = ValueEfficiencyContext()
@@ -133,11 +133,11 @@ def test_readiness_warns_plain_matrix_is_not_primary_t1_evidence(tmp_path) -> No
     assert report.ok
     assert "value_source_class=value_matrix_diagnostic" in report.facts
     assert "value_evidence=value_matrix_diagnostic" in report.facts
-    assert "value_primary_t1=false" in report.facts
-    assert any("not primary T1 evidence" in warning for warning in report.warnings)
+    assert "value_primary_claim1=false" in report.facts
+    assert any("not primary Claim 1 value evidence" in warning for warning in report.warnings)
 
 
-def test_readiness_accepts_pre_registered_manual_as_primary_t1_evidence(tmp_path) -> None:
+def test_readiness_accepts_pre_registered_manual_as_primary_claim1_evidence(tmp_path) -> None:
     matrix = tmp_path / "value_matrix.json"
     matrix.write_text('{"tasks":{"task-a":{"task_value":{"difficulty":0.2}}}}')
     value_context = ValueEfficiencyContext()
@@ -159,10 +159,10 @@ def test_readiness_accepts_pre_registered_manual_as_primary_t1_evidence(tmp_path
 
     assert report.ok
     assert "value_source_class=pre_registered_manual" in report.facts
-    assert "value_evidence=primary_t1" in report.facts
+    assert "value_evidence=primary_claim1" in report.facts
     assert "value_confidence=manual" in report.facts
-    assert "value_primary_t1=true" in report.facts
-    assert not any("not primary T1 evidence" in warning for warning in report.warnings)
+    assert "value_primary_claim1=true" in report.facts
+    assert not any("not primary Claim 1 value evidence" in warning for warning in report.warnings)
 
 
 def test_readiness_blocks_underparallel_policy_jobs() -> None:
@@ -338,7 +338,8 @@ def test_readiness_blocks_paper_mainline_without_primary_value_source(tmp_path) 
     bp.write_text(
         '{"hard_cap_usd":1.0,"source":"budget_binding_calibrator","decision":"PASS",'
         '"task_ids":["task-a"],'
-        '"strategy_names":["bare_t2_baseline","bare_t3_baseline","budgetflow_task_level"]}'
+        '"strategy_names":["bare_t2_baseline","bare_t3_baseline",'
+        '"routellm_learned_router_baseline","budgetflow_task_level"]}'
     )
     frozen_plan = tmp_path / "frozen_plan.json"
     frozen_plan.write_text(

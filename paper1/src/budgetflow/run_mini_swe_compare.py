@@ -4,10 +4,10 @@ Each policy runs its task list serially on one BudgetGovernor (shared pool).
 Different policies may run in parallel (--jobs) using git worktrees for repo isolation.
 
 Usage (from paper1/):
-  # fast smoke (default 3 tasks)
+  # diagnostic smoke preset
   PYTHONPATH=src:../external/mini-swe-agent/src python -u -m budgetflow.run_mini_swe_compare --preset 3x3 --jobs 3
   # paper mainline compare uses docs/config/paper_mainline_strategies.v1.json
-  PYTHONPATH=src:../external/mini-swe-agent/src python -u -m budgetflow.run_mini_swe_compare --ids <ids> --jobs 6
+  PYTHONPATH=src:../external/mini-swe-agent/src python -u -m budgetflow.run_mini_swe_compare --ids <ids> --jobs 4
 
 Outputs:
   data/runs/<run_series>-N.jsonl

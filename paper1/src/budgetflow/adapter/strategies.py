@@ -498,6 +498,14 @@ def choose_backend(ctx: RoutingContext, turn: TurnInfo, expected_costs: dict[str
         )
         return backend
 
+    if ctx.strategy == "routellm_learned_router":
+        backend = _backend_from_frozen_plan(ctx, turn)
+        ctx.last_decision = RouterDecision(
+            backend=backend, reason="routellm_learned_router_frozen_plan",
+            scores={}, pressure=ctx.budget_pressure, branch="routellm_learned_router",
+        )
+        return backend
+
     if ctx.strategy == "budgetflow_same_router":
         chosen = _backend_from_frozen_plan(ctx, turn)
         ctx.last_decision = RouterDecision(

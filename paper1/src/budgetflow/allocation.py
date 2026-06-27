@@ -1,7 +1,7 @@
 """AllocationContext — standard decision input for BudgetFlow policies.
 
-Carries the three North Star inputs (Task Value, Task Effort, Model Fit)
-plus budget state, cost source, and confidence into policy decisions.
+Carries the three North Star inputs (Task Value, Estimated Task Token Demand,
+Model Fit) plus budget state, cost source, and confidence into policy decisions.
 
 This dataclass is mechanism-level.  Domain adapters (SWE-bench, enterprise)
 populate it; policy backends consume it.  No benchmark detail lives here.
@@ -18,8 +18,8 @@ TRUSTED_MODEL_FIT_CONFIDENCE = frozenset({"medium", "high"})
 class AllocationContext:
     """Standardised decision input for one task in a BudgetFlow policy.
 
-    Task Value, Task Effort, and Model Fit are separate concepts (North Star).
-    They must not be conflated in a single number or namespace.
+    Task Value, Estimated Task Token Demand, and Model Fit are separate concepts
+    (North Star). They must not be conflated in a single number or namespace.
     """
 
     task_value: float = 1.0

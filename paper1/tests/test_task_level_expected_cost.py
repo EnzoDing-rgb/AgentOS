@@ -376,7 +376,7 @@ class TestChooseTaskLevelBackend:
         assert ctx.last_policy_decision.scores["has_trusted_model_fit"] == 0.0
 
     def test_cold_start_near_effort_boundary_starts_strongest_without_trusted_fit(self):
-        """Cold-start effort gates should tolerate small Task Effort estimator noise."""
+        """Cold-start gates should tolerate small Estimated Task Token Demand noise."""
         from budgetflow.adapter.strategies import choose_backend
         from budgetflow.allocation import AllocationContext
 
@@ -645,8 +645,8 @@ class TestChooseTaskLevelBackend:
         assert scores["decisive_marginal_budget_override"] == 1.0
         assert scores["marginal_yield_per_dollar"] >= scores["t3_acceptance_threshold"] * 3.0
 
-    def test_marginal_yield_per_dollar_can_choose_t3_when_t3_costs_more(self):
-        """High-value tasks can choose T3 by marginal Yield/$, not only cost dominance."""
+    def test_marginal_value_per_dollar_can_choose_t3_when_t3_costs_more(self):
+        """High-value tasks can choose T3 by marginal value per dollar, not only cost dominance."""
         from budgetflow.adapter.strategies import choose_backend
 
         alloc = _trusted_allocation(

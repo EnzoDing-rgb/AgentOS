@@ -50,7 +50,7 @@ _AGENT_LOOP_REASONS = frozenset({
 
 # Strategies whose stagnation is attributed to agent_harness (NOT budgetflow).
 _BARE_OR_ENTERPRISE_ROUTINGS = frozenset({
-    "all_tier2", "bare_t3", "enterprise_router",
+    "all_tier2", "bare_t3", "enterprise_router", "routellm_learned_router",
 })
 
 _BUDGETFLOW_FAMILY_ROUTINGS = frozenset({

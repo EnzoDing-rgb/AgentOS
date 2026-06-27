@@ -5,16 +5,15 @@ docs, prompts, handoffs, reports, and reviewer-facing prose.
 
 ## Draft-Critical Evidence Bar Memo
 
-The current 3x30 Claim 1 readout is enough to write the initial draft, but it is
-not enough to treat the evidence story as finished. The draft must be explicit
-about four evidence bars.
+The current Claim 1 readout can support the initial draft. The final evidence
+story still needs four evidence bars.
 
 First, historical spend should not be used as Task Value. If a task costs many
-turns or dollars, that is evidence that the task may be harder or needs more
-runway. It belongs in Task Effort, Cost Memory, or calibration evidence. Task
-Value still means "what is this verified resolution worth if solved?" and should
-come from a pre-registered value source or business priority, not from how much
-the model happened to spend.
+turns or dollars, that is evidence that the task may be longer, harder, or needs
+more runway. It belongs in Estimated Task Token Demand, Cost Memory, or
+calibration evidence. Task Value still means "what is this verified resolution
+worth if solved?" and should come from a pre-registered value source or business
+priority, not from how much the model happened to spend.
 
 Second, pure T2 and pure T3 are necessary boundary controls, not sufficient
 strong baselines. They answer whether BudgetFlow beats uniform-tier frontiers
@@ -22,14 +21,15 @@ under the same shared cap. They do not answer whether BudgetFlow beats existing
 routing ideas from related work.
 
 Third, the draft-critical related-work baseline is a RouteLLM-inspired learned
-task router. It should learn, offline, which tasks look like they need T3 from
-task features and historical outcomes. It should not use Task Value as an input,
-because that would collapse the baseline into BudgetFlow's value-aware claim.
-The trained router should write a FrozenRouterPlan that chooses T2 or T3 at
-task start. At runtime it receives the same fixed task set, same T2/T3 backend
-pool, same shared cap, and same verifier as BudgetFlow. If it spends past the
-cap, execution stops. This keeps the comparison honest: the learned router may
-choose T2 or T3 per task, but it must live under the same shared budget.
+task router. It learns offline which tasks look like they need T3 from
+pre-execution task features, Estimated Task Token Demand, and frozen historical
+outcomes. It does not use Task Value as an input, because Task Value is
+BudgetFlow's value-aware signal. The trained router writes a FrozenRouterPlan
+that chooses T2 or T3 at task start. At runtime it receives the same fixed task
+set, same T2/T3 backend pool, same shared cap, and same verifier as BudgetFlow.
+If it spends past the cap, execution stops. This keeps the comparison honest:
+the learned router may choose T2 or T3 per task, but it lives under the same
+shared budget and does not receive BudgetFlow's value-aware allocation logic.
 
 Do not call this "RouteLLM" without qualification. The original RouteLLM routes
 single queries using preference data and a strong-model-call threshold; it does
@@ -78,15 +78,13 @@ budget.
 | Cost per Resolved Task | Total Spend divided by Resolved Count. It is an accessible cost diagnostic, not the Claim 1 objective. |
 | Total Resolved Value | Paper-defined Claim 1 objective: sum of pre-registered Task Value over resolved tasks. It is not an official SWE-bench metric and should not be renamed as if it were community standard. |
 | Total Resolved Value per Dollar | Total Resolved Value divided by Total Spend. It is a value-weighted cost-efficiency diagnostic, not the only headline. |
-| Yield | Retired paper/reporting term for Total Resolved Value. It may remain in historical artifacts or internal compatibility fields, but new reviewer-facing prose and reports should use Total Resolved Value. |
-| Yield per Dollar | Retired paper/reporting term for Total Resolved Value per Dollar. It may remain in historical artifacts or internal compatibility fields, but new reviewer-facing prose and reports should use Total Resolved Value per Dollar. |
 | Value-Driven Budget Allocation | Two-layer mechanism: first compile a shared hard-budget regime for a fixed task sequence; then allocate model opportunities, turns, continue/stop decisions, and spend within that regime. |
-| Budget Regime Compiler | Pre-run mechanism that turns a fixed task set, fixed task order, ValueSource, Task Effort, reference cost scale, clean frozen calibration evidence when available, and target pressure into a pre-registered shared hard budget plan with confidence and audit fields. It is part of Claim 1, not a separate claim, and it must not assign model tiers to individual tasks. |
+| Budget Regime Compiler | Pre-run mechanism that turns a fixed task set, fixed task order, ValueSource, Estimated Task Token Demand, reference cost scale, clean frozen calibration evidence when available, and target pressure into a pre-registered shared hard budget plan with confidence and audit fields. It is part of Claim 1, not a separate claim, and it must not assign model tiers to individual tasks. |
 | BudgetFlow Runtime | Runtime policy that executes the same task order as every control and allocates scarce model opportunities within the compiled shared budget. It decides when to spend, continue, stop, or use a stronger tier; it does not reorder tasks to chase value. |
 | Task Value | Estimated utility of a verified resolved outcome. It answers "what is this task worth if solved?" |
-| Task Effort | Estimated work, runway, or expected cost needed to resolve a task. It answers "how much budget should this task need?" |
+| Estimated Task Token Demand | Run-before estimate of token/runway demand for a task. It answers "how much budget should this task need?" The current code schema still carries this through `task_effort_multiplier` and `final_task_effort`; prose should use Estimated Task Token Demand. |
 | Model Fit | Estimated suitability of each model tier for a task, repo, or workflow stage. It answers "which tier is likely to make verified progress here?" |
-| AllocationContext | Standard decision input that carries Task Value, Task Effort, Model Fit, budget state, cost source, and confidence into policy decisions. |
+| AllocationContext | Standard decision input that carries Task Value, Estimated Task Token Demand, Model Fit, budget state, cost source, and confidence into policy decisions. |
 | Tier Boundary Selection | Choosing whether a BudgetFlow policy should behave near the T2 boundary, near the T3 boundary, or use mixed model-tier routing for the current allocation context. |
 | ValueSource | Versioned input that defines or estimates task value for one run or deployment. |
 | Frozen Router Plan | Pre-registered static router prior for diagnostic controls. It may contain task IDs, preferred model tier, priority/order, and router rules. It must not contain or imply budget caps. |
@@ -130,7 +128,7 @@ The system has two decision layers.
 
 - **Budget Regime Compiler:** establishes the budget regime before execution.
   It estimates how much shared budget a fixed workload deserves from Task
-  Value, Task Effort, a reference cost scale, and clean calibration evidence.
+  Value, Estimated Task Token Demand, a reference cost scale, and clean calibration evidence.
   It does not solve the routing problem and must not pre-assign model tiers to
   specific tasks.
 - **BudgetFlow Runtime:** executes the fixed task order under that compiled
@@ -147,7 +145,7 @@ models, where should the next model opportunity go?"
 For the current paper mainline, the Budget Regime Compiler does not assign
 model tiers. It may publish a runtime-policy projection showing how many tasks
 the current task-level router is expected to start on T2 or T3 under the frozen
-budget, ValueSource, Task Effort, Model Fit, and CostSource. That projection is
+budget, ValueSource, Estimated Task Token Demand, Model Fit, and CostSource. That projection is
 a no-paid readiness diagnostic, not a route lock. Runtime makes the actual
 task-start model choice through the same task-level routing formula and the
 same effective task-cap calculation.
@@ -223,9 +221,10 @@ task. They must not terminate `value_aware_task_level` by themselves. A
 task-level run stops on the policy-local shared hard cap, catalog/runtime turn
 limits, provider failures, harness completion, or strategy-agnostic agent-loop
 guards. If a task should use the Strongest Model, that decision belongs in the
-task-start router through Task Value, Task Effort, ModelFit, CostSource, budget
-pressure, and effective runway. Stop-loss or escalation based on live progress
-is Claim 2 mechanism evidence and must be evaluated as an explicit variant.
+task-start router through Task Value, Estimated Task Token Demand, ModelFit,
+CostSource, budget pressure, and effective runway. Stop-loss or escalation based
+on live progress is Claim 2 mechanism evidence and must be evaluated as an
+explicit variant.
 
 Routing savings, stage-aware routing, Tier Boundary Selection, stop-loss,
 escalation, and learning inputs are useful only when they protect or improve
@@ -251,12 +250,13 @@ and ceiling tasks where neither tier should consume the shared budget for long.
 If every task is dominated by one tier, BudgetFlow should say so rather than
 manufacture routing savings.
 
-The current paid mainline uses three policies: pure T2, pure T3, and
-BudgetFlow task-level. Static enterprise-router plans remain useful diagnostic
-controls, but they are not part of the default Claim 1 paid evidence set. The
-headline question for this run is whether BudgetFlow beats at least one pure
-mechanical boundary while preserving or improving Total Resolved Value per
-Dollar under the same shared hard budget.
+The current paid mainline uses four policies: pure T2, pure T3, a
+RouteLLM-inspired learned task router, and BudgetFlow task-level. The learned
+router is the strong non-BudgetFlow routing baseline: it is trained offline,
+does not read Task Value, writes a FrozenRouterPlan, and runs under the same
+shared hard cap. The headline question is whether BudgetFlow beats pure-tier
+boundaries and a normal learned router while preserving or improving Total
+Resolved Value per Dollar under the same shared hard budget.
 
 ## Value And Cost Discipline
 
@@ -267,25 +267,27 @@ Task Value is a proxy, so every paid run must make the proxy auditable.
 - Pre-registered criticality belongs to the ValueSource/value matrix, not to
   the frozen router plan. The current paper profile uses
   `criticality_level = normal | high | critical` with a fixed mapping
-  `normal=1.0`, `high=1.5`, and `critical=2.5`. A frozen router plan may choose
-  a preferred model from task value and effort, but it does not define Task
-  Value.
-- Manual overrides may change only `criticality_level` or
-  `task_effort_multiplier`, and each override must record from, to, source, and
-  reason. Overrides must not directly write model_fit, expected uplift, route to
-  a model tier, or budget cap.
-- Report at least equal value and the chosen Task Value profile. Task Effort
-  diagnostics can be reported separately, but they must not be presented as
-  Claim 1 value.
+  `normal=1.0`, `high=1.5`, and `critical=2.5`. The RouteLLM-inspired learned
+  router baseline must not read Task Value. Diagnostic frozen-router controls
+  may carry pre-registered route priors, but no frozen router plan defines Task
+  Value or budget caps.
+- Manual overrides may change only `criticality_level` or Estimated Task Token
+  Demand fields such as `task_effort_multiplier`, and each override must record
+  from, to, source, and reason. Overrides must not directly write model_fit,
+  expected uplift, route to a model tier, or budget cap.
+- Report at least equal value and the chosen Task Value profile. Estimated Task
+  Token Demand diagnostics can be reported separately, but they must not be
+  presented as Claim 1 value.
 - Explain whether the direction of the signal depends on the chosen value
   profile.
-- Do not treat "easy to solve" as "high value." Task Effort can inform budget
-  runway and cost estimates, but it is not Task Value.
+- Do not treat "easy to solve" or "expensive to run" as "high value."
+  Estimated Task Token Demand can inform budget runway and cost estimates, but
+  it is not Task Value.
 - In enterprise deployments, value may be supplied by customer priority,
   revenue, SLA, risk, or an external system. In SWE-bench experiments, value is
   a pre-registered research proxy and must be treated as a threat to validity.
 
-Task Effort and cost follow the same rule.
+Estimated Task Token Demand and cost follow the same rule.
 
 - Use a versioned model-tier catalog for paid runs.
 - Record catalog path, revision, provider, and any price multipliers.
@@ -302,13 +304,14 @@ Task Effort and cost follow the same rule.
   provider validation or catalog-semantic-revision risk. Do not add
   provider-name-specific routing rules, task exceptions, or ad hoc price
   corrections to preserve a result.
-- Keep Task Effort separate from Task Value. Metadata heuristics, historical
-  cost, turns, test counts, patch size, and repo priors estimate runway or
-  expected cost; they do not define outcome utility.
-- Active value matrices expose Task Effort through one normalized path:
+- Keep Estimated Task Token Demand separate from Task Value. Metadata
+  heuristics, historical cost, turns, test counts, patch size, and repo priors
+  estimate runway or expected cost; they do not define outcome utility.
+- Active value matrices expose Estimated Task Token Demand through one
+  normalized schema path:
   `base_task_effort`, `task_effort_multiplier`, and `final_task_effort`.
-  Runtime, compiler, and Model Fit estimation consume the final Task Effort
-  value; retired fields must not re-enter active routing.
+  Runtime, compiler, and Model Fit estimation consume the final estimated token
+  demand value; retired fields must not re-enter active routing.
 - Model Fit is physical-model evidence. Provider-swapped historical rows may be
   useful forensic evidence, but they cannot calibrate runtime Model Fit unless
   the recorded physical catalog hash or revision matches the active catalog.
@@ -324,7 +327,7 @@ The Budget Regime Compiler makes the fixed budget auditable rather than
 hand-picked.
 
 - Compile the shared hard budget from frozen task IDs, frozen task order,
-  ValueSource, Task Effort, a reference service/cost scale, clean frozen
+  ValueSource, Estimated Task Token Demand, a reference service/cost scale, clean frozen
   calibration evidence when available, and a predeclared target pressure such
   as roughly 80%-90% expected utilization.
 - The compiler may use a model catalog or invoice data to convert expected
@@ -386,7 +389,7 @@ shared hard-budget regime.
 
 This calibration is generalizable when it calibrates the mechanism, not the
 benchmark. The reusable object is the procedure: pre-register task value and
-task features, compile a budget from ValueSource, Task Effort, model catalog,
+task features, compile a budget from ValueSource, Estimated Task Token Demand, model catalog,
 and clean calibration evidence, run under the compiled cap, audit projection
 error and verified value, then freeze the next configuration before evaluation.
 The same procedure can be repeated for a different enterprise workload with
@@ -396,7 +399,7 @@ task identity, repo-specific exception, known patch, or post-hoc outcome label.
 Small diagnostic runs can serve as a cold-start pass for a new workload/model
 catalog. They are not paper-level evidence by themselves. Their role is to
 estimate the scale that cannot be known a priori: whether the compiled budget
-is too tight or too loose, whether Task Effort predicts runway, whether Model
+is too tight or too loose, whether Estimated Task Token Demand predicts runway, whether Model
 Fit differentiates model tiers, and whether budget pressure reaches the
 intended regime. A provider-only binding change within the same normalized tier
 semantic revision is not, by itself, a new cost model. It still needs provider
@@ -441,11 +444,11 @@ Business-side value and difficulty inputs are part of the deployment objective
 when they are pre-registered. In a real deployment, business owners or external
 priority systems may define which tasks are worth more, which tasks are
 expected to be harder, and how much budget pressure is acceptable. That is the
-point of ValueSource and Task Effort: BudgetFlow turns business judgment and
+point of ValueSource and Estimated Task Token Demand: BudgetFlow turns business judgment and
 workload features into an auditable budget allocation problem. The research
 threat is not that external stakeholders provide value or difficulty. The
 threat is seeing outcomes first and then editing those inputs to make a run
-look good. To defend against that, freeze the value matrix, task-effort
+look good. To defend against that, freeze the value matrix, estimated token demand
 features, model catalog, task list, and task order before the evidence run;
 report the calibration passes that produced them; and show whether the signal
 survives under at least an equal-value sensitivity view.
@@ -453,7 +456,7 @@ survives under at least an equal-value sensitivity view.
 The main generalization claim is procedural, not parametric. BudgetFlow should
 not argue that a particular target utilization, Model Fit prior, stop-loss
 constant, segment signal, or memory rule is universally correct. It should argue
-that a customer can provide or calibrate ValueSource, Task Effort, Model Fit,
+that a customer can provide or calibrate ValueSource, Estimated Task Token Demand, Model Fit,
 and CostSource for its own workload, and BudgetFlow turns those inputs into an
 auditable shared-budget allocation problem whose evidence is measured by
 Resolved Rate, Total Resolved Value, and Total Resolved Value per Dollar.
@@ -582,7 +585,7 @@ infra, learning loop, or mechanism.
   For task-level BudgetFlow, the Budget Regime Compiler supplies the shared
   hard budget and pre-registered per-task runway. It may publish
   runtime-policy projection diagnostics, but it must not assign a model tier to
-  each task. Runtime uses that per-task runway, Task Value, Task Effort, Model
+  each task. Runtime uses that per-task runway, Task Value, Estimated Task Token Demand, Model
   Fit, and CostSource to choose a fixed model tier before each task starts,
   while the shared hard budget still controls the batch. A run where task-level
   BudgetFlow silently degenerates into a pure-tier baseline is a mechanism

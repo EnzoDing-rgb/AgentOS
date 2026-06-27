@@ -16,10 +16,10 @@ def test_equal_profile_is_sanity_fallback_not_t1_evidence() -> None:
             "total_cost": 0.25,
     })
 
-    assert record["value_objective"] == "t2_value_source_diagnostic"
+    assert record["value_objective"] == "value_source_diagnostic"
     assert record["task_value_source_class"] == "equal_sanity"
     assert record["task_value_evidence_role"] == "sanity_fallback"
-    assert record["task_value_primary_t1"] is False
+    assert record["task_value_primary_claim1"] is False
     assert record["task_value"] == 1.0
     assert record["resolved_value"] == 1.0
     assert record["yield_per_dollar"] == 4.0
@@ -44,17 +44,17 @@ def test_non_equal_profile_without_explicit_source_is_value_matrix_diagnostic(tm
             "total_cost": 0.25,
     })
 
-    assert record["value_objective"] == "t2_value_source_diagnostic"
+    assert record["value_objective"] == "value_source_diagnostic"
     assert record["task_value_source_class"] == "value_matrix_diagnostic"
     assert record["task_value_evidence_role"] == "value_matrix_diagnostic"
-    assert record["task_value_primary_t1"] is False
+    assert record["task_value_primary_claim1"] is False
     assert record["task_value"] == 0.5
     assert record["resolved_value"] == 0.5
     assert record["yield_per_dollar"] == 2.0
     assert record["task_value_multiplier"] == pytest.approx(1.6667, abs=0.0001)
 
 
-def test_pre_registered_manual_value_source_is_primary_t1_evidence(tmp_path) -> None:
+def test_pre_registered_manual_value_source_is_primary_claim1_evidence(tmp_path) -> None:
     matrix = tmp_path / "value_matrix.json"
     matrix.write_text(json.dumps({
         "tasks": {
@@ -76,11 +76,11 @@ def test_pre_registered_manual_value_source_is_primary_t1_evidence(tmp_path) -> 
             "total_cost": 0.25,
     })
 
-    assert record["value_objective"] == "t1_value_efficiency"
+    assert record["value_objective"] == "claim1_value_efficiency"
     assert record["task_value_source_class"] == "pre_registered_manual"
-    assert record["task_value_evidence_role"] == "primary_t1"
+    assert record["task_value_evidence_role"] == "primary_claim1"
     assert record["task_value_confidence"] == "manual"
-    assert record["task_value_primary_t1"] is True
+    assert record["task_value_primary_claim1"] is True
 
 
 def test_final_task_effort_is_diagnostic_not_task_value(tmp_path) -> None:
@@ -218,7 +218,7 @@ def test_summary_reports_primary_fixed_budget_value_metric() -> None:
     assert summary["total_resolved_value"] == 3.0
     assert summary["total_resolved_value_per_dollar"] == 10.0
     assert summary["resolved_rate"] == 0.5
-    assert summary["task_value_primary_t1"] is False
+    assert summary["task_value_primary_claim1"] is False
 
 
 def test_abort_rows_are_reported_but_excluded_from_paper_metrics() -> None:

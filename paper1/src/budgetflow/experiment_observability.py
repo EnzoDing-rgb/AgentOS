@@ -15,8 +15,8 @@ def enrich_routing_observability(record: dict, *, policy_memory_source: str = ""
     prior = record.get("routing_prior_summary") or {}
     objective = str(record.get("value_objective") or "")
     if not objective:
-        primary_t1 = bool(record.get("task_value_primary_t1", False))
-        objective = "t1_value_efficiency" if primary_t1 else "t2_value_source_diagnostic"
+        primary_claim1 = bool(record.get("task_value_primary_claim1", False))
+        objective = "claim1_value_efficiency" if primary_claim1 else "value_source_diagnostic"
 
     policy_kind = _policy_kind(routing)
     policy_role = _policy_role(routing)
@@ -43,7 +43,7 @@ def enrich_routing_observability(record: dict, *, policy_memory_source: str = ""
 def _policy_kind(routing: str) -> str:
     if routing in {"budgetflow_same_router"}:
         return "mechanism"
-    if routing in {"bare_t3", "enterprise_router"}:
+    if routing in {"bare_t3", "enterprise_router", "routellm_learned_router"}:
         return "bare_harness"
     if routing in ADAPTIVE_ROUTINGS:
         return "bootstrap"
@@ -56,6 +56,7 @@ def _policy_role(routing: str) -> str:
     roles = {
         "bare_t3": "bare_t3_baseline",
         "enterprise_router": "enterprise_router_baseline",
+        "routellm_learned_router": "routellm_learned_router_baseline",
         "budgetflow_same_router": "mechanism_with_frozen_router",
         "segment_value_aware": "value_aware_segment",
         "budgetflow_conservative": "conservative_segment",

@@ -131,11 +131,14 @@ class TestFrozenRouterPlan:
             tmp.unlink()
 
 class TestMechanismStrategiesRegistered:
-    def test_all_three_in_catalog(self):
+    def test_mainline_and_diagnostic_router_strategies_in_catalog(self):
         from budgetflow.experiments.compare_config import strategy_catalog
 
         names = {s.name for s in strategy_catalog()}
+        assert "bare_t2_baseline" in names
         assert "bare_t3_baseline" in names
+        assert "routellm_learned_router_baseline" in names
+        assert "budgetflow_task_level" in names
         assert "enterprise_router_baseline" in names
         assert "budgetflow_same_enterprise_router" in names
 
@@ -146,6 +149,7 @@ class TestMechanismStrategiesRegistered:
         assert names == {
             "bare_t2_baseline",
             "bare_t3_baseline",
+            "routellm_learned_router_baseline",
             "budgetflow_task_level",
         }
 
@@ -205,6 +209,29 @@ class TestFrozenPlanRouting:
         # bare_t3 always picks strongest
         assert backend.tier == 3
         assert ctx.last_decision.branch == "bare_t3"
+
+    def test_routellm_learned_router_uses_frozen_plan(self):
+        from budgetflow.adapter.strategies import build_routing_context, choose_backend
+        from budgetflow.frozen_router import FrozenPlanEntry, FrozenRouterPlan
+        from budgetflow.types import Stage, TurnInfo
+
+        plan = FrozenRouterPlan(
+            name="learned",
+            plan={"test_task": FrozenPlanEntry("test_task", "tier2", 10)},
+        )
+        ctx = build_routing_context(
+            "routellm_learned_router",
+            self._backends(),
+            budget_pressure=0.9,
+            frozen_plan=plan,
+        )
+        turn = TurnInfo(
+            workflow_id="test_task", step_index=1,
+            stage=Stage.REPAIR, w_i=1.0, context_len=1000,
+        )
+        backend = choose_backend(ctx, turn, {"tier2": 0.01, "tier3": 0.05})
+        assert backend.tier == 2
+        assert ctx.last_decision.branch == "routellm_learned_router"
 
     def test_budgetflow_same_enterprise_router_keeps_frozen_plan_model(self):
         from budgetflow.adapter.strategies import build_routing_context, choose_backend
@@ -279,7 +306,12 @@ class TestFrozenPlanRouting:
     def test_observability_policy_kind_for_new_strategies(self):
         from budgetflow.experiment_observability import enrich_routing_observability
 
-        record = {"routing": "budgetflow_same_router"}
-        enrich_routing_observability(record)
-        assert record["policy_kind"] == "mechanism"
-        assert record["policy_role"] == "mechanism_with_frozen_router"
+        mechanism = {"routing": "budgetflow_same_router"}
+        enrich_routing_observability(mechanism)
+        assert mechanism["policy_kind"] == "mechanism"
+        assert mechanism["policy_role"] == "mechanism_with_frozen_router"
+
+        learned = {"routing": "routellm_learned_router"}
+        enrich_routing_observability(learned)
+        assert learned["policy_kind"] == "bare_harness"
+        assert learned["policy_role"] == "routellm_learned_router_baseline"

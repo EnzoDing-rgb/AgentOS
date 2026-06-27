@@ -357,11 +357,13 @@ _DECISION_ISSUE_AREA = {
 
 
 _STRATEGY_REPORT_ORDER = {
-    "bare_t3_baseline": 0,
-    "enterprise_router_baseline": 1,
-    "budgetflow_same_enterprise_router": 2,
+    "bare_t2_baseline": 0,
+    "bare_t3_baseline": 1,
+    "routellm_learned_router_baseline": 2,
+    "budgetflow_task_level": 3,
+    "enterprise_router_baseline": 10,
+    "budgetflow_same_enterprise_router": 11,
     "budget_only_baseline": 10,
-    "budgetflow_task_level": 11,
     "budgetflow_segment": 12,
 }
 
@@ -1070,7 +1072,10 @@ def _baseline_contamination_check(records: list[dict]) -> dict:
     agent_harness_count = 0
     baseline_stoploss_count = 0
     _BASELINE_STRATEGIES = frozenset({
-        "bare_t2_baseline", "bare_t3_baseline", "enterprise_router_baseline",
+        "bare_t2_baseline",
+        "bare_t3_baseline",
+        "enterprise_router_baseline",
+        "routellm_learned_router_baseline",
     })
     for r in records:
         reason = str(r.get("exit_reason") or "")

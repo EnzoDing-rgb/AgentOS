@@ -50,6 +50,10 @@ BUDGETFLOW_PLANNED_TASK_BUDGET_STRATEGIES = frozenset({
     "budgetflow_task_level",
     "budgetflow_segment",
 })
+FROZEN_ROUTER_PROJECTION_STRATEGIES = frozenset({
+    "enterprise_router_baseline",
+    "routellm_learned_router_baseline",
+})
 BINDING_STRONGEST_STAGE_UTILIZATION_MIN = 0.90
 DEFAULT_TASK_EFFORT = 30.0
 DEFAULT_TASK_VALUE = 1.0
@@ -466,7 +470,11 @@ def calibrate_budget(
             historical.get(strategy, {}),
             censored_task_costs_by_strategy.get(strategy, {}),
             fit_overrides=fit_overrides,
-            frozen_preferred_models=frozen_preferred_models if strategy == "enterprise_router_baseline" else None,
+            frozen_preferred_models=(
+                frozen_preferred_models
+                if strategy in FROZEN_ROUTER_PROJECTION_STRATEGIES
+                else None
+            ),
             audit_reasons=plan.reasons,
         )
         projected_task_costs[strategy] = task_costs
@@ -844,7 +852,7 @@ def audit_calibration(
             "BLOCK: stage strongest utilization "
             f"{strongest_stage_util:.1%} is below "
             f"{BINDING_STRONGEST_STAGE_UTILIZATION_MIN:.0%}; budget regime is too loose "
-            "for Yield per Dollar evidence. Recompile the hard cap before the next paid stage."
+            "for Total Resolved Value per Dollar evidence. Recompile the hard cap before the next paid stage."
         )
 
     audit = CalibrationAudit(
@@ -1318,6 +1326,7 @@ def _build_pressure_contract(
     t2_util = utils.get("bare_t2_baseline", 0.0)
     t3_util = utils.get("bare_t3_baseline", 0.0)
     er_util = utils.get("enterprise_router_baseline", 0.0)
+    routellm_util = utils.get("routellm_learned_router_baseline", 0.0)
     bf_task_util = utils.get("budgetflow_task_level", 0.0)
     bf_segment_util = utils.get("budgetflow_segment", 0.0)
     bf_primary_util = bf_task_util or bf_segment_util
@@ -1427,6 +1436,9 @@ def _build_pressure_contract(
             "bare_t2_baseline": round(t2_util, 4),
             "bare_t3_baseline": round(t3_util, 4),
             "enterprise_router_baseline": round(er_util, 4) if er_util > 0 else None,
+            "routellm_learned_router_baseline": (
+                round(routellm_util, 4) if routellm_util > 0 else None
+            ),
             "budgetflow_same_enterprise_router": round(
                 utils.get("budgetflow_same_enterprise_router", 0.0), 4
             ) if utils.get("budgetflow_same_enterprise_router", 0.0) > 0 else None,
@@ -1877,7 +1889,7 @@ def _project_strategy_task_costs(
             model = frozen_preferred_models.get(task_id, "missing")
             counts[model] = counts.get(model, 0) + 1
         audit_reasons.append(
-            "calibration:enterprise_router_projection uses frozen preferred_model mix "
+            f"calibration:{strategy}_projection uses frozen preferred_model mix "
             + ", ".join(f"{model}={count}" for model, count in sorted(counts.items()))
         )
     return projected

@@ -399,6 +399,7 @@ def validate_paper_mainline_budget_contract(
         "bare_t2_baseline",
         "bare_t3_baseline",
         "enterprise_router_baseline",
+        "routellm_learned_router_baseline",
     }
     control_modes = {name: budget_modes.get(name) for name in mainline_names if name in control_names}
     if any(mode != "shared_batch_hard_budget" for mode in control_modes.values()):

@@ -203,9 +203,9 @@ def bootstrap_task_features(task) -> dict[str, int]:
 def bootstrap_task_effort(task) -> dict[str, float | str | dict[str, int]]:
     """No-outcome bootstrap effort heuristic from task text/patch/test metadata.
 
-    This is a Task Effort diagnostic, NOT Task Value.  It estimates runway /
-    expected work based on patch lines, test counts, problem length, and gold
-    file count.  It must not be presented as Claim 1 value.
+    This is an Estimated Task Token Demand diagnostic, not Task Value. It
+    estimates runway / expected work based on patch lines, test counts, problem
+    length, and gold file count. It must not be presented as Claim 1 value.
     """
     features = bootstrap_task_features(task)
     import math
@@ -318,7 +318,7 @@ def build_bootstrap_value_matrix(
 
     Schema (North Star aligned):
       - ``task_value``: Claim 1 value profiles (equal, criticality_value, ...).
-      - ``task_effort``: Task Effort diagnostic (final_task_effort).
+      - ``task_effort``: Estimated Task Token Demand diagnostic (final_task_effort).
       - ``model_fit``: reserved, null for bootstrap matrices.
 
     The ``final_task_effort`` is a metadata-based effort proxy.  It is NOT
@@ -340,7 +340,7 @@ def build_bootstrap_value_matrix(
             "outcome_free": True,
             "note": (
                 "Task Value profiles use only pre-registered task metadata. "
-                "Task Effort uses a bootstrap heuristic from pre-registered "
+                "Estimated Task Token Demand uses a bootstrap heuristic from pre-registered "
                 "SWE-bench task metadata: patch lines, fail/pass test counts, "
                 "problem words, and gold file count. "
                 "No strategy outcome, cost, solve rarity, or BudgetFlow signal is used."

@@ -47,6 +47,7 @@ PAPER_MAINLINE_STRATEGY_SET_PATH = PAPER1_ROOT / "docs" / "config" / "paper_main
 CORE_STRATEGIES: tuple[CompareStrategy, ...] = (
     CompareStrategy("bare_t2_baseline", "all_tier2"),
     CompareStrategy("bare_t3_baseline", "bare_t3"),
+    CompareStrategy("routellm_learned_router_baseline", "routellm_learned_router"),
     CompareStrategy("budgetflow_task_level", "value_aware_task_level"),
     CompareStrategy("budgetflow_segment", "segment_value_aware"),
 )
@@ -102,9 +103,9 @@ def paper_mainline_strategy_names() -> tuple[str, ...]:
     return tuple(strategy.name for strategy in paper_mainline_strategies())
 
 
-# Default paid comparison: task-level BudgetFlow against pure-tier boundaries,
-# all under the same shared hard budget. Static routers remain explicit
-# diagnostic controls but are not part of the paper mainline set.
+# Default paid comparison: task-level BudgetFlow against pure-tier boundaries
+# and a RouteLLM-inspired value-blind learned task router, all under the same
+# shared hard budget.
 DEFAULT_STRATEGIES: tuple[CompareStrategy, ...] = paper_mainline_strategies()
 
 
@@ -160,7 +161,7 @@ def required_backends_for_strategies(strategies: tuple[CompareStrategy, ...]) ->
 
 def w_i_profile_for_record(routing: str) -> str:
     """JSONL field: stage_blind forces w_i=1 at query time."""
-    if routing in {"bare_t3", "enterprise_router", "budgetflow_same_router"}:
+    if routing in {"bare_t3", "enterprise_router", "budgetflow_same_router", "routellm_learned_router"}:
         return "mechanism_isolation"
     if routing == "stage_blind":
         return "flat_forced"

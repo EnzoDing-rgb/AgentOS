@@ -262,9 +262,10 @@ def test_custom_ids_default_to_paper_mainline_policy_set() -> None:
     assert names == [
         "bare_t2_baseline",
         "bare_t3_baseline",
+        "routellm_learned_router_baseline",
         "budgetflow_task_level",
     ]
-    assert selection.policy_jobs == 3
+    assert selection.policy_jobs == 4
     assert selection.jobs_upgraded is True
 
 
@@ -281,6 +282,7 @@ def test_non_3x3_preset_defaults_to_paper_mainline_not_full_catalog() -> None:
     assert names == [
         "bare_t2_baseline",
         "bare_t3_baseline",
+        "routellm_learned_router_baseline",
         "budgetflow_task_level",
     ]
 
@@ -421,6 +423,7 @@ def test_budget_plan_task_caps_apply_only_to_budgetflow_active_policies() -> Non
     """Controls keep shared caps; BudgetFlow policies can use planned task caps."""
     strategies = (
         CompareStrategy("enterprise_router_baseline", "enterprise_router"),
+        CompareStrategy("routellm_learned_router_baseline", "routellm_learned_router"),
         CompareStrategy("bare_t3_baseline", "bare_t3"),
         CompareStrategy("budgetflow_task_level", "value_aware_task_level"),
         CompareStrategy("budgetflow_segment", "segment_value_aware"),
@@ -433,10 +436,11 @@ def test_budget_plan_task_caps_apply_only_to_budgetflow_active_policies() -> Non
             "budgetflow_task_level": {"task-a": 0.6},
             "budgetflow_segment": {"task-a": 0.8},
             "enterprise_router_baseline": {"task-a": 0.4},
+            "routellm_learned_router_baseline": {"task-a": 0.4},
         },
     )
 
-    for name in ("enterprise_router_baseline", "bare_t3_baseline"):
+    for name in ("enterprise_router_baseline", "routellm_learned_router_baseline", "bare_t3_baseline"):
         assert modes.batch_caps[name] == pytest.approx(2.0)
         assert modes.budget_modes[name] == "shared_batch_hard_budget"
     assert modes.batch_caps["budgetflow_task_level"] == pytest.approx(2.0)

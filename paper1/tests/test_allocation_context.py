@@ -1,4 +1,4 @@
-"""Prove Task Value / Task Effort / Model Fit stay in separate namespaces."""
+"""Prove Task Value / Estimated Task Token Demand / Model Fit stay separate."""
 
 from __future__ import annotations
 

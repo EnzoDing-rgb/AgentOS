@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "name": "paper_mainline_3_policy_task_level",
-  "objective": "Claim 1 task-level comparison against pure T2 and pure T3 boundary controls",
+  "name": "paper_mainline_4_policy_task_level",
+  "objective": "Claim 1 task-level comparison against pure T2, pure T3, RouteLLM-inspired learned-router, and BudgetFlow task-level controls",
   "strategies": [
     {
       "name": "bare_t2_baseline",
@@ -10,6 +10,10 @@
     {
       "name": "bare_t3_baseline",
       "role": "strongest-model fixed baseline"
+    },
+    {
+      "name": "routellm_learned_router_baseline",
+      "role": "value-blind learned task router baseline"
     },
     {
       "name": "budgetflow_task_level",

@@ -32,6 +32,12 @@ from budgetflow.model_tiers import (
 from budgetflow.run_series import retired_series_reason
 from budgetflow.value_efficiency import ValueEfficiencyContext
 
+FROZEN_PLAN_ROUTINGS = frozenset({
+    "enterprise_router",
+    "budgetflow_same_router",
+    "routellm_learned_router",
+})
+
 
 @dataclass(frozen=True)
 class ReadinessReport:
@@ -169,7 +175,7 @@ def build_compare_readiness_report(
     facts.append(f"value_source_class={value_context.source_class}")
     facts.append(f"value_evidence={value_context.evidence_role}")
     facts.append(f"value_confidence={value_context.confidence}")
-    facts.append(f"value_primary_t1={str(value_context.is_primary_value_evidence).lower()}")
+    facts.append(f"value_primary_claim1={str(value_context.is_primary_value_evidence).lower()}")
     facts.append(f"value_matrix={value_context.matrix_path or 'equal_sanity'}")
     facts.append(f"runtime_root={runtime_root}")
     site_contamination = find_runtime_worktree_python_contamination(runtime_root)
@@ -185,7 +191,7 @@ def build_compare_readiness_report(
     frozen_plan_arg = getattr(args, "frozen_plan", None)
     frozen_plan = None
     uses_frozen_plan_routing = any(
-        strategy.routing in {"enterprise_router", "budgetflow_same_router"}
+        strategy.routing in FROZEN_PLAN_ROUTINGS
         for strategy in strategies
     )
     if use_fixed_per_task_cap:
@@ -309,12 +315,13 @@ def build_compare_readiness_report(
         for strategy in strategies
     )
     needs_frozen_plan = any(
-        strategy.routing in {"enterprise_router", "budgetflow_same_router"}
+        strategy.routing in FROZEN_PLAN_ROUTINGS
         for strategy in strategies
     )
     if needs_frozen_plan and not frozen_plan_arg:
+        frozen_names = [strategy.name for strategy in strategies if strategy.routing in FROZEN_PLAN_ROUTINGS]
         blocking.append(
-            "enterprise_router_baseline and budgetflow_same_enterprise_router require --frozen-plan"
+            f"frozen-plan strategies require --frozen-plan: {frozen_names}"
         )
     elif needs_frozen_plan and frozen_plan_arg:
         try:
@@ -349,17 +356,18 @@ def build_compare_readiness_report(
     if value_context.profile == "equal":
         warnings.append(
             "running non-trivial experiment with equal task values; "
-            "Yield numbers are T2 mechanism diagnostics, not T1 value evidence. "
-            "Use a pre-registered manual value matrix for T1 claims."
+            "Total Resolved Value reduces to Resolved Count and is a diagnostic "
+            "view, not primary value evidence. Use a pre-registered manual "
+            "value matrix for Claim 1 value claims."
         )
     if needs_task_values and value_context.profile == "equal":
         warnings.append(
-            "equal task values make value-aware strategies a T2 mechanism diagnostic, not T1 value evidence"
+            "equal task values make value-aware strategies a mechanism diagnostic, not primary value evidence"
         )
     if needs_task_values and not value_context.is_primary_value_evidence:
         warnings.append(
-            f"value_source_kind={value_context.source_class} is not primary T1 evidence; "
-            "use --value-source-kind pre_registered_manual with a frozen matrix for main Yield claims"
+            f"value_source_kind={value_context.source_class} is not primary Claim 1 value evidence; "
+            "use --value-source-kind pre_registered_manual with a frozen matrix for main Total Resolved Value claims"
         )
 
     if args.task_set != "medium" and not args.ids and len(task_ids) <= 3:

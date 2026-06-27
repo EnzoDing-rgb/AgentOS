@@ -122,7 +122,7 @@ def parse_compare_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
         default=None,
         help=(
-            "evidence role for task values. Use pre_registered_manual for primary T1 runs; "
+            "evidence role for task values. Use pre_registered_manual for primary Claim 1 runs; "
             "equal_sanity is only a fallback diagnostic."
         ),
     )

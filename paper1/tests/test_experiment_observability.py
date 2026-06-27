@@ -4,7 +4,7 @@ from budgetflow.experiment_observability import enrich_routing_observability
 def test_routing_observability_marks_value_aware_as_bootstrap_policy_role() -> None:
     record = {
         "routing": "segment_value_aware",
-        "value_objective": "t1_value_efficiency",
+        "value_objective": "claim1_value_efficiency",
         "routing_prior_summary": {
             "learned_action": "early_rescue",
             "policy_memory_source": "data/runs/066.jsonl",
@@ -13,7 +13,7 @@ def test_routing_observability_marks_value_aware_as_bootstrap_policy_role() -> N
 
     enrich_routing_observability(record)
 
-    assert record["routing_objective"] == "t1_value_efficiency"
+    assert record["routing_objective"] == "claim1_value_efficiency"
     assert record["routing_policy_family"] == "bootstrap:value_aware_segment"
     assert record["policy_kind"] == "bootstrap"
     assert record["policy_role"] == "value_aware_segment"
@@ -30,7 +30,7 @@ def test_routing_observability_marks_conservative_as_mechanism_ablation() -> Non
 
     enrich_routing_observability(record)
 
-    assert record["routing_objective"] == "t2_value_source_diagnostic"
+    assert record["routing_objective"] == "value_source_diagnostic"
     assert record["routing_policy_family"] == "bootstrap:conservative_segment"
     assert record["policy_kind"] == "bootstrap"
     assert record["routing_learned_action"] == "none"
@@ -63,7 +63,7 @@ def test_routing_observability_marks_equal_value_as_ablation() -> None:
 
     enrich_routing_observability(record)
 
-    assert record["routing_objective"] == "t2_value_source_diagnostic"
+    assert record["routing_objective"] == "value_source_diagnostic"
     assert record["routing_policy_family"] == "bootstrap:value_aware_segment"
 
 
@@ -88,7 +88,7 @@ def test_routing_observability_marks_pre_registered_value_as_diagnostic() -> Non
 
     enrich_routing_observability(record)
 
-    assert record["routing_objective"] == "t2_value_source_diagnostic"
+    assert record["routing_objective"] == "value_source_diagnostic"
     assert record["routing_policy_family"] == "bootstrap:value_aware_segment"
 
 
@@ -96,11 +96,11 @@ def test_routing_observability_marks_budget_only_as_fixed_baseline() -> None:
     record = {
         "routing": "budget_only",
         "task_value_profile": "difficulty",
-        "task_value_primary_t1": True,
+        "task_value_primary_claim1": True,
     }
 
     enrich_routing_observability(record)
 
-    assert record["routing_objective"] == "t1_value_efficiency"
+    assert record["routing_objective"] == "claim1_value_efficiency"
     assert record["routing_policy_family"] == "fixed_baseline:budget_only_control"
     assert record["policy_kind"] == "fixed_baseline"

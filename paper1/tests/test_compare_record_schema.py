@@ -1202,9 +1202,9 @@ def test_persisted_jsonl_contains_t1_t2_observability(tmp_path) -> None:
     persisted = json.loads(out_path.read_text().splitlines()[0])
 
     assert persisted["llm_turns"] == 2
-    assert persisted["value_objective"] == "t2_value_source_diagnostic"
+    assert persisted["value_objective"] == "value_source_diagnostic"
     assert persisted["task_value_source_class"] == "equal_sanity"
-    assert persisted["task_value_primary_t1"] is False
+    assert persisted["task_value_primary_claim1"] is False
     assert persisted["yield_per_dollar"] == 4.0
     assert persisted["routing_policy_family"] == "bootstrap:value_aware_segment"
     assert persisted["policy_kind"] == "bootstrap"
