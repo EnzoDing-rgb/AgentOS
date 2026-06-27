@@ -1,9 +1,9 @@
 """ModelFit estimation from clean historical JSONL evidence.
 
 Derives per-tier fit/productivity rates from verified outcome and cost/turn
-evidence. Budget-exhausted rows are censored runway signals: the observed spend
-is not enough, so the derived fit is an upper bound rather than a complete cost
-sample.
+evidence. Budget-exhausted rows are censored spend evidence: the observed spend
+is a lower bound on required cost, so the derived fit is an upper bound rather
+than a complete cost sample.
 
 No ML, no task-id-specific rules, no benchmark-specific logic.
 """

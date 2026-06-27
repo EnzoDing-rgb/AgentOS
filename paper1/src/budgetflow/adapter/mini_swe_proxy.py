@@ -331,6 +331,7 @@ class BudgetFlowLitellmModel:
         self.turn_traces: list[dict] = []
         self._last_reservation_id: str | None = None
         self._last_reserve_out: int = 0
+        self._task_spent_budget: float = 0.0
         self._format_error_streak: int = 0
         self._provider_usage_turns: int = 0
         self._estimated_usage_turns: int = 0
@@ -467,7 +468,7 @@ class BudgetFlowLitellmModel:
                 no_progress_streak=self._no_progress_streak,
                 recent_commands=self._recent_commands,
                 task_effort=allocation.task_effort if allocation is not None else None,
-                task_spent=self.governor.state.spent_budget,
+                task_spent=self._task_spent_budget,
                 task_budget_cap=(
                     allocation.effective_task_budget
                     if allocation is not None and allocation.effective_task_budget is not None
@@ -618,7 +619,7 @@ class BudgetFlowLitellmModel:
         )
         self._refresh_progress()
 
-        model_name, model_kwargs = self._model_config_for(backend)
+        model_name, model_kwargs = self._model_config_for(backend, max_tokens=reserve_out)
         try:
             response = self._completion(
                 messages,
@@ -718,6 +719,7 @@ class BudgetFlowLitellmModel:
         spend_headroom = max(0.0, snap["total_budget"] - snap["spent_budget"])
         billable = min(actual_cost, spend_headroom)
         self.governor.settle(reservation_id, actual_cost, WorkflowStatus.RUNNING)
+        self._task_spent_budget += billable
         self._last_reservation_id = None
         self._last_reserve_out = 0
         _parse_error: Exception | None = None
@@ -808,13 +810,24 @@ class BudgetFlowLitellmModel:
                     retry_messages = list(messages) + [assistant_msg, retry_user_msg]
                     retry_input_tokens = estimate_input_tokens(retry_messages)
                     # Reserve for retry call
+                    retry_reserve_out = self._reserve_output_tokens(backend, retry_input_tokens)
                     retry_estimate = self.governor.estimate_cost(
                         backend,
                         input_tokens=retry_input_tokens,
                         expected_output_tokens=backend.mean_output_tokens,
-                        reserve_output_tokens=self.default_max_output_tokens,
+                        reserve_output_tokens=retry_reserve_out,
                         turn_index=self.step_index,
                     )
+                    task_block_reason = self._task_budget_block_reason(retry_estimate)
+                    if task_block_reason is not None:
+                        snapshot = self._task_budget_snapshot()
+                        raise BudgetFlowBudgetError(
+                            self.workflow_id,
+                            exit_reason=task_block_reason,
+                            budget_snapshot=snapshot,
+                            step_index=self.step_index,
+                            backend=backend.name,
+                        )
                     retry_reservation = self.governor.reserve(self.workflow_id, backend, retry_estimate)
                     if retry_reservation is None:
                         raise BudgetFlowBudgetError(
@@ -824,11 +837,15 @@ class BudgetFlowLitellmModel:
                             backend=backend.name,
                         )
                     self._last_reservation_id = retry_reservation.reservation_id
+                    retry_model_name, retry_model_kwargs = self._model_config_for(
+                        backend,
+                        max_tokens=retry_reserve_out,
+                    )
                     retry_response = self._completion(
                         retry_messages,
                         backend_name=backend.name,
-                        model_name=model_name,
-                        model_kwargs=model_kwargs,
+                        model_name=retry_model_name,
+                        model_kwargs=retry_model_kwargs,
                         **kwargs,
                     )
                     # Settle retry reservation
@@ -852,6 +869,11 @@ class BudgetFlowLitellmModel:
                     self.governor.settle(retry_reservation.reservation_id, retry_actual_cost, WorkflowStatus.RUNNING)
                     self._last_reservation_id = None
                     self._last_reserve_out = 0
+                    retry_billable = min(
+                        retry_actual_cost,
+                        max(0.0, snap["total_budget"] - snap["spent_budget"] - billable),
+                    )
+                    self._task_spent_budget += retry_billable
                     # Parse retry response — must succeed this time
                     actions = self._parse_actions(retry_response, backend_tier=backend.tier)
                     turn_protocol_retry_success = True
@@ -864,7 +886,7 @@ class BudgetFlowLitellmModel:
                     prompt_tokens += retry_prompt_tokens
                     completion_tokens += retry_completion_tokens
                     actual_cost += retry_actual_cost
-                    billable += min(retry_actual_cost, max(0.0, snap["total_budget"] - snap["spent_budget"] - billable))
+                    billable += retry_billable
                     if usage["usage_source"] == "provider" and retry_usage["usage_source"] == "provider":
                         usage["prompt_tokens_source"] = "provider"
                         usage["completion_tokens_source"] = "provider"
@@ -1217,7 +1239,7 @@ class BudgetFlowLitellmModel:
         return candidate
 
     def _reserve_output_tokens(self, backend: Backend, input_tokens: int) -> int:
-        remaining = self.governor.remaining_budget()
+        remaining = self._effective_remaining_budget()
         if remaining <= 0:
             return 64
         input_cost = estimate_token_cost(
@@ -1242,6 +1264,52 @@ class BudgetFlowLitellmModel:
         affordable_tokens = output_budget / output_token_cost
         headroom = min(1024, max(backend.mean_output_tokens * 2, 256))
         return max(64, min(headroom, int(affordable_tokens * 0.95)))
+
+    def _task_budget_cap(self) -> float | None:
+        allocation = self.routing.allocation
+        if allocation is None:
+            return None
+        cap = (
+            allocation.effective_task_budget
+            if allocation.effective_task_budget is not None
+            else allocation.planned_task_budget
+        )
+        if cap is None:
+            return None
+        cap = float(cap)
+        return cap if cap > 0 else None
+
+    def _task_remaining_budget(self) -> float | None:
+        cap = self._task_budget_cap()
+        if cap is None:
+            return None
+        return max(0.0, cap - self._task_spent_budget)
+
+    def _effective_remaining_budget(self) -> float:
+        remaining = self.governor.remaining_budget()
+        task_remaining = self._task_remaining_budget()
+        if task_remaining is not None:
+            return min(remaining, task_remaining)
+        return remaining
+
+    def _task_budget_block_reason(self, estimate) -> str | None:
+        task_remaining = self._task_remaining_budget()
+        if task_remaining is None:
+            return None
+        if task_remaining <= 0:
+            return "task_budget_exhausted"
+        if estimate.reserved_cost > task_remaining:
+            return "task_budget_exhausted"
+        return None
+
+    def _task_budget_snapshot(self) -> dict[str, float]:
+        snapshot = self.governor.budget_snapshot()
+        snapshot["task_budget_cap"] = self._task_budget_cap() or 0.0
+        snapshot["task_spent_budget"] = self._task_spent_budget
+        snapshot["task_available_budget"] = self._task_remaining_budget() or 0.0
+        self.last_exit_reason = "task_budget_exhausted"
+        self.last_budget_snapshot = snapshot
+        return snapshot
 
     def _apply_progress_escalation(
         self,
@@ -1354,6 +1422,16 @@ class BudgetFlowLitellmModel:
             reserve_output_tokens=reserve_out,
             turn_index=self.step_index,
         )
+        task_block_reason = self._task_budget_block_reason(estimate)
+        if task_block_reason is not None:
+            snapshot = self._task_budget_snapshot()
+            raise BudgetFlowBudgetError(
+                self.workflow_id,
+                exit_reason=task_block_reason,
+                budget_snapshot=snapshot,
+                step_index=self.step_index,
+                backend=backend.name,
+            )
         reservation = self.governor.reserve(self.workflow_id, backend, estimate)
         if reservation is not None:
             self._last_reservation_id = reservation.reservation_id
@@ -1371,8 +1449,8 @@ class BudgetFlowLitellmModel:
             backend=backend.name,
         )
 
-    def _model_config_for(self, backend: Backend) -> tuple[str, dict[str, Any]]:
-        return MODEL_CATALOG.litellm_kwargs(backend.name, api_keys=self._api_keys)
+    def _model_config_for(self, backend: Backend, *, max_tokens: int | None = None) -> tuple[str, dict[str, Any]]:
+        return MODEL_CATALOG.litellm_kwargs(backend.name, api_keys=self._api_keys, max_tokens=max_tokens)
 
     def _completion(
         self,

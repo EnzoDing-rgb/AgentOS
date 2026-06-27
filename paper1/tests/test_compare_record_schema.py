@@ -608,7 +608,7 @@ def test_runner_threads_planned_task_budget_into_allocation_context(monkeypatch)
         task_index=1,
         step_limit=1,
         value_context=_value_context(),
-        budget_mode="budgetflow_planned_task_budget",
+        budget_mode="planned_task_budget",
         effective_task_budget=0.4,
         budget_plan_task_cap=0.8,
         planned_task_budget_source="budget_plan:planned_task_budget_by_strategy",
@@ -617,14 +617,14 @@ def test_runner_threads_planned_task_budget_into_allocation_context(monkeypatch)
     assert seen["allocation"].planned_task_budget == 0.8
     assert seen["allocation"].effective_task_budget == 0.4
     assert seen["allocation"].budget_source == "budget_plan:planned_task_budget_by_strategy"
-    assert record["budget_mode"] == "budgetflow_planned_task_budget"
+    assert record["budget_mode"] == "planned_task_budget"
     assert record["per_task_cap"] is None
     assert record["effective_task_budget"] == 0.4
     assert record["budget_plan_task_cap"] == 0.8
     assert record["planned_task_budget_source"] == "budget_plan:planned_task_budget_by_strategy"
 
 
-def test_run_strategy_batch_planned_caps_are_runway_signals_not_task_governors(monkeypatch) -> None:
+def test_run_strategy_batch_planned_caps_are_live_task_hard_caps(monkeypatch) -> None:
     import pytest
     from budgetflow.experiments import compare_execution
 
@@ -662,7 +662,7 @@ def test_run_strategy_batch_planned_caps_are_runway_signals_not_task_governors(m
         batch_budget_cap=1.0,
         value_context=_value_context(),
         planned_task_caps={"task-a": 0.8, "task-b": 0.8},
-        budget_mode="budgetflow_planned_task_budget",
+        budget_mode="planned_task_budget",
         step_limit=1,
         trace_console="quiet",
         heartbeat=0,
@@ -683,6 +683,61 @@ def test_run_strategy_batch_planned_caps_are_runway_signals_not_task_governors(m
     assert records[0]["batch_spent"] == pytest.approx(0.2)
     assert records[1]["batch_spent"] == pytest.approx(1.0)
     assert records[1]["batch_available"] == pytest.approx(0.0)
+
+
+def test_run_strategy_batch_threads_planned_caps_to_routellm(monkeypatch) -> None:
+    import pytest
+    from budgetflow.experiments import compare_execution
+
+    seen: list[tuple[float | None, float | None]] = []
+
+    def fake_run_task_record(task, **kwargs):
+        assert kwargs["cfg"].routing == "routellm_learned_router"
+        assert kwargs["per_task_cap"] is None
+        seen.append((kwargs["budget_plan_task_cap"], kwargs["effective_task_budget"]))
+        return {
+            "instance_id": task.instance_id,
+            "strategy": kwargs["cfg"].name,
+            "routing": kwargs["cfg"].routing,
+            "harness_resolved": False,
+            "score_status": "true_fail",
+            "patch_extracted": False,
+            "agent_gold_edited": False,
+            "agent_gold_files": [],
+            "detail": "",
+            "exit_status": "Stopped",
+            "exit_reason": "test",
+            "elapsed_s": 0.0,
+            "backend_picks": ["tier2"],
+            "llm_turns": 1,
+            "total_cost": 0.1,
+            "batch_available": None,
+        }
+
+    monkeypatch.setattr(compare_execution, "run_task_record", fake_run_task_record)
+
+    run_strategy_batch(
+        CompareStrategy("routellm_learned_router_baseline", "routellm_learned_router"),
+        [SimpleNamespace(instance_id="task-a")],
+        batch_budget_cap=1.0,
+        value_context=_value_context(),
+        planned_task_caps={"task-a": 0.8},
+        budget_mode="planned_task_budget",
+        step_limit=1,
+        trace_console="quiet",
+        heartbeat=0,
+        global_progress=SimpleNamespace(
+            total=1,
+            start_task=lambda: None,
+            finish_task=lambda: 1,
+            format_banner=lambda scoreboard=None: "test",
+            format_global=lambda scoreboard=None: "test",
+        ),
+        scoreboard=None,
+        print_lock=None,
+    )
+
+    assert seen == pytest.approx([(0.8, 0.8)])
 
 
 def test_effective_planned_task_cap_protects_remaining_planned_budget() -> None:
@@ -748,7 +803,7 @@ def test_planned_task_budget_checkpoint_records_shared_batch_cap(monkeypatch, tm
         batch_budget_cap=1.0,
         value_context=_value_context(),
         planned_task_caps={"task-a": 0.8, "task-b": 0.8},
-        budget_mode="budgetflow_planned_task_budget",
+        budget_mode="planned_task_budget",
         step_limit=1,
         trace_console="quiet",
         heartbeat=0,
@@ -813,7 +868,7 @@ def test_checkpoint_does_not_mark_abort_rows_completed(monkeypatch, tmp_path) ->
         batch_budget_cap=1.0,
         value_context=_value_context(),
         planned_task_caps={"task-a": 0.8},
-        budget_mode="budgetflow_planned_task_budget",
+        budget_mode="planned_task_budget",
         step_limit=1,
         trace_console="quiet",
         heartbeat=0,
@@ -918,7 +973,7 @@ def test_run_strategy_batch_planned_caps_require_all_selected_tasks() -> None:
             batch_budget_cap=1.0,
             value_context=_value_context(),
             planned_task_caps={"task-a": 0.8},
-            budget_mode="budgetflow_planned_task_budget",
+            budget_mode="planned_task_budget",
             step_limit=1,
             trace_console="quiet",
             heartbeat=0,
@@ -944,7 +999,7 @@ def test_run_strategy_batch_planned_mode_requires_cap_map() -> None:
             batch_budget_cap=1.0,
             value_context=_value_context(),
             planned_task_caps={},
-            budget_mode="budgetflow_planned_task_budget",
+            budget_mode="planned_task_budget",
             step_limit=1,
             trace_console="quiet",
             heartbeat=0,
@@ -1349,7 +1404,7 @@ def test_live_snapshot_warns_when_task_level_underuses_t3_against_strong_baselin
         budget_modes={
             "bare_t2_baseline": "shared_batch_hard_budget",
             "bare_t3_baseline": "shared_batch_hard_budget",
-            "budgetflow_task_level": "budgetflow_planned_task_budget",
+            "budgetflow_task_level": "planned_task_budget",
         },
         runs_done=12,
         total_runs=12,

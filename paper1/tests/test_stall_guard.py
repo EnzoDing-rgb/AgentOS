@@ -46,7 +46,7 @@ def test_task_level_no_progress_limit_scales_with_task_effort() -> None:
 
 
 def test_task_level_stagnation_uses_scaled_no_progress_limit() -> None:
-    assert stall_guard_enabled("value_aware_task_level") is False
+    assert stall_guard_enabled("value_aware_task_level") is True
     stop, reason, _ = check_stagnation(
         strategy="value_aware_task_level",
         no_progress_streak=12,
@@ -205,7 +205,7 @@ def test_git_diff_digest_tracks_stable_patch(tmp_path: Path) -> None:
 
 
 def test_stall_guard_enabled_for_budgetflow_strategies() -> None:
-    """Legacy segment BudgetFlow strategies keep stall guard enabled."""
+    """BudgetFlow strategies keep stall guard enabled."""
     for strat in (
         "budgetflow_segment",
         "budgetflow_conservative",
@@ -213,14 +213,14 @@ def test_stall_guard_enabled_for_budgetflow_strategies() -> None:
         "budgetflow_equal_weight",
         "stage_blind",
         "budgetflow_same_router",
+        "value_aware_task_level",
     ):
         assert stall_guard_enabled(strat) is True, f"{strat} should have stall guard"
 
 
 def test_stall_guard_disabled_for_bare_baselines() -> None:
-    """Claim-1 task-level routing and bare baselines must not get BF-only early stop."""
+    """Bare baselines and non-BudgetFlow routers must not get BF-only early stop."""
     for strat in (
-        "value_aware_task_level",
         "all_tier2",
         "bare_t3",
         "enterprise_router",

@@ -63,7 +63,10 @@ def _model(strategy: str = "all_t3") -> tuple[BudgetFlowLitellmModel, BudgetGove
         "DEEPSEEK_API_KEY": "test",
         "AICODE007_API_KEY": "test",
     }
-    model._model_config_for = lambda backend: (backend.name, {})
+    model._model_config_for = lambda backend, *, max_tokens=None: (
+        backend.name,
+        {"max_tokens": max_tokens} if max_tokens is not None else {},
+    )
     return model, governor
 
 
@@ -77,6 +80,7 @@ def test_provider_unavailable_releases_reservation_and_fails_fast(monkeypatch) -
 
     def fake_completion(messages, *, backend_name, **kwargs):
         attempts.append(backend_name)
+        assert kwargs["model_kwargs"]["max_tokens"] > 0
         raise ProviderUnavailable("ServiceUnavailableError: 503")
 
     model._completion = fake_completion

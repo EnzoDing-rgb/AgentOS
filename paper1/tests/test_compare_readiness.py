@@ -585,7 +585,7 @@ def test_readiness_accepts_stage_prefix_pressure_budget_plan(tmp_path) -> None:
         '"stage_reference_strategy":"bare_t3_baseline"},'
         '"decision":"PASS","task_ids":["task-a"],'
         '"strategy_names":["budgetflow_segment"],'
-        '"planned_task_budget_policy":{"mode":"budgetflow_planned_task_budget"},'
+        '"planned_task_budget_policy":{"mode":"planned_task_budget"},'
         '"planned_task_budget_by_strategy":{"budgetflow_segment":{"task-a":0.8}}}'
     )
     value_context = ValueEfficiencyContext()
@@ -617,7 +617,7 @@ def test_readiness_blocks_stage_prefix_count_larger_than_current_stage(tmp_path)
         '"stage_reference_strategy":"bare_t3_baseline"},'
         '"decision":"PASS","task_ids":["t1","t2","t3","t4","t5","t6","t7","t8","t9","t10"],'
         '"strategy_names":["budgetflow_segment"],'
-        '"planned_task_budget_policy":{"mode":"budgetflow_planned_task_budget"},'
+        '"planned_task_budget_policy":{"mode":"planned_task_budget"},'
         '"planned_task_budget_by_strategy":{"budgetflow_segment":{'
         '"t1":0.8,"t2":0.8,"t3":0.8,"t4":0.8,"t5":0.8,'
         '"t6":0.8,"t7":0.8,"t8":0.8,"t9":0.8,"t10":0.8}}}'
@@ -660,7 +660,7 @@ def test_readiness_accepts_later_stage_for_stage_prefix_pressure_plan(tmp_path) 
         '"stage_reference_strategy":"bare_t3_baseline"},'
         '"decision":"PASS","task_ids":[' + task_ids + '],'
         '"strategy_names":["budgetflow_segment"],'
-        '"planned_task_budget_policy":{"mode":"budgetflow_planned_task_budget"},'
+        '"planned_task_budget_policy":{"mode":"planned_task_budget"},'
         '"planned_task_budget_by_strategy":{"budgetflow_segment":{' + caps + '}}}'
     )
     value_context = ValueEfficiencyContext()
@@ -695,7 +695,7 @@ def test_readiness_blocks_stage_prefix_count_exceeds_task_count(tmp_path) -> Non
         '"stage_reference_strategy":"bare_t3_baseline"},'
         '"decision":"PASS","task_ids":["t1","t2","t3"],'
         '"strategy_names":["budgetflow_segment"],'
-        '"planned_task_budget_policy":{"mode":"budgetflow_planned_task_budget"},'
+        '"planned_task_budget_policy":{"mode":"planned_task_budget"},'
         '"planned_task_budget_by_strategy":{"budgetflow_segment":{"t1":0.8}}}'
     )
     value_context = ValueEfficiencyContext()
@@ -734,7 +734,7 @@ def test_readiness_blocks_stage_prefix_pressure_task_order_mismatch(tmp_path) ->
         '"stage_reference_strategy":"bare_t3_baseline"},'
         '"decision":"PASS","task_ids":["t1","t2","t3"],'
         '"strategy_names":["budgetflow_segment"],'
-        '"planned_task_budget_policy":{"mode":"budgetflow_planned_task_budget"},'
+        '"planned_task_budget_policy":{"mode":"planned_task_budget"},'
         '"planned_task_budget_by_strategy":{"budgetflow_segment":{"t1":0.8,"t2":0.8,"t3":0.8}}}'
     )
     value_context = ValueEfficiencyContext()
@@ -1187,7 +1187,7 @@ def test_readiness_blocks_nonfinite_or_nonpositive_planned_task_caps(tmp_path) -
         '"generation_mode":"target_utilization","decision":"PASS",'
         '"task_ids":["task-a","task-b","task-c","task-d"],'
         '"strategy_names":["budgetflow_task_level"],'
-        '"planned_task_budget_policy":{"mode":"budgetflow_planned_task_budget"},'
+        '"planned_task_budget_policy":{"mode":"planned_task_budget"},'
         '"planned_task_budget_by_strategy":{"budgetflow_task_level":{'
         '"task-a":0.0,"task-b":-1.0,"task-c":1e999,"task-d":"nan"}},'
         '"projection_diagnostics":{"budgetflow_task_level":{'

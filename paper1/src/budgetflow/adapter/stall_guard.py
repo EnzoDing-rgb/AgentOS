@@ -23,10 +23,7 @@ _POST_PATCH_STOP_STRATEGIES = frozenset(
     }
 )
 
-# Strategies that enable the legacy BudgetFlow stall guard (check_stagnation).
-# Claim-1 task-level routing must not be truncated by a BudgetFlow-only
-# no-progress stop: its spend is governed by the shared batch hard cap and
-# catalog turn caps, while no-progress remains an observability signal.
+# Strategies that enable the BudgetFlow stall guard (check_stagnation).
 _STALL_GUARD_STRATEGIES = frozenset(
     {
         "budgetflow_segment",
@@ -35,6 +32,7 @@ _STALL_GUARD_STRATEGIES = frozenset(
         "budgetflow_equal_weight",
         "stage_blind",
         "budgetflow_same_router",
+        "value_aware_task_level",
     }
 )
 

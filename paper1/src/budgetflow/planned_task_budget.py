@@ -9,12 +9,12 @@ def effective_planned_task_cap(
     batch_budget_cap: float,
     shared_spent: float,
 ) -> float | None:
-    """Return the live per-task runway implied by a shared hard budget.
+    """Return the live task hard cap implied by a shared hard budget.
 
-    ``planned_task_caps`` are demand weights and soft runway signals. They can
-    sum above the shared hard cap. The returned value is not a separate task
-    governor in the Claim 1 mainline; it is the current task's prorated runway
-    for routing and observability.
+    ``planned_task_caps`` are compiled demand weights and may sum above the
+    shared cap. This function clips the current task against the remaining
+    shared pool and remaining planned demand. The returned value is the
+    per-task execution cap for policies that opt into planned task budgets.
     """
     planned_cap = float(planned_task_caps.get(task_id, 0.0) or 0.0)
     if planned_cap <= 0:

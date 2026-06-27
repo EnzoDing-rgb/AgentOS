@@ -42,13 +42,13 @@ from ..planned_task_budget import effective_planned_task_cap
 
 COLD_START_INPUT_TOKENS_PER_EFFORT = 4_500
 COLD_START_OUTPUT_TOKENS_PER_EFFORT = 150
-BUDGETFLOW_PLANNED_TASK_BUDGET_MODE = PLANNED_TASK_BUDGET_MODE
-BUDGETFLOW_PLANNED_TASK_BUDGET_MULTIPLIER = 2.0
-BUDGETFLOW_PLANNED_TASK_BUDGET_MIN_USD = 0.05
-BUDGETFLOW_PLANNED_TASK_BUDGET_BATCH_FLOOR_RULE = "runway_weight = hard_cap_usd/sqrt(task_count)+cross_strategy_task_cost_ceiling_multiplier"
-BUDGETFLOW_PLANNED_TASK_BUDGET_STRATEGIES = frozenset({
+PLANNED_TASK_BUDGET_MULTIPLIER = 2.0
+PLANNED_TASK_BUDGET_MIN_USD = 0.05
+PLANNED_TASK_BUDGET_BATCH_FLOOR_RULE = "runway_weight = hard_cap_usd/sqrt(task_count)+cross_strategy_task_cost_ceiling_multiplier"
+PLANNED_TASK_BUDGET_STRATEGIES = frozenset({
     "budgetflow_task_level",
     "budgetflow_segment",
+    "routellm_learned_router_baseline",
 })
 FROZEN_ROUTER_PROJECTION_STRATEGIES = frozenset({
     "enterprise_router_baseline",
@@ -553,7 +553,7 @@ def calibrate_budget(
                 "recorded for pressure audit, not a hard cap"
             )
 
-    plan.planned_task_budget_by_strategy = _build_budgetflow_planned_task_budgets(
+    plan.planned_task_budget_by_strategy = _build_planned_task_budgets(
         strategies,
         task_ids,
         projected_task_costs,
@@ -561,23 +561,24 @@ def calibrate_budget(
     )
     if plan.planned_task_budget_by_strategy:
         plan.planned_task_budget_policy = {
-            "mode": BUDGETFLOW_PLANNED_TASK_BUDGET_MODE,
+            "mode": PLANNED_TASK_BUDGET_MODE,
             "source": "projected_task_cost_by_strategy",
-            "multiplier": BUDGETFLOW_PLANNED_TASK_BUDGET_MULTIPLIER,
-            "min_usd": BUDGETFLOW_PLANNED_TASK_BUDGET_MIN_USD,
-            "batch_floor_rule": BUDGETFLOW_PLANNED_TASK_BUDGET_BATCH_FLOOR_RULE,
+            "multiplier": PLANNED_TASK_BUDGET_MULTIPLIER,
+            "min_usd": PLANNED_TASK_BUDGET_MIN_USD,
+            "batch_floor_rule": PLANNED_TASK_BUDGET_BATCH_FLOOR_RULE,
             "sum_can_exceed_hard_cap": True,
             "runtime_semantics": (
-                "runway_signal_for_routing_stall_observability; "
-                "shared_batch_hard_cap_remains_the_only spend cap"
+                "generic_task_hard_cap_for_planned policies; BudgetFlow may also use "
+                "the signal for routing and stop-loss, while non-BudgetFlow routers "
+                "receive only the hard cap"
             ),
             "applies_to": sorted(plan.planned_task_budget_by_strategy),
         }
         plan.reasons.append(
-            "planned_task_budget: BudgetFlow active policies get per-task runway "
-            "signals derived from projected task costs; sums may exceed hard_cap. "
-            "Runtime uses them for routing, stall, and observability while the "
-            "policy-local shared batch hard cap remains the spend cap."
+            "planned_task_budget: planned policies get per-task hard runway "
+            "derived from projected task costs; sums may exceed hard_cap. "
+            "BudgetFlow may consume the signal for routing and stop-loss; "
+            "RouteLLM-inspired controls receive only the generic task hard cap."
         )
     plan.projection_diagnostics = _build_projection_diagnostics(
         plan,
@@ -965,7 +966,7 @@ def _pressure_denominator(spec: BudgetPressureSpec) -> float:
     raise ValueError(f"unknown budget pressure mode: {spec.mode}")
 
 
-def _build_budgetflow_planned_task_budgets(
+def _build_planned_task_budgets(
     strategies: tuple[str, ...],
     task_ids: list[str],
     projected_task_costs: dict[str, dict[str, float]],
@@ -976,20 +977,20 @@ def _build_budgetflow_planned_task_budgets(
     task_count = max(1, len(task_ids))
     batch_floor = max(0.0, float(hard_cap_usd or 0.0)) / (task_count ** 0.5)
     for strategy in strategies:
-        if strategy not in BUDGETFLOW_PLANNED_TASK_BUDGET_STRATEGIES:
+        if strategy not in PLANNED_TASK_BUDGET_STRATEGIES:
             continue
         costs = projected_task_costs.get(strategy, {})
         if not costs:
             continue
         planned[strategy] = {
             task_id: max(
-                BUDGETFLOW_PLANNED_TASK_BUDGET_MIN_USD,
+                PLANNED_TASK_BUDGET_MIN_USD,
                 batch_floor
                 + max(
                     float(strategy_costs.get(task_id, 0.0))
                     for strategy_costs in projected_task_costs.values()
                 )
-                * BUDGETFLOW_PLANNED_TASK_BUDGET_MULTIPLIER,
+                * PLANNED_TASK_BUDGET_MULTIPLIER,
             )
             for task_id in task_ids
         }

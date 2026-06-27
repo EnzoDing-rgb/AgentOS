@@ -563,7 +563,7 @@ class TestChooseTaskLevelBackend:
         assert ctx.last_decision.reason == "bf_task_start_reference_frontier"
 
     def test_effective_task_budget_is_not_a_hard_t3_veto_when_planned_runway_supports_probe(self):
-        """Live runway is pressure, not a T3 veto when planned runway supports a probe."""
+        """Live task-cap coverage is pressure, not a T3 veto when the plan supports a probe."""
         from budgetflow.adapter.strategies import choose_backend
 
         alloc = _trusted_allocation(
@@ -619,7 +619,7 @@ class TestChooseTaskLevelBackend:
         assert scores["budget_soft_allows_strongest"] == 0.0
 
     def test_decisive_marginal_yield_can_override_low_task_budget_coverage(self):
-        """Task cap coverage is a runway signal, not a veto over decisive Claim-1 value."""
+        """Task cap coverage is a pressure signal, not a veto over decisive Claim-1 value."""
         from budgetflow.task_level_routing import task_start_tier_decision
 
         tier, reason, scores = task_start_tier_decision(

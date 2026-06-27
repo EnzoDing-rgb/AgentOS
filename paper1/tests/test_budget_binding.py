@@ -11,7 +11,6 @@ from budgetflow.experiments.budget_binding import (
     _load_historical_cost_signals,
     _row_catalog_compatible,
     _row_is_calibration_eligible,
-    BUDGETFLOW_PLANNED_TASK_BUDGET_MODE,
     _distribution_p75,
     _build_projection_diagnostics,
     _build_pressure_contract,
@@ -241,7 +240,7 @@ def test_budget_plan_round_trip_preserves_model_fit_evidence() -> None:
     assert restored.model_fit_evidence == plan.model_fit_evidence
 
 
-def test_budget_plan_round_trips_budgetflow_planned_task_budgets() -> None:
+def test_budget_plan_round_trips_planned_task_budgets() -> None:
     plan = BudgetBindingPlan(
         hard_cap_usd=1.25,
         generation_mode="target_utilization",
@@ -252,7 +251,7 @@ def test_budget_plan_round_trips_budgetflow_planned_task_budgets() -> None:
             }
         },
         planned_task_budget_policy={
-            "mode": BUDGETFLOW_PLANNED_TASK_BUDGET_MODE,
+            "mode": PLANNED_TASK_BUDGET_MODE,
             "sum_can_exceed_hard_cap": True,
         },
     )
@@ -587,9 +586,9 @@ def test_small_historical_sample_cannot_collapse_large_workload_cap(tmp_path: Pa
 
 
 def test_planned_task_budgets_use_cross_strategy_task_cost_ceiling() -> None:
-    from budgetflow.experiments.budget_binding import _build_budgetflow_planned_task_budgets
+    from budgetflow.experiments.budget_binding import _build_planned_task_budgets
 
-    caps = _build_budgetflow_planned_task_budgets(
+    caps = _build_planned_task_budgets(
         ("bare_t3_baseline", "budgetflow_task_level"),
         ["task-a", "task-b"],
         {
@@ -808,7 +807,7 @@ def test_budget_exhausted_floor_requires_positive_spend(tmp_path: Path) -> None:
         "strategy": "budgetflow_task_level",
         "instance_id": "task-a",
         "total_cost": 0.0,
-        "budget_mode": "budgetflow_planned_task_budget",
+        "budget_mode": "planned_task_budget",
         "catalog": catalog_source_info(),
         "score_status": "true_fail",
         "exit_status": "BudgetFlowBudgetError",

@@ -62,6 +62,7 @@ from budgetflow.experiments.compare_readiness import (  # noqa: E402
     format_readiness_report,
 )
 from budgetflow.experiments.compare_setup import (  # noqa: E402
+    PLANNED_TASK_BUDGET_MODE,
     build_batch_budget_modes,
     calibrated_model_fit_from_budget_plan,
     load_tasks_for_compare,
@@ -415,9 +416,9 @@ def main() -> None:
     print(f"{dim('strategies=' + ','.join(strategy_names))}", flush=True)
     if any(mode == "per_task_cap" for mode in budget_modes.values()):
         budget_mode = f"per_task_cap={args.per_task_cap}" + (f"+overrun={max_overrun}" if max_overrun else "")
-    elif any(mode == "budgetflow_planned_task_budget" for mode in budget_modes.values()):
-        planned_names = [name for name, mode in budget_modes.items() if mode == "budgetflow_planned_task_budget"]
-        budget_mode = "shared_batch_hard_budget + budgetflow_planned_task_budget(" + ",".join(planned_names) + ")"
+    elif any(mode == PLANNED_TASK_BUDGET_MODE for mode in budget_modes.values()):
+        planned_names = [name for name, mode in budget_modes.items() if mode == PLANNED_TASK_BUDGET_MODE]
+        budget_mode = f"shared_batch_hard_budget + {PLANNED_TASK_BUDGET_MODE}(" + ",".join(planned_names) + ")"
     else:
         budget_mode = "shared_batch_hard_budget" + (
             f" soft_budget={args.soft_budget}+overrun={max_overrun}" if args.soft_budget is not None else ""

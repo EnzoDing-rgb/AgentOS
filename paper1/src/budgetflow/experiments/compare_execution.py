@@ -23,7 +23,7 @@ from budgetflow.experiments.compare_config import (
     w_i_profile_for_record,
     workspace_key,
 )
-from budgetflow.experiments.compare_setup import BUDGETFLOW_ACTIVE_ROUTINGS, PLANNED_TASK_BUDGET_MODE
+from budgetflow.experiments.compare_setup import PLANNED_TASK_BUDGET_MODE, PLANNED_TASK_BUDGET_ROUTINGS
 from budgetflow.experiments.compare_summary import _print_run_done
 from budgetflow.failure_classification import (
     EXIT_OWNER_BUDGET_EXHAUSTED,
@@ -416,15 +416,15 @@ def run_strategy_batch(
     }
     use_planned_task_caps = (
         cfg.budgeted
-        and cfg.routing in BUDGETFLOW_ACTIVE_ROUTINGS
+        and cfg.routing in PLANNED_TASK_BUDGET_ROUTINGS
         and budget_mode == PLANNED_TASK_BUDGET_MODE
     )
     if (
         cfg.budgeted
         and budget_mode == PLANNED_TASK_BUDGET_MODE
-        and cfg.routing not in BUDGETFLOW_ACTIVE_ROUTINGS
+        and cfg.routing not in PLANNED_TASK_BUDGET_ROUTINGS
     ):
-        raise SystemExit(f"{PLANNED_TASK_BUDGET_MODE} is only valid for BudgetFlow active policies")
+        raise SystemExit(f"{PLANNED_TASK_BUDGET_MODE} is only valid for planned-task-budget policies")
     if use_planned_task_caps and not planned_task_caps:
         raise SystemExit(f"{cfg.name} uses {PLANNED_TASK_BUDGET_MODE} but no planned task budgets were provided")
     use_planned_task_caps = (

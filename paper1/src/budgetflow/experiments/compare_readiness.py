@@ -14,7 +14,7 @@ from pathlib import Path
 
 from budgetflow.experiments.compare_config import CompareStrategy, paper_mainline_strategy_names
 from budgetflow.experiments.budget_binding import ALLOWED_GENERATION_MODES, STAGE_PREFIX_PRESSURE_MODE
-from budgetflow.experiments.compare_setup import BUDGETFLOW_ACTIVE_ROUTINGS, PLANNED_TASK_BUDGET_MODE
+from budgetflow.experiments.compare_setup import PLANNED_TASK_BUDGET_MODE, PLANNED_TASK_BUDGET_ROUTINGS
 from budgetflow.defaults import PAID_MAINLINE_STEP_LIMIT
 from budgetflow.failure_classification import build_score_status, build_verdict
 from budgetflow.frozen_router import load_frozen_plan
@@ -506,11 +506,11 @@ def build_compare_readiness_report(
                         "before a paper-mainline paid run"
                     )
 
-            active_budgetflow_names = [
-                strategy.name for strategy in strategies if strategy.routing in BUDGETFLOW_ACTIVE_ROUTINGS
+            planned_task_budget_names = [
+                strategy.name for strategy in strategies if strategy.routing in PLANNED_TASK_BUDGET_ROUTINGS
             ]
             planned_caps = bp.get("planned_task_budget_by_strategy")
-            if active_budgetflow_names:
+            if planned_task_budget_names:
                 planned_policy = bp.get("planned_task_budget_policy")
                 planned_mode = ""
                 if isinstance(planned_policy, dict):
@@ -525,11 +525,11 @@ def build_compare_readiness_report(
                 if not isinstance(planned_caps, dict) or not planned_caps:
                     blocking.append(
                         "budget plan is missing planned_task_budget_by_strategy for "
-                        f"BudgetFlow active policies {active_budgetflow_names}; "
+                        f"planned-task-budget policies {planned_task_budget_names}; "
                         "regenerate it with the current Budget Regime Compiler"
                     )
                 else:
-                    for strategy_name in active_budgetflow_names:
+                    for strategy_name in planned_task_budget_names:
                         strategy_caps = planned_caps.get(strategy_name)
                         if not isinstance(strategy_caps, dict) or not strategy_caps:
                             blocking.append(

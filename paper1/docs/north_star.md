@@ -26,10 +26,11 @@ pre-execution task features, Estimated Task Token Demand, and frozen historical
 outcomes. It does not use Task Value as an input, because Task Value is
 BudgetFlow's value-aware signal. The trained router writes a FrozenRouterPlan
 that chooses T2 or T3 at task start. At runtime it receives the same fixed task
-set, same T2/T3 backend pool, same shared cap, and same verifier as BudgetFlow.
-If it spends past the cap, execution stops. This keeps the comparison honest:
-the learned router may choose T2 or T3 per task, but it lives under the same
-shared budget and does not receive BudgetFlow's value-aware allocation logic.
+set, same T2/T3 backend pool, same shared cap, same verifier, and same generic
+per-task hard cap as BudgetFlow. This keeps the comparison honest: the learned
+router may choose T2 or T3 per task, but it lives under the same budget controls
+and does not receive BudgetFlow's value-aware allocation logic, stall guard, or
+value-triggered escalation.
 
 Do not call this "RouteLLM" without qualification. The original RouteLLM routes
 single queries using preference data and a strong-model-call threshold; it does
@@ -156,12 +157,14 @@ rebalance horizon. BudgetFlow task-level effective caps reserve runway across
 the full frozen task order so a 10+10+10 run cannot spend the third stage's
 planned demand during the first or second stage.
 
-`planned_task_budget` and the live `effective_task_budget` are per-task runway
-signals for routing, stall guards, and observability. They are not separate
-hard task caps in the Claim 1 shared-budget mainline. The only spend cap is the
-policy-local shared batch hard cap, so BudgetFlow can borrow unused runway from
-easy tasks while still reporting when a task consumed more or less than its
-planned runway.
+`planned_task_budget` is the compiler's per-task demand/cap weight. The sum of
+these weights may exceed the shared hard cap. `effective_task_budget` is the
+runtime value after clipping the current task against remaining shared budget
+and remaining planned demand. For BudgetFlow task-level and the
+RouteLLM-inspired learned task router, `effective_task_budget` is an execution
+hard cap: provider calls are not reserved once the task has exhausted that live
+cap. Pure T2 and pure T3 controls keep only the shared batch hard cap plus the
+global turn cap.
 
 ## Claims And Metrics
 
@@ -216,15 +219,15 @@ routing bugs, but they must remain auditable against the unchanged pure T2 and
 pure T3 controls.
 
 For the active Claim 1 task-level mainline, no-progress/stall signals are
-observability and learning signals, not proof that a model tier cannot solve a
-task. They must not terminate `value_aware_task_level` by themselves. A
-task-level run stops on the policy-local shared hard cap, catalog/runtime turn
-limits, provider failures, harness completion, or strategy-agnostic agent-loop
-guards. If a task should use the Strongest Model, that decision belongs in the
-task-start router through Task Value, Estimated Task Token Demand, ModelFit,
-CostSource, budget pressure, and effective runway. Stop-loss or escalation based
-on live progress is Claim 2 mechanism evidence and must be evaluated as an
-explicit variant.
+BudgetFlow mechanism signals. BudgetFlow task-level may use them for its own
+stop-loss behavior when the task has consumed meaningful planned cap.
+RouteLLM-inspired and pure-tier controls do not receive this BudgetFlow-specific
+stall guard. A task-level run stops on the shared hard cap, its live per-task
+hard cap when that policy receives one, catalog/runtime turn limits, provider
+failures, harness completion, or strategy-agnostic agent-loop guards. If a task
+should use the Strongest Model, that decision belongs in the task-start router
+through Task Value, Estimated Task Token Demand, ModelFit, CostSource, budget
+pressure, and effective cap.
 
 Routing savings, stage-aware routing, Tier Boundary Selection, stop-loss,
 escalation, and learning inputs are useful only when they protect or improve
