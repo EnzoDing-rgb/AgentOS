@@ -1,0 +1,415 @@
+{
+  "schema": "planned_task_budget_clean_resume_manifest_v1",
+  "created_at": "2026-06-27T11:40:28.748101+00:00",
+  "source_jsonl": "paper1/data/runs/mainline_4x30_lhm_cycle_4policy_20260627-0.jsonl",
+  "seed_jsonl": "paper1/data/runs/mainline_4x30_lhm_cycle_4policy_cleanresume_20260627.jsonl",
+  "seed_checkpoint": "paper1/data/runs/mainline_4x30_lhm_cycle_4policy_cleanresume_20260627.checkpoint.json",
+  "budget_plan": "paper1/docs/reports/mainline_4x30_lhm_cycle_4policy_planned_task_budget_regen_v2value_20260627.json",
+  "hard_cap_usd": 10.4441,
+  "task_count": 30,
+  "strategy_count": 4,
+  "retained_scoreable_rows": 34,
+  "remaining_scoreable_pairs": 86,
+  "policy_summary": {
+    "bare_t2_baseline": {
+      "budget_mode": "shared_batch_hard_budget",
+      "retained_prefix_count": 12,
+      "retained_spend": 7.1084385,
+      "next_task": "sympy__sympy-22714",
+      "retained_rows": [
+        {
+          "line_no": 4,
+          "task_order_index": 1,
+          "instance_id": "django__django-13447",
+          "score_status": "pass",
+          "total_cost": 0.196362,
+          "retention_reason": "scoreable_shared_cap_contract_unchanged",
+          "recomputed_effective_task_budget": null,
+          "shared_spent_before": 0.0
+        },
+        {
+          "line_no": 9,
+          "task_order_index": 2,
+          "instance_id": "mwaskom__seaborn-3190",
+          "score_status": "pass",
+          "total_cost": 0.8546489999999999,
+          "retention_reason": "scoreable_shared_cap_contract_unchanged",
+          "recomputed_effective_task_budget": null,
+          "shared_spent_before": 0.196362
+        },
+        {
+          "line_no": 14,
+          "task_order_index": 3,
+          "instance_id": "pallets__flask-4992",
+          "score_status": "true_fail",
+          "total_cost": 0.20098620000000006,
+          "retention_reason": "scoreable_shared_cap_contract_unchanged",
+          "recomputed_effective_task_budget": null,
+          "shared_spent_before": 1.051011
+        },
+        {
+          "line_no": 17,
+          "task_order_index": 4,
+          "instance_id": "sphinx-doc__sphinx-8595",
+          "score_status": "pass",
+          "total_cost": 0.18546930000000003,
+          "retention_reason": "scoreable_shared_cap_contract_unchanged",
+          "recomputed_effective_task_budget": null,
+          "shared_spent_before": 1.2519972
+        },
+        {
+          "line_no": 24,
+          "task_order_index": 5,
+          "instance_id": "pylint-dev__pylint-7993",
+          "score_status": "pass",
+          "total_cost": 0.7108893000000001,
+          "retention_reason": "scoreable_shared_cap_contract_unchanged",
+          "recomputed_effective_task_budget": null,
+          "shared_spent_before": 1.4374665
+        },
+        {
+          "line_no": 32,
+          "task_order_index": 6,
+          "instance_id": "sympy__sympy-17655",
+          "score_status": "true_fail",
+          "total_cost": 1.4307264000000002,
+          "retention_reason": "scoreable_shared_cap_contract_unchanged",
+          "recomputed_effective_task_budget": null,
+          "shared_spent_before": 2.1483558
+        },
+        {
+          "line_no": 36,
+          "task_order_index": 7,
+          "instance_id": "django__django-11179",
+          "score_status": "pass",
+          "total_cost": 0.20381940000000004,
+          "retention_reason": "scoreable_shared_cap_contract_unchanged",
+          "recomputed_effective_task_budget": null,
+          "shared_spent_before": 3.5790822
+        },
+        {
+          "line_no": 39,
+          "task_order_index": 8,
+          "instance_id": "mwaskom__seaborn-3010",
+          "score_status": "pass",
+          "total_cost": 0.05722200000000001,
+          "retention_reason": "scoreable_shared_cap_contract_unchanged",
+          "recomputed_effective_task_budget": null,
+          "shared_spent_before": 3.7829016
+        },
+        {
+          "line_no": 42,
+          "task_order_index": 9,
+          "instance_id": "pallets__flask-4045",
+          "score_status": "true_fail",
+          "total_cost": 0.291924,
+          "retention_reason": "scoreable_shared_cap_contract_unchanged",
+          "recomputed_effective_task_budget": null,
+          "shared_spent_before": 3.8401236
+        },
+        {
+          "line_no": 51,
+          "task_order_index": 10,
+          "instance_id": "sphinx-doc__sphinx-7738",
+          "score_status": "true_fail",
+          "total_cost": 1.9108917000000005,
+          "retention_reason": "scoreable_shared_cap_contract_unchanged",
+          "recomputed_effective_task_budget": null,
+          "shared_spent_before": 4.1320476
+        },
+        {
+          "line_no": 53,
+          "task_order_index": 11,
+          "instance_id": "django__django-15851",
+          "score_status": "pass",
+          "total_cost": 0.09333000000000001,
+          "retention_reason": "scoreable_shared_cap_contract_unchanged",
+          "recomputed_effective_task_budget": null,
+          "shared_spent_before": 6.0429393000000005
+        },
+        {
+          "line_no": 64,
+          "task_order_index": 12,
+          "instance_id": "mwaskom__seaborn-2848",
+          "score_status": "pass",
+          "total_cost": 0.9721692000000002,
+          "retention_reason": "scoreable_shared_cap_contract_unchanged",
+          "recomputed_effective_task_budget": null,
+          "shared_spent_before": 6.1362693
+        }
+      ],
+      "first_rejected_row": null
+    },
+    "bare_t3_baseline": {
+      "budget_mode": "shared_batch_hard_budget",
+      "retained_prefix_count": 20,
+      "retained_spend": 6.075324,
+      "next_task": "sphinx-doc__sphinx-8801",
+      "retained_rows": [
+        {
+          "line_no": 3,
+          "task_order_index": 1,
+          "instance_id": "django__django-13447",
+          "score_status": "pass",
+          "total_cost": 0.23455350000000003,
+          "retention_reason": "scoreable_shared_cap_contract_unchanged",
+          "recomputed_effective_task_budget": null,
+          "shared_spent_before": 0.0
+        },
+        {
+          "line_no": 5,
+          "task_order_index": 2,
+          "instance_id": "mwaskom__seaborn-3190",
+          "score_status": "pass",
+          "total_cost": 0.2548575,
+          "retention_reason": "scoreable_shared_cap_contract_unchanged",
+          "recomputed_effective_task_budget": null,
+          "shared_spent_before": 0.23455350000000003
+        },
+        {
+          "line_no": 8,
+          "task_order_index": 3,
+          "instance_id": "pallets__flask-4992",
+          "score_status": "true_fail",
+          "total_cost": 0.16441650000000002,
+          "retention_reason": "scoreable_shared_cap_contract_unchanged",
+          "recomputed_effective_task_budget": null,
+          "shared_spent_before": 0.48941100000000004
+        },
+        {
+          "line_no": 12,
+          "task_order_index": 4,
+          "instance_id": "sphinx-doc__sphinx-8595",
+          "score_status": "pass",
+          "total_cost": 0.378333,
+          "retention_reason": "scoreable_shared_cap_contract_unchanged",
+          "recomputed_effective_task_budget": null,
+          "shared_spent_before": 0.6538275
+        },
+        {
+          "line_no": 16,
+          "task_order_index": 5,
+          "instance_id": "pylint-dev__pylint-7993",
+          "score_status": "pass",
+          "total_cost": 0.28372050000000004,
+          "retention_reason": "scoreable_shared_cap_contract_unchanged",
+          "recomputed_effective_task_budget": null,
+          "shared_spent_before": 1.0321605
+        },
+        {
+          "line_no": 20,
+          "task_order_index": 6,
+          "instance_id": "sympy__sympy-17655",
+          "score_status": "true_fail",
+          "total_cost": 0.282393,
+          "retention_reason": "scoreable_shared_cap_contract_unchanged",
+          "recomputed_effective_task_budget": null,
+          "shared_spent_before": 1.315881
+        },
+        {
+          "line_no": 22,
+          "task_order_index": 7,
+          "instance_id": "django__django-11179",
+          "score_status": "pass",
+          "total_cost": 0.22337550000000003,
+          "retention_reason": "scoreable_shared_cap_contract_unchanged",
+          "recomputed_effective_task_budget": null,
+          "shared_spent_before": 1.598274
+        },
+        {
+          "line_no": 25,
+          "task_order_index": 8,
+          "instance_id": "mwaskom__seaborn-3010",
+          "score_status": "pass",
+          "total_cost": 0.1610775,
+          "retention_reason": "scoreable_shared_cap_contract_unchanged",
+          "recomputed_effective_task_budget": null,
+          "shared_spent_before": 1.8216495
+        },
+        {
+          "line_no": 27,
+          "task_order_index": 9,
+          "instance_id": "pallets__flask-4045",
+          "score_status": "true_fail",
+          "total_cost": 0.255033,
+          "retention_reason": "scoreable_shared_cap_contract_unchanged",
+          "recomputed_effective_task_budget": null,
+          "shared_spent_before": 1.982727
+        },
+        {
+          "line_no": 29,
+          "task_order_index": 10,
+          "instance_id": "sphinx-doc__sphinx-7738",
+          "score_status": "true_fail",
+          "total_cost": 0.6850215000000001,
+          "retention_reason": "scoreable_shared_cap_contract_unchanged",
+          "recomputed_effective_task_budget": null,
+          "shared_spent_before": 2.2377599999999997
+        },
+        {
+          "line_no": 30,
+          "task_order_index": 11,
+          "instance_id": "django__django-15851",
+          "score_status": "pass",
+          "total_cost": 0.079902,
+          "retention_reason": "scoreable_shared_cap_contract_unchanged",
+          "recomputed_effective_task_budget": null,
+          "shared_spent_before": 2.9227814999999997
+        },
+        {
+          "line_no": 33,
+          "task_order_index": 12,
+          "instance_id": "mwaskom__seaborn-2848",
+          "score_status": "pass",
+          "total_cost": 0.30182400000000004,
+          "retention_reason": "scoreable_shared_cap_contract_unchanged",
+          "recomputed_effective_task_budget": null,
+          "shared_spent_before": 3.0026835
+        },
+        {
+          "line_no": 37,
+          "task_order_index": 13,
+          "instance_id": "sympy__sympy-22714",
+          "score_status": "true_fail",
+          "total_cost": 0.23113799999999998,
+          "retention_reason": "scoreable_shared_cap_contract_unchanged",
+          "recomputed_effective_task_budget": null,
+          "shared_spent_before": 3.3045074999999997
+        },
+        {
+          "line_no": 41,
+          "task_order_index": 14,
+          "instance_id": "pylint-dev__pylint-6506",
+          "score_status": "true_fail",
+          "total_cost": 0.158661,
+          "retention_reason": "scoreable_shared_cap_contract_unchanged",
+          "recomputed_effective_task_budget": null,
+          "shared_spent_before": 3.5356454999999998
+        },
+        {
+          "line_no": 45,
+          "task_order_index": 15,
+          "instance_id": "sphinx-doc__sphinx-7686",
+          "score_status": "true_fail",
+          "total_cost": 0.213939,
+          "retention_reason": "scoreable_shared_cap_contract_unchanged",
+          "recomputed_effective_task_budget": null,
+          "shared_spent_before": 3.6943064999999997
+        },
+        {
+          "line_no": 46,
+          "task_order_index": 16,
+          "instance_id": "django__django-11049",
+          "score_status": "pass",
+          "total_cost": 0.167787,
+          "retention_reason": "scoreable_shared_cap_contract_unchanged",
+          "recomputed_effective_task_budget": null,
+          "shared_spent_before": 3.9082454999999996
+        },
+        {
+          "line_no": 49,
+          "task_order_index": 17,
+          "instance_id": "sympy__sympy-15346",
+          "score_status": "true_fail",
+          "total_cost": 0.6797925,
+          "retention_reason": "scoreable_shared_cap_contract_unchanged",
+          "recomputed_effective_task_budget": null,
+          "shared_spent_before": 4.076032499999999
+        },
+        {
+          "line_no": 54,
+          "task_order_index": 18,
+          "instance_id": "mwaskom__seaborn-3407",
+          "score_status": "true_fail",
+          "total_cost": 0.354609,
+          "retention_reason": "scoreable_shared_cap_contract_unchanged",
+          "recomputed_effective_task_budget": null,
+          "shared_spent_before": 4.755825
+        },
+        {
+          "line_no": 57,
+          "task_order_index": 19,
+          "instance_id": "django__django-15814",
+          "score_status": "pass",
+          "total_cost": 0.2767635,
+          "retention_reason": "scoreable_shared_cap_contract_unchanged",
+          "recomputed_effective_task_budget": null,
+          "shared_spent_before": 5.110434
+        },
+        {
+          "line_no": 60,
+          "task_order_index": 20,
+          "instance_id": "sympy__sympy-13647",
+          "score_status": "pass",
+          "total_cost": 0.6881265,
+          "retention_reason": "scoreable_shared_cap_contract_unchanged",
+          "recomputed_effective_task_budget": null,
+          "shared_spent_before": 5.3871975
+        }
+      ],
+      "first_rejected_row": null
+    },
+    "routellm_learned_router_baseline": {
+      "budget_mode": "planned_task_budget",
+      "retained_prefix_count": 1,
+      "retained_spend": 0.0868374,
+      "next_task": "mwaskom__seaborn-3190",
+      "retained_rows": [
+        {
+          "line_no": 1,
+          "task_order_index": 1,
+          "instance_id": "django__django-13447",
+          "score_status": "pass",
+          "total_cost": 0.08683740000000001,
+          "retention_reason": "scoreable_cost_within_recomputed_effective_task_budget",
+          "recomputed_effective_task_budget": 0.29285215497851536,
+          "shared_spent_before": 0.0
+        }
+      ],
+      "first_rejected_row": {
+        "line_no": 10,
+        "task_order_index": 2,
+        "instance_id": "mwaskom__seaborn-3190",
+        "score_status": "pass",
+        "total_cost": 1.0936637999999999,
+        "reason": "scoreable_cost_exceeds_recomputed_effective_task_budget",
+        "recomputed_effective_task_budget": 0.3255396550031361,
+        "shared_spent_before": 0.08683740000000001
+      }
+    },
+    "budgetflow_task_level": {
+      "budget_mode": "planned_task_budget",
+      "retained_prefix_count": 1,
+      "retained_spend": 0.1400967,
+      "next_task": "mwaskom__seaborn-3190",
+      "retained_rows": [
+        {
+          "line_no": 2,
+          "task_order_index": 1,
+          "instance_id": "django__django-13447",
+          "score_status": "pass",
+          "total_cost": 0.1400967,
+          "retention_reason": "scoreable_cost_within_recomputed_effective_task_budget",
+          "recomputed_effective_task_budget": 0.29285215497851536,
+          "shared_spent_before": 0.0
+        }
+      ],
+      "first_rejected_row": {
+        "line_no": 6,
+        "task_order_index": 2,
+        "instance_id": "mwaskom__seaborn-3190",
+        "score_status": "pass",
+        "total_cost": 0.34671599999999997,
+        "reason": "scoreable_cost_exceeds_recomputed_effective_task_budget",
+        "recomputed_effective_task_budget": 0.3238656591977474,
+        "shared_spent_before": 0.1400967
+      }
+    }
+  },
+  "contract": {
+    "pure_t2": "shared batch hard cap + global step cap; no planned task cap",
+    "pure_t3": "shared batch hard cap + global step cap; no planned task cap",
+    "routellm_learned_router_baseline": "shared batch hard cap + global step cap + generic planned task hard cap",
+    "budgetflow_task_level": "shared batch hard cap + global step cap + generic planned task hard cap + BudgetFlow stall/stop mechanisms"
+  }
+}
