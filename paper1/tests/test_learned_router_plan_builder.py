@@ -10,6 +10,7 @@ from budgetflow.learned_router_plan_builder import (
     build_learned_router_plan,
     build_training_examples,
     load_historical_labels,
+    load_training_tasks_for_labels,
     task_features,
     validate_value_blind_feature_record,
 )
@@ -79,6 +80,28 @@ def test_build_training_examples_uses_only_labeled_tasks() -> None:
     assert examples[0].instance_id == "task-a"
     assert examples[0].label == 1
     validate_value_blind_feature_record(examples[0].features)
+
+
+def test_load_training_tasks_for_labels_excludes_eval_tasks(monkeypatch) -> None:
+    loaded_ids = ()
+
+    def fake_load(*, instance_ids):
+        nonlocal loaded_ids
+        loaded_ids = instance_ids
+        return [_task(task_id) for task_id in instance_ids]
+
+    monkeypatch.setattr(
+        "budgetflow.learned_router_plan_builder.load_swebench_lite_tasks",
+        fake_load,
+    )
+
+    tasks = load_training_tasks_for_labels(
+        {"eval-task": 1, "train-a": 0, "train-b": 1},
+        excluded_task_ids={"eval-task"},
+    )
+
+    assert loaded_ids == ("train-a", "train-b")
+    assert [task.instance_id for task in tasks] == ["train-a", "train-b"]
 
 
 def test_fallback_plan_assigns_highest_demand_to_tier3_and_carries_no_caps_or_values(tmp_path) -> None:

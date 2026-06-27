@@ -151,6 +151,21 @@ def build_training_examples(tasks: Iterable[Any], labels: dict[str, int]) -> lis
     return examples
 
 
+def load_training_tasks_for_labels(
+    labels: dict[str, int],
+    *,
+    excluded_task_ids: set[str] | frozenset[str],
+) -> list[Any]:
+    """Load labeled historical tasks while excluding the evaluation task set."""
+    training_ids = tuple(
+        task_id for task_id in labels
+        if task_id not in excluded_task_ids
+    )
+    if not training_ids:
+        return []
+    return load_swebench_lite_tasks(instance_ids=training_ids)
+
+
 def score_tasks(
     tasks: Iterable[Any],
     *,
@@ -273,7 +288,8 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("--task-ids did not contain any IDs")
     tasks = load_swebench_lite_tasks(instance_ids=task_ids)
     labels = load_historical_labels(args.training_jsonl)
-    examples = build_training_examples(tasks, labels)
+    training_tasks = load_training_tasks_for_labels(labels, excluded_task_ids=set(task_ids))
+    examples = build_training_examples(training_tasks, labels)
     plan = build_learned_router_plan(
         tasks,
         name=args.name,
