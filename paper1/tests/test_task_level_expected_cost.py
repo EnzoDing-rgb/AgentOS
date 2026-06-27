@@ -824,6 +824,53 @@ class TestChooseTaskLevelBackend:
         assert scores["paid_upgrade_candidate"] == 0.0
         assert scores["criticality_or_effort_gate"] == 0.0
 
+    def test_trusted_fit_starts_t3_when_t2_expected_cost_exceeds_live_cap(self):
+        """Trusted ModelFit can route ordinary-value tasks to T3 before T2 spins."""
+        from budgetflow.adapter.strategies import choose_backend
+
+        alloc = _trusted_allocation(
+            task_value=1.0,
+            task_effort=24.0,
+            planned_task_budget=10.0,
+            effective_task_budget=0.80,
+            model_fit={"tier2": 0.08, "tier3": 1.0},
+        )
+        backends = _backends(t2_progress=0.08, t3_progress=1.0)
+        ctx = _task_level_ctx(backends, budget_pressure=0.85, allocation=alloc)
+
+        backend = choose_backend(ctx, _turn(), _runtime_like_costs())
+
+        assert backend.tier == 3
+        assert ctx.last_policy_decision is not None
+        scores = ctx.last_policy_decision.scores
+        assert scores["reference_expected_total_cost"] > scores["effective_task_budget"]
+        assert scores["strongest_expected_total_cost"] <= scores["effective_task_budget"]
+        assert scores["trusted_fit_frontier_dominance"] == 1.0
+        assert scores["rule"] == "trusted_fit_frontier_dominance"
+
+    def test_untrusted_fit_does_not_start_t3_from_live_cap_pressure_only(self):
+        """Without trusted ModelFit, cap pressure stays diagnostic instead of opening T3."""
+        from budgetflow.adapter.strategies import choose_backend
+
+        alloc = _trusted_allocation(
+            task_value=1.0,
+            task_effort=24.0,
+            planned_task_budget=10.0,
+            effective_task_budget=0.75,
+            model_fit={"tier2": 0.24, "tier3": 0.95},
+            confidence={"model_fit": "low"},
+        )
+        backends = _backends(t2_progress=0.24, t3_progress=0.25)
+        ctx = _task_level_ctx(backends, budget_pressure=0.85, allocation=alloc)
+
+        backend = choose_backend(ctx, _turn(), _runtime_like_costs())
+
+        assert backend.tier == 2
+        assert ctx.last_policy_decision is not None
+        scores = ctx.last_policy_decision.scores
+        assert scores["has_trusted_model_fit"] == 0.0
+        assert scores["trusted_fit_frontier_dominance"] == 0.0
+
     def test_task_start_marginal_yield_uses_unit_extra_cost(self):
         """Same value/fit/cost signals should not become worse only because effort is higher."""
         from budgetflow.adapter.strategies import choose_backend

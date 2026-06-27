@@ -298,6 +298,8 @@ def run_task_record(
     record["provider_retryable"] = result.provider_retryable
     if cfg.routing == "value_aware_task_level":
         task_start_decision = dict(getattr(result, "task_start_decision", {}) or {})
+        if not task_start_decision.get("task_start_selected_backend"):
+            task_start_decision = _task_start_decision_from_turn_trace(record.get("turn_traces"))
         record.update({
             "task_start_decision_schema": task_start_decision.get("task_start_decision_schema", "v1"),
             "task_start_selected_backend": task_start_decision.get("task_start_selected_backend", ""),
@@ -361,6 +363,39 @@ def run_task_record(
     record.update(build_score_status(record))
 
     return record
+
+
+def _task_start_decision_from_turn_trace(turn_traces: object) -> dict[str, object]:
+    if not isinstance(turn_traces, list):
+        return {}
+    for trace in turn_traces:
+        if not isinstance(trace, dict):
+            continue
+        decision = trace.get("policy_decision")
+        if not isinstance(decision, dict):
+            continue
+        backend = str(decision.get("backend") or "")
+        if not backend:
+            continue
+        scores = decision.get("scores") if isinstance(decision.get("scores"), dict) else {}
+        confidence = decision.get("confidence") if isinstance(decision.get("confidence"), dict) else {}
+        selected_tier = confidence.get("final_selected_tier")
+        if selected_tier is None:
+            selected_tier = scores.get("final_selected_tier")
+        if selected_tier is None and backend.startswith("tier"):
+            try:
+                selected_tier = int(backend.removeprefix("tier"))
+            except ValueError:
+                selected_tier = None
+        return {
+            "task_start_decision_schema": "v1",
+            "task_start_selected_backend": backend,
+            "task_start_selected_tier": selected_tier,
+            "task_start_reason": str(decision.get("reason") or ""),
+            "task_start_scores": dict(scores),
+            "task_start_confidence": dict(confidence),
+        }
+    return {}
 
 
 def run_strategy_batch(

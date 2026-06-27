@@ -169,6 +169,14 @@ def task_start_tier_decision(
         and fit_gain >= TASK_START_PAID_UPGRADE_MIN_FIT_GAIN
         and marginal_yield >= acceptance * TASK_START_HIGH_PRESSURE_PROBE_MARGIN
     )
+    trusted_fit_frontier_dominance = (
+        has_trusted_model_fit
+        and fit_gain > 0
+        and effective_budget_value is not None
+        and effective_budget_value > 0
+        and reference_cost > effective_budget_value
+        and strongest_cost <= effective_budget_value
+    )
     budget_soft_allows = (
         has_positive_runway
         and (
@@ -176,6 +184,7 @@ def task_start_tier_decision(
             or decisive_marginal_override
             or critical_value_probe
             or high_pressure_efficiency_probe
+            or trusted_fit_frontier_dominance
         )
     )
     headroom = _headroom(affordability_budget, strongest_cost)
@@ -214,10 +223,15 @@ def task_start_tier_decision(
             decisive_marginal_budget_override=decisive_marginal_override,
             critical_value_probe=critical_value_probe,
             high_pressure_efficiency_probe=high_pressure_efficiency_probe,
+            trusted_fit_frontier_dominance=trusted_fit_frontier_dominance,
             strongest_probe_cost=strongest_probe_cost,
             budget_allows_probe=budget_allows_probe,
             rule=rule,
         )
+
+    # ── trusted frontier dominance ───────────────────────────────────────
+    if trusted_fit_frontier_dominance:
+        return 3, "trusted_fit_frontier_dominance", scores("trusted_fit_frontier_dominance")
 
     # ── marginal yield path ──────────────────────────────────────────────
     if (
@@ -369,6 +383,7 @@ def _scores(
     decisive_marginal_budget_override: bool = False,
     critical_value_probe: bool = False,
     high_pressure_efficiency_probe: bool = False,
+    trusted_fit_frontier_dominance: bool = False,
     strongest_probe_cost: float = 0.0,
     budget_allows_probe: bool = False,
 ) -> dict[str, float]:
@@ -384,6 +399,7 @@ def _scores(
         ),
         "critical_value_probe": 1.0 if critical_value_probe else 0.0,
         "high_pressure_efficiency_probe": 1.0 if high_pressure_efficiency_probe else 0.0,
+        "trusted_fit_frontier_dominance": 1.0 if trusted_fit_frontier_dominance else 0.0,
         "high_pressure_probe_margin": TASK_START_HIGH_PRESSURE_PROBE_MARGIN,
         "critical_value_ratio_gate": TASK_START_CRITICAL_VALUE_RATIO_GATE,
         "budget_allows_strongest_probe": 1.0 if budget_allows_probe else 0.0,
