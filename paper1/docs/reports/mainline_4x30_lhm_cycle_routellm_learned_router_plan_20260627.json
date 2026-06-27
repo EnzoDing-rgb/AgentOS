@@ -1,0 +1,178 @@
+{
+  "meta": {
+    "name": "mainline_4x30_lhm_cycle_routellm_learned_router_20260627",
+    "source_class": "routellm_inspired_value_blind_learned_router",
+    "training_mode": "sklearn_logistic_regression",
+    "uses_task_value": false,
+    "uses_budget_state": false,
+    "label": "T3 resolved and T2 did not resolve on frozen historical outcomes",
+    "features": [
+      "patch_lines",
+      "f2p_count",
+      "p2p_count",
+      "problem_length",
+      "gold_file_count",
+      "estimated_task_token_demand"
+    ],
+    "strongest_fraction": 0.3333333333333333,
+    "task_order": [
+      "django__django-13447",
+      "mwaskom__seaborn-3190",
+      "pallets__flask-4992",
+      "sphinx-doc__sphinx-8595",
+      "pylint-dev__pylint-7993",
+      "sympy__sympy-17655",
+      "django__django-11179",
+      "mwaskom__seaborn-3010",
+      "pallets__flask-4045",
+      "sphinx-doc__sphinx-7738",
+      "django__django-15851",
+      "mwaskom__seaborn-2848",
+      "sympy__sympy-22714",
+      "pylint-dev__pylint-6506",
+      "sphinx-doc__sphinx-7686",
+      "django__django-11049",
+      "sympy__sympy-15346",
+      "mwaskom__seaborn-3407",
+      "django__django-15814",
+      "sympy__sympy-13647",
+      "sphinx-doc__sphinx-8801",
+      "sympy__sympy-12171",
+      "django__django-12908",
+      "sphinx-doc__sphinx-8282",
+      "sympy__sympy-24102",
+      "django__django-13964",
+      "sphinx-doc__sphinx-7975",
+      "sympy__sympy-18621",
+      "sympy__sympy-13177",
+      "sphinx-doc__sphinx-8273"
+    ],
+    "description": "RouteLLM-inspired value-blind task router. It emits only preferred_model and priority; the compare runner supplies the shared hard cap.",
+    "training_jsonl": [
+      "paper1/docs/reports/mainline_4x30_lhm_cycle_learned_router_training_filtered_20260627.jsonl"
+    ],
+    "training_examples": 29
+  },
+  "plan": {
+    "django__django-13447": {
+      "preferred_model": "tier2",
+      "priority": 499
+    },
+    "mwaskom__seaborn-3190": {
+      "preferred_model": "tier2",
+      "priority": 243
+    },
+    "pallets__flask-4992": {
+      "preferred_model": "tier3",
+      "priority": 713
+    },
+    "sphinx-doc__sphinx-8595": {
+      "preferred_model": "tier2",
+      "priority": 474
+    },
+    "pylint-dev__pylint-7993": {
+      "preferred_model": "tier2",
+      "priority": 424
+    },
+    "sympy__sympy-17655": {
+      "preferred_model": "tier2",
+      "priority": 263
+    },
+    "django__django-11179": {
+      "preferred_model": "tier2",
+      "priority": 411
+    },
+    "mwaskom__seaborn-3010": {
+      "preferred_model": "tier2",
+      "priority": 227
+    },
+    "pallets__flask-4045": {
+      "preferred_model": "tier2",
+      "priority": 337
+    },
+    "sphinx-doc__sphinx-7738": {
+      "preferred_model": "tier2",
+      "priority": 493
+    },
+    "django__django-15851": {
+      "preferred_model": "tier3",
+      "priority": 588
+    },
+    "mwaskom__seaborn-2848": {
+      "preferred_model": "tier2",
+      "priority": 479
+    },
+    "sympy__sympy-22714": {
+      "preferred_model": "tier2",
+      "priority": 469
+    },
+    "pylint-dev__pylint-6506": {
+      "preferred_model": "tier2",
+      "priority": 295
+    },
+    "sphinx-doc__sphinx-7686": {
+      "preferred_model": "tier3",
+      "priority": 732
+    },
+    "django__django-11049": {
+      "preferred_model": "tier3",
+      "priority": 578
+    },
+    "sympy__sympy-15346": {
+      "preferred_model": "tier3",
+      "priority": 512
+    },
+    "mwaskom__seaborn-3407": {
+      "preferred_model": "tier2",
+      "priority": 110
+    },
+    "django__django-15814": {
+      "preferred_model": "tier2",
+      "priority": 282
+    },
+    "sympy__sympy-13647": {
+      "preferred_model": "tier2",
+      "priority": 351
+    },
+    "sphinx-doc__sphinx-8801": {
+      "preferred_model": "tier3",
+      "priority": 780
+    },
+    "sympy__sympy-12171": {
+      "preferred_model": "tier3",
+      "priority": 542
+    },
+    "django__django-12908": {
+      "preferred_model": "tier2",
+      "priority": 272
+    },
+    "sphinx-doc__sphinx-8282": {
+      "preferred_model": "tier3",
+      "priority": 680
+    },
+    "sympy__sympy-24102": {
+      "preferred_model": "tier2",
+      "priority": 304
+    },
+    "django__django-13964": {
+      "preferred_model": "tier2",
+      "priority": 364
+    },
+    "sphinx-doc__sphinx-7975": {
+      "preferred_model": "tier3",
+      "priority": 709
+    },
+    "sympy__sympy-18621": {
+      "preferred_model": "tier2",
+      "priority": 398
+    },
+    "sympy__sympy-13177": {
+      "preferred_model": "tier2",
+      "priority": 203
+    },
+    "sphinx-doc__sphinx-8273": {
+      "preferred_model": "tier3",
+      "priority": 717
+    }
+  }
+}
