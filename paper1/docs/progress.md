@@ -2,6 +2,45 @@
 
 > 单一入口：进度、跑法、历史结果。
 
+## 2026-06-28 — 4x30 clean-resume Claim 1 readout
+
+- **Run completed:** `mainline_4x30_lhm_cycle_4policy_cleanresume_20260627`
+  finished the 4-policy Claim 1 comparison under the shared hard cap. The
+  launch was from the repo root; the earlier `paper1/` path issue wrote no task
+  rows and is not part of this evidence line.
+- **Main result:** BudgetFlow did **not** win all three headline metrics, but
+  the result is still strong for Claim 1. It resolved one fewer task than pure
+  T3, while producing higher Total Resolved Value at lower spend.
+
+  | Policy | Resolved Count | Total Resolved Value | Total Spend | Total Resolved Value / total$ |
+  |---|---:|---:|---:|---:|
+  | pure T2 | 12/30 | 13.50 | $10.44 | 1.29 |
+  | pure T3 | 15/30 | 18.00 | $9.46 | 1.90 |
+  | RouteLLM-inspired router | 13/30 | 15.00 | $9.37 | 1.60 |
+  | BudgetFlow task-level | 14/30 | 18.50 | $7.98 | 2.32 |
+
+- **Honest interpretation:** BudgetFlow wins the value objective and the value
+  efficiency objective: `18.50 > 18.00` Total Resolved Value, and `2.32 > 1.90`
+  Total Resolved Value / total$ against the best pure-tier baseline. It loses
+  Resolved Count to pure T3 by one task (`14/30` vs `15/30`). The paper should
+  present this as value-aware allocation under a shared cap, not as a raw pass
+  count victory.
+- **Diagnostics:** the run did not show a provider, path, or hard-budget
+  enforcement blocker. The main mechanism issue is policy quality in the back
+  half: BudgetFlow saved budget, but several T2 or bounded-runway tasks produced
+  patches that failed validation, or stopped before converting progress into a
+  verified result. This points to better task-level runway and stop/continue
+  decisions, not to Claim 2 segment-level rescue.
+- **Checker status:** observability audit completed with warnings, not clean
+  green. The important warnings are expected for this run shape: pure T2 hit the
+  shared cap and only executed 26/30 rows; several budget-exhausted/no-patch
+  rows are incomplete true-fails. There were no suspicious passes, invoice
+  accounting was consistent, and provider usage was settled.
+- **Evidence status:** use this as a strong diagnostic/positioning result for
+  the next draft: BudgetFlow beats pure T3 on Total Resolved Value and value per
+  dollar while spending less, but it still needs one more verified task to claim
+  a clean three-metric main-table win.
+
 ## 2026-06-22 — Current status (in progress, not final evidence)
 
 - **2026-06-23 / Claim 1 sensitivity baseline for draft:** current draft can
