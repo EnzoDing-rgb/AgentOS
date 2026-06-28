@@ -70,6 +70,74 @@ def test_protocol_health_uses_current_classifier_for_archived_rows(tmp_path) -> 
     assert stats["protocol_abort_rate"] == 0.5
 
 
+def test_readiness_protocol_health_uses_latest_series_stem(tmp_path) -> None:
+    (tmp_path / "series-0.jsonl").write_text("")
+    (tmp_path / "series-3.jsonl").write_text(
+        json.dumps({
+            "score_status": "abort",
+            "harness_resolved": False,
+            "patch_extracted": False,
+            "agent_gold_edited": False,
+            "exit_status": "FormatError",
+            "exit_reason": "format_error_no_tool_calls",
+            "detail": "no model patch extracted",
+            "turn_trace_count": 1,
+        })
+        + "\n"
+    )
+    value_context = ValueEfficiencyContext()
+    value_context.init(value_profile="equal")
+
+    report = build_compare_readiness_report(
+        args=_args(run_series="series"),
+        tasks=[SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",))],
+        strategies=(CompareStrategy("bare_t2_baseline", "all_tier2"),),
+        policy_jobs=1,
+        value_context=value_context,
+        catalog_issues=[],
+        runtime_root=Path("/tmp/budgetflow-runtime"),
+        runs_dir=tmp_path,
+    )
+
+    assert not report.ok
+    assert "protocol_health_rows=1" in report.facts
+    assert any("protocol-owner abort rate" in issue for issue in report.blocking)
+
+
+def test_readiness_protocol_health_prefers_explicit_out_stem(tmp_path) -> None:
+    (tmp_path / "series-3.jsonl").write_text("")
+    (tmp_path / "manual-stem.jsonl").write_text(
+        json.dumps({
+            "score_status": "abort",
+            "harness_resolved": False,
+            "patch_extracted": False,
+            "agent_gold_edited": False,
+            "exit_status": "FormatError",
+            "exit_reason": "format_error_no_tool_calls",
+            "detail": "no model patch extracted",
+            "turn_trace_count": 1,
+        })
+        + "\n"
+    )
+    value_context = ValueEfficiencyContext()
+    value_context.init(value_profile="equal")
+
+    report = build_compare_readiness_report(
+        args=_args(run_series="series", out_stem="manual-stem"),
+        tasks=[SimpleNamespace(instance_id="task-a", test_patch="diff", fail_to_pass=("test_a",))],
+        strategies=(CompareStrategy("bare_t2_baseline", "all_tier2"),),
+        policy_jobs=1,
+        value_context=value_context,
+        catalog_issues=[],
+        runtime_root=Path("/tmp/budgetflow-runtime"),
+        runs_dir=tmp_path,
+    )
+
+    assert not report.ok
+    assert "protocol_health_rows=1" in report.facts
+    assert any("protocol-owner abort rate" in issue for issue in report.blocking)
+
+
 def test_readiness_blocks_uncovered_non_equal_value_matrix(tmp_path) -> None:
     matrix = tmp_path / "value_matrix.json"
     matrix.write_text('{"tasks":{"covered":{"task_value":{"difficulty":0.2}}}}')
@@ -910,6 +978,176 @@ def test_readiness_blocks_stale_planned_task_budget_mode(tmp_path) -> None:
 
     assert not report.ok
     assert any("planned_task_budget_policy.mode" in issue for issue in report.blocking)
+
+
+def test_readiness_blocks_route_llm_and_budgetflow_identical_routes(tmp_path) -> None:
+    bp = tmp_path / "budget_plan.json"
+    bp.write_text(
+        '{"hard_cap_usd":1.0,"source":"budget_binding_calibrator","decision":"PASS",'
+        '"generation_mode":"target_utilization",'
+        '"task_ids":["task-a","task-b","task-c","task-d","task-e"],'
+        '"strategy_names":["routellm_learned_router_baseline","budgetflow_task_level"],'
+        '"planned_task_budget_policy":{"mode":"planned_task_budget"},'
+        '"planned_task_budget_by_strategy":{'
+        '"routellm_learned_router_baseline":{"task-a":0.8,"task-b":0.8,"task-c":0.8,"task-d":0.8,"task-e":0.8},'
+        '"budgetflow_task_level":{"task-a":0.8,"task-b":0.8,"task-c":0.8,"task-d":0.8,"task-e":0.8}},'
+        '"projection_diagnostics":{"budgetflow_task_level":{'
+        '"degeneration":"mixed","runtime_projected_tier_counts":{"tier2":3,"tier3":2},'
+        '"runtime_projected_strongest_task_fraction":0.4,'
+        '"task_choices":{'
+        '"task-a":{"runtime_projected_tier":2},'
+        '"task-b":{"runtime_projected_tier":2},'
+        '"task-c":{"runtime_projected_tier":2},'
+        '"task-d":{"runtime_projected_tier":3},'
+        '"task-e":{"runtime_projected_tier":3}}}}}'
+    )
+    plan = tmp_path / "frozen_plan.json"
+    plan.write_text(
+        '{"meta":{"name":"route_plan"},"plan":{'
+        '"task-a":{"preferred_model":"tier2","priority":1},'
+        '"task-b":{"preferred_model":"tier2","priority":1},'
+        '"task-c":{"preferred_model":"tier2","priority":1},'
+        '"task-d":{"preferred_model":"tier3","priority":1},'
+        '"task-e":{"preferred_model":"tier3","priority":1}}}'
+    )
+    value_context = ValueEfficiencyContext()
+    value_context.init(value_profile="equal")
+
+    report = build_compare_readiness_report(
+        args=_args(frozen_plan=str(plan)),
+        tasks=[
+            SimpleNamespace(instance_id=task_id, test_patch="diff", fail_to_pass=("test",))
+            for task_id in ("task-a", "task-b", "task-c", "task-d", "task-e")
+        ],
+        strategies=(
+            CompareStrategy("routellm_learned_router_baseline", "routellm_learned_router"),
+            CompareStrategy("budgetflow_task_level", "value_aware_task_level"),
+        ),
+        policy_jobs=2,
+        value_context=value_context,
+        catalog_issues=[],
+        runtime_root=Path("/tmp/budgetflow-runtime"),
+        budget_plan_path=bp,
+    )
+
+    assert not report.ok
+    assert "routellm_route_mix=tier2:3,tier3:2" in report.facts
+    assert "budgetflow_projected_route_mix=tier2:3,tier3:2" in report.facts
+    assert "budgetflow_vs_routellm_route_diff=0/5" in report.facts
+    assert any("identical to the RouteLLM frozen plan" in issue for issue in report.blocking)
+
+
+def test_readiness_warns_route_llm_and_budgetflow_close_routes(tmp_path) -> None:
+    bp = tmp_path / "budget_plan.json"
+    bp.write_text(
+        '{"hard_cap_usd":1.0,"source":"budget_binding_calibrator","decision":"PASS",'
+        '"generation_mode":"target_utilization",'
+        '"task_ids":["task-a","task-b","task-c","task-d","task-e","task-f"],'
+        '"strategy_names":["routellm_learned_router_baseline","budgetflow_task_level"],'
+        '"planned_task_budget_policy":{"mode":"planned_task_budget"},'
+        '"planned_task_budget_by_strategy":{'
+        '"routellm_learned_router_baseline":{"task-a":0.8,"task-b":0.8,"task-c":0.8,"task-d":0.8,"task-e":0.8,"task-f":0.8},'
+        '"budgetflow_task_level":{"task-a":0.8,"task-b":0.8,"task-c":0.8,"task-d":0.8,"task-e":0.8,"task-f":0.8}},'
+        '"projection_diagnostics":{"budgetflow_task_level":{'
+        '"degeneration":"mixed","runtime_projected_tier_counts":{"tier2":3,"tier3":3},'
+        '"runtime_projected_strongest_task_fraction":0.5,'
+        '"task_choices":{'
+        '"task-a":{"runtime_projected_tier":2},'
+        '"task-b":{"runtime_projected_tier":2},'
+        '"task-c":{"runtime_projected_tier":2},'
+        '"task-d":{"runtime_projected_tier":3},'
+        '"task-e":{"runtime_projected_tier":3},'
+        '"task-f":{"runtime_projected_tier":3}}}}}'
+    )
+    plan = tmp_path / "frozen_plan.json"
+    plan.write_text(
+        '{"meta":{"name":"route_plan"},"plan":{'
+        '"task-a":{"preferred_model":"tier2","priority":1},'
+        '"task-b":{"preferred_model":"tier2","priority":1},'
+        '"task-c":{"preferred_model":"tier2","priority":1},'
+        '"task-d":{"preferred_model":"tier3","priority":1},'
+        '"task-e":{"preferred_model":"tier3","priority":1},'
+        '"task-f":{"preferred_model":"tier2","priority":1}}}'
+    )
+    value_context = ValueEfficiencyContext()
+    value_context.init(value_profile="equal")
+
+    report = build_compare_readiness_report(
+        args=_args(frozen_plan=str(plan)),
+        tasks=[
+            SimpleNamespace(instance_id=task_id, test_patch="diff", fail_to_pass=("test",))
+            for task_id in ("task-a", "task-b", "task-c", "task-d", "task-e", "task-f")
+        ],
+        strategies=(
+            CompareStrategy("routellm_learned_router_baseline", "routellm_learned_router"),
+            CompareStrategy("budgetflow_task_level", "value_aware_task_level"),
+        ),
+        policy_jobs=2,
+        value_context=value_context,
+        catalog_issues=[],
+        runtime_root=Path("/tmp/budgetflow-runtime"),
+        budget_plan_path=bp,
+    )
+
+    assert report.ok
+    assert "budgetflow_vs_routellm_route_diff=1/6" in report.facts
+    assert any("close to the RouteLLM frozen plan" in warning for warning in report.warnings)
+
+
+def test_readiness_accepts_route_llm_and_budgetflow_distinct_routes(tmp_path) -> None:
+    bp = tmp_path / "budget_plan.json"
+    bp.write_text(
+        '{"hard_cap_usd":1.0,"source":"budget_binding_calibrator","decision":"PASS",'
+        '"generation_mode":"target_utilization",'
+        '"task_ids":["task-a","task-b","task-c","task-d","task-e"],'
+        '"strategy_names":["routellm_learned_router_baseline","budgetflow_task_level"],'
+        '"planned_task_budget_policy":{"mode":"planned_task_budget"},'
+        '"planned_task_budget_by_strategy":{'
+        '"routellm_learned_router_baseline":{"task-a":0.8,"task-b":0.8,"task-c":0.8,"task-d":0.8,"task-e":0.8},'
+        '"budgetflow_task_level":{"task-a":0.8,"task-b":0.8,"task-c":0.8,"task-d":0.8,"task-e":0.8}},'
+        '"projection_diagnostics":{"budgetflow_task_level":{'
+        '"degeneration":"mixed","runtime_projected_tier_counts":{"tier2":2,"tier3":3},'
+        '"runtime_projected_strongest_task_fraction":0.6,'
+        '"task_choices":{'
+        '"task-a":{"runtime_projected_tier":3},'
+        '"task-b":{"runtime_projected_tier":2},'
+        '"task-c":{"runtime_projected_tier":3},'
+        '"task-d":{"runtime_projected_tier":2},'
+        '"task-e":{"runtime_projected_tier":3}}}}}'
+    )
+    plan = tmp_path / "frozen_plan.json"
+    plan.write_text(
+        '{"meta":{"name":"route_plan"},"plan":{'
+        '"task-a":{"preferred_model":"tier2","priority":1},'
+        '"task-b":{"preferred_model":"tier2","priority":1},'
+        '"task-c":{"preferred_model":"tier2","priority":1},'
+        '"task-d":{"preferred_model":"tier3","priority":1},'
+        '"task-e":{"preferred_model":"tier3","priority":1}}}'
+    )
+    value_context = ValueEfficiencyContext()
+    value_context.init(value_profile="equal")
+
+    report = build_compare_readiness_report(
+        args=_args(frozen_plan=str(plan)),
+        tasks=[
+            SimpleNamespace(instance_id=task_id, test_patch="diff", fail_to_pass=("test",))
+            for task_id in ("task-a", "task-b", "task-c", "task-d", "task-e")
+        ],
+        strategies=(
+            CompareStrategy("routellm_learned_router_baseline", "routellm_learned_router"),
+            CompareStrategy("budgetflow_task_level", "value_aware_task_level"),
+        ),
+        policy_jobs=2,
+        value_context=value_context,
+        catalog_issues=[],
+        runtime_root=Path("/tmp/budgetflow-runtime"),
+        budget_plan_path=bp,
+    )
+
+    assert report.ok
+    assert "routellm_route_mix=tier2:3,tier3:2" in report.facts
+    assert "budgetflow_projected_route_mix=tier2:2,tier3:3" in report.facts
+    assert "budgetflow_vs_routellm_route_diff=3/5" in report.facts
 
 
 def test_readiness_warns_budgetflow_under_target_pressure_contract(tmp_path) -> None:

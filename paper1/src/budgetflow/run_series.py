@@ -230,7 +230,10 @@ def resume_spend_by_strategy(
 def _record_contract(record: dict) -> RunContract:
     budget_plan = record.get("budget_plan") if isinstance(record.get("budget_plan"), dict) else {}
     catalog = record.get("catalog") if isinstance(record.get("catalog"), dict) else {}
+    strategy = str(record.get("strategy") or "")
+    budget_mode = record.get("budget_mode")
     return {
+        "strategy": strategy,
         "budget_mode": record.get("budget_mode"),
         "batch_budget_cap": record.get("batch_budget_cap"),
         "budget_plan_hard_cap_usd": budget_plan.get("hard_cap_usd"),
@@ -247,13 +250,13 @@ def _record_contract(record: dict) -> RunContract:
 
 
 def latest_run_contract(jsonl_path: Path) -> RunContract | None:
-    """Return the latest scoreable row's launch contract from a run JSONL."""
-    contracts = scoreable_run_contracts(jsonl_path)
+    """Return the latest paid row's launch contract from a run JSONL."""
+    contracts = run_contracts(jsonl_path)
     return contracts[-1] if contracts else None
 
 
-def scoreable_run_contracts(jsonl_path: Path) -> list[RunContract]:
-    """Return every scoreable row's launch contract from a run JSONL."""
+def run_contracts(jsonl_path: Path) -> list[RunContract]:
+    """Return launch contracts from paid rows that affect resume provenance."""
     if not jsonl_path.is_file():
         return []
     contracts: list[RunContract] = []
@@ -265,7 +268,13 @@ def scoreable_run_contracts(jsonl_path: Path) -> list[RunContract]:
         except json.JSONDecodeError:
             continue
         score_status = str(record.get("score_status") or "")
-        if score_status not in {"pass", "true_fail"}:
+        if score_status not in {"pass", "true_fail", "abort"}:
+            continue
+        try:
+            cost = float(record.get("total_cost") or 0.0)
+        except (TypeError, ValueError):
+            cost = 0.0
+        if score_status == "abort" and cost <= 0.0:
             continue
         contracts.append(_record_contract(record))
     return contracts
@@ -277,13 +286,33 @@ def validate_resume_contract(
     expected_contract: RunContract,
 ) -> None:
     """Fail fast when --resume would mix incompatible run provenance."""
-    prior_contracts = scoreable_run_contracts(jsonl_path)
+    prior_contracts = run_contracts(jsonl_path)
     if not prior_contracts:
         return
     mismatches: list[str] = []
     for row_idx, prior in enumerate(prior_contracts, start=1):
         for key, expected_value in expected_contract.items():
             if expected_value in (None, "", (), []):
+                continue
+            if key == "budget_mode_by_strategy":
+                expected_modes = dict(expected_value)  # type: ignore[arg-type]
+                prior_strategy = str(prior.get("strategy") or "")
+                expected_mode = expected_modes.get(prior_strategy)
+                if expected_mode in (None, "", (), []):
+                    mismatches.append(
+                        f"row{row_idx}:budget_mode: prior_strategy={prior_strategy!r} "
+                        "missing from current strategy set"
+                    )
+                    continue
+                prior_mode = prior.get("budget_mode")
+                if prior_mode in (None, "", (), []):
+                    mismatches.append(
+                        f"row{row_idx}:budget_mode: prior=<missing> current={expected_mode!r}"
+                    )
+                elif prior_mode != expected_mode:
+                    mismatches.append(
+                        f"row{row_idx}:budget_mode: prior={prior_mode!r} current={expected_mode!r}"
+                    )
                 continue
             prior_value = prior.get(key)
             if prior_value in (None, "", (), []):

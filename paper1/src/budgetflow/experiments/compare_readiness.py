@@ -29,7 +29,7 @@ from budgetflow.model_tiers import (
     catalog_revision,
     catalog_source_info,
 )
-from budgetflow.run_series import retired_series_reason
+from budgetflow.run_series import latest_series_stem, retired_series_reason
 from budgetflow.value_efficiency import ValueEfficiencyContext
 
 FROZEN_PLAN_ROUTINGS = frozenset({
@@ -73,13 +73,31 @@ def _missing_selected_harness_dependencies(tasks: list) -> dict[str, tuple[str, 
     return missing
 
 
-def _find_existing_jsonl(run_series: str | None, runs_dir: Path | None) -> Path | None:
-    """Return the JSONL path for *run_series* if it already exists on disk."""
-    if not run_series or runs_dir is None:
+def _find_existing_jsonl(
+    run_series: str | None,
+    runs_dir: Path | None,
+    *,
+    out_stem: str | None = None,
+) -> Path | None:
+    """Return the existing JSONL that launch readiness should inspect."""
+    if runs_dir is None:
         return None
-    candidate = Path(runs_dir) / f"{run_series}-0.jsonl"
-    if candidate.is_file():
-        return candidate
+    runs_root = Path(runs_dir)
+    if out_stem:
+        candidate = runs_root / f"{out_stem}.jsonl"
+        if candidate.is_file():
+            return candidate
+    if not run_series:
+        return None
+    latest = latest_series_stem(runs_root, run_series)
+    if latest:
+        latest_path = runs_root / f"{latest}.jsonl"
+        if latest_path.is_file():
+            return latest_path
+    for stem in (run_series, f"{run_series}-0"):
+        candidate = runs_root / f"{stem}.jsonl"
+        if candidate.is_file():
+            return candidate
     return None
 
 
@@ -143,6 +161,48 @@ def _compute_protocol_health(jsonl_path: Path) -> dict:
         "failed_protocol_retry_rate": failed_protocol_retry_rows / total_rows,
         "no_tool_call_rate": no_tool_call_rows / total_rows,
     }
+
+
+def _routing_mix(route_by_task: dict[str, str]) -> str:
+    counts: dict[str, int] = {}
+    for route in route_by_task.values():
+        counts[route] = counts.get(route, 0) + 1
+    return ",".join(f"{route}:{counts[route]}" for route in sorted(counts))
+
+
+def _projected_budgetflow_task_routes(bp: dict) -> dict[str, str]:
+    diagnostics = bp.get("projection_diagnostics")
+    if not isinstance(diagnostics, dict):
+        return {}
+    task_diag = diagnostics.get("budgetflow_task_level")
+    if not isinstance(task_diag, dict):
+        return {}
+    task_choices = task_diag.get("task_choices")
+    if not isinstance(task_choices, dict):
+        return {}
+    routes: dict[str, str] = {}
+    for task_id, choice in task_choices.items():
+        if not isinstance(choice, dict):
+            continue
+        projected_tier = choice.get("runtime_projected_tier")
+        try:
+            tier_number = int(projected_tier)
+        except (TypeError, ValueError):
+            continue
+        if tier_number > 0:
+            routes[str(task_id)] = f"tier{tier_number}"
+    return routes
+
+
+def _frozen_plan_routes(frozen_plan, task_ids: list[str]) -> dict[str, str]:
+    routes: dict[str, str] = {}
+    if frozen_plan is None:
+        return routes
+    for task_id in task_ids:
+        entry = frozen_plan.lookup(task_id)
+        if entry is not None:
+            routes[task_id] = str(entry.preferred_model)
+    return routes
 
 
 def build_compare_readiness_report(
@@ -613,6 +673,47 @@ def build_compare_readiness_report(
                             "10+10+10 paid runs must preserve a real T2/T3 frontier in the current "
                             "stage prefix or be relabeled as a pure-tier frontier diagnostic"
                         )
+                bf_routes = _projected_budgetflow_task_routes(bp)
+                if bf_routes:
+                    facts.append(f"budgetflow_projected_route_mix={_routing_mix(bf_routes)}")
+                if (
+                    frozen_plan is not None
+                    and "routellm_learned_router_baseline" in strategy_names
+                    and "budgetflow_task_level" in strategy_names
+                ):
+                    route_routes = _frozen_plan_routes(frozen_plan, task_ids)
+                    common_task_ids = [
+                        task_id
+                        for task_id in task_ids
+                        if task_id in route_routes and task_id in bf_routes
+                    ]
+                    if common_task_ids:
+                        route_mix = _routing_mix({task_id: route_routes[task_id] for task_id in common_task_ids})
+                        bf_mix = _routing_mix({task_id: bf_routes[task_id] for task_id in common_task_ids})
+                        route_diff_count = sum(
+                            1
+                            for task_id in common_task_ids
+                            if route_routes[task_id] != bf_routes[task_id]
+                        )
+                        route_diff_rate = route_diff_count / len(common_task_ids)
+                        facts.append(f"routellm_route_mix={route_mix}")
+                        facts.append(f"budgetflow_vs_routellm_route_diff={route_diff_count}/{len(common_task_ids)}")
+                        if route_diff_count == 0:
+                            blocking.append(
+                                "BudgetFlow task-level projection is identical to the "
+                                f"RouteLLM frozen plan over {len(common_task_ids)} shared tasks "
+                                f"RouteLLM mix {route_mix}; BudgetFlow mix {bf_mix}). "
+                                "The paid comparison would not isolate a meaningful value-aware "
+                                "allocation mechanism; regenerate or diagnose the router plans first."
+                            )
+                        elif route_diff_rate < 0.20:
+                            warnings.append(
+                                "BudgetFlow task-level projection is close to the RouteLLM frozen plan "
+                                f"({route_diff_count}/{len(common_task_ids)} tasks differ; "
+                                f"RouteLLM mix {route_mix}; BudgetFlow mix {bf_mix}). "
+                                "This can be legitimate for a strong router baseline, but the run should be "
+                                "interpreted with a routing-overlap diagnostic."
+                            )
 
             active_revision = active_catalog_revision
             if active_catalog_path is None:
@@ -730,7 +831,7 @@ def build_compare_readiness_report(
                 )
 
     # ── Protocol health gate ───────────────────────────────────────────────
-    existing_jsonl = _find_existing_jsonl(run_series, runs_dir)
+    existing_jsonl = _find_existing_jsonl(run_series, runs_dir, out_stem=out_stem)
     if existing_jsonl is not None:
         try:
             protocol_stats = _compute_protocol_health(existing_jsonl)

@@ -56,19 +56,28 @@ def load_latest_rows(jsonl_path: Path) -> list[dict[str, Any]]:
     return _dedupe_latest_rows(rows)
 
 
-def load_scoreable_rows(jsonl_path: Path) -> list[dict[str, Any]]:
-    """Compatibility wrapper for older callers; returns latest rows, including aborts."""
-    return load_latest_rows(jsonl_path)
-
-
 def _dedupe_latest_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     latest: dict[tuple[str, str], dict[str, Any]] = {}
+    paid_cost_by_key: dict[tuple[str, str], float] = defaultdict(float)
     for row in rows:
         key = (str(row.get("strategy") or ""), str(row.get("instance_id") or ""))
+        if str(row.get("score_status") or "") in {"pass", "true_fail", "abort"}:
+            try:
+                cost = float(row.get("total_cost") or 0.0)
+            except (TypeError, ValueError):
+                cost = 0.0
+            if cost > 0.0:
+                paid_cost_by_key[key] += cost
         previous = latest.get(key)
         if previous is None or int(row.get("_line_no") or 0) > int(previous.get("_line_no") or 0):
             latest[key] = row
-    return list(latest.values())
+    deduped = []
+    for key, row in latest.items():
+        merged = dict(row)
+        if key in paid_cost_by_key:
+            merged["total_cost"] = paid_cost_by_key[key]
+        deduped.append(merged)
+    return deduped
 
 
 def row_to_task(row: dict[str, Any]) -> StrategyTask:

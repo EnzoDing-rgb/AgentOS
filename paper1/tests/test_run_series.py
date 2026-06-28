@@ -14,13 +14,19 @@ from budgetflow.run_series import (
     release_run_identity,
     resolve_compare_stem,
     resolve_run_identity,
-    scoreable_run_contracts,
+    run_contracts,
     series_run_complete,
     sibling_stems_exist,
     validate_resume_contract,
 )
 from budgetflow.experiments.compare_config import paper_mainline_strategies
 from budgetflow.compare_checkpoint import CompareCheckpointStore
+
+
+def _without_strategy(contract: dict) -> dict:
+    clean = dict(contract)
+    clean.pop("strategy", None)
+    return clean
 
 
 def test_resume_explicit_stem_blocks_completed_run(tmp_path) -> None:
@@ -267,8 +273,8 @@ def test_resume_contract_allows_same_budget_catalog_and_value_provenance(tmp_pat
     }
     path.write_text(json.dumps(row) + "\n")
 
-    assert latest_run_contract(path) == contract
-    assert scoreable_run_contracts(path) == [contract]
+    assert _without_strategy(latest_run_contract(path)) == contract
+    assert [_without_strategy(item) for item in run_contracts(path)] == [contract]
     validate_resume_contract(path, expected_contract=contract)
 
 
@@ -292,7 +298,7 @@ def test_resume_contract_blocks_missing_or_mismatched_provenance(tmp_path) -> No
         )
 
 
-def test_resume_contract_checks_all_scoreable_rows_not_only_latest(tmp_path) -> None:
+def test_resume_contract_checks_all_paid_rows_not_only_latest(tmp_path) -> None:
     path = tmp_path / "mainline_6x30_v1-0.jsonl"
     good_contract = {
         "budget_mode": "shared_batch_hard_budget",
@@ -337,9 +343,78 @@ def test_resume_contract_checks_all_scoreable_rows_not_only_latest(tmp_path) -> 
         + json.dumps(row("task-b", cap=2.999)) + "\n"
     )
 
-    assert latest_run_contract(path) == good_contract
+    assert _without_strategy(latest_run_contract(path)) == good_contract
     with pytest.raises(SystemExit, match=r"row1:batch_budget_cap"):
         validate_resume_contract(path, expected_contract=good_contract)
+
+
+def test_resume_contract_checks_paid_abort_rows(tmp_path) -> None:
+    path = tmp_path / "mainline_5x30-0.jsonl"
+    expected = {
+        "budget_mode": "shared_batch_hard_budget",
+        "batch_budget_cap": 9.0,
+        "catalog_revision": "2026-06-29",
+    }
+
+    def row(*, status: str, cost: float, cap: float) -> dict:
+        return {
+            "strategy": "budgetflow_task_level",
+            "instance_id": "task-a",
+            "score_status": status,
+            "total_cost": cost,
+            "budget_mode": expected["budget_mode"],
+            "batch_budget_cap": cap,
+            "catalog": {"catalog_revision": expected["catalog_revision"]},
+        }
+
+    path.write_text(
+        json.dumps(row(status="abort", cost=0.2, cap=8.0)) + "\n"
+        + json.dumps(row(status="abort", cost=0.0, cap=7.0)) + "\n"
+    )
+
+    with pytest.raises(SystemExit, match=r"row1:batch_budget_cap"):
+        validate_resume_contract(path, expected_contract=expected)
+    assert [_without_strategy(item) for item in run_contracts(path)] == [
+        {
+            "budget_mode": "shared_batch_hard_budget",
+            "batch_budget_cap": 8.0,
+            "budget_plan_hard_cap_usd": None,
+            "budget_plan_generation_mode": None,
+            "budget_plan_task_ids": (),
+            "budget_plan_strategy_names": (),
+            "catalog_revision": "2026-06-29",
+            "catalog_path": None,
+            "catalog_content_hash": None,
+            "value_profile": None,
+            "value_source_class": None,
+            "value_matrix_artifact": None,
+        }
+    ]
+
+
+def test_resume_contract_blocks_budget_mode_change_for_strategy(tmp_path) -> None:
+    path = tmp_path / "mainline_5x30-0.jsonl"
+    path.write_text(
+        json.dumps({
+            "strategy": "budgetflow_task_level",
+            "instance_id": "task-a",
+            "score_status": "pass",
+            "budget_mode": "planned_task_budget",
+            "batch_budget_cap": 9.0,
+        })
+        + "\n"
+    )
+
+    with pytest.raises(SystemExit, match=r"row1:budget_mode"):
+        validate_resume_contract(
+            path,
+            expected_contract={
+                "batch_budget_cap": 9.0,
+                "budget_mode_by_strategy": (
+                    ("budgetflow_task_level", "shared_batch_hard_budget"),
+                ),
+            },
+        )
 
 
 def test_resume_contract_blocks_catalog_content_hash_change(tmp_path) -> None:

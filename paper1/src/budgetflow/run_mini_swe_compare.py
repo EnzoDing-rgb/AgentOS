@@ -377,6 +377,10 @@ def main() -> None:
         bp_task_ids = tuple(str(task_id) for task_id in ((_budget_plan_data or {}).get("task_ids") or ()))
         bp_strategy_names = tuple(str(name) for name in ((_budget_plan_data or {}).get("strategy_names") or ()))
         expected_contract = {
+            "budget_mode_by_strategy": tuple(
+                (strategy.name, budget_modes.get(strategy.name))
+                for strategy in strategies
+            ),
             "batch_budget_cap": budget_input["hard_cap_usd"],
             "budget_plan_hard_cap_usd": (_budget_plan_data or {}).get("hard_cap_usd"),
             "budget_plan_generation_mode": (_budget_plan_data or {}).get("generation_mode"),
