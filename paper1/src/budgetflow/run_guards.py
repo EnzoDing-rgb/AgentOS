@@ -56,6 +56,7 @@ class GuardAction:
     halt_all: bool = False
     halt_strategy: str | None = None
     reason: str = ""
+    exclude_record: bool = False
 
     @property
     def should_stop_batch(self) -> bool:
@@ -124,7 +125,7 @@ class CompareRunGuards:
                     f"host_dependency_contamination strategy={strategy} "
                     f"task={record.get('instance_id') or ''}"
                 )
-                return GuardAction(halt_all=True, reason=self._abort_all_reason)
+                return GuardAction(halt_all=True, reason=self._abort_all_reason, exclude_record=True)
 
             action = self._record_protocol_health(record)
             if action.should_stop_batch:
@@ -194,7 +195,7 @@ class CompareRunGuards:
                     f"task={record.get('instance_id') or ''} exit={exit_reason}; "
                     "action protocol produced an unscoreable row"
                 )
-                return GuardAction(halt_all=True, reason=self._abort_all_reason)
+                return GuardAction(halt_all=True, reason=self._abort_all_reason, exclude_record=True)
         if retry_used and not retry_success:
             self._protocol_failed_retry_rows += 1
             if retry_reason in {"found_0_actions", "no_tool_calls"}:
@@ -212,7 +213,7 @@ class CompareRunGuards:
                 f"rows={self._protocol_rows} > {self.protocol_abort_rate_max:.1%}; "
                 "action protocol is unstable"
             )
-            return GuardAction(halt_all=True, reason=self._abort_all_reason)
+            return GuardAction(halt_all=True, reason=self._abort_all_reason, exclude_record=True)
         if failed_retry_rate > self.protocol_failed_retry_rate_max:
             self._abort_all_reason = (
                 f"protocol_guard failed_retry_rate={failed_retry_rate:.1%} "

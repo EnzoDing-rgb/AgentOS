@@ -69,7 +69,7 @@ def test_parallel_batches_keyboard_interrupt_aborts_and_does_not_wait(monkeypatc
     assert all(future.cancelled for future in pool.futures)
 
 
-def test_parallel_batches_guard_abort_does_not_wait(monkeypatch) -> None:
+def test_parallel_batches_guard_abort_keeps_guard_alive_until_workers_stop(monkeypatch) -> None:
     pool_holder: dict[str, _FakePool] = {}
 
     def fake_pool(*, max_workers: int):
@@ -95,4 +95,4 @@ def test_parallel_batches_guard_abort_does_not_wait(monkeypatch) -> None:
         run_guards=guard,
     )
 
-    assert {"wait": False, "cancel_futures": True} in pool_holder["pool"].shutdown_calls
+    assert {"wait": True, "cancel_futures": True} in pool_holder["pool"].shutdown_calls

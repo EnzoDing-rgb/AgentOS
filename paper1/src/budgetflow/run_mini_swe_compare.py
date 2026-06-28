@@ -144,9 +144,9 @@ def _run_parallel_batches(
     finally:
         if run_guards is not None and run_guards.is_aborted():
             _cancel_pending_futures(futures)
-            pool.shutdown(wait=False, cancel_futures=True)
+            pool.shutdown(wait=True, cancel_futures=True)
         elif fast_shutdown:
-            pool.shutdown(wait=False, cancel_futures=True)
+            pool.shutdown(wait=True, cancel_futures=True)
         else:
             pool.shutdown(wait=True)
 

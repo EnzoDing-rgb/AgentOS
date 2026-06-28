@@ -692,8 +692,15 @@ def run_strategy_batch(
                 "reserved_budget": 0.0,
                 "spent_budget": shared_spent,
             }
-        records.append(record)
-        if checkpoint is not None:
+        guard_action = None
+        if run_guards is not None:
+            guard_action = run_guards.record_task(record)
+            run_guards.log_action(guard_action)
+
+        persist_record = not (guard_action is not None and guard_action.exclude_record)
+        if persist_record:
+            records.append(record)
+        if checkpoint is not None and persist_record:
             task_spent = float(record.get("total_cost") or 0)
             score_status = str(record.get("score_status") or "")
             checkpoint.mark_task_done(
@@ -710,15 +717,28 @@ def run_strategy_batch(
                 ),
                 completed=score_status in {"pass", "true_fail"},
             )
-        if on_task_complete is not None:
+        elif checkpoint is not None and guard_action is not None and guard_action.exclude_record:
+            checkpoint.mark_task_done(
+                cfg.name,
+                task.instance_id,
+                batch_spent=shared_spent if use_planned_task_caps else (
+                    float(governor.state.spent_budget) if governor is not None else 0.0
+                ),
+                batch_cap=batch_budget_cap,
+                completed=False,
+            )
+        if on_task_complete is not None and persist_record:
             on_task_complete(record)
-        if adaptive_registry is not None:
+        if adaptive_registry is not None and persist_record:
             adaptive_registry.record_task(cfg.name, cfg.routing, record)
 
-        if run_guards is not None:
-            action = run_guards.record_task(record)
-            run_guards.log_action(action)
-            if action.halt_all or action.halt_strategy:
+        if guard_action is not None:
+            if guard_action.exclude_record:
+                log(
+                    f"[guard] excluded unscoreable row from evidence "
+                    f"strategy={cfg.name} task={task.instance_id}: {guard_action.reason}"
+                )
+            if guard_action.halt_all or guard_action.halt_strategy:
                 break
 
     if use_planned_task_caps:

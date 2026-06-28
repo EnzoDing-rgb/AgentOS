@@ -127,6 +127,7 @@ def test_protocol_abort_halts_immediately() -> None:
 
     assert action.halt_all
     assert "protocol_guard abort" in action.reason
+    assert action.exclude_record
     assert g.is_aborted()
 
 
@@ -159,6 +160,7 @@ def test_host_dependency_contamination_halts_all() -> None:
 
     assert action.halt_all
     assert "host_dependency_contamination" in action.reason
+    assert action.exclude_record
     assert g.is_aborted()
 
 

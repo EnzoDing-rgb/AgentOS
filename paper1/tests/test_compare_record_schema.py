@@ -25,6 +25,7 @@ from budgetflow.experiments.compare_summary import (
 )
 from budgetflow.governor import BudgetGovernor, GovernorConfig
 from budgetflow.ledger import WorkflowLedgerStore
+from budgetflow.run_guards import CompareRunGuards
 from budgetflow.value_efficiency import ValueEfficiencyContext
 
 
@@ -830,6 +831,61 @@ def test_run_strategy_batch_threads_planned_caps_to_routellm(monkeypatch) -> Non
     )
 
     assert seen == pytest.approx([(0.8, 0.8)])
+
+
+def test_run_strategy_batch_excludes_protocol_abort_from_evidence(monkeypatch) -> None:
+    from budgetflow.experiments import compare_execution
+
+    persisted: list[dict] = []
+
+    def fake_run_task_record(task, **kwargs):
+        return {
+            "instance_id": task.instance_id,
+            "strategy": kwargs["cfg"].name,
+            "routing": kwargs["cfg"].routing,
+            "harness_resolved": False,
+            "score_status": "abort",
+            "abort_owner": "protocol",
+            "failure_owner": "protocol",
+            "exit_owner": "parser_protocol",
+            "exit_reason": "format_error_no_tool_calls",
+            "protocol_retry_used": True,
+            "protocol_retry_success": False,
+            "patch_extracted": False,
+            "agent_gold_edited": False,
+            "agent_gold_files": [],
+            "detail": "",
+            "exit_status": "StagnationExit",
+            "elapsed_s": 0.0,
+            "backend_picks": ["tier2"],
+            "llm_turns": 4,
+            "total_cost": 0.04,
+            "batch_available": None,
+        }
+
+    monkeypatch.setattr(compare_execution, "run_task_record", fake_run_task_record)
+    guard = CompareRunGuards(global_min_samples=999, policy_consecutive_fail=99)
+
+    records, spent = run_strategy_batch(
+        CompareStrategy("budget_only_baseline", "budget_only"),
+        [SimpleNamespace(instance_id="task-protocol")],
+        batch_budget_cap=1.0,
+        value_context=_value_context(),
+        budget_mode="shared",
+        step_limit=1,
+        trace_console="quiet",
+        heartbeat=0,
+        global_progress=GlobalRunProgress(1),
+        scoreboard=None,
+        print_lock=None,
+        on_task_complete=persisted.append,
+        run_guards=guard,
+    )
+
+    assert guard.is_aborted()
+    assert records == []
+    assert persisted == []
+    assert spent == pytest.approx(0.0)
 
 
 def test_effective_planned_task_cap_protects_remaining_planned_budget() -> None:
