@@ -115,7 +115,11 @@ class CompareRunGuards:
     def record_task(self, record: dict[str, Any]) -> GuardAction:
         with self._lock:
             if self._abort_all_reason:
-                return GuardAction(halt_all=True, reason=self._abort_all_reason)
+                return GuardAction(
+                    halt_all=True,
+                    reason=self._abort_all_reason,
+                    exclude_record=_is_unscoreable_runtime_abort(record),
+                )
 
             strategy = str(record.get("strategy") or "")
             self._recent.append(record)
@@ -130,6 +134,8 @@ class CompareRunGuards:
             action = self._record_protocol_health(record)
             if action.should_stop_batch:
                 return action
+            if _is_unscoreable_runtime_abort(record):
+                return GuardAction(exclude_record=True)
 
             action = self._record_task_level_tier_mix(record)
             if action.should_stop_batch:
@@ -220,14 +226,14 @@ class CompareRunGuards:
                 f"rows={self._protocol_rows} > {self.protocol_failed_retry_rate_max:.1%}; "
                 "action protocol is unstable"
             )
-            return GuardAction(halt_all=True, reason=self._abort_all_reason)
+            return GuardAction(halt_all=True, reason=self._abort_all_reason, exclude_record=True)
         if no_tool_failed_rate > self.protocol_no_tool_failed_rate_max:
             self._abort_all_reason = (
                 f"protocol_guard no_tool_failed_rate={no_tool_failed_rate:.1%} "
                 f"rows={self._protocol_rows} > {self.protocol_no_tool_failed_rate_max:.1%}; "
                 "model/action protocol is unstable"
             )
-            return GuardAction(halt_all=True, reason=self._abort_all_reason)
+            return GuardAction(halt_all=True, reason=self._abort_all_reason, exclude_record=True)
         return GuardAction()
 
     def _record_task_level_tier_mix(self, record: dict[str, Any]) -> GuardAction:
@@ -346,6 +352,25 @@ def _is_pipeline_failure(record: dict[str, Any]) -> bool:
     if reason in _PIPELINE_EXIT_REASONS:
         return True
     if status == "StagnationExit":
+        return True
+    return False
+
+
+def _is_unscoreable_runtime_abort(record: dict[str, Any]) -> bool:
+    if str(record.get("score_status") or "") != "abort":
+        return False
+    abort_owner = str(record.get("abort_owner") or "")
+    failure_owner = str(record.get("failure_owner") or "")
+    exit_owner = str(record.get("exit_owner") or "")
+    exit_reason = str(record.get("exit_reason") or "")
+    exit_status = str(record.get("exit_status") or "")
+    if abort_owner in {"protocol", "infra"} or failure_owner in {"protocol", "infra"}:
+        return True
+    if exit_owner in {"protocol", "parser_protocol", "provider_error"}:
+        return True
+    if exit_reason.startswith(("format_error_", "protocol_guard", "infra_error")):
+        return True
+    if exit_status in {"UpstreamExit", "infra_error", "BadRequestError"}:
         return True
     return False
 

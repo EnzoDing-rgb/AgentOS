@@ -21,13 +21,26 @@ requires_minisweagent = pytest.mark.skipif(
 # ── _classify_format_reason ──────────────────────────────────────────────────
 
 
+class _FakeMessage:
+    def __init__(self, content="", tool_calls=None, **extra):
+        self.content = content
+        self.tool_calls = tool_calls
+        self._extra = dict(extra)
+
+    def model_dump(self):
+        return {
+            "role": "assistant",
+            "content": self.content,
+            "tool_calls": self.tool_calls,
+            **self._extra,
+        }
+
+
 class _FakeResponse:
     """Minimal fake for testing _classify_format_reason."""
-    def __init__(self, content="", tool_calls=None):
+    def __init__(self, content="", tool_calls=None, **message_extra):
         self.choices = [MagicMock()]
-        self.choices[0].message = MagicMock()
-        self.choices[0].message.content = content
-        self.choices[0].message.tool_calls = tool_calls
+        self.choices[0].message = _FakeMessage(content, tool_calls, **message_extra)
 
 
 class _FakeFormatError(Exception):
@@ -257,16 +270,28 @@ def test_parse_actions_invalid_tool_call_accumulates_streak():
 
 
 @requires_minisweagent
-def test_format_retry_assistant_message_strips_tool_calls():
-    from budgetflow.adapter.mini_swe_proxy import _format_retry_assistant_message
+def test_retry_and_provider_messages_preserve_reasoning_history():
+    from budgetflow.adapter.mini_swe_proxy import _format_retry_assistant_message, _prepare_provider_messages
 
     response = _FakeResponse(
         content="",
         tool_calls=[MagicMock(id="bad_call")],
+        reasoning_content="hidden reasoning token",
     )
 
     message = _format_retry_assistant_message(response)
 
     assert message["role"] == "assistant"
     assert "invalid tool calls" in message["content"]
-    assert "tool_calls" not in message
+    assert message["tool_calls"]
+    assert message["reasoning_content"] == "hidden reasoning token"
+
+    prepared = _prepare_provider_messages([
+        {**message, "extra": {"local": True}, "provider_only": None},
+    ])
+    assert prepared == [{
+        "role": "assistant",
+        "content": message["content"],
+        "tool_calls": message["tool_calls"],
+        "reasoning_content": "hidden reasoning token",
+    }]

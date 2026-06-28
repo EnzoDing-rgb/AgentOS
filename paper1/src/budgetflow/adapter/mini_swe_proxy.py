@@ -235,10 +235,22 @@ _FORMAT_RETRY_PROMPT = (
 def _format_retry_assistant_message(response) -> dict[str, str]:
     """Return an OpenAI-valid assistant message for protocol retry history."""
     raw = response.choices[0].message.model_dump()
+    message = {k: v for k, v in raw.items() if k != "extra" and v is not None}
     content = raw.get("content")
     if not isinstance(content, str) or not content.strip():
         content = "The previous response contained invalid tool calls and was not executed."
-    return {"role": "assistant", "content": content}
+    message["role"] = "assistant"
+    message["content"] = content
+    return message
+
+
+def _prepare_provider_messages(messages: list[dict]) -> list[dict]:
+    """Strip local bookkeeping while preserving provider-required history fields."""
+    prepared: list[dict] = []
+    for msg in messages:
+        clean = {k: v for k, v in msg.items() if k != "extra" and v is not None}
+        prepared.append(clean)
+    return prepared
 
 
 def _classify_format_reason(exc: Exception, response) -> str:
@@ -1491,7 +1503,7 @@ class BudgetFlowLitellmModel:
             step_index=self.step_index,
             backend=backend_name,
         )
-        prepared = [{k: v for k, v in msg.items() if k != "extra"} for msg in messages]
+        prepared = _prepare_provider_messages(messages)
         prepared = _reorder_anthropic_thinking_blocks(prepared)
         prepared = set_cache_control(prepared, mode=self.set_cache_control)
 

@@ -131,6 +131,60 @@ def test_protocol_abort_halts_immediately() -> None:
     assert g.is_aborted()
 
 
+def test_protocol_guard_excludes_follow_on_upstream_abort_rows() -> None:
+    g = CompareRunGuards(
+        protocol_min_samples=999,
+        policy_consecutive_fail=99,
+        global_min_samples=999,
+    )
+    first = g.record_task(
+        {
+            "strategy": "bare_t2_baseline",
+            "instance_id": "pylint-dev__pylint-7993",
+            "score_status": "abort",
+            "abort_owner": "protocol",
+            "exit_reason": "format_error_no_tool_calls",
+        }
+    )
+    assert first.halt_all
+    assert first.exclude_record
+
+    follow_on = g.record_task(
+        {
+            "strategy": "budgetflow_task_level",
+            "instance_id": "sympy__sympy-17655",
+            "score_status": "abort",
+            "abort_owner": "protocol",
+            "failure_owner": "protocol",
+            "exit_owner": "provider_error",
+            "exit_status": "UpstreamExit",
+            "exit_reason": first.reason,
+        }
+    )
+
+    assert follow_on.halt_all
+    assert follow_on.exclude_record
+
+
+def test_infra_abort_rows_are_excluded_from_main_evidence() -> None:
+    g = CompareRunGuards(policy_consecutive_fail=99, global_min_samples=999)
+    action = g.record_task(
+        {
+            "strategy": "budget_only_baseline",
+            "instance_id": "pallets__flask-4992",
+            "score_status": "abort",
+            "abort_owner": "infra",
+            "failure_owner": "infra",
+            "exit_owner": "provider_error",
+            "exit_status": "infra_error",
+            "exit_reason": "infra_error",
+        }
+    )
+
+    assert not action.halt_all
+    assert action.exclude_record
+
+
 def test_upstream_pattern() -> None:
     assert _looks_upstream("The requested model is not supported by this provider account")
     g = CompareRunGuards(upstream_consecutive=3)
