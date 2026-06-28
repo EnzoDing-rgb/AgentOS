@@ -2,6 +2,21 @@
 
 > 单一入口：进度、跑法、历史结果。
 
+## 2026-06-29 — 5x30 protocolfix run stopped forensic-only
+
+- Stopped `mainline_5x30_claim1_protocolfix_20260629` at 88/150 rows. It is
+  forensic-only, not paper evidence: BudgetFlow hit a protocol-owner
+  `format_error_invalid_tool_call` abort and T2 hit a protocol-owner
+  no-tool-call abort. This is evaluation contamination, not model/routing
+  evidence.
+- Interim signal before stop was mixed: BudgetFlow was still competitive on
+  Total Resolved Value and efficiency, RouteLLM was close, and T2 had strong
+  raw resolved count with much higher spend. No Claim 1 conclusion should use
+  this partial run.
+- Fixing the paid-run safety gap now: protocol-owner abort rows must trigger
+  immediate global halt, and guard-triggered shutdown must prevent additional
+  provider calls from already-running workers.
+
 ## 2026-06-29 — 5x30 evaluation audit and no-paid fixes
 
 - Stopped `mainline_5x30_claim1_final_20260629` at 101/150 rows. It is

@@ -125,12 +125,14 @@ def _run_parallel_batches(
 ) -> None:
     pool = ThreadPoolExecutor(max_workers=max_workers)
     futures: list[Future] = []
+    fast_shutdown = False
     try:
         futures = [pool.submit(run_one_batch, cfg) for cfg in strategies]
         for future in as_completed(futures):
             cfg, batch_records, batch_spent, batch_cap = future.result()
             if run_guards is not None and run_guards.is_aborted():
                 _cancel_pending_futures(futures)
+                fast_shutdown = True
                 break
             ingest_batch(cfg, batch_records, batch_spent, batch_cap)
     except KeyboardInterrupt:
@@ -142,6 +144,8 @@ def _run_parallel_batches(
     finally:
         if run_guards is not None and run_guards.is_aborted():
             _cancel_pending_futures(futures)
+            pool.shutdown(wait=False, cancel_futures=True)
+        elif fast_shutdown:
             pool.shutdown(wait=False, cancel_futures=True)
         else:
             pool.shutdown(wait=True)

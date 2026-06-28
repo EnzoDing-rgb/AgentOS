@@ -30,6 +30,11 @@ RETIRED_RUN_SERIES: dict[str, str] = {
         "contamination and non-clean interrupt shutdown; start a fresh paid line "
         "with mainline_5x30_claim1_protocolfix_20260629"
     ),
+    "mainline_5x30_claim1_protocolfix_20260629": (
+        "forensic-only: stopped after 88/150 rows due protocol-owner abort rows "
+        "and non-clean worker shutdown; start the next paid line only after "
+        "the immediate protocol-abort guard and worker shutdown fix"
+    ),
 }
 
 

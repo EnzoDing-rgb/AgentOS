@@ -69,6 +69,7 @@ def test_protocol_guard_halts_on_unstable_protocol_prefix() -> None:
         protocol_abort_rate_max=0.05,
         protocol_failed_retry_rate_max=0.10,
         protocol_no_tool_failed_rate_max=0.10,
+        protocol_abort_immediate=False,
         policy_consecutive_fail=99,
         global_min_samples=999,
     )
@@ -102,6 +103,30 @@ def test_protocol_guard_halts_on_unstable_protocol_prefix() -> None:
 
     assert action.halt_all
     assert "protocol_guard" in action.reason
+    assert g.is_aborted()
+
+
+def test_protocol_abort_halts_immediately() -> None:
+    g = CompareRunGuards(
+        protocol_min_samples=999,
+        policy_consecutive_fail=99,
+        global_min_samples=999,
+    )
+
+    action = g.record_task(
+        {
+            "strategy": "budgetflow_task_level",
+            "instance_id": "django__django-15814",
+            "score_status": "abort",
+            "abort_owner": "protocol",
+            "exit_reason": "format_error_invalid_tool_call",
+            "protocol_retry_used": True,
+            "protocol_retry_success": False,
+        }
+    )
+
+    assert action.halt_all
+    assert "protocol_guard abort" in action.reason
     assert g.is_aborted()
 
 

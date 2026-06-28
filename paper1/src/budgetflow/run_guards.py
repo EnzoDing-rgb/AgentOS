@@ -87,6 +87,7 @@ class CompareRunGuards:
     protocol_abort_rate_max: float = 0.05
     protocol_failed_retry_rate_max: float = 0.10
     protocol_no_tool_failed_rate_max: float = 0.10
+    protocol_abort_immediate: bool = True
     _protocol_rows: int = field(default=0, repr=False)
     _protocol_abort_rows: int = field(default=0, repr=False)
     _protocol_failed_retry_rows: int = field(default=0, repr=False)
@@ -176,7 +177,7 @@ class CompareRunGuards:
         retry_success = bool(record.get("protocol_retry_success"))
         retry_reason = str(record.get("protocol_retry_reason") or "")
 
-        if (
+        protocol_abort = (
             score_status == "abort"
             and (
                 failure_owner == "protocol"
@@ -184,8 +185,16 @@ class CompareRunGuards:
                 or exit_owner in {"protocol", "parser_protocol"}
                 or exit_reason.startswith("format_error_")
             )
-        ):
+        )
+        if protocol_abort:
             self._protocol_abort_rows += 1
+            if self.protocol_abort_immediate:
+                self._abort_all_reason = (
+                    f"protocol_guard abort strategy={record.get('strategy') or ''} "
+                    f"task={record.get('instance_id') or ''} exit={exit_reason}; "
+                    "action protocol produced an unscoreable row"
+                )
+                return GuardAction(halt_all=True, reason=self._abort_all_reason)
         if retry_used and not retry_success:
             self._protocol_failed_retry_rows += 1
             if retry_reason in {"found_0_actions", "no_tool_calls"}:

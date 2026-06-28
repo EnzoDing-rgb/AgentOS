@@ -67,3 +67,32 @@ def test_parallel_batches_keyboard_interrupt_aborts_and_does_not_wait(monkeypatc
     assert pool.shutdown_calls
     assert {"wait": False, "cancel_futures": True} in pool.shutdown_calls
     assert all(future.cancelled for future in pool.futures)
+
+
+def test_parallel_batches_guard_abort_does_not_wait(monkeypatch) -> None:
+    pool_holder: dict[str, _FakePool] = {}
+
+    def fake_pool(*, max_workers: int):
+        pool = _FakePool(max_workers=max_workers)
+        pool_holder["pool"] = pool
+        return pool
+
+    cfg = CompareStrategy("s1", "all_tier2")
+    future = _FakeFuture(result=(cfg, [], 0.0, 1.0))
+
+    monkeypatch.setattr(runner, "ThreadPoolExecutor", fake_pool)
+    monkeypatch.setattr(_FakePool, "submit", lambda self, _fn, _cfg: self.futures.append(future) or future)
+    monkeypatch.setattr(runner, "as_completed", lambda futures: iter(futures))
+
+    guard = CompareRunGuards()
+    guard.request_abort("protocol_guard abort strategy=s1 task=t1")
+
+    runner._run_parallel_batches(
+        strategies=(cfg,),
+        max_workers=1,
+        run_one_batch=lambda cfg: (cfg, [], 0.0, 1.0),
+        ingest_batch=lambda *_args: None,
+        run_guards=guard,
+    )
+
+    assert {"wait": False, "cancel_futures": True} in pool_holder["pool"].shutdown_calls

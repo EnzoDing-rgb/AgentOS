@@ -96,6 +96,25 @@ def _llm_timeout_s() -> float:
     return max(10.0, value)
 
 
+def _raise_if_global_guard_aborted(
+    workflow_id: str,
+    *,
+    step_index: int,
+    backend: str | None = None,
+    sample: str = "global run guard halted before provider call",
+) -> None:
+    active_guard = get_active_guard()
+    if active_guard is None or not active_guard.is_aborted():
+        return
+    raise BudgetFlowUpstreamError(
+        workflow_id,
+        exit_reason=active_guard.abort_reason() or "global_run_guard",
+        step_index=step_index,
+        backend=backend,
+        sample=sample,
+    )
+
+
 def _is_provider_unavailable(exc: Exception) -> bool:
     status_code = getattr(exc, "status_code", None)
     if status_code in {404, 503}:
@@ -352,18 +371,17 @@ class BudgetFlowLitellmModel:
 
     def query(self, messages: list[dict[str, str]], **kwargs) -> dict:
         self.step_index += 1
-        active_guard = get_active_guard()
-        if active_guard is not None and active_guard.is_aborted():
-            reason = active_guard.abort_reason() or "global_run_guard"
-            self.last_exit_reason = reason
-            self.last_budget_snapshot = self.governor.budget_snapshot()
-            raise BudgetFlowUpstreamError(
+        try:
+            _raise_if_global_guard_aborted(
                 self.workflow_id,
-                exit_reason=reason,
                 step_index=self.step_index,
                 backend=self.last_backend_name if self.last_backend_name != "-" else None,
-                sample="global run guard halted before provider call",
             )
+        except BudgetFlowUpstreamError as exc:
+            reason = exc.exit_reason
+            self.last_exit_reason = reason
+            self.last_budget_snapshot = self.governor.budget_snapshot()
+            raise
         turn_protocol_retry_used = False
         turn_protocol_retry_success = False
         turn_protocol_retry_reason = ""
@@ -806,6 +824,12 @@ class BudgetFlowLitellmModel:
                     ))
                 # Attempt retry
                 try:
+                    _raise_if_global_guard_aborted(
+                        self.workflow_id,
+                        step_index=self.step_index,
+                        backend=backend.name,
+                        sample="global run guard halted before protocol retry",
+                    )
                     assistant_msg = _format_retry_assistant_message(response)
                     retry_user_msg = {"role": "user", "content": _FORMAT_RETRY_PROMPT}
                     retry_messages = list(messages) + [assistant_msg, retry_user_msg]
@@ -1462,6 +1486,11 @@ class BudgetFlowLitellmModel:
         model_kwargs: dict[str, Any],
         **kwargs,
     ):
+        _raise_if_global_guard_aborted(
+            self.workflow_id,
+            step_index=self.step_index,
+            backend=backend_name,
+        )
         prepared = [{k: v for k, v in msg.items() if k != "extra"} for msg in messages]
         prepared = _reorder_anthropic_thinking_blocks(prepared)
         prepared = set_cache_control(prepared, mode=self.set_cache_control)
