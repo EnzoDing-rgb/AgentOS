@@ -60,9 +60,11 @@ DEFAULT_TASK_EFFORT = 30.0
 DEFAULT_TASK_VALUE = 1.0
 TARGET_UTILIZATION_MODE = "target_utilization"
 STAGE_PREFIX_PRESSURE_MODE = "stage_prefix_pressure"
+CALIBRATED_STRONGEST_TARGET_UTILIZATION_MODE = "calibrated_strongest_target_utilization"
 ALLOWED_GENERATION_MODES = frozenset({
     TARGET_UTILIZATION_MODE,
     STAGE_PREFIX_PRESSURE_MODE,
+    CALIBRATED_STRONGEST_TARGET_UTILIZATION_MODE,
 })
 
 
@@ -72,6 +74,7 @@ class BudgetPressureSpec:
 
     mode: str
     target_utilization: float | None = None
+    calibration_reference_strategy: str = "bare_t3_baseline"
     stage_prefix_count: int | None = None
     stage_target_budget_fraction: float | None = None
     stage_reference_strategy: str = "bare_t3_baseline"
@@ -80,6 +83,8 @@ class BudgetPressureSpec:
         d: dict[str, Any] = {"mode": self.mode}
         if self.target_utilization is not None:
             d["target_utilization"] = round(self.target_utilization, 4)
+        if self.mode == CALIBRATED_STRONGEST_TARGET_UTILIZATION_MODE:
+            d["calibration_reference_strategy"] = self.calibration_reference_strategy
         if self.stage_prefix_count is not None:
             d["stage_prefix_count"] = int(self.stage_prefix_count)
         if self.stage_target_budget_fraction is not None:
@@ -301,11 +306,14 @@ def calibrate_budget(
     task_ids: list[str],
     *,
     historical_jsonl: Path | None = None,
+    calibrated_strongest_jsonl: Path | None = None,
     value_matrix_path: Path | None = None,
     frozen_plan_path: Path | None = None,
     strategies: tuple[str, ...] | None = None,
     output_path: Path | None = None,
     target_utilization: float | None = None,
+    calibrated_strongest_target_utilization: float | None = None,
+    calibration_reference_strategy: str = "bare_t3_baseline",
     stage_prefix_count: int | None = None,
     stage_target_budget_fraction: float | None = None,
     stage_reference_strategy: str = "bare_t3_baseline",
@@ -326,6 +334,8 @@ def calibrate_budget(
     """
     pressure_spec = _build_budget_pressure_spec(
         target_utilization=target_utilization,
+        calibrated_strongest_target_utilization=calibrated_strongest_target_utilization,
+        calibration_reference_strategy=calibration_reference_strategy,
         stage_prefix_count=stage_prefix_count,
         stage_target_budget_fraction=stage_target_budget_fraction,
         stage_reference_strategy=stage_reference_strategy,
@@ -350,6 +360,7 @@ def calibrate_budget(
 
     # ── Load historical per-strategy per-task cost signals ───────────────
     historical: dict[str, dict[str, float]] = {}  # strategy -> {task_id -> cost}
+    cap_reference_historical: dict[str, dict[str, float]] = {}
     calibration_excluded: dict[str, int] = {}
     censored_spend_floor_by_strategy: dict[str, float] = {}
     censored_task_costs_by_strategy: dict[str, dict[str, float]] = {}
@@ -385,6 +396,19 @@ def calibrate_budget(
                     f"{k}=${v:.4f}" for k, v in sorted(censored_spend_floor_by_strategy.items())
                 )
             )
+    if calibrated_strongest_jsonl and calibrated_strongest_jsonl.exists():
+        cap_signals = _load_historical_cost_signals(calibrated_strongest_jsonl)
+        cap_reference_historical = cap_signals.observed_costs
+        if cap_signals.excluded:
+            plan.reasons.append(
+                "cap_calibration:excluded rows from calibrated strongest source: "
+                + ", ".join(f"{k}={v}" for k, v in sorted(cap_signals.excluded.items()))
+            )
+        plan.reasons.append(
+            f"cap_calibration:calibrated_strongest_jsonl={calibrated_strongest_jsonl}"
+        )
+    else:
+        cap_reference_historical = historical
 
     # ── Estimate zero-history tasks from value matrix ────────────────────
     value_features: dict[str, dict] = {}
@@ -504,11 +528,22 @@ def calibrate_budget(
     plan.max_projected_spend_usd = max(projected.values()) if projected else 0.0
 
     # ── Decision logic ──────────────────────────────────────────────────
-    ref_spend = _reference_spend_for_pressure_spec(pressure_spec, projected, projected_task_costs, task_ids)
+    ref_spend = _reference_spend_for_pressure_spec(
+        pressure_spec,
+        projected,
+        projected_task_costs,
+        task_ids,
+        observed_task_costs=cap_reference_historical,
+    )
     plan.reference_spend_usd = ref_spend
     if pressure_spec.mode == TARGET_UTILIZATION_MODE:
         plan.reasons.append(
             f"reference_rule: strategy_set_p75_projected_spend = ${ref_spend:.4f}"
+        )
+    elif pressure_spec.mode == CALIBRATED_STRONGEST_TARGET_UTILIZATION_MODE:
+        plan.reasons.append(
+            "reference_rule: calibrated_strongest_target_utilization "
+            f"{pressure_spec.calibration_reference_strategy} observed spend = ${ref_spend:.4f}"
         )
     else:
         plan.reasons.append(
@@ -541,6 +576,12 @@ def calibrate_budget(
                     f"${strongest_runway_floor:.4f} so the Strongest Model baseline "
                     "reaches the final task before budget pressure dominates"
                 )
+        elif pressure_spec.mode == CALIBRATED_STRONGEST_TARGET_UTILIZATION_MODE:
+            plan.hard_cap_usd = target_cap
+            plan.reasons.append(
+                f"hard_cap = calibrated_strongest_observed_spend(${ref_spend:.4f}) / "
+                f"target_utilization({pressure_spec.target_utilization}) = ${target_cap:.4f}"
+            )
         else:
             plan.hard_cap_usd = target_cap
             plan.reasons.append(
@@ -899,6 +940,8 @@ def _distribution_p75(values: list[float]) -> float:
 def _build_budget_pressure_spec(
     *,
     target_utilization: float | None,
+    calibrated_strongest_target_utilization: float | None,
+    calibration_reference_strategy: str,
     stage_prefix_count: int | None,
     stage_target_budget_fraction: float | None,
     stage_reference_strategy: str,
@@ -907,9 +950,16 @@ def _build_budget_pressure_spec(
         stage_prefix_count is not None
         or stage_target_budget_fraction is not None
     )
-    if uses_stage_pressure and target_utilization is not None:
+    uses_calibrated_strongest = calibrated_strongest_target_utilization is not None
+    selected_modes = sum([
+        target_utilization is not None,
+        uses_stage_pressure,
+        uses_calibrated_strongest,
+    ])
+    if selected_modes > 1:
         raise ValueError(
-            "choose one budget pressure mode: target_utilization or stage_prefix_pressure"
+            "choose one budget pressure mode: target_utilization, stage_prefix_pressure, "
+            "or calibrated_strongest_target_utilization"
         )
     if uses_stage_pressure:
         if stage_prefix_count is None or stage_prefix_count <= 0:
@@ -930,6 +980,20 @@ def _build_budget_pressure_spec(
             stage_reference_strategy=stage_reference_strategy,
         )
 
+    if uses_calibrated_strongest:
+        if not calibration_reference_strategy:
+            raise ValueError("calibration_reference_strategy is required")
+        if not (0.0 < calibrated_strongest_target_utilization <= 1.0):
+            raise ValueError(
+                "calibrated_strongest_target_utilization must be in (0, 1], "
+                f"got {calibrated_strongest_target_utilization}"
+            )
+        return BudgetPressureSpec(
+            mode=CALIBRATED_STRONGEST_TARGET_UTILIZATION_MODE,
+            target_utilization=calibrated_strongest_target_utilization,
+            calibration_reference_strategy=calibration_reference_strategy,
+        )
+
     if target_utilization is None:
         raise ValueError("target_utilization is required")
     if not (0.0 < target_utilization <= 1.0):
@@ -945,9 +1009,25 @@ def _reference_spend_for_pressure_spec(
     projected_spend: dict[str, float],
     projected_task_costs: dict[str, dict[str, float]],
     task_ids: list[str],
+    *,
+    observed_task_costs: dict[str, dict[str, float]] | None = None,
 ) -> float:
     if spec.mode == TARGET_UTILIZATION_MODE:
         return _distribution_p75(list(projected_spend.values()))
+    if spec.mode == CALIBRATED_STRONGEST_TARGET_UTILIZATION_MODE:
+        reference_strategy = spec.calibration_reference_strategy
+        task_costs = (observed_task_costs or {}).get(reference_strategy, {})
+        observed_costs = [
+            float(task_costs.get(task_id, 0.0) or 0.0)
+            for task_id in task_ids
+            if float(task_costs.get(task_id, 0.0) or 0.0) > 0
+        ]
+        if len(observed_costs) != len(task_ids):
+            raise ValueError(
+                f"calibrated reference strategy {reference_strategy!r} has "
+                f"{len(observed_costs)}/{len(task_ids)} observed task costs"
+            )
+        return sum(observed_costs)
     if spec.mode == STAGE_PREFIX_PRESSURE_MODE:
         reference_strategy = spec.stage_reference_strategy
         task_costs = projected_task_costs.get(reference_strategy, {})
@@ -962,6 +1042,8 @@ def _reference_spend_for_pressure_spec(
 
 def _pressure_denominator(spec: BudgetPressureSpec) -> float:
     if spec.mode == TARGET_UTILIZATION_MODE:
+        return float(spec.target_utilization or 0.0)
+    if spec.mode == CALIBRATED_STRONGEST_TARGET_UTILIZATION_MODE:
         return float(spec.target_utilization or 0.0)
     if spec.mode == STAGE_PREFIX_PRESSURE_MODE:
         return float(spec.stage_target_budget_fraction or 0.0)
@@ -2039,6 +2121,14 @@ def _build_parser() -> argparse.ArgumentParser:
     calibrate.add_argument("--model-catalog", default=None, help="model tier catalog JSON")
     calibrate.add_argument("--historical-jsonl", default=None, help="optional clean historical JSONL")
     calibrate.add_argument(
+        "--calibrated-strongest-jsonl",
+        default=None,
+        help=(
+            "optional JSONL used only to compute calibrated strongest target utilization; "
+            "does not feed routing/model-fit projections"
+        ),
+    )
+    calibrate.add_argument(
         "--calibration-evidence",
         default=None,
         help="optional read-only calibration audit JSON from one previous diagnostic run",
@@ -2048,6 +2138,20 @@ def _build_parser() -> argparse.ArgumentParser:
         type=float,
         default=None,
         help="generate hard_cap from p75(projected spend) / target utilization",
+    )
+    calibrate.add_argument(
+        "--calibrated-strongest-target-utilization",
+        type=float,
+        default=None,
+        help=(
+            "generate hard_cap from observed clean strongest-baseline spend in "
+            "--historical-jsonl divided by this target utilization"
+        ),
+    )
+    calibrate.add_argument(
+        "--calibration-reference-strategy",
+        default="bare_t3_baseline",
+        help="strategy whose complete observed spend sets calibrated strongest target utilization",
     )
     calibrate.add_argument(
         "--stage-prefix-count",
@@ -2089,11 +2193,17 @@ def main(argv: list[str] | None = None) -> int:
         plan = calibrate_budget(
             _parse_task_ids(args.task_ids),
             historical_jsonl=Path(args.historical_jsonl) if args.historical_jsonl else None,
+            calibrated_strongest_jsonl=(
+                Path(args.calibrated_strongest_jsonl)
+                if args.calibrated_strongest_jsonl else None
+            ),
             value_matrix_path=Path(args.value_matrix) if args.value_matrix else None,
             frozen_plan_path=Path(args.frozen_plan) if args.frozen_plan else None,
             strategies=_strategy_names_from_set(args.strategy_set),
             output_path=Path(args.output),
             target_utilization=args.target_utilization,
+            calibrated_strongest_target_utilization=args.calibrated_strongest_target_utilization,
+            calibration_reference_strategy=args.calibration_reference_strategy,
             stage_prefix_count=args.stage_prefix_count,
             stage_target_budget_fraction=args.stage_target_budget_fraction,
             stage_reference_strategy=args.stage_reference_strategy,

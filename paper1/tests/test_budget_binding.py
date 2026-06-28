@@ -123,6 +123,84 @@ def test_calibrate_stage_prefix_pressure_sets_cap_from_reference_stage(tmp_path:
     assert any("stage_prefix_pressure" in reason for reason in plan.reasons)
 
 
+def test_calibrated_strongest_target_utilization_uses_observed_t3_spend(tmp_path: Path) -> None:
+    """Calibrated strongest mode sets cap from observed T3 spend, not outcome results."""
+    catalog = catalog_source_info()
+    jsonl = tmp_path / "hist.jsonl"
+    jsonl.write_text(
+        "\n".join([
+            json.dumps(_trusted({
+                "strategy": "bare_t3_baseline",
+                "instance_id": "task-a",
+                "total_cost": 0.40,
+                "budget_mode": "shared_batch_hard_budget",
+                "catalog": catalog,
+                "score_status": "pass",
+                "exit_status": "HarnessResolved",
+                "harness_trust": "trusted",
+                "row_finished_at": 1,
+            })),
+            json.dumps(_trusted({
+                "strategy": "bare_t3_baseline",
+                "instance_id": "task-b",
+                "total_cost": 0.55,
+                "budget_mode": "shared_batch_hard_budget",
+                "catalog": catalog,
+                "score_status": "true_fail",
+                "exit_status": "HarnessFailed",
+                "harness_trust": "trusted",
+                "row_finished_at": 1,
+            })),
+        ])
+        + "\n"
+    )
+    vm = tmp_path / "vm.json"
+    vm.write_text(json.dumps({"tasks": {}}))
+
+    plan = calibrate_budget(
+        ["task-a", "task-b"],
+        calibrated_strongest_jsonl=jsonl,
+        value_matrix_path=vm,
+        strategies=("bare_t2_baseline", "bare_t3_baseline", "budgetflow_task_level"),
+        calibrated_strongest_target_utilization=0.95,
+        output_path=tmp_path / "bp.json",
+    )
+
+    assert plan.generation_mode == "calibrated_strongest_target_utilization"
+    assert plan.target_projected_utilization == pytest.approx(0.95)
+    assert plan.reference_spend_usd == pytest.approx(0.95)
+    assert plan.hard_cap_usd == pytest.approx(1.0)
+    assert plan.budget_pressure_spec["calibration_reference_strategy"] == "bare_t3_baseline"
+    assert any("calibrated_strongest_observed_spend" in reason for reason in plan.reasons)
+
+
+def test_calibrated_strongest_target_utilization_requires_complete_reference_costs(tmp_path: Path) -> None:
+    catalog = catalog_source_info()
+    jsonl = tmp_path / "hist.jsonl"
+    jsonl.write_text(
+        json.dumps(_trusted({
+            "strategy": "bare_t3_baseline",
+            "instance_id": "task-a",
+            "total_cost": 0.40,
+            "budget_mode": "shared_batch_hard_budget",
+            "catalog": catalog,
+            "score_status": "pass",
+            "exit_status": "HarnessResolved",
+            "harness_trust": "trusted",
+            "row_finished_at": 1,
+        }))
+        + "\n"
+    )
+
+    with pytest.raises(ValueError, match="1/2 observed task costs"):
+        calibrate_budget(
+            ["task-a", "task-b"],
+            calibrated_strongest_jsonl=jsonl,
+            strategies=("bare_t2_baseline", "bare_t3_baseline", "budgetflow_task_level"),
+            calibrated_strongest_target_utilization=0.95,
+        )
+
+
 def test_calibrate_defaults_to_paper_mainline_policy_set(tmp_path: Path) -> None:
     vm = tmp_path / "vm.json"
     vm.write_text(json.dumps({"tasks": {}}))
