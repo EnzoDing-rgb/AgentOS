@@ -20,7 +20,7 @@ import os
 import sys
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 SRC = Path(__file__).resolve().parents[1]
@@ -107,6 +107,44 @@ RUNS_DIR = REPO_ROOT / "data" / "runs"
 def _compare_paths(tasks_n: int, strategies_n: int, *, stem: str | None = None) -> tuple[Path, Path]:
     base = stem or f"compare_{tasks_n}x{strategies_n}"
     return RUNS_DIR / f"{base}.jsonl", RUNS_DIR / f"{base}.summary.log"
+
+
+def _cancel_pending_futures(futures: list[Future]) -> None:
+    for future in futures:
+        if not future.done():
+            future.cancel()
+
+
+def _run_parallel_batches(
+    *,
+    strategies: tuple[CompareStrategy, ...],
+    max_workers: int,
+    run_one_batch,
+    ingest_batch,
+    run_guards: CompareRunGuards | None,
+) -> None:
+    pool = ThreadPoolExecutor(max_workers=max_workers)
+    futures: list[Future] = []
+    try:
+        futures = [pool.submit(run_one_batch, cfg) for cfg in strategies]
+        for future in as_completed(futures):
+            cfg, batch_records, batch_spent, batch_cap = future.result()
+            if run_guards is not None and run_guards.is_aborted():
+                _cancel_pending_futures(futures)
+                break
+            ingest_batch(cfg, batch_records, batch_spent, batch_cap)
+    except KeyboardInterrupt:
+        if run_guards is not None:
+            run_guards.log_action(run_guards.request_abort("keyboard_interrupt"))
+        _cancel_pending_futures(futures)
+        pool.shutdown(wait=False, cancel_futures=True)
+        raise
+    finally:
+        if run_guards is not None and run_guards.is_aborted():
+            _cancel_pending_futures(futures)
+            pool.shutdown(wait=False, cancel_futures=True)
+        else:
+            pool.shutdown(wait=True)
 
 
 def main() -> None:
@@ -671,32 +709,33 @@ def main() -> None:
                         value_profile=value_context.profile,
                     )
             else:
-                with ThreadPoolExecutor(max_workers=min(policy_jobs, len(strategies))) as pool:
-                    futures = {pool.submit(_run_one_batch, cfg): cfg for cfg in strategies}
-                    for future in as_completed(futures):
-                        cfg, batch_records, batch_spent, batch_cap = future.result()
-                        if run_guards is not None and run_guards.is_aborted():
-                            for pending in futures:
-                                pending.cancel()
-                            break
-                        _ingest_batch_footer(
-                            state,
-                            cfg,
-                            batch_records,
-                            batch_spent,
-                            batch_cap,
-                            strategy_names=strategy_names,
-                            batch_caps=batch_caps,
-                            budget_modes=budget_modes,
-                            summary_path=summary_path,
-                            started=started,
-                            out_path=out_path,
-                            total_runs=total_runs,
-                            tasks_per_strategy=len(stage_tasks),
-                            io_lock=io_lock,
-                            global_progress=global_progress,
-                            value_profile=value_context.profile,
-                        )
+                def _ingest_parallel_batch(cfg, batch_records, batch_spent, batch_cap) -> None:
+                    _ingest_batch_footer(
+                        state,
+                        cfg,
+                        batch_records,
+                        batch_spent,
+                        batch_cap,
+                        strategy_names=strategy_names,
+                        batch_caps=batch_caps,
+                        budget_modes=budget_modes,
+                        summary_path=summary_path,
+                        started=started,
+                        out_path=out_path,
+                        total_runs=total_runs,
+                        tasks_per_strategy=len(stage_tasks),
+                        io_lock=io_lock,
+                        global_progress=global_progress,
+                        value_profile=value_context.profile,
+                    )
+
+                _run_parallel_batches(
+                    strategies=tuple(strategies),
+                    max_workers=min(policy_jobs, len(strategies)),
+                    run_one_batch=_run_one_batch,
+                    ingest_batch=_ingest_parallel_batch,
+                    run_guards=run_guards,
+                )
     finally:
         set_active_guard(None)
         release_run_identity(out_stem, RUNS_DIR)

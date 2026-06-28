@@ -63,6 +63,48 @@ def test_policy_guard_halts_strategy_only() -> None:
     assert g.is_strategy_halted("all_t1_baseline")
 
 
+def test_protocol_guard_halts_on_unstable_protocol_prefix() -> None:
+    g = CompareRunGuards(
+        protocol_min_samples=10,
+        protocol_abort_rate_max=0.05,
+        protocol_failed_retry_rate_max=0.10,
+        protocol_no_tool_failed_rate_max=0.10,
+        policy_consecutive_fail=99,
+        global_min_samples=999,
+    )
+    action = GuardAction()
+    for i in range(9):
+        action = g.record_task(
+            {
+                "strategy": "budget_only_baseline",
+                "instance_id": f"task-{i}",
+                "score_status": "true_fail",
+                "protocol_retry_used": False,
+                "protocol_retry_success": False,
+            }
+        )
+    assert not action.halt_all
+
+    action = g.record_task(
+        {
+            "strategy": "routellm_learned_router_baseline",
+            "instance_id": "task-protocol",
+            "score_status": "abort",
+            "failure_owner": "protocol",
+            "abort_owner": "protocol",
+            "exit_owner": "parser_protocol",
+            "exit_reason": "format_error_no_tool_calls",
+            "protocol_retry_used": True,
+            "protocol_retry_success": False,
+            "protocol_retry_reason": "found_0_actions",
+        }
+    )
+
+    assert action.halt_all
+    assert "protocol_guard" in action.reason
+    assert g.is_aborted()
+
+
 def test_upstream_pattern() -> None:
     assert _looks_upstream("The requested model is not supported by this provider account")
     g = CompareRunGuards(upstream_consecutive=3)

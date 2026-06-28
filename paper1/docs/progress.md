@@ -4,9 +4,13 @@
 
 ## 2026-06-29 — 5x30 evaluation audit and no-paid fixes
 
-- Stopped paid runs. The current 5x30 line is diagnostic, not paper evidence:
-  RouteLLM, budget-only, and BudgetFlow reached 30/30, pure T2 exhausted budget
-  at 24/30, and pure T3 is partial at 14/30 after a runner crash.
+- Stopped `mainline_5x30_claim1_final_20260629` at 101/150 rows. It is
+  forensic-only, not paper evidence: protocol-owner abort rate was 6/101
+  (5.9%) and failed protocol retry rate was 12/101 (11.9%), concentrated in
+  T2 / RouteLLM / budget-only lanes.
+- Fixed the no-paid safety gap exposed by the stop: runtime protocol-health
+  guards now halt unstable paid runs, and Ctrl-C cancels pending policy futures
+  without waiting for the whole thread pool to finish.
 - Evaluation audit found no fake pass and no resolved-looking false negative in
   the latest JSONL. The risk was reporting: partial lanes, abort rows, and
   scoreable rows must be shown separately before drawing Claim 1 conclusions.

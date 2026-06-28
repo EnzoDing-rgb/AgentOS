@@ -83,6 +83,20 @@ class CompareRunGuards:
     _task_level_rows: int = field(default=0, repr=False)
     _task_level_strongest_rows: int = field(default=0, repr=False)
     _task_level_single_tier: int | None = field(default=None, repr=False)
+    protocol_min_samples: int = 50
+    protocol_abort_rate_max: float = 0.05
+    protocol_failed_retry_rate_max: float = 0.10
+    protocol_no_tool_failed_rate_max: float = 0.10
+    _protocol_rows: int = field(default=0, repr=False)
+    _protocol_abort_rows: int = field(default=0, repr=False)
+    _protocol_failed_retry_rows: int = field(default=0, repr=False)
+    _protocol_no_tool_failed_rows: int = field(default=0, repr=False)
+
+    def request_abort(self, reason: str) -> GuardAction:
+        with self._lock:
+            if self._abort_all_reason is None:
+                self._abort_all_reason = reason
+            return GuardAction(halt_all=True, reason=self._abort_all_reason)
 
     def is_aborted(self) -> bool:
         with self._lock:
@@ -110,6 +124,10 @@ class CompareRunGuards:
                     f"task={record.get('instance_id') or ''}"
                 )
                 return GuardAction(halt_all=True, reason=self._abort_all_reason)
+
+            action = self._record_protocol_health(record)
+            if action.should_stop_batch:
+                return action
 
             action = self._record_task_level_tier_mix(record)
             if action.should_stop_batch:
@@ -146,6 +164,61 @@ class CompareRunGuards:
                     return GuardAction(halt_all=True, reason=self._abort_all_reason)
 
             return GuardAction()
+
+    def _record_protocol_health(self, record: dict[str, Any]) -> GuardAction:
+        self._protocol_rows += 1
+        score_status = str(record.get("score_status") or "")
+        failure_owner = str(record.get("failure_owner") or "")
+        abort_owner = str(record.get("abort_owner") or "")
+        exit_owner = str(record.get("exit_owner") or "")
+        exit_reason = str(record.get("exit_reason") or "")
+        retry_used = bool(record.get("protocol_retry_used"))
+        retry_success = bool(record.get("protocol_retry_success"))
+        retry_reason = str(record.get("protocol_retry_reason") or "")
+
+        if (
+            score_status == "abort"
+            and (
+                failure_owner == "protocol"
+                or abort_owner == "protocol"
+                or exit_owner in {"protocol", "parser_protocol"}
+                or exit_reason.startswith("format_error_")
+            )
+        ):
+            self._protocol_abort_rows += 1
+        if retry_used and not retry_success:
+            self._protocol_failed_retry_rows += 1
+            if retry_reason in {"found_0_actions", "no_tool_calls"}:
+                self._protocol_no_tool_failed_rows += 1
+
+        if self._protocol_rows < self.protocol_min_samples:
+            return GuardAction()
+
+        protocol_abort_rate = self._protocol_abort_rows / self._protocol_rows
+        failed_retry_rate = self._protocol_failed_retry_rows / self._protocol_rows
+        no_tool_failed_rate = self._protocol_no_tool_failed_rows / self._protocol_rows
+        if protocol_abort_rate > self.protocol_abort_rate_max:
+            self._abort_all_reason = (
+                f"protocol_guard abort_rate={protocol_abort_rate:.1%} "
+                f"rows={self._protocol_rows} > {self.protocol_abort_rate_max:.1%}; "
+                "action protocol is unstable"
+            )
+            return GuardAction(halt_all=True, reason=self._abort_all_reason)
+        if failed_retry_rate > self.protocol_failed_retry_rate_max:
+            self._abort_all_reason = (
+                f"protocol_guard failed_retry_rate={failed_retry_rate:.1%} "
+                f"rows={self._protocol_rows} > {self.protocol_failed_retry_rate_max:.1%}; "
+                "action protocol is unstable"
+            )
+            return GuardAction(halt_all=True, reason=self._abort_all_reason)
+        if no_tool_failed_rate > self.protocol_no_tool_failed_rate_max:
+            self._abort_all_reason = (
+                f"protocol_guard no_tool_failed_rate={no_tool_failed_rate:.1%} "
+                f"rows={self._protocol_rows} > {self.protocol_no_tool_failed_rate_max:.1%}; "
+                "model/action protocol is unstable"
+            )
+            return GuardAction(halt_all=True, reason=self._abort_all_reason)
+        return GuardAction()
 
     def _record_task_level_tier_mix(self, record: dict[str, Any]) -> GuardAction:
         """Abort when task-level BudgetFlow silently degenerates into a fixed tier.

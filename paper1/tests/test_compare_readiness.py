@@ -70,6 +70,32 @@ def test_protocol_health_uses_current_classifier_for_archived_rows(tmp_path) -> 
     assert stats["protocol_abort_rate"] == 0.5
 
 
+def test_protocol_health_counts_only_failed_no_tool_retry_as_pollution(tmp_path) -> None:
+    jsonl = tmp_path / "run.jsonl"
+    rows = [
+        {
+            "score_status": "pass",
+            "protocol_retry_used": True,
+            "protocol_retry_success": True,
+            "protocol_retry_reason": "found_0_actions",
+            "harness_resolved": True,
+        },
+        {
+            "score_status": "true_fail",
+            "protocol_retry_used": True,
+            "protocol_retry_success": False,
+            "protocol_retry_reason": "found_0_actions",
+            "harness_resolved": False,
+        },
+    ]
+    jsonl.write_text("".join(json.dumps(row) + "\n" for row in rows))
+
+    stats = readiness._compute_protocol_health(jsonl)
+
+    assert stats["failed_protocol_retry_rate"] == 0.5
+    assert stats["no_tool_call_rate"] == 0.5
+
+
 def test_readiness_protocol_health_uses_latest_series_stem(tmp_path) -> None:
     (tmp_path / "series-0.jsonl").write_text("")
     (tmp_path / "series-3.jsonl").write_text(

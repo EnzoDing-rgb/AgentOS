@@ -25,6 +25,11 @@ RETIRED_RUN_SERIES: dict[str, str] = {
         "start the fresh shared-budget diagnostic with "
         "mainline_6x30_shared_budget_t3x3_20260615"
     ),
+    "mainline_5x30_claim1_final_20260629": (
+        "forensic-only: stopped after 101/150 rows due protocol retry/abort "
+        "contamination and non-clean interrupt shutdown; start a fresh paid line "
+        "with mainline_5x30_claim1_protocolfix_20260629"
+    ),
 }
 
 

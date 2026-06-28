@@ -144,7 +144,11 @@ def _compute_protocol_health(jsonl_path: Path) -> dict:
             retry_reason = str(row.get("protocol_retry_reason") or "")
             if retry_used and not retry_success:
                 failed_protocol_retry_rows += 1
-            if retry_reason in {"found_0_actions", "no_tool_calls"}:
+            if (
+                retry_used
+                and not retry_success
+                and retry_reason in {"found_0_actions", "no_tool_calls"}
+            ):
                 no_tool_call_rows += 1
 
     if total_rows == 0:
@@ -838,7 +842,7 @@ def build_compare_readiness_report(
             facts.append(f"protocol_health_rows={protocol_stats['total_rows']}")
             facts.append(f"protocol_health_abort_rate={protocol_stats['protocol_abort_rate']:.1%}")
             facts.append(f"protocol_health_failed_retry_rate={protocol_stats['failed_protocol_retry_rate']:.1%}")
-            facts.append(f"protocol_health_no_tool_call_rate={protocol_stats['no_tool_call_rate']:.1%}")
+            facts.append(f"protocol_health_failed_no_tool_rate={protocol_stats['no_tool_call_rate']:.1%}")
             if protocol_stats["protocol_abort_rate"] > 0.05:
                 blocking.append(
                     f"protocol-owner abort rate {protocol_stats['protocol_abort_rate']:.1%} > 5%; "
@@ -851,7 +855,7 @@ def build_compare_readiness_report(
                 )
             if protocol_stats["no_tool_call_rate"] > 0.10:
                 blocking.append(
-                    f"parser no-tool-call rate {protocol_stats['no_tool_call_rate']:.1%} > 10%; "
+                    f"failed parser no-tool-call rate {protocol_stats['no_tool_call_rate']:.1%} > 10%; "
                     f"model/action protocol is unstable before paid run"
                 )
         except (OSError, ValueError, TypeError) as exc:

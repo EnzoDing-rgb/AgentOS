@@ -208,7 +208,8 @@ class _ProviderTimeoutError(RuntimeError):
 
 _FORMAT_RETRY_PROMPT = (
     "Your previous response had invalid action format. "
-    "Call exactly one bash tool. Do not answer with a fenced text command."
+    "Use the tool-calling API now. Call exactly one bash tool. "
+    "Do not answer with prose or a fenced text command."
 )
 
 
