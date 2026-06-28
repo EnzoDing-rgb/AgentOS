@@ -360,10 +360,10 @@ _STRATEGY_REPORT_ORDER = {
     "bare_t2_baseline": 0,
     "bare_t3_baseline": 1,
     "routellm_learned_router_baseline": 2,
-    "budgetflow_task_level": 3,
+    "budget_only_baseline": 3,
+    "budgetflow_task_level": 4,
     "enterprise_router_baseline": 10,
     "budgetflow_same_enterprise_router": 11,
-    "budget_only_baseline": 10,
     "budgetflow_segment": 12,
 }
 

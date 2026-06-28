@@ -150,6 +150,7 @@ class TestMechanismStrategiesRegistered:
             "bare_t2_baseline",
             "bare_t3_baseline",
             "routellm_learned_router_baseline",
+            "budget_only_baseline",
             "budgetflow_task_level",
         }
 

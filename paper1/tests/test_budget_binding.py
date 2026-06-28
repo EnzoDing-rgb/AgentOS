@@ -137,6 +137,7 @@ def test_calibrate_defaults_to_paper_mainline_policy_set(tmp_path: Path) -> None
         "bare_t2_baseline",
         "bare_t3_baseline",
         "routellm_learned_router_baseline",
+        "budget_only_baseline",
         "budgetflow_task_level",
     ]
     assert plan.strategy_names == list(plan.projected_spend_by_strategy)

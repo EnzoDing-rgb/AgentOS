@@ -39,6 +39,16 @@ task router" or "RouteLLM-inspired supervised task router." Its value is to test
 whether BudgetFlow's value-aware shared-budget allocation beats a strong normal
 model-router baseline, not merely pure-tier controls.
 
+Fifth, the next Claim 1 paid comparison adds one budget-only control. The target
+shape is five policies over the fixed 30-task set: pure T2, pure T3,
+RouteLLM-inspired learned task router, budget-only baseline, and BudgetFlow
+task-level. The budget-only baseline is value-blind: it sees shared budget
+pressure and the same generic per-task hard cap as RouteLLM-inspired and
+BudgetFlow, but it does not read Task Value and does not receive BudgetFlow's
+value-aware routing or stall-guard logic. This control answers a narrow
+question: does budget pressure alone explain the result, or does Task Value add
+measurable allocation value?
+
 Fourth, the paper must not hide custom metrics behind standard-sounding names.
 SWE-bench's community-standard metric is Resolved Count and Resolved Rate.
 Cost-aware coding-agent evaluation does not yet have a stable community
@@ -166,6 +176,13 @@ hard cap: provider calls are not reserved once the task has exhausted that live
 cap. Pure T2 and pure T3 controls keep only the shared batch hard cap plus the
 global turn cap.
 
+For the next five-policy Claim 1 run, the budget-only baseline also receives
+that same generic `effective_task_budget` hard cap. The cap is a fairness
+control, not BudgetFlow logic. BudgetFlow may use the cap together with Task
+Value, Estimated Task Token Demand, Model Fit, and budget pressure to choose T2
+or T3 at task start. Budget-only uses the cap only to stop spending and uses
+budget pressure only to choose between cheaper and stronger tiers.
+
 ## Claims And Metrics
 
 | Claim | Main question | Primary evidence |
@@ -201,6 +218,12 @@ the result is still a fixed-workload value readout, but it does not establish a
 scarcity mechanism. The next paid-run candidate should therefore use a
 pre-registered tighter cap or larger/harder workload that puts pure T3 under
 real budget pressure.
+
+The current Claim 1 task set remains 30 tasks. Expanding to 50 tasks is not the
+next evidence move. The next evidence move is to keep the task set, task order,
+ValueSource, CostSource, and budget regime fixed, then add the value-blind
+budget-only baseline so the paper can separate "budget pressure helps" from
+"value-aware budget allocation helps."
 
 Claim 2 is mechanism analysis about the allocation policy that produced the
 Claim 1 outcome. For the initial draft it is explicitly out of scope. Later,

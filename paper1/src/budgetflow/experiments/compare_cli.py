@@ -49,7 +49,7 @@ def parse_compare_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--strategy-set",
         type=str,
         default=None,
-        help="path to a JSON strategy set; default custom/mainline runs use docs/config/paper_mainline_strategies.v1.json",
+        help="path to a JSON strategy set; default custom/mainline runs use docs/config/paper_mainline_strategies.v2.json",
     )
     parser.add_argument("--append", action="store_true", help="append to existing jsonl instead of overwriting")
     parser.add_argument("--skip-completed", action="store_true", help="with --append, skip completed pairs")

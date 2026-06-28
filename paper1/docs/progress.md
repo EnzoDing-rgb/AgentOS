@@ -2,6 +2,36 @@
 
 > 单一入口：进度、跑法、历史结果。
 
+## 2026-06-28 — 5x30 pre-paid prep is ready; do not expand task count
+
+- **Decision:** do not expand the Claim 1 task set to 50. The next paid
+  evidence step keeps the fixed 30-task set and adds exactly one baseline,
+  making the comparison 5 policies x 30 tasks.
+- **New baseline:** `budget_only_baseline`, a value-blind budget-pressure
+  control. It sees shared budget pressure and the same generic planned task
+  hard cap as RouteLLM-inspired and BudgetFlow. It does not read Task Value and
+  does not receive BudgetFlow's value-aware routing or stall guard. This tests
+  whether budget pressure alone explains the result.
+- **Mainline config:** default paper mainline now points at
+  `paper1/docs/config/paper_mainline_strategies.v2.json` with this order:
+  pure T2, pure T3, RouteLLM-inspired router, budget-only baseline,
+  BudgetFlow task-level. Use `--jobs 5` for the next paid run unless a concrete
+  blocker is documented.
+- **No-paid budget plan:** generated readiness candidate
+  `paper1/docs/reports/mainline_5x30_value_blind_stage_prefix_cold_budget_plan_20260628.json`.
+  It keeps the same shared hard cap as the 4x30 line, `$10.4441`, uses the same
+  stage-prefix pressure rule, and passes the pressure contract. Planned task
+  hard caps apply to RouteLLM-inspired, budget-only, and BudgetFlow.
+- **Readiness gate:** `paid-readiness-only` passes for the 5-policy setup with
+  the frozen RouteLLM plan and pre-registered value matrix. Projection
+  confidence remains `unvalidated`, so the plan is a valid paid-run candidate,
+  not a final claim by itself.
+- **4x30 evidence audit:** wrote
+  `paper1/docs/reports/mainline_4x30_claim1_matrix_order_audit_20260628.md`.
+  It confirms the current readout: BudgetFlow wins Total Resolved Value
+  (`18.50` vs pure T3 `18.00`) and Total Resolved Value / Dollar (`2.32` vs
+  `1.90`), while losing Resolved Count by one task (`14/30` vs `15/30`).
+
 ## 2026-06-28 — 4x30 clean-resume Claim 1 readout
 
 - **Run completed:** `mainline_4x30_lhm_cycle_4policy_cleanresume_20260627`

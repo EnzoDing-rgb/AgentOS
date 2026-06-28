@@ -43,13 +43,13 @@ These are the short-form checks every worker should keep in view:
 ## Run Discipline
 
 - Fix known infra, learning, observability, value-source, or harness bugs before running paid experiments.
-- For policy comparisons, tasks are serial within each policy and policies run in parallel. For the current four-policy Claim 1 mainline, `--jobs 4` is the default unless a concrete blocker is documented.
+- For policy comparisons, tasks are serial within each policy and policies run in parallel. For the current five-policy Claim 1 mainline, `--jobs 5` is the default unless a concrete blocker is documented.
 - Before paid runs, check strategy count, task count, `--jobs`, value profile, value matrix path, budget mode, output stem, provider, runtime root, worktree isolation, trace, and checker path.
 - Runtime/I/O discipline: keep source code, configs, docs, value matrices, frozen/budget plans, and final JSONL/checkpoint/summary evidence in the repo. Put high-churn regenerable files under local scratch, normally `/tmp/budgetflow-runtime`: git worktrees, repo mirrors, locks, trace scratch, pytest caches, editable installs, temporary build trees, and agent temp files. `/tmp` is acceptable scratch but not the only evidence store.
 - Do not use `/Lishun` or other NFS paths for runtime root, worktree root, repo cache, locks, trace scratch, mini-swe-agent source, or SWE-bench export fallback. If a needed dependency is only on NFS, localize it into the repo or `/tmp` scratch and make the resolver fail fast instead of silently falling back.
 - Small paid runs, such as 4 policies x 3-5 tasks, are infra and learning diagnostics. Do not treat them as paper-level evidence.
 - When segment-aware routing is a suspect root cause, include a task-level or per-request routing control. A four-policy diagnostic is acceptable when it cleanly separates baseline, segment-aware routing, value-aware segment routing, and value-aware task-level routing.
-- Paper-level evidence should scale beyond the recurring gold-pass task set. The current Claim 1 target shape is four policies across roughly 30-50 tasks per policy, after the infra and learning gates are trustworthy.
+- Paper-level Claim 1 evidence currently targets five policies across the fixed 30-task set, after the infra and learning gates are trustworthy. Do not expand to 50 tasks unless a new evidence question requires it.
 - Stop on provider billing/auth/model-access/preflight blockers. Do not reinterpret provider failures as model or routing evidence.
 - Historical JSONL and historical reports are immutable evidence. Mark old artifacts forensic-only when needed; do not patch them in place.
 - Runtime artifacts under `paper1/data/` are not source code. Do not commit trace, heartbeat, checkpoint, or run-output files unless explicitly requested.

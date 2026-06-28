@@ -38,16 +38,17 @@ class CompareStrategy:
 
 
 PAPER1_ROOT = Path(__file__).resolve().parents[3]
-PAPER_MAINLINE_STRATEGY_SET_PATH = PAPER1_ROOT / "docs" / "config" / "paper_mainline_strategies.v1.json"
+PAPER_MAINLINE_STRATEGY_SET_PATH = PAPER1_ROOT / "docs" / "config" / "paper_mainline_strategies.v2.json"
 
 
 # Registry of canonical strategy implementations.  Paper membership and order
-# live in docs/config/paper_mainline_strategies.v1.json so launch, budget, and
+# live in docs/config/paper_mainline_strategies.v2.json so launch, budget, and
 # readiness code cannot drift into different policy sets.
 CORE_STRATEGIES: tuple[CompareStrategy, ...] = (
     CompareStrategy("bare_t2_baseline", "all_tier2"),
     CompareStrategy("bare_t3_baseline", "bare_t3"),
     CompareStrategy("routellm_learned_router_baseline", "routellm_learned_router"),
+    CompareStrategy("budget_only_baseline", "budget_only"),
     CompareStrategy("budgetflow_task_level", "value_aware_task_level"),
     CompareStrategy("budgetflow_segment", "segment_value_aware"),
 )
@@ -55,7 +56,6 @@ CORE_STRATEGIES: tuple[CompareStrategy, ...] = (
 DIAGNOSTIC_STRATEGIES: tuple[CompareStrategy, ...] = (
     CompareStrategy("enterprise_router_baseline", "enterprise_router"),
     CompareStrategy("budgetflow_same_enterprise_router", "budgetflow_same_router"),
-    CompareStrategy("budget_only_baseline", "budget_only"),
     CompareStrategy("all_strongest_model", "all_t3", budgeted=False),
     CompareStrategy("all_t1_baseline", "all_flash"),
     CompareStrategy("budget_only_t2_baseline", "budget_only_t2"),
@@ -103,9 +103,9 @@ def paper_mainline_strategy_names() -> tuple[str, ...]:
     return tuple(strategy.name for strategy in paper_mainline_strategies())
 
 
-# Default paid comparison: task-level BudgetFlow against pure-tier boundaries
-# and a RouteLLM-inspired value-blind learned task router, all under the same
-# shared hard budget.
+# Default paid comparison: task-level BudgetFlow against pure-tier boundaries,
+# a RouteLLM-inspired learned task router, and a budget-pressure-only router,
+# all under the same shared hard budget.
 DEFAULT_STRATEGIES: tuple[CompareStrategy, ...] = paper_mainline_strategies()
 
 

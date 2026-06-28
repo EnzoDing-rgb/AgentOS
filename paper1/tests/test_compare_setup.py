@@ -263,9 +263,10 @@ def test_custom_ids_default_to_paper_mainline_policy_set() -> None:
         "bare_t2_baseline",
         "bare_t3_baseline",
         "routellm_learned_router_baseline",
+        "budget_only_baseline",
         "budgetflow_task_level",
     ]
-    assert selection.policy_jobs == 4
+    assert selection.policy_jobs == 5
     assert selection.jobs_upgraded is True
 
 
@@ -283,6 +284,7 @@ def test_non_3x3_preset_defaults_to_paper_mainline_not_full_catalog() -> None:
         "bare_t2_baseline",
         "bare_t3_baseline",
         "routellm_learned_router_baseline",
+        "budget_only_baseline",
         "budgetflow_task_level",
     ]
 
@@ -419,11 +421,12 @@ def test_resolve_budget_plan_explicit_budget_overrides_budget_plan(tmp_path) -> 
     assert plan.source == "cli"
 
 
-def test_budget_plan_task_caps_apply_to_budgetflow_and_routellm_policies() -> None:
-    """Pure controls keep shared caps; BudgetFlow and RouteLLM can use planned task caps."""
+def test_budget_plan_task_caps_apply_to_planned_mainline_policies() -> None:
+    """Pure controls keep shared caps; planned policies get generic task hard caps."""
     strategies = (
         CompareStrategy("enterprise_router_baseline", "enterprise_router"),
         CompareStrategy("routellm_learned_router_baseline", "routellm_learned_router"),
+        CompareStrategy("budget_only_baseline", "budget_only"),
         CompareStrategy("bare_t3_baseline", "bare_t3"),
         CompareStrategy("budgetflow_task_level", "value_aware_task_level"),
         CompareStrategy("budgetflow_segment", "segment_value_aware"),
@@ -437,6 +440,7 @@ def test_budget_plan_task_caps_apply_to_budgetflow_and_routellm_policies() -> No
             "budgetflow_segment": {"task-a": 0.8},
             "enterprise_router_baseline": {"task-a": 0.4},
             "routellm_learned_router_baseline": {"task-a": 0.4},
+            "budget_only_baseline": {"task-a": 0.5},
         },
     )
 
@@ -445,6 +449,8 @@ def test_budget_plan_task_caps_apply_to_budgetflow_and_routellm_policies() -> No
         assert modes.budget_modes[name] == "shared_batch_hard_budget"
     assert modes.batch_caps["routellm_learned_router_baseline"] == pytest.approx(2.0)
     assert modes.budget_modes["routellm_learned_router_baseline"] == "planned_task_budget"
+    assert modes.batch_caps["budget_only_baseline"] == pytest.approx(2.0)
+    assert modes.budget_modes["budget_only_baseline"] == "planned_task_budget"
     assert modes.batch_caps["budgetflow_task_level"] == pytest.approx(2.0)
     assert modes.batch_caps["budgetflow_segment"] == pytest.approx(2.0)
     assert modes.budget_modes["budgetflow_task_level"] == "planned_task_budget"
@@ -470,6 +476,7 @@ def test_paper_mainline_budget_contract_requires_planned_caps_for_routellm_and_b
     batch_caps = {strategy.name: 1.0 for strategy in selection.strategies}
     budget_modes = {strategy.name: "shared_batch_hard_budget" for strategy in selection.strategies}
     budget_modes["routellm_learned_router_baseline"] = "planned_task_budget"
+    budget_modes["budget_only_baseline"] = "planned_task_budget"
     budget_modes["budgetflow_task_level"] = "planned_task_budget"
 
     validate_paper_mainline_budget_contract(
@@ -483,9 +490,10 @@ def test_paper_mainline_budget_contract_blocks_missing_routellm_planned_cap() ->
     selection = select_strategies(_args(ids="sympy__sympy-22714"))
     batch_caps = {strategy.name: 1.0 for strategy in selection.strategies}
     budget_modes = {strategy.name: "shared_batch_hard_budget" for strategy in selection.strategies}
+    budget_modes["budget_only_baseline"] = "planned_task_budget"
     budget_modes["budgetflow_task_level"] = "planned_task_budget"
 
-    with pytest.raises(SystemExit, match="RouteLLM-inspired and BudgetFlow policies require planned_task_budget"):
+    with pytest.raises(SystemExit, match="value-blind budget and BudgetFlow policies require planned_task_budget"):
         validate_paper_mainline_budget_contract(
             strategies=selection.strategies,
             batch_caps=batch_caps,
@@ -499,6 +507,7 @@ def test_paper_mainline_budget_contract_blocks_control_task_caps() -> None:
     budget_modes = {strategy.name: "shared_batch_hard_budget" for strategy in selection.strategies}
     budget_modes["bare_t2_baseline"] = "planned_task_budget"
     budget_modes["routellm_learned_router_baseline"] = "planned_task_budget"
+    budget_modes["budget_only_baseline"] = "planned_task_budget"
     budget_modes["budgetflow_task_level"] = "planned_task_budget"
 
     with pytest.raises(SystemExit, match="diagnostic controls require shared_batch_hard_budget"):
@@ -515,6 +524,7 @@ def test_paper_mainline_budget_contract_blocks_unequal_caps() -> None:
     batch_caps["budgetflow_task_level"] = 0.1
     budget_modes = {strategy.name: "shared_batch_hard_budget" for strategy in selection.strategies}
     budget_modes["routellm_learned_router_baseline"] = "planned_task_budget"
+    budget_modes["budget_only_baseline"] = "planned_task_budget"
     budget_modes["budgetflow_task_level"] = "planned_task_budget"
 
     with pytest.raises(SystemExit, match="paper mainline requires equal shared batch caps"):

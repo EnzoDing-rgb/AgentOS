@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "name": "paper_mainline_5_policy_task_level",
+  "objective": "Claim 1 task-level comparison against pure T2, pure T3, RouteLLM-inspired learned-router, budget-pressure-only routing, and BudgetFlow task-level controls",
+  "strategies": [
+    {
+      "name": "bare_t2_baseline",
+      "role": "middle-tier fixed baseline"
+    },
+    {
+      "name": "bare_t3_baseline",
+      "role": "strongest-model fixed baseline"
+    },
+    {
+      "name": "routellm_learned_router_baseline",
+      "role": "value-blind learned task router baseline"
+    },
+    {
+      "name": "budget_only_baseline",
+      "role": "value-blind budget-pressure baseline with generic task hard caps"
+    },
+    {
+      "name": "budgetflow_task_level",
+      "role": "Claim 1 main policy: value-aware task-level BudgetFlow"
+    }
+  ]
+}

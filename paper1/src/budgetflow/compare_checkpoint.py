@@ -113,6 +113,9 @@ _STRATEGY_ABBREV: dict[str, str] = {
     "budgetflow_segment": "bf-segment",
     "budgetflow_task_level": "bf-task",
     "budgetflow_same_enterprise_router": "bf-same-er",
+    "bare_t2_baseline": "t2",
+    "bare_t3_baseline": "t3",
+    "routellm_learned_router_baseline": "routellm",
 }
 
 

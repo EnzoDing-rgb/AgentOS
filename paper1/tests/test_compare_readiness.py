@@ -339,7 +339,13 @@ def test_readiness_blocks_paper_mainline_without_primary_value_source(tmp_path) 
         '{"hard_cap_usd":1.0,"source":"budget_binding_calibrator","decision":"PASS",'
         '"task_ids":["task-a"],'
         '"strategy_names":["bare_t2_baseline","bare_t3_baseline",'
-        '"routellm_learned_router_baseline","budgetflow_task_level"]}'
+        '"routellm_learned_router_baseline","budget_only_baseline",'
+        '"budgetflow_task_level"],'
+        '"planned_task_budget_policy":{"mode":"planned_task_budget"},'
+        '"planned_task_budget_by_strategy":{'
+        '"routellm_learned_router_baseline":{"task-a":0.8},'
+        '"budget_only_baseline":{"task-a":0.8},'
+        '"budgetflow_task_level":{"task-a":0.8}}}'
     )
     frozen_plan = tmp_path / "frozen_plan.json"
     frozen_plan.write_text(

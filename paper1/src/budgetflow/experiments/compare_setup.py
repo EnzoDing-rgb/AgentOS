@@ -27,6 +27,7 @@ PLANNED_TASK_BUDGET_MODE = "planned_task_budget"
 BUDGETFLOW_ACTIVE_ROUTINGS = frozenset({"value_aware_task_level", "segment_value_aware"})
 PLANNED_TASK_BUDGET_ROUTINGS = BUDGETFLOW_ACTIVE_ROUTINGS | frozenset({
     "routellm_learned_router",
+    "budget_only",
 })
 
 DIAGNOSTIC_3X3_IDS = (
@@ -424,7 +425,7 @@ def validate_paper_mainline_budget_contract(
     }
     if any(mode != PLANNED_TASK_BUDGET_MODE for mode in planned_modes.values()):
         raise SystemExit(
-            "paper mainline RouteLLM-inspired and BudgetFlow policies require "
+            "paper mainline value-blind budget and BudgetFlow policies require "
             f"{PLANNED_TASK_BUDGET_MODE}; got {planned_modes}"
         )
     caps = [batch_caps.get(name) for name in mainline_names]

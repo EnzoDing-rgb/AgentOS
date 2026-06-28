@@ -43,6 +43,7 @@ class TestStrategyCatalog:
             "bare_t2_baseline",
             "bare_t3_baseline",
             "routellm_learned_router_baseline",
+            "budget_only_baseline",
             "budgetflow_task_level",
         ]
         assert set(ordered) == names
@@ -76,6 +77,13 @@ class TestStrategyCatalog:
 
         strategy = next(s for s in DEFAULT_STRATEGIES if s.name == "routellm_learned_router_baseline")
         assert strategy.routing == "routellm_learned_router"
+        assert strategy.budgeted is True
+
+    def test_budget_only_available_as_mainline_control(self):
+        from budgetflow.experiments.compare_config import DEFAULT_STRATEGIES
+
+        strategy = next(s for s in DEFAULT_STRATEGIES if s.name == "budget_only_baseline")
+        assert strategy.routing == "budget_only"
         assert strategy.budgeted is True
 
     def test_budgetflow_same_enterprise_router_available_as_diagnostic(self):

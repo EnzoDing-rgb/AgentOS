@@ -6,8 +6,8 @@ Different policies may run in parallel (--jobs) using git worktrees for repo iso
 Usage (from paper1/):
   # diagnostic smoke preset
   PYTHONPATH=src:../external/mini-swe-agent/src python -u -m budgetflow.run_mini_swe_compare --preset 3x3 --jobs 3
-  # paper mainline compare uses docs/config/paper_mainline_strategies.v1.json
-  PYTHONPATH=src:../external/mini-swe-agent/src python -u -m budgetflow.run_mini_swe_compare --ids <ids> --jobs 4
+  # paper mainline compare uses docs/config/paper_mainline_strategies.v2.json
+  PYTHONPATH=src:../external/mini-swe-agent/src python -u -m budgetflow.run_mini_swe_compare --ids <ids> --jobs 5
 
 Outputs:
   data/runs/<run_series>-N.jsonl

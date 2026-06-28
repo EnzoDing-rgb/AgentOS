@@ -49,6 +49,7 @@ PLANNED_TASK_BUDGET_STRATEGIES = frozenset({
     "budgetflow_task_level",
     "budgetflow_segment",
     "routellm_learned_router_baseline",
+    "budget_only_baseline",
 })
 FROZEN_ROUTER_PROJECTION_STRATEGIES = frozenset({
     "enterprise_router_baseline",
@@ -569,7 +570,7 @@ def calibrate_budget(
             "sum_can_exceed_hard_cap": True,
             "runtime_semantics": (
                 "generic_task_hard_cap_for_planned policies; BudgetFlow may also use "
-                "the signal for routing and stop-loss, while non-BudgetFlow routers "
+                "the signal for routing and stop-loss, while value-blind routers "
                 "receive only the hard cap"
             ),
             "applies_to": sorted(plan.planned_task_budget_by_strategy),
@@ -578,7 +579,8 @@ def calibrate_budget(
             "planned_task_budget: planned policies get per-task hard runway "
             "derived from projected task costs; sums may exceed hard_cap. "
             "BudgetFlow may consume the signal for routing and stop-loss; "
-            "RouteLLM-inspired controls receive only the generic task hard cap."
+            "RouteLLM-inspired and budget-pressure-only controls receive only "
+            "the generic task hard cap."
         )
     plan.projection_diagnostics = _build_projection_diagnostics(
         plan,
