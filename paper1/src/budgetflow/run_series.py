@@ -188,23 +188,22 @@ def completed_scoreable_keys(
     return done
 
 
-def scoreable_spend_by_strategy(
+def resume_spend_by_strategy(
     jsonl_path: Path,
     *,
     normalize_strategy: Callable[[str], str] | None = None,
 ) -> dict[str, float]:
-    """Deduplicated scoreable spend per strategy for resume budget state.
+    """Paid spend per strategy for resume budget state.
 
-    Completion idempotency is defined by scoreable policy-task pairs.  Resume
-    budget state must use the same boundary: retryable abort rows are paid
-    forensic evidence, but they must not make a resumed experiment start with
-    a smaller policy budget before the task is rerun.
+    Completion idempotency is defined by scoreable policy-task pairs, but budget
+    conservation is defined by paid provider work. Retryable abort rows remain
+    retryable, while their real spend still reduces the shared budget on resume.
     """
     if not jsonl_path.is_file():
         return {}
     normalize = normalize_strategy or (lambda name: name)
-    latest_by_pair: dict[ScoreableKey, tuple[float, float]] = {}
-    for line_no, line in enumerate(jsonl_path.read_text().splitlines(), start=1):
+    spend: dict[str, float] = {}
+    for line in jsonl_path.read_text().splitlines():
         if not line.strip():
             continue
         try:
@@ -212,7 +211,7 @@ def scoreable_spend_by_strategy(
         except json.JSONDecodeError:
             continue
         score_status = str(record.get("score_status") or "")
-        if score_status not in {"pass", "true_fail"}:
+        if score_status not in {"pass", "true_fail", "abort"}:
             continue
         strategy = normalize(str(record.get("strategy") or ""))
         instance_id = str(record.get("instance_id") or "")
@@ -222,15 +221,8 @@ def scoreable_spend_by_strategy(
             cost = float(record.get("total_cost") or 0.0)
         except (TypeError, ValueError):
             cost = 0.0
-        try:
-            finished_at = float(record.get("row_finished_at") or line_no)
-        except (TypeError, ValueError):
-            finished_at = float(line_no)
-        key = (strategy, instance_id)
-        if key not in latest_by_pair or finished_at >= latest_by_pair[key][0]:
-            latest_by_pair[key] = (finished_at, cost)
-    spend: dict[str, float] = {}
-    for (strategy, _instance_id), (_finished_at, cost) in latest_by_pair.items():
+        if cost <= 0.0:
+            continue
         spend[strategy] = spend.get(strategy, 0.0) + cost
     return spend
 

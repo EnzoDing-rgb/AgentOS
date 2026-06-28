@@ -27,14 +27,21 @@ class StrategyTask:
     instance_id: str
     task_index: int
     score_status: str
+    harness_resolved: bool
+    harness_trust: str
+    patch_extracted: bool
     task_value: float
     resolved_value: float
     total_cost: float
+    batch_budget_cap: float
     llm_turns: int
     first_tier: int | None
     tier_mix: str
     exit_reason: str
+    abort_reason: str
+    true_fail_reason: str
     failure_class: str
+    detail: str
 
 
 def load_latest_rows(jsonl_path: Path) -> list[dict[str, Any]]:
@@ -78,14 +85,21 @@ def row_to_task(row: dict[str, Any]) -> StrategyTask:
         instance_id=str(row.get("instance_id") or ""),
         task_index=int(row.get("task_index_in_batch") or 0),
         score_status=str(row.get("score_status") or ""),
+        harness_resolved=row.get("harness_resolved") in (True, "True", "true"),
+        harness_trust=str(row.get("harness_trust") or ""),
+        patch_extracted=bool(row.get("patch_extracted")),
         task_value=float(row.get("task_value") or 0.0),
         resolved_value=float(row.get("resolved_value") or 0.0),
         total_cost=float(row.get("total_cost") or 0.0),
+        batch_budget_cap=float(row.get("batch_budget_cap") or 0.0),
         llm_turns=int(row.get("llm_turns") or 0),
         first_tier=first_tier,
         tier_mix=tier_mix,
         exit_reason=str(row.get("exit_reason") or ""),
+        abort_reason=str(row.get("abort_reason") or ""),
+        true_fail_reason=str(row.get("true_fail_reason") or ""),
         failure_class=str(row.get("failure_class") or ""),
+        detail=str(row.get("detail") or ""),
     )
 
 
@@ -120,6 +134,8 @@ def build_report(
     lines.append("This is a no-paid audit of completed JSONL rows. It does not re-score patches or edit historical artifacts.")
     lines.append("")
     lines.extend(_summary_table(by_strategy, task_count=len(task_order)))
+    lines.append("")
+    lines.extend(_scoring_evidence(by_strategy))
     lines.append("")
     lines.extend(_order_audit(task_order, by_key, strategies, order_source=order_source))
     lines.append("")
@@ -178,11 +194,13 @@ def _summary_table(by_strategy: dict[str, list[StrategyTask]], *, task_count: in
     lines = [
         "## Strategy Summary",
         "",
-        "| Strategy | Resolved | Rate | Spend | Cost / Resolved | Total Resolved Value | Total Resolved Value / Dollar |",
-        "|---|---:|---:|---:|---:|---:|---:|",
+        "| Strategy | Lane State | Rows | Scoreable | Abort | Resolved | Rate (planned) | Rate (scoreable) | Spend | Cost / Resolved | Total Resolved Value | Total Resolved Value / Dollar |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for strategy, tasks in by_strategy.items():
         resolved = sum(1 for task in tasks if task.score_status == "pass")
+        aborts = sum(1 for task in tasks if task.score_status == "abort")
+        scoreable = sum(1 for task in tasks if task.score_status in {"pass", "true_fail"})
         spend = sum(task.total_cost for task in tasks)
         value = sum(task.resolved_value for task in tasks)
         metrics = build_standard_metrics(
@@ -191,15 +209,82 @@ def _summary_table(by_strategy: dict[str, list[StrategyTask]], *, task_count: in
             total_spend=spend,
             total_resolved_value=value,
         )
+        scoreable_rate = resolved / scoreable if scoreable > 0 else 0.0
         lines.append(
-            f"| {strategy} | {resolved}/{task_count} | "
+            f"| {strategy} | {_lane_state(tasks, task_count=task_count)} | "
+            f"{len(tasks)}/{task_count} | "
+            f"{scoreable}/{task_count} | "
+            f"{aborts} | "
+            f"{resolved}/{task_count} | "
             f"{metrics['resolved_rate'] * 100:.1f}% | "
+            f"{scoreable_rate * 100:.1f}% | "
             f"${metrics['total_spend']:.2f} | "
             f"${metrics['cost_per_resolved_task']:.2f} | "
             f"{metrics['total_resolved_value']:.2f} | "
             f"{metrics['total_resolved_value_per_dollar']:.2f} |"
         )
     return lines
+
+
+def _lane_state(tasks: list[StrategyTask], *, task_count: int) -> str:
+    row_count = len(tasks)
+    abort_count = sum(1 for task in tasks if task.score_status == "abort")
+    spend = sum(task.total_cost for task in tasks)
+    cap = max((task.batch_budget_cap for task in tasks), default=0.0)
+    if row_count >= task_count:
+        return "complete" if abort_count == 0 else "complete_with_aborts"
+    if cap > 0.0 and spend >= cap * 0.999:
+        return "budget_exhausted"
+    return "partial_incomplete"
+
+
+def _scoring_evidence(by_strategy: dict[str, list[StrategyTask]]) -> list[str]:
+    lines = [
+        "## Scoring Evidence",
+        "",
+        "| Strategy | Trusted Pass | Trusted True Fail | No-Patch True Fail | Abort | Suspect |",
+        "|---|---:|---:|---:|---:|---:|",
+    ]
+    for strategy, tasks in by_strategy.items():
+        buckets = defaultdict(int)
+        for task in tasks:
+            buckets[_evidence_bucket(task)] += 1
+        lines.append(
+            f"| {strategy} | "
+            f"{buckets['trusted_pass']} | "
+            f"{buckets['trusted_true_fail']} | "
+            f"{buckets['no_patch_true_fail']} | "
+            f"{buckets['abort']} | "
+            f"{buckets['suspect']} |"
+        )
+    lines.append("")
+    lines.append(
+        "Suspect means the row should be inspected before paper use: a pass without trusted harness evidence, "
+        "or a non-pass row carrying resolved-looking harness evidence."
+    )
+    return lines
+
+
+def _evidence_bucket(task: StrategyTask) -> str:
+    if task.score_status == "pass":
+        if task.harness_resolved and task.harness_trust in {"trusted", ""}:
+            return "trusted_pass"
+        return "suspect"
+    if task.score_status == "abort":
+        return "abort"
+    if _has_resolved_looking_evidence(task):
+        return "suspect"
+    if task.patch_extracted and task.harness_trust == "trusted":
+        return "trusted_true_fail"
+    if not task.patch_extracted:
+        return "no_patch_true_fail"
+    return "suspect"
+
+
+def _has_resolved_looking_evidence(task: StrategyTask) -> bool:
+    if task.harness_resolved:
+        return True
+    return "fail_after=pass" in task.detail and "pass_to_pass=pass" in task.detail
 
 
 def _order_audit(

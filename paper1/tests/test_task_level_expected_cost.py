@@ -593,6 +593,7 @@ class TestChooseTaskLevelBackend:
         assert scores["strongest_budget_coverage"] >= scores["strongest_min_budget_coverage"]
         assert scores["budget_allows_strongest_probe"] == 1.0
         assert scores["high_pressure_efficiency_probe"] == 1.0
+        assert scores["rule"] == "high_pressure_efficiency_probe"
         assert ctx.last_decision.reason == "bf_task_start_high_pressure_efficiency_probe"
 
     def test_zero_effective_task_budget_vetoes_t3_cost_dominance(self):

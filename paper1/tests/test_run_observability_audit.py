@@ -1075,6 +1075,20 @@ def test_harness_trust_blocks_resolved_rows_with_missing_pass_evidence() -> None
     assert "unknown_patch_source:submission" in trust["harness_issues"]
 
 
+def test_harness_trust_blocks_unresolved_rows_with_pass_evidence() -> None:
+    trust = build_harness_trust({
+        "harness_resolved": False,
+        "patch_extracted": True,
+        "patch_source": "workspace_diff",
+        "workspace_patch": "/tmp/workspace.patch",
+        "detail": "test_patch=ok; fail_before=fail; model_patch=ok; fail_after=pass; pass_to_pass=pass",
+    })
+
+    assert trust["harness_trust"] == "invalid"
+    assert trust["severity"] == "blocking"
+    assert "unresolved_but_pass_evidence" in trust["harness_issues"]
+
+
 def test_per_task_comparison_includes_cross_policy_rows() -> None:
     audit = build_compact_audit([
         {

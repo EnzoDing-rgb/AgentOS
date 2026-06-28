@@ -610,6 +610,28 @@ def test_score_status_true_fail_for_clean_validation_failure() -> None:
     assert score["true_fail_reason"] == "model_fail"
 
 
+def test_score_status_aborts_unresolved_rows_with_resolved_harness_evidence() -> None:
+    rec = {
+        "harness_resolved": False,
+        "patch_extracted": True,
+        "patch_source": "workspace_diff",
+        "workspace_patch": "/tmp/workspace.patch",
+        "agent_gold_edited": True,
+        "exit_status": "HarnessFailed",
+        "exit_reason": "harness_failed",
+        "detail": "test_patch=ok; fail_before=fail; model_patch=ok; fail_after=pass; pass_to_pass=pass",
+        "turn_trace_count": 1,
+        "turn_traces": [{"backend_tier": 2}],
+    }
+
+    score = build_score_status(rec)
+
+    assert score["score_status"] == "abort"
+    assert score["scoreable"] is False
+    assert score["abort_reason"] == "untrusted_harness_evidence"
+    assert score["true_fail_reason"] == ""
+
+
 def test_score_status_abort_for_provider_failure() -> None:
     rec = {
         "harness_resolved": False,

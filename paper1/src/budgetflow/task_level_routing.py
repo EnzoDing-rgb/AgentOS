@@ -269,7 +269,11 @@ def task_start_tier_decision(
             "high_pressure_efficiency_probe"
             if high_pressure_efficiency_probe
             else "uncertain_frontier_probe"
-        ), scores("uncertain_frontier_probe")
+        ), scores(
+            "high_pressure_efficiency_probe"
+            if high_pressure_efficiency_probe
+            else "uncertain_frontier_probe"
+        )
 
     # ── default: reference tier ──────────────────────────────────────────
     return 2, "reference_frontier", scores("reference_frontier")

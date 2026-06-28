@@ -181,6 +181,8 @@ def build_harness_trust(record: dict) -> dict:
     if patch_extracted and evidence.model_patch_ok and not resolved:
         if not evidence.fail_after_status:
             issues.append("fail_after_missing")
+        elif evidence.fail_after_passed and evidence.pass_to_pass_ok:
+            issues.append("unresolved_but_pass_evidence")
         elif evidence.fail_after_status == "pass" and not evidence.pass_to_pass_status:
             issues.append("pass_to_pass_missing")
     if resolved and not evidence.fail_after_passed:
@@ -193,10 +195,16 @@ def build_harness_trust(record: dict) -> dict:
         issues.append("gold_edited_but_no_files_listed")
 
     # ── Determine trust level ──────────────────────────────────────────
-    blocking_gaps = {"resolved_but_fail_after_not_passed", "resolved_but_pass_to_pass_not_ok"}
+    blocking_gaps = {
+        "resolved_but_fail_after_not_passed",
+        "resolved_but_pass_to_pass_not_ok",
+        "unresolved_but_pass_evidence",
+    }
     issue_set = set(issues)
 
     if "host_dependency_contamination" in issue_set:
+        trust = "invalid"
+    elif "unresolved_but_pass_evidence" in issue_set:
         trust = "invalid"
     elif not patch_extracted and not resolved:
         trust = "incomplete"
@@ -258,8 +266,14 @@ def _harness_owner(
     """Infer who owns the trust gap."""
     if not issues:
         return "none"
-    harness_gaps = {"test_patch_not_ok", "fail_before_not_failed", "model_patch_missing",
-                    "resolved_but_fail_after_not_passed", "resolved_but_pass_to_pass_not_ok"}
+    harness_gaps = {
+        "test_patch_not_ok",
+        "fail_before_not_failed",
+        "model_patch_missing",
+        "resolved_but_fail_after_not_passed",
+        "resolved_but_pass_to_pass_not_ok",
+        "unresolved_but_pass_evidence",
+    }
     model_gaps = {"submitted_without_attempt", "attempted_but_not_submitted",
                   "gold_edited_but_no_files_listed", "model_patch_failed"}
     protocol_gaps = {"workspace_patch_path_missing", "unknown_patch_source"}

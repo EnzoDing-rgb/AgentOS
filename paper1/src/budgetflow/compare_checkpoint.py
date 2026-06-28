@@ -82,8 +82,7 @@ class CompareCheckpointStore:
         completed: bool = True,
     ) -> None:
         st = self.ensure_strategy(strategy, batch_cap)
-        if completed:
-            st.batch_spent = batch_spent
+        st.batch_spent = batch_spent
         st.in_flight_task = None
         if completed and instance_id not in st.completed_tasks:
             st.completed_tasks.append(instance_id)

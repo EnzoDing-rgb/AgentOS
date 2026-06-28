@@ -224,6 +224,7 @@ def _collect_workspace_patch(repo_dir: Path, *, baseline_ref: str) -> WorkspaceP
         check=True,
         capture_output=True,
         text=True,
+        errors="replace",
     )
     patch_text = clean_scoreable_patch(result.stdout)
     if not patch_text.strip():

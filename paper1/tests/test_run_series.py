@@ -8,7 +8,7 @@ from budgetflow.run_series import (
     allocate_series_stem,
     completed_scoreable_keys,
     detect_sibling_stems,
-    scoreable_spend_by_strategy,
+    resume_spend_by_strategy,
     latest_run_contract,
     list_series_stems,
     release_run_identity,
@@ -489,20 +489,21 @@ def test_checkpoint_total_runs_floors_to_completed_pair_count(tmp_path) -> None:
     assert '"total_runs": 5' in path.read_text()
 
 
-def test_scoreable_spend_by_strategy_dedupes_retries_and_excludes_aborts(tmp_path) -> None:
+def test_resume_spend_by_strategy_counts_paid_abort_rows(tmp_path) -> None:
     path = tmp_path / "resume.jsonl"
     rows = [
         {"strategy": "s1", "instance_id": "task-a", "score_status": "abort", "total_cost": 1.5},
         {"strategy": "s1", "instance_id": "task-a", "score_status": "pass", "total_cost": 0.2},
         {"strategy": "s1", "instance_id": "task-b", "score_status": "true_fail", "total_cost": 0.3},
         {"strategy": "s1", "instance_id": "task-b", "score_status": "true_fail", "total_cost": 0.4},
+        {"strategy": "s1", "instance_id": "task-c", "score_status": "abort", "exit_status": "BadRequestError", "total_cost": 0.0},
         {"strategy": "s2", "instance_id": "task-a", "score_status": "pass", "total_cost": 0.7},
     ]
     path.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
 
-    spend = scoreable_spend_by_strategy(path)
+    spend = resume_spend_by_strategy(path)
 
     assert spend == {
-        "s1": pytest.approx(0.6),
+        "s1": pytest.approx(2.4),
         "s2": pytest.approx(0.7),
     }

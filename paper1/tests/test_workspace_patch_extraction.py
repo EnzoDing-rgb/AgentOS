@@ -113,6 +113,61 @@ def test_workspace_patch_cleans_setup_lock_binary_and_non_ascii_noise(tmp_path: 
     assert "unicod" not in workspace_patch.text
 
 
+def test_workspace_patch_handles_non_utf8_binary_diff(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    _git(repo, "config", "user.name", "Test")
+    (repo / "blob.bin").write_bytes(b"\x00old\x8f\n")
+    _git(repo, "add", "blob.bin")
+    _git(repo, "commit", "-m", "base")
+
+    baseline = runner._capture_workspace_baseline(repo)
+    (repo / "blob.bin").write_bytes(b"\x00new\x8f\xff\n")
+
+    workspace_patch = runner._collect_workspace_patch(repo, baseline_ref=baseline.ref)
+
+    assert workspace_patch.text is None
+    assert workspace_patch.source == "none"
+    assert workspace_patch.changed_files == ("blob.bin",)
+    assert workspace_patch.drop_reason
+
+
+def test_workspace_patch_diff_decode_error_does_not_crash(tmp_path: Path, monkeypatch) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    _git(repo, "config", "user.name", "Test")
+    (repo / "app.py").write_text("old\n")
+    _git(repo, "add", "app.py")
+    _git(repo, "commit", "-m", "base")
+
+    baseline = runner._capture_workspace_baseline(repo)
+    (repo / "app.py").write_text("fixed\n")
+
+    real_run = subprocess.run
+
+    def fake_run(*args, **kwargs):
+        cmd = args[0]
+        if (
+            isinstance(cmd, list)
+            and cmd[:4] == ["git", "diff", "--no-color", "--binary"]
+            and kwargs.get("text") is True
+            and kwargs.get("errors") != "replace"
+        ):
+            raise UnicodeDecodeError("utf-8", b"\x8f", 0, 1, "invalid start byte")
+        return real_run(*args, **kwargs)
+
+    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+
+    workspace_patch = runner._collect_workspace_patch(repo, baseline_ref=baseline.ref)
+
+    assert workspace_patch.text is not None
+    assert "+fixed" in workspace_patch.text
+
+
 def test_workspace_patch_rejects_patch_that_cannot_reverse_apply(tmp_path: Path, monkeypatch) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()

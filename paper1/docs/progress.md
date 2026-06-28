@@ -2,6 +2,18 @@
 
 > 单一入口：进度、跑法、历史结果。
 
+## 2026-06-29 — 5x30 evaluation audit and no-paid fixes
+
+- Stopped paid runs. The current 5x30 line is diagnostic, not paper evidence:
+  RouteLLM, budget-only, and BudgetFlow reached 30/30, pure T2 exhausted budget
+  at 24/30, and pure T3 is partial at 14/30 after a runner crash.
+- Evaluation audit found no fake pass and no resolved-looking false negative in
+  the latest JSONL. The risk was reporting: partial lanes, abort rows, and
+  scoreable rows must be shown separately before drawing Claim 1 conclusions.
+- Fixed no-paid bugs: non-UTF8 workspace diff crash, task-start rule/reason
+  mismatch, high-pressure probe guard attribution, paid-abort resume accounting,
+  and contradictory harness evidence being silently counted as true fail.
+
 ## 2026-06-28 — 5x30 pre-paid prep is ready; do not expand task count
 
 - **Decision:** do not expand the Claim 1 task set to 50. The next paid

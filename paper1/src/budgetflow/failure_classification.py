@@ -276,6 +276,7 @@ def build_score_status(record: dict[str, Any]) -> dict[str, Any]:
     trust = build_harness_trust(record)
     trust_level = str(trust.get("harness_trust") or "")
     severity = str(trust.get("severity") or "")
+    trust_issues = {str(issue) for issue in (trust.get("harness_issues") or [])}
 
     exit_owner = compute_exit_owner(record)
 
@@ -308,7 +309,11 @@ def build_score_status(record: dict[str, Any]) -> dict[str, Any]:
     abort_reason = ""
     abort_owner = owner
     abort_stage = stage
-    if agent_env_issues:
+    if "unresolved_but_pass_evidence" in trust_issues:
+        abort_reason = "untrusted_harness_evidence"
+        abort_owner = str(trust.get("harness_owner") or "harness")
+        abort_stage = stage if stage else "harness"
+    elif agent_env_issues:
         abort_reason = "agent_environment_issue"
         abort_owner = "infra"
         abort_stage = "runtime"

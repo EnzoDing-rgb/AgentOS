@@ -923,7 +923,7 @@ def test_planned_task_budget_checkpoint_records_shared_batch_cap(monkeypatch, tm
     assert strategy_state.completed_tasks == ["task-a", "task-b"]
 
 
-def test_checkpoint_does_not_mark_abort_rows_completed(monkeypatch, tmp_path) -> None:
+def test_checkpoint_records_abort_spend_without_marking_task_completed(monkeypatch, tmp_path) -> None:
     from budgetflow.experiments import compare_execution
 
     def fake_run_task_record(task, **kwargs):
@@ -983,7 +983,7 @@ def test_checkpoint_does_not_mark_abort_rows_completed(monkeypatch, tmp_path) ->
     )
     strategy_state = restored.strategies["budgetflow_task_level"]
     assert strategy_state.in_flight_task is None
-    assert strategy_state.batch_spent == 0.0
+    assert strategy_state.batch_spent == pytest.approx(0.2)
     assert strategy_state.completed_tasks == []
 
 
