@@ -233,9 +233,18 @@ _FORMAT_RETRY_PROMPT = (
 
 
 def _format_retry_assistant_message(response) -> dict[str, str]:
-    """Return an OpenAI-valid assistant message for protocol retry history."""
+    """Return an OpenAI-valid assistant message for protocol retry history.
+
+    This retry message is synthetic: the tool calls in the failed response were
+    not executed, so replaying them would require matching tool messages that do
+    not exist. Keep provider-side reasoning fields, but strip tool calls.
+    """
     raw = response.choices[0].message.model_dump()
-    message = {k: v for k, v in raw.items() if k != "extra" and v is not None}
+    message = {
+        k: v
+        for k, v in raw.items()
+        if k not in {"extra", "tool_calls"} and v is not None
+    }
     content = raw.get("content")
     if not isinstance(content, str) or not content.strip():
         content = "The previous response contained invalid tool calls and was not executed."
@@ -244,12 +253,57 @@ def _format_retry_assistant_message(response) -> dict[str, str]:
     return message
 
 
+def _tool_call_ids(tool_calls: object) -> list[str]:
+    ids: list[str] = []
+    if not isinstance(tool_calls, list):
+        return ids
+    for call in tool_calls:
+        call_id = getattr(call, "id", None)
+        if call_id is None and isinstance(call, dict):
+            call_id = call.get("id")
+        if call_id:
+            ids.append(str(call_id))
+    return ids
+
+
+def _assert_provider_tool_sequence(messages: list[dict]) -> None:
+    pending_tool_call_ids: list[str] = []
+    for index, msg in enumerate(messages):
+        role = msg.get("role")
+        if pending_tool_call_ids:
+            if role != "tool":
+                raise ValueError(
+                    "provider message history has assistant tool_calls without "
+                    f"matching tool messages before message {index}"
+                )
+            if str(msg.get("tool_call_id") or "") not in pending_tool_call_ids:
+                raise ValueError(
+                    "provider message history has a tool message with an "
+                    f"unexpected tool_call_id before message {index}"
+                )
+            pending_tool_call_ids.remove(str(msg.get("tool_call_id")))
+            continue
+
+        if role == "tool":
+            raise ValueError(
+                "provider message history has a tool message without a preceding "
+                f"assistant tool_call before message {index}"
+            )
+
+        if role == "assistant":
+            pending_tool_call_ids = _tool_call_ids(msg.get("tool_calls"))
+
+    if pending_tool_call_ids:
+        raise ValueError("provider message history ends with unpaired assistant tool_calls")
+
+
 def _prepare_provider_messages(messages: list[dict]) -> list[dict]:
     """Strip local bookkeeping while preserving provider-required history fields."""
     prepared: list[dict] = []
     for msg in messages:
         clean = {k: v for k, v in msg.items() if k != "extra" and v is not None}
         prepared.append(clean)
+    _assert_provider_tool_sequence(prepared)
     return prepared
 
 

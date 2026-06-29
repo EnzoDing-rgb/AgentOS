@@ -270,8 +270,8 @@ def test_parse_actions_invalid_tool_call_accumulates_streak():
 
 
 @requires_minisweagent
-def test_retry_and_provider_messages_preserve_reasoning_history():
-    from budgetflow.adapter.mini_swe_proxy import _format_retry_assistant_message, _prepare_provider_messages
+def test_retry_message_strips_unexecuted_tool_calls_but_preserves_reasoning_history():
+    from budgetflow.adapter.mini_swe_proxy import _format_retry_assistant_message
 
     response = _FakeResponse(
         content="",
@@ -283,15 +283,56 @@ def test_retry_and_provider_messages_preserve_reasoning_history():
 
     assert message["role"] == "assistant"
     assert "invalid tool calls" in message["content"]
-    assert message["tool_calls"]
+    assert "tool_calls" not in message
     assert message["reasoning_content"] == "hidden reasoning token"
 
+
+@requires_minisweagent
+def test_provider_messages_preserve_legal_tool_history():
+    from budgetflow.adapter.mini_swe_proxy import _prepare_provider_messages
+
+    tool_calls = [MagicMock(id="call_1")]
     prepared = _prepare_provider_messages([
-        {**message, "extra": {"local": True}, "provider_only": None},
+        {
+            "role": "assistant",
+            "content": "running command",
+            "tool_calls": tool_calls,
+            "reasoning_content": "hidden reasoning token",
+            "extra": {"local": True},
+        },
+        {
+            "role": "tool",
+            "content": "<returncode>0</returncode>",
+            "tool_call_id": "call_1",
+            "extra": {"local": True},
+            "provider_only": None,
+        },
     ])
-    assert prepared == [{
-        "role": "assistant",
-        "content": message["content"],
-        "tool_calls": message["tool_calls"],
-        "reasoning_content": "hidden reasoning token",
-    }]
+    assert prepared == [
+        {
+            "role": "assistant",
+            "content": "running command",
+            "tool_calls": tool_calls,
+            "reasoning_content": "hidden reasoning token",
+        },
+        {
+            "role": "tool",
+            "content": "<returncode>0</returncode>",
+            "tool_call_id": "call_1",
+        },
+    ]
+
+
+@requires_minisweagent
+def test_provider_messages_reject_unpaired_tool_calls():
+    from budgetflow.adapter.mini_swe_proxy import _prepare_provider_messages
+
+    with pytest.raises(ValueError, match="assistant tool_calls"):
+        _prepare_provider_messages([
+            {
+                "role": "assistant",
+                "content": "running command",
+                "tool_calls": [MagicMock(id="call_1")],
+            },
+            {"role": "user", "content": "retry"},
+        ])
