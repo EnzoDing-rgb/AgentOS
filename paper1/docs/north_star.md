@@ -170,6 +170,7 @@ budget.
 | Total Resolved Value | Paper-defined Claim 1 objective: sum of pre-registered Task Value over resolved tasks. It is not an official SWE-bench metric and should not be renamed as if it were community standard. |
 | Total Resolved Value per Dollar | Total Resolved Value divided by Total Spend. It is a value-weighted cost-efficiency diagnostic, not the only headline. |
 | Value-Driven Budget Allocation | Two-layer mechanism: first compile a shared hard-budget regime for a fixed task sequence; then allocate model opportunities, turns, continue/stop decisions, and spend within that regime. |
+| Regime | The operating condition that decides whether BudgetFlow has room to help: budget tightness, Strongest Model total cost, reference-tier solvability, Task Value placement, learned-router strength, and KV-cache pricing. In plain words: what kind of world are we in before asking whether BudgetFlow should win? |
 | Budget Regime Compiler | Pre-run mechanism that turns a fixed task set, fixed task order, ValueSource, Estimated Task Token Demand, reference cost scale, clean frozen calibration evidence when available, and target pressure into a pre-registered shared hard budget plan with confidence and audit fields. It is part of Claim 1, not a separate claim, and it must not assign model tiers to individual tasks. |
 | BudgetFlow Runtime | Runtime policy that executes the same task order as every control and allocates scarce model opportunities within the compiled shared budget. It decides when to spend, continue, stop, or use a stronger tier; it does not reorder tasks to chase value. |
 | Task Value | Estimated utility of a verified resolved outcome. It answers "what is this task worth if solved?" |
@@ -377,6 +378,63 @@ control tests whether budget pressure alone explains the result. The headline
 question is whether BudgetFlow beats, matches, or approaches the strongest
 active frontier while preserving or improving Total Resolved Value under the
 same shared hard budget.
+
+## Generalization Claim
+
+BudgetFlow's generalization does not come from SWE-bench mini itself.
+SWE-bench mini is a verifiable testbed: repeatable tasks, patches, and an
+automatic verifier. The portable part is the problem structure: many tasks
+share one hard budget, tasks have different value, model tiers have different
+cost and capability, and outcomes can be accepted or rejected by some trusted
+signal. Writing, marketing, spreadsheet work, support tickets, and coding can
+all fit this shape. The verifier changes from tests to human acceptance,
+business KPI checks, spreadsheet validation, editorial rubrics, customer SLAs,
+or another domain-specific acceptance signal.
+
+The paper should not claim that BudgetFlow proves it wins in every domain.
+The claim is mechanism-level: BudgetFlow is a portable shared-budget governance
+framework, and SWE-bench mini is the first strong, auditable pressure test for
+that framework. Result-level generalization to writing, marketing, Excel, or
+other workloads requires new adapters, value sources, and verifier definitions.
+It does not require changing the core problem definition.
+
+The regime matrix is the bridge from SWE-bench to broader settings. The paper
+should not only report whether BudgetFlow wins. It should report what kind of
+world the run represents: whether the shared budget is tight, whether T3 is
+expensive in total or cheap because it uses far fewer turns, whether T2 has
+short-path tasks it can solve cheaply, whether the learned router is already
+close to the frontier, whether Task Value placement matters, and whether KV
+cache changes the cost frontier. These questions are not SWE-bench-specific;
+they are the same questions a writing, marketing, spreadsheet, or support
+workflow must ask before deciding which model opportunities deserve scarce
+budget.
+
+KV cache and the "cheap model can be more expensive" result belong in the
+CostSource frontier story. The lesson is not that cheaper tiers are always
+cheaper. A lower per-token price can lose if it causes many more turns. A
+stronger model can become cheaper in total if it finishes quickly. KV cache can
+move that boundary by making repeated context cheaper in long multi-turn
+workflows. Therefore KV is a CostSource sensitivity or separately registered
+catalog experiment, not a hidden discount inside the main paid result.
+
+The RouteLLM-inspired learned router is part of the same generalization story.
+A learned router can be very strong at the per-task question: "which model tier
+looks likely to solve this task?" BudgetFlow adds the batch-level question:
+"given one shared budget and different task values, which opportunities should
+receive scarce model spend first?" In plain terms, the learned router may know
+which model is smarter for one task, but it does not naturally know which
+business outcome is worth protecting when the shared budget is running out.
+
+The codebase has the main abstractions needed to support this mechanism-level
+claim. The important seams are already present: `TaskAdapter`, `ValueSource`,
+`BudgetAdapter`, `CostAdapter`, `ProgressAdapter`, `AllocationContext`,
+`PolicyBackend`, the Budget Regime Compiler, `planned_task_budget`, and the
+budget governor. That is enough for the paper to say the mechanism is designed
+around portable budget, value, cost, progress, and policy inputs rather than
+only SWE-bench task IDs. The caveat is also clear: current paid evidence
+validates the SWE-bench adapter and SWE-bench-style verified coding tasks. It
+does not prove that future writing, marketing, spreadsheet, or support-ticket
+adapters will get the same empirical results.
 
 ## Value And Cost Discipline
 
