@@ -193,8 +193,111 @@ def test_claim1_audit_rescores_value_profiles_and_observed_tier_oracle(tmp_path:
     assert "| criticality_value | 2/2 | $0.90 | 3.50 | 3.89 | 1 | 1 | 0 |" in report
     assert "## KV Cache Sensitivity" in report
     assert "| KV0 | budgetflow_task_level |" in report
+    assert "## Task-Level Frontier Diagnostic" in report
     assert "## Budget Cap Sensitivity" in report
     assert "| $0.50 | budgetflow_task_level | 1/2 | $0.30 | 2.50 | 8.33 |" in report
+
+
+def test_claim1_audit_reports_task_level_frontier_buckets(tmp_path: Path) -> None:
+    jsonl = tmp_path / "run.jsonl"
+    jsonl.write_text(
+        "\n".join(
+            [
+                '{"instance_id":"t2-cheap","strategy":"bare_t2_baseline","task_index_in_batch":1,'
+                '"score_status":"pass","task_value":1.0,"resolved_value":1.0,'
+                '"total_cost":0.2,"batch_budget_cap":2.0,"backend_picks":["tier2"],"llm_turns":1}',
+                '{"instance_id":"t2-cheap","strategy":"bare_t3_baseline","task_index_in_batch":1,'
+                '"score_status":"pass","task_value":1.0,"resolved_value":1.0,'
+                '"total_cost":0.4,"batch_budget_cap":2.0,"backend_picks":["tier3"],"llm_turns":1}',
+                '{"instance_id":"t3-cheap","strategy":"bare_t2_baseline","task_index_in_batch":2,'
+                '"score_status":"pass","task_value":1.0,"resolved_value":1.0,'
+                '"total_cost":0.8,"batch_budget_cap":2.0,"backend_picks":["tier2","tier2"],"llm_turns":2}',
+                '{"instance_id":"t3-cheap","strategy":"bare_t3_baseline","task_index_in_batch":2,'
+                '"score_status":"pass","task_value":1.0,"resolved_value":1.0,'
+                '"total_cost":0.3,"batch_budget_cap":2.0,"backend_picks":["tier3"],"llm_turns":1}',
+                '{"instance_id":"t2-only","strategy":"bare_t2_baseline","task_index_in_batch":3,'
+                '"score_status":"pass","task_value":1.0,"resolved_value":1.0,'
+                '"total_cost":0.3,"batch_budget_cap":2.0,"backend_picks":["tier2"],"llm_turns":1}',
+                '{"instance_id":"t2-only","strategy":"bare_t3_baseline","task_index_in_batch":3,'
+                '"score_status":"true_fail","task_value":1.0,"resolved_value":0.0,'
+                '"total_cost":0.3,"batch_budget_cap":2.0,"backend_picks":["tier3"],"llm_turns":1}',
+                '{"instance_id":"t3-only","strategy":"bare_t2_baseline","task_index_in_batch":4,'
+                '"score_status":"true_fail","task_value":1.0,"resolved_value":0.0,'
+                '"total_cost":0.2,"batch_budget_cap":2.0,"backend_picks":["tier2"],"llm_turns":1}',
+                '{"instance_id":"t3-only","strategy":"bare_t3_baseline","task_index_in_batch":4,'
+                '"score_status":"pass","task_value":1.0,"resolved_value":1.0,'
+                '"total_cost":0.5,"batch_budget_cap":2.0,"backend_picks":["tier3"],"llm_turns":1}',
+                '{"instance_id":"neither","strategy":"bare_t2_baseline","task_index_in_batch":5,'
+                '"score_status":"true_fail","task_value":1.0,"resolved_value":0.0,'
+                '"total_cost":0.2,"batch_budget_cap":2.0,"backend_picks":["tier2"],"llm_turns":1}',
+                '{"instance_id":"neither","strategy":"bare_t3_baseline","task_index_in_batch":5,'
+                '"score_status":"true_fail","task_value":1.0,"resolved_value":0.0,'
+                '"total_cost":0.3,"batch_budget_cap":2.0,"backend_picks":["tier3"],"llm_turns":1}',
+            ]
+        )
+        + "\n"
+    )
+
+    report = build_report(
+        load_latest_rows(jsonl),
+        title="Unit Audit",
+        task_order_override=["t2-cheap", "t3-cheap", "t2-only", "t3-only", "neither"],
+    )
+
+    assert "## Task-Level Frontier Diagnostic" in report
+    assert "| T2 cheaper pass | 1 | 1.00 | $0.20 | $0.40 | 1.0 | 1.0 | `t2-cheap` |" in report
+    assert "| T3 cheaper pass | 1 | 1.00 | $0.80 | $0.30 | 2.0 | 1.0 | `t3-cheap` |" in report
+    assert "| T2-only pass | 1 | 1.00 | $0.30 | $0.30 | 1.0 | 1.0 | `t2-only` |" in report
+    assert "| T3-only pass | 1 | 1.00 | $0.20 | $0.50 | 1.0 | 1.0 | `t3-only` |" in report
+    assert "| both fail | 1 | 1.00 | $0.20 | $0.30 | 1.0 | 1.0 | `neither` |" in report
+
+
+def test_claim1_audit_dynamic_kv_replay_marks_tail_upper_bound(tmp_path: Path) -> None:
+    jsonl = tmp_path / "run.jsonl"
+    jsonl.write_text(
+        "\n".join(
+            [
+                '{"instance_id":"task-a","strategy":"bare_t2_baseline","task_index_in_batch":1,'
+                '"score_status":"pass","task_value":1.0,"resolved_value":1.0,'
+                '"total_cost":0.2,"batch_budget_cap":1.0,"backend_picks":["tier2"],"llm_turns":1,'
+                '"prompt_tokens_total":1000,"completion_tokens_total":100}',
+                '{"instance_id":"task-b","strategy":"bare_t2_baseline","task_index_in_batch":2,'
+                '"score_status":"pass","task_value":1.0,"resolved_value":1.0,'
+                '"total_cost":0.2,"batch_budget_cap":1.0,"backend_picks":["tier2"],"llm_turns":1,'
+                '"prompt_tokens_total":1000,"completion_tokens_total":100}',
+                '{"instance_id":"task-a","strategy":"bare_t3_baseline","task_index_in_batch":1,'
+                '"score_status":"true_fail","task_value":1.0,"resolved_value":0.0,'
+                '"total_cost":0.2,"batch_budget_cap":1.0,"backend_picks":["tier3"],"llm_turns":1,'
+                '"prompt_tokens_total":1000,"completion_tokens_total":100}',
+                '{"instance_id":"task-b","strategy":"bare_t3_baseline","task_index_in_batch":2,'
+                '"score_status":"pass","task_value":1.0,"resolved_value":1.0,'
+                '"total_cost":0.2,"batch_budget_cap":1.0,"backend_picks":["tier3"],"llm_turns":1,'
+                '"prompt_tokens_total":1000,"completion_tokens_total":100}',
+                '{"instance_id":"task-a","strategy":"budgetflow_task_level","task_index_in_batch":1,'
+                '"score_status":"pass","task_value":1.0,"resolved_value":1.0,'
+                '"total_cost":0.2,"batch_budget_cap":1.0,"backend_picks":["tier2"],"llm_turns":1,'
+                '"prompt_tokens_total":1000,"completion_tokens_total":100}',
+                '{"instance_id":"task-b","strategy":"budgetflow_task_level","task_index_in_batch":2,'
+                '"score_status":"true_fail","task_value":1.0,"resolved_value":0.0,'
+                '"total_cost":0.0,"batch_budget_cap":1.0,"backend_picks":[],"llm_turns":0,'
+                '"exit_reason":"task_budget_exhausted"}',
+            ]
+        )
+        + "\n"
+    )
+
+    report = build_report(
+        load_latest_rows(jsonl),
+        title="Unit Audit",
+        task_order_override=["task-a", "task-b"],
+        budget_cap=1.0,
+    )
+
+    assert "## Dynamic KV Replay" in report
+    assert "| KV0 | budgetflow_task_level | 1/2 |" in report
+    assert "zero_cost_placeholder" in report
+    assert "### BudgetFlow Tail Upper-Bound" in report
+    assert "`task-b`" in report
 
 
 def test_claim1_audit_uses_value_matrix_for_missing_task_display(tmp_path: Path) -> None:

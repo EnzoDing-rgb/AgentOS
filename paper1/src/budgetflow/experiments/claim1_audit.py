@@ -28,6 +28,16 @@ DEFAULT_STRATEGY_ORDER = (
     "budgetflow_task_level",
 )
 
+KV_PROFILES = (
+    ("KV0", 0.0),
+    ("KV50", 0.5),
+    ("KV90", 0.9),
+    ("KV98", 0.98),
+    ("KV99", 0.99),
+)
+
+CAP_EPSILON = 1e-6
+
 
 @dataclass(frozen=True)
 class StrategyTask:
@@ -50,6 +60,27 @@ class StrategyTask:
     true_fail_reason: str
     failure_class: str
     detail: str
+
+
+@dataclass(frozen=True)
+class ReplayResult:
+    attempted: int
+    spend: float
+    resolved: int
+    resolved_value: float
+    next_index: int
+    attempted_task_ids: tuple[str, ...]
+    stop_reason: str
+
+
+@dataclass(frozen=True)
+class TailUpperBoundResult:
+    added_tasks: int
+    added_spend: float
+    added_value: float
+    total_spend: float
+    total_value: float
+    actions: tuple[str, ...]
 
 
 def load_latest_rows(jsonl_path: Path) -> list[dict[str, Any]]:
@@ -174,6 +205,10 @@ def build_report(
         strategy: [task for task in tasks if task.strategy == strategy]
         for strategy in strategies
     }
+    raw_by_key = {
+        (str(row.get("strategy") or ""), str(row.get("instance_id") or "")): row
+        for row in rows
+    }
 
     lines: list[str] = []
     lines.append(f"# {title}")
@@ -181,6 +216,8 @@ def build_report(
     lines.append("This is a no-paid audit of completed JSONL rows. It does not re-score patches or edit historical artifacts.")
     lines.append("")
     lines.extend(_summary_table(by_strategy, task_count=len(task_order)))
+    lines.append("")
+    lines.extend(_execution_coverage(by_strategy, task_count=len(task_order)))
     lines.append("")
     value_profiles = load_value_profiles(value_matrix_path, task_order) if value_matrix_path else []
     value_lookup = report_value_lookup(value_profiles)
@@ -196,7 +233,22 @@ def build_report(
             )
         )
         lines.append("")
+    lines.extend(_task_level_frontier_diagnostic(task_order, by_key, strategies, value_lookup=value_lookup))
+    lines.append("")
+    lines.extend(_runtime_costsource_audit(rows))
+    lines.append("")
     lines.extend(_kv_cache_sensitivity(rows, value_lookup=value_lookup, task_count=len(task_order)))
+    lines.append("")
+    lines.extend(
+        _dynamic_kv_replay(
+            task_order,
+            by_key,
+            raw_by_key,
+            strategies,
+            budget_cap=resolve_budget_cap(tasks, budget_cap),
+            value_lookup=value_lookup,
+        )
+    )
     lines.append("")
     lines.extend(
         _budget_cap_sensitivity(
@@ -301,6 +353,125 @@ def _summary_table(by_strategy: dict[str, list[StrategyTask]], *, task_count: in
     return lines
 
 
+def _execution_coverage(by_strategy: dict[str, list[StrategyTask]], *, task_count: int) -> list[str]:
+    lines = [
+        "## Execution Coverage",
+        "",
+        "This separates planned tasks from tasks that actually consumed model budget. Zero-cost rows are usually budget-exhaustion placeholders, not failed model attempts.",
+        "",
+        "| Strategy | Planned | Rows Written | Paid Attempts | Zero-Cost Rows | Missing Rows | Paid Resolved | Total Resolved | Spend |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for strategy, tasks in by_strategy.items():
+        unique_rows = {task.instance_id for task in tasks}
+        paid = [task for task in tasks if _is_paid_attempt(task)]
+        zero_cost = [task for task in tasks if task.total_cost <= 1e-6]
+        lines.append(
+            f"| {strategy} | "
+            f"{task_count} | "
+            f"{len(unique_rows)} | "
+            f"{len(paid)} | "
+            f"{len(zero_cost)} | "
+            f"{max(0, task_count - len(unique_rows))} | "
+            f"{sum(1 for task in paid if task.score_status == 'pass')} | "
+            f"{sum(1 for task in tasks if task.score_status == 'pass')} | "
+            f"${sum(task.total_cost for task in tasks):.2f} |"
+        )
+    return lines
+
+
+def _is_paid_attempt(task: StrategyTask) -> bool:
+    return task.total_cost > 1e-6 and task.llm_turns > 0
+
+
+def _task_level_frontier_diagnostic(
+    task_order: list[str],
+    by_key: dict[tuple[str, str], StrategyTask],
+    strategies: list[str],
+    *,
+    value_lookup: dict[str, float] | None,
+) -> list[str]:
+    if "bare_t2_baseline" not in strategies or "bare_t3_baseline" not in strategies:
+        return [
+            "## Task-Level Frontier Diagnostic",
+            "",
+            "- Skipped: pure T2 and pure T3 rows are required.",
+        ]
+
+    buckets = {
+        "T2 cheaper pass": [],
+        "T3 cheaper pass": [],
+        "T2-only pass": [],
+        "T3-only pass": [],
+        "both fail": [],
+    }
+    skipped = 0
+    for task_id in task_order:
+        t2 = by_key.get(("bare_t2_baseline", task_id))
+        t3 = by_key.get(("bare_t3_baseline", task_id))
+        if t2 is None or t3 is None or not _is_paid_attempt(t2) or not _is_paid_attempt(t3):
+            skipped += 1
+            continue
+        t2_pass = t2.score_status == "pass"
+        t3_pass = t3.score_status == "pass"
+        if t2_pass and t3_pass:
+            bucket = "T2 cheaper pass" if t2.total_cost <= t3.total_cost else "T3 cheaper pass"
+        elif t2_pass:
+            bucket = "T2-only pass"
+        elif t3_pass:
+            bucket = "T3-only pass"
+        else:
+            bucket = "both fail"
+        buckets[bucket].append((task_id, t2, t3))
+
+    comparable = sum(len(items) for items in buckets.values())
+    lines = [
+        "## Task-Level Frontier Diagnostic",
+        "",
+        "Pure T2 vs pure T3 counterfactuals on tasks where both tiers actually consumed model budget. This answers whether the batch contains a real T2-can-win frontier, rather than treating cheaper per-token pricing as enough.",
+        "",
+        f"- Comparable paid T2/T3 tasks: {comparable}/{len(task_order)}; skipped for missing or zero-cost tier row: {skipped}.",
+        "",
+        "| Frontier Bucket | Tasks | Total Value | Avg T2 Cost | Avg T3 Cost | Avg T2 Turns | Avg T3 Turns | Examples |",
+        "|---|---:|---:|---:|---:|---:|---:|---|",
+    ]
+    for bucket, items in buckets.items():
+        values = [_display_task_value(task_id, by_key, strategies, value_lookup) for task_id, _, _ in items]
+        t2_costs = [t2.total_cost for _, t2, _ in items]
+        t3_costs = [t3.total_cost for _, _, t3 in items]
+        t2_turns = [t2.llm_turns for _, t2, _ in items]
+        t3_turns = [t3.llm_turns for _, _, t3 in items]
+        examples = ", ".join(f"`{task_id}`" for task_id, _, _ in items[:4]) or "-"
+        lines.append(
+            f"| {bucket} | "
+            f"{len(items)} | "
+            f"{sum(values):.2f} | "
+            f"${_mean(t2_costs):.2f} | "
+            f"${_mean(t3_costs):.2f} | "
+            f"{_mean(t2_turns):.1f} | "
+            f"{_mean(t3_turns):.1f} | "
+            f"{examples} |"
+        )
+
+    t2_win = len(buckets["T2 cheaper pass"]) + len(buckets["T2-only pass"])
+    t3_win = len(buckets["T3 cheaper pass"]) + len(buckets["T3-only pass"])
+    lines.append("")
+    if comparable == 0:
+        lines.append("- Interpretation: no comparable paid frontier rows; this run cannot diagnose T2 vs T3 task-level opportunity.")
+    elif t2_win == 0:
+        lines.append("- Interpretation: this run shows no paid task where pure T2 both resolves and beats the observed T3 alternative. BudgetFlow has little Claim 1 room to win by preferring T2 on this batch.")
+    else:
+        lines.append(
+            f"- Interpretation: T2 has {t2_win} task-level opportunities and T3 has {t3_win}; "
+            "BudgetFlow can win only if it captures the T2 opportunities without missing T3-only or T3-cheaper passes."
+        )
+    return lines
+
+
+def _mean(values: list[float] | list[int]) -> float:
+    return sum(values) / len(values) if values else 0.0
+
+
 def _kv_cache_sensitivity(
     rows: list[dict[str, Any]],
     *,
@@ -310,17 +481,13 @@ def _kv_cache_sensitivity(
     lines = [
         "## KV Cache Sensitivity",
         "",
-        "No-paid CostSource sensitivity: outcomes stay fixed while repeated input-token cost is recomputed for T2/T3 turns.",
+        "No-paid CostSource sensitivity: outcomes stay fixed while repeated input-token cost is recomputed for T2/T3 turns. This does not simulate additional tasks becoming runnable under a cheaper runtime.",
         "",
         "| KV Profile | Strategy | Resolved | Spend | Total Resolved Value | Total Resolved Value / Dollar |",
         "|---|---|---:|---:|---:|---:|",
     ]
-    profiles = (
-        ("KV0", 0.0),
-        ("KV50", 0.5),
-        ("KV90", 0.9),
-    )
-    for profile_name, discount in profiles:
+    profile_results: dict[str, dict[str, dict[str, float | int]]] = {}
+    for profile_name, discount in KV_PROFILES:
         by_strategy: dict[str, dict[str, float | int]] = defaultdict(
             lambda: {"resolved": 0, "spend": 0.0, "value": 0.0}
         )
@@ -328,18 +495,13 @@ def _kv_cache_sensitivity(
             strategy = str(row.get("strategy") or "")
             if not strategy:
                 continue
-            recosted = recost_record(
-                _row_for_kv_recost(row),
-                t3_target_ratio=5.0,
-                input_kv_cache_discount=discount,
-                min_input_cost_fraction=max(0.0, 1.0 - discount),
-            )
-            recosted_spend = _sensitivity_cost_or_original(recosted, row)
+            recosted_spend = _kv_recosted_cost(row, discount)
             stats = by_strategy[strategy]
             stats["spend"] = float(stats["spend"]) + recosted_spend
             if str(row.get("score_status") or "") == "pass":
                 stats["resolved"] = int(stats["resolved"]) + 1
                 stats["value"] = float(stats["value"]) + _row_task_value(row, value_lookup)
+        profile_results[profile_name] = {}
         for strategy in _strategy_order(set(by_strategy)):
             stats = by_strategy[strategy]
             metrics = build_standard_metrics(
@@ -348,6 +510,7 @@ def _kv_cache_sensitivity(
                 total_spend=float(stats["spend"]),
                 total_resolved_value=float(stats["value"]),
             )
+            profile_results[profile_name][strategy] = metrics
             lines.append(
                 f"| {profile_name} | {strategy} | "
                 f"{metrics['resolved_count']}/{task_count} | "
@@ -355,7 +518,115 @@ def _kv_cache_sensitivity(
                 f"{metrics['total_resolved_value']:.2f} | "
                 f"{metrics['total_resolved_value_per_dollar']:.2f} |"
             )
+    lines.append("")
+    lines.append("### BudgetFlow Margin Under KV Sensitivity")
+    lines.append("")
+    lines.append("| KV Profile | Best Control By Value/$ | BudgetFlow Value/$ Delta | BudgetFlow vs Pure T3 Value/$ Delta |")
+    lines.append("|---|---|---:|---:|")
+    for profile_name in profile_results:
+        results = profile_results[profile_name]
+        bf = results.get("budgetflow_task_level")
+        if bf is None:
+            continue
+        controls = {
+            strategy: stats
+            for strategy, stats in results.items()
+            if strategy != "budgetflow_task_level"
+        }
+        if not controls:
+            continue
+        best_name, best = max(
+            controls.items(),
+            key=lambda item: (
+                float(item[1]["total_resolved_value_per_dollar"]),
+                float(item[1]["total_resolved_value"]),
+            ),
+        )
+        t3 = results.get("bare_t3_baseline")
+        t3_delta = (
+            float(bf["total_resolved_value_per_dollar"])
+            - float(t3["total_resolved_value_per_dollar"])
+            if t3 is not None
+            else 0.0
+        )
+        lines.append(
+            f"| {profile_name} | {best_name} | "
+            f"{float(bf['total_resolved_value_per_dollar']) - float(best['total_resolved_value_per_dollar']):+.2f} | "
+            f"{t3_delta:+.2f} |"
+        )
     return lines
+
+
+def _runtime_costsource_audit(rows: list[dict[str, Any]]) -> list[str]:
+    catalog_counts: dict[str, int] = defaultdict(int)
+    policy_counts: dict[tuple[float | str, int | str, float | str], int] = defaultdict(int)
+    input_fraction_counts: dict[float | str, int] = defaultdict(int)
+    turn_count = 0
+    for row in rows:
+        catalog_path = ""
+        catalog = row.get("catalog")
+        if isinstance(catalog, dict):
+            catalog_path = str(catalog.get("catalog_path") or "")
+        catalog_path = catalog_path or str(row.get("catalog_path") or "")
+        if catalog_path:
+            catalog_counts[catalog_path] += 1
+        for trace in _paid_turn_traces(row):
+            if not isinstance(trace, dict):
+                continue
+            turn_count += 1
+            policy = trace.get("turn_cache_policy")
+            if isinstance(policy, dict):
+                key = (
+                    _rounded_float_or_text(policy.get("input_kv_cache_discount")),
+                    int(policy.get("input_discount_after_turn") or 0),
+                    _rounded_float_or_text(policy.get("min_input_cost_fraction")),
+                )
+            else:
+                key = ("missing", "missing", "missing")
+            policy_counts[key] += 1
+            input_fraction_counts[_rounded_float_or_text(trace.get("turn_cache_input_fraction"))] += 1
+
+    lines = [
+        "## Runtime CostSource Audit",
+        "",
+    ]
+    if catalog_counts:
+        lines.append(
+            "- Runtime catalog paths: "
+            + "; ".join(f"`{path}` ({count} rows)" for path, count in sorted(catalog_counts.items()))
+            + "."
+        )
+    if turn_count == 0:
+        lines.append("- No paid turn traces were available for runtime KV-cache inspection.")
+        return lines
+    policy_text = "; ".join(
+        f"input_kv_cache_discount={key[0]}, after_turn={key[1]}, min_input_cost_fraction={key[2]} ({count} turns)"
+        for key, count in sorted(policy_counts.items(), key=lambda item: (-item[1], str(item[0])))
+    )
+    fraction_text = "; ".join(
+        f"{fraction} ({count} turns)"
+        for fraction, count in sorted(input_fraction_counts.items(), key=lambda item: (-item[1], str(item[0])))
+    )
+    lines.append(f"- Runtime turn-cache policy observed on paid turns: {policy_text}.")
+    lines.append(f"- Runtime charged input fractions observed on paid turns: {fraction_text}.")
+    if len(policy_counts) == 1 and next(iter(policy_counts))[0] == 0.0:
+        lines.append("- Interpretation: this run used runtime KV-cache discount 0.0; KV sensitivity below is no-paid recosting, not the executed runtime policy.")
+    return lines
+
+
+def _paid_turn_traces(row: dict[str, Any]) -> list[Any]:
+    paid_traces = row.get("_paid_turn_traces")
+    if isinstance(paid_traces, list) and paid_traces:
+        return paid_traces
+    traces = row.get("turn_traces")
+    return traces if isinstance(traces, list) else []
+
+
+def _rounded_float_or_text(value: Any) -> float | str:
+    try:
+        return round(float(value), 6)
+    except (TypeError, ValueError):
+        return "missing"
 
 
 def _row_for_kv_recost(row: dict[str, Any]) -> dict[str, Any]:
@@ -382,6 +653,270 @@ def _sensitivity_cost_or_original(recosted: dict[str, Any], original: dict[str, 
     if original_cost > 0.0 and recosted_cost <= 0.0:
         return original_cost
     return recosted_cost
+
+
+def _kv_recosted_cost(row: dict[str, Any], discount: float) -> float:
+    if discount <= 0.0:
+        try:
+            return float(row.get("total_cost") or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+    recosted = recost_record(
+        _row_for_kv_recost(row),
+        t3_target_ratio=5.0,
+        input_kv_cache_discount=discount,
+        min_input_cost_fraction=max(0.0, 1.0 - discount),
+    )
+    return _sensitivity_cost_or_original(recosted, row)
+
+
+def _dynamic_kv_replay(
+    task_order: list[str],
+    by_key: dict[tuple[str, str], StrategyTask],
+    raw_by_key: dict[tuple[str, str], dict[str, Any]],
+    strategies: list[str],
+    *,
+    budget_cap: float,
+    value_lookup: dict[str, float] | None,
+) -> list[str]:
+    if budget_cap <= 0.0:
+        return [
+            "## Dynamic KV Replay",
+            "",
+            "- Skipped: no shared hard budget cap found in rows or budget plan.",
+        ]
+
+    lines = [
+        "## Dynamic KV Replay",
+        "",
+        "No-paid sequential replay under cheaper KV profiles. The fixed-policy table replays each policy's observed task order and observed outcomes with recosted rows; it does not invent outcomes for tasks that never ran. The BudgetFlow tail upper-bound then asks how much extra value could be recovered if cheaper KV let the already-observed BudgetFlow lane reach later tasks and we fill those later tasks with pure T2/T3 observed counterfactuals.",
+        "",
+        f"- Shared hard budget: ${budget_cap:.4f}.",
+        "",
+        "### Fixed-Policy Replay",
+        "",
+        "| KV Profile | Strategy | Covered Rows | Spend | Resolved | Total Resolved Value | Stop Reason |",
+        "|---|---|---:|---:|---:|---:|---|",
+    ]
+    replay_by_profile: dict[str, dict[str, ReplayResult]] = {}
+    cost_cache = _kv_cost_cache(raw_by_key)
+    for profile_name, discount in KV_PROFILES:
+        replay_by_profile[profile_name] = {}
+        for strategy in strategies:
+            result = _replay_observed_strategy_with_costs(
+                strategy,
+                task_order,
+                by_key,
+                raw_by_key,
+                cost_cache,
+                discount=discount,
+                cap=budget_cap,
+                value_lookup=value_lookup,
+            )
+            replay_by_profile[profile_name][strategy] = result
+            lines.append(
+                f"| {profile_name} | {strategy} | "
+                f"{result.attempted}/{len(task_order)} | "
+                f"${result.spend:.2f} | "
+                f"{result.resolved}/{len(task_order)} | "
+                f"{result.resolved_value:.2f} | "
+                f"{result.stop_reason} |"
+            )
+
+    if "budgetflow_task_level" in strategies:
+        lines.append("")
+        lines.append("### BudgetFlow Tail Upper-Bound")
+        lines.append("")
+        lines.append(
+            "This is an optimistic diagnostic, not a deployable policy: after replaying BudgetFlow's observed rows under each KV profile, it spends any remaining budget on later tasks using observed pure T2/T3 pass outcomes and recosted costs."
+        )
+        lines.append("")
+        lines.append("| KV Profile | BF Fixed Value | Added Tail Tasks | Added Tail Value | Added Tail Spend | Upper-Bound Value | Upper-Bound Spend | Tail Actions |")
+        lines.append("|---|---:|---:|---:|---:|---:|---:|---|")
+        for profile_name, discount in KV_PROFILES:
+            bf_result = replay_by_profile[profile_name].get("budgetflow_task_level")
+            if bf_result is None:
+                continue
+            tail = _budgetflow_tail_upper_bound(
+                bf_result,
+                task_order,
+                by_key,
+                raw_by_key,
+                cost_cache,
+                discount=discount,
+                cap=budget_cap,
+                value_lookup=value_lookup,
+            )
+            actions = ", ".join(tail.actions[:5]) if tail.actions else "-"
+            if len(tail.actions) > 5:
+                actions += ", ..."
+            lines.append(
+                f"| {profile_name} | "
+                f"{bf_result.resolved_value:.2f} | "
+                f"{tail.added_tasks} | "
+                f"{tail.added_value:.2f} | "
+                f"${tail.added_spend:.2f} | "
+                f"{tail.total_value:.2f} | "
+                f"${tail.total_spend:.2f} | "
+                f"{actions} |"
+            )
+    lines.append("")
+    lines.extend(_claim1_runtime_recommendation(task_order, by_key, replay_by_profile, budget_cap=budget_cap))
+    return lines
+
+
+def _kv_cost_cache(raw_by_key: dict[tuple[str, str], dict[str, Any]]) -> dict[tuple[str, str, float], float]:
+    cache: dict[tuple[str, str, float], float] = {}
+    for (strategy, task_id), row in raw_by_key.items():
+        for _, discount in KV_PROFILES:
+            cache[(strategy, task_id, discount)] = _kv_recosted_cost(row, discount)
+    return cache
+
+
+def _replay_observed_strategy_with_costs(
+    strategy: str,
+    task_order: list[str],
+    by_key: dict[tuple[str, str], StrategyTask],
+    raw_by_key: dict[tuple[str, str], dict[str, Any]],
+    cost_cache: dict[tuple[str, str, float], float],
+    *,
+    discount: float,
+    cap: float,
+    value_lookup: dict[str, float] | None,
+) -> ReplayResult:
+    spend = 0.0
+    resolved = 0
+    resolved_value = 0.0
+    attempted_ids: list[str] = []
+    next_index = len(task_order)
+    stop_reason = "completed_observed_order"
+    for index, task_id in enumerate(task_order):
+        task = by_key.get((strategy, task_id))
+        raw = raw_by_key.get((strategy, task_id))
+        if task is None or raw is None:
+            next_index = index
+            stop_reason = "missing_row"
+            break
+        if not _is_paid_attempt(task):
+            next_index = index
+            stop_reason = "zero_cost_placeholder"
+            break
+        row_cost = cost_cache.get((strategy, task_id, discount), task.total_cost)
+        if row_cost > max(0.0, cap - spend) + CAP_EPSILON:
+            next_index = index
+            stop_reason = "budget_cap"
+            break
+        attempted_ids.append(task_id)
+        spend += row_cost
+        if task.score_status == "pass":
+            resolved += 1
+            resolved_value += _display_task_value(task_id, by_key, list(DEFAULT_STRATEGY_ORDER), value_lookup)
+    return ReplayResult(
+        attempted=len(attempted_ids),
+        spend=round(spend, 6),
+        resolved=resolved,
+        resolved_value=round(resolved_value, 6),
+        next_index=next_index,
+        attempted_task_ids=tuple(attempted_ids),
+        stop_reason=stop_reason,
+    )
+
+
+def _budgetflow_tail_upper_bound(
+    bf_result: ReplayResult,
+    task_order: list[str],
+    by_key: dict[tuple[str, str], StrategyTask],
+    raw_by_key: dict[tuple[str, str], dict[str, Any]],
+    cost_cache: dict[tuple[str, str, float], float],
+    *,
+    discount: float,
+    cap: float,
+    value_lookup: dict[str, float] | None,
+) -> TailUpperBoundResult:
+    remaining = max(0.0, cap - bf_result.spend)
+    spend = 0.0
+    value = 0.0
+    actions: list[str] = []
+    already_attempted = set(bf_result.attempted_task_ids)
+    for task_id in task_order[bf_result.next_index:]:
+        if task_id in already_attempted:
+            continue
+        options = _observed_passing_tier_options(task_id, by_key, raw_by_key, cost_cache, discount)
+        if not options:
+            continue
+        tier, cost = min(options, key=lambda item: (item[1], item[0]))
+        if cost > max(0.0, remaining - spend):
+            continue
+        spend += cost
+        task_value = _display_task_value(task_id, by_key, list(DEFAULT_STRATEGY_ORDER), value_lookup)
+        value += task_value
+        actions.append(f"`{task_id}` {tier} ${cost:.2f}")
+    return TailUpperBoundResult(
+        added_tasks=len(actions),
+        added_spend=round(spend, 6),
+        added_value=round(value, 6),
+        total_spend=round(bf_result.spend + spend, 6),
+        total_value=round(bf_result.resolved_value + value, 6),
+        actions=tuple(actions),
+    )
+
+
+def _observed_passing_tier_options(
+    task_id: str,
+    by_key: dict[tuple[str, str], StrategyTask],
+    raw_by_key: dict[tuple[str, str], dict[str, Any]],
+    cost_cache: dict[tuple[str, str, float], float],
+    discount: float,
+) -> list[tuple[str, float]]:
+    options: list[tuple[str, float]] = []
+    for strategy, tier in (("bare_t2_baseline", "T2"), ("bare_t3_baseline", "T3")):
+        task = by_key.get((strategy, task_id))
+        if task is None or task.score_status != "pass" or not _is_paid_attempt(task):
+            continue
+        if (strategy, task_id) not in raw_by_key:
+            continue
+        options.append((tier, cost_cache.get((strategy, task_id, discount), task.total_cost)))
+    return options
+
+
+def _claim1_runtime_recommendation(
+    task_order: list[str],
+    by_key: dict[tuple[str, str], StrategyTask],
+    replay_by_profile: dict[str, dict[str, ReplayResult]],
+    *,
+    budget_cap: float,
+) -> list[str]:
+    lines = [
+        "### Task-Boundary Runtime Implication",
+        "",
+    ]
+    t3 = replay_by_profile.get("KV0", {}).get("bare_t3_baseline")
+    bf = replay_by_profile.get("KV0", {}).get("budgetflow_task_level")
+    comparable_t2_win = 0
+    comparable_t3_win = 0
+    for task_id in task_order:
+        t2_task = by_key.get(("bare_t2_baseline", task_id))
+        t3_task = by_key.get(("bare_t3_baseline", task_id))
+        if t2_task is None or t3_task is None or not _is_paid_attempt(t2_task) or not _is_paid_attempt(t3_task):
+            continue
+        if t2_task.score_status == "pass" and (t3_task.score_status != "pass" or t2_task.total_cost <= t3_task.total_cost):
+            comparable_t2_win += 1
+        if t3_task.score_status == "pass" and (t2_task.score_status != "pass" or t3_task.total_cost < t2_task.total_cost):
+            comparable_t3_win += 1
+    if t3 is not None and t3.attempted == len(task_order) and t3.spend <= budget_cap and (bf is None or t3.resolved_value >= bf.resolved_value):
+        lines.append(
+            "- Current evidence supports a compiler-level strongest-frontier fallback: when projected pure T3 can cover the remaining batch inside the shared cap, BudgetFlow should be allowed to choose the T3 frontier instead of forcing T2 savings. In this run, pure T3 covered the full batch under the cap and beat BudgetFlow on Total Resolved Value."
+        )
+    elif comparable_t2_win > 0:
+        lines.append(
+            "- Current evidence still has a task-boundary allocation problem: T2 wins some tasks, so a pure-T3 fallback should be gated by projected full-batch coverage and not replace value-aware allocation under scarcity."
+        )
+    else:
+        lines.append(
+            "- Current evidence does not justify a lower-level stop or segment-routing change for Claim 1. First fix the compiler/frontier decision: use value-aware T2/T3 allocation only when pure T3 cannot cover the remaining batch under the shared cap."
+        )
+    lines.append(f"- Comparable paid frontier counts: T2-favorable {comparable_t2_win}, T3-favorable {comparable_t3_win}.")
+    return lines
 
 
 def _budget_cap_sensitivity(
