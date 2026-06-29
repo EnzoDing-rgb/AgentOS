@@ -5,22 +5,51 @@ docs, prompts, handoffs, reports, and reviewer-facing prose.
 
 ## Draft-Critical Evidence Bar Memo
 
-The current Claim 1 readout can support the initial draft. The final evidence
-story still needs four evidence bars.
+The current Claim 1 readout can support the initial draft only if the paper is
+explicit about the regime boundary it is studying. The paper is not a story
+that BudgetFlow always beats the Strongest Model. It is a shared-budget study
+of when value-aware budget governance creates more verified task value, when a
+learned router is already a hard competitor, and when the Strongest Model
+frontier is the right boundary.
 
-First, historical spend should not be used as Task Value. If a task costs many
+The main narrative has one primary objective and one explanatory matrix. The
+primary objective is Total Resolved Value under one fixed shared hard budget.
+The explanatory matrix reports budget tightness, Strongest Model total cost,
+reference-tier solvability, learned-router competitiveness, value placement,
+KV-cache sensitivity, execution coverage, and gap to a frontier or
+observed-tier upper bound. This makes mixed results interpretable instead of
+contradictory.
+
+First, historical spend must not be used as Task Value. If a task costs many
 turns or dollars, that is evidence that the task may be longer, harder, or needs
 more runway. It belongs in Estimated Task Token Demand, Cost Memory, or
 calibration evidence. Task Value still means "what is this verified resolution
 worth if solved?" and should come from a pre-registered value source or business
 priority, not from how much the model happened to spend.
 
-Second, pure T2 and pure T3 are necessary boundary controls, not sufficient
-strong baselines. They answer whether BudgetFlow beats uniform-tier frontiers
-under the same shared cap. They do not answer whether BudgetFlow beats existing
-routing ideas from related work.
+Second, report standard SWE-bench metrics and the paper-defined value metric
+together. SWE-bench's community-standard metrics are Resolved Count and
+Resolved Rate. Cost-aware coding-agent evaluation does not yet have a stable
+community standard, so BudgetFlow also reports the paper-defined Claim 1
+objective:
 
-Third, the draft-critical related-work baseline is a RouteLLM-inspired learned
+`Total Resolved Value = sum(pre-registered task value for resolved tasks)`.
+
+This must be described as paper-defined, not as an official SWE-bench metric.
+The main table reports Resolved Count, Resolved Rate, Total Spend, Cost per
+Resolved Task, Total Resolved Value, and Total Resolved Value per Dollar. If
+BudgetFlow wins value but not raw count, the paper says that directly.
+
+Third, pure T2 and pure T3 are necessary boundary controls, not sufficient
+baselines. They answer whether BudgetFlow beats uniform-tier frontiers under
+the same shared cap. A pure Strongest Model win is not a reason to weaken the
+baseline. It is evidence of Frontier Dominance: the Strongest Model is so
+turn-efficient that it can cover the workload inside the shared cap. In that
+regime, report BudgetFlow's gap to the Strongest Model frontier or to an
+observed-tier upper bound instead of pretending the allocation problem is the
+same as in scarcity regimes.
+
+Fourth, the draft-critical related-work baseline is a RouteLLM-inspired learned
 task router. It learns offline which tasks look like they need T3 from
 pre-execution task features, Estimated Task Token Demand, and frozen historical
 outcomes. It does not use Task Value as an input, because Task Value is
@@ -36,10 +65,14 @@ Do not call this "RouteLLM" without qualification. The original RouteLLM routes
 single queries using preference data and a strong-model-call threshold; it does
 not manage a shared budget. The paper baseline is "RouteLLM-inspired learned
 task router" or "RouteLLM-inspired supervised task router." Its value is to test
-whether BudgetFlow's value-aware shared-budget allocation beats a strong normal
-model-router baseline, not merely pure-tier controls.
+whether BudgetFlow's value-aware shared-budget allocation beats a real learned
+router, not merely pure-tier controls. If the learned router is close to
+BudgetFlow in some regimes, that strengthens the paper: the baseline is not
+weak, and BudgetFlow's advantage must be attributed to value placement,
+budget scarcity, execution coverage, or frontier detection rather than vague
+"routing is better" claims.
 
-Fifth, the next Claim 1 paid comparison adds one budget-only control. The target
+Fifth, the Claim 1 paid comparison includes one budget-only control. The target
 shape is five policies over the fixed 30-task set: pure T2, pure T3,
 RouteLLM-inspired learned task router, budget-only baseline, and BudgetFlow
 task-level. The budget-only baseline is value-blind: it sees shared budget
@@ -57,20 +90,59 @@ was reachable? This "observed-tier oracle" is stronger than a deployable static
 router because it sees outcomes after the fact. Use it to bound headroom and
 reviewer objections before deciding whether a real sixth paid lane is needed.
 
-Fourth, the paper must not hide custom metrics behind standard-sounding names.
-SWE-bench's community-standard metric is Resolved Count and Resolved Rate.
-Cost-aware coding-agent evaluation does not yet have a stable community
-standard. BudgetFlow therefore reports both the standard SWE-bench view and the
-paper-defined value view. The paper-defined Claim 1 objective is Total Resolved
-Value:
+Sixth, the initial draft should present the completed paid runs as a regime
+matrix, not as cherry-picked single-run proof.
 
-`Total Resolved Value = sum(pre-registered task value for resolved tasks)`.
+- The corrected 3x30 run is a value-maximization regime: BudgetFlow wins Total
+  Resolved Value against pure T2 and pure T3, while pure T3 remains a strong
+  efficiency boundary because it uses far fewer turns.
+- The 4x30 clean run is the clearest value-aware allocation case: BudgetFlow
+  wins Total Resolved Value and value per dollar despite resolving one fewer
+  task than pure T3, because it protects higher-value tasks such as
+  `pallets__flask-4992` while pure T3 picks up more normal-value tasks.
+- The 5x30 clean run is a Strongest Model frontier-dominance regime: pure T3
+  covers the whole batch under the same shared cap and wins Total Resolved
+  Value. This is a negative result for "BudgetFlow always wins" but positive
+  evidence for the paper's boundary claim: when T3 is both capable and cheap in
+  total, the correct scientific conclusion is to report that frontier, not to
+  hide it.
 
-This is not an official SWE-bench metric and must be described as
-paper-defined. The main table should report Resolved Count, Resolved Rate,
-Total Spend, Cost per Resolved Task, Total Resolved Value, and Total Resolved
-Value per Dollar. Equal-value sensitivity is required to show that the result
-does not depend only on a favorable value profile.
+These three regimes should be reported side by side. They show that BudgetFlow
+creates value when scarce model opportunities and Task Value placement matter,
+and that its diagnostic value includes identifying when the allocation problem
+has collapsed into a strong pure-tier frontier.
+
+Seventh, KV cache must not be hidden inside the main CostSource. The main paid
+experiment uses the frozen pre-registered catalog and physical model bindings.
+KV50/KV90/KV98/KV99 are no-paid CostSource sensitivities or separately
+pre-registered catalog experiments. A fixed-outcome KV recost only changes
+value-per-dollar; it does not prove additional tasks would have resolved. If
+the paper discusses cheaper KV enabling more batch coverage, it must label that
+as a sequential replay or upper-bound diagnostic unless it is rerun under a
+frozen KV catalog.
+
+Eighth, the paper conclusion should report when BudgetFlow is useful, not only
+a five-policy ranking table. The required Claim 1 readout is:
+
+- main metrics: Resolved Count, Resolved Rate, Spend, Cost per Resolved Task,
+  Total Resolved Value, and Total Resolved Value per Dollar;
+- execution coverage: planned tasks, paid attempts, zero-cost budget-exhaustion
+  rows, aborts, and missing rows;
+- task-level T2/T3 frontier buckets: T2 cheaper pass, T3 cheaper pass, T2-only
+  pass, T3-only pass, and both fail;
+- sensitivity: equal value, compressed/expanded criticality, value
+  permutation, budget-cap replay, KV-cache recost, and dynamic KV replay where
+  justified;
+- upper bounds: observed-tier oracle or gap-to-frontier when counterfactual
+  rows exist.
+
+This evidence stack directly answers common reviewer attacks. "Your metrics
+are self-defined" is answered by reporting standard SWE-bench metrics next to
+the value metric and by freezing Task Value before execution. "Your baselines
+are weak" is answered by pure-tier frontiers, a RouteLLM-inspired learned
+router, a value-blind budget-only control, and observed-tier upper bounds.
+"Your result is cherry-picked" is answered by showing 3x30, 4x30, and 5x30 as
+different regimes, including the run where pure T3 wins.
 
 ## Core Terminology
 
@@ -89,7 +161,7 @@ budget.
 | Term | Meaning |
 |---|---|
 | BudgetFlow | Value-aware budget governance for multi-step agent workflows under shared hard budgets. |
-| Claim 1 | Under one shared hard budget, BudgetFlow maximizes Total Resolved Value, a paper-defined value-weighted objective over verified resolved tasks. |
+| Claim 1 | BudgetFlow's shared-budget objective is to maximize Total Resolved Value, a paper-defined value-weighted objective over verified resolved tasks; the evidence reports when BudgetFlow reaches or approaches that frontier and when a pure-tier boundary is stronger. |
 | Claim 2 | BudgetFlow's budget-aware allocation policy explains how Claim 1 is achieved: it chooses when to spend, stop, continue, route, or escalate under the compiled budget, and must improve or preserve value/cost efficiency against strong diagnostic controls. The policy may be task-level, stage/segment-aware, learned from memory, or a hybrid; no single source is assumed correct by definition. |
 | Resolved Count | Number of tasks whose generated patch satisfies the SWE-bench verifier. This is the standard SWE-bench count metric. |
 | Resolved Rate | Resolved Count divided by total tasks. This is the standard SWE-bench rate metric. |
@@ -177,14 +249,16 @@ planned demand during the first or second stage.
 
 `planned_task_budget` is the compiler's per-task demand/cap weight. The sum of
 these weights may exceed the shared hard cap. `effective_task_budget` is the
-runtime value after clipping the current task against remaining shared budget
-and remaining planned demand. For BudgetFlow task-level and the
+runtime value after clipping the planned task cap against the live remaining
+shared budget. It is not proportionally scaled by remaining planned demand; the
+shared batch budget is the global hard constraint, and per-task caps are
+runway/stop-loss guards. For BudgetFlow task-level and the
 RouteLLM-inspired learned task router, `effective_task_budget` is an execution
 hard cap: provider calls are not reserved once the task has exhausted that live
 cap. Pure T2 and pure T3 controls keep only the shared batch hard cap plus the
 global turn cap.
 
-For the next five-policy Claim 1 run, the budget-only baseline also receives
+For the current five-policy Claim 1 mainline, the budget-only baseline also receives
 that same generic `effective_task_budget` hard cap. The cap is a fairness
 control, not BudgetFlow logic. BudgetFlow may use the cap together with Task
 Value, Estimated Task Token Demand, Model Fit, and budget pressure to choose T2
@@ -227,17 +301,20 @@ policy comparison. The Runtime is the execution part: it allocates model
 opportunities within that regime while preserving the pre-registered task
 order.
 
-Claim 1 evidence must report whether the shared hard budget is binding. If a
-pure Strongest Model control completes the fixed workload far below the cap,
-the result is still a fixed-workload value readout, but it does not establish a
-scarcity mechanism. The next paid-run candidate should therefore use a
-pre-registered tighter cap or larger/harder workload that puts pure T3 under
-real budget pressure.
+Claim 1 evidence must report whether the shared hard budget is binding and
+which frontier is active. If a pure Strongest Model control completes the fixed
+workload inside the cap and wins value, the result is still a valid fixed-workload
+readout. It establishes a Strongest Model frontier-dominance regime rather than
+a BudgetFlow value-creation regime. The next evidence move is not automatically
+to weaken the cap or workload; first report the gap-to-frontier and ask whether
+scarcity, value placement, or reference-tier solvability still leaves an
+allocation problem.
 
 The current Claim 1 task set remains 30 tasks. Expanding to 50 tasks is not the
-next evidence move. The next evidence move is to keep the task set, task order,
-ValueSource, CostSource, and budget regime fixed, then add the value-blind
-budget-only baseline so the paper can separate "budget pressure helps" from
+default next evidence move. The current mainline keeps the task set, task
+order, ValueSource, CostSource, and budget regime fixed, and compares pure T2,
+pure T3, RouteLLM-inspired learned router, budget-only baseline, and
+BudgetFlow task-level so the paper can separate "budget pressure helps" from
 "value-aware budget allocation helps."
 
 Claim 2 is mechanism analysis about the allocation policy that produced the
@@ -291,13 +368,15 @@ and ceiling tasks where neither tier should consume the shared budget for long.
 If every task is dominated by one tier, BudgetFlow should say so rather than
 manufacture routing savings.
 
-The current paid mainline uses four policies: pure T2, pure T3, a
-RouteLLM-inspired learned task router, and BudgetFlow task-level. The learned
-router is the strong non-BudgetFlow routing baseline: it is trained offline,
-does not read Task Value, writes a FrozenRouterPlan, and runs under the same
-shared hard cap. The headline question is whether BudgetFlow beats pure-tier
-boundaries and a normal learned router while preserving or improving Total
-Resolved Value per Dollar under the same shared hard budget.
+The current paid mainline uses five policies: pure T2, pure T3, a
+RouteLLM-inspired learned task router, a budget-only value-blind control, and
+BudgetFlow task-level. The learned router is the strong non-BudgetFlow routing
+baseline: it is trained offline, does not read Task Value, writes a
+FrozenRouterPlan, and runs under the same shared hard cap. The budget-only
+control tests whether budget pressure alone explains the result. The headline
+question is whether BudgetFlow beats, matches, or approaches the strongest
+active frontier while preserving or improving Total Resolved Value under the
+same shared hard budget.
 
 ## Value And Cost Discipline
 

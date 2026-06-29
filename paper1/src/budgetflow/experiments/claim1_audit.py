@@ -905,7 +905,7 @@ def _claim1_runtime_recommendation(
             comparable_t3_win += 1
     if t3 is not None and t3.attempted == len(task_order) and t3.spend <= budget_cap and (bf is None or t3.resolved_value >= bf.resolved_value):
         lines.append(
-            "- Current evidence supports a compiler-level strongest-frontier fallback: when projected pure T3 can cover the remaining batch inside the shared cap, BudgetFlow should be allowed to choose the T3 frontier instead of forcing T2 savings. In this run, pure T3 covered the full batch under the cap and beat BudgetFlow on Total Resolved Value."
+            "- Current evidence shows a Strongest Model frontier boundary: pure T3 can cover the batch inside the shared cap and beats BudgetFlow on Total Resolved Value. This should be reported as a gap-to-frontier diagnostic, not as permission for BudgetFlow to silently become an all-T3 policy."
         )
     elif comparable_t2_win > 0:
         lines.append(

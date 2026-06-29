@@ -2,6 +2,44 @@
 
 > 单一入口：进度、跑法、历史结果。
 
+## 2026-06-29 — Claim 1 regime-matrix framing
+
+- Updated `paper1/docs/north_star.md`: Claim 1 remains centered on Total
+  Resolved Value under one shared hard budget, but the draft should present
+  3x30, 4x30, and 5x30 as a regime/frontier matrix rather than a cherry-picked
+  single-run win.
+- Reviewer-defense framing: standard SWE-bench metrics stay in the main table;
+  Total Resolved Value is explicitly paper-defined and pre-registered; strong
+  controls include pure-tier frontiers, RouteLLM-inspired learned router,
+  budget-only value-blind control, sensitivity, and observed-tier upper bounds.
+- Interpretation: 3x30 and 4x30 show BudgetFlow value-creation regimes; 5x30
+  shows Strongest Model frontier dominance. The paper should explain both,
+  not weaken T3 or make BudgetFlow silently become all-T3.
+
+## 2026-06-29 — 5x30 clean audit frontier/KV readout
+
+- Clean 5-policy audit now reports frontier and sensitivity matrix from code:
+  `paper1/docs/reports/mainline_5x30_claim1_retryfix_clean_20260629_audit.md`.
+  Main readout: pure T3 wins this run (`17/30`, TRV `20.00`, `$9.95`) over
+  BudgetFlow (`15/30`, TRV `17.50`, `$9.95`); RouteLLM-inspired is `14/30`,
+  TRV `17.00`.
+- Execution coverage explains part of the loss: pure T3 paid-ran `30/30`,
+  while BudgetFlow paid-ran `25/30` and wrote 5 zero-cost budget-exhaustion
+  rows. This is a binding-budget result, not a fake complete-lane win.
+- Task-level frontier remains mixed: among 17 tasks with paid pure T2 and T3
+  counterfactuals, T2-favorable tasks = 6, T3-favorable tasks = 5, both-fail =
+  6. BudgetFlow has room only if it captures T2-favorable tasks without missing
+  T3-efficient tasks.
+- Runtime KV cache was `0.0`; KV50/KV90/KV98/KV99 are no-paid sensitivities.
+  Fixed-outcome KV recost improves value/$ but does not add resolves. Dynamic
+  replay upper-bound says KV50+ could let BudgetFlow recover up to 3 tail tasks
+  and reach TRV `20.50`, but that is an upper bound, not paid evidence.
+- Next design implication: do not patch Claim 1 with segment-level stop logic,
+  and do not let BudgetFlow silently become all-T3. When projected T3 can cover
+  the batch inside the shared cap, report it as a Strongest Model frontier
+  boundary and measure BudgetFlow's gap to that boundary or to an observed-tier
+  upper bound; under real scarcity, keep value-aware T2/T3 allocation.
+
 ## 2026-06-29 — 5x30 pre-paid bugfix gate
 
 - Stopped the current 5x30 line as forensic-only after the seaborn cap case exposed a real cap-semantics bug: compiled per-task budgets are task runways/stop-loss caps, not proportional fair-share slices. Runtime now clips a planned task cap only by live shared remaining budget.
