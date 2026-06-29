@@ -15,7 +15,6 @@ from budgetflow.experiments.compare_config import CompareStrategy
 from budgetflow.experiments.compare_execution import run_strategy_batch, run_task_record
 from budgetflow.experiments.compare_execution import (
     _effective_planned_task_cap,
-    _remaining_task_ids_for_planned_cap,
     _shared_batch_pressure,
 )
 from budgetflow.experiments.compare_summary import (
@@ -717,7 +716,7 @@ def test_runner_threads_planned_task_budget_into_allocation_context(monkeypatch)
     assert record["planned_task_budget_source"] == "budget_plan:planned_task_budget_by_strategy"
 
 
-def test_run_strategy_batch_planned_caps_are_live_task_hard_caps(monkeypatch) -> None:
+def test_run_strategy_batch_planned_caps_are_task_runway_hard_caps(monkeypatch) -> None:
     import pytest
     from budgetflow.experiments import compare_execution
 
@@ -770,12 +769,86 @@ def test_run_strategy_batch_planned_caps_are_live_task_hard_caps(monkeypatch) ->
         print_lock=None,
     )
 
-    assert seen_runways == pytest.approx([0.5, 0.8])
+    assert seen_runways == pytest.approx([0.8, 0.8])
     assert spent == pytest.approx(1.0)
     assert sum(r["total_cost"] for r in records) == pytest.approx(1.0)
     assert records[0]["batch_spent"] == pytest.approx(0.2)
     assert records[1]["batch_spent"] == pytest.approx(1.0)
     assert records[1]["batch_available"] == pytest.approx(0.0)
+
+
+def test_run_strategy_batch_clips_planned_cap_to_shared_remaining(monkeypatch) -> None:
+    import pytest
+    from budgetflow.experiments import compare_execution
+
+    seen_runways: list[float] = []
+    costs = {"task-a": 0.9, "task-b": 0.1}
+
+    def fake_run_task_record(task, **kwargs):
+        seen_runways.append(float(kwargs["effective_task_budget"]))
+        return {
+            "instance_id": task.instance_id,
+            "strategy": kwargs["cfg"].name,
+            "routing": kwargs["cfg"].routing,
+            "harness_resolved": False,
+            "score_status": "true_fail",
+            "patch_extracted": False,
+            "agent_gold_edited": False,
+            "agent_gold_files": [],
+            "detail": "",
+            "exit_status": "Stopped",
+            "exit_reason": "test",
+            "elapsed_s": 0.0,
+            "backend_picks": ["tier2"],
+            "llm_turns": 1,
+            "total_cost": costs[task.instance_id],
+            "batch_available": None,
+        }
+
+    monkeypatch.setattr(compare_execution, "run_task_record", fake_run_task_record)
+
+    run_strategy_batch(
+        CompareStrategy("budgetflow_task_level", "value_aware_task_level"),
+        [SimpleNamespace(instance_id="task-a"), SimpleNamespace(instance_id="task-b")],
+        batch_budget_cap=1.0,
+        value_context=_value_context(),
+        planned_task_caps={"task-a": 0.8, "task-b": 0.8},
+        budget_mode="planned_task_budget",
+        step_limit=1,
+        trace_console="quiet",
+        heartbeat=0,
+        global_progress=SimpleNamespace(
+            total=2,
+            start_task=lambda: None,
+            finish_task=lambda *, recorded=True: len(seen_runways),
+            format_banner=lambda scoreboard=None: "test",
+            format_global=lambda scoreboard=None: "test",
+        ),
+        scoreboard=None,
+        print_lock=None,
+    )
+
+    assert seen_runways == pytest.approx([0.8, 0.1])
+
+
+def test_planned_task_budget_uses_planned_runway_until_shared_pool_is_tighter() -> None:
+    planned_caps = {f"task-{index}": 2.9 for index in range(1, 31)}
+
+    early_cap = _effective_planned_task_cap(
+        planned_task_caps=planned_caps,
+        task_id="task-2",
+        batch_budget_cap=9.95,
+        shared_spent=0.37,
+    )
+    late_cap = _effective_planned_task_cap(
+        planned_task_caps=planned_caps,
+        task_id="task-30",
+        batch_budget_cap=9.95,
+        shared_spent=9.80,
+    )
+
+    assert early_cap == pytest.approx(2.9)
+    assert late_cap == pytest.approx(0.15)
 
 
 def test_run_strategy_batch_threads_planned_caps_to_routellm(monkeypatch) -> None:
@@ -886,30 +959,6 @@ def test_run_strategy_batch_excludes_protocol_abort_from_evidence(monkeypatch) -
     assert records == []
     assert persisted == []
     assert spent == pytest.approx(0.0)
-
-
-def test_effective_planned_task_cap_protects_remaining_planned_budget() -> None:
-    import pytest
-
-    planned = {"task-a": 0.8, "task-b": 0.8, "task-c": 0.8}
-
-    first_cap = _effective_planned_task_cap(
-        planned_task_caps=planned,
-        remaining_task_ids=["task-a", "task-b", "task-c"],
-        task_id="task-a",
-        batch_budget_cap=1.2,
-        shared_spent=0.0,
-    )
-    second_cap_after_first_underspends = _effective_planned_task_cap(
-        planned_task_caps=planned,
-        remaining_task_ids=["task-b", "task-c"],
-        task_id="task-b",
-        batch_budget_cap=1.2,
-        shared_spent=0.1,
-    )
-
-    assert first_cap == pytest.approx(0.4)
-    assert second_cap_after_first_underspends == pytest.approx(0.55)
 
 
 def test_planned_task_budget_checkpoint_records_shared_batch_cap(monkeypatch, tmp_path) -> None:
@@ -1103,53 +1152,6 @@ def test_run_strategy_batch_exception_clears_inflight_without_recording_done(mon
     assert strategy_state.in_flight_task is None
     assert strategy_state.completed_tasks == []
     assert strategy_state.batch_spent == pytest.approx(0.0)
-
-
-def test_effective_planned_task_cap_rebalances_against_remaining_planned_demand() -> None:
-    import pytest
-
-    planned = {"task-a": 0.8, "task-b": 0.8, "task-c": 0.8}
-
-    first_cap = _effective_planned_task_cap(
-        planned_task_caps=planned,
-        remaining_task_ids=["task-a", "task-b", "task-c"],
-        task_id="task-a",
-        batch_budget_cap=1.2,
-        shared_spent=0.0,
-    )
-    later_cap = _effective_planned_task_cap(
-        planned_task_caps=planned,
-        remaining_task_ids=["task-b", "task-c"],
-        task_id="task-b",
-        batch_budget_cap=1.2,
-        shared_spent=0.1,
-    )
-
-    final_cap = _effective_planned_task_cap(
-        planned_task_caps=planned,
-        remaining_task_ids=["task-c"],
-        task_id="task-c",
-        batch_budget_cap=1.2,
-        shared_spent=0.7,
-    )
-
-    assert first_cap == pytest.approx(0.4)
-    assert later_cap == pytest.approx(0.55)
-    assert final_cap == pytest.approx(0.5)
-
-
-def test_remaining_task_ids_for_planned_cap_uses_full_plan_suffix_on_resume() -> None:
-    selected = ["task-10", "task-11", "task-12"]
-    plan_order = [f"task-{index:02d}" for index in range(30)]
-
-    remaining = _remaining_task_ids_for_planned_cap(
-        selected_task_ids=selected,
-        task_index=1,
-        task_id="task-10",
-        planned_task_order=plan_order,
-    )
-
-    assert remaining == [f"task-{index:02d}" for index in range(10, 30)]
 
 
 def test_planned_task_budget_uses_shared_batch_pressure() -> None:

@@ -556,12 +556,12 @@ def test_task_level_projection_reports_effective_shared_runway_without_upgrade_b
 
     task_diag = diagnostics["budgetflow_task_level"]["task_choices"]["task-a"]
     assert task_diag["planned_task_budget_usd"] == pytest.approx(10.0)
-    assert task_diag["effective_task_budget_usd"] == pytest.approx(1.5)
+    assert task_diag["effective_task_budget_usd"] == pytest.approx(3.0)
     assert task_diag["runtime_projected_tier"] == 2
     assert task_diag["routing_reason"] == "reference_frontier"
     scores = task_diag["routing_scores"]
     assert scores["planned_task_budget"] == pytest.approx(10.0)
-    assert scores["effective_task_budget"] == pytest.approx(1.5)
+    assert scores["effective_task_budget"] == pytest.approx(3.0)
     assert scores["paid_upgrade_candidate"] == 0.0
     assert diagnostics["budgetflow_task_level"]["degeneration"] == "pure_reference_tier"
 

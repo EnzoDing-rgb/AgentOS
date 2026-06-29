@@ -1120,7 +1120,6 @@ def _build_projection_diagnostics(
         )
         effective_task_budget = effective_planned_task_cap(
             planned_task_caps=planned_task_budgets,
-            remaining_task_ids=task_ids[index:],
             task_id=task_id,
             batch_budget_cap=hard_cap,
             shared_spent=projected_shared_spent,

@@ -2,6 +2,12 @@
 
 > 单一入口：进度、跑法、历史结果。
 
+## 2026-06-29 — 5x30 pre-paid bugfix gate
+
+- Stopped the current 5x30 line as forensic-only after the seaborn cap case exposed a real cap-semantics bug: compiled per-task budgets are task runways/stop-loss caps, not proportional fair-share slices. Runtime now clips a planned task cap only by live shared remaining budget.
+- Removed the retired remaining-planned-demand cap path from runtime and tests. The shared batch budget remains the global hard constraint; per-task caps prevent runaway tasks without prematurely truncating viable T3/T2 work.
+- Fixed protocol-retry guard abort tracing and extended the no-paid Claim 1 audit with KV-cache sensitivity, budget-cap replay sensitivity, and routing/spin diagnostics. Verified with full no-paid tests, compileall, diff-check, and a real 3x30 audit generation.
+
 ## 2026-06-29 — Claim 1 no-paid sensitivity/oracle audit path
 
 - Added a no-paid audit path to `claim1_audit`: pass `--value-matrix` to

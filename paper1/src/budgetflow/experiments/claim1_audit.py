@@ -17,6 +17,7 @@ from budgetflow.experiments.claim1_value_sensitivity import (
     value_sensitivity_lines,
 )
 from budgetflow.metrics_reporting import build_standard_metrics
+from budgetflow.recost import recost_record
 
 
 DEFAULT_STRATEGY_ORDER = (
@@ -66,6 +67,15 @@ def load_latest_rows(jsonl_path: Path) -> list[dict[str, Any]]:
 def _dedupe_latest_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     latest: dict[tuple[str, str], dict[str, Any]] = {}
     paid_cost_by_key: dict[tuple[str, str], float] = defaultdict(float)
+    paid_usage_by_key: dict[tuple[str, str], dict[str, Any]] = defaultdict(
+        lambda: {
+            "backend_picks": [],
+            "turn_traces": [],
+            "prompt_tokens_total": 0,
+            "completion_tokens_total": 0,
+            "llm_turns": 0,
+        }
+    )
     for row in rows:
         key = (str(row.get("strategy") or ""), str(row.get("instance_id") or ""))
         if str(row.get("score_status") or "") in {"pass", "true_fail", "abort"}:
@@ -75,6 +85,12 @@ def _dedupe_latest_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 cost = 0.0
             if cost > 0.0:
                 paid_cost_by_key[key] += cost
+                usage = paid_usage_by_key[key]
+                usage["backend_picks"].extend(row.get("backend_picks") or [])
+                usage["turn_traces"].extend(row.get("turn_traces") or [])
+                usage["prompt_tokens_total"] += _int_field(row, "prompt_tokens_total")
+                usage["completion_tokens_total"] += _int_field(row, "completion_tokens_total")
+                usage["llm_turns"] += _int_field(row, "llm_turns")
         previous = latest.get(key)
         if previous is None or int(row.get("_line_no") or 0) > int(previous.get("_line_no") or 0):
             latest[key] = row
@@ -83,8 +99,21 @@ def _dedupe_latest_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         merged = dict(row)
         if key in paid_cost_by_key:
             merged["total_cost"] = paid_cost_by_key[key]
+            usage = paid_usage_by_key[key]
+            merged["_paid_backend_picks"] = list(usage["backend_picks"])
+            merged["_paid_turn_traces"] = list(usage["turn_traces"])
+            merged["_paid_prompt_tokens_total"] = usage["prompt_tokens_total"]
+            merged["_paid_completion_tokens_total"] = usage["completion_tokens_total"]
+            merged["_paid_llm_turns"] = usage["llm_turns"]
         deduped.append(merged)
     return deduped
+
+
+def _int_field(row: dict[str, Any], field: str) -> int:
+    try:
+        return int(row.get(field) or 0)
+    except (TypeError, ValueError):
+        return 0
 
 
 def row_to_task(row: dict[str, Any]) -> StrategyTask:
@@ -167,11 +196,25 @@ def build_report(
             )
         )
         lines.append("")
+    lines.extend(_kv_cache_sensitivity(rows, value_lookup=value_lookup, task_count=len(task_order)))
+    lines.append("")
+    lines.extend(
+        _budget_cap_sensitivity(
+            task_order,
+            by_key,
+            strategies,
+            budget_cap=resolve_budget_cap(tasks, budget_cap),
+            value_lookup=value_lookup,
+        )
+    )
+    lines.append("")
     lines.extend(_scoring_evidence(by_strategy))
     lines.append("")
     lines.extend(_order_audit(task_order, by_key, strategies, order_source=order_source, value_lookup=value_lookup))
     lines.append("")
     lines.extend(_matrix(task_order, by_key, strategies, value_lookup=value_lookup))
+    lines.append("")
+    lines.extend(_routing_spin_diagnostics(task_order, by_key, strategies))
     lines.append("")
     lines.extend(_policy_diffs(task_order, by_key))
     lines.append("")
@@ -256,6 +299,178 @@ def _summary_table(by_strategy: dict[str, list[StrategyTask]], *, task_count: in
             f"{metrics['total_resolved_value_per_dollar']:.2f} |"
         )
     return lines
+
+
+def _kv_cache_sensitivity(
+    rows: list[dict[str, Any]],
+    *,
+    value_lookup: dict[str, float] | None,
+    task_count: int,
+) -> list[str]:
+    lines = [
+        "## KV Cache Sensitivity",
+        "",
+        "No-paid CostSource sensitivity: outcomes stay fixed while repeated input-token cost is recomputed for T2/T3 turns.",
+        "",
+        "| KV Profile | Strategy | Resolved | Spend | Total Resolved Value | Total Resolved Value / Dollar |",
+        "|---|---|---:|---:|---:|---:|",
+    ]
+    profiles = (
+        ("KV0", 0.0),
+        ("KV50", 0.5),
+        ("KV90", 0.9),
+    )
+    for profile_name, discount in profiles:
+        by_strategy: dict[str, dict[str, float | int]] = defaultdict(
+            lambda: {"resolved": 0, "spend": 0.0, "value": 0.0}
+        )
+        for row in rows:
+            strategy = str(row.get("strategy") or "")
+            if not strategy:
+                continue
+            recosted = recost_record(
+                _row_for_kv_recost(row),
+                t3_target_ratio=5.0,
+                input_kv_cache_discount=discount,
+                min_input_cost_fraction=max(0.0, 1.0 - discount),
+            )
+            recosted_spend = _sensitivity_cost_or_original(recosted, row)
+            stats = by_strategy[strategy]
+            stats["spend"] = float(stats["spend"]) + recosted_spend
+            if str(row.get("score_status") or "") == "pass":
+                stats["resolved"] = int(stats["resolved"]) + 1
+                stats["value"] = float(stats["value"]) + _row_task_value(row, value_lookup)
+        for strategy in _strategy_order(set(by_strategy)):
+            stats = by_strategy[strategy]
+            metrics = build_standard_metrics(
+                resolved_count=int(stats["resolved"]),
+                total_tasks=task_count,
+                total_spend=float(stats["spend"]),
+                total_resolved_value=float(stats["value"]),
+            )
+            lines.append(
+                f"| {profile_name} | {strategy} | "
+                f"{metrics['resolved_count']}/{task_count} | "
+                f"${metrics['total_spend']:.2f} | "
+                f"{metrics['total_resolved_value']:.2f} | "
+                f"{metrics['total_resolved_value_per_dollar']:.2f} |"
+            )
+    return lines
+
+
+def _row_for_kv_recost(row: dict[str, Any]) -> dict[str, Any]:
+    recost_row = dict(row)
+    paid_backend_picks = row.get("_paid_backend_picks")
+    if isinstance(paid_backend_picks, list) and paid_backend_picks:
+        recost_row["backend_picks"] = paid_backend_picks
+        recost_row["turn_traces"] = row.get("_paid_turn_traces") or []
+        recost_row["prompt_tokens_total"] = row.get("_paid_prompt_tokens_total") or 0
+        recost_row["completion_tokens_total"] = row.get("_paid_completion_tokens_total") or 0
+        recost_row["llm_turns"] = row.get("_paid_llm_turns") or len(paid_backend_picks)
+    return recost_row
+
+
+def _sensitivity_cost_or_original(recosted: dict[str, Any], original: dict[str, Any]) -> float:
+    try:
+        original_cost = float(original.get("total_cost") or 0.0)
+    except (TypeError, ValueError):
+        original_cost = 0.0
+    try:
+        recosted_cost = float(recosted.get("total_cost") or 0.0)
+    except (TypeError, ValueError):
+        recosted_cost = 0.0
+    if original_cost > 0.0 and recosted_cost <= 0.0:
+        return original_cost
+    return recosted_cost
+
+
+def _budget_cap_sensitivity(
+    task_order: list[str],
+    by_key: dict[tuple[str, str], StrategyTask],
+    strategies: list[str],
+    *,
+    budget_cap: float,
+    value_lookup: dict[str, float] | None,
+) -> list[str]:
+    if budget_cap <= 0.0:
+        return [
+            "## Budget Cap Sensitivity",
+            "",
+            "- Skipped: no shared hard budget cap found in rows or budget plan.",
+        ]
+    lines = [
+        "## Budget Cap Sensitivity",
+        "",
+        "No-paid replay over the fixed task order: each strategy keeps completed rows until the replay cap is exhausted. Outcomes and Task Value stay fixed.",
+        "",
+        "| Cap | Strategy | Attempted | Spend | Total Resolved Value | Total Resolved Value / Dollar |",
+        "|---:|---|---:|---:|---:|---:|",
+    ]
+    for cap in _cap_grid(budget_cap):
+        for strategy in strategies:
+            attempted, spend, resolved_value = _replay_strategy_at_cap(
+                strategy,
+                task_order,
+                by_key,
+                cap=cap,
+                value_lookup=value_lookup,
+            )
+            value_per_dollar = resolved_value / spend if spend > 0.0 else 0.0
+            lines.append(
+                f"| ${cap:.2f} | {strategy} | "
+                f"{attempted}/{len(task_order)} | "
+                f"${spend:.2f} | "
+                f"{resolved_value:.2f} | "
+                f"{value_per_dollar:.2f} |"
+            )
+    return lines
+
+
+def _cap_grid(budget_cap: float) -> list[float]:
+    seen: set[float] = set()
+    caps: list[float] = []
+    for fraction in (0.30, 0.40, 0.50, 0.60, 0.75, 1.0):
+        cap = round(float(budget_cap) * fraction, 2)
+        if cap <= 0.0 or cap in seen:
+            continue
+        seen.add(cap)
+        caps.append(cap)
+    return caps
+
+
+def _replay_strategy_at_cap(
+    strategy: str,
+    task_order: list[str],
+    by_key: dict[tuple[str, str], StrategyTask],
+    *,
+    cap: float,
+    value_lookup: dict[str, float] | None,
+) -> tuple[int, float, float]:
+    attempted = 0
+    spend = 0.0
+    resolved_value = 0.0
+    for task_id in task_order:
+        task = by_key.get((strategy, task_id))
+        if task is None:
+            continue
+        if task.total_cost > max(0.0, cap - spend):
+            break
+        attempted += 1
+        spend += task.total_cost
+        if task.score_status == "pass":
+            resolved_value += (
+                value_lookup.get(task_id, task.task_value)
+                if value_lookup is not None
+                else task.resolved_value
+            )
+    return attempted, round(spend, 6), round(resolved_value, 6)
+
+
+def _row_task_value(row: dict[str, Any], value_lookup: dict[str, float] | None) -> float:
+    task_id = str(row.get("instance_id") or "")
+    if value_lookup is not None and task_id in value_lookup:
+        return float(value_lookup[task_id])
+    return float(row.get("task_value") or 0.0)
 
 
 def _lane_state(tasks: list[StrategyTask], *, task_count: int) -> str:
@@ -344,7 +559,10 @@ def _order_audit(
             for task_id in task_ids
             if (strategy, task_id) in by_key and by_key[(strategy, task_id)].score_status == "pass"
         ]
-        return len(resolved), sum(task.resolved_value for task in resolved)
+        return len(resolved), sum(
+            _display_task_value(task.instance_id, by_key, strategies, value_lookup)
+            for task in resolved
+        )
 
     lines = [
         "## Task Order Audit",
@@ -455,6 +673,88 @@ def _policy_diffs(
     if t3_only:
         lines.append("- Pure-T3-only tasks: " + ", ".join(f"`{t.instance_id}`({t.resolved_value:.2f})" for t in t3_only))
     return lines
+
+
+def _routing_spin_diagnostics(
+    task_order: list[str],
+    by_key: dict[tuple[str, str], StrategyTask],
+    strategies: list[str],
+) -> list[str]:
+    lines = [
+        "## Routing And Spin Diagnostics",
+        "",
+        "| Strategy | Rows | T3 Start | T3 Start Pass | T3 Start True Fail | T3 Start Abort | T3 Start Other | All-T2 Rows | All-T2 Turns | Extra All-T2 Turns vs Pure T3 |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for strategy in strategies:
+        rows = [by_key[(strategy, task_id)] for task_id in task_order if (strategy, task_id) in by_key]
+        t3_start = [task for task in rows if task.first_tier == 3]
+        all_t2 = [task for task in rows if _tier_counts(task) and set(_tier_counts(task)) == {2}]
+        all_t2_turns = sum(task.llm_turns for task in all_t2)
+        comparable_all_t2 = [
+            task for task in all_t2 if ("bare_t3_baseline", task.instance_id) in by_key
+        ]
+        pure_t3_turns = 0
+        for task in comparable_all_t2:
+            pure_t3_turns += by_key[("bare_t3_baseline", task.instance_id)].llm_turns
+        comparable_all_t2_turns = sum(task.llm_turns for task in comparable_all_t2)
+        extra_turns = comparable_all_t2_turns - pure_t3_turns if comparable_all_t2 else 0
+        lines.append(
+            f"| {strategy} | {len(rows)} | "
+            f"{len(t3_start)} | "
+            f"{sum(1 for task in t3_start if task.score_status == 'pass')} | "
+            f"{sum(1 for task in t3_start if task.score_status == 'true_fail')} | "
+            f"{sum(1 for task in t3_start if task.score_status == 'abort')} | "
+            f"{sum(1 for task in t3_start if task.score_status not in {'pass', 'true_fail', 'abort'})} | "
+            f"{len(all_t2)} | "
+            f"{all_t2_turns} | "
+            f"{extra_turns:.1f} |"
+        )
+
+    bf = "budgetflow_task_level"
+    if bf in strategies:
+        bf_rows = [by_key[(bf, task_id)] for task_id in task_order if (bf, task_id) in by_key]
+        bf_t3 = [task for task in bf_rows if task.first_tier == 3]
+        bf_t2 = [task for task in bf_rows if _tier_counts(task) and set(_tier_counts(task)) == {2}]
+        lines.append("")
+        lines.append(
+            f"- BudgetFlow T3-start rows: {len(bf_t3)}; "
+            f"resolved {sum(1 for task in bf_t3 if task.score_status == 'pass')}; "
+            f"true-fail {sum(1 for task in bf_t3 if task.score_status == 'true_fail')}; "
+            f"abort {sum(1 for task in bf_t3 if task.score_status == 'abort')}."
+        )
+        comparable_t2 = [
+            task for task in bf_t2 if ("bare_t3_baseline", task.instance_id) in by_key
+        ]
+        if comparable_t2:
+            bf_turns = sum(task.llm_turns for task in comparable_t2)
+            t3_turns = sum(
+                by_key[("bare_t3_baseline", task.instance_id)].llm_turns
+                for task in comparable_t2
+            )
+            lines.append(
+                f"- BudgetFlow all-T2 rows on tasks with pure T3 rows: {len(comparable_t2)}; "
+                f"turns {bf_turns} vs pure T3 {t3_turns}."
+            )
+    return lines
+
+
+def _tier_counts(task: StrategyTask) -> dict[int, int]:
+    counts: dict[int, int] = {}
+    if not task.tier_mix or task.tier_mix == "-":
+        return counts
+    for part in task.tier_mix.split(","):
+        if ":" not in part:
+            continue
+        tier_text, count_text = part.split(":", 1)
+        tier = _parse_tier(tier_text)
+        if tier is None:
+            continue
+        try:
+            counts[tier] = int(count_text)
+        except ValueError:
+            continue
+    return counts
 
 
 def _short_strategy(strategy: str) -> str:

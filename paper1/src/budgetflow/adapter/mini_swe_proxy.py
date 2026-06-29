@@ -896,6 +896,11 @@ class BudgetFlowLitellmModel:
                     ))
                 # Attempt retry
                 try:
+                    retry_reservation = None
+                    retry_response = None
+                    retry_reserved_cost = 0.0
+                    retry_reserved_input_tokens = 0
+                    retry_reserved_output_tokens = 0
                     _raise_if_global_guard_aborted(
                         self.workflow_id,
                         step_index=self.step_index,
@@ -1015,9 +1020,10 @@ class BudgetFlowLitellmModel:
                     self._protocol_retry_success = False
                     _parse_error = _retry_exc
                     if self._enable_turn_trace:
-                        _retry_content_head = safe_content_head(retry_response) if "retry_response" in locals() else ""
+                        _retry_response = retry_response
+                        _retry_content_head = safe_content_head(_retry_response) if _retry_response is not None else ""
                         _retry_parser_snippet = (
-                            parser_input_snippet(retry_response) if "retry_response" in locals() else ""
+                            parser_input_snippet(_retry_response) if _retry_response is not None else ""
                         )
                         _retry_parser_error_fields = parser_error_trace_fields(_retry_exc)
                         _retry_progress_signal = self._progress_adapter.signal_from_context(
@@ -1074,14 +1080,14 @@ class BudgetFlowLitellmModel:
                             protocol_retry_attempts=1,
                             protocol_retry_limit=turn_protocol_retry_limit,
                             assistant_content_head=_retry_content_head,
-                            tool_call_summary=tool_call_summary(retry_response) if "retry_response" in locals() else None,
+                            tool_call_summary=tool_call_summary(_retry_response) if _retry_response is not None else None,
                             parser_input_snippet=_retry_parser_snippet,
                             **_retry_parser_error_fields,
-                            reservation_id=getattr(locals().get("retry_reservation"), "reservation_id", None),
+                            reservation_id=getattr(retry_reservation, "reservation_id", None),
                             reserved_cost=round(retry_reserved_cost, 6),
                             reserved_input_tokens=retry_reserved_input_tokens,
                             reserved_output_tokens=retry_reserved_output_tokens,
-                            reservation_settled="retry_response" in locals(),
+                            reservation_settled=_retry_response is not None,
                         ))
                 finally:
                     turn_protocol_retry_attempts = 1

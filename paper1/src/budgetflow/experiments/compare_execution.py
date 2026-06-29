@@ -64,37 +64,16 @@ def truncate_turn_traces(
 def _effective_planned_task_cap(
     *,
     planned_task_caps: dict[str, float],
-    remaining_task_ids: list[str],
     task_id: str,
     batch_budget_cap: float,
     shared_spent: float,
 ) -> float | None:
     return effective_planned_task_cap(
         planned_task_caps=planned_task_caps,
-        remaining_task_ids=remaining_task_ids,
         task_id=task_id,
         batch_budget_cap=batch_budget_cap,
         shared_spent=shared_spent,
     )
-
-
-def _remaining_task_ids_for_planned_cap(
-    *,
-    selected_task_ids: list[str],
-    task_index: int,
-    task_id: str,
-    planned_task_order: list[str] | None,
-) -> list[str]:
-    """Return the remaining demand set used for planned-task cap clipping."""
-    current_remaining = list(selected_task_ids[max(0, task_index - 1):])
-    if not planned_task_order:
-        return current_remaining
-
-    try:
-        current_index = planned_task_order.index(task_id)
-    except ValueError:
-        return current_remaining
-    return list(planned_task_order[current_index:])
 
 
 def _shared_batch_pressure(
@@ -406,7 +385,6 @@ def run_strategy_batch(
     value_context: ValueEfficiencyContext,
     per_task_cap: float | None = None,
     planned_task_caps: dict[str, float] | None = None,
-    planned_task_order: list[str] | None = None,
     planned_task_budget_source: str = "budget_plan:planned_task_budget_by_strategy",
     soft_budget: float | None = None,
     max_overrun: float = 0.0,
@@ -570,12 +548,6 @@ def run_strategy_batch(
                         budget_plan_task_cap = float(raw_planned_cap)
                     effective_task_budget = _effective_planned_task_cap(
                         planned_task_caps=planned_task_caps,
-                        remaining_task_ids=_remaining_task_ids_for_planned_cap(
-                            selected_task_ids=selected_task_ids,
-                            task_index=task_index,
-                            task_id=str(task.instance_id),
-                            planned_task_order=planned_task_order,
-                        ),
                         task_id=str(task.instance_id),
                         batch_budget_cap=batch_budget_cap,
                         shared_spent=shared_spent,
