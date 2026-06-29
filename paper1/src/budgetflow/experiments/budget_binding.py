@@ -36,6 +36,7 @@ from ..model_tiers import (
     catalog_source_info,
     estimate_token_cost,
     init_catalog,
+    parse_tier_label,
 )
 from ..planned_task_budget import effective_planned_task_cap
 
@@ -397,7 +398,10 @@ def calibrate_budget(
                 )
             )
     if calibrated_strongest_jsonl and calibrated_strongest_jsonl.exists():
-        cap_signals = _load_historical_cost_signals(calibrated_strongest_jsonl)
+        cap_signals = _load_cap_reference_cost_signals(
+            calibrated_strongest_jsonl,
+            reference_strategy=pressure_spec.calibration_reference_strategy,
+        )
         cap_reference_historical = cap_signals.observed_costs
         if cap_signals.excluded:
             plan.reasons.append(
@@ -406,6 +410,11 @@ def calibrate_budget(
             )
         plan.reasons.append(
             f"cap_calibration:calibrated_strongest_jsonl={calibrated_strongest_jsonl}"
+        )
+        plan.reasons.append(
+            "cap_calibration:cap_only_reference_costs may use trusted scoreable "
+            "reference-strategy rows across catalog revisions; ModelFit and runtime "
+            "learning still require exact active catalog matches"
         )
     else:
         cap_reference_historical = historical
@@ -630,6 +639,7 @@ def calibrate_budget(
         value_features,
         projected_task_costs,
         fit_overrides=fit_overrides,
+        frozen_preferred_models=frozen_preferred_models,
         planned_task_budgets=plan.planned_task_budget_by_strategy.get("budgetflow_task_level", {}),
         audit_reasons=plan.reasons,
     )
@@ -1089,6 +1099,7 @@ def _build_projection_diagnostics(
     projected_task_costs: dict[str, dict[str, float]],
     *,
     fit_overrides: dict[int, float] | None,
+    frozen_preferred_models: dict[str, str] | None = None,
     planned_task_budgets: dict[str, float],
     audit_reasons: list[str] | None = None,
 ) -> dict[str, Any]:
@@ -1133,6 +1144,11 @@ def _build_projection_diagnostics(
             effective_task_budget=effective_task_budget,
             fit_overrides=fit_overrides,
             budget_pressure=pressure,
+            learned_preferred_model=(
+                frozen_preferred_models.get(task_id)
+                if frozen_preferred_models
+                else None
+            ),
         )
         projected_shared_spent = min(hard_cap, projected_shared_spent + max(0.0, float(cost)))
         chosen[tier] = chosen.get(tier, 0) + 1
@@ -1206,7 +1222,11 @@ def _build_projection_diagnostics(
                 else None
             ),
             "stage_prefix_degeneration": stage_prefix_degen,
-            "runtime_projection_source": "task_level_router_formula",
+            "runtime_projection_source": (
+                "task_level_router_formula_with_learned_prior"
+                if frozen_preferred_models
+                else "task_level_router_formula"
+            ),
             "task_choices": task_choices,
         }
     }
@@ -1276,6 +1296,7 @@ def _project_task_level_choice_cost(
     effective_task_budget: float | None = None,
     fit_overrides: dict[int, float] | None,
     budget_pressure: float,
+    learned_preferred_model: str | None = None,
 ) -> tuple[int, float, str, dict[str, float]]:
     """Call the shared task-level routing formula for no-paid readiness projection.
 
@@ -1313,6 +1334,7 @@ def _project_task_level_choice_cost(
         median_task_value=median,
         has_trusted_model_fit=(fit_overrides is not None),
         is_cold_start=(fit_overrides is None),
+        learned_preferred_tier=parse_tier_label(learned_preferred_model or ""),
     )
 
     if tier == 3:
@@ -1802,6 +1824,81 @@ def _load_historical_cost_signals(jsonl_path: Path) -> HistoricalCostSignals:
 
         signals.observed_costs.setdefault(strategy, {})[instance_id] = total_cost
     return signals
+
+
+def _load_cap_reference_cost_signals(
+    jsonl_path: Path,
+    *,
+    reference_strategy: str,
+) -> HistoricalCostSignals:
+    """Load cap-only reference costs for a specified strongest-model strategy.
+
+    This is deliberately narrower than active cost calibration.  It supports
+    calibrated strongest-cap generation after an unrelated catalog revision,
+    such as changing T2 provider options, while keeping ModelFit, memory, and
+    runtime learning on exact physical-catalog evidence only.
+    """
+
+    signals = HistoricalCostSignals()
+    records = _latest_records_by_strategy_task(jsonl_path)
+    for (strategy, instance_id), rec in records.items():
+        if strategy != reference_strategy:
+            continue
+        total_cost = float(rec.get("total_cost") or rec.get("scoreable_cost") or 0.0)
+        eligible, reason = _row_is_cap_reference_cost_eligible(rec)
+        if not eligible:
+            signals.excluded[reason] = signals.excluded.get(reason, 0) + 1
+            continue
+        if total_cost <= 0:
+            signals.excluded["zero_spend"] = signals.excluded.get("zero_spend", 0) + 1
+            continue
+        signals.observed_costs.setdefault(strategy, {})[instance_id] = total_cost
+    return signals
+
+
+def _row_is_cap_reference_cost_eligible(row: dict) -> tuple[bool, str]:
+    score_status = str(row.get("score_status") or "")
+    if score_status not in {"pass", "true_fail"}:
+        return False, f"not_scoreable:{score_status or 'missing'}"
+    harness_trust = str(row.get("harness_trust") or "")
+    if harness_trust != "trusted":
+        return False, f"harness_trust:{harness_trust or 'missing'}"
+    if _row_is_budget_exhausted(row):
+        return False, "budget_exhausted"
+
+    failure_class = str(row.get("failure_class") or "")
+    abort_reason = str(row.get("abort_reason") or "")
+    exit_owner = str(row.get("exit_owner") or "")
+    provider_error_kind = str(row.get("provider_error_kind") or "")
+    exit_reason = str(row.get("exit_reason") or "")
+    if (
+        failure_class == "infra_fail"
+        or "infra" in abort_reason
+        or "provider" in abort_reason
+        or exit_owner == "provider_error"
+        or provider_error_kind
+        or "provider" in exit_reason.lower()
+    ):
+        return False, "infra_or_provider_abort"
+    if (
+        failure_class == "extract_fail"
+        and (
+            str(row.get("exit_status") or "") == "FormatError"
+            or "format_error" in exit_reason.lower()
+            or exit_owner == "parser_protocol"
+        )
+    ):
+        return False, "protocol_or_parser_abort"
+    if row.get("protocol_retry_used"):
+        return False, "protocol_retry_overhead"
+
+    catalog = row.get("catalog") or {}
+    catalog_rev = str(catalog.get("catalog_revision") or "")
+    if "t3x3" in catalog_rev.lower() or "diagnostic" in catalog_rev.lower():
+        return False, f"diagnostic_catalog:{catalog_rev}"
+    if not catalog:
+        return False, "missing_catalog"
+    return True, "clean"
 
 
 def _latest_records_by_strategy_task(jsonl_path: Path) -> dict[tuple[str, str], dict]:

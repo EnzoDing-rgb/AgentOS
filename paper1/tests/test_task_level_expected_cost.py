@@ -444,6 +444,70 @@ class TestChooseTaskLevelBackend:
         assert backend_a.tier == backend_b.tier
         assert ctx_a.last_policy_decision.scores == ctx_b.last_policy_decision.scores
 
+    def test_learned_reference_prior_blocks_cold_start_t3_probe(self):
+        """A value-blind learned prior can veto ordinary cold-start T3 probes."""
+        from budgetflow.adapter.strategies import choose_backend
+        from budgetflow.frozen_router import FrozenPlanEntry, FrozenRouterPlan
+
+        alloc = _trusted_allocation(
+            task_value=1.5,
+            task_effort=23.1727,
+            planned_task_budget=2.4936,
+            effective_task_budget=1.078647,
+            model_fit=None,
+            confidence={"model_fit": "none"},
+        )
+        plan = FrozenRouterPlan(
+            name="learned",
+            plan={"test": FrozenPlanEntry("test", "tier2", 10)},
+        )
+        backends = _backends(t2_progress=0.24, t3_progress=0.35)
+        ctx = _task_level_ctx(
+            backends,
+            budget_pressure=0.020295,
+            median_task_value=1.0,
+            allocation=alloc,
+        )
+        ctx.frozen_plan = plan
+
+        backend = choose_backend(ctx, _turn(), _runtime_like_costs())
+
+        assert backend.tier == 2
+        assert ctx.last_policy_decision is not None
+        scores = ctx.last_policy_decision.scores
+        assert scores["learned_preferred_tier"] == pytest.approx(2.0)
+        assert scores["learned_prefers_reference"] == 1.0
+        assert scores["rule"] == "reference_frontier"
+
+    def test_learned_strongest_prior_does_not_bypass_budgetflow_gate(self):
+        """Learned T3 preference is a prior, not an automatic route override."""
+        from budgetflow.adapter.strategies import choose_backend
+        from budgetflow.frozen_router import FrozenPlanEntry, FrozenRouterPlan
+
+        alloc = _trusted_allocation(
+            task_value=1.0,
+            task_effort=21.0,
+            planned_task_budget=4.0,
+            model_fit=None,
+            confidence={"model_fit": "none"},
+        )
+        plan = FrozenRouterPlan(
+            name="learned",
+            plan={"test": FrozenPlanEntry("test", "tier3", 90)},
+        )
+        backends = _backends(t2_progress=0.24, t3_progress=0.25)
+        ctx = _task_level_ctx(backends, budget_pressure=0.01, allocation=alloc)
+        ctx.frozen_plan = plan
+
+        backend = choose_backend(ctx, _turn(), _runtime_like_costs())
+
+        assert backend.tier == 2
+        assert ctx.last_policy_decision is not None
+        scores = ctx.last_policy_decision.scores
+        assert scores["learned_preferred_tier"] == pytest.approx(3.0)
+        assert scores["learned_prefers_strongest"] == 1.0
+        assert scores["paid_upgrade_candidate"] == 0.0
+
     def test_task_budget_pressure_blocks_t3_when_budget_is_too_tight(self):
         """A planned task budget can veto T3 while preserving task-level fixed routing."""
         from budgetflow.adapter.strategies import choose_backend

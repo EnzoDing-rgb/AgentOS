@@ -6,6 +6,7 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from .types import Backend
 
@@ -63,6 +64,7 @@ class TierConfig:
     progress_updated: str = "unknown"
     progress_notes: str = ""
     turn_cache_policy: TurnCachePolicy = TurnCachePolicy()
+    provider_kwargs: dict[str, Any] | None = None
 
     def token_rates_for_input(self, input_tokens: int, turn_index: int | None = None) -> tuple[float, float]:
         return _token_cost_rates_for_config(self, input_tokens, turn_index=turn_index)
@@ -250,6 +252,8 @@ class ModelCatalog:
             "api_base": api_base,
             "api_key": api_key,
         }
+        if config.provider_kwargs:
+            kwargs.update(config.provider_kwargs)
         if max_tokens is not None:
             kwargs["max_tokens"] = max_tokens
         return config.model, kwargs
@@ -379,6 +383,7 @@ def _build_tier_config_from_json(data: dict) -> TierConfig:
         progress_updated=str(data.get("progress_updated", "unknown")),
         progress_notes=str(data.get("progress_notes", "")),
         turn_cache_policy=cache_policy,
+        provider_kwargs=data.get("provider_kwargs") or None,
     )
 
 

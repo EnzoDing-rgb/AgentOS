@@ -45,6 +45,7 @@ def task_start_tier_decision(
     has_trusted_model_fit: bool = False,
     is_cold_start: bool = False,
     reference_runway_turns: float | None = None,
+    learned_preferred_tier: int | None = None,
 ) -> tuple[int, str, dict[str, float]]:
     """Return ``(selected_tier, reason, scores)`` for one task-start decision.
 
@@ -115,6 +116,14 @@ def task_start_tier_decision(
     )
     acceptance = task_start_t3_acceptance_threshold(threshold)
     value_ratio = value / median
+    learned_tier = _normalise_tier(learned_preferred_tier)
+    learned_prefers_reference = learned_tier > 0 and learned_tier <= 2
+    learned_prefers_strongest = learned_tier >= 3
+    learned_prior_blocks_marginal = (
+        learned_prefers_reference
+        and strongest_cost > reference_cost
+        and value_ratio < TASK_START_CRITICAL_VALUE_RATIO_GATE
+    )
 
     # ── gates ────────────────────────────────────────────────────────────
     metadata_gate = (
@@ -134,6 +143,7 @@ def task_start_tier_decision(
         has_trusted_model_fit
         and fit_gain > 0
         and paid_upgrade_candidate
+        and not learned_prior_blocks_marginal
         and marginal_yield >= acceptance
     )
     decisive_marginal_override = (
@@ -168,6 +178,7 @@ def task_start_tier_decision(
         and metadata_gate
         and fit_gain >= TASK_START_PAID_UPGRADE_MIN_FIT_GAIN
         and marginal_yield >= acceptance * TASK_START_HIGH_PRESSURE_PROBE_MARGIN
+        and not learned_prefers_reference
     )
     trusted_fit_frontier_dominance = (
         has_trusted_model_fit
@@ -226,6 +237,10 @@ def task_start_tier_decision(
             trusted_fit_frontier_dominance=trusted_fit_frontier_dominance,
             strongest_probe_cost=strongest_probe_cost,
             budget_allows_probe=budget_allows_probe,
+            learned_preferred_tier=learned_tier,
+            learned_prefers_reference=learned_prefers_reference,
+            learned_prefers_strongest=learned_prefers_strongest,
+            learned_prior_blocks_marginal=learned_prior_blocks_marginal,
             rule=rule,
         )
 
@@ -264,6 +279,7 @@ def task_start_tier_decision(
         effort=effort,
         value=value,
         median=median,
+        learned_prefers_reference=learned_prefers_reference,
     ):
         return 3, (
             "high_pressure_efficiency_probe"
@@ -288,6 +304,16 @@ def _non_negative_or_none(value: float | None) -> float | None:
     if float(value) < 0:
         return None
     return float(value)
+
+
+def _normalise_tier(value: int | None) -> int:
+    if value is None:
+        return 0
+    try:
+        tier = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return max(0, tier)
 
 
 def _headroom(task_budget: float | None, strongest_cost: float) -> float:
@@ -326,8 +352,11 @@ def _uncertain_probe(
     effort: float,
     value: float,
     median: float,
+    learned_prefers_reference: bool,
 ) -> bool:
     if not is_cold_start:
+        return False
+    if learned_prefers_reference:
         return False
     if not budget_soft_allows:
         return False
@@ -393,6 +422,10 @@ def _scores(
     trusted_fit_frontier_dominance: bool = False,
     strongest_probe_cost: float = 0.0,
     budget_allows_probe: bool = False,
+    learned_preferred_tier: int = 0,
+    learned_prefers_reference: bool = False,
+    learned_prefers_strongest: bool = False,
+    learned_prior_blocks_marginal: bool = False,
 ) -> dict[str, float]:
     return {
         "task_value": value,
@@ -410,6 +443,11 @@ def _scores(
         "high_pressure_probe_margin": TASK_START_HIGH_PRESSURE_PROBE_MARGIN,
         "critical_value_ratio_gate": TASK_START_CRITICAL_VALUE_RATIO_GATE,
         "budget_allows_strongest_probe": 1.0 if budget_allows_probe else 0.0,
+        "learned_preferred_tier": float(learned_preferred_tier),
+        "learned_prior_available": 1.0 if learned_preferred_tier > 0 else 0.0,
+        "learned_prefers_reference": 1.0 if learned_prefers_reference else 0.0,
+        "learned_prefers_strongest": 1.0 if learned_prefers_strongest else 0.0,
+        "learned_prior_blocks_marginal": 1.0 if learned_prior_blocks_marginal else 0.0,
         "strongest_probe_cost": strongest_probe_cost,
         "strongest_min_probe_turns": TASK_START_STRONGEST_MIN_PROBE_TURNS,
         "strongest_budget_coverage": budget_coverage,

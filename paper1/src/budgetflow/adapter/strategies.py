@@ -15,6 +15,7 @@ from ..defaults import (
 )
 from ..decision_costs import task_level_decision_per_turn_cost
 from ..frozen_router import FrozenRouterPlan
+from ..model_tiers import parse_tier_label
 from ..policies import BudgetOnlyStepRouter, BudgetOnlyT2Router, WorkflowLevelRouter
 from ..policy_backend import BootstrapPolicy, PolicyDecision
 from ..selector import BudgetFlowSelector, ConservativeSelector, RouterDecision, ValueAwareSelector
@@ -46,6 +47,7 @@ class RoutingContext:
     task_value: float = 1.0
     median_task_value: float = 1.0
     allocation: AllocationContext | None = None
+    workflow_id: str = ""
 
     def __post_init__(self) -> None:
         if self.allocation is not None:
@@ -288,6 +290,7 @@ def _choose_task_level_backend(ctx: RoutingContext, expected_costs: dict[str, fl
     t3_fit = _tier_model_fit_rate(ctx, 3, strongest.name)
     t2_per_turn = task_level_decision_per_turn_cost(reference)
     t3_per_turn = task_level_decision_per_turn_cost(strongest)
+    learned_preferred_tier = _task_level_learned_preferred_tier(ctx)
     planned_task_budget = (
         float(allocation.planned_task_budget)
         if allocation is not None and allocation.planned_task_budget is not None
@@ -320,6 +323,7 @@ def _choose_task_level_backend(ctx: RoutingContext, expected_costs: dict[str, fl
         has_trusted_model_fit=has_trusted,
         is_cold_start=is_cold,
         reference_runway_turns=ref_runway,
+        learned_preferred_tier=learned_preferred_tier,
     )
     pre_cap_tier = tier
     policy_reason = reason
@@ -372,12 +376,25 @@ def _choose_task_level_backend(ctx: RoutingContext, expected_costs: dict[str, fl
                 "pre_cap_selected_tier": pre_cap_tier,
                 "final_selected_tier": current.tier,
                 "max_tier": max_tier,
+                "learned_preferred_tier": learned_preferred_tier,
             },
         )
     return current
 
 
+def _task_level_learned_preferred_tier(ctx: RoutingContext) -> int:
+    """Return value-blind learned-router prior tier for this task, if present."""
+    if ctx.frozen_plan is None:
+        return 0
+    entry = ctx.frozen_plan.lookup(getattr(ctx, "workflow_id", "") or "")
+    if entry is None:
+        return 0
+    return parse_tier_label(entry.preferred_model)
+
+
 def choose_backend(ctx: RoutingContext, turn: TurnInfo, expected_costs: dict[str, float]) -> Backend:
+    if getattr(ctx, "workflow_id", "") != turn.workflow_id:
+        ctx.workflow_id = turn.workflow_id
     ctx.expected_costs = expected_costs
     if ctx.strategy in {"budgetflow_equal_weight"}:
         turn = TurnInfo(

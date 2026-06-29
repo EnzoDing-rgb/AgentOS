@@ -151,7 +151,11 @@ def test_default_t2_uses_deepseek_v4_pro_provider() -> None:
     assert tier2.display == "DeepSeek-V4-Pro"
     assert tier2.protocol == "tool_call"
     assert tier2.max_turns == 60
-    assert info["catalog_semantic_revision"] == "t2-normalized-v1-t3x5"
+    assert tier2.provider_kwargs == {"extra_body": {"thinking": {"type": "disabled"}}}
+    model_name, kwargs = mt.MODEL_CATALOG.litellm_kwargs("tier2", api_keys={"DEEPSEEK_API_KEY": "test"})
+    assert model_name == "openai/deepseek-v4-pro"
+    assert kwargs["extra_body"] == {"thinking": {"type": "disabled"}}
+    assert info["catalog_semantic_revision"] == "t2-normalized-v1-t3x5-nonthinking"
 
 
 def test_default_catalog_uses_unified_mainline_turn_cap() -> None:

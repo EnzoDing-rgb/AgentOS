@@ -174,6 +174,59 @@ def test_calibrated_strongest_target_utilization_uses_observed_t3_spend(tmp_path
     assert any("calibrated_strongest_observed_spend" in reason for reason in plan.reasons)
 
 
+def test_calibrated_strongest_cap_can_use_reference_costs_across_catalog_revision(tmp_path: Path) -> None:
+    """Cap-only strongest reference costs are not active ModelFit evidence."""
+    jsonl = tmp_path / "hist.jsonl"
+    jsonl.write_text(
+        "\n".join([
+            json.dumps(_trusted({
+                "strategy": "bare_t3_baseline",
+                "instance_id": "task-a",
+                "total_cost": 0.40,
+                "budget_mode": "shared_batch_hard_budget",
+                "catalog": {
+                    "catalog_revision": "older-strongest-compatible-catalog",
+                    "catalog_content_hash": "not-current",
+                },
+                "score_status": "pass",
+                "exit_status": "HarnessResolved",
+                "harness_trust": "trusted",
+                "row_finished_at": 1,
+            })),
+            json.dumps(_trusted({
+                "strategy": "bare_t3_baseline",
+                "instance_id": "task-b",
+                "total_cost": 0.55,
+                "budget_mode": "shared_batch_hard_budget",
+                "catalog": {
+                    "catalog_revision": "older-strongest-compatible-catalog",
+                    "catalog_content_hash": "not-current",
+                },
+                "score_status": "true_fail",
+                "exit_status": "HarnessFailed",
+                "harness_trust": "trusted",
+                "row_finished_at": 1,
+            })),
+        ])
+        + "\n"
+    )
+
+    historical_costs, historical_excluded = _load_historical_costs(jsonl)
+    assert historical_costs == {}
+    assert historical_excluded == {"catalog_mismatch": 2}
+
+    plan = calibrate_budget(
+        ["task-a", "task-b"],
+        calibrated_strongest_jsonl=jsonl,
+        strategies=("bare_t2_baseline", "bare_t3_baseline", "budgetflow_task_level"),
+        calibrated_strongest_target_utilization=0.95,
+    )
+
+    assert plan.reference_spend_usd == pytest.approx(0.95)
+    assert plan.hard_cap_usd == pytest.approx(1.0)
+    assert any("cap_only_reference_costs" in reason for reason in plan.reasons)
+
+
 def test_calibrated_strongest_target_utilization_requires_complete_reference_costs(tmp_path: Path) -> None:
     catalog = catalog_source_info()
     jsonl = tmp_path / "hist.jsonl"
@@ -792,6 +845,52 @@ def test_routellm_learned_router_projection_uses_frozen_preferred_model_mix(tmp_
         "routellm_learned_router_baseline_projection uses frozen preferred_model mix" in reason
         for reason in plan.reasons
     )
+
+
+def test_task_level_projection_uses_frozen_plan_as_learned_prior(tmp_path: Path) -> None:
+    vm = tmp_path / "vm.json"
+    vm.write_text(json.dumps({
+        "tasks": {
+            "task-a": {
+                "task_value": {"criticality_value": 1.5},
+                "task_effort": {"final_task_effort": 23.1727},
+            },
+            "task-b": {
+                "task_value": {"criticality_value": 2.5},
+                "task_effort": {"final_task_effort": 50.8644},
+            },
+        }
+    }))
+    frozen_plan = tmp_path / "learned_router.json"
+    frozen_plan.write_text(json.dumps({
+        "meta": {
+            "name": "learned_router",
+            "source_class": "routellm_inspired_value_blind_learned_router",
+            "uses_task_value": False,
+            "uses_budget_state": False,
+        },
+        "plan": {
+            "task-a": {"preferred_model": "tier2", "priority": 10},
+            "task-b": {"preferred_model": "tier3", "priority": 90},
+        },
+    }))
+
+    plan = calibrate_budget(
+        ["task-a", "task-b"],
+        value_matrix_path=vm,
+        frozen_plan_path=frozen_plan,
+        strategies=("bare_t2_baseline", "bare_t3_baseline", "budgetflow_task_level"),
+        target_utilization=1.0,
+    )
+
+    diagnostic = plan.projection_diagnostics["budgetflow_task_level"]
+    choices = diagnostic["task_choices"]
+
+    assert diagnostic["runtime_projection_source"] == "task_level_router_formula_with_learned_prior"
+    assert choices["task-a"]["runtime_projected_tier"] == 2
+    assert choices["task-a"]["routing_scores"]["learned_prefers_reference"] == pytest.approx(1.0)
+    assert choices["task-b"]["routing_scores"]["learned_prefers_strongest"] == pytest.approx(1.0)
+    assert "task_level_model_plan_by_strategy" not in plan.to_dict()
 
 
 def test_calibrate_uses_budget_exhausted_rows_as_floor_not_observed_sample(tmp_path: Path) -> None:

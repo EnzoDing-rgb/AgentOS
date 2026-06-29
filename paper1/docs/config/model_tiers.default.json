@@ -1,8 +1,8 @@
 {
   "meta": {
-    "revision": "2026-06-22-deepseek-v4-pro-t2-t3x5",
-    "semantic_revision": "t2-normalized-v1-t3x5",
-    "revision_note": "Default catalog with DeepSeek V4 Pro as T2 and normalized experimental cost units. Active mainline uses native tool_call and fixes T1:T2:T3 approximately 1:3:15 for routing/budget semantics. T3 progress_score and progress_prior updated 2026-06-22 to reflect T3 capability advantage over T2.",
+    "revision": "2026-06-30-deepseek-v4-pro-nonthinking-t2-t3x5",
+    "semantic_revision": "t2-normalized-v1-t3x5-nonthinking",
+    "revision_note": "Default catalog with DeepSeek V4 Pro as T2 in explicit non-thinking tool-call mode and normalized experimental cost units. Active mainline uses native tool_call and fixes T1:T2:T3 approximately 1:3:15 for routing/budget semantics. T3 progress_score and progress_prior updated 2026-06-22 to reflect T3 capability advantage over T2.",
     "schema_version": "v1"
   },
   "tiers": [
@@ -89,9 +89,16 @@
       "escalation_patience": 5,
       "max_turns": 60,
       "protocol": "tool_call",
+      "provider_kwargs": {
+        "extra_body": {
+          "thinking": {
+            "type": "disabled"
+          }
+        }
+      },
       "cost_source": "BudgetFlow normalized experimental cost unit for DeepSeek V4 Pro T2",
       "cost_updated": "2026-06-20",
-      "cost_notes": "Virtual experiment units, not public provider billing. T2 is fixed at approximately 3x T1; mainline cost accounting does not apply a KV-cache discount. Cache discounts belong in explicit sensitivity catalogs, not the primary evidence catalog.",
+      "cost_notes": "Virtual experiment units, not public provider billing. T2 is fixed at approximately 3x T1; mainline cost accounting does not apply a KV-cache discount. Cache discounts belong in explicit sensitivity catalogs, not the primary evidence catalog. DeepSeek T2 is run in explicit non-thinking tool-call mode because the OpenAI-compatible runtime does not guarantee thinking-history round-trip compatibility across protocol retries.",
       "progress_source": "BudgetFlow tier-level heuristic prior for DeepSeek V4 Pro T2; not outcome-calibrated",
       "progress_updated": "2026-06-20",
       "progress_notes": "T2 uses DeepSeek V4 Pro while preserving T2 normalized cost semantics. Provider access must pass signature preflight before paid runs."
