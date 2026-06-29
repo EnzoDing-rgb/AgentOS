@@ -9,6 +9,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from budgetflow.experiments.claim1_value_sensitivity import (
+    load_value_profiles,
+    observed_tier_oracle_lines,
+    report_value_lookup,
+    resolve_budget_cap,
+    value_sensitivity_lines,
+)
 from budgetflow.metrics_reporting import build_standard_metrics
 
 
@@ -123,6 +130,8 @@ def build_report(
     title: str,
     task_order_override: list[str] | None = None,
     task_order_source: str | None = None,
+    value_matrix_path: Path | None = None,
+    budget_cap: float | None = None,
 ) -> str:
     tasks = [row_to_task(row) for row in rows]
     strategies = _strategy_order({task.strategy for task in tasks})
@@ -144,11 +153,25 @@ def build_report(
     lines.append("")
     lines.extend(_summary_table(by_strategy, task_count=len(task_order)))
     lines.append("")
+    value_profiles = load_value_profiles(value_matrix_path, task_order) if value_matrix_path else []
+    value_lookup = report_value_lookup(value_profiles)
+    if value_profiles:
+        lines.extend(value_sensitivity_lines(by_strategy, value_profiles, task_count=len(task_order)))
+        lines.append("")
+        lines.extend(
+            observed_tier_oracle_lines(
+                task_order,
+                by_key,
+                value_profiles,
+                budget_cap=resolve_budget_cap(tasks, budget_cap),
+            )
+        )
+        lines.append("")
     lines.extend(_scoring_evidence(by_strategy))
     lines.append("")
-    lines.extend(_order_audit(task_order, by_key, strategies, order_source=order_source))
+    lines.extend(_order_audit(task_order, by_key, strategies, order_source=order_source, value_lookup=value_lookup))
     lines.append("")
-    lines.extend(_matrix(task_order, by_key, strategies))
+    lines.extend(_matrix(task_order, by_key, strategies, value_lookup=value_lookup))
     lines.append("")
     lines.extend(_policy_diffs(task_order, by_key))
     lines.append("")
@@ -302,14 +325,12 @@ def _order_audit(
     strategies: list[str],
     *,
     order_source: str,
+    value_lookup: dict[str, float] | None = None,
 ) -> list[str]:
     bf = "budgetflow_task_level"
     t3 = "bare_t3_baseline"
     value_by_task = {
-        task_id: max(
-            (by_key[(strategy, task_id)].task_value for strategy in strategies if (strategy, task_id) in by_key),
-            default=0.0,
-        )
+        task_id: _display_task_value(task_id, by_key, strategies, value_lookup)
         for task_id in task_order
     }
     high_value = {task_id for task_id, value in value_by_task.items() if value >= 1.5}
@@ -353,6 +374,8 @@ def _matrix(
     task_order: list[str],
     by_key: dict[tuple[str, str], StrategyTask],
     strategies: list[str],
+    *,
+    value_lookup: dict[str, float] | None = None,
 ) -> list[str]:
     lines = [
         "## Per-Task Matrix",
@@ -361,10 +384,7 @@ def _matrix(
         "|---:|---|---:|" + "|".join("---:" for _ in strategies) + "|",
     ]
     for index, task_id in enumerate(task_order, 1):
-        value = max(
-            (by_key[(strategy, task_id)].task_value for strategy in strategies if (strategy, task_id) in by_key),
-            default=0.0,
-        )
+        value = _display_task_value(task_id, by_key, strategies, value_lookup)
         cells = []
         for strategy in strategies:
             task = by_key.get((strategy, task_id))
@@ -378,6 +398,20 @@ def _matrix(
     lines.append("")
     lines.append("Cell format: `P/F/A cost first-tier`.")
     return lines
+
+
+def _display_task_value(
+    task_id: str,
+    by_key: dict[tuple[str, str], StrategyTask],
+    strategies: list[str],
+    value_lookup: dict[str, float] | None,
+) -> float:
+    if value_lookup is not None and task_id in value_lookup:
+        return value_lookup[task_id]
+    return max(
+        (by_key[(strategy, task_id)].task_value for strategy in strategies if (strategy, task_id) in by_key),
+        default=0.0,
+    )
 
 
 def _policy_diffs(
@@ -438,21 +472,38 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--jsonl", required=True, type=Path)
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--budget-plan", type=Path, default=None, help="optional budget_plan.json; task_ids define the fixed task order")
+    parser.add_argument(
+        "--value-matrix",
+        type=Path,
+        default=None,
+        help="optional frozen value matrix; enables value sensitivity and observed-tier oracle sections",
+    )
+    parser.add_argument(
+        "--budget-cap",
+        type=float,
+        default=None,
+        help="optional shared hard budget cap for observed-tier oracle; defaults to budget plan hard_cap_usd or row batch_budget_cap",
+    )
     parser.add_argument("--title", default="Claim 1 Matrix And Task Order Audit")
     args = parser.parse_args(argv)
 
     rows = load_latest_rows(args.jsonl)
     task_order_override = None
     task_order_source = None
+    budget_cap = args.budget_cap
     if args.budget_plan:
         budget_plan = json.loads(args.budget_plan.read_text())
         task_order_override = [str(task_id) for task_id in budget_plan.get("task_ids", [])]
         task_order_source = str(args.budget_plan)
+        if budget_cap is None and budget_plan.get("hard_cap_usd") is not None:
+            budget_cap = float(budget_plan["hard_cap_usd"])
     report = build_report(
         rows,
         title=args.title,
         task_order_override=task_order_override,
         task_order_source=task_order_source,
+        value_matrix_path=args.value_matrix,
+        budget_cap=budget_cap,
     )
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(report + "\n")

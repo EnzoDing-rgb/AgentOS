@@ -2,6 +2,25 @@
 
 > 单一入口：进度、跑法、历史结果。
 
+## 2026-06-29 — Claim 1 no-paid sensitivity/oracle audit path
+
+- Added a no-paid audit path to `claim1_audit`: pass `--value-matrix` to
+  automatically rescore the same completed JSONL under equal, frozen
+  criticality, compressed criticality, expanded criticality, and value
+  permutation diagnostics. This makes Task Value sensitivity reproducible
+  instead of a manual post-run calculation.
+- Added a static observed-tier oracle section. It replays completed pure T2 and
+  pure T3 rows and chooses the best T2/T3/skip combination under the same hard
+  cap. This is an upper-bound diagnostic, not a sixth paid lane; it only runs
+  when pure T2 and pure T3 have complete rows for the fixed task set.
+- Generated forensic smoke report
+  `paper1/docs/reports/mainline_5x30_claim1_final_forensic_value_sensitivity_20260629.md`.
+  Because that JSONL is incomplete/forensic-only, the oracle correctly skips.
+  The partial rows show BudgetFlow's loss to pure T3 is stable under equal,
+  compressed, and expanded value profiles, so the next paid run should focus on
+  completing a clean 5x30 and diagnosing middle/back-half routing quality, not
+  changing the value metric.
+
 ## 2026-06-29 — 5x30 no-paid prep after routing/cap fixes
 
 - Fixed three concrete pre-paid bugs: BudgetFlow's uncertain probe can no
