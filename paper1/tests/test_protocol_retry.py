@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 from collections import deque
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from budgetflow.adapter.stall_guard import stall_guard_enabled
@@ -41,6 +42,16 @@ class _FakeResponse:
     def __init__(self, content="", tool_calls=None, **message_extra):
         self.choices = [MagicMock()]
         self.choices[0].message = _FakeMessage(content, tool_calls, **message_extra)
+        self.usage = SimpleNamespace(prompt_tokens=10, completion_tokens=5)
+
+    def model_dump(self):
+        return {
+            "choices": [
+                {
+                    "message": self.choices[0].message.model_dump(),
+                }
+            ]
+        }
 
 
 class _FakeFormatError(Exception):
@@ -267,6 +278,67 @@ def test_parse_actions_invalid_tool_call_accumulates_streak():
     assert model._protocol_retry_reason == "invalid_tool_call"
     assert model._protocol_retry_limit == 3
     assert model._format_error_streak == 3
+
+
+@requires_minisweagent
+def test_query_retries_final_no_tool_call_before_protocol_abort(monkeypatch):
+    from budgetflow.adapter.backends import build_ceiling_backends
+    from budgetflow.adapter.mini_swe_proxy import BudgetFlowLitellmModel
+    from budgetflow.adapter.strategies import build_routing_context
+    from budgetflow.governor import BudgetGovernor
+    from budgetflow.ledger import WorkflowLedgerStore
+    from budgetflow.types import GovernorConfig
+
+    monkeypatch.setenv("DASHSCOPE_API_KEY", "test")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test")
+    monkeypatch.setenv("AICODE007_API_KEY", "test")
+
+    governor = BudgetGovernor(
+        GovernorConfig(total_budget=100.0, default_max_output_tokens=128),
+        WorkflowLedgerStore(),
+    )
+    model = BudgetFlowLitellmModel(
+        workflow_id="wf",
+        governor=governor,
+        routing=build_routing_context("all_t3", build_ceiling_backends(), budget_pressure=0.1),
+        default_max_output_tokens=128,
+        enable_turn_trace=True,
+    )
+    model._api_keys = {
+        "DASHSCOPE_API_KEY": "test",
+        "DEEPSEEK_API_KEY": "test",
+        "AICODE007_API_KEY": "test",
+    }
+    model._model_config_for = lambda backend, *, max_tokens=None: (
+        backend.name,
+        {"max_tokens": max_tokens} if max_tokens is not None else {},
+    )
+    model._format_error_streak = 2
+
+    valid_tool_call = SimpleNamespace(
+        id="call_1",
+        function=SimpleNamespace(name="bash", arguments='{"command":"pwd"}'),
+    )
+    responses = [
+        _FakeResponse(content="", tool_calls=[]),
+        _FakeResponse(content="", tool_calls=[valid_tool_call]),
+    ]
+    attempts = []
+
+    def fake_completion(messages, *, backend_name, **kwargs):
+        attempts.append(messages)
+        return responses.pop(0)
+
+    model._completion = fake_completion
+
+    message = model.query([{"role": "user", "content": "inspect"}])
+
+    assert len(attempts) == 2
+    assert message["extra"]["actions"] == [{"command": "pwd", "tool_call_id": "call_1"}]
+    assert model._format_error_streak == 0
+    assert model._protocol_retry_used is True
+    assert model._protocol_retry_success is True
+    assert model._protocol_retry_reason == "found_0_actions"
 
 
 @requires_minisweagent

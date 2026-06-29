@@ -813,7 +813,7 @@ class BudgetFlowLitellmModel:
         self._settle_reserved_call(reservation_id, actual_cost, billable=billable)
         _parse_error: Exception | None = None
         try:
-            actions = self._parse_actions(response, backend_tier=backend.tier)
+            actions = self._parse_actions(response, backend_tier=backend.tier, allow_stagnation_stop=False)
         except FormatError as _fe:
             turn_protocol_retry_reason, turn_protocol_retry_limit = _format_error_limit_for(
                 _fe, response, backend.tier
@@ -1695,7 +1695,13 @@ class BudgetFlowLitellmModel:
                 ) from exc
             raise
 
-    def _parse_actions(self, response, *, backend_tier: int | None = None) -> list[dict]:
+    def _parse_actions(
+        self,
+        response,
+        *,
+        backend_tier: int | None = None,
+        allow_stagnation_stop: bool = True,
+    ) -> list[dict]:
         tool_calls = response.choices[0].message.tool_calls or []
         counted_format_error = False
         if not tool_calls:
@@ -1707,7 +1713,7 @@ class BudgetFlowLitellmModel:
             self._protocol_retry_limit = stop_after
             self._format_error_streak += 1
             counted_format_error = True
-            if self._format_error_streak >= stop_after:
+            if allow_stagnation_stop and self._format_error_streak >= stop_after:
                 raise BudgetFlowStagnationError(
                     self.workflow_id,
                     exit_reason="format_error_no_tool_calls",
@@ -1724,7 +1730,7 @@ class BudgetFlowLitellmModel:
                 self._protocol_retry_reason = reason
                 self._protocol_retry_limit = stop_after
                 self._format_error_streak += 1
-            if self._format_error_streak >= stop_after:
+            if allow_stagnation_stop and self._format_error_streak >= stop_after:
                 raise BudgetFlowStagnationError(
                     self.workflow_id,
                     exit_reason="format_error_invalid_tool_call",
