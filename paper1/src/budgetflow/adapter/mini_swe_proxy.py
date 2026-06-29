@@ -417,6 +417,10 @@ class BudgetFlowLitellmModel:
         self.turn_traces: list[dict] = []
         self._last_reservation_id: str | None = None
         self._last_reserve_out: int = 0
+        self._last_reserved_cost: float = 0.0
+        self._last_reserved_input_tokens: int = 0
+        self._last_reserved_output_tokens: int = 0
+        self._task_budget_settlement_overrun: float = 0.0
         self._task_spent_budget: float = 0.0
         self._format_error_streak: int = 0
         self._provider_usage_turns: int = 0
@@ -800,13 +804,13 @@ class BudgetFlowLitellmModel:
             turn_index=self.step_index,
         )
         reservation_id = self._last_reservation_id
+        reserved_cost = self._last_reserved_cost
+        reserved_input_tokens = self._last_reserved_input_tokens
+        reserved_output_tokens = self._last_reserved_output_tokens
         snap = self.governor.budget_snapshot()
         spend_headroom = max(0.0, snap["total_budget"] - snap["spent_budget"])
         billable = min(actual_cost, spend_headroom)
-        self.governor.settle(reservation_id, actual_cost, WorkflowStatus.RUNNING)
-        self._task_spent_budget += billable
-        self._last_reservation_id = None
-        self._last_reserve_out = 0
+        self._settle_reserved_call(reservation_id, actual_cost, billable=billable)
         _parse_error: Exception | None = None
         try:
             actions = self._parse_actions(response, backend_tier=backend.tier)
@@ -885,7 +889,9 @@ class BudgetFlowLitellmModel:
                         parser_input_snippet=_parser_snippet,
                         **_parser_error_fields,
                         reservation_id=reservation_id,
-                        reserved_cost=round(actual_cost, 6),
+                        reserved_cost=round(reserved_cost, 6),
+                        reserved_input_tokens=reserved_input_tokens,
+                        reserved_output_tokens=reserved_output_tokens,
                         reservation_settled=True,
                     ))
                 # Attempt retry
@@ -901,13 +907,9 @@ class BudgetFlowLitellmModel:
                     retry_messages = list(messages) + [assistant_msg, retry_user_msg]
                     retry_input_tokens = estimate_input_tokens(retry_messages)
                     # Reserve for retry call
-                    retry_reserve_out = self._reserve_output_tokens(backend, retry_input_tokens)
-                    retry_estimate = self.governor.estimate_cost(
+                    retry_reserve_out, retry_estimate = self._reserve_estimate_for_backend(
                         backend,
-                        input_tokens=retry_input_tokens,
-                        expected_output_tokens=backend.mean_output_tokens,
-                        reserve_output_tokens=retry_reserve_out,
-                        turn_index=self.step_index,
+                        retry_input_tokens,
                     )
                     task_block_reason = self._task_budget_block_reason(retry_estimate)
                     if task_block_reason is not None:
@@ -928,6 +930,10 @@ class BudgetFlowLitellmModel:
                             backend=backend.name,
                         )
                     self._last_reservation_id = retry_reservation.reservation_id
+                    self._last_reserve_out = retry_reserve_out
+                    self._last_reserved_cost = retry_estimate.reserved_cost
+                    self._last_reserved_input_tokens = retry_estimate.reserved_input_tokens
+                    self._last_reserved_output_tokens = retry_estimate.reserved_output_tokens
                     retry_model_name, retry_model_kwargs = self._model_config_for(
                         backend,
                         max_tokens=retry_reserve_out,
@@ -957,14 +963,19 @@ class BudgetFlowLitellmModel:
                         output_tokens=retry_completion_tokens,
                         turn_index=self.step_index,
                     )
-                    self.governor.settle(retry_reservation.reservation_id, retry_actual_cost, WorkflowStatus.RUNNING)
-                    self._last_reservation_id = None
-                    self._last_reserve_out = 0
+                    retry_reserved_cost = self._last_reserved_cost
+                    retry_reserved_input_tokens = self._last_reserved_input_tokens
+                    retry_reserved_output_tokens = self._last_reserved_output_tokens
+                    retry_snap = self.governor.budget_snapshot()
                     retry_billable = min(
                         retry_actual_cost,
-                        max(0.0, snap["total_budget"] - snap["spent_budget"] - billable),
+                        max(0.0, retry_snap["total_budget"] - retry_snap["spent_budget"]),
                     )
-                    self._task_spent_budget += retry_billable
+                    self._settle_reserved_call(
+                        retry_reservation.reservation_id,
+                        retry_actual_cost,
+                        billable=retry_billable,
+                    )
                     # Parse retry response — must succeed this time
                     actions = self._parse_actions(retry_response, backend_tier=backend.tier)
                     turn_protocol_retry_success = True
@@ -1067,7 +1078,9 @@ class BudgetFlowLitellmModel:
                             parser_input_snippet=_retry_parser_snippet,
                             **_retry_parser_error_fields,
                             reservation_id=getattr(locals().get("retry_reservation"), "reservation_id", None),
-                            reserved_cost=round(actual_cost, 6),
+                            reserved_cost=round(retry_reserved_cost, 6),
+                            reserved_input_tokens=retry_reserved_input_tokens,
+                            reserved_output_tokens=retry_reserved_output_tokens,
                             reservation_settled="retry_response" in locals(),
                         ))
                 finally:
@@ -1140,7 +1153,9 @@ class BudgetFlowLitellmModel:
                     parser_input_snippet=_parser_snippet,
                     **_parser_error_fields,
                     reservation_id=reservation_id,
-                    reserved_cost=round(actual_cost, 6),
+                    reserved_cost=round(reserved_cost, 6),
+                    reserved_input_tokens=reserved_input_tokens,
+                    reserved_output_tokens=reserved_output_tokens,
                     reservation_settled=True,
                 ))
             raise _parse_error
@@ -1216,7 +1231,9 @@ class BudgetFlowLitellmModel:
                 tool_call_summary=tool_call_summary(response),
                 parser_input_snippet=parser_snippet,
                 reservation_id=reservation_id,
-                reserved_cost=round(actual_cost, 6),
+                reserved_cost=round(reserved_cost, 6),
+                reserved_input_tokens=reserved_input_tokens,
+                reserved_output_tokens=reserved_output_tokens,
                 reservation_settled=True,
             ))
         return message
@@ -1244,6 +1261,9 @@ class BudgetFlowLitellmModel:
         finally:
             self._last_reservation_id = None
             self._last_reserve_out = 0
+            self._last_reserved_cost = 0.0
+            self._last_reserved_input_tokens = 0
+            self._last_reserved_output_tokens = 0
             self.last_budget_snapshot = self.governor.budget_snapshot()
 
     def _gold_edit_guard_trace_fields(self) -> dict[str, object]:
@@ -1393,11 +1413,57 @@ class BudgetFlowLitellmModel:
             return "task_budget_exhausted"
         return None
 
+    def _reserve_estimate_for_backend(self, backend: Backend, input_tokens: int):
+        reserve_out = self._reserve_output_tokens(backend, input_tokens)
+        reserve_input_tokens = input_tokens
+        if self._task_budget_cap() is not None:
+            reserve_input_tokens = max(input_tokens, int(input_tokens * 1.10 + 1))
+        estimate = self.governor.estimate_cost(
+            backend,
+            input_tokens=input_tokens,
+            expected_output_tokens=backend.mean_output_tokens,
+            reserve_input_tokens=reserve_input_tokens,
+            reserve_output_tokens=reserve_out,
+            turn_index=self.step_index,
+        )
+        return reserve_out, estimate
+
+    def _settle_reserved_call(
+        self,
+        reservation_id: str,
+        actual_cost: float,
+        *,
+        billable: float,
+    ) -> None:
+        try:
+            self.governor.settle(reservation_id, actual_cost, WorkflowStatus.RUNNING)
+            self._task_spent_budget += billable
+        finally:
+            self._last_reservation_id = None
+            self._last_reserve_out = 0
+            self._last_reserved_cost = 0.0
+            self._last_reserved_input_tokens = 0
+            self._last_reserved_output_tokens = 0
+        cap = self._task_budget_cap()
+        if cap is not None and self._task_spent_budget > cap:
+            overrun = self._task_spent_budget - cap
+            self._task_budget_settlement_overrun += overrun
+            snapshot = self._task_budget_snapshot()
+            snapshot["task_budget_settlement_overrun"] = self._task_budget_settlement_overrun
+            raise BudgetFlowBudgetError(
+                self.workflow_id,
+                exit_reason="task_budget_settlement_overrun",
+                budget_snapshot=snapshot,
+                step_index=self.step_index,
+                backend=self.last_backend_name if self.last_backend_name != "-" else None,
+            )
+
     def _task_budget_snapshot(self) -> dict[str, float]:
         snapshot = self.governor.budget_snapshot()
         snapshot["task_budget_cap"] = self._task_budget_cap() or 0.0
         snapshot["task_spent_budget"] = self._task_spent_budget
         snapshot["task_available_budget"] = self._task_remaining_budget() or 0.0
+        snapshot["task_budget_settlement_overrun"] = self._task_budget_settlement_overrun
         self.last_exit_reason = "task_budget_exhausted"
         self.last_budget_snapshot = snapshot
         return snapshot
@@ -1505,14 +1571,7 @@ class BudgetFlowLitellmModel:
         return next_backend
 
     def _reserve_backend(self, backend: Backend, input_tokens: int) -> Backend:
-        reserve_out = self._reserve_output_tokens(backend, input_tokens)
-        estimate = self.governor.estimate_cost(
-            backend,
-            input_tokens=input_tokens,
-            expected_output_tokens=backend.mean_output_tokens,
-            reserve_output_tokens=reserve_out,
-            turn_index=self.step_index,
-        )
+        reserve_out, estimate = self._reserve_estimate_for_backend(backend, input_tokens)
         task_block_reason = self._task_budget_block_reason(estimate)
         if task_block_reason is not None:
             snapshot = self._task_budget_snapshot()
@@ -1527,6 +1586,9 @@ class BudgetFlowLitellmModel:
         if reservation is not None:
             self._last_reservation_id = reservation.reservation_id
             self._last_reserve_out = reserve_out
+            self._last_reserved_cost = estimate.reserved_cost
+            self._last_reserved_input_tokens = estimate.reserved_input_tokens
+            self._last_reserved_output_tokens = estimate.reserved_output_tokens
             return backend
         snapshot = self.governor.budget_snapshot()
         exit_reason = self.governor.last_reserve_failure or "budget_exhausted"

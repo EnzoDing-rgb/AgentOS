@@ -43,9 +43,11 @@ class BudgetGovernor:
         input_tokens: int,
         max_output_tokens: int | None = None,
         expected_output_tokens: int | None = None,
+        reserve_input_tokens: int | None = None,
         reserve_output_tokens: int | None = None,
         turn_index: int | None = None,
     ) -> CostEstimate:
+        bounded_input = reserve_input_tokens if reserve_input_tokens is not None else input_tokens
         bounded_max_output = max_output_tokens or self.config.default_max_output_tokens
         bounded_expected_output = expected_output_tokens or backend.mean_output_tokens
         bounded_reserve_output = (
@@ -59,7 +61,7 @@ class BudgetGovernor:
         )
         reserved_cost = self._token_cost(
             backend,
-            input_tokens=input_tokens,
+            input_tokens=bounded_input,
             output_tokens=bounded_reserve_output,
             turn_index=turn_index,
         )
@@ -68,6 +70,8 @@ class BudgetGovernor:
             reserved_cost=reserved_cost,
             expected_output_tokens=bounded_expected_output,
             max_output_tokens=bounded_max_output,
+            reserved_input_tokens=bounded_input,
+            reserved_output_tokens=bounded_reserve_output,
         )
 
     def _token_cost(

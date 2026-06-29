@@ -331,11 +331,14 @@ def _uncertain_probe(
         return False
     if not budget_soft_allows:
         return False
-    if not budget_allows and not (
+    if not (
         paid_upgrade_candidate
         and fit_gain > 0
         and marginal_yield >= acceptance
-        and budget_coverage >= TASK_START_STRONGEST_MIN_BUDGET_COVERAGE
+        and (
+            budget_allows
+            or budget_coverage >= TASK_START_STRONGEST_MIN_BUDGET_COVERAGE
+        )
     ):
         return False
     if budget_allows and headroom_fraction < 0.10:

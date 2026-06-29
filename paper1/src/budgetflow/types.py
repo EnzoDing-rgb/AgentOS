@@ -99,6 +99,8 @@ class CostEstimate:
     reserved_cost: float
     expected_output_tokens: int
     max_output_tokens: int
+    reserved_input_tokens: int = 0
+    reserved_output_tokens: int = 0
 
 
 @dataclass

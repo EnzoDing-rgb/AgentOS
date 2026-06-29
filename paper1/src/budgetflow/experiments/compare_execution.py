@@ -648,6 +648,7 @@ def run_strategy_batch(
                 calibrated_model_fit_confidence=calibrated_model_fit_confidence,
             )
 
+        record: dict | None = None
         try:
             if heartbeat > 0:
                 on_beat = None
@@ -670,7 +671,22 @@ def run_strategy_batch(
             else:
                 record = execute()
         finally:
-            done_n = global_progress.finish_task()
+            done_n = global_progress.finish_task(recorded=record is not None)
+            if record is None and checkpoint is not None:
+                checkpoint.mark_task_done(
+                    cfg.name,
+                    task.instance_id,
+                    batch_spent=(
+                        shared_spent
+                        if use_planned_task_caps
+                        else (
+                            float(governor.state.spent_budget)
+                            if governor is not None else 0.0
+                        )
+                    ),
+                    batch_cap=batch_budget_cap,
+                    completed=False,
+                )
 
         if print_lock:
             with print_lock:

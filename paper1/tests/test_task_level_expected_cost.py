@@ -345,15 +345,8 @@ class TestChooseTaskLevelBackend:
         backend = choose_backend(ctx, _turn(), per_turn)
         assert backend.tier == 2
 
-    def test_cold_start_effortful_task_starts_strongest_without_trusted_fit(self):
-        """Cold-start task-level should lean Strongest on effortful SWE tasks.
-
-        Without trusted ModelFit, flat catalog priors (T2=0.24, T3=0.25) are
-        not evidence that the cheaper-per-turn tier is cheaper in total.  The
-        task-level frontier should probe Strongest when the task has meaningful
-        effort and the planned task budget can absorb the projected Strongest
-        start.
-        """
+    def test_cold_start_effortful_task_needs_expected_gain_to_start_strongest(self):
+        """Effort alone is not enough to spend a Strongest Model probe."""
         from budgetflow.adapter.strategies import choose_backend
         from budgetflow.allocation import AllocationContext
 
@@ -370,13 +363,14 @@ class TestChooseTaskLevelBackend:
 
         backend = choose_backend(ctx, _turn(), _runtime_like_costs())
 
-        assert backend.tier == 3
+        assert backend.tier == 2
         assert ctx.last_policy_decision is not None
-        assert ctx.last_decision.reason == "bf_task_start_uncertain_frontier_probe"
+        assert ctx.last_decision.reason == "bf_task_start_reference_frontier"
         assert ctx.last_policy_decision.scores["has_trusted_model_fit"] == 0.0
+        assert ctx.last_policy_decision.scores["paid_upgrade_candidate"] == 0.0
 
-    def test_cold_start_near_effort_boundary_starts_strongest_without_trusted_fit(self):
-        """Cold-start gates should tolerate small Estimated Task Token Demand noise."""
+    def test_cold_start_near_effort_boundary_needs_expected_gain(self):
+        """Estimated Task Token Demand noise should not bypass the upgrade gate."""
         from budgetflow.adapter.strategies import choose_backend
         from budgetflow.allocation import AllocationContext
 
@@ -393,9 +387,10 @@ class TestChooseTaskLevelBackend:
 
         backend = choose_backend(ctx, _turn(), _runtime_like_costs())
 
-        assert backend.tier == 3
+        assert backend.tier == 2
         assert ctx.last_policy_decision is not None
-        assert ctx.last_decision.reason == "bf_task_start_uncertain_frontier_probe"
+        assert ctx.last_decision.reason == "bf_task_start_reference_frontier"
+        assert ctx.last_policy_decision.scores["paid_upgrade_candidate"] == 0.0
 
     def test_high_value_high_effort_does_not_start_t3_without_fit_gap(self):
         """Task-start routing needs an expected value gain, not only value/effort."""
@@ -945,8 +940,8 @@ class TestBudgetCompilerFitScaling:
             f"catalog=${catalog_cost:.4f}, fit_scaled=${fit_scaled_cost:.4f}"
         )
 
-    def test_compiler_projection_matches_effortful_cold_start_probe(self):
-        """Compiler projection should mirror runtime's cold-start Strongest probe."""
+    def test_compiler_projection_keeps_low_gain_cold_start_on_reference(self):
+        """Compiler projection should mirror the runtime upgrade gate."""
         from budgetflow.experiments.budget_binding import _project_task_level_choice_cost
 
         choice, projected_cost, routing_reason, routing_scores = _project_task_level_choice_cost(
@@ -964,15 +959,16 @@ class TestBudgetCompilerFitScaling:
             budget_pressure=0.01,
         )
 
-        assert choice == 3
-        assert projected_cost == pytest.approx(0.80)
-        assert routing_reason == "uncertain_frontier_probe"
+        assert choice == 2
+        assert projected_cost == pytest.approx(0.20)
+        assert routing_reason == "reference_frontier"
         assert isinstance(routing_scores, dict)
-        assert routing_scores.get("rule") == "uncertain_frontier_probe"
+        assert routing_scores.get("rule") == "reference_frontier"
+        assert routing_scores.get("paid_upgrade_candidate") == 0.0
         assert routing_scores.get("task_budget_headroom") > 0
 
-    def test_compiler_projection_matches_near_boundary_cold_start_probe(self):
-        """Compiler mirror should not diverge from runtime on soft effort boundary."""
+    def test_compiler_projection_matches_near_boundary_reference_choice(self):
+        """Compiler mirror should not let effort tolerance bypass expected gain."""
         from budgetflow.experiments.budget_binding import _project_task_level_choice_cost
 
         choice, projected_cost, routing_reason, routing_scores = _project_task_level_choice_cost(
@@ -990,11 +986,12 @@ class TestBudgetCompilerFitScaling:
             budget_pressure=0.45,
         )
 
-        assert choice == 3
-        assert projected_cost == pytest.approx(0.80)
-        assert routing_reason == "uncertain_frontier_probe"
+        assert choice == 2
+        assert projected_cost == pytest.approx(0.20)
+        assert routing_reason == "reference_frontier"
         assert isinstance(routing_scores, dict)
-        assert routing_scores.get("rule") == "uncertain_frontier_probe"
+        assert routing_scores.get("rule") == "reference_frontier"
+        assert routing_scores.get("paid_upgrade_candidate") == 0.0
 
 
 # ── observability seam tests ────────────────────────────────────────────────
@@ -1067,8 +1064,8 @@ class TestObservabilitySeams:
         assert ctx.last_policy_decision.scores["final_selected_tier"] == pytest.approx(2.0)
         assert ctx.last_policy_decision.confidence["pre_cap_reason"] == "marginal_yield_per_dollar"
 
-    def test_runtime_compiler_parity_cold_start_probe(self):
-        """Runtime and compiler must agree: cold start without ModelFit → uncertain_frontier_probe."""
+    def test_runtime_compiler_parity_cold_start_reference_choice(self):
+        """Runtime and compiler must agree when cold-start gain is too weak."""
         from budgetflow.task_level_routing import task_start_tier_decision
         from budgetflow.experiments.budget_binding import _project_task_level_choice_cost
 
@@ -1090,9 +1087,10 @@ class TestObservabilitySeams:
             budget_pressure=0.01,
         )
 
-        assert runtime_tier == compiler_tier == 3
-        assert runtime_reason == compiler_reason == "uncertain_frontier_probe"
-        assert runtime_scores["rule"] == compiler_scores["rule"] == "uncertain_frontier_probe"
+        assert runtime_tier == compiler_tier == 2
+        assert runtime_reason == compiler_reason == "reference_frontier"
+        assert runtime_scores["rule"] == compiler_scores["rule"] == "reference_frontier"
+        assert runtime_scores["paid_upgrade_candidate"] == compiler_scores["paid_upgrade_candidate"] == 0.0
 
     def test_compiler_projection_preserves_zero_task_budget(self):
         """Compiler dry-run must not turn a zero effective cap into unlimited budget."""

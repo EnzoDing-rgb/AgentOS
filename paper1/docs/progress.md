@@ -2,6 +2,26 @@
 
 > 单一入口：进度、跑法、历史结果。
 
+## 2026-06-29 — 5x30 no-paid prep after routing/cap fixes
+
+- Fixed three concrete pre-paid bugs: BudgetFlow's uncertain probe can no
+  longer choose Strongest Model without expected paid-upgrade gain; planned
+  task budgets now reserve conservatively and exit explicitly on settlement
+  overrun; exception paths now clear in-flight checkpoint state without marking
+  an unrecorded row as done.
+- Added observability for reserved input/output tokens and classified
+  `task_budget_settlement_overrun` as a budget exit, so cap failures stay
+  visible to audit and calibration code.
+- Generated fresh candidate plan
+  `paper1/docs/reports/mainline_5x30_claim1_prepaid_after_routingfix_budget_plan_20260629.json`:
+  30 tasks, 5 strategies, hard cap `$9.9544`, target strongest utilization
+  `0.95`, BudgetFlow projected mix `22 T2 / 8 T3`, RouteLLM projected mix
+  `20 T2 / 10 T3`, route diff `12/30`.
+- No-paid gates passed: `853` tests, compileall, diff-check, and
+  paid-readiness-only. Remaining warning is
+  `projection_confidence=unvalidated`, so projected spend remains diagnostic
+  until the next paid run is audited.
+
 ## 2026-06-29 — 5x30 protocolfix run stopped forensic-only
 
 - Stopped `mainline_5x30_claim1_protocolfix_20260629` at 88/150 rows. It is

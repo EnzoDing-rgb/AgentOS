@@ -12,6 +12,7 @@ BUDGET_EXIT_REASONS = frozenset({
     "overrun_guard",
     "reserve_failed_budget",
     "task_budget_exhausted",
+    "task_budget_settlement_overrun",
 })
 
 BUDGET_EXIT_STATUSES = frozenset({

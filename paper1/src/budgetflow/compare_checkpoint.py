@@ -180,10 +180,11 @@ class GlobalRunProgress:
         with self._lock:
             self._in_flight += 1
 
-    def finish_task(self) -> int:
+    def finish_task(self, *, recorded: bool = True) -> int:
         with self._lock:
             self._in_flight = max(0, self._in_flight - 1)
-            self._done += 1
+            if recorded:
+                self._done += 1
             return self._done
 
     def snapshot(self) -> tuple[int, int, int]:

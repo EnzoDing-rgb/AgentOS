@@ -762,7 +762,7 @@ def test_run_strategy_batch_planned_caps_are_live_task_hard_caps(monkeypatch) ->
         global_progress=SimpleNamespace(
             total=2,
             start_task=lambda: None,
-            finish_task=lambda: len(seen_runways),
+            finish_task=lambda *, recorded=True: len(seen_runways),
             format_banner=lambda scoreboard=None: "test",
             format_global=lambda scoreboard=None: "test",
         ),
@@ -822,7 +822,7 @@ def test_run_strategy_batch_threads_planned_caps_to_routellm(monkeypatch) -> Non
         global_progress=SimpleNamespace(
             total=1,
             start_task=lambda: None,
-            finish_task=lambda: 1,
+            finish_task=lambda *, recorded=True: 1,
             format_banner=lambda scoreboard=None: "test",
             format_global=lambda scoreboard=None: "test",
         ),
@@ -958,7 +958,7 @@ def test_planned_task_budget_checkpoint_records_shared_batch_cap(monkeypatch, tm
         global_progress=SimpleNamespace(
             total=2,
             start_task=lambda: None,
-            finish_task=lambda: 1,
+            finish_task=lambda *, recorded=True: 1,
             format_banner=lambda scoreboard=None: "test",
             format_global=lambda scoreboard=None: "test",
         ),
@@ -1023,7 +1023,7 @@ def test_checkpoint_records_abort_spend_without_marking_task_completed(monkeypat
         global_progress=SimpleNamespace(
             total=1,
             start_task=lambda: None,
-            finish_task=lambda: 1,
+            finish_task=lambda *, recorded=True: 1,
             format_banner=lambda scoreboard=None: "test",
             format_global=lambda scoreboard=None: "test",
         ),
@@ -1041,6 +1041,68 @@ def test_checkpoint_records_abort_spend_without_marking_task_completed(monkeypat
     assert strategy_state.in_flight_task is None
     assert strategy_state.batch_spent == pytest.approx(0.2)
     assert strategy_state.completed_tasks == []
+
+
+def test_run_strategy_batch_exception_clears_inflight_without_recording_done(monkeypatch, tmp_path) -> None:
+    from budgetflow.experiments import compare_execution
+
+    def fake_run_task_record(task, **kwargs):  # noqa: ARG001
+        raise RuntimeError("provider history invariant failed")
+
+    class Progress:
+        total = 1
+
+        def __init__(self) -> None:
+            self.done_calls: list[bool] = []
+
+        def start_task(self) -> None:
+            pass
+
+        def finish_task(self, *, recorded=True) -> int:
+            self.done_calls.append(recorded)
+            return sum(1 for item in self.done_calls if item)
+
+        def format_banner(self, scoreboard=None) -> str:  # noqa: ARG002
+            return "test"
+
+        def format_global(self, scoreboard=None) -> str:  # noqa: ARG002
+            return "test"
+
+    monkeypatch.setattr(compare_execution, "run_task_record", fake_run_task_record)
+    checkpoint = CompareCheckpointStore(
+        tmp_path / "exception.checkpoint.json",
+        stem="exception",
+        total_runs=1,
+    )
+    progress = Progress()
+
+    with pytest.raises(RuntimeError, match="provider history invariant"):
+        run_strategy_batch(
+            CompareStrategy("budgetflow_task_level", "value_aware_task_level"),
+            [SimpleNamespace(instance_id="task-a")],
+            batch_budget_cap=1.0,
+            value_context=_value_context(),
+            planned_task_caps={"task-a": 0.8},
+            budget_mode="planned_task_budget",
+            step_limit=1,
+            trace_console="quiet",
+            heartbeat=0,
+            global_progress=progress,
+            scoreboard=None,
+            print_lock=None,
+            checkpoint=checkpoint,
+        )
+
+    restored = CompareCheckpointStore(
+        tmp_path / "exception.checkpoint.json",
+        stem="exception",
+        total_runs=1,
+    )
+    strategy_state = restored.strategies["budgetflow_task_level"]
+    assert progress.done_calls == [False]
+    assert strategy_state.in_flight_task is None
+    assert strategy_state.completed_tasks == []
+    assert strategy_state.batch_spent == pytest.approx(0.0)
 
 
 def test_effective_planned_task_cap_rebalances_against_remaining_planned_demand() -> None:
@@ -1128,7 +1190,7 @@ def test_run_strategy_batch_planned_caps_require_all_selected_tasks() -> None:
             global_progress=SimpleNamespace(
                 total=2,
                 start_task=lambda: None,
-                finish_task=lambda: 0,
+                finish_task=lambda *, recorded=True: 0,
                 format_banner=lambda scoreboard=None: "test",
                 format_global=lambda scoreboard=None: "test",
             ),
@@ -1154,7 +1216,7 @@ def test_run_strategy_batch_planned_mode_requires_cap_map() -> None:
             global_progress=SimpleNamespace(
                 total=1,
                 start_task=lambda: None,
-                finish_task=lambda: 0,
+                finish_task=lambda *, recorded=True: 0,
                 format_banner=lambda scoreboard=None: "test",
                 format_global=lambda scoreboard=None: "test",
             ),

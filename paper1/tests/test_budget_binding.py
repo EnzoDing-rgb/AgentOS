@@ -532,8 +532,8 @@ def test_task_level_projection_uses_runtime_policy_without_model_plan(tmp_path: 
     assert not any("task_level_model_plan:" in reason for reason in plan.reasons)
 
 
-def test_task_level_projection_reports_effective_shared_runway_without_hard_veto() -> None:
-    """Projection must expose live runway without turning it into a hidden task cap."""
+def test_task_level_projection_reports_effective_shared_runway_without_upgrade_bypass() -> None:
+    """Projection exposes live runway but still requires expected T3 gain."""
     plan = BudgetBindingPlan(
         hard_cap_usd=3.0,
         projection_diagnostics={},
@@ -557,15 +557,13 @@ def test_task_level_projection_reports_effective_shared_runway_without_hard_veto
     task_diag = diagnostics["budgetflow_task_level"]["task_choices"]["task-a"]
     assert task_diag["planned_task_budget_usd"] == pytest.approx(10.0)
     assert task_diag["effective_task_budget_usd"] == pytest.approx(1.5)
-    assert task_diag["runtime_projected_tier"] == 3
-    assert task_diag["routing_reason"] in {
-        "uncertain_frontier_probe",
-        "marginal_yield_per_dollar",
-    }
+    assert task_diag["runtime_projected_tier"] == 2
+    assert task_diag["routing_reason"] == "reference_frontier"
     scores = task_diag["routing_scores"]
     assert scores["planned_task_budget"] == pytest.approx(10.0)
     assert scores["effective_task_budget"] == pytest.approx(1.5)
-    assert diagnostics["budgetflow_task_level"]["degeneration"] == "pure_strongest_tier"
+    assert scores["paid_upgrade_candidate"] == 0.0
+    assert diagnostics["budgetflow_task_level"]["degeneration"] == "pure_reference_tier"
 
 
 def test_value_matrix_schema_is_normalized_at_single_projection_entry(tmp_path: Path) -> None:

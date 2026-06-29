@@ -59,7 +59,7 @@ def test_run_strategy_batch_executes_tasks_serially_within_one_policy(monkeypatc
         global_progress=SimpleNamespace(
             total=3,
             start_task=lambda: None,
-            finish_task=lambda: len(order),
+            finish_task=lambda *, recorded=True: len(order),
             format_banner=lambda scoreboard=None: "test",
             format_global=lambda scoreboard=None: "test",
         ),
