@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BudgetFlow Related Work Boundary — Claim 1 Comparison</title>
+<style>
+:root {
+  --bg: #f8f9fb; --card: #fff; --text: #1f2933; --muted: #5f6b7a;
+  --border: #e2e5ea; --accent: #0f766e; --accent2: #245b9f;
+  --good: #14804d; --warn: #9a5800; --bad: #b91c1c;
+  --hdr: #1e293b;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.6;
+  max-width: 1400px; margin: 0 auto; padding: 24px 32px 80px;
+}
+h1 { font-size: 22px; margin-bottom: 4px; color: #111; }
+h2 { font-size: 16px; margin: 32px 0 12px; padding-bottom: 6px; border-bottom: 2px solid var(--border); color: #1a1a1a; }
+h3 { font-size: 14px; margin: 20px 0 8px; color: #2a2a2a; }
+.subtitle { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+
+/* ── Vocab cards ── */
+.vocab-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 10px; margin: 14px 0 24px;
+}
+.vocab-card {
+  background: var(--card); border: 1px solid var(--border); border-radius: 6px;
+  padding: 12px 16px;
+}
+.vocab-card .term { font-weight: 700; color: var(--accent); font-size: 13px; }
+.vocab-card .def { font-size: 13px; color: var(--muted); margin-top: 2px; }
+
+/* ── Summary box ── */
+.summary-box {
+  background: var(--card); border-left: 4px solid var(--accent); border-radius: 6px;
+  padding: 16px 20px; margin: 16px 0 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.summary-box h3 { margin-top: 0; color: var(--accent); }
+.summary-box ul { margin: 8px 0 0 20px; line-height: 1.7; }
+.summary-box li { margin-bottom: 4px; }
+
+/* ── Main table ── */
+.table-wrap { overflow-x: auto; margin: 14px 0 22px; }
+table {
+  width: 100%; border-collapse: separate; border-spacing: 0;
+  background: var(--card); border-radius: 8px; overflow: hidden;
+  border: 1px solid var(--border); font-size: 13px;
+}
+th, td { padding: 10px 13px; vertical-align: top; line-height: 1.5; }
+th {
+  background: var(--hdr); color: #e2e8f0; font-weight: 600; white-space: nowrap;
+  font-size: 12px; letter-spacing: 0.3px; text-align: left;
+}
+td { border-bottom: 1px solid #eef0f3; text-align: left; }
+tr:last-child td { border-bottom: 0; }
+tr:nth-child(even) td { background: #fafbfc; }
+tr.bf-row td { background: #e6f7f0; border-bottom-color: #c0dfd8; }
+tr.bf-row td:first-child { font-weight: 700; color: var(--accent); }
+tr.bf-row:nth-child(even) td { background: #e6f7f0; }
+
+/* Column widths */
+.col-paper { min-width: 130px; font-weight: 600; }
+.col-problem { min-width: 200px; }
+.col-unit { min-width: 100px; }
+.col-budget { min-width: 140px; }
+.col-value { min-width: 80px; text-align: center; }
+.col-method { min-width: 220px; }
+.col-expt { min-width: 220px; }
+.col-metrics { min-width: 140px; }
+.col-same { min-width: 130px; font-weight: 600; }
+.col-adds { min-width: 200px; }
+.col-baseline { min-width: 140px; }
+
+.yes { color: var(--good); font-weight: 700; }
+.no { color: var(--bad); font-weight: 700; }
+.partial { color: var(--warn); font-weight: 600; }
+
+/* ── Citation tag ── */
+.cite { font-size: 11px; color: var(--muted); font-weight: 400; }
+
+/* ── Framing section ── */
+.framing { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 20px 24px; margin: 16px 0; }
+.framing ul { margin: 8px 0 0 20px; line-height: 1.8; }
+.framing li { margin-bottom: 8px; }
+
+/* ── Drop note ── */
+.drop-note {
+  background: #fef9e7; border: 1px solid #f9e076; border-radius: 6px;
+  padding: 12px 16px; margin: 16px 0; font-size: 13px;
+}
+
+@media print {
+  body { font-size: 11px; padding: 12px; }
+  .vocab-grid { grid-template-columns: repeat(3, 1fr); }
+}
+</style>
+</head>
+<body>
+
+<h1>BudgetFlow Claim 1 — Related Work Boundary Table</h1>
+<div class="subtitle">Generated 2026-06-29 &middot; All papers read in full from original sources &middot; Freshness audit applied</div>
+
+<!-- ═══════════ VOCABULARY ═══════════ -->
+<h2>Vocabulary</h2>
+<div class="vocab-grid">
+  <div class="vocab-card">
+    <div class="term">shared hard budget</div>
+    <div class="def">One fixed dollar cap for ALL tasks combined. Once the money runs out, remaining tasks don't run. Not an average, not per-task, not a soft target.</div>
+  </div>
+  <div class="vocab-card">
+    <div class="term">per-query routing</div>
+    <div class="def">Each query gets routed to a model independently. No coordination across queries, no shared spending pool.</div>
+  </div>
+  <div class="vocab-card">
+    <div class="term">cascade</div>
+    <div class="def">Try a cheap model first. If the answer looks bad, escalate to a more expensive model. Repeat until acceptable or out of models.</div>
+  </div>
+  <div class="vocab-card">
+    <div class="term">task value</div>
+    <div class="def">A pre-registered number saying how important each task is. Only counted if the task is verified resolved. Not estimated after seeing results.</div>
+  </div>
+  <div class="vocab-card">
+    <div class="term">verified result</div>
+    <div class="def">A binary pass/fail from a ground-truth check (e.g., SWE-bench tests pass). Not a predicted quality score or a human preference rating.</div>
+  </div>
+  <div class="vocab-card">
+    <div class="term">decision unit</div>
+    <div class="def">What the system decides on each time it acts: one query, one task, one subtask, one tool call, or a whole batch.</div>
+  </div>
+  <div class="vocab-card">
+    <div class="term">budget cap</div>
+    <div class="def">A hard upper limit on spending. If you hit it, you stop. Not a tradeoff knob you can adjust after seeing results.</div>
+  </div>
+  <div class="vocab-card">
+    <div class="term">Total Resolved Value</div>
+    <div class="def">BudgetFlow's paper-defined metric: sum of task values for all tasks that pass verification. Not a standard benchmark metric.</div>
+  </div>
+  <div class="vocab-card">
+    <div class="term">soft average cost</div>
+    <div class="def">A target like "average cost per query should be ≤ $0.05." Individual queries can go over; only the long-run average matters. Not a hard cap.</div>
+  </div>
+  <div class="vocab-card">
+    <div class="term">inverse problem</div>
+    <div class="def">Minimize cost while keeping quality above a floor. BudgetFlow does the opposite: maximize value while keeping cost under a cap.</div>
+  </div>
+</div>
+
+<!-- ═══════════ EXECUTIVE SUMMARY ═══════════ -->
+<h2>Executive Summary</h2>
+
+<div class="summary-box">
+<h3>Bottom Line</h3>
+<ul>
+  <li><strong>All 6 papers study routing or budget control — but at different scopes.</strong> They optimize single queries, single tasks, or single multi-agent runs. None combines: shared hard budget across a fixed batch of tasks, pre-registered task value, verified outcomes, and an auditable budget compiler. BudgetFlow is the first system to put these four properties together.</li>
+  <li><strong>Every paper routes/allocates within one query or one task.</strong> None allocates spend across tasks under a shared cap. The decision unit is always individual — never a batch with cross-task tradeoffs.</li>
+  <li><strong>None use task value to weight outcomes.</strong> No paper distinguishes "this query matters more than that one." All tasks/queries are weighted equally in the objective.</li>
+  <li><strong>Closest neighbors are RouteLLM (learned router inspiration), RouteNLP (deployment routing with inverse objective), and BAMAS (within-task budget ILP).</strong> All three operate in the same broad family — making limited model capacity go further — but optimize different decision scopes.</li>
+  <li><strong>BudgetFlow's contribution is the specific combination, not any single mechanism:</strong> fixed batch + shared hard budget + pre-registered task value → verified resolved value. Each individual piece may have precedent; the combination and the resulting allocation problem are new.</li>
+</ul>
+</div>
+
+<div class="drop-note">
+<strong>Note on paper selection:</strong> A freshness audit (2026-06-29) recommended replacing FrugalGPT (Chen 2023) with Cascade Routing (Dekoninck et al., ICML 2025 poster) — a stronger cascade paper with SWE-bench eval and formal optimality proofs — and Topaz (Okamoto 2026, CHI Workshop) with BAMAS (Yang et al., AAAI 2026 Oral) — a peer-reviewed budget-constrained system with real code-gen experiments. Both original papers are valid Related Work prose citations but weaker comparison-table entries.
+</div>
+
+<!-- ═══════════ MAIN TABLE ═══════════ -->
+<h2>Main Comparison Table</h2>
+
+<div class="table-wrap">
+<table>
+<thead>
+<tr>
+  <th class="col-paper">Paper</th>
+  <th class="col-problem">What problem it solves <span class="cite">(plain English)</span></th>
+  <th class="col-unit">Decision unit</th>
+  <th class="col-budget">Budget type</th>
+  <th class="col-value">Task value?</th>
+  <th class="col-method">Method <span class="cite">(plain English)</span></th>
+  <th class="col-expt">Experiment setup</th>
+  <th class="col-metrics">Main metrics</th>
+  <th class="col-same">Same problem as BudgetFlow?</th>
+  <th class="col-adds">What BudgetFlow adds</th>
+  <th class="col-baseline">Claim 1 baseline?</th>
+</tr>
+</thead>
+<tbody>
+
+<!-- RouteLLM -->
+<tr>
+  <td class="col-paper">RouteLLM<br><span class="cite">Ong et al., NeurIPS 2024<br>arXiv:2406.18665</span></td>
+  <td class="col-problem">When you get a user query, should you call the cheap model or the expensive one? Train a classifier to decide, so you get near-expensive-model quality at a fraction of the cost. <span class="cite">§1, §3</span></td>
+  <td class="col-unit">Single query</td>
+  <td class="col-budget">No budget. Uses a soft threshold α ∈ [0,1] that controls the % of queries sent to the strong model. Sweeping α traces a quality-cost curve. No dollar amounts in routing decisions. <span class="cite">§3.2, Eq. 7-8</span></td>
+  <td class="col-value no">No</td>
+  <td class="col-method">Train a model (BERT or Llama-3) on Chatbot Arena human preference data to predict P(strong model wins | query). Route to strong model if probability exceeds threshold. Four router architectures evaluated. <span class="cite">§4.2</span></td>
+  <td class="col-expt">MMLU (14K), MT Bench (160), GSM8K (1K+). Baselines: Random router, Unify AI, Martian. Metrics: CPT(x%), APGR. Model pair: GPT-4/Mixtral (~103× cost ratio). No multi-seed reported. Not deployed. <span class="cite">§5, Tables 1-4</span></td>
+  <td class="col-metrics">CPT(50%), CPT(80%), APGR, strong-model call %, cost savings ratio <span class="cite">§3.2</span></td>
+  <td class="col-same no">NO</td>
+  <td class="col-adds">Shared hard budget + task value + verified outcomes + batch-level allocation. RouteLLM routes one query at a time; BudgetFlow allocates across a whole batch under one cap.</td>
+  <td class="col-baseline"><strong>RouteLLM-inspired adaptation:</strong> train classifier on SWE-bench task features → T2/T3, under shared cap. Must disclose 3 gaps: (a) preference data → task success data, (b) single-turn → multi-turn, (c) no value → value-oblivious. <span class="cite">See north_star.md §Draft-Critical Evidence Bar Memo</span></td>
+</tr>
+
+<!-- Cascade Routing -->
+<tr>
+  <td class="col-paper">Cascade Routing<br><span class="cite">Dekoninck et al., ICML 2025 poster<br>arXiv:2410.10347</span></td>
+  <td class="col-problem">Given a query and many models of varying cost/quality, what's the optimal way to pick which model(s) to run and in what order? Unifies routing (pick one) and cascading (fixed chain). <span class="cite">§1, §4, Definition 5</span></td>
+  <td class="col-unit">Single query</td>
+  <td class="col-budget">No. E[cost] ≤ B — expected cost over query distribution enforced via Lagrange multiplier λ. Sweeping λ produces quality-cost curves. Not a hard cap. <span class="cite">§2, Definition 2</span></td>
+  <td class="col-value no">No</td>
+  <td class="col-method">At each step, re-evaluate ALL possible subsets of remaining models, pick the one with best marginal cost-quality tradeoff. Can skip, reorder, or combine models. Proves optimality for per-query expected-cost formulation (Theorem 3). Pruning via Lemma 1 keeps it tractable. <span class="cite">§4, Algorithm 3</span></td>
+  <td class="col-expt">RouterBench (8 datasets, 3/5/11 models), SWE-bench (10 models, test cases as quality oracle), Minerva Math + LiveCodeBench. Baselines: optimal routing, baseline cascading, optimal cascading. Metrics: AUC over quality-cost curves. Seeds: not in main text, CIs in Appendix E. <span class="cite">§5, Tables 1-4</span></td>
+  <td class="col-metrics">AUC, quality at cost, cost at quality <span class="cite">§5</span></td>
+  <td class="col-same no">NO</td>
+  <td class="col-adds">Batch coupling + task value + hard cap. Cascade Routing's SWE-bench usage is as quality oracle for single-turn model selection, not agent-task resolution.</td>
+  <td class="col-baseline"><span class="no">No.</span> Per-query expected cost with no task value. Even if adapted to a batch cap, would need fundamental restructuring: batch coupling, value-weighting, verifier-grounded outcomes. The formal optimality framework could inform BudgetFlow theory but does not provide a runnable baseline.</td>
+</tr>
+
+<!-- RouteNLP -->
+<tr>
+  <td class="col-paper">RouteNLP<br><span class="cite">Guo et al., ACL 2026 Industry<br>~5K queries/day pilot</span></td>
+  <td class="col-problem">An enterprise runs ~5K NLP queries/day across 6 task types. They want near-GPT-4 quality at a fraction of the cost. Build a router that sends each query to the cheapest of 4 model tiers that can handle it well, with formal quality guarantees. <span class="cite">§1, §6</span></td>
+  <td class="col-unit">Single query</td>
+  <td class="col-budget">No shared budget. Optimizes: minimize expected cost s.t. per-task quality ≥ τ_t. Cost is unbounded — the constraint is on quality, not spending. Per-query only; no cross-task cap. <span class="cite">§3, Eq. 1</span></td>
+  <td class="col-value no">No</td>
+  <td class="col-method">DistilBERT router predicts cheapest capable tier for each query. Conformal cascading: if token-level uncertainty exceeds tier/task threshold, escalate to next tier. Closed-loop distillation co-optimization: failure clusters → distill frontier model outputs → retrain cheaper tiers → recalibrate router. Iterates 2-3× offline. <span class="cite">§3.1-3.3, Algorithm 1</span></td>
+  <td class="col-expt">6 tasks (Finance NER, summarization, CS intent, response gen, legal clause extraction, risk assessment). 40K train / 8.8K test. 4-tier portfolio (DistilBERT → Mistral-7B → Mixtral-8x7B → GPT-4, ~800× cost range). Baselines: Always-T4, Always-T2, Random, Rule-Based, FrugalGPT, HybridLLM, RouteLLM, AutoMix (all extended to 4 tiers). 5 seeds, paired bootstrap. 8-week shadow pilot. <span class="cite">§4, §6, Tables 1-4</span></td>
+  <td class="col-metrics">Quality Ratio, Cost Ratio (vs Always-T4), p99 latency, SLA violation rate, task-specific F1/ROUGE-L/BERTScore <span class="cite">§4</span></td>
+  <td class="col-same no">NO</td>
+  <td class="col-adds">RouteNLP solves the inverse: minimize cost given a quality floor. BudgetFlow: maximize verified value given a cost ceiling. RouteNLP's cascading and distillation are orthogonal techniques that could layer on top of BudgetFlow's shared-budget allocation.</td>
+  <td class="col-baseline"><span class="no">No.</span> Inverse objective, no shared budget, no task value. Adapting would invert the optimization and add cross-task coupling — it would no longer be RouteNLP. Best used as a deployment-scale neighbor in Related Work prose.</td>
+</tr>
+
+<!-- BAMAS -->
+<tr>
+  <td class="col-paper">BAMAS<br><span class="cite">Yang et al., AAAI 2026 Oral<br>arXiv:2511.21572</span></td>
+  <td class="col-problem">Multi-agent systems (AutoGen, MetaGPT) burn money unpredictably. Given a per-task budget, jointly pick which LLMs to assign to each agent role and how agents should collaborate, to maximize accuracy without going over budget. <span class="cite">§1, §3</span></td>
+  <td class="col-unit">Per-task (one task at a time)</td>
+  <td class="col-budget"><strong>Per-task</strong> hard budget B. Each task gets its own independent budget. No cross-task sharing. Budget B_j noted as "per-run budget" in notation table. <span class="cite">§3, Appendix A Table 5</span></td>
+  <td class="col-value no">No</td>
+  <td class="col-method">ILP selects which LLMs to provision under budget, using tiered weights that guarantee lexicographically optimal assignment. Offline RL (REINFORCE) picks collaboration topology (Linear/Star/Feedback/Planner-Driven) from pre-collected task-budget-topology-outcome data. Assigns strongest LLMs to critical roles (planner → critic → executor). <span class="cite">§3.1-3.3, Eqs 1-4</span></td>
+  <td class="col-expt">GSM8K (1319 test), MBPP (500 test), MATH (1000 test). Baselines: AutoGen, MetaGPT, ChatDev (DeepSeek-V3 + GPT-4.1 nano variants), Naive-CostAware. Metrics: Accuracy, Avg Cost, Out-of-Budget count. Budget levels: 500-2000 range. No multi-seed reported. Not deployed. <span class="cite">§4, Tables 1-3</span></td>
+  <td class="col-metrics">Accuracy (%), Average Cost, Out-of-Budget count <span class="cite">§4, Table 1</span></td>
+  <td class="col-same no">NO</td>
+  <td class="col-adds">Cross-task budget allocation + task value. BAMAS optimizes LLM assignment + topology within one task. BudgetFlow allocates budget across a batch of tasks with different values. BAMAS could serve as the <em>executor</em> inside BudgetFlow's per-task budget envelope.</td>
+  <td class="col-baseline"><span class="no">Not directly.</span> Would need: (1) replace per-task budget with shared batch budget constraint, (2) add task values to ILP objective, (3) jointly optimize across batch. The ILP + RL machinery is potentially reusable but requires substantial restructuring.</td>
+</tr>
+
+<!-- UCCI -->
+<tr>
+  <td class="col-paper">UCCI<br><span class="cite">Kotte, 2026<br>arXiv:2605.18796</span></td>
+  <td class="col-problem">Cascade routers use uncalibrated confidence scores, so thresholds don't transfer across workloads. Replace them with rigorously calibrated uncertainty estimates (isotonic regression on token-level margins) so escalation decisions are statistically sound. <span class="cite">§1, §4</span></td>
+  <td class="col-unit">Single query</td>
+  <td class="col-budget">No. Constraint is accuracy lower bound: minimize expected cost s.t. F1 ≥ τ. Cost minimization is unconstrained by any cap. τ = 0.91 is a population-level target, not a per-batch hard cap. <span class="cite">§3, Eqs 2-3</span></td>
+  <td class="col-value no">No</td>
+  <td class="col-method">(1) Compute token-margin uncertainty u(x) for each small-model output. (2) Calibrate via isotonic regression: u → P(error | u), reducing ECE from 0.12 to 0.03. (3) Grid-search threshold θ* on validation: min cost s.t. F1 ≥ τ. Cascade: if calibrated error prob ≤ θ, accept small model; else escalate to large model. <span class="cite">§4.1-4.3, Fig 1</span></td>
+  <td class="col-expt">Single proprietary NER dataset (75K queries, photo metadata, 6 entity types). Models: 4B / 12B instruction-tuned (H100, vLLM). Baselines: Always-small, Always-large, Entropy threshold, Conformal prediction, FrugalGPT-style threshold. Metrics: Micro-F1, ECE, normalized cost (c_s=1, c_l=3.02 from latency). No multi-seed. Not deployed. <span class="cite">§6, Tables 1-4</span></td>
+  <td class="col-metrics">Micro-F1, ECE (Expected Calibration Error), cost ratio <span class="cite">§6.2-6.3</span></td>
+  <td class="col-same no">NO</td>
+  <td class="col-adds">UCCI calibrates Model Fit; BudgetFlow allocates budget. UCCI's calibration improves a per-query cascade. BudgetFlow's allocation governs cross-task tier selection under a shared cap. Orthogonal: better calibration could improve BudgetFlow's Model Fit inputs (Claim 2).</td>
+  <td class="col-baseline"><span class="no">No for Claim 1.</span> UCCI is a calibration technique, not a policy. Replacing BudgetFlow's Model Fit estimates with UCCI-calibrated ones tests input quality, not policy architecture. Belongs in Claim 2 mechanism analysis.</td>
+</tr>
+
+<!-- INTENT -->
+<tr>
+  <td class="col-paper">INTENT<br><span class="cite">Liu et al., ICML 2025<br>arXiv:2602.11541</span></td>
+  <td class="col-problem">An LLM agent doing multi-step tool use (e.g., stock research, legal due diligence, cloud diagnostics) must call paid APIs. Each tool call costs money. The agent needs to plan which tools to call and when to stop, without exceeding a per-task budget. <span class="cite">§1, §2.2</span></td>
+  <td class="col-unit">Per-task (one task, independent budget)</td>
+  <td class="col-budget"><strong>Per-task</strong> hard monetary budget B=50 (credit units). Reward = 0 if total tool cost > B. Each task gets its own B. No cross-task sharing. 765 test instances, each independent. <span class="cite">§2.4 Eq. 1, §4.1</span></td>
+  <td class="col-value no">No</td>
+  <td class="col-method">Language World Model (Qwen2.5-3B) predicts tool output structure. Intention Predictor estimates P(tool call satisfies agent's intent). INTENT proper: simulate ideal trajectory (all intents satisfied) → geometric cost calibration (expected cost = c_k / ρ̂_k, modeling retries) → accept action if γ · Σ calibrated_costs ≤ remaining budget (γ=0.5). Simulation reuse when plan stays on track. <span class="cite">§3.1-3.3</span></td>
+  <td class="col-expt">StableToolBench (765 test instances, 16K+ RapidAPI tools, 49 categories). Synthetic tool prices U(5,50). 20 tools per task. Backbones: GPT-4.1 mini, GPT-5 nano. Baselines: Raw, Prompt, DFSDT, BTP, BATS. Metrics: Pass Rate, Budget-Optimal Pass Rate, Win Rate, Feasible Rate, Avg Cost. ~186K training trajectories. Not deployed. <span class="cite">§4, Tables 1-3</span></td>
+  <td class="col-metrics">Pass Rate, Budget-Optimal Pass Rate (OR), Win Rate, Feasible Rate, Avg Cost <span class="cite">§4.1, Table 1</span></td>
+  <td class="col-same no">NO</td>
+  <td class="col-adds">INTENT plans tool calls within one task under a per-task budget. BudgetFlow allocates model tiers across many tasks under one shared budget. These are complementary layers: INTENT could be the inner executor; BudgetFlow is the outer allocator.</td>
+  <td class="col-baseline"><span class="no">No.</span> Wrong decision unit (within-task tool planning, not cross-task budget allocation). Would need new meta-controller for cross-task allocation + task value + SWE-bench verifier. Engineering cost disproportionate. Best used as a prose contrast to clarify BudgetFlow's cross-task scope.</td>
+</tr>
+
+<!-- BudgetFlow -->
+<tr class="bf-row">
+  <td class="col-paper"><strong>BudgetFlow</strong><br><span class="cite">(this paper)</span></td>
+  <td class="col-problem"><strong>You have a fixed batch of 30 bug reports, two model tiers (T2 cheap, T3 strong), and one shared hard budget. Some bugs are critical, others cosmetic. How do you allocate the budget across tasks so the total value of resolved bugs is maximized?</strong></td>
+  <td class="col-unit"><strong>Per-task in a fixed batch</strong></td>
+  <td class="col-budget"><strong>Shared hard budget</strong> across entire batch. Budget Regime Compiler sets the cap pre-run; Runtime allocates within it. Cap depletes in real time; remaining tasks fail when budget exhausted.</td>
+  <td class="col-value yes">Yes — pre-registered Task Values per task</td>
+  <td class="col-method"><strong>Budget Regime Compiler</strong> (pre-run) + <strong>Runtime value-aware policy</strong>: selects T2 or T3 at task start based on task value, expected cost, expected pass probability, and remaining budget. Tracks cumulative spending. Tightens downstream access as budget depletes.</td>
+  <td class="col-expt">Fixed 30-task SWE-bench workload, fixed task order, pre-registered shared hard cap. T2/T3 model tiers. Baselines: pure T2, pure T3, RouteLLM-inspired learned router, budget-only (value-blind). Metrics: Resolved Count, Resolved Rate, Total Spend, Cost per Resolved Task, Total Resolved Value, Total Resolved Value/$. Sensitivity: KV-cache, value profiles, budget caps.</td>
+  <td class="col-metrics"><strong>Total Resolved Value</strong> (paper-defined), Resolved Count (SWE-bench standard), Total Resolved Value/$</td>
+  <td class="col-same" style="color: var(--accent);">—</td>
+  <td class="col-adds" style="color: var(--accent); font-weight: 600;">First system combining: fixed batch + shared hard budget + pre-registered task value + verified outcomes + auditable budget compilation.</td>
+  <td class="col-baseline" style="color: var(--accent); font-weight: 600;">—</td>
+</tr>
+
+</tbody>
+</table>
+</div>
+
+<!-- ═══════════ RECOMMENDED FRAMING ═══════════ -->
+<h2>Recommended Framing for BudgetFlow Paper</h2>
+
+<div class="framing">
+<ul>
+  <li><strong>RouteLLM-inspired learned task router is the strongest Claim 1 baseline,</strong> but the <em>original</em> RouteLLM paper does not have a shared budget, task value, or verified outcomes. The baseline adapts the architecture (classifier trained on task features → pass/fail labels), not the original training objective. Frame it as "RouteLLM-inspired" with explicit disclosure of three adaptation gaps: Chatbot Arena preference data → SWE-bench task success data, single-turn queries → multi-turn agent tasks, uniform query weight → value-oblivious by design.</li>
+
+  <li><strong>Cascade Routing (ICML 2025 poster) replaces FrugalGPT as the canonical cascade paper.</strong> It has formal optimality proofs, SWE-bench evaluation, and a stronger venue. But it remains per-query with expected-cost constraints — no shared budget, no task value. Position it as the state of the art in <em>per-query cost-quality routing</em>, then contrast with BudgetFlow's <em>batch-level value maximization</em>.</li>
+
+  <li><strong>RouteNLP is the deployment-level neighbor with an inverse objective.</strong> It proves that industrial routing at scale (~5K queries/day) works. But it minimizes cost subject to quality ≥ τ, while BudgetFlow maximizes value subject to cost ≤ B. This is the cleanest "we solve the opposite problem" framing in the paper. RouteNLP's conformal cascading and distillation co-optimization are orthogonal techniques that could complement BudgetFlow's shared-budget allocation in future work.</li>
+
+  <li><strong>BAMAS (AAAI 2026 Oral) is the closest budget-constrained neighbor but within-task, not cross-task.</strong> Its ILP + offline RL formulation for LLM selection under a per-task budget is impressive (86% cost reduction on code gen), but it allocates budget to agent roles inside one task, not to tasks inside a batch. This is a crisp boundary: BAMAS handles <em>within-task architecture design</em>; BudgetFlow handles <em>cross-task budget governance</em>.</li>
+
+  <li><strong>UCCI is a calibration mechanism, not a policy.</strong> Its isotonic regression on token margins (ECE 0.12 → 0.03) is valuable methodology for BudgetFlow's Model Fit estimation. Position it in Claim 2 mechanism discussion, not Claim 1 baselines. The right question is "does better Model Fit calibration improve BudgetFlow's allocation decisions?" not "does UCCI beat BudgetFlow?"</li>
+
+  <li><strong>INTENT studies within-task tool-call planning under a per-task budget; BudgetFlow studies cross-task model-tier allocation under a shared budget.</strong> These are complementary decision layers. The paper should add one sentence: "INTENT manages which tools to call and when to stop inside one task; BudgetFlow manages which tasks get scarce model opportunities inside one budget." INTENT's learned world model and intention predictor could theoretically serve as the inner executor within BudgetFlow's outer allocation loop.</li>
+
+  <li><strong>BudgetFlow's core distinction is irreplaceable:</strong> fixed batch + shared hard budget + pre-registered task value + verified resolved value. Zero of the 6 papers combine these four. The paper's novelty argument should center on this combination, not on individual mechanism components (routing, calibration, or tool planning).</li>
+
+  <li><strong>Use the "inverse problem" framing consistently.</strong> RouteNLP, UCCI, and Cascade Routing all solve min cost s.t. quality ≥ τ. BudgetFlow solves max value s.t. cost ≤ B. The inverse framing is intuitive, memorable, and makes the problem-class distinction clear to reviewers without requiring them to read code or trace experiments.</li>
+</ul>
+</div>
+
+<!-- ═══════════ DROPPED PAPERS ═══════════ -->
+<h2>Papers Considered but Not in Main Table</h2>
+
+<div class="drop-note">
+<strong>FrugalGPT (Chen et al., 2023):</strong> Pioneered LLM cascading (700+ citations), but its soft average budget E[cost] ≤ b and DistilBERT answer-quality scorer make it a weaker cascade representative than Cascade Routing (ICML 2025 poster), which adds formal optimality proofs and SWE-bench evaluation. Mention in prose as the first LLM cascade paper, then pivot to Cascade Routing for current state of the art.<br><br>
+
+<strong>Topaz (Okamoto et al., 2026, CHI Workshop):</strong> Moves to prose-only because BAMAS (AAAI 2026 Oral) provides a stronger empirical budget-constrained system for the main table. <em>However, Topaz remains important to BudgetFlow's story:</em> its skill-based explainable routing and structured audit traces are directly relevant to BudgetFlow's transparency and auditability goals. The 8-skill taxonomy and trace-driven explanation approach should be cited in the explainable AI / transparent orchestration section of Related Work. The appendix DP formulation (budget-based mode) is a textbook knapsack — not a novel contribution — but the idea of budget-constrained task-to-model assignment under an auditable plan aligns with BudgetFlow's compiler design.<br><br>
+
+<strong>Additional prose-only citations:</strong> ZEBRA (Hamri & Talgam-Cohen, 2026) — zero-shot budget splitting supports the premise that structured allocation beats LLM-direct. Triage (Madeyski, 2025) — SWE-bench-specific routing with code health signals, preliminary. Varangot-Reille et al. (2025) — comprehensive routing taxonomy survey; cite once to position BudgetFlow. HybridLLM (Ding et al., ICLR 2024) — early ICLR router, superseded by RouteLLM. RouterBench (Hu et al., 2024) — standard routing benchmark.
+</div>
+
+</body>
+</html>
