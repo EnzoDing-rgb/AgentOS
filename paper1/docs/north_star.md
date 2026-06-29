@@ -6,7 +6,7 @@ docs, prompts, handoffs, reports, and reviewer-facing prose.
 ## Draft-Critical Evidence Bar Memo
 
 The current Claim 1 readout can support the initial draft only if the paper is
-explicit about the regime boundary it is studying. The paper is not a story
+explicit about the operating condition it is studying. The paper is not a story
 that BudgetFlow always beats the Strongest Model. It is a shared-budget study
 of when value-aware budget governance creates more verified task value, when a
 learned router is already a hard competitor, and when the Strongest Model
@@ -45,9 +45,9 @@ baselines. They answer whether BudgetFlow beats uniform-tier frontiers under
 the same shared cap. A pure Strongest Model win is not a reason to weaken the
 baseline. It is evidence of Frontier Dominance: the Strongest Model is so
 turn-efficient that it can cover the workload inside the shared cap. In that
-regime, report BudgetFlow's gap to the Strongest Model frontier or to an
+condition, report BudgetFlow's gap to the Strongest Model frontier or to an
 observed-tier upper bound instead of pretending the allocation problem is the
-same as in scarcity regimes.
+same as in scarcity operating conditions.
 
 Fourth, the draft-critical related-work baseline is a RouteLLM-inspired learned
 task router. It learns offline which tasks look like they need T3 from
@@ -67,7 +67,7 @@ not manage a shared budget. The paper baseline is "RouteLLM-inspired learned
 task router" or "RouteLLM-inspired supervised task router." Its value is to test
 whether BudgetFlow's value-aware shared-budget allocation beats a real learned
 router, not merely pure-tier controls. If the learned router is close to
-BudgetFlow in some regimes, that strengthens the paper: the baseline is not
+BudgetFlow in some operating conditions, that strengthens the paper: the baseline is not
 weak, and BudgetFlow's advantage must be attributed to value placement,
 budget scarcity, execution coverage, or frontier detection rather than vague
 "routing is better" claims.
@@ -90,24 +90,24 @@ was reachable? This "observed-tier oracle" is stronger than a deployable static
 router because it sees outcomes after the fact. Use it to bound headroom and
 reviewer objections before deciding whether a real sixth paid lane is needed.
 
-Sixth, the initial draft should present the completed paid runs as a regime
-matrix, not as cherry-picked single-run proof.
+Sixth, the initial draft should present the completed paid runs as an
+operating-condition matrix, not as cherry-picked single-run proof.
 
-- The corrected 3x30 run is a value-maximization regime: BudgetFlow wins Total
+- The corrected 3x30 run is a value-maximization condition: BudgetFlow wins Total
   Resolved Value against pure T2 and pure T3, while pure T3 remains a strong
   efficiency boundary because it uses far fewer turns.
 - The 4x30 clean run is the clearest value-aware allocation case: BudgetFlow
   wins Total Resolved Value and value per dollar despite resolving one fewer
   task than pure T3, because it protects higher-value tasks such as
   `pallets__flask-4992` while pure T3 picks up more normal-value tasks.
-- The 5x30 clean run is a Strongest Model frontier-dominance regime: pure T3
+- The 5x30 clean run is a Strongest Model frontier-dominance condition: pure T3
   covers the whole batch under the same shared cap and wins Total Resolved
   Value. This is a negative result for "BudgetFlow always wins" but positive
   evidence for the paper's boundary claim: when T3 is both capable and cheap in
   total, the correct scientific conclusion is to report that frontier, not to
   hide it.
 
-These three regimes should be reported side by side. They show that BudgetFlow
+These three operating conditions should be reported side by side. They show that BudgetFlow
 creates value when scarce model opportunities and Task Value placement matter,
 and that its diagnostic value includes identifying when the allocation problem
 has collapsed into a strong pure-tier frontier.
@@ -142,7 +142,7 @@ the value metric and by freezing Task Value before execution. "Your baselines
 are weak" is answered by pure-tier frontiers, a RouteLLM-inspired learned
 router, a value-blind budget-only control, and observed-tier upper bounds.
 "Your result is cherry-picked" is answered by showing 3x30, 4x30, and 5x30 as
-different regimes, including the run where pure T3 wins.
+different operating conditions, including the run where pure T3 wins.
 
 ## Core Terminology
 
@@ -169,8 +169,8 @@ budget.
 | Cost per Resolved Task | Total Spend divided by Resolved Count. It is an accessible cost diagnostic, not the Claim 1 objective. |
 | Total Resolved Value | Paper-defined Claim 1 objective: sum of pre-registered Task Value over resolved tasks. It is not an official SWE-bench metric and should not be renamed as if it were community standard. |
 | Total Resolved Value per Dollar | Total Resolved Value divided by Total Spend. It is a value-weighted cost-efficiency diagnostic, not the only headline. |
-| Value-Driven Budget Allocation | Two-layer mechanism: first compile a shared hard-budget regime for a fixed task sequence; then allocate model opportunities, turns, continue/stop decisions, and spend within that regime. |
-| Regime | The operating condition that decides whether BudgetFlow has room to help: budget tightness, Strongest Model total cost, reference-tier solvability, Task Value placement, learned-router strength, and KV-cache pricing. In plain words: what kind of world are we in before asking whether BudgetFlow should win? |
+| Value-Driven Budget Allocation | Two-layer mechanism: first compile a shared budget setting for a fixed task sequence; then allocate model opportunities, turns, continue/stop decisions, and spend within that setting. |
+| Operating Condition | The situation that decides whether BudgetFlow has room to help: budget tightness, Strongest Model total cost, reference-tier solvability, Task Value placement, learned-router strength, and KV-cache pricing. In plain words: what kind of world are we in before asking whether BudgetFlow should win? |
 | Budget Regime Compiler | Pre-run mechanism that turns a fixed task set, fixed task order, ValueSource, Estimated Task Token Demand, reference cost scale, clean frozen calibration evidence when available, and target pressure into a pre-registered shared hard budget plan with confidence and audit fields. It is part of Claim 1, not a separate claim, and it must not assign model tiers to individual tasks. |
 | BudgetFlow Runtime | Runtime policy that executes the same task order as every control and allocates scarce model opportunities within the compiled shared budget. It decides when to spend, continue, stop, or use a stronger tier; it does not reorder tasks to chase value. |
 | Task Value | Estimated utility of a verified resolved outcome. It answers "what is this task worth if solved?" |
@@ -218,7 +218,7 @@ under one shared budget.
 
 The system has two decision layers.
 
-- **Budget Regime Compiler:** establishes the budget regime before execution.
+- **Budget Regime Compiler:** establishes the shared budget setting before execution.
   It estimates how much shared budget a fixed workload deserves from Task
   Value, Estimated Task Token Demand, a reference cost scale, and clean calibration evidence.
   It does not solve the routing problem and must not pre-assign model tiers to
@@ -270,7 +270,7 @@ budget pressure only to choose between cheaper and stronger tiers.
 
 | Claim | Main question | Primary evidence |
 |---|---|---|
-| Claim 1 | Under the same compiled shared hard-budget regime, does BudgetFlow resolve more pre-registered task value? | Total Resolved Value at fixed budget, with Resolved Count, Resolved Rate, Total Spend, Cost per Resolved Task, Total Resolved Value per Dollar, budget-plan confidence, and actual utilization reported as required diagnostics. |
+| Claim 1 | Under the same compiled shared budget setting, does BudgetFlow resolve more pre-registered task value? | Total Resolved Value at fixed budget, with Resolved Count, Resolved Rate, Total Spend, Cost per Resolved Task, Total Resolved Value per Dollar, budget-plan confidence, and actual utilization reported as required diagnostics. |
 | Claim 2 | Which budget-aware allocation policy explains the Claim 1 result, and is that policy reusable? | Parked for the initial draft. Later mechanism evidence can include resolution-cost frontier, Strongest Model productive use, Tier Boundary Selection, stop-loss behavior, task-level vs stage/segment-aware controls, optional memory effect when enabled, and failure attribution. |
 
 SWE-bench's standard metric is Resolved Rate. BudgetFlow must always report
@@ -297,23 +297,23 @@ diagnostics; the frozen pre-registered ValueSource remains the primary Claim 1
 objective.
 
 Claim 1 is the objective. The Budget Regime Compiler is the pre-run part of
-Value-Driven Budget Allocation: it defines the shared budget regime before any
+Value-Driven Budget Allocation: it defines the shared budget setting before any
 policy comparison. The Runtime is the execution part: it allocates model
-opportunities within that regime while preserving the pre-registered task
+opportunities within that setting while preserving the pre-registered task
 order.
 
 Claim 1 evidence must report whether the shared hard budget is binding and
-which frontier is active. If a pure Strongest Model control completes the fixed
-workload inside the cap and wins value, the result is still a valid fixed-workload
-readout. It establishes a Strongest Model frontier-dominance regime rather than
-a BudgetFlow value-creation regime. The next evidence move is not automatically
+which operating condition is active. If a pure Strongest Model control
+completes the fixed workload inside the cap and wins value, the result is still a valid fixed-workload
+readout. It establishes a Strongest Model frontier-dominance condition rather than
+a BudgetFlow value-creation condition. The next evidence move is not automatically
 to weaken the cap or workload; first report the gap-to-frontier and ask whether
 scarcity, value placement, or reference-tier solvability still leaves an
 allocation problem.
 
 The current Claim 1 task set remains 30 tasks. Expanding to 50 tasks is not the
 default next evidence move. The current mainline keeps the task set, task
-order, ValueSource, CostSource, and budget regime fixed, and compares pure T2,
+order, ValueSource, CostSource, and budget setting fixed, and compares pure T2,
 pure T3, RouteLLM-inspired learned router, budget-only baseline, and
 BudgetFlow task-level so the paper can separate "budget pressure helps" from
 "value-aware budget allocation helps."
@@ -398,9 +398,9 @@ that framework. Result-level generalization to writing, marketing, Excel, or
 other workloads requires new adapters, value sources, and verifier definitions.
 It does not require changing the core problem definition.
 
-The regime matrix is the bridge from SWE-bench to broader settings. The paper
-should not only report whether BudgetFlow wins. It should report what kind of
-world the run represents: whether the shared budget is tight, whether T3 is
+The operating-condition matrix is the bridge from SWE-bench to broader
+settings. The paper should not only report whether BudgetFlow wins. It should
+report what kind of world the run represents: whether the shared budget is tight, whether T3 is
 expensive in total or cheap because it uses far fewer turns, whether T2 has
 short-path tasks it can solve cheaply, whether the learned router is already
 close to the frontier, whether Task Value placement matters, and whether KV
@@ -518,7 +518,7 @@ hand-picked.
   is too tight to diagnose value allocation.
 - Keep the compiled cap tight enough that a pure Strongest Model baseline is
   budget-constrained or exhausts the cap. If the strongest baseline can solve the
-  workload without pressure, the budget regime is too loose to test allocation.
+  workload without pressure, the budget setting is too loose to test allocation.
 - Use one small diagnostic calibration pass at most for a new workload/model
   catalog before freezing the budget plan for the evidence run. Repeated
   calibration on the same evaluation slice weakens the claim.
@@ -526,7 +526,7 @@ hand-picked.
   whether pure T3 hit the cap. A strongest-tier baseline near 100% utilization
   can be a healthy sign that the budget is genuinely binding.
 - Do not claim the compiler guarantees exact utilization. It targets a pressure
-  regime and must expose projection error when actual spend is too loose or too
+  setting and must expose projection error when actual spend is too loose or too
   tight.
 - Frozen cost calibration for the compiler must consume only current-schema,
   same-catalog, scoreable rows. Budget-exhausted rows may enter only as censored
@@ -563,7 +563,7 @@ model access, and model-task fit. A customer usually does not know, before
 running the system, how much budget a workload deserves or which model tier
 will be productive on each task. Calibration is therefore a necessary part of
 deployment: it maps local value, effort, cost, and model-fit evidence into a
-shared hard-budget regime.
+shared budget setting.
 
 This calibration is generalizable when it calibrates the mechanism, not the
 benchmark. The reusable object is the procedure: pre-register task value and
@@ -579,7 +579,7 @@ catalog. They are not paper-level evidence by themselves. Their role is to
 estimate the scale that cannot be known a priori: whether the compiled budget
 is too tight or too loose, whether Estimated Task Token Demand predicts runway, whether Model
 Fit differentiates model tiers, and whether budget pressure reaches the
-intended regime. A provider-only binding change within the same normalized tier
+intended pressure setting. A provider-only binding change within the same normalized tier
 semantic revision is not, by itself, a new cost model. It still needs provider
 preflight and may need diagnostic validation, but it should not trigger a new
 round of real-world price calibration. After the calibration pass, the

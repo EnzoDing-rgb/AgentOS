@@ -2,17 +2,17 @@
 
 > 单一入口：进度、跑法、历史结果。
 
-## 2026-06-29 — Claim 1 regime-matrix framing
+## 2026-06-29 — Claim 1 operating-condition matrix framing
 
 - Updated `paper1/docs/north_star.md`: Claim 1 remains centered on Total
   Resolved Value under one shared hard budget, but the draft should present
-  3x30, 4x30, and 5x30 as a regime/frontier matrix rather than a cherry-picked
-  single-run win.
+  3x30, 4x30, and 5x30 as an operating-condition/frontier matrix rather than
+  a cherry-picked single-run win.
 - Reviewer-defense framing: standard SWE-bench metrics stay in the main table;
   Total Resolved Value is explicitly paper-defined and pre-registered; strong
   controls include pure-tier frontiers, RouteLLM-inspired learned router,
   budget-only value-blind control, sensitivity, and observed-tier upper bounds.
-- Interpretation: 3x30 and 4x30 show BudgetFlow value-creation regimes; 5x30
+- Interpretation: 3x30 and 4x30 show BudgetFlow value-creation conditions; 5x30
   shows Strongest Model frontier dominance. The paper should explain both,
   not weaken T3 or make BudgetFlow silently become all-T3.
 
