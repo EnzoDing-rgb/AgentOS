@@ -101,8 +101,8 @@ tr.bf-row:nth-child(even) td { background: #e6f7f0; }
 </head>
 <body>
 
-<h1>BudgetFlow Claim 1 — Related Work Boundary Table</h1>
-<div class="subtitle">Generated 2026-06-29 &middot; All papers read in full from original sources &middot; Freshness audit applied</div>
+<h1>BudgetFlow Claim 1 — Related Work Boundary</h1>
+<div class="subtitle">Consolidated 2026-06-30 from the 2026-06-29 boundary table and engineering-system audit. The 2026-06-29 comparison table remains the anchor when older notes disagree.</div>
 
 <!-- ═══════════ VOCABULARY ═══════════ -->
 <h2>Vocabulary</h2>
@@ -163,6 +163,43 @@ tr.bf-row:nth-child(even) td { background: #e6f7f0; }
 </ul>
 </div>
 
+<h2>BudgetFlow Positioning Snapshot</h2>
+<div class="vocab-grid">
+  <div class="vocab-card">
+    <div class="term">Claim 1</div>
+    <div class="def">Under one shared hard budget, BudgetFlow maximizes Total Resolved Value: the sum of pre-registered Task Value over verified resolved tasks. Resolved count remains reported as the standard SWE-bench metric.</div>
+  </div>
+  <div class="vocab-card">
+    <div class="term">Claim 2</div>
+    <div class="def">The mechanism claim: value-aware budget allocation, routing, escalation, stop-loss, and learning explain Claim 1. Routing savings matter only if they protect or improve Claim 1.</div>
+  </div>
+  <div class="vocab-card">
+    <div class="term">Budget Compiler</div>
+    <div class="def">Pre-run layer. Given task set, ValueSource, model catalog, estimated token demand, and calibration evidence, it compiles the shared cap and planned task budgets before paid execution.</div>
+  </div>
+  <div class="vocab-card">
+    <div class="term">BudgetFlow Runtime</div>
+    <div class="def">Run-time layer. It allocates model opportunities under the shared ledger, clips each task by remaining budget, records trace/cost/outcome evidence, and stops when the cap is exhausted.</div>
+  </div>
+  <div class="vocab-card">
+    <div class="term">Frontier Matrix</div>
+    <div class="def">The paper should report when BudgetFlow has value: tight vs loose budget, strong-model turn efficiency, cheap-model short-path wins, learned-router strength, KV-cache cost shifts, and gap to observed-tier frontier.</div>
+  </div>
+  <div class="vocab-card">
+    <div class="term">Generalization Claim</div>
+    <div class="def">SWE-bench is the verifiable stress test. The portable claim is the governance abstraction: fixed workload, shared budget, value source, cost source, model-fit evidence, and auditable allocation.</div>
+  </div>
+</div>
+
+<div class="summary-box">
+<h3>BudgetFlow's First-Paragraph Positioning</h3>
+<ul>
+  <li><strong>Do not claim "we invented routing" or "same budget, more capability" in generic form.</strong> OpenSquilla already uses that language. BudgetFlow's sharper claim is: same fixed task batch, one shared hard budget, pre-registered task values, verified outcomes, and a policy that allocates scarce model opportunities across tasks.</li>
+  <li><strong>The clean theoretical sentence:</strong> BudgetFlow tests whether locally strong per-turn or per-task routing becomes globally suboptimal when tasks compete for one shared budget and have different values.</li>
+  <li><strong>Use resolved count as the benchmark metric and Total Resolved Value as the paper metric.</strong> This helps answer the "you invented your own metric" attack: SWE-bench resolved rate stays visible, while Task Value is the additional governance objective.</li>
+</ul>
+</div>
+
 <div class="drop-note">
 <strong>Note on paper selection:</strong> A freshness audit (2026-06-29) recommended replacing FrugalGPT (Chen 2023) with Cascade Routing (Dekoninck et al., ICML 2025 poster) — a stronger cascade paper with SWE-bench eval and formal optimality proofs — and Topaz (Okamoto 2026, CHI Workshop) with BAMAS (Yang et al., AAAI 2026 Oral) — a peer-reviewed budget-constrained system with real code-gen experiments. Both original papers are valid Related Work prose citations but weaker comparison-table entries.
 </div>
@@ -170,10 +207,64 @@ tr.bf-row:nth-child(even) td { background: #e6f7f0; }
 <div class="summary-box">
 <h3>Engineering-System Addendum: OpenSquilla / Claw-SWE-Bench</h3>
 <ul>
-  <li><strong>OpenSquilla is a serious practical neighbor, not a throwaway comparison.</strong> It is a token-efficient agent runtime with a local SquillaRouter that routes each turn across model tiers, controls reasoning/prompt policy, records usage/cost, and manages tool compression plus cache continuity. This directly pressures any weak BudgetFlow framing that sounds like "we invented model routing."</li>
-  <li><strong>It does not appear to solve Claim 1.</strong> Its public docs and benchmark frame the problem as per-turn/session cost efficiency and long-running agent usefulness. I did not find a primary-source claim of fixed shared hard budget across a batch of heterogeneous valued tasks, pre-registered task value, and verified Total Resolved Value maximization.</li>
-  <li><strong>Claw-SWE-Bench is an evaluation-hygiene warning.</strong> It standardizes prompts, strips future commits, forbids network answers, collects patches runner-side, isolates each instance, and evaluates through the official SWE-bench harness. BudgetFlow should borrow these hygiene standards where feasible and explain our own trace/checker/crosscheck path in the same spirit.</li>
-  <li><strong>Best positioning:</strong> cite OpenSquilla as a strong learned-router/context-management agent system; cite Claw-SWE-Bench as a harness-comparability and contamination-control benchmark. BudgetFlow's independent contribution is batch-level value-aware budget governance on top of strong agent/routing substrates.</li>
+  <li><strong>OpenSquilla is a serious practical neighbor, not a throwaway comparison.</strong> Its README tagline is "Same budget, more capability, better results," and the product guide frames the system around cost-per-success and long-running usefulness. That collides with a weak BudgetFlow pitch. The distinction must be made in the abstract, not buried in Related Work.</li>
+  <li><strong>OpenSquilla's mechanism is stronger than plain model routing.</strong> Its router selects configured model tiers, can affect reasoning level and response policy, and is paired with tool compression, cache-continuity safeguards, diagnostics, replay, durable sessions, MetaSkills, scheduling, and per-turn/per-session cost rollups. BudgetFlow should not pretend these are unsolved at the per-turn runtime layer.</li>
+  <li><strong>OpenSquilla still does not appear to solve Claim 1.</strong> The public primary docs show per-turn routing inside long sessions and reusable/scheduled workflows, but I did not find evidence of a shared hard dollar ledger across a fixed batch, pre-registered heterogeneous task values, or a policy that optimizes verified Total Resolved Value across competing tasks.</li>
+  <li><strong>Claw-SWE-Bench is methodological convergence, not just hygiene pressure.</strong> Its paper explicitly argues for resolved rate plus end-to-end cost under a fixed outer budget and shows a resolve-rate/cost Pareto frontier. Its README also describes a Lite subset selected by a cost-aware, rank-aware procedure. It already shares our evaluation instinct: accuracy alone is not enough.</li>
+  <li><strong>The remaining BudgetFlow gap is allocation, not reporting.</strong> Claw-SWE-Bench evaluates harness/model combinations under a common protocol; BudgetFlow decides which tasks receive scarce model opportunities under one shared budget and value matrix. This is the boundary to defend.</li>
+</ul>
+</div>
+
+<h2>Engineering Systems to Cite</h2>
+<div class="table-wrap">
+<table>
+<thead>
+<tr>
+  <th>Project</th>
+  <th>Why it matters</th>
+  <th>Threat to BudgetFlow</th>
+  <th>BudgetFlow boundary</th>
+  <th>What to absorb now</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><strong>OpenSquilla / Claw-SWE-Bench</strong><br><span class="cite">Open-source agent runtime + harness benchmark</span></td>
+  <td>OpenSquilla is the strongest engineering neighbor: cost-per-success framing, local tier router over configured model tiers, reasoning/prompt policy control, tool compression, cache continuity, diagnostics/replay, durable sessions, MetaSkills, scheduling. Claw-SWE-Bench adds fixed-protocol harness comparison, cost reporting, cache accounting, Pareto-frontier plots, and a cost-aware Lite subset.</td>
+  <td>High presentation risk. A reviewer can reasonably say "they also say same budget, better results" and "they already report cost/accuracy Pareto frontiers."</td>
+  <td>They optimize/evaluate agent runs and harnesses; BudgetFlow optimizes cross-task allocation under one shared hard budget and pre-registered Task Value. A scheduled MetaSkill is batch-adjacent, but without cross-task value-aware allocation it is not BudgetFlow's Claim 1 problem.</td>
+  <td>Adopt the framing discipline: fixed protocol, runner-side patch as primary artifact, official harness crosscheck, leakage/future-commit awareness, cost/cache reporting, and a "same router outside vs inside BudgetFlow ledger" ablation. Do not copy all product machinery.</td>
+</tr>
+<tr>
+  <td><strong>LiteLLM</strong><br><span class="cite">Gateway / enforcement layer</span></td>
+  <td>LiteLLM makes budget ceilings, virtual keys, user/team/key spend tracking, rate limits, and remaining-budget metrics concrete infrastructure. It is the kind of layer BudgetFlow could sit above.</td>
+  <td>Low Claim 1 threat, high infrastructure relevance. It enforces budget but does not decide how a scarce batch budget should be allocated by task value and verified success probability.</td>
+  <td>LiteLLM answers "can this key/user/team keep spending?" BudgetFlow answers "which task should get the next model opportunity before the shared budget runs out?"</td>
+  <td>Potential future hardening: per-policy or per-task virtual keys for provider-side enforcement, budget-crossed alerts, and spend reconciliation. Not necessary for the paper mechanism unless provider accounting remains a blocker.</td>
+</tr>
+<tr>
+  <td><strong>OpenHands</strong><br><span class="cite">Strong coding-agent baseline</span></td>
+  <td>OpenHands exposes a per-task budget cap and iteration cap in a mature coding-agent stack. It is a natural "strong executor with uniform per-task budget" comparison target.</td>
+  <td>Medium baseline pressure. If a strong agent with uniform caps beats BudgetFlow, the paper must explain whether value-aware allocation added anything beyond a capable executor and fixed per-task limits.</td>
+  <td>OpenHands caps each task independently; it does not reallocate saved budget from one task to higher-value remaining tasks under a shared ledger.</td>
+  <td>Use as a future baseline or executor substrate if budget allows. For current evidence, keep our existing pure-tier, budget-only, and RouteLLM-inspired controls strong; do not derail into a new harness migration before the current Claim 1 evidence is stable.</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<div class="drop-note">
+<strong>Projects intentionally not promoted to the main engineering table:</strong> ORBIT/RouteJudge and LLMRouterBench are valuable methodology references for budget-swept router curves and router-evaluation limits, but they are router-evaluation infrastructure rather than batch-value allocation systems. OpenRouter, Portkey, Langfuse, Envoy AI Gateway, Aider, ModelCascade, and xRouter-LLM are useful prose-only neighbors for routing, enforcement, observability, or manual tiering. They should not crowd the main Related Work argument unless a reviewer specifically asks for gateway or router coverage.
+</div>
+
+<h2>What This Changes for BudgetFlow</h2>
+<div class="framing">
+<ul>
+  <li><strong>Presentation must become more precise.</strong> OpenSquilla already owns a broad "same budget, more capability" story. BudgetFlow should lead with the stricter object: a fixed task batch, one shared hard budget, pre-registered task values, verified outcomes, and cross-task allocation.</li>
+  <li><strong>Evaluation must treat cost/cache as paper evidence.</strong> Claw-SWE-Bench and OpenSquilla make cost, usage, cache, and replay visible. BudgetFlow's Claim 1 matrix should report resolved count, Total Resolved Value, spend, value per dollar, execution coverage, KV-cache sensitivity, budget-cap sensitivity, value-profile sensitivity, and frontier gap.</li>
+  <li><strong>Hygiene should be focused on contamination paths that can change pass/fail.</strong> Runner-side workspace diff should remain the scoring patch source; submitted patches are audit artifacts. Leakage/future-fix checks matter when agents can read historical reports, gold patches, answer-key fields, or future commits.</li>
+  <li><strong>The strongest future ablation is still compositional:</strong> run a SquillaRouter-style local router outside BudgetFlow, then the same router inside BudgetFlow's shared ledger and value allocation. That directly tests whether locally good routing is globally suboptimal under one shared hard budget.</li>
+  <li><strong>LiteLLM/OpenHands are useful because they clarify layers.</strong> LiteLLM is enforcement infrastructure; OpenHands is a strong executor with per-task caps. BudgetFlow's claim lives above both: it decides where the shared budget should flow.</li>
 </ul>
 </div>
 
