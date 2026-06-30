@@ -91,7 +91,10 @@ router because it sees outcomes after the fact. Use it to bound headroom and
 reviewer objections before deciding whether a real sixth paid lane is needed.
 
 Sixth, the initial draft should present the completed paid runs as an
-operating-condition matrix, not as cherry-picked single-run proof.
+operating-condition matrix, not as cherry-picked single-run proof. The current
+readout is now stronger than a single win: it contains positive BudgetFlow
+conditions, a pure-Strongest frontier condition, and a learned-router stress
+test.
 
 - The corrected 3x30 run is a value-maximization condition: BudgetFlow wins Total
   Resolved Value against pure T2 and pure T3, while pure T3 remains a strong
@@ -106,11 +109,37 @@ operating-condition matrix, not as cherry-picked single-run proof.
   evidence for the paper's boundary claim: when T3 is both capable and cheap in
   total, the correct scientific conclusion is to report that frontier, not to
   hide it.
+- The resumed 5x30 frontier-fix run is the strongest current Claim 1 signal:
+  BudgetFlow completes the fixed 30-task set under the same shared hard cap and
+  beats every active control on both standard SWE-bench resolved count and
+  paper-defined Total Resolved Value. BudgetFlow resolves 16/30 tasks for 18.00
+  Total Resolved Value at $9.95 spend, versus pure T3 at 15/30 and 16.50 value,
+  RouteLLM-inspired learned task routing at 15/30 and 17.00 value, budget-only
+  at 12/30 and 13.00 value, and pure T2 at 11/30 and 12.00 value. The positive
+  result is not just value weighting: BudgetFlow also wins raw resolved count,
+  value per dollar, and fixed-task common-window comparisons against pure T3 and
+  the learned-router control.
 
-These three operating conditions should be reported side by side. They show that BudgetFlow
-creates value when scarce model opportunities and Task Value placement matter,
-and that its diagnostic value includes identifying when the allocation problem
-has collapsed into a strong pure-tier frontier.
+These operating conditions should be reported side by side. They show that
+BudgetFlow creates value when scarce model opportunities and Task Value
+placement matter, and that its diagnostic value includes identifying when the
+allocation problem has collapsed into a strong pure-tier frontier. The latest
+5x30 run makes the Claim 1 evidence more three-dimensional: BudgetFlow can win
+the main table, learned-router baselines can still be close, and pure T3 can be
+the right boundary in a different cost/turn condition.
+
+The latest 5x30 audit also strengthens the reviewer-defense layer. BudgetFlow's
+margin over the best control is stable under equal value, compressed
+criticality, expanded criticality, and the frozen criticality ValueSource
+(+1.00 Total Resolved Value in each profile). Value permutation wins in 64/64
+diagnostic shuffles, so the result is not obviously a single hand-picked value
+placement. The runtime CostSource used KV0; KV50/KV90/KV98/KV99 remain no-paid
+recosting sensitivities. At KV0, BudgetFlow still beats the best control by
+Total Resolved Value per dollar; at very high KV, RouteLLM-inspired routing can
+become the best value-per-dollar control while BudgetFlow keeps the highest
+fixed-outcome Total Resolved Value. This is the right shape for the paper: a
+main positive Claim 1 result plus explicit boundary conditions rather than a
+claim of universal dominance.
 
 Seventh, KV cache must not be hidden inside the main CostSource. The main paid
 experiment uses the frozen pre-registered catalog and physical model bindings.
@@ -141,8 +170,10 @@ are self-defined" is answered by reporting standard SWE-bench metrics next to
 the value metric and by freezing Task Value before execution. "Your baselines
 are weak" is answered by pure-tier frontiers, a RouteLLM-inspired learned
 router, a value-blind budget-only control, and observed-tier upper bounds.
-"Your result is cherry-picked" is answered by showing 3x30, 4x30, and 5x30 as
-different operating conditions, including the run where pure T3 wins.
+"Your result is cherry-picked" is answered by showing 3x30, 4x30, and the
+multiple 5x30 observations as different operating conditions, including both
+the run where pure T3 wins and the resumed frontier-fix run where BudgetFlow
+wins the five-policy main table.
 
 ## Core Terminology
 
