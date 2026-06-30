@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -219,6 +220,58 @@ def test_finalize_repo_workspace_never_installs_into_global_python(tmp_path: Pat
     result = local_harness._finalize_repo_workspace(tmp_path, task)
 
     assert result == tmp_path
+
+
+def test_prepare_workspace_hides_future_history_but_keeps_git_usable(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+
+    def git(repo: Path, *args: str) -> str:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return result.stdout.strip()
+
+    git(source, "init")
+    git(source, "config", "user.email", "test@example.invalid")
+    git(source, "config", "user.name", "Test")
+    (source / "app.py").write_text("old\n")
+    git(source, "add", "app.py")
+    git(source, "commit", "-m", "base")
+    base_commit = git(source, "rev-parse", "HEAD")
+
+    (source / "app.py").write_text("future answer\n")
+    git(source, "add", "app.py")
+    git(source, "commit", "-m", "future fix issue 99999")
+
+    monkeypatch.setattr(local_harness, "_ensure_main_repo", lambda task: source)
+    monkeypatch.setattr(local_harness, "_ensure_commit_available", lambda repo, commit: None)
+    monkeypatch.setattr(local_harness, "get_worktree_root", lambda: tmp_path / "worktrees")
+    locks = tmp_path / "locks"
+    locks.mkdir()
+    monkeypatch.setattr(local_harness, "get_locks_dir", lambda: locks)
+
+    task = SimpleNamespace(
+        instance_id="repo__project-99999",
+        repo="repo/project",
+        base_commit=base_commit,
+    )
+
+    workspace = local_harness._prepare_workspace(task, "leak-test")
+
+    assert git(workspace, "rev-parse", "HEAD") == base_commit
+    assert git(workspace, "rev-list", "--all", "--count") == "1"
+    assert git(workspace, "log", "--all", "--oneline", "--grep=99999") == ""
+
+    (workspace / "app.py").write_text("agent edit\n")
+    assert "agent edit" in git(workspace, "diff", "--", "app.py")
 
 
 # ---- RepoHarnessAdapter tests ----
