@@ -167,6 +167,16 @@ tr.bf-row:nth-child(even) td { background: #e6f7f0; }
 <strong>Note on paper selection:</strong> A freshness audit (2026-06-29) recommended replacing FrugalGPT (Chen 2023) with Cascade Routing (Dekoninck et al., ICML 2025 poster) — a stronger cascade paper with SWE-bench eval and formal optimality proofs — and Topaz (Okamoto 2026, CHI Workshop) with BAMAS (Yang et al., AAAI 2026 Oral) — a peer-reviewed budget-constrained system with real code-gen experiments. Both original papers are valid Related Work prose citations but weaker comparison-table entries.
 </div>
 
+<div class="summary-box">
+<h3>Engineering-System Addendum: OpenSquilla / Claw-SWE-Bench</h3>
+<ul>
+  <li><strong>OpenSquilla is a serious practical neighbor, not a throwaway comparison.</strong> It is a token-efficient agent runtime with a local SquillaRouter that routes each turn across model tiers, controls reasoning/prompt policy, records usage/cost, and manages tool compression plus cache continuity. This directly pressures any weak BudgetFlow framing that sounds like "we invented model routing."</li>
+  <li><strong>It does not appear to solve Claim 1.</strong> Its public docs and benchmark frame the problem as per-turn/session cost efficiency and long-running agent usefulness. I did not find a primary-source claim of fixed shared hard budget across a batch of heterogeneous valued tasks, pre-registered task value, and verified Total Resolved Value maximization.</li>
+  <li><strong>Claw-SWE-Bench is an evaluation-hygiene warning.</strong> It standardizes prompts, strips future commits, forbids network answers, collects patches runner-side, isolates each instance, and evaluates through the official SWE-bench harness. BudgetFlow should borrow these hygiene standards where feasible and explain our own trace/checker/crosscheck path in the same spirit.</li>
+  <li><strong>Best positioning:</strong> cite OpenSquilla as a strong learned-router/context-management agent system; cite Claw-SWE-Bench as a harness-comparability and contamination-control benchmark. BudgetFlow's independent contribution is batch-level value-aware budget governance on top of strong agent/routing substrates.</li>
+</ul>
+</div>
+
 <!-- ═══════════ MAIN TABLE ═══════════ -->
 <h2>Main Comparison Table</h2>
 
