@@ -37,6 +37,7 @@ _BUDGETFLOW_ONLY_STAGNATION = frozenset({
     "rescue_timeout_gold_edited",
     "submit_timeout_after_gold_edit",
     "gold_edit_mid_tier_repair_limit",
+    "task_level_t2_no_progress_stop",
 })
 
 _POST_PATCH_STOPLOSS_REASONS = frozenset({
@@ -391,6 +392,7 @@ def _failure_chain(record: dict[str, Any], harness: dict[str, str]) -> list[str]
         "agent_loop_stable_patch_no_submit",
         "rescue_timeout_gold_edited",
         "submit_timeout_after_gold_edit",
+        "task_level_t2_no_progress_stop",
     }:
         chain.append(reason)
     for error in sorted(errors):

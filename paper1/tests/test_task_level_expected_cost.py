@@ -479,6 +479,115 @@ class TestChooseTaskLevelBackend:
         assert scores["learned_prefers_reference"] == 1.0
         assert scores["rule"] == "reference_frontier"
 
+    def test_trusted_strongest_frontier_overrides_boundary_reference_prior_under_pressure(self):
+        """Under high pressure, a boundary T2 prior cannot veto decisive frontier evidence."""
+        from budgetflow.adapter.strategies import choose_backend
+        from budgetflow.frozen_router import FrozenPlanEntry, FrozenRouterPlan
+
+        alloc = _trusted_allocation(
+            task_value=1.0,
+            task_effort=20.8912,
+            planned_task_budget=3.1282,
+            effective_task_budget=2.3909,
+            model_fit={"tier2": 0.488414, "tier3": 0.953571},
+            confidence={"model_fit": "high"},
+        )
+        plan = FrozenRouterPlan(
+            name="learned",
+            plan={"test": FrozenPlanEntry("test", "tier2", 364)},
+        )
+        backends = _backends(t2_progress=0.488414, t3_progress=0.953571)
+        ctx = _task_level_ctx(
+            backends,
+            budget_pressure=1.2,
+            median_task_value=1.0,
+            allocation=alloc,
+        )
+        ctx.frozen_plan = plan
+
+        backend = choose_backend(ctx, _turn(), _runtime_like_costs())
+
+        assert backend.tier == 3
+        assert ctx.last_policy_decision is not None
+        scores = ctx.last_policy_decision.scores
+        assert scores["learned_preferred_tier"] == pytest.approx(2.0)
+        assert scores["learned_prior_score"] == pytest.approx(0.364)
+        assert scores["learned_prefers_reference"] == 1.0
+        assert scores["learned_prior_blocks_marginal"] == 0.0
+        assert scores["learned_prior_softened_by_frontier"] == 1.0
+        assert ctx.last_policy_decision.reason == "marginal_yield_per_dollar"
+
+    def test_trusted_strongest_frontier_keeps_reference_prior_when_pressure_is_low(self):
+        """Trusted fit is not enough by itself to erase T2 short-path evidence."""
+        from budgetflow.adapter.strategies import choose_backend
+        from budgetflow.frozen_router import FrozenPlanEntry, FrozenRouterPlan
+
+        alloc = _trusted_allocation(
+            task_value=1.0,
+            task_effort=20.8912,
+            planned_task_budget=3.1282,
+            effective_task_budget=2.3909,
+            model_fit={"tier2": 0.488414, "tier3": 0.953571},
+            confidence={"model_fit": "high"},
+        )
+        plan = FrozenRouterPlan(
+            name="learned",
+            plan={"test": FrozenPlanEntry("test", "tier2", 364)},
+        )
+        backends = _backends(t2_progress=0.488414, t3_progress=0.953571)
+        ctx = _task_level_ctx(
+            backends,
+            budget_pressure=0.1,
+            median_task_value=1.0,
+            allocation=alloc,
+        )
+        ctx.frozen_plan = plan
+
+        backend = choose_backend(ctx, _turn(), _runtime_like_costs())
+
+        assert backend.tier == 2
+        assert ctx.last_policy_decision is not None
+        scores = ctx.last_policy_decision.scores
+        assert scores["learned_prior_blocks_marginal"] == 1.0
+        assert scores["learned_prior_softened_by_frontier"] == 0.0
+        assert ctx.last_policy_decision.reason == "reference_frontier"
+
+    def test_trusted_strongest_frontier_keeps_strong_reference_prior_under_pressure(self):
+        """High pressure does not erase a strong learned T2 prior."""
+        from budgetflow.adapter.strategies import choose_backend
+        from budgetflow.frozen_router import FrozenPlanEntry, FrozenRouterPlan
+
+        alloc = _trusted_allocation(
+            task_value=1.0,
+            task_effort=20.8912,
+            planned_task_budget=3.1282,
+            effective_task_budget=2.3909,
+            model_fit={"tier2": 0.488414, "tier3": 0.953571},
+            confidence={"model_fit": "high"},
+        )
+        plan = FrozenRouterPlan(
+            name="learned",
+            plan={"test": FrozenPlanEntry("test", "tier2", 120)},
+        )
+        backends = _backends(t2_progress=0.488414, t3_progress=0.953571)
+        ctx = _task_level_ctx(
+            backends,
+            budget_pressure=1.2,
+            median_task_value=1.0,
+            allocation=alloc,
+        )
+        ctx.frozen_plan = plan
+
+        backend = choose_backend(ctx, _turn(), _runtime_like_costs())
+
+        assert backend.tier == 2
+        assert ctx.last_policy_decision is not None
+        scores = ctx.last_policy_decision.scores
+        assert scores["learned_prior_score"] == pytest.approx(0.120)
+        assert scores["learned_reference_boundary"] == 0.0
+        assert scores["learned_prior_blocks_marginal"] == 1.0
+        assert scores["learned_prior_softened_by_frontier"] == 0.0
+
     def test_learned_strongest_prior_does_not_bypass_budgetflow_gate(self):
         """Learned T3 preference is a prior, not an automatic route override."""
         from budgetflow.adapter.strategies import choose_backend
@@ -1155,6 +1264,47 @@ class TestObservabilitySeams:
         assert runtime_reason == compiler_reason == "reference_frontier"
         assert runtime_scores["rule"] == compiler_scores["rule"] == "reference_frontier"
         assert runtime_scores["paid_upgrade_candidate"] == compiler_scores["paid_upgrade_candidate"] == 0.0
+
+    def test_runtime_compiler_parity_learned_prior_score_softening(self):
+        """Compiler dry-run must pass learned-router priority into task-start routing."""
+        from budgetflow.experiments.budget_binding import _project_task_level_choice_cost
+        from budgetflow.task_level_routing import task_start_tier_decision
+
+        kwargs = dict(
+            task_value=1.0,
+            task_effort=20.8912,
+            tier2_fit=0.488414,
+            tier3_fit=0.953571,
+            tier2_per_turn_cost=0.013120017034728735,
+            tier3_per_turn_cost=0.033600015101130386,
+            budget_pressure=1.2,
+            planned_task_budget=3.1282,
+            effective_task_budget=2.3909,
+            median_task_value=1.0,
+            has_trusted_model_fit=True,
+            is_cold_start=False,
+            learned_preferred_tier=2,
+            learned_prior_score=0.364,
+        )
+
+        runtime_tier, runtime_reason, runtime_scores = task_start_tier_decision(**kwargs)
+        compiler_tier, _, compiler_reason, compiler_scores = _project_task_level_choice_cost(
+            "task-x",
+            {"task-x": {"task_value": 1.0, "task_effort": 20.8912}},
+            reference_cost=0.2741,
+            strongest_cost=0.7019,
+            planned_task_budget=3.1282,
+            effective_task_budget=2.3909,
+            fit_overrides={2: 0.488414, 3: 0.953571},
+            budget_pressure=1.2,
+            learned_preferred_model="tier2",
+            learned_prior_score=0.364,
+        )
+
+        assert runtime_tier == compiler_tier == 3
+        assert runtime_reason == compiler_reason == "marginal_yield_per_dollar"
+        assert runtime_scores["learned_prior_score"] == compiler_scores["learned_prior_score"] == pytest.approx(0.364)
+        assert runtime_scores["learned_prior_softened_by_frontier"] == compiler_scores["learned_prior_softened_by_frontier"] == 1.0
 
     def test_compiler_projection_preserves_zero_task_budget(self):
         """Compiler dry-run must not turn a zero effective cap into unlimited budget."""

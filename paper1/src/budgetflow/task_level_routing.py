@@ -46,6 +46,7 @@ def task_start_tier_decision(
     is_cold_start: bool = False,
     reference_runway_turns: float | None = None,
     learned_preferred_tier: int | None = None,
+    learned_prior_score: float | None = None,
 ) -> tuple[int, str, dict[str, float]]:
     """Return ``(selected_tier, reason, scores)`` for one task-start decision.
 
@@ -117,10 +118,26 @@ def task_start_tier_decision(
     acceptance = task_start_t3_acceptance_threshold(threshold)
     value_ratio = value / median
     learned_tier = _normalise_tier(learned_preferred_tier)
+    learned_score = _normalise_prior_score(learned_prior_score)
     learned_prefers_reference = learned_tier > 0 and learned_tier <= 2
     learned_prefers_strongest = learned_tier >= 3
+    learned_reference_boundary = (
+        learned_score is not None
+        and 0.25 <= learned_score < 0.50
+    )
+    learned_prior_softened_by_frontier = (
+        learned_prefers_reference
+        and learned_reference_boundary
+        and has_trusted_model_fit
+        and fit_gain >= TASK_START_DECISIVE_FIT_GAIN
+        and value >= TASK_START_MIN_VALUE_FOR_DECISIVE_FIT
+        and coverage_soft_allows
+        and pressure >= 0.80
+        and marginal_yield >= acceptance
+    )
     learned_prior_blocks_marginal = (
         learned_prefers_reference
+        and not learned_prior_softened_by_frontier
         and strongest_cost > reference_cost
         and value_ratio < TASK_START_CRITICAL_VALUE_RATIO_GATE
     )
@@ -238,8 +255,11 @@ def task_start_tier_decision(
             strongest_probe_cost=strongest_probe_cost,
             budget_allows_probe=budget_allows_probe,
             learned_preferred_tier=learned_tier,
+            learned_prior_score=learned_score,
             learned_prefers_reference=learned_prefers_reference,
             learned_prefers_strongest=learned_prefers_strongest,
+            learned_reference_boundary=learned_reference_boundary,
+            learned_prior_softened_by_frontier=learned_prior_softened_by_frontier,
             learned_prior_blocks_marginal=learned_prior_blocks_marginal,
             rule=rule,
         )
@@ -314,6 +334,18 @@ def _normalise_tier(value: int | None) -> int:
     except (TypeError, ValueError):
         return 0
     return max(0, tier)
+
+
+def _normalise_prior_score(value: float | None) -> float | None:
+    if value is None:
+        return None
+    try:
+        score = float(value)
+    except (TypeError, ValueError):
+        return None
+    if score < 0:
+        return None
+    return min(1.0, score / 1000.0 if score > 1.0 else score)
 
 
 def _headroom(task_budget: float | None, strongest_cost: float) -> float:
@@ -423,8 +455,11 @@ def _scores(
     strongest_probe_cost: float = 0.0,
     budget_allows_probe: bool = False,
     learned_preferred_tier: int = 0,
+    learned_prior_score: float | None = None,
     learned_prefers_reference: bool = False,
     learned_prefers_strongest: bool = False,
+    learned_reference_boundary: bool = False,
+    learned_prior_softened_by_frontier: bool = False,
     learned_prior_blocks_marginal: bool = False,
 ) -> dict[str, float]:
     return {
@@ -445,8 +480,11 @@ def _scores(
         "budget_allows_strongest_probe": 1.0 if budget_allows_probe else 0.0,
         "learned_preferred_tier": float(learned_preferred_tier),
         "learned_prior_available": 1.0 if learned_preferred_tier > 0 else 0.0,
+        "learned_prior_score": float(learned_prior_score or 0.0),
         "learned_prefers_reference": 1.0 if learned_prefers_reference else 0.0,
         "learned_prefers_strongest": 1.0 if learned_prefers_strongest else 0.0,
+        "learned_reference_boundary": 1.0 if learned_reference_boundary else 0.0,
+        "learned_prior_softened_by_frontier": 1.0 if learned_prior_softened_by_frontier else 0.0,
         "learned_prior_blocks_marginal": 1.0 if learned_prior_blocks_marginal else 0.0,
         "strongest_probe_cost": strongest_probe_cost,
         "strongest_min_probe_turns": TASK_START_STRONGEST_MIN_PROBE_TURNS,

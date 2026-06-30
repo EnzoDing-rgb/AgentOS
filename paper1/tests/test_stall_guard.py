@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 
 from budgetflow.adapter.stall_guard import (
+    TASK_LEVEL_T2_NO_PROGRESS_TURN_LIMIT,
     check_agent_loop_stop,
     check_post_patch_stop,
     check_stagnation,
@@ -56,6 +57,46 @@ def test_task_level_stagnation_uses_scaled_no_progress_limit() -> None:
     assert stop is False
     assert reason == ""
 
+
+def test_task_level_t2_no_progress_stop_truncates_without_concrete_progress() -> None:
+    from budgetflow.adapter.stall_guard import task_level_t2_no_progress_stop
+
+    assert task_level_t2_no_progress_stop(
+        strategy="value_aware_task_level",
+        backend_tier=2,
+        turns_on_current_tier=TASK_LEVEL_T2_NO_PROGRESS_TURN_LIMIT,
+        no_progress_on_current_tier=TASK_LEVEL_T2_NO_PROGRESS_TURN_LIMIT,
+        agent_gold_edited=False,
+        patch_digest=None,
+        agent_attempted_submit=False,
+        agent_submitted=False,
+    ) is True
+
+
+def test_task_level_t2_no_progress_stop_preserves_concrete_progress() -> None:
+    from budgetflow.adapter.stall_guard import task_level_t2_no_progress_stop
+
+    assert task_level_t2_no_progress_stop(
+        strategy="value_aware_task_level",
+        backend_tier=2,
+        turns_on_current_tier=60,
+        no_progress_on_current_tier=60,
+        agent_gold_edited=True,
+        patch_digest="abc123",
+        agent_attempted_submit=False,
+        agent_submitted=False,
+    ) is False
+
+    assert task_level_t2_no_progress_stop(
+        strategy="budgetflow_segment",
+        backend_tier=2,
+        turns_on_current_tier=TASK_LEVEL_T2_NO_PROGRESS_TURN_LIMIT,
+        no_progress_on_current_tier=TASK_LEVEL_T2_NO_PROGRESS_TURN_LIMIT,
+        agent_gold_edited=False,
+        patch_digest=None,
+        agent_attempted_submit=False,
+        agent_submitted=False,
+    ) is False
 
 
 def test_check_stagnation_no_progress() -> None:

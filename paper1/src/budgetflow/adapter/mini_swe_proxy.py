@@ -47,6 +47,7 @@ from .stall_guard import (
     check_stagnation,
     normalize_bash_command,
     stall_guard_enabled,
+    task_level_t2_no_progress_stop,
 )
 from .message_utils import estimate_input_tokens, extract_bash_context
 from .provider_history import format_retry_assistant_message, prepare_provider_messages
@@ -611,6 +612,7 @@ class BudgetFlowLitellmModel:
             self._turns_on_current_tier = 0
         self._last_backend_tier = backend.tier
         self._turns_on_current_tier += 1
+        self._raise_if_task_level_t2_no_progress_stop(backend)
         guarded_tier = ModelCatalog.second_cheapest(self.routing.backends).tier
         if (
             self.agent_gold_edited
@@ -1280,6 +1282,32 @@ class BudgetFlowLitellmModel:
         self._no_progress_on_current_tier = 0
         self._turns_on_current_tier = 0
         return candidate
+
+    def _raise_if_task_level_t2_no_progress_stop(self, backend: Backend) -> None:
+        if not task_level_t2_no_progress_stop(
+            strategy=self.routing.strategy,
+            backend_tier=backend.tier,
+            turns_on_current_tier=self._turns_on_current_tier,
+            no_progress_on_current_tier=self._no_progress_on_current_tier,
+            agent_gold_edited=self.agent_gold_edited,
+            patch_digest=self.agent_patch_digest,
+            agent_attempted_submit=self.agent_attempted_submit,
+            agent_submitted=self.agent_submitted,
+        ):
+            return
+        exit_reason = "task_level_t2_no_progress_stop"
+        print(
+            f"{tag('stop', bold=False)} #{self.step_index} "
+            f"{exit_reason} turns={self._turns_on_current_tier} "
+            f"streak={self._no_progress_on_current_tier}",
+            flush=True,
+        )
+        raise BudgetFlowStagnationError(
+            self.workflow_id,
+            exit_reason=exit_reason,
+            step_index=self.step_index,
+            no_progress_streak=self._no_progress_on_current_tier,
+        )
 
     def _reserve_output_tokens(self, backend: Backend, input_tokens: int) -> int:
         remaining = self._effective_remaining_budget()

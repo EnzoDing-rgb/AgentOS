@@ -37,6 +37,7 @@ _STALL_GUARD_STRATEGIES = frozenset(
 )
 
 TASK_LEVEL_NO_PROGRESS_STOP_BUDGET_FRACTION = 0.35
+TASK_LEVEL_T2_NO_PROGRESS_TURN_LIMIT = 28
 
 
 def stall_guard_enabled(strategy: str) -> bool:
@@ -94,6 +95,30 @@ def check_stagnation(
                 return False, "", None
         return True, "stagnation_no_progress", None
     return False, "", None
+
+
+def task_level_t2_no_progress_stop(
+    *,
+    strategy: str,
+    backend_tier: int,
+    turns_on_current_tier: int,
+    no_progress_on_current_tier: int,
+    agent_gold_edited: bool = False,
+    patch_digest: str | None = None,
+    agent_attempted_submit: bool = False,
+    agent_submitted: bool = False,
+    turn_limit: int = TASK_LEVEL_T2_NO_PROGRESS_TURN_LIMIT,
+) -> bool:
+    """Return True when task-level T2 should stop instead of burning tail budget."""
+    if strategy != "value_aware_task_level":
+        return False
+    if int(backend_tier) != 2:
+        return False
+    if agent_gold_edited or patch_digest or agent_attempted_submit or agent_submitted:
+        return False
+    if turns_on_current_tier < turn_limit:
+        return False
+    return no_progress_on_current_tier >= turn_limit
 
 
 def check_post_patch_stop(

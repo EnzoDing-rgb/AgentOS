@@ -291,6 +291,7 @@ def _choose_task_level_backend(ctx: RoutingContext, expected_costs: dict[str, fl
     t2_per_turn = task_level_decision_per_turn_cost(reference)
     t3_per_turn = task_level_decision_per_turn_cost(strongest)
     learned_preferred_tier = _task_level_learned_preferred_tier(ctx)
+    learned_prior_score = _task_level_learned_prior_score(ctx)
     planned_task_budget = (
         float(allocation.planned_task_budget)
         if allocation is not None and allocation.planned_task_budget is not None
@@ -324,6 +325,7 @@ def _choose_task_level_backend(ctx: RoutingContext, expected_costs: dict[str, fl
         is_cold_start=is_cold,
         reference_runway_turns=ref_runway,
         learned_preferred_tier=learned_preferred_tier,
+        learned_prior_score=learned_prior_score,
     )
     pre_cap_tier = tier
     policy_reason = reason
@@ -377,19 +379,33 @@ def _choose_task_level_backend(ctx: RoutingContext, expected_costs: dict[str, fl
                 "final_selected_tier": current.tier,
                 "max_tier": max_tier,
                 "learned_preferred_tier": learned_preferred_tier,
+                "learned_prior_score": learned_prior_score or 0.0,
             },
         )
     return current
 
 
+def _task_level_frozen_entry(ctx: RoutingContext):
+    if ctx.frozen_plan is None:
+        return None
+    return ctx.frozen_plan.lookup(getattr(ctx, "workflow_id", "") or "")
+
+
 def _task_level_learned_preferred_tier(ctx: RoutingContext) -> int:
     """Return value-blind learned-router prior tier for this task, if present."""
-    if ctx.frozen_plan is None:
-        return 0
-    entry = ctx.frozen_plan.lookup(getattr(ctx, "workflow_id", "") or "")
+    entry = _task_level_frozen_entry(ctx)
     if entry is None:
         return 0
     return parse_tier_label(entry.preferred_model)
+
+
+def _task_level_learned_prior_score(ctx: RoutingContext) -> float | None:
+    """Return value-blind learned-router score normalized to [0, 1], if present."""
+    entry = _task_level_frozen_entry(ctx)
+    if entry is None:
+        return None
+    priority = max(0.0, float(entry.priority))
+    return min(1.0, priority / 1000.0 if priority > 1.0 else priority)
 
 
 def choose_backend(ctx: RoutingContext, turn: TurnInfo, expected_costs: dict[str, float]) -> Backend:

@@ -423,7 +423,7 @@ def calibrate_budget(
     value_features: dict[str, dict] = {}
     if value_matrix_path and value_matrix_path.exists():
         value_features = _load_value_features(value_matrix_path)
-    frozen_preferred_models = _load_frozen_preferred_models(frozen_plan_path) if frozen_plan_path else {}
+    frozen_preferred_models = _load_frozen_prior_entries(frozen_plan_path) if frozen_plan_path else {}
 
     # ── Derive ModelFit from clean historical evidence ──────────────────
     fit_overrides: dict[int, float] | None = None
@@ -1099,7 +1099,7 @@ def _build_projection_diagnostics(
     projected_task_costs: dict[str, dict[str, float]],
     *,
     fit_overrides: dict[int, float] | None,
-    frozen_preferred_models: dict[str, str] | None = None,
+    frozen_preferred_models: dict[str, dict[str, float | str]] | None = None,
     planned_task_budgets: dict[str, float],
     audit_reasons: list[str] | None = None,
 ) -> dict[str, Any]:
@@ -1145,7 +1145,12 @@ def _build_projection_diagnostics(
             fit_overrides=fit_overrides,
             budget_pressure=pressure,
             learned_preferred_model=(
-                frozen_preferred_models.get(task_id)
+                _frozen_prior_model(frozen_preferred_models.get(task_id))
+                if frozen_preferred_models
+                else None
+            ),
+            learned_prior_score=(
+                _frozen_prior_score(frozen_preferred_models.get(task_id))
                 if frozen_preferred_models
                 else None
             ),
@@ -1233,16 +1238,38 @@ def _build_projection_diagnostics(
     return diagnostic
 
 
-def _load_frozen_preferred_models(frozen_plan_path: Path | None) -> dict[str, str]:
+def _load_frozen_prior_entries(frozen_plan_path: Path | None) -> dict[str, dict[str, float | str]]:
     if frozen_plan_path is None:
         return {}
     from budgetflow.frozen_router import load_frozen_plan
 
     frozen_plan = load_frozen_plan(frozen_plan_path)
     return {
-        task_id: entry.preferred_model
+        task_id: {
+            "preferred_model": entry.preferred_model,
+            "priority": float(entry.priority),
+        }
         for task_id, entry in frozen_plan.plan.items()
     }
+
+
+def _frozen_prior_model(entry: dict[str, float | str] | str | None) -> str | None:
+    if entry is None:
+        return None
+    if isinstance(entry, str):
+        return entry
+    model = entry.get("preferred_model")
+    return str(model) if model else None
+
+
+def _frozen_prior_score(entry: dict[str, float | str] | str | None) -> float | None:
+    if entry is None or isinstance(entry, str):
+        return None
+    priority = entry.get("priority")
+    if priority is None:
+        return None
+    score = float(priority)
+    return min(1.0, score / 1000.0 if score > 1.0 else score)
 
 
 def _apply_runtime_projection_diagnostics(
@@ -1297,6 +1324,7 @@ def _project_task_level_choice_cost(
     fit_overrides: dict[int, float] | None,
     budget_pressure: float,
     learned_preferred_model: str | None = None,
+    learned_prior_score: float | None = None,
 ) -> tuple[int, float, str, dict[str, float]]:
     """Call the shared task-level routing formula for no-paid readiness projection.
 
@@ -1335,6 +1363,7 @@ def _project_task_level_choice_cost(
         has_trusted_model_fit=(fit_overrides is not None),
         is_cold_start=(fit_overrides is None),
         learned_preferred_tier=parse_tier_label(learned_preferred_model or ""),
+        learned_prior_score=learned_prior_score,
     )
 
     if tier == 3:
@@ -2029,7 +2058,7 @@ def _project_strategy_task_costs(
     censored_costs: dict[str, float],
     *,
     fit_overrides: dict[int, float] | None = None,
-    frozen_preferred_models: dict[str, str] | None = None,
+    frozen_preferred_models: dict[str, dict[str, float | str]] | None = None,
     audit_reasons: list[str] | None = None,
 ) -> dict[str, float]:
     scale = _strategy_effort_scale(
@@ -2043,7 +2072,7 @@ def _project_strategy_task_costs(
     projected: dict[str, float] = {}
     for task_id in task_ids:
         projection_strategy = _projection_strategy_for_frozen_model(
-            frozen_preferred_models.get(task_id) if frozen_preferred_models else None,
+            _frozen_prior_model(frozen_preferred_models.get(task_id)) if frozen_preferred_models else None,
             fallback_strategy=strategy,
         )
         baseline = _bootstrap_cost_estimate(
@@ -2067,7 +2096,7 @@ def _project_strategy_task_costs(
     if frozen_preferred_models and audit_reasons is not None:
         counts: dict[str, int] = {}
         for task_id in task_ids:
-            model = frozen_preferred_models.get(task_id, "missing")
+            model = _frozen_prior_model(frozen_preferred_models.get(task_id)) or "missing"
             counts[model] = counts.get(model, 0) + 1
         audit_reasons.append(
             f"calibration:{strategy}_projection uses frozen preferred_model mix "
