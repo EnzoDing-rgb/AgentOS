@@ -343,7 +343,7 @@ def test_query_retries_final_no_tool_call_before_protocol_abort(monkeypatch):
 
 @requires_minisweagent
 def test_retry_message_strips_unexecuted_tool_calls_but_preserves_reasoning_history():
-    from budgetflow.adapter.mini_swe_proxy import _format_retry_assistant_message
+    from budgetflow.adapter.provider_history import format_retry_assistant_message
 
     response = _FakeResponse(
         content="",
@@ -351,7 +351,7 @@ def test_retry_message_strips_unexecuted_tool_calls_but_preserves_reasoning_hist
         reasoning_content="hidden reasoning token",
     )
 
-    message = _format_retry_assistant_message(response)
+    message = format_retry_assistant_message(response)
 
     assert message["role"] == "assistant"
     assert "invalid tool calls" in message["content"]
@@ -361,10 +361,10 @@ def test_retry_message_strips_unexecuted_tool_calls_but_preserves_reasoning_hist
 
 @requires_minisweagent
 def test_provider_messages_preserve_legal_tool_history():
-    from budgetflow.adapter.mini_swe_proxy import _prepare_provider_messages
+    from budgetflow.adapter.provider_history import prepare_provider_messages
 
     tool_calls = [MagicMock(id="call_1")]
-    prepared = _prepare_provider_messages([
+    prepared = prepare_provider_messages([
         {
             "role": "assistant",
             "content": "running command",
@@ -397,10 +397,10 @@ def test_provider_messages_preserve_legal_tool_history():
 
 @requires_minisweagent
 def test_provider_messages_reject_unpaired_tool_calls():
-    from budgetflow.adapter.mini_swe_proxy import _prepare_provider_messages
+    from budgetflow.adapter.provider_history import prepare_provider_messages
 
     with pytest.raises(ValueError, match="assistant tool_calls"):
-        _prepare_provider_messages([
+        prepare_provider_messages([
             {
                 "role": "assistant",
                 "content": "running command",
