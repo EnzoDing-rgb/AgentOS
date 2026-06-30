@@ -106,7 +106,7 @@ def test_protocol_guard_halts_on_unstable_protocol_prefix() -> None:
     assert g.is_aborted()
 
 
-def test_protocol_abort_halts_immediately() -> None:
+def test_protocol_abort_excludes_single_row_without_global_halt() -> None:
     g = CompareRunGuards(
         protocol_min_samples=999,
         policy_consecutive_fail=99,
@@ -125,15 +125,15 @@ def test_protocol_abort_halts_immediately() -> None:
         }
     )
 
-    assert action.halt_all
-    assert "protocol_guard abort" in action.reason
+    assert not action.halt_all
+    assert not g.is_aborted()
     assert action.exclude_record
-    assert g.is_aborted()
 
 
 def test_protocol_guard_excludes_follow_on_upstream_abort_rows() -> None:
     g = CompareRunGuards(
-        protocol_min_samples=999,
+        protocol_min_samples=1,
+        protocol_abort_rate_max=0.0,
         policy_consecutive_fail=99,
         global_min_samples=999,
     )

@@ -88,7 +88,7 @@ class CompareRunGuards:
     protocol_abort_rate_max: float = 0.05
     protocol_failed_retry_rate_max: float = 0.10
     protocol_no_tool_failed_rate_max: float = 0.10
-    protocol_abort_immediate: bool = True
+    protocol_abort_immediate: bool = False
     _protocol_rows: int = field(default=0, repr=False)
     _protocol_abort_rows: int = field(default=0, repr=False)
     _protocol_failed_retry_rows: int = field(default=0, repr=False)
