@@ -21,6 +21,10 @@ data/runs/*.tmp
 logs/
 tmp/
 
+# Deck-local agent skill copies (source decks stay tracked)
+misc/deck/.agents/
+misc/deck/**/.claude/
+
 # IDE / editor
 .vscode/
 .idea/

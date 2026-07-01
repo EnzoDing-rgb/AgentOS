@@ -16,6 +16,9 @@ venv/
 # IDE / agent tooling
 .cursor/
 .claude/
+.vscode/
+.idea/
+skills-lock.json
 
 # External deps / localized runtime dependencies.
 # Keep these local for speed; resolvers fail fast if they are missing.
@@ -37,6 +40,24 @@ paper1/data/swebench_lite_export/
 # Generated outputs
 *.jsonl
 *.log
+
+# Runtime / crash artifacts
+paper1/logs/
+paper1/tmp/
+paper1/misc/deck/.agents/
+paper1/misc/deck/**/.claude/
+
+# Test / coverage artifacts
+.coverage
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+
+# Editor swap files
+*~
+*.swp
+*.swo
 
 # Local paper/reference PDFs. Summaries and matrices belong in docs/; raw PDFs
 # stay local unless explicitly requested.
