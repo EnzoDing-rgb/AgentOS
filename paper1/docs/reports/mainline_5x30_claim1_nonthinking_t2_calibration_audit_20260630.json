@@ -1,0 +1,130 @@
+{
+  "strategy_errors": {
+    "bare_t2_baseline": {
+      "projected": 5.0998,
+      "full_projected": 5.9867,
+      "completed_projected": 5.0998,
+      "projection_scope": "completed_task_subset",
+      "actual": 9.9544,
+      "error_pct": 0.9519,
+      "strategy_cap": 9.9544,
+      "projected_utilization": 0.6014,
+      "raw_projected_utilization": 0.6014,
+      "actual_utilization": 1.0,
+      "raw_actual_utilization": 1.0,
+      "budget_exhausted_rows": 9,
+      "task_count": 26,
+      "completed_task_fraction": 0.8667,
+      "stage_budget_share": 8.6271,
+      "stage_share_actual_utilization": 1.1538
+    },
+    "bare_t3_baseline": {
+      "projected": 20.5259,
+      "full_projected": 20.5257,
+      "completed_projected": 20.5259,
+      "projection_scope": "completed_task_subset",
+      "actual": 9.9544,
+      "error_pct": 0.515,
+      "strategy_cap": 9.9544,
+      "projected_utilization": 1.0,
+      "raw_projected_utilization": 2.062,
+      "actual_utilization": 1.0,
+      "raw_actual_utilization": 1.0,
+      "budget_exhausted_rows": 4,
+      "task_count": 30,
+      "completed_task_fraction": 1.0,
+      "stage_budget_share": 9.9544,
+      "stage_share_actual_utilization": 1.0
+    },
+    "routellm_learned_router_baseline": {
+      "projected": 12.7396,
+      "full_projected": 12.7395,
+      "completed_projected": 12.7396,
+      "projection_scope": "completed_task_subset",
+      "actual": 9.9527,
+      "error_pct": 0.2188,
+      "strategy_cap": 9.9544,
+      "projected_utilization": 1.0,
+      "raw_projected_utilization": 1.2798,
+      "actual_utilization": 0.9998,
+      "raw_actual_utilization": 0.9998,
+      "budget_exhausted_rows": 8,
+      "task_count": 30,
+      "completed_task_fraction": 1.0,
+      "stage_budget_share": 9.9544,
+      "stage_share_actual_utilization": 0.9998
+    },
+    "budget_only_baseline": {
+      "projected": 5.0998,
+      "full_projected": 5.9867,
+      "completed_projected": 5.0998,
+      "projection_scope": "completed_task_subset",
+      "actual": 9.9544,
+      "error_pct": 0.9519,
+      "strategy_cap": 9.9544,
+      "projected_utilization": 0.6014,
+      "raw_projected_utilization": 0.6014,
+      "actual_utilization": 1.0,
+      "raw_actual_utilization": 1.0,
+      "budget_exhausted_rows": 9,
+      "task_count": 26,
+      "completed_task_fraction": 0.8667,
+      "stage_budget_share": 8.6271,
+      "stage_share_actual_utilization": 1.1538
+    },
+    "budgetflow_task_level": {
+      "projected": 10.4231,
+      "full_projected": 10.7085,
+      "completed_projected": 10.4231,
+      "projection_scope": "completed_task_subset",
+      "actual": 9.9544,
+      "error_pct": 0.045,
+      "strategy_cap": 9.9544,
+      "projected_utilization": 1.0,
+      "raw_projected_utilization": 1.0758,
+      "actual_utilization": 1.0,
+      "raw_actual_utilization": 1.0,
+      "budget_exhausted_rows": 8,
+      "task_count": 29,
+      "completed_task_fraction": 0.9667,
+      "stage_budget_share": 9.6226,
+      "stage_share_actual_utilization": 1.0345
+    }
+  },
+  "overall_mape": 0.5365,
+  "max_error_strategy": "bare_t2_baseline",
+  "max_error_pct": 0.9519,
+  "projection_confidence": "low",
+  "recommendations": [
+    "WARNING: projection error MAPE=53.7%. Treat the next run as diagnostic calibration evidence.",
+    "WARNING: all primary strategies exhausted or nearly exhausted the shared cap (bare_t2_baseline, bare_t3_baseline, budgetflow_task_level). Projection error alone is not enough to certify the target utilization regime; widen or recalibrate the budget plan before treating policy strength as interpretable."
+  ],
+  "generation_mode": "calibrated_strongest_target_utilization",
+  "target_utilization": 0.95,
+  "actual_utilization_by_strategy": {
+    "budget_only_baseline": 1.0,
+    "bare_t2_baseline": 1.0,
+    "bare_t3_baseline": 1.0,
+    "routellm_learned_router_baseline": 0.9998,
+    "budgetflow_task_level": 1.0
+  },
+  "raw_actual_utilization_by_strategy": {
+    "budget_only_baseline": 1.0,
+    "bare_t2_baseline": 1.0,
+    "bare_t3_baseline": 1.0,
+    "routellm_learned_router_baseline": 0.9998,
+    "budgetflow_task_level": 1.0
+  },
+  "budget_exhausted_by_strategy": {
+    "budgetflow_task_level": 8,
+    "bare_t2_baseline": 9,
+    "budget_only_baseline": 9,
+    "routellm_learned_router_baseline": 8,
+    "bare_t3_baseline": 4
+  },
+  "budget_pressure_spec": {
+    "mode": "calibrated_strongest_target_utilization",
+    "target_utilization": 0.95,
+    "calibration_reference_strategy": "bare_t3_baseline"
+  }
+}

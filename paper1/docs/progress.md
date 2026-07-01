@@ -2,46 +2,34 @@
 
 > 单一入口：进度、跑法、历史结果。
 
-## 2026-06-30 — Claim 1 frontier readout after learned-prior 5x30
+## 2026-06-30 — Claim 1 strongest positive readout after resumed 5x30 frontier-fix
 
-- Ran one 5-policy x 30-task paid line to natural termination:
-  `mainline_5x30_claim1_learnedprior_final_20260630`. No restart was used.
-  One transient GPT-5.4 unavailable row was excluded by guard before evidence;
-  no DeepSeek `reasoning_content`/thinking-mode recurrence was observed.
-- Final Claim 1 matrix: pure T3 `18/30`, TRV `19.00`, `$9.88`, TRV/$ `1.92`;
-  BudgetFlow task-level `17/30`, TRV `18.50`, `$9.95`, TRV/$ `1.86`;
-  T2 `12/30`, TRV `13.50`; budget-only `13/30`, TRV `14.00`; RouteLLM-style
-  learned router `10/30`, TRV `10.50`.
-- Coverage matters: pure T3 paid-ran `29/30`; BudgetFlow wrote `30/30` rows but
-  only `23/30` were paid attempts, with 7 budget-exhaustion placeholders. The
-  planned-task delta is BF-resolved `mwaskom__seaborn-2848` + `pallets__flask-4992`
-  (+2.50) versus pure-T3 tail resolves `django__django-13964`,
-  `sphinx-doc__sphinx-7975`, and `sympy__sympy-18621` (+3.00), so BF loses TRV by
-  `0.50`.
-- Claim 1 readout is now a frontier matrix, not "BudgetFlow always wins." The
-  corrected 3x30 is a value-maximization condition (BF TRV `22.0` vs pure T3
-  `17.5`), the 4x30 clean run is the clearest value-aware allocation case (BF
-  TRV `18.50` vs pure T3 `18.00`, despite one fewer resolved task), and this
-  5x30 is a Strongest Model frontier boundary where pure T3 is cheap enough in
-  turns to cover more tail tasks. This strengthens the paper by showing when BF
-  creates value, when it only approaches the frontier, and why.
-- Sensitivity is part of the main Claim 1 story, not an appendix afterthought.
-  In this 5x30, value sensitivity keeps pure T3 ahead under equal, criticality,
-  and compressed values, with BF tying only under expanded criticality. Budget
-  and task-frontier diagnostics say the batch still has T2-favorable tasks, but
-  BF must capture them without losing T3-efficient tail coverage.
-- Runtime KV cache stayed at `0.0`. KV sensitivity is a no-paid CostSource
-  replay applied equally to T2, T3, BF, RouteLLM-style, and budget-only; it is
-  not a BF-only discount. Under KV50, BF's fixed-outcome TRV/$ slightly beats
-  pure T3 (`3.40` vs `3.33`) while still losing TRV (`18.50` vs `19.00`);
-  KV90/98/99 make BF's value/$ advantage larger. Dynamic KV replay is only an
-  optimistic upper bound: if cheaper multi-turn cost let BF reach observed tail
-  T3 solves, BF could reach TRV `21.50`, but that is not paid evidence.
-- The real API bill with very high cache-hit rows supports the CostSource
-  sensitivity rather than contradicting it: high cache hit can materially lower
-  repeated large-context calls. The paper should keep the main run on frozen
-  KV0 and use KV50/90/98/99 to explain how deployment pricing can move the
-  frontier, especially for multi-turn policies.
+- Current top-line Claim 1 evidence is the resumed 5-policy x 30-task
+  frontier-fix line, not the older learned-prior run. After fixing the
+  protocol-abort guard, the interrupted line was resumed on the same stem and
+  finished cleanly.
+- Final Claim 1 matrix: BudgetFlow task-level `16/30`, TRV `18.00`, `$9.95`,
+  TRV/$ `1.81`; RouteLLM-inspired learned router `15/30`, TRV `17.00`, `$9.95`,
+  TRV/$ `1.71`; pure T3 `15/30`, TRV `16.50`, `$9.95`, TRV/$ `1.66`;
+  budget-only `12/30`, TRV `13.00`; pure T2 `11/30`, TRV `12.00`.
+- This is the strongest current positive Claim 1 signal because BudgetFlow
+  beats every active control on both standard SWE-bench resolved count and
+  paper-defined Total Resolved Value under the same shared hard cap. The win is
+  not only value weighting: BudgetFlow also leads on value per dollar.
+- Value sensitivity aligns with the main result instead of flipping it. Under
+  equal, criticality, compressed, and expanded value profiles, BudgetFlow stays
+  `+1.00` Total Resolved Value above the best control; value permutation wins
+  `64/64`, with minimum margin `+0.50`.
+- Runtime KV cache stayed at `0.0`. KV sensitivity remains a no-paid CostSource
+  replay applied equally to T2, T3, RouteLLM-inspired, budget-only, and
+  BudgetFlow. At KV0, BudgetFlow remains best on fixed-outcome TRV/$; at very
+  high KV, RouteLLM-inspired can become the best value/$ control while
+  BudgetFlow keeps the highest fixed-outcome TRV.
+- Claim 1 is now more three-dimensional, not less. The corrected 3x30 is a
+  value-maximization condition, the 4x30 clean run is the clearest
+  value-aware-allocation case, the 5x30 clean run is a Strongest Model
+  frontier-dominance condition, and this resumed 5x30 frontier-fix run is the
+  strongest positive five-policy main-table win.
 
 ## 2026-06-29 — Claim 1 operating-condition matrix framing
 

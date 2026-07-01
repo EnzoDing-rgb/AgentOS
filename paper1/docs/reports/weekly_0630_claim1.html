@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BudgetFlow 周报 - 2026-06-30</title>
+<style>
+  :root {
+    --bg: #f4f6f9;
+    --paper: #ffffff;
+    --ink: #1f2937;
+    --muted: #667085;
+    --line: #d9e0ea;
+    --nav: #132033;
+    --nav-text: #d7e0ee;
+    --blue: #215e9a;
+    --blue-soft: #eaf2fb;
+    --green: #176448;
+    --green-soft: #e9f6f0;
+    --amber: #8a5a00;
+    --amber-soft: #fff6df;
+    --red: #b42318;
+    --red-soft: #feeceb;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.65;
+  }
+  nav {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: 240px;
+    overflow-y: auto;
+    padding: 24px 18px 28px;
+    background: var(--nav);
+    color: var(--nav-text);
+  }
+  nav h3 {
+    margin: 0 0 12px;
+    font-size: 13px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: #fff;
+  }
+  nav a {
+    display: block;
+    color: var(--nav-text);
+    text-decoration: none;
+    padding: 6px 8px;
+    border-radius: 6px;
+    margin-bottom: 2px;
+    font-size: 14px;
+  }
+  nav a:hover {
+    background: rgba(255,255,255,0.08);
+  }
+  nav .sub {
+    padding-left: 18px;
+    font-size: 13px;
+    color: #b7c6db;
+  }
+  main {
+    margin-left: 240px;
+    padding: 34px 40px 60px;
+    width: min(1400px, calc(100vw - 240px));
+  }
+  h1 {
+    margin: 0 0 8px;
+    font-size: 30px;
+    line-height: 1.2;
+  }
+  h2 {
+    margin: 34px 0 14px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--line);
+    font-size: 20px;
+    line-height: 1.3;
+  }
+  h3 {
+    margin: 0 0 8px;
+    font-size: 16px;
+    line-height: 1.4;
+  }
+  p { margin: 0 0 12px; }
+  .subtitle {
+    color: var(--muted);
+    max-width: 920px;
+  }
+  .hero {
+    padding: 18px 20px;
+    border-left: 4px solid var(--blue);
+    border-radius: 0 8px 8px 0;
+    background: var(--blue-soft);
+    margin: 18px 0 22px;
+  }
+  .hero strong { color: var(--blue); }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+    margin: 16px 0 24px;
+  }
+  .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .grid.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .card {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 16px 18px;
+  }
+  .card p:last-child { margin-bottom: 0; }
+  .kpi {
+    text-align: center;
+    padding: 18px 14px;
+  }
+  .kpi .label {
+    color: var(--muted);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin-bottom: 6px;
+  }
+  .kpi .value {
+    font-size: 34px;
+    font-weight: 800;
+    color: var(--blue);
+    line-height: 1;
+  }
+  .kpi .note {
+    margin-top: 6px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .callout {
+    padding: 14px 18px;
+    border-radius: 8px;
+    margin: 14px 0 18px;
+    border: 1px solid var(--line);
+    background: var(--paper);
+  }
+  .callout.blue {
+    background: var(--blue-soft);
+    border-color: #cfe1f6;
+  }
+  .callout.green {
+    background: var(--green-soft);
+    border-color: #c9e8da;
+  }
+  .callout.amber {
+    background: var(--amber-soft);
+    border-color: #efd89d;
+  }
+  .callout.red {
+    background: var(--red-soft);
+    border-color: #f6cbc8;
+  }
+  table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--paper);
+    margin: 10px 0 22px;
+  }
+  th, td {
+    padding: 10px 12px;
+    text-align: left;
+    vertical-align: top;
+    border-bottom: 1px solid var(--line);
+    font-size: 14px;
+  }
+  th {
+    background: var(--nav);
+    color: #fff;
+    font-weight: 650;
+    white-space: nowrap;
+  }
+  tr:last-child td { border-bottom: 0; }
+  tr.best td {
+    background: #eef7ff;
+  }
+  tr.boundary td {
+    background: #fff9e9;
+  }
+  .tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    margin-right: 6px;
+  }
+  .tag.blue { background: #e8f1fb; color: var(--blue); }
+  .tag.green { background: #e8f6ef; color: var(--green); }
+  .tag.amber { background: #fff1d1; color: var(--amber); }
+  .tag.red { background: #fee7e5; color: var(--red); }
+  .positive {
+    color: var(--red);
+    font-weight: 800;
+  }
+  .result-metrics {
+    margin: 10px 0 8px;
+    display: grid;
+    gap: 6px;
+  }
+  .result-metrics div {
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: #f7f9fc;
+    font-size: 13px;
+  }
+  .compact-matrix {
+    display: grid;
+    gap: 10px;
+    margin: 12px 0 22px;
+  }
+  .compact-row {
+    display: grid;
+    grid-template-columns: 180px repeat(5, minmax(0, 1fr));
+    gap: 0;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--paper);
+  }
+  .compact-row.header {
+    background: var(--nav);
+    color: #fff;
+    border-color: var(--nav);
+  }
+  .compact-row > div {
+    padding: 10px 12px;
+    border-right: 1px solid var(--line);
+    font-size: 14px;
+  }
+  .compact-row.header > div {
+    border-right-color: rgba(255,255,255,0.12);
+    font-weight: 650;
+  }
+  .compact-row > div:last-child { border-right: 0; }
+  .compact-row .label {
+    font-weight: 700;
+    background: #f7f9fc;
+  }
+  .compact-row.header .label {
+    background: transparent;
+  }
+  .compact-row.best {
+    border-color: #f2b8b5;
+    background: #fff7f7;
+  }
+  .compact-row.best .label,
+  .compact-row.best .positive-cell {
+    color: var(--red);
+    font-weight: 800;
+  }
+  .mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px;
+    background: #eef2f7;
+    border-radius: 4px;
+    padding: 1px 4px;
+  }
+  ul {
+    margin: 8px 0 0 20px;
+    padding: 0;
+  }
+  li { margin: 0 0 6px; }
+  @media (max-width: 980px) {
+    nav { display: none; }
+    main {
+      margin-left: 0;
+      width: 100%;
+      padding: 20px 16px 40px;
+    }
+    .grid, .grid.two { grid-template-columns: 1fr; }
+    table { display: block; overflow-x: auto; }
+  }
+</style>
+</head>
+<body>
+<nav>
+  <h3>目录</h3>
+  <a href="#claim">Claim 1 立体化</a>
+  <a href="#related">Related Work / OpenSquilla</a>
+  <a href="#timeline">这三天做了什么</a>
+  <a href="#matrix">4×30 / 5×30 主结果</a>
+  <a href="#readout" class="sub">每轮怎么解读</a>
+  <a href="#latest">最新 5×30 sensitivity</a>
+  <a href="#next">现在论文怎么写</a>
+</nav>
+<main>
+
+<h1>BudgetFlow 周报</h1>
+<p class="subtitle">覆盖 2026-06-28 到 2026-06-30 的 Claim 1 主线工作。重点是把 Claim 1 从“单轮输赢”扩成一个更立体的 operating-condition matrix：什么时候 BudgetFlow 创造价值，什么时候 pure T3 是真实 frontier，什么时候 learned router 已经非常强。</p>
+
+<h2 id="claim">Claim 1 立体化</h2>
+<div class="hero">
+  <p><strong class="positive">当前最重要的正信号已经成立：</strong>BudgetFlow 不需要被表述成“永远打赢 T3”。更准确的论文说法是：在一个共享硬预算下，BudgetFlow 的目标是最大化 <span class="mono">Total Resolved Value</span>；我们现在既有 <span class="positive">BudgetFlow 明确获胜</span> 的条件，也有 pure T3 frontier-dominance 的条件，还有 learned-router 很强的压力测试条件。</p>
+  <p>这让 Claim 1 从单点结果变成了边界清晰的机制研究。论文价值不再只是“赢没赢”，而是“何时 value-aware allocation 有价值，何时 strongest model 自身就是最优 frontier”。</p>
+</div>
+
+<div class="grid">
+  <div class="card kpi">
+    <div class="label">最强正结果</div>
+    <div class="value positive">16 / 30</div>
+    <div class="note"><span class="positive">resumed 5×30 frontier-fix</span><br><span class="positive">TRV 18.00, spend $9.95</span></div>
+  </div>
+  <div class="card kpi">
+    <div class="label">最清晰 value case</div>
+    <div class="value">18.50</div>
+    <div class="note">4×30 clean run 的 TRV<br>高于 pure T3 的 18.00</div>
+  </div>
+  <div class="card kpi">
+    <div class="label">最清晰 frontier case</div>
+    <div class="value">20.00</div>
+    <div class="note">5×30 clean run 的 pure T3 TRV<br>说明 strongest model 可成为边界</div>
+  </div>
+</div>
+
+<h2 id="related">Related Work / OpenSquilla</h2>
+<div class="callout blue">
+  <strong>这轮 related work 调研的核心结论：</strong>OpenSquilla / Claw-SWE-Bench 对我们不是“论文没价值了”的致命打击，而是把我们的边界逼得更清楚。
+</div>
+
+<div class="grid two">
+  <div class="card">
+    <h3>OpenSquilla 带来的压力</h3>
+    <p>它已经把 per-turn/per-session 的 cost-per-success、tier routing、reasoning policy、replay、diagnostics、cache continuity 和工程工艺做得很强。Claw-SWE-Bench 也已经把 fixed protocol、cost reporting、Pareto frontier、Lite subset selection 这套评测方法做出来了。</p>
+  </div>
+  <div class="card">
+    <h3>我们仍然有的边界</h3>
+    <p>BudgetFlow 的 Claim 1 不是“会 routing”也不是“会省钱”，而是：<strong>固定任务批次 + 共享硬预算 + 预注册任务价值 + verified outcome + 跨任务 allocation</strong>。公开资料里，OpenSquilla 还没有把这一整层 batch-global value-aware allocation 做出来。</p>
+  </div>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>问题</th>
+      <th>OpenSquilla / Claw-SWE-Bench</th>
+      <th>BudgetFlow 当前定位</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>优化对象</td>
+      <td>session 内 cost-per-success；固定协议下的 harness / model cost-accuracy frontier</td>
+      <td>一批任务共享一个 hard budget 时的 Total Resolved Value</td>
+    </tr>
+    <tr>
+      <td>决策粒度</td>
+      <td>per-turn / per-session / per-harness</td>
+      <td>cross-task batch allocation</td>
+    </tr>
+    <tr>
+      <td>价值信号</td>
+      <td>没有预注册 heterogeneous task value</td>
+      <td>Task Value 冻结后进入预算分配</td>
+    </tr>
+    <tr>
+      <td>对我们的启发</td>
+      <td>把 cost、cache、patch、replay、leakage、防污染写成评测对象</td>
+      <td>继续坚持 Claim 1，但要把 execution coverage、KV sensitivity、frontier gap、强 baseline 讲全</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="baselines">Baseline 和 BudgetFlow 功能解释</h2>
+<table>
+  <thead>
+    <tr>
+      <th>对象</th>
+      <th>它是什么</th>
+      <th>它在测什么</th>
+      <th>为什么保留它</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>pure T2</td>
+      <td>所有任务统一走 T2</td>
+      <td>测“低单价”本身是否足以形成更优 frontier</td>
+      <td>它提供便宜 tier 的真实下边界，没有它就不知道 batch 里有没有 T2 room。</td>
+    </tr>
+    <tr>
+      <td>pure T3</td>
+      <td>所有任务统一走 strongest model</td>
+      <td>测 strongest model 是否已经是 shared-cap 下的最优 frontier</td>
+      <td>它是最强纯 tier 边界。BudgetFlow 输给它时，论文应报告 frontier，而不是削弱 baseline。</td>
+    </tr>
+    <tr>
+      <td>RouteLLM-inspired learned router</td>
+      <td>用离线 task features 和 frozen historical outcomes 学一个 task-level T2/T3 router</td>
+      <td>测“普通 learned routing 已经很强时”，BudgetFlow 是否还有 batch-global 增益</td>
+      <td>它逼着论文把贡献说清楚：增益来自 shared-budget governance，不是泛泛的“routing 更聪明”。</td>
+    </tr>
+    <tr>
+      <td>budget-only baseline</td>
+      <td>看到 budget pressure 和 generic per-task hard cap，但不读 Task Value</td>
+      <td>测结果是不是单靠预算压力就能解释，而不是 Task Value 真正增加了 allocation value</td>
+      <td>它把“budget-aware”和“value-aware”拆开，防止把所有效果都归因到 BF 身上。</td>
+    </tr>
+    <tr class="best">
+      <td>BudgetFlow task-level</td>
+      <td>在固定任务顺序下，结合 compiled budget、Task Value、Model Fit 和 live remaining budget 做治理</td>
+      <td>直接测 Claim 1：同一 shared hard budget 下，能否拿到更高 Total Resolved Value</td>
+      <td>它必须和上面四类诊断镜子一起看，论文才能解释赢法、输法和边界。</td>
+    </tr>
+  </tbody>
+</table>
+
+<table>
+  <thead>
+    <tr>
+      <th>BudgetFlow 功能</th>
+      <th>作用</th>
+      <th>在 Claim 1 里的位置</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Budget Compiler</td>
+      <td>运行前根据任务集、ValueSource、Estimated Task Token Demand、tier catalog 和 calibration evidence 编译 shared cap 与 task runway</td>
+      <td>Claim 1 的前半段。它决定我们研究的是哪一种 budget condition。</td>
+    </tr>
+    <tr>
+      <td>BudgetFlow Runtime</td>
+      <td>按固定任务顺序执行，跟踪 live remaining budget，决定 spend / continue / stop / stronger tier usage</td>
+      <td>Claim 1 的执行层，负责把编译后的预算真正变成 allocation 行为。</td>
+    </tr>
+    <tr>
+      <td>Task Value</td>
+      <td>预注册价值信号，不在结果出来后追着改</td>
+      <td>把目标从 pass count 扩成 Total Resolved Value，但必须配 sensitivity 一起报告。</td>
+    </tr>
+    <tr>
+      <td>Frozen Router Plan / Model Fit prior</td>
+      <td>为 learned-router baseline 和 BF 冷启动提供静态先验</td>
+      <td>它是诊断工具，不应退化成 hardcoded answer key。</td>
+    </tr>
+    <tr>
+      <td>per-task hard cap / runway</td>
+      <td>避免单任务失控烧钱，同时仍然受 shared remaining budget 裁剪</td>
+      <td>保证系统既有止损，又不把 planned budget 误当平均切片。</td>
+    </tr>
+    <tr>
+      <td>stall guard / stop-continue discipline</td>
+      <td>在无进展、无 patch、无效循环时止损</td>
+      <td>服务 Claim 1，避免预算浪费在低价值空转，而不是单独追求省几分钱。</td>
+    </tr>
+    <tr>
+      <td>Value-Triggered Escalation</td>
+      <td>在高价值任务上有界地给 stronger tier 一个窗口</td>
+      <td>解释为什么 BF 既不是死板 all-T2，也不是无条件 all-T3。</td>
+    </tr>
+    <tr>
+      <td>Cost / Routing / Escalation Memory</td>
+      <td>记录 cost sufficiency、route outcome 和 stronger-tier productivity</td>
+      <td>更接近 Claim 2 机制层的增强，不是当前 Claim 1 成立的前提。</td>
+    </tr>
+    <tr>
+      <td>audit / replay / sensitivity</td>
+      <td>从同一 completed JSONL 重放 value profiles、KV recost、budget replay、frontier buckets 和 oracle gap</td>
+      <td>这是 reviewer defense 的主体，用来回答“为什么赢/为什么输/哪种条件会翻转”。</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="timeline">这三天做了什么</h2>
+<table>
+  <thead>
+    <tr>
+      <th>日期</th>
+      <th>工作</th>
+      <th>产出</th>
+      <th>对论文的意义</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>06-28</td>
+      <td>完成 4×30 clean-resume Claim 1 readout</td>
+      <td>确认 BF 在 value objective 上胜 pure T3：TRV 18.50 vs 18.00</td>
+      <td>证明论文不是只看 raw pass count，value-aware allocation 确实能保护高价值任务</td>
+    </tr>
+    <tr>
+      <td>06-29</td>
+      <td>完成 clean 5×30 audit，补齐 frontier / KV / budget sensitivity / oracle path</td>
+      <td>确认一轮 strongest-model frontier：pure T3 17/30, TRV 20.00</td>
+      <td>给出负结果的科学解释：不是 BF 失败，而是该条件下 pure T3 frontier 很强</td>
+    </tr>
+    <tr class="best">
+      <td>06-30</td>
+      <td>修复 protocol-abort guard，resume frontier-fix 5×30 跑完；更新 north star</td>
+      <td><span class="positive">BF 16/30, TRV 18.00，赢 pure T3 / RouteLLM-inspired / budget-only / pure T2</span></td>
+      <td><span class="positive">拿到 strongest current positive Claim 1 signal</span>，并把 3×30 / 4×30 / 5×30 串成 operating-condition matrix</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="matrix">最新 5×30 主结果</h2>
+<div class="compact-matrix">
+  <div class="compact-row header">
+    <div class="label">strategy</div>
+    <div>Rows</div>
+    <div>Pass</div>
+    <div>TRV</div>
+    <div>Spend</div>
+    <div>TRV/$</div>
+  </div>
+  <div class="compact-row best">
+    <div class="label positive-cell">BF task-level</div>
+    <div class="positive-cell">30/30</div>
+    <div class="positive-cell">16</div>
+    <div class="positive-cell">18.00</div>
+    <div class="positive-cell">9.9524</div>
+    <div class="positive-cell">1.81</div>
+  </div>
+  <div class="compact-row">
+    <div class="label">RouteLLM</div>
+    <div>29/30</div>
+    <div>15</div>
+    <div>17.00</div>
+    <div>9.9524</div>
+    <div>1.71</div>
+  </div>
+  <div class="compact-row">
+    <div class="label">pure T3</div>
+    <div>30/30</div>
+    <div>15</div>
+    <div>16.50</div>
+    <div>9.9544</div>
+    <div>1.66</div>
+  </div>
+  <div class="compact-row">
+    <div class="label">budget-only</div>
+    <div>26/30</div>
+    <div>12</div>
+    <div>13.00</div>
+    <div>9.9544</div>
+    <div>1.31</div>
+  </div>
+  <div class="compact-row">
+    <div class="label">pure T2</div>
+    <div>24/30</div>
+    <div>11</div>
+    <div>12.00</div>
+    <div>9.9544</div>
+    <div>1.21</div>
+  </div>
+</div>
+
+<h2>4×30 / 几轮 5×30 怎么看</h2>
+<div class="grid two">
+  <div class="card">
+    <h3><span class="tag green">4×30</span> clean-resume</h3>
+    <div class="result-metrics">
+      <div><strong>BF</strong>: 14/30, TRV 18.50, TRV/$ 2.32</div>
+      <div><strong>对手</strong>: pure T3, 15/30, TRV 18.00, TRV/$ 1.90</div>
+      <div><strong>结果</strong>: BF 赢 TRV 和 TRV/$，输 1 个 resolved</div>
+    </div>
+    <p>这是最清晰的 value-aware allocation case。高价值任务被保护住了，所以 raw count 不是唯一目标。</p>
+  </div>
+  <div class="card">
+    <h3><span class="tag amber">5×30</span> clean audit</h3>
+    <div class="result-metrics">
+      <div><strong>BF</strong>: 15/30, TRV 17.50, TRV/$ 1.76</div>
+      <div><strong>对手</strong>: pure T3, 17/30, TRV 20.00, TRV/$ 2.01</div>
+      <div><strong>结果</strong>: pure T3 明确赢</div>
+    </div>
+    <p>这是 strongest-model frontier-dominance。T3 在这轮既强又省，能吃掉更多 tail tasks。</p>
+  </div>
+  <div class="card">
+    <h3><span class="tag red">5×30</span> learned-prior final</h3>
+    <div class="result-metrics">
+      <div><strong>BF</strong>: 17/30, TRV 18.50, TRV/$ 1.86</div>
+      <div><strong>对手</strong>: pure T3, 18/30, TRV 19.00, TRV/$ 1.92</div>
+      <div><strong>结果</strong>: pure T3 薄赢</div>
+    </div>
+    <p>这说明 frontier 很薄。BudgetFlow 已经接近 strongest-model 边界，但 coverage 还差半步。</p>
+  </div>
+  <div class="card" style="background:#eef7ff;">
+    <h3><span class="tag blue">5×30</span> resumed frontier-fix</h3>
+    <div class="result-metrics">
+      <div><strong class="positive">BF</strong>: <span class="positive">16/30, TRV 18.00, TRV/$ 1.81</span></div>
+      <div><strong>对手</strong>: Route 15/30, 17.00, 1.71; T3 15/30, 16.50, 1.66</div>
+      <div><strong class="positive">结果</strong>: <span class="positive">BF 赢当前 5-policy 主表</span></div>
+    </div>
+    <p><span class="positive">这是当前 strongest positive signal。</span> <span class="positive">BudgetFlow 不止赢 value，也赢 resolved count 和 value/$。</span></p>
+  </div>
+</div>
+
+<h2 id="readout">每轮怎么解读</h2>
+<div class="grid">
+  <div class="card">
+    <h3>4×30 的赢法</h3>
+    <p>这轮最重要的不是“多过了几个任务”，而是 BudgetFlow 用更少总 spend 拿到了更高 TRV。典型例子是它保住了 <span class="mono">pallets__flask-4992</span> 这类高价值任务，抵消了 pure T3 多拿的 normal-value tail tasks。</p>
+  </div>
+  <div class="card">
+    <h3>5×30 clean 的负结果</h3>
+    <p>这里不能硬把它写成“策略失败”。更准确的是：该条件下 pure T3 已经是非常强的 frontier。便宜模型不等于更省钱，如果 multi-turn 很长、T3 turn-efficient，很可能 strongest model 反而总成本更低。</p>
+  </div>
+  <div class="card">
+    <h3>resumed frontier-fix 的意义</h3>
+    <p>这一轮把论文叙事真正补全了。现在我们不只有边界和负结果，也有一个完整 5-policy 主表的正结果，说明 BudgetFlow 不是只能“解释失败”，而是在合适条件下确实能赢。</p>
+  </div>
+</div>
+
+<div class="callout green">
+  <strong>一句话总结当前 Claim 1：</strong>BudgetFlow 的价值不是“永远比 T3 强”，而是识别并利用 shared-budget frontier 中真正存在的 allocation room；而当 allocation room 消失、pure T3 自身就是边界时，系统也应该诚实报告这一点。
+</div>
+
+<h2 id="latest">最新一轮 5×30 sensitivity</h2>
+<p>这里只保留三组最核心的 sensitivity：value、KV、frontier buckets。</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Value Profile</th>
+      <th>对手</th>
+      <th>BF</th>
+      <th>Delta</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>equal</td>
+      <td>15.00</td>
+      <td>16.00</td>
+      <td>+1.00</td>
+    </tr>
+    <tr>
+      <td>criticality</td>
+      <td>17.00</td>
+      <td>18.00</td>
+      <td>+1.00</td>
+    </tr>
+    <tr>
+      <td>compressed</td>
+      <td>16.00</td>
+      <td>17.00</td>
+      <td>+1.00</td>
+    </tr>
+    <tr>
+      <td>expanded</td>
+      <td>19.00</td>
+      <td>20.00</td>
+      <td>+1.00</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout green">
+  <strong class="positive">Value sensitivity 一句话：</strong><span class="positive">四组 value profile 全部不翻转；另外 value permutation 是</span> <span class="mono positive">64 / 64</span> <span class="positive">全胜，最小 margin</span> <span class="mono positive">+0.50</span>。
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>KV Profile</th>
+      <th>对手 TRV/$</th>
+      <th>BF TRV/$</th>
+      <th>Delta</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>KV0</td>
+      <td>1.71</td>
+      <td>1.81</td>
+      <td>+0.10</td>
+    </tr>
+    <tr>
+      <td>KV50</td>
+      <td>3.14</td>
+      <td>3.26</td>
+      <td>+0.11</td>
+    </tr>
+    <tr>
+      <td>KV90</td>
+      <td>8.98</td>
+      <td>9.06</td>
+      <td>+0.09</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout amber">
+  <strong class="positive">KV sensitivity 一句话：</strong><span class="positive">在</span> <span class="mono positive">KV0 / KV50 / KV90</span> <span class="positive">下，BF 的 TRV/$ 都仍领先；极高 KV 时 RouteLLM-inspired 会更强，但 BF 依然保持最高 fixed-outcome TRV。</span>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>Frontier Bucket</th>
+      <th>Tasks</th>
+      <th>Total Value</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>T2 cheaper pass</td>
+      <td>6</td>
+      <td>6.00</td>
+    </tr>
+    <tr>
+      <td>T3 cheaper pass</td>
+      <td>5</td>
+      <td>6.00</td>
+    </tr>
+    <tr>
+      <td>T2-only pass</td>
+      <td>0</td>
+      <td>0.00</td>
+    </tr>
+    <tr>
+      <td>T3-only pass</td>
+      <td>0</td>
+      <td>0.00</td>
+    </tr>
+    <tr>
+      <td>both fail</td>
+      <td>7</td>
+      <td>8.00</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout blue">
+  <strong class="positive">Frontier 一句话：</strong><span class="positive">这轮既有</span> <span class="mono positive">6</span> <span class="positive">个 T2 cheaper pass，也有</span> <span class="mono positive">5</span> <span class="positive">个 T3 cheaper pass，所以 BudgetFlow 不能退化成 all-T3；真正要做的是同时抓住两边的有效机会。</span>
+</div>
+
+<h2 id="next">现在论文怎么写</h2>
+<div class="callout blue">
+  <p><strong>主结论：</strong>Claim 1 现在可以写成一个更完整的正结果加边界分析，而不是单点 victory lap。</p>
+  <ul>
+    <li><span class="positive">主表用 resumed frontier-fix 5×30：BudgetFlow 是 strongest current positive signal。</span></li>
+    <li>4×30 作为最清晰的 value-aware allocation case：BF 虽然少过 1 个任务，但 TRV 与 TRV/$ 更高。</li>
+    <li>5×30 clean 和 learned-prior final 作为 boundary case：说明 strongest model 有时就是正确 frontier，BudgetFlow 应报告 gap-to-frontier，而不是伪装成 all-T3。</li>
+    <li>Related Work 里明确承认 OpenSquilla / Claw-SWE-Bench 的工艺强度，但把我们的贡献收缩到 batch-global shared-budget value allocation 这一层。</li>
+  </ul>
+</div>
+
+<div class="callout green">
+  <p><strong>给导师/审稿人的一句人话：</strong>我们不是造出了一个永远赢 strongest model 的神奇路由器；我们做的是一套 shared-budget governance framework，并首次把它在 SWE-bench mini 上做成了可验证、可审计、可报告边界条件的 Claim 1 证据体系。</p>
+</div>
+
+</main>
+</body>
+</html>

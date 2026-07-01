@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BudgetFlow Related Work Boundary — Claim 1 Comparison</title>
+<title>BudgetFlow Related Work 对比</title>
 <style>
 :root {
   --bg: #f8f9fb; --card: #fff; --text: #1f2933; --muted: #5f6b7a;
@@ -43,6 +43,45 @@ h3 { font-size: 14px; margin: 20px 0 8px; color: #2a2a2a; }
 .summary-box ul { margin: 8px 0 0 20px; line-height: 1.7; }
 .summary-box li { margin-bottom: 4px; }
 
+.layer-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 14px 0 22px;
+}
+
+.layer-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px;
+}
+
+.layer-card h4 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: var(--accent2);
+}
+
+.layer-card.batch h4 {
+  color: var(--bad);
+}
+
+.layer-card.batch p,
+.layer-card.batch .scene {
+  color: var(--bad);
+  font-weight: 600;
+}
+
+.layer-card .scene {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: #f6f8fb;
+  color: #3a4756;
+  font-size: 13px;
+}
+
 /* ── Main table ── */
 .table-wrap { overflow-x: auto; margin: 14px 0 22px; }
 table {
@@ -78,6 +117,8 @@ tr.bf-row:nth-child(even) td { background: #e6f7f0; }
 .yes { color: var(--good); font-weight: 700; }
 .no { color: var(--bad); font-weight: 700; }
 .partial { color: var(--warn); font-weight: 600; }
+.bf-diff { color: var(--bad); font-weight: 700; }
+.key { color: var(--bad); font-weight: 700; }
 
 /* ── Citation tag ── */
 .cite { font-size: 11px; color: var(--muted); font-weight: 400; }
@@ -97,340 +138,202 @@ tr.bf-row:nth-child(even) td { background: #e6f7f0; }
   body { font-size: 11px; padding: 12px; }
   .vocab-grid { grid-template-columns: repeat(3, 1fr); }
 }
+
+@media (max-width: 900px) {
+  .layer-grid { grid-template-columns: 1fr; }
+}
 </style>
 </head>
 <body>
 
-<h1>BudgetFlow Claim 1 — Related Work Boundary</h1>
-<div class="subtitle">Consolidated 2026-06-30 from the 2026-06-29 boundary table and engineering-system audit. The 2026-06-29 comparison table remains the anchor when older notes disagree.</div>
+<h1>BudgetFlow Related Work 对比</h1>
+<div class="subtitle">这份页面的目的不是堆论文，而是把问题讲清楚：别人已经做到了哪一步，我们真正新增的是什么，哪些地方需要更克制地写。</div>
 
-<!-- ═══════════ VOCABULARY ═══════════ -->
-<h2>Vocabulary</h2>
-<div class="vocab-grid">
-  <div class="vocab-card">
-    <div class="term">shared hard budget</div>
-    <div class="def">One fixed dollar cap for ALL tasks combined. Once the money runs out, remaining tasks don't run. Not an average, not per-task, not a soft target.</div>
-  </div>
-  <div class="vocab-card">
-    <div class="term">per-query routing</div>
-    <div class="def">Each query gets routed to a model independently. No coordination across queries, no shared spending pool.</div>
-  </div>
-  <div class="vocab-card">
-    <div class="term">cascade</div>
-    <div class="def">Try a cheap model first. If the answer looks bad, escalate to a more expensive model. Repeat until acceptable or out of models.</div>
-  </div>
-  <div class="vocab-card">
-    <div class="term">task value</div>
-    <div class="def">A pre-registered number saying how important each task is. Only counted if the task is verified resolved. Not estimated after seeing results.</div>
-  </div>
-  <div class="vocab-card">
-    <div class="term">verified result</div>
-    <div class="def">A binary pass/fail from a ground-truth check (e.g., SWE-bench tests pass). Not a predicted quality score or a human preference rating.</div>
-  </div>
-  <div class="vocab-card">
-    <div class="term">decision unit</div>
-    <div class="def">What the system decides on each time it acts: one query, one task, one subtask, one tool call, or a whole batch.</div>
-  </div>
-  <div class="vocab-card">
-    <div class="term">budget cap</div>
-    <div class="def">A hard upper limit on spending. If you hit it, you stop. Not a tradeoff knob you can adjust after seeing results.</div>
-  </div>
-  <div class="vocab-card">
-    <div class="term">Total Resolved Value</div>
-    <div class="def">BudgetFlow's paper-defined metric: sum of task values for all tasks that pass verification. Not a standard benchmark metric.</div>
-  </div>
-  <div class="vocab-card">
-    <div class="term">soft average cost</div>
-    <div class="def">A target like "average cost per query should be ≤ $0.05." Individual queries can go over; only the long-run average matters. Not a hard cap.</div>
-  </div>
-  <div class="vocab-card">
-    <div class="term">inverse problem</div>
-    <div class="def">Minimize cost while keeping quality above a floor. BudgetFlow does the opposite: maximize value while keeping cost under a cap.</div>
-  </div>
-</div>
-
-<!-- ═══════════ EXECUTIVE SUMMARY ═══════════ -->
-<h2>Executive Summary</h2>
-
+<h2>先说结论</h2>
 <div class="summary-box">
-<h3>Bottom Line</h3>
-<ul>
-  <li><strong>All 6 papers study routing or budget control — but at different scopes.</strong> They optimize single queries, single tasks, or single multi-agent runs. None combines: shared hard budget across a fixed batch of tasks, pre-registered task value, verified outcomes, and an auditable budget compiler. BudgetFlow is the first system to put these four properties together.</li>
-  <li><strong>Every paper routes/allocates within one query or one task.</strong> None allocates spend across tasks under a shared cap. The decision unit is always individual — never a batch with cross-task tradeoffs.</li>
-  <li><strong>None use task value to weight outcomes.</strong> No paper distinguishes "this query matters more than that one." All tasks/queries are weighted equally in the objective.</li>
-  <li><strong>Closest neighbors are RouteLLM (learned router inspiration), RouteNLP (deployment routing with inverse objective), and BAMAS (within-task budget ILP).</strong> All three operate in the same broad family — making limited model capacity go further — but optimize different decision scopes.</li>
-  <li><strong>BudgetFlow's contribution is the specific combination, not any single mechanism:</strong> fixed batch + shared hard budget + pre-registered task value → verified resolved value. Each individual piece may have precedent; the combination and the resulting allocation problem are new.</li>
-</ul>
+  <h3>一句话版本</h3>
+  <ul>
+    <li><strong>OpenSquilla / Claw-SWE-Bench 很强，</strong>但它们主要强在 agent runtime、评测工艺、cost/cache/trace 可见性和 cost-per-success 叙事，<span class="key">不是我们这个“跨任务共享预算分配”的 Claim 1。</span></li>
+    <li><strong>现有 routing / cascade / budget papers 大多只管单个 query 或单个 task。</strong> 它们不处理一批任务共用一个 <span class="cite">shared hard budget</span>、任务价值不同、并且最后要按 verified outcome 结算总价值的问题。</li>
+    <li><strong class="key">BudgetFlow 的边界要写得更窄、更准。</strong> <span class="key">不是“我们也会 routing”，而是“在固定任务批次下，如何把一个共享硬预算分给不同价值的任务”。</span></li>
+  </ul>
 </div>
 
-<h2>BudgetFlow Positioning Snapshot</h2>
-<div class="vocab-grid">
-  <div class="vocab-card">
-    <div class="term">Claim 1</div>
-    <div class="def">Under one shared hard budget, BudgetFlow maximizes Total Resolved Value: the sum of pre-registered Task Value over verified resolved tasks. Resolved count remains reported as the standard SWE-bench metric.</div>
-  </div>
-  <div class="vocab-card">
-    <div class="term">Claim 2</div>
-    <div class="def">The mechanism claim: value-aware budget allocation, routing, escalation, stop-loss, and learning explain Claim 1. Routing savings matter only if they protect or improve Claim 1.</div>
-  </div>
-  <div class="vocab-card">
-    <div class="term">Budget Compiler</div>
-    <div class="def">Pre-run layer. Given task set, ValueSource, model catalog, estimated token demand, and calibration evidence, it compiles the shared cap and planned task budgets before paid execution.</div>
-  </div>
-  <div class="vocab-card">
-    <div class="term">BudgetFlow Runtime</div>
-    <div class="def">Run-time layer. It allocates model opportunities under the shared ledger, clips each task by remaining budget, records trace/cost/outcome evidence, and stops when the cap is exhausted.</div>
-  </div>
-  <div class="vocab-card">
-    <div class="term">Frontier Matrix</div>
-    <div class="def">The paper should report when BudgetFlow has value: tight vs loose budget, strong-model turn efficiency, cheap-model short-path wins, learned-router strength, KV-cache cost shifts, and gap to observed-tier frontier.</div>
-  </div>
-  <div class="vocab-card">
-    <div class="term">Generalization Claim</div>
-    <div class="def">SWE-bench is the verifiable stress test. The portable claim is the governance abstraction: fixed workload, shared budget, value source, cost source, model-fit evidence, and auditable allocation.</div>
-  </div>
-</div>
-
+<h2>先把三层问题分开</h2>
 <div class="summary-box">
-<h3>BudgetFlow's First-Paragraph Positioning</h3>
-<ul>
-  <li><strong>Do not claim "we invented routing" or "same budget, more capability" in generic form.</strong> OpenSquilla already uses that language. BudgetFlow's sharper claim is: same fixed task batch, one shared hard budget, pre-registered task values, verified outcomes, and a policy that allocates scarce model opportunities across tasks.</li>
-  <li><strong>The clean theoretical sentence:</strong> BudgetFlow tests whether locally strong per-turn or per-task routing becomes globally suboptimal when tasks compete for one shared budget and have different values.</li>
-  <li><strong>Use resolved count as the benchmark metric and Total Resolved Value as the paper metric.</strong> This helps answer the "you invented your own metric" attack: SWE-bench resolved rate stays visible, while Task Value is the additional governance objective.</li>
-</ul>
+  <h3>single query、single task、shared-budget batch 不是一回事</h3>
+  <ul>
+    <li><strong>single query：</strong>“把这段邮件润色一下。” 系统只需要决定这一次请求用便宜模型还是强模型，然后立刻回答。</li>
+    <li><strong>single task：</strong>“修掉这个 Django bug。” 系统要连续做很多步：读 issue、看代码、搜文件、改 patch、跑测试、再修。</li>
+    <li><strong>shared-budget batch：</strong>“这里有 30 个 bug，总预算 10 美元，怎么分配？” 系统不只管一个 bug，而是要决定整批任务里谁先拿预算、谁该上 T3、谁该止损。</li>
+    <li><strong>RouteLLM 更像：</strong>“这一条 prompt 值不值得上 GPT-4？”</li>
+    <li><strong>INTENT / BAMAS 更像：</strong>“这个单独任务内部，下一步要不要调用更贵的工具，或者换更强的 agent？”</li>
+    <li><strong class="key">BudgetFlow 更像：</strong><span class="key">“30 个任务里，哪几个值得先救？预算快没了时，该把 T3 留给谁？”</span></li>
+  </ul>
 </div>
 
-<div class="drop-note">
-<strong>Note on paper selection:</strong> A freshness audit (2026-06-29) recommended replacing FrugalGPT (Chen 2023) with Cascade Routing (Dekoninck et al., ICML 2025 poster) — a stronger cascade paper with SWE-bench eval and formal optimality proofs — and Topaz (Okamoto 2026, CHI Workshop) with BAMAS (Yang et al., AAAI 2026 Oral) — a peer-reviewed budget-constrained system with real code-gen experiments. Both original papers are valid Related Work prose citations but weaker comparison-table entries.
+<div class="layer-grid">
+  <div class="layer-card">
+    <h4>Level 1: per-query</h4>
+    <p>一次请求进来，系统只需要决定这一次调用用哪个模型，然后马上给答案。</p>
+    <div class="scene">
+      例子：<br>
+      “把这段邮件润色一下。”<br>
+      系统只问一件事：这一次要不要上更强模型？
+    </div>
+  </div>
+  <div class="layer-card">
+    <h4>Level 2: per-task</h4>
+    <p>一个完整任务要经过很多步，系统要决定任务内部下一步怎么做，而不是只答一次。</p>
+    <div class="scene">
+      例子：<br>
+      “修掉这个 Django bug。”<br>
+      要连续做：读 issue、看代码、改 patch、跑测试、再修。
+    </div>
+  </div>
+  <div class="layer-card batch">
+    <h4>Level 3: batch of tasks</h4>
+    <p>一批任务共用一笔钱，系统要决定预算先花给谁、谁值得上强模型、谁该及时止损。</p>
+    <div class="scene">
+      例子：<br>
+      “这里有 30 个 bug，总预算 10 美元。”<br>
+      真正的问题是：先救谁？谁该上 T3？谁该放弃？
+    </div>
+  </div>
 </div>
 
+<h2>OpenSquilla / Claw-SWE-Bench 对我们意味着什么</h2>
 <div class="summary-box">
-<h3>Engineering-System Addendum: OpenSquilla / Claw-SWE-Bench</h3>
-<ul>
-  <li><strong>OpenSquilla is a serious practical neighbor, not a throwaway comparison.</strong> Its README tagline is "Same budget, more capability, better results," and the product guide frames the system around cost-per-success and long-running usefulness. That collides with a weak BudgetFlow pitch. The distinction must be made in the abstract, not buried in Related Work.</li>
-  <li><strong>OpenSquilla's mechanism is stronger than plain model routing.</strong> Its router selects configured model tiers, can affect reasoning level and response policy, and is paired with tool compression, cache-continuity safeguards, diagnostics, replay, durable sessions, MetaSkills, scheduling, and per-turn/per-session cost rollups. BudgetFlow should not pretend these are unsolved at the per-turn runtime layer.</li>
-  <li><strong>OpenSquilla still does not appear to solve Claim 1.</strong> The public primary docs show per-turn routing inside long sessions and reusable/scheduled workflows, but I did not find evidence of a shared hard dollar ledger across a fixed batch, pre-registered heterogeneous task values, or a policy that optimizes verified Total Resolved Value across competing tasks.</li>
-  <li><strong>Claw-SWE-Bench is methodological convergence, not just hygiene pressure.</strong> Its paper explicitly argues for resolved rate plus end-to-end cost under a fixed outer budget and shows a resolve-rate/cost Pareto frontier. Its README also describes a Lite subset selected by a cost-aware, rank-aware procedure. It already shares our evaluation instinct: accuracy alone is not enough.</li>
-  <li><strong>The remaining BudgetFlow gap is allocation, not reporting.</strong> Claw-SWE-Bench evaluates harness/model combinations under a common protocol; BudgetFlow decides which tasks receive scarce model opportunities under one shared budget and value matrix. This is the boundary to defend.</li>
-</ul>
+  <h3>不是“把我们打没了”，而是把边界逼清楚了</h3>
+  <ul>
+    <li><strong>OpenSquilla 的强项：</strong>cost-per-success、per-turn tier routing、reasoning policy、tool compression、diagnostics、replay、cache continuity、长会话可用性。</li>
+    <li><strong>Claw-SWE-Bench 的强项：</strong>统一 prompt / budget / patch extraction / cost reporting / Pareto frontier / Lite subset selection。它把 harness 也变成了评测对象。</li>
+    <li><strong>对我们的真实压力：</strong>如果我们还把自己写成“same budget, better results”这种泛口号，就会和它们撞车。</li>
+    <li><strong class="key">对我们的真实帮助：</strong><span class="key">它们反而逼我们把 Claim 1 收缩成更准确的话：固定任务批次下，跨任务地分配共享预算，并按任务价值结算 verified value。</span></li>
+  </ul>
 </div>
 
-<h2>Engineering Systems to Cite</h2>
 <div class="table-wrap">
 <table>
-<thead>
-<tr>
-  <th>Project</th>
-  <th>Why it matters</th>
-  <th>Threat to BudgetFlow</th>
-  <th>BudgetFlow boundary</th>
-  <th>What to absorb now</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-  <td><strong>OpenSquilla / Claw-SWE-Bench</strong><br><span class="cite">Open-source agent runtime + harness benchmark</span></td>
-  <td>OpenSquilla is the strongest engineering neighbor: cost-per-success framing, local tier router over configured model tiers, reasoning/prompt policy control, tool compression, cache continuity, diagnostics/replay, durable sessions, MetaSkills, scheduling. Claw-SWE-Bench adds fixed-protocol harness comparison, cost reporting, cache accounting, Pareto-frontier plots, and a cost-aware Lite subset.</td>
-  <td>High presentation risk. A reviewer can reasonably say "they also say same budget, better results" and "they already report cost/accuracy Pareto frontiers."</td>
-  <td>They optimize/evaluate agent runs and harnesses; BudgetFlow optimizes cross-task allocation under one shared hard budget and pre-registered Task Value. A scheduled MetaSkill is batch-adjacent, but without cross-task value-aware allocation it is not BudgetFlow's Claim 1 problem.</td>
-  <td>Adopt the framing discipline: fixed protocol, runner-side patch as primary artifact, official harness crosscheck, leakage/future-commit awareness, cost/cache reporting, and a "same router outside vs inside BudgetFlow ledger" ablation. Do not copy all product machinery.</td>
-</tr>
-<tr>
-  <td><strong>LiteLLM</strong><br><span class="cite">Gateway / enforcement layer</span></td>
-  <td>LiteLLM makes budget ceilings, virtual keys, user/team/key spend tracking, rate limits, and remaining-budget metrics concrete infrastructure. It is the kind of layer BudgetFlow could sit above.</td>
-  <td>Low Claim 1 threat, high infrastructure relevance. It enforces budget but does not decide how a scarce batch budget should be allocated by task value and verified success probability.</td>
-  <td>LiteLLM answers "can this key/user/team keep spending?" BudgetFlow answers "which task should get the next model opportunity before the shared budget runs out?"</td>
-  <td>Potential future hardening: per-policy or per-task virtual keys for provider-side enforcement, budget-crossed alerts, and spend reconciliation. Not necessary for the paper mechanism unless provider accounting remains a blocker.</td>
-</tr>
-<tr>
-  <td><strong>OpenHands</strong><br><span class="cite">Strong coding-agent baseline</span></td>
-  <td>OpenHands exposes a per-task budget cap and iteration cap in a mature coding-agent stack. It is a natural "strong executor with uniform per-task budget" comparison target.</td>
-  <td>Medium baseline pressure. If a strong agent with uniform caps beats BudgetFlow, the paper must explain whether value-aware allocation added anything beyond a capable executor and fixed per-task limits.</td>
-  <td>OpenHands caps each task independently; it does not reallocate saved budget from one task to higher-value remaining tasks under a shared ledger.</td>
-  <td>Use as a future baseline or executor substrate if budget allows. For current evidence, keep our existing pure-tier, budget-only, and RouteLLM-inspired controls strong; do not derail into a new harness migration before the current Claim 1 evidence is stable.</td>
-</tr>
-</tbody>
+  <thead>
+    <tr>
+      <th>问题</th>
+      <th>OpenSquilla / Claw-SWE-Bench</th>
+      <th>BudgetFlow</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>主要关心什么</td>
+      <td>让 agent 在单次会话或统一评测协议下更强、更省、更可观察</td>
+      <td><span class="key">让一批任务在同一个 shared hard budget 下拿到更高的总价值</span></td>
+    </tr>
+    <tr>
+      <td>决策粒度</td>
+      <td>per-turn、per-session、per-harness</td>
+      <td>cross-task allocation</td>
+    </tr>
+    <tr>
+      <td>有没有任务价值</td>
+      <td>没有预注册 heterogeneous task value</td>
+      <td><span class="key">有，且运行前冻结</span></td>
+    </tr>
+    <tr>
+      <td>有没有共享硬预算</td>
+      <td>公开资料里没有看到我们这种 batch-global ledger</td>
+      <td><span class="key">有，这是 Claim 1 的核心</span></td>
+    </tr>
+    <tr>
+      <td>我们该吸收什么</td>
+      <td>更硬的 cost/cache/trace/replay/reporting 习惯</td>
+      <td>继续把 allocation、coverage、sensitivity 和 frontier gap 讲清楚</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<h2>主要相关工作怎么摆</h2>
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr>
+      <th>工作</th>
+      <th>它做什么</th>
+      <th>和 BudgetFlow 的关系</th>
+      <th>BudgetFlow 的区别</th>
+      <th>在论文里怎么写</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>RouteLLM</strong><br><span class="cite">NeurIPS 2024</span></td>
+      <td>给单个 query 选便宜模型还是贵模型，本质是 per-query router。</td>
+      <td>很适合启发我们的 <span class="cite">RouteLLM-inspired learned router</span> baseline，但它原版不管 shared budget，也不管 Task Value。</td>
+      <td class="bf-diff">BudgetFlow 不只判断“这一条该上哪个模型”，而是判断“整批任务里下一笔 scarce budget 该花给谁”。</td>
+      <td>直觉例子：<span class="cite">用户只发来一条消息：“帮我写一封更正式的邮件。” 系统要做的不是管理预算，而只是判断：这一次回复值不值得上 GPT-4？</span><br>写成“强启发来源”，不是直接同问题工作。</td>
+    </tr>
+    <tr>
+      <td><strong>Cascade Routing</strong><br><span class="cite">ICML 2025 Poster</span></td>
+      <td>研究单个 query 上多模型级联怎样在 cost-quality 上最优。</td>
+      <td>它说明 per-query routing/cascade 这条线已经很成熟，但它不处理跨任务预算竞争。</td>
+      <td class="bf-diff">BudgetFlow 不是在一条请求里做“先便宜后升级”，而是在很多任务之间做预算分配与止损。</td>
+      <td>直觉例子：<span class="cite">像客服分诊。先让便宜模型答一次；如果看起来不靠谱，再升级到更强模型重答。目标是把这一条请求答好，不是考虑整批请求的钱该怎么分。</span><br>写成 per-query routing 的强代表工作。</td>
+    </tr>
+    <tr>
+      <td><strong>RouteNLP</strong><br><span class="cite">ACL 2026 Industry Track</span></td>
+      <td>在企业场景里尽量省钱，同时保证质量不低于某个门槛。</td>
+      <td>它解的是“在质量约束下最小化 cost”，我们解的是“在 cost 约束下最大化 value”。方向相反。</td>
+      <td class="bf-diff">BudgetFlow 接受“预算就是硬上限”这个前提，然后问在这条硬约束下怎么拿到更多 verified value。</td>
+      <td>直觉例子：<span class="cite">像一个客服团队经理说：“今天 5000 条用户消息，怎么把钱尽量省下来，但满意度绝不能跌破红线？” 这和 BudgetFlow 不同，因为它不是问“预算有限时先救哪种任务”。</span><br>非常适合写成“inverse objective”的对照。</td>
+    </tr>
+    <tr>
+      <td><strong>BAMAS</strong><br><span class="cite">AAAI 2026 Oral</span></td>
+      <td>在单个 task 内部给多 agent / 多 role 分模型与预算。</td>
+      <td>它强在 task 内部的 architecture design；我们强在 task 之间的 budget governance。</td>
+      <td class="bf-diff">BAMAS 解决“一个任务内部谁该用强模型”，BudgetFlow 解决“很多任务之间谁更值得先拿预算”。</td>
+      <td>直觉例子：<span class="cite">同一个编程任务里有三个角色：planner、critic、executor。问题是：谁该配强模型，谁用便宜模型就够了？它优化的是一个任务内部的分工，不是 30 个任务之间的先后顺序。</span><br>写成“within-task budgeted system”的最近邻。</td>
+    </tr>
+    <tr>
+      <td><strong>INTENT</strong><br><span class="cite">ICML 2025</span></td>
+      <td>在单个任务里规划工具调用，不要超过该任务自己的预算。</td>
+      <td>它是任务内部规划层；我们是任务之间分配层。两者是上下两层，不是同层竞争。</td>
+      <td class="bf-diff">INTENT 管“这个任务内部还要不要继续花”，BudgetFlow 管“整批任务里该把钱留给哪个任务”。</td>
+      <td>直觉例子：<span class="cite">像一个 agent 在做法律检索任务。它已经调了几次工具，现在要判断：还要不要再调一次贵 API，还是该停了？它关心的是这个任务内部怎么省，不是整批任务谁更值得花钱。</span><br>写成 scope 不同、可互补的工作。</td>
+    </tr>
+    <tr>
+      <td><strong>UCCI</strong><br><span class="cite">尚未发表（2026 arXiv）</span></td>
+      <td>把 model uncertainty 校准得更好，让升级/不升级更稳。</td>
+      <td>更像是可以改进 Model Fit 的部件，而不是 Claim 1 级别 baseline。</td>
+      <td class="bf-diff">UCCI 改善的是“升级判断更准”，BudgetFlow 解决的是“预算治理目标是什么、该先救谁”。</td>
+      <td>直觉例子：<span class="cite">像一个更稳的“升级提示器”。它不替你决定整批预算怎么分，只是帮你更有把握地判断：这一次从小模型升级到大模型，到底值不值。</span><br>放到机制层或 Claim 2 讨论里更合适。</td>
+    </tr>
+  </tbody>
 </table>
 </div>
 
 <div class="drop-note">
-<strong>Projects intentionally not promoted to the main engineering table:</strong> ORBIT/RouteJudge and LLMRouterBench are valuable methodology references for budget-swept router curves and router-evaluation limits, but they are router-evaluation infrastructure rather than batch-value allocation systems. OpenRouter, Portkey, Langfuse, Envoy AI Gateway, Aider, ModelCascade, and xRouter-LLM are useful prose-only neighbors for routing, enforcement, observability, or manual tiering. They should not crowd the main Related Work argument unless a reviewer specifically asks for gateway or router coverage.
+  <strong class="key">Related Work 不需要铺太开：</strong><span class="key">正文重点写 OpenSquilla / Claw-SWE-Bench、RouteLLM、RouteNLP、BAMAS、INTENT 就够了。</span> 像 ORBIT、RouteJudge、LLMRouterBench、OpenRouter、Portkey、Langfuse 这些一笔带过即可，不要把主线写散。
 </div>
 
-<h2>What This Changes for BudgetFlow</h2>
+<h2>这会怎样改变我们的论文写法</h2>
 <div class="framing">
-<ul>
-  <li><strong>Presentation must become more precise.</strong> OpenSquilla already owns a broad "same budget, more capability" story. BudgetFlow should lead with the stricter object: a fixed task batch, one shared hard budget, pre-registered task values, verified outcomes, and cross-task allocation.</li>
-  <li><strong>Evaluation must treat cost/cache as paper evidence.</strong> Claw-SWE-Bench and OpenSquilla make cost, usage, cache, and replay visible. BudgetFlow's Claim 1 matrix should report resolved count, Total Resolved Value, spend, value per dollar, execution coverage, KV-cache sensitivity, budget-cap sensitivity, value-profile sensitivity, and frontier gap.</li>
-  <li><strong>Hygiene should be focused on contamination paths that can change pass/fail.</strong> Runner-side workspace diff should remain the scoring patch source; submitted patches are audit artifacts. Leakage/future-fix checks matter when agents can read historical reports, gold patches, answer-key fields, or future commits.</li>
-  <li><strong>The strongest future ablation is still compositional:</strong> run a SquillaRouter-style local router outside BudgetFlow, then the same router inside BudgetFlow's shared ledger and value allocation. That directly tests whether locally good routing is globally suboptimal under one shared hard budget.</li>
-  <li><strong>LiteLLM/OpenHands are useful because they clarify layers.</strong> LiteLLM is enforcement infrastructure; OpenHands is a strong executor with per-task caps. BudgetFlow's claim lives above both: it decides where the shared budget should flow.</li>
-</ul>
+  <ul>
+    <li><strong class="key">第一段要更收敛。</strong> <span class="key">不要再泛泛说“same budget, better results”。要直接说：固定任务批次、一个共享硬预算、任务价值不同、结果由 verifier 结算。</span></li>
+    <li><strong class="key">Claim 1 的主表要同时报标准指标和论文指标。</strong> 也就是 Resolved Count / Resolved Rate 加上 Total Resolved Value / TRV per Dollar。</li>
+    <li><strong>要明确承认 OpenSquilla / Claw-SWE-Bench 的工程强度。</strong> 这样不是示弱，而是让我们的边界更可信。</li>
+    <li><strong class="key">要把 strongest baseline 保持强。</strong> pure T3、RouteLLM-inspired、budget-only 都不能偷着削弱；BudgetFlow 输了就诚实写边界，赢了才更有说服力。</li>
+    <li><strong class="key">Related Work 的落点不是“别人都不如我们”，而是“别人解的是相邻问题，我们解的是这个更具体、更窄但也更清晰的问题”。</strong></li>
+  </ul>
 </div>
 
-<!-- ═══════════ MAIN TABLE ═══════════ -->
-<h2>Main Comparison Table</h2>
-
-<div class="table-wrap">
-<table>
-<thead>
-<tr>
-  <th class="col-paper">Paper</th>
-  <th class="col-problem">What problem it solves <span class="cite">(plain English)</span></th>
-  <th class="col-unit">Decision unit</th>
-  <th class="col-budget">Budget type</th>
-  <th class="col-value">Task value?</th>
-  <th class="col-method">Method <span class="cite">(plain English)</span></th>
-  <th class="col-expt">Experiment setup</th>
-  <th class="col-metrics">Main metrics</th>
-  <th class="col-same">Same problem as BudgetFlow?</th>
-  <th class="col-adds">What BudgetFlow adds</th>
-  <th class="col-baseline">Claim 1 baseline?</th>
-</tr>
-</thead>
-<tbody>
-
-<!-- RouteLLM -->
-<tr>
-  <td class="col-paper">RouteLLM<br><span class="cite">Ong et al., NeurIPS 2024<br>arXiv:2406.18665</span></td>
-  <td class="col-problem">When you get a user query, should you call the cheap model or the expensive one? Train a classifier to decide, so you get near-expensive-model quality at a fraction of the cost. <span class="cite">§1, §3</span></td>
-  <td class="col-unit">Single query</td>
-  <td class="col-budget">No budget. Uses a soft threshold α ∈ [0,1] that controls the % of queries sent to the strong model. Sweeping α traces a quality-cost curve. No dollar amounts in routing decisions. <span class="cite">§3.2, Eq. 7-8</span></td>
-  <td class="col-value no">No</td>
-  <td class="col-method">Train a model (BERT or Llama-3) on Chatbot Arena human preference data to predict P(strong model wins | query). Route to strong model if probability exceeds threshold. Four router architectures evaluated. <span class="cite">§4.2</span></td>
-  <td class="col-expt">MMLU (14K), MT Bench (160), GSM8K (1K+). Baselines: Random router, Unify AI, Martian. Metrics: CPT(x%), APGR. Model pair: GPT-4/Mixtral (~103× cost ratio). No multi-seed reported. Not deployed. <span class="cite">§5, Tables 1-4</span></td>
-  <td class="col-metrics">CPT(50%), CPT(80%), APGR, strong-model call %, cost savings ratio <span class="cite">§3.2</span></td>
-  <td class="col-same no">NO</td>
-  <td class="col-adds">Shared hard budget + task value + verified outcomes + batch-level allocation. RouteLLM routes one query at a time; BudgetFlow allocates across a whole batch under one cap.</td>
-  <td class="col-baseline"><strong>RouteLLM-inspired adaptation:</strong> train classifier on SWE-bench task features → T2/T3, under shared cap. Must disclose 3 gaps: (a) preference data → task success data, (b) single-turn → multi-turn, (c) no value → value-oblivious. <span class="cite">See north_star.md §Draft-Critical Evidence Bar Memo</span></td>
-</tr>
-
-<!-- Cascade Routing -->
-<tr>
-  <td class="col-paper">Cascade Routing<br><span class="cite">Dekoninck et al., ICML 2025 poster<br>arXiv:2410.10347</span></td>
-  <td class="col-problem">Given a query and many models of varying cost/quality, what's the optimal way to pick which model(s) to run and in what order? Unifies routing (pick one) and cascading (fixed chain). <span class="cite">§1, §4, Definition 5</span></td>
-  <td class="col-unit">Single query</td>
-  <td class="col-budget">No. E[cost] ≤ B — expected cost over query distribution enforced via Lagrange multiplier λ. Sweeping λ produces quality-cost curves. Not a hard cap. <span class="cite">§2, Definition 2</span></td>
-  <td class="col-value no">No</td>
-  <td class="col-method">At each step, re-evaluate ALL possible subsets of remaining models, pick the one with best marginal cost-quality tradeoff. Can skip, reorder, or combine models. Proves optimality for per-query expected-cost formulation (Theorem 3). Pruning via Lemma 1 keeps it tractable. <span class="cite">§4, Algorithm 3</span></td>
-  <td class="col-expt">RouterBench (8 datasets, 3/5/11 models), SWE-bench (10 models, test cases as quality oracle), Minerva Math + LiveCodeBench. Baselines: optimal routing, baseline cascading, optimal cascading. Metrics: AUC over quality-cost curves. Seeds: not in main text, CIs in Appendix E. <span class="cite">§5, Tables 1-4</span></td>
-  <td class="col-metrics">AUC, quality at cost, cost at quality <span class="cite">§5</span></td>
-  <td class="col-same no">NO</td>
-  <td class="col-adds">Batch coupling + task value + hard cap. Cascade Routing's SWE-bench usage is as quality oracle for single-turn model selection, not agent-task resolution.</td>
-  <td class="col-baseline"><span class="no">No.</span> Per-query expected cost with no task value. Even if adapted to a batch cap, would need fundamental restructuring: batch coupling, value-weighting, verifier-grounded outcomes. The formal optimality framework could inform BudgetFlow theory but does not provide a runnable baseline.</td>
-</tr>
-
-<!-- RouteNLP -->
-<tr>
-  <td class="col-paper">RouteNLP<br><span class="cite">Guo et al., ACL 2026 Industry<br>~5K queries/day pilot</span></td>
-  <td class="col-problem">An enterprise runs ~5K NLP queries/day across 6 task types. They want near-GPT-4 quality at a fraction of the cost. Build a router that sends each query to the cheapest of 4 model tiers that can handle it well, with formal quality guarantees. <span class="cite">§1, §6</span></td>
-  <td class="col-unit">Single query</td>
-  <td class="col-budget">No shared budget. Optimizes: minimize expected cost s.t. per-task quality ≥ τ_t. Cost is unbounded — the constraint is on quality, not spending. Per-query only; no cross-task cap. <span class="cite">§3, Eq. 1</span></td>
-  <td class="col-value no">No</td>
-  <td class="col-method">DistilBERT router predicts cheapest capable tier for each query. Conformal cascading: if token-level uncertainty exceeds tier/task threshold, escalate to next tier. Closed-loop distillation co-optimization: failure clusters → distill frontier model outputs → retrain cheaper tiers → recalibrate router. Iterates 2-3× offline. <span class="cite">§3.1-3.3, Algorithm 1</span></td>
-  <td class="col-expt">6 tasks (Finance NER, summarization, CS intent, response gen, legal clause extraction, risk assessment). 40K train / 8.8K test. 4-tier portfolio (DistilBERT → Mistral-7B → Mixtral-8x7B → GPT-4, ~800× cost range). Baselines: Always-T4, Always-T2, Random, Rule-Based, FrugalGPT, HybridLLM, RouteLLM, AutoMix (all extended to 4 tiers). 5 seeds, paired bootstrap. 8-week shadow pilot. <span class="cite">§4, §6, Tables 1-4</span></td>
-  <td class="col-metrics">Quality Ratio, Cost Ratio (vs Always-T4), p99 latency, SLA violation rate, task-specific F1/ROUGE-L/BERTScore <span class="cite">§4</span></td>
-  <td class="col-same no">NO</td>
-  <td class="col-adds">RouteNLP solves the inverse: minimize cost given a quality floor. BudgetFlow: maximize verified value given a cost ceiling. RouteNLP's cascading and distillation are orthogonal techniques that could layer on top of BudgetFlow's shared-budget allocation.</td>
-  <td class="col-baseline"><span class="no">No.</span> Inverse objective, no shared budget, no task value. Adapting would invert the optimization and add cross-task coupling — it would no longer be RouteNLP. Best used as a deployment-scale neighbor in Related Work prose.</td>
-</tr>
-
-<!-- BAMAS -->
-<tr>
-  <td class="col-paper">BAMAS<br><span class="cite">Yang et al., AAAI 2026 Oral<br>arXiv:2511.21572</span></td>
-  <td class="col-problem">Multi-agent systems (AutoGen, MetaGPT) burn money unpredictably. Given a per-task budget, jointly pick which LLMs to assign to each agent role and how agents should collaborate, to maximize accuracy without going over budget. <span class="cite">§1, §3</span></td>
-  <td class="col-unit">Per-task (one task at a time)</td>
-  <td class="col-budget"><strong>Per-task</strong> hard budget B. Each task gets its own independent budget. No cross-task sharing. Budget B_j noted as "per-run budget" in notation table. <span class="cite">§3, Appendix A Table 5</span></td>
-  <td class="col-value no">No</td>
-  <td class="col-method">ILP selects which LLMs to provision under budget, using tiered weights that guarantee lexicographically optimal assignment. Offline RL (REINFORCE) picks collaboration topology (Linear/Star/Feedback/Planner-Driven) from pre-collected task-budget-topology-outcome data. Assigns strongest LLMs to critical roles (planner → critic → executor). <span class="cite">§3.1-3.3, Eqs 1-4</span></td>
-  <td class="col-expt">GSM8K (1319 test), MBPP (500 test), MATH (1000 test). Baselines: AutoGen, MetaGPT, ChatDev (DeepSeek-V3 + GPT-4.1 nano variants), Naive-CostAware. Metrics: Accuracy, Avg Cost, Out-of-Budget count. Budget levels: 500-2000 range. No multi-seed reported. Not deployed. <span class="cite">§4, Tables 1-3</span></td>
-  <td class="col-metrics">Accuracy (%), Average Cost, Out-of-Budget count <span class="cite">§4, Table 1</span></td>
-  <td class="col-same no">NO</td>
-  <td class="col-adds">Cross-task budget allocation + task value. BAMAS optimizes LLM assignment + topology within one task. BudgetFlow allocates budget across a batch of tasks with different values. BAMAS could serve as the <em>executor</em> inside BudgetFlow's per-task budget envelope.</td>
-  <td class="col-baseline"><span class="no">Not directly.</span> Would need: (1) replace per-task budget with shared batch budget constraint, (2) add task values to ILP objective, (3) jointly optimize across batch. The ILP + RL machinery is potentially reusable but requires substantial restructuring.</td>
-</tr>
-
-<!-- UCCI -->
-<tr>
-  <td class="col-paper">UCCI<br><span class="cite">Kotte, 2026<br>arXiv:2605.18796</span></td>
-  <td class="col-problem">Cascade routers use uncalibrated confidence scores, so thresholds don't transfer across workloads. Replace them with rigorously calibrated uncertainty estimates (isotonic regression on token-level margins) so escalation decisions are statistically sound. <span class="cite">§1, §4</span></td>
-  <td class="col-unit">Single query</td>
-  <td class="col-budget">No. Constraint is accuracy lower bound: minimize expected cost s.t. F1 ≥ τ. Cost minimization is unconstrained by any cap. τ = 0.91 is a population-level target, not a per-batch hard cap. <span class="cite">§3, Eqs 2-3</span></td>
-  <td class="col-value no">No</td>
-  <td class="col-method">(1) Compute token-margin uncertainty u(x) for each small-model output. (2) Calibrate via isotonic regression: u → P(error | u), reducing ECE from 0.12 to 0.03. (3) Grid-search threshold θ* on validation: min cost s.t. F1 ≥ τ. Cascade: if calibrated error prob ≤ θ, accept small model; else escalate to large model. <span class="cite">§4.1-4.3, Fig 1</span></td>
-  <td class="col-expt">Single proprietary NER dataset (75K queries, photo metadata, 6 entity types). Models: 4B / 12B instruction-tuned (H100, vLLM). Baselines: Always-small, Always-large, Entropy threshold, Conformal prediction, FrugalGPT-style threshold. Metrics: Micro-F1, ECE, normalized cost (c_s=1, c_l=3.02 from latency). No multi-seed. Not deployed. <span class="cite">§6, Tables 1-4</span></td>
-  <td class="col-metrics">Micro-F1, ECE (Expected Calibration Error), cost ratio <span class="cite">§6.2-6.3</span></td>
-  <td class="col-same no">NO</td>
-  <td class="col-adds">UCCI calibrates Model Fit; BudgetFlow allocates budget. UCCI's calibration improves a per-query cascade. BudgetFlow's allocation governs cross-task tier selection under a shared cap. Orthogonal: better calibration could improve BudgetFlow's Model Fit inputs (Claim 2).</td>
-  <td class="col-baseline"><span class="no">No for Claim 1.</span> UCCI is a calibration technique, not a policy. Replacing BudgetFlow's Model Fit estimates with UCCI-calibrated ones tests input quality, not policy architecture. Belongs in Claim 2 mechanism analysis.</td>
-</tr>
-
-<!-- INTENT -->
-<tr>
-  <td class="col-paper">INTENT<br><span class="cite">Liu et al., ICML 2025<br>arXiv:2602.11541</span></td>
-  <td class="col-problem">An LLM agent doing multi-step tool use (e.g., stock research, legal due diligence, cloud diagnostics) must call paid APIs. Each tool call costs money. The agent needs to plan which tools to call and when to stop, without exceeding a per-task budget. <span class="cite">§1, §2.2</span></td>
-  <td class="col-unit">Per-task (one task, independent budget)</td>
-  <td class="col-budget"><strong>Per-task</strong> hard monetary budget B=50 (credit units). Reward = 0 if total tool cost > B. Each task gets its own B. No cross-task sharing. 765 test instances, each independent. <span class="cite">§2.4 Eq. 1, §4.1</span></td>
-  <td class="col-value no">No</td>
-  <td class="col-method">Language World Model (Qwen2.5-3B) predicts tool output structure. Intention Predictor estimates P(tool call satisfies agent's intent). INTENT proper: simulate ideal trajectory (all intents satisfied) → geometric cost calibration (expected cost = c_k / ρ̂_k, modeling retries) → accept action if γ · Σ calibrated_costs ≤ remaining budget (γ=0.5). Simulation reuse when plan stays on track. <span class="cite">§3.1-3.3</span></td>
-  <td class="col-expt">StableToolBench (765 test instances, 16K+ RapidAPI tools, 49 categories). Synthetic tool prices U(5,50). 20 tools per task. Backbones: GPT-4.1 mini, GPT-5 nano. Baselines: Raw, Prompt, DFSDT, BTP, BATS. Metrics: Pass Rate, Budget-Optimal Pass Rate, Win Rate, Feasible Rate, Avg Cost. ~186K training trajectories. Not deployed. <span class="cite">§4, Tables 1-3</span></td>
-  <td class="col-metrics">Pass Rate, Budget-Optimal Pass Rate (OR), Win Rate, Feasible Rate, Avg Cost <span class="cite">§4.1, Table 1</span></td>
-  <td class="col-same no">NO</td>
-  <td class="col-adds">INTENT plans tool calls within one task under a per-task budget. BudgetFlow allocates model tiers across many tasks under one shared budget. These are complementary layers: INTENT could be the inner executor; BudgetFlow is the outer allocator.</td>
-  <td class="col-baseline"><span class="no">No.</span> Wrong decision unit (within-task tool planning, not cross-task budget allocation). Would need new meta-controller for cross-task allocation + task value + SWE-bench verifier. Engineering cost disproportionate. Best used as a prose contrast to clarify BudgetFlow's cross-task scope.</td>
-</tr>
-
-<!-- BudgetFlow -->
-<tr class="bf-row">
-  <td class="col-paper"><strong>BudgetFlow</strong><br><span class="cite">(this paper)</span></td>
-  <td class="col-problem"><strong>You have a fixed batch of 30 bug reports, two model tiers (T2 cheap, T3 strong), and one shared hard budget. Some bugs are critical, others cosmetic. How do you allocate the budget across tasks so the total value of resolved bugs is maximized?</strong></td>
-  <td class="col-unit"><strong>Per-task in a fixed batch</strong></td>
-  <td class="col-budget"><strong>Shared hard budget</strong> across entire batch. Budget Regime Compiler sets the cap pre-run; Runtime allocates within it. Cap depletes in real time; remaining tasks fail when budget exhausted.</td>
-  <td class="col-value yes">Yes — pre-registered Task Values per task</td>
-  <td class="col-method"><strong>Budget Regime Compiler</strong> (pre-run) + <strong>Runtime value-aware policy</strong>: selects T2 or T3 at task start based on task value, expected cost, expected pass probability, and remaining budget. Tracks cumulative spending. Tightens downstream access as budget depletes.</td>
-  <td class="col-expt">Fixed 30-task SWE-bench workload, fixed task order, pre-registered shared hard cap. T2/T3 model tiers. Baselines: pure T2, pure T3, RouteLLM-inspired learned router, budget-only (value-blind). Metrics: Resolved Count, Resolved Rate, Total Spend, Cost per Resolved Task, Total Resolved Value, Total Resolved Value/$. Sensitivity: KV-cache, value profiles, budget caps.</td>
-  <td class="col-metrics"><strong>Total Resolved Value</strong> (paper-defined), Resolved Count (SWE-bench standard), Total Resolved Value/$</td>
-  <td class="col-same" style="color: var(--accent);">—</td>
-  <td class="col-adds" style="color: var(--accent); font-weight: 600;">First system combining: fixed batch + shared hard budget + pre-registered task value + verified outcomes + auditable budget compilation.</td>
-  <td class="col-baseline" style="color: var(--accent); font-weight: 600;">—</td>
-</tr>
-
-</tbody>
-</table>
-</div>
-
-<!-- ═══════════ RECOMMENDED FRAMING ═══════════ -->
-<h2>Recommended Framing for BudgetFlow Paper</h2>
-
-<div class="framing">
-<ul>
-  <li><strong>RouteLLM-inspired learned task router is the strongest Claim 1 baseline,</strong> but the <em>original</em> RouteLLM paper does not have a shared budget, task value, or verified outcomes. The baseline adapts the architecture (classifier trained on task features → pass/fail labels), not the original training objective. Frame it as "RouteLLM-inspired" with explicit disclosure of three adaptation gaps: Chatbot Arena preference data → SWE-bench task success data, single-turn queries → multi-turn agent tasks, uniform query weight → value-oblivious by design.</li>
-
-  <li><strong>Cascade Routing (ICML 2025 poster) replaces FrugalGPT as the canonical cascade paper.</strong> It has formal optimality proofs, SWE-bench evaluation, and a stronger venue. But it remains per-query with expected-cost constraints — no shared budget, no task value. Position it as the state of the art in <em>per-query cost-quality routing</em>, then contrast with BudgetFlow's <em>batch-level value maximization</em>.</li>
-
-  <li><strong>RouteNLP is the deployment-level neighbor with an inverse objective.</strong> It proves that industrial routing at scale (~5K queries/day) works. But it minimizes cost subject to quality ≥ τ, while BudgetFlow maximizes value subject to cost ≤ B. This is the cleanest "we solve the opposite problem" framing in the paper. RouteNLP's conformal cascading and distillation co-optimization are orthogonal techniques that could complement BudgetFlow's shared-budget allocation in future work.</li>
-
-  <li><strong>BAMAS (AAAI 2026 Oral) is the closest budget-constrained neighbor but within-task, not cross-task.</strong> Its ILP + offline RL formulation for LLM selection under a per-task budget is impressive (86% cost reduction on code gen), but it allocates budget to agent roles inside one task, not to tasks inside a batch. This is a crisp boundary: BAMAS handles <em>within-task architecture design</em>; BudgetFlow handles <em>cross-task budget governance</em>.</li>
-
-  <li><strong>UCCI is a calibration mechanism, not a policy.</strong> Its isotonic regression on token margins (ECE 0.12 → 0.03) is valuable methodology for BudgetFlow's Model Fit estimation. Position it in Claim 2 mechanism discussion, not Claim 1 baselines. The right question is "does better Model Fit calibration improve BudgetFlow's allocation decisions?" not "does UCCI beat BudgetFlow?"</li>
-
-  <li><strong>INTENT studies within-task tool-call planning under a per-task budget; BudgetFlow studies cross-task model-tier allocation under a shared budget.</strong> These are complementary decision layers. The paper should add one sentence: "INTENT manages which tools to call and when to stop inside one task; BudgetFlow manages which tasks get scarce model opportunities inside one budget." INTENT's learned world model and intention predictor could theoretically serve as the inner executor within BudgetFlow's outer allocation loop.</li>
-
-  <li><strong>BudgetFlow's core distinction is irreplaceable:</strong> fixed batch + shared hard budget + pre-registered task value + verified resolved value. Zero of the 6 papers combine these four. The paper's novelty argument should center on this combination, not on individual mechanism components (routing, calibration, or tool planning).</li>
-
-  <li><strong>Use the "inverse problem" framing consistently.</strong> RouteNLP, UCCI, and Cascade Routing all solve min cost s.t. quality ≥ τ. BudgetFlow solves max value s.t. cost ≤ B. The inverse framing is intuitive, memorable, and makes the problem-class distinction clear to reviewers without requiring them to read code or trace experiments.</li>
-</ul>
-</div>
-
-<!-- ═══════════ DROPPED PAPERS ═══════════ -->
-<h2>Papers Considered but Not in Main Table</h2>
-
-<div class="drop-note">
-<strong>FrugalGPT (Chen et al., 2023):</strong> Pioneered LLM cascading (700+ citations), but its soft average budget E[cost] ≤ b and DistilBERT answer-quality scorer make it a weaker cascade representative than Cascade Routing (ICML 2025 poster), which adds formal optimality proofs and SWE-bench evaluation. Mention in prose as the first LLM cascade paper, then pivot to Cascade Routing for current state of the art.<br><br>
-
-<strong>Topaz (Okamoto et al., 2026, CHI Workshop):</strong> Moves to prose-only because BAMAS (AAAI 2026 Oral) provides a stronger empirical budget-constrained system for the main table. <em>However, Topaz remains important to BudgetFlow's story:</em> its skill-based explainable routing and structured audit traces are directly relevant to BudgetFlow's transparency and auditability goals. The 8-skill taxonomy and trace-driven explanation approach should be cited in the explainable AI / transparent orchestration section of Related Work. The appendix DP formulation (budget-based mode) is a textbook knapsack — not a novel contribution — but the idea of budget-constrained task-to-model assignment under an auditable plan aligns with BudgetFlow's compiler design.<br><br>
-
-<strong>Additional prose-only citations:</strong> ZEBRA (Hamri & Talgam-Cohen, 2026) — zero-shot budget splitting supports the premise that structured allocation beats LLM-direct. Triage (Madeyski, 2025) — SWE-bench-specific routing with code health signals, preliminary. Varangot-Reille et al. (2025) — comprehensive routing taxonomy survey; cite once to position BudgetFlow. HybridLLM (Ding et al., ICLR 2024) — early ICLR router, superseded by RouteLLM. RouterBench (Hu et al., 2024) — standard routing benchmark.
+<h2>最后一句人话</h2>
+<div class="summary-box">
+  <h3>审稿人版本</h3>
+  <ul>
+    <li>OpenSquilla / Claw-SWE-Bench 证明了 cost-aware agent runtime 和 cost-aware benchmark 已经很成熟。</li>
+    <li><span class="key">BudgetFlow 要守住的贡献，不是再发明一个 router，而是提出并验证：当一批任务共享一个硬预算、任务价值不同、结果可验证时，怎样做跨任务预算治理。</span></li>
+    <li><span class="key">只要这句话立得住，related work 就是在增强我们，而不是削弱我们。</span></li>
+  </ul>
 </div>
 
 </body>
