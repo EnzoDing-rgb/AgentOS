@@ -24,45 +24,42 @@ when a learned router is a strong competitor.
 
 ## Writing Rules
 
-- Use **Main Claim** in the paper. Do not use Claim 1 in reviewer-facing prose.
+- Use **Main Claim** in the paper.
 - Put finer-grained routing, stage-aware routing, escalation policy, and learned
   stop/continue behavior in **future work**.
-- Do not use double negation.
-- Do not mention *Attention Is All You Need* in the paper. Keep it only as an
-  internal reminder that strong papers often have simple framing.
-- Do not use invented labels such as IsoBudget or scaling-law frontier.
-- Use scaling-law papers only for the scientific style of fixed-resource
-  frontier analysis. Do not claim a scaling law.
-- Do not attack existing routers. Present per-query routing, per-task routing,
-  and batch-level budget governance as different useful layers.
+- Write in direct positive claims.
+- Use fixed-resource frontier analysis as the scientific style: define the
+  resource constraint, show the curve, and explain the boundary conditions.
+- Present per-query routing, per-task routing, and batch-level budget
+  governance as different useful layers.
 
 ## Canonical Terms
 
-| Use | Avoid | Meaning |
-|---|---|---|
-| BudgetFlow | BodyFlow, BuddyFlow, bugfulflow | The proposed batch-level budget governance framework. |
-| Main Claim | Claim 1 | The paper's central claim about shared-budget value allocation. |
-| Total Resolved Value, TRV | Total Result Value | Sum of pre-registered Task Value over verified resolved tasks. |
-| Task Value | ValueSource in prose | Value assigned before execution to a verified resolved task. |
-| estimated token demand | difficulty, effort, info | Run-before estimate of token/runway need. |
-| shared hard budget | total cap, budget pool | One hard spending cap shared by the whole task batch. |
-| cheap model | T2 in prose | The cheaper configured model tier in the paper experiments. |
-| strong model | T3 in prose | The stronger configured model tier in the paper experiments. |
-| cheap-model-only baseline | pure T2 | Baseline that uses the cheap model for every task. |
-| strong-model-only baseline | pure T3 | Baseline that uses the strong model for every task. |
-| learned task-router baseline | RouteLLM baseline | Baseline that chooses cheap or strong model per task without Task Value. |
-| budget-only baseline | weak budget baseline | Baseline that observes budget pressure but not Task Value. |
-| BudgetFlow task-level | BF task-level | Main BudgetFlow policy for the current paper evidence. |
-| operating condition | regime | Budget/model/cost situation in which a policy is evaluated. |
-| cost-value frontier | scaling-law frontier | Boundary of policies where no other policy is both cheaper and higher-TRV. |
-| budget sensitivity | Budget Cap sensitivity, IsoBudget | No-paid replay under tighter or looser shared hard budgets. |
-| Task Value sensitivity | ValueSource sensitivity | Re-scoring the same outcomes under alternate Task Value profiles. |
-| KV Cache Cost-Discount sensitivity | CostSource sensitivity | Re-costing repeated input tokens under KV-cache discount assumptions. |
-| task-level model advantage analysis | frontier bucket diagnostic | Analysis of where cheap or strong model is cheaper, stronger, or both fail. |
+| Term | Meaning |
+|---|---|
+| BudgetFlow | The proposed batch-level budget governance framework. |
+| Main Claim | The paper's central claim about shared-budget value allocation. |
+| Total Resolved Value, TRV | Sum of pre-registered Task Value over verified resolved tasks. |
+| Task Value | Value assigned before execution to a verified resolved task. |
+| estimated token demand | Run-before estimate of token/runway need. |
+| shared hard budget | One hard spending cap shared by the whole task batch. |
+| cheap model | The cheaper configured model tier in the paper experiments. |
+| strong model | The stronger configured model tier in the paper experiments. |
+| cheap-model-only baseline | Baseline that uses the cheap model for every task. |
+| strong-model-only baseline | Baseline that uses the strong model for every task. |
+| learned task-router baseline | Baseline that chooses cheap or strong model per task without Task Value. |
+| budget-only baseline | Baseline that observes budget pressure but not Task Value. |
+| BudgetFlow task-level | Main BudgetFlow policy for the current paper evidence. |
+| operating condition | Budget/model/cost situation in which a policy is evaluated. |
+| cost-value frontier | Boundary of policies where no other policy is both cheaper and higher-TRV. |
+| budget sensitivity | No-paid replay under tighter or looser shared hard budgets. |
+| Task Value sensitivity | Re-scoring the same outcomes under alternate Task Value profiles. |
+| KV Cache Cost-Discount sensitivity | Re-costing repeated input tokens under KV-cache discount assumptions. |
+| task-level model advantage analysis | Analysis of where cheap or strong model is cheaper, stronger, or both fail. |
 
-Internal code and historical artifacts may still use T2/T3. Reviewer-facing
-writing should use cheap model and strong model unless a catalog field or JSON
-schema is being discussed.
+Internal code and historical artifacts may still use model-tier slot names.
+Reviewer-facing writing should use cheap model and strong model unless a catalog
+field or JSON schema is being discussed.
 
 ## Terms To Explain Once
 
@@ -145,7 +142,7 @@ where the strong-model-only baseline is already a strong boundary, and where
 the learned task-router baseline is close.
 
 Use terms such as cost-value curve, cost-value frontier, budget sensitivity,
-and Pareto frontier. Do not call the figure a scaling-law curve.
+and Pareto frontier.
 
 ## Baselines
 
