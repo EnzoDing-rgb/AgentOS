@@ -33,6 +33,29 @@ when a learned router is a strong competitor.
 - Present per-query routing, per-task routing, and batch-level budget
   governance as different useful layers.
 
+## Paper Draft Workflow
+
+The paper draft uses a PDF-first LaTeX workflow.
+
+- The canonical manuscript source lives under `paper1/paper/`.
+- `paper1/paper/main.tex` is the main paper source.
+- `paper1/paper/references.bib` stores bibliography entries.
+- `paper1/paper/figures/` stores paper figures.
+- The working review artifact is `paper1/paper/main.pdf`.
+
+HTML files are auxiliary visual documents. The active related-work visual is
+`paper1/docs/related_work.html`, and its path stays fixed.
+
+## Related Work Correction Order
+
+`paper1/docs/related_work.html` is the source of truth for related-work
+positioning. Corrections to years, venues, project names, scope boundaries, and
+primary-source claims should land there first.
+
+The paper's Related Work section should then be written from the corrected
+`related_work.html`. Citation hygiene can use narrow checks, but the correction
+target remains `related_work.html`, not a temporary draft paragraph.
+
 ## Canonical Terms
 
 | Term | Meaning |
@@ -203,7 +226,7 @@ across every domain.
 
 ## Future Work
 
-Future work has three natural extensions.
+Future work has four natural extensions.
 
 First, BudgetFlow can study finer-grained allocation policy. This combines
 stage-aware routing, segment-level routing, and escalation into one question:
