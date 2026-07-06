@@ -2,7 +2,7 @@
 
 This is the current reviewer-facing source of truth for the BudgetFlow paper.
 The previous long-form project memo is archived at
-`paper1/docs/north_star_archive_20260706.md`.
+`paper1/docs/archive/north_star_archive_20260706.md`.
 
 ## Main Claim
 

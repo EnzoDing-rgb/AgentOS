@@ -77,7 +77,7 @@ These are the short-form checks every worker should keep in view:
 - Avoid broad, unbounded repo archaeology. Read the few files and artifacts needed to answer the current evidence question, then act or summarize the remaining uncertainty.
 - Do not keep historical compatibility in active runtime, tests, or current docs unless it protects a current paid-run safety boundary. Delete retired aliases, fallback branches, and stale schemas instead of carrying them forward. Historical JSONL/reports are forensic evidence; old schemas and retired terms must not drive Learn Policy Inputs, ValueSource, CostSource, routing, or paper metrics.
 - When an obsolete path is exposed by a concrete bug, audit, or failing test, delete that path and the tests that assert retired behavior. Do not preserve compatibility shims, and do not turn one exposed deletion into a broad compatibility sweep; leave unexposed tests alone until they fail or block current work.
-- Keep docs meaningful: update `paper1/docs/north_star.md` or `paper1/docs/progress.md` only when a real decision changes.
+- Keep docs meaningful: update `paper1/docs/north_star.md` only when a real decision changes.
 - Commit and push stable slices after no-paid gates pass. Avoid noisy commits, but do not leave verified mechanism changes uncommitted.
 
 ## Worker Reports
