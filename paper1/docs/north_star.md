@@ -236,11 +236,12 @@ Second, BudgetFlow can study continual policy learning. This combines learned
 stop/continue decisions and memory into one question: how should completed
 runs improve future allocation without weakening auditability?
 
-Third, BudgetFlow can become serving-aware. In a local serving stack, engines
-such as vLLM or SGLang expose batching, prefill latency, and KV/prefix-cache
-locality that cloud APIs often hide. A bounded follow-up can compare normal
-BudgetFlow with a cache-sticky variant under the same shared budget and measure
-whether cache-locality costs change the cost-value frontier.
+Third, BudgetFlow can become serving-aware by connecting its value and budget
+policy to serving substrates such as vLLM, SGLang, or NVIDIA Dynamo. These
+systems expose batching, prefill cost, priority, and KV/prefix-cache locality.
+A bounded follow-up can study how Task Value, remaining budget, and verified
+outcome history should become serving hints such as priority, continuation, or
+cache-sticky preference under the same shared hard budget.
 
 Fourth, BudgetFlow can extend from one budget owner to multiple budget owners.
 The current paper studies one entity allocating one shared hard budget across a

@@ -147,15 +147,16 @@ tr.bf-row:nth-child(even) td { background: #e6f7f0; }
 <body>
 
 <h1>BudgetFlow Related Work 对比</h1>
-<div class="subtitle">这份页面的目的不是堆论文，而是把问题讲清楚：别人已经做到了哪一步，我们真正新增的是什么，哪些地方需要更克制地写。</div>
+<div class="subtitle">这份页面的目的：把问题讲清楚，说明别人已经做到了哪一步，我们真正新增的是什么，哪些地方需要更克制地写。已按 primary / official sources 做 2026-07-06 校正。</div>
 
 <h2>先说结论</h2>
 <div class="summary-box">
   <h3>一句话版本</h3>
   <ul>
-    <li><strong>OpenSquilla / Claw-SWE-Bench 很强，</strong>但它们主要强在 agent runtime、评测工艺、cost/cache/trace 可见性和 cost-per-success 叙事，<span class="key">不是我们这个“跨任务共享预算分配”的 Claim 1。</span></li>
-    <li><strong>现有 routing / cascade / budget papers 大多只管单个 query 或单个 task。</strong> 它们不处理一批任务共用一个 <span class="cite">shared hard budget</span>、任务价值不同、并且最后要按 verified outcome 结算总价值的问题。</li>
-    <li><strong class="key">BudgetFlow 的边界要写得更窄、更准。</strong> <span class="key">不是“我们也会 routing”，而是“在固定任务批次下，如何把一个共享硬预算分给不同价值的任务”。</span></li>
+    <li><strong>OpenSquilla / Claw-SWE-Bench 很强，</strong>它们主要强在 agent runtime、评测工艺、cost/cache/trace 可见性和 cost-per-success 叙事。<span class="key">BudgetFlow 的 Claim 1 聚焦跨任务共享预算分配。</span></li>
+    <li><strong>vLLM / SGLang / NVIDIA Dynamo 说明 agentic inference 已经是重要系统问题。</strong> 它们把 batching、prefill、KV/prefix cache、priority scheduling 和 cache-aware routing 做实。<span class="key">BudgetFlow 把 Task Value、shared budget 和 verified outcome 变成预算分配与优先级信号。</span></li>
+    <li><strong>现有 routing / cascade / budget papers 大多只管单个 query 或单个 task。</strong> BudgetFlow 处理一批任务共用一个 <span class="cite">shared hard budget</span>、任务价值不同、并且最后按 verified outcome 结算总价值的问题。</li>
+    <li><strong class="key">BudgetFlow 的边界要写得更窄、更准。</strong> <span class="key">核心句子是：在固定任务批次下，如何把一个共享硬预算分给不同价值的任务。</span></li>
   </ul>
 </div>
 
@@ -204,12 +205,12 @@ tr.bf-row:nth-child(even) td { background: #e6f7f0; }
 
 <h2>OpenSquilla / Claw-SWE-Bench 对我们意味着什么</h2>
 <div class="summary-box">
-  <h3>不是“把我们打没了”，而是把边界逼清楚了</h3>
+  <h3>它们把边界逼清楚了</h3>
   <ul>
-    <li><strong>OpenSquilla 的强项：</strong>cost-per-success、per-turn tier routing、reasoning policy、tool compression、diagnostics、replay、cache continuity、长会话可用性。</li>
-    <li><strong>Claw-SWE-Bench 的强项：</strong>统一 prompt / budget / patch extraction / cost reporting / Pareto frontier / Lite subset selection。它把 harness 也变成了评测对象。</li>
-    <li><strong>对我们的真实压力：</strong>如果我们还把自己写成“same budget, better results”这种泛口号，就会和它们撞车。</li>
-    <li><strong class="key">对我们的真实帮助：</strong><span class="key">它们反而逼我们把 Claim 1 收缩成更准确的话：固定任务批次下，跨任务地分配共享预算，并按任务价值结算 verified value。</span></li>
+    <li><strong><a href="https://github.com/opensquilla/opensquilla">OpenSquilla</a> 的强项：</strong>cost-per-success、per-turn tier routing、reasoning policy、tool compression、diagnostics、replay、cache continuity、长会话可用性。</li>
+    <li><strong><a href="https://arxiv.org/abs/2606.12344">Claw-SWE-Bench</a> 的强项：</strong>统一 prompt / budget / patch extraction / cost reporting / Pareto frontier / Lite subset selection。它把 harness 也变成了评测对象。</li>
+    <li><strong>对我们的写法要求：</strong>第一段直接写固定任务批次、共享硬预算、任务价值、verified outcome，避免泛化口号。</li>
+    <li><strong class="key">对我们的真实帮助：</strong><span class="key">它们逼我们把 Main Claim 收缩成更准确的话：固定任务批次下，跨任务地分配共享预算，并按任务价值结算 verified value。</span></li>
   </ul>
 </div>
 
@@ -235,12 +236,12 @@ tr.bf-row:nth-child(even) td { background: #e6f7f0; }
     </tr>
     <tr>
       <td>有没有任务价值</td>
-      <td>没有预注册 heterogeneous task value</td>
+      <td>关注 cost-per-success、harness 可比性和 cost-aware evaluation</td>
       <td><span class="key">有，且运行前冻结</span></td>
     </tr>
     <tr>
       <td>有没有共享硬预算</td>
-      <td>公开资料里没有看到我们这种 batch-global ledger</td>
+      <td>Claw-SWE-Bench 报告 fixed prompt / runtime budget / cost；OpenSquilla 管 per-turn/session cost behavior</td>
       <td><span class="key">有，这是 Claim 1 的核心</span></td>
     </tr>
     <tr>
@@ -266,63 +267,70 @@ tr.bf-row:nth-child(even) td { background: #e6f7f0; }
   </thead>
   <tbody>
     <tr>
-      <td><strong>RouteLLM</strong><br><span class="cite">NeurIPS 2024</span></td>
+      <td><strong>RouteLLM</strong><br><span class="cite"><a href="https://proceedings.iclr.cc/paper_files/paper/2025/hash/5503a7c69d48a2f86fc00b3dc09de686-Abstract-Conference.html">ICLR 2025</a>; <a href="https://arxiv.org/abs/2406.18665">arXiv 2024</a></span></td>
       <td>给单个 query 选便宜模型还是贵模型，本质是 per-query router。</td>
-      <td>很适合启发我们的 <span class="cite">RouteLLM-inspired learned router</span> baseline，但它原版不管 shared budget，也不管 Task Value。</td>
+      <td>很适合启发我们的 <span class="cite">RouteLLM-inspired learned router</span> baseline；它的原始问题设置聚焦 per-query cost/quality routing。</td>
       <td class="bf-diff">BudgetFlow 不只判断“这一条该上哪个模型”，而是判断“整批任务里下一笔 scarce budget 该花给谁”。</td>
-      <td>直觉例子：<span class="cite">用户只发来一条消息：“帮我写一封更正式的邮件。” 系统要做的不是管理预算，而只是判断：这一次回复值不值得上 GPT-4？</span><br>写成“强启发来源”，不是直接同问题工作。</td>
+      <td>直觉例子：<span class="cite">用户只发来一条消息：“帮我写一封更正式的邮件。” 系统判断这一次回复值不值得上 GPT-4。</span><br>写成“强启发来源”，服务于 learned task-router baseline。</td>
     </tr>
     <tr>
-      <td><strong>Cascade Routing</strong><br><span class="cite">ICML 2025 Poster</span></td>
+      <td><strong>Cascade Routing</strong><br><span class="cite"><a href="https://arxiv.org/abs/2410.10347">ICML 2025 / arXiv 2024</a></span></td>
       <td>研究单个 query 上多模型级联怎样在 cost-quality 上最优。</td>
-      <td>它说明 per-query routing/cascade 这条线已经很成熟，但它不处理跨任务预算竞争。</td>
-      <td class="bf-diff">BudgetFlow 不是在一条请求里做“先便宜后升级”，而是在很多任务之间做预算分配与止损。</td>
-      <td>直觉例子：<span class="cite">像客服分诊。先让便宜模型答一次；如果看起来不靠谱，再升级到更强模型重答。目标是把这一条请求答好，不是考虑整批请求的钱该怎么分。</span><br>写成 per-query routing 的强代表工作。</td>
+      <td>它说明 per-query routing/cascade 这条线已经很成熟；BudgetFlow 把预算竞争提升到跨任务层面。</td>
+      <td class="bf-diff">BudgetFlow 在很多任务之间做预算分配与止损。</td>
+      <td>直觉例子：<span class="cite">像客服分诊。先让便宜模型答一次；如果看起来不靠谱，再升级到更强模型重答。目标是把这一条请求答好。</span><br>写成 per-query routing 的强代表工作。</td>
     </tr>
     <tr>
-      <td><strong>RouteNLP</strong><br><span class="cite">ACL 2026 Industry Track</span></td>
+      <td><strong>RouteNLP</strong><br><span class="cite"><a href="https://arxiv.org/abs/2604.23577">ACL 2026 Industry Track</a></span></td>
       <td>在企业场景里尽量省钱，同时保证质量不低于某个门槛。</td>
       <td>它解的是“在质量约束下最小化 cost”，我们解的是“在 cost 约束下最大化 value”。方向相反。</td>
       <td class="bf-diff">BudgetFlow 接受“预算就是硬上限”这个前提，然后问在这条硬约束下怎么拿到更多 verified value。</td>
-      <td>直觉例子：<span class="cite">像一个客服团队经理说：“今天 5000 条用户消息，怎么把钱尽量省下来，但满意度绝不能跌破红线？” 这和 BudgetFlow 不同，因为它不是问“预算有限时先救哪种任务”。</span><br>非常适合写成“inverse objective”的对照。</td>
+      <td>直觉例子：<span class="cite">像一个客服团队经理说：“今天 5000 条用户消息，怎么把钱尽量省下来，但满意度绝不能跌破红线？” BudgetFlow 的互补视角是：预算固定时先救哪种任务。</span><br>非常适合写成“inverse objective”的对照。</td>
     </tr>
     <tr>
-      <td><strong>BAMAS</strong><br><span class="cite">AAAI 2026 Oral</span></td>
+      <td><strong>BAMAS</strong><br><span class="cite"><a href="https://ojs.aaai.org/index.php/AAAI/article/view/40226">AAAI 2026</a></span></td>
       <td>在单个 task 内部给多 agent / 多 role 分模型与预算。</td>
       <td>它强在 task 内部的 architecture design；我们强在 task 之间的 budget governance。</td>
       <td class="bf-diff">BAMAS 解决“一个任务内部谁该用强模型”，BudgetFlow 解决“很多任务之间谁更值得先拿预算”。</td>
-      <td>直觉例子：<span class="cite">同一个编程任务里有三个角色：planner、critic、executor。问题是：谁该配强模型，谁用便宜模型就够了？它优化的是一个任务内部的分工，不是 30 个任务之间的先后顺序。</span><br>写成“within-task budgeted system”的最近邻。</td>
+      <td>直觉例子：<span class="cite">同一个编程任务里有三个角色：planner、critic、executor。问题是：谁该配强模型，谁用便宜模型就够了？它优化的是一个任务内部的分工。</span><br>写成“within-task budgeted system”的最近邻。</td>
     </tr>
     <tr>
-      <td><strong>INTENT</strong><br><span class="cite">ICML 2025</span></td>
-      <td>在单个任务里规划工具调用，不要超过该任务自己的预算。</td>
-      <td>它是任务内部规划层；我们是任务之间分配层。两者是上下两层，不是同层竞争。</td>
+      <td><strong>INTENT</strong><br><span class="cite"><a href="https://arxiv.org/abs/2602.11541">2026 arXiv preprint</a></span></td>
+      <td>在单个任务里规划工具调用，让该任务在自己的预算内完成。</td>
+      <td>它是任务内部规划层；BudgetFlow 是任务之间分配层。两者是上下两层。</td>
       <td class="bf-diff">INTENT 管“这个任务内部还要不要继续花”，BudgetFlow 管“整批任务里该把钱留给哪个任务”。</td>
-      <td>直觉例子：<span class="cite">像一个 agent 在做法律检索任务。它已经调了几次工具，现在要判断：还要不要再调一次贵 API，还是该停了？它关心的是这个任务内部怎么省，不是整批任务谁更值得花钱。</span><br>写成 scope 不同、可互补的工作。</td>
+      <td>直觉例子：<span class="cite">像一个 agent 在做法律检索任务。它已经调了几次工具，现在要判断：还要不要再调一次贵 API，还是该停了？它关心的是这个任务内部怎么花。</span><br>写成 scope 不同、可互补的工作。</td>
     </tr>
     <tr>
-      <td><strong>UCCI</strong><br><span class="cite">尚未发表（2026 arXiv）</span></td>
+      <td><strong>UCCI</strong><br><span class="cite"><a href="https://arxiv.org/abs/2605.18796">2026 arXiv preprint</a></span></td>
       <td>把 model uncertainty 校准得更好，让升级/不升级更稳。</td>
-      <td>更像是可以改进 Model Fit 的部件，而不是 Claim 1 级别 baseline。</td>
+      <td>更像是可以改进 Model Fit 的部件，适合放在机制层讨论。</td>
       <td class="bf-diff">UCCI 改善的是“升级判断更准”，BudgetFlow 解决的是“预算治理目标是什么、该先救谁”。</td>
       <td>直觉例子：<span class="cite">像一个更稳的“升级提示器”。它不替你决定整批预算怎么分，只是帮你更有把握地判断：这一次从小模型升级到大模型，到底值不值。</span><br>放到机制层或 Claim 2 讨论里更合适。</td>
+    </tr>
+    <tr>
+      <td><strong>vLLM / SGLang / NVIDIA Dynamo</strong><br><span class="cite">vLLM: <a href="https://arxiv.org/abs/2309.06180">SOSP 2023</a> + <a href="https://docs.vllm.ai/en/stable/features/automatic_prefix_caching/">prefix caching docs</a>; SGLang: <a href="https://papers.nips.cc/paper_files/paper/2024/hash/724be4472168f31ba1c9ac630f15dec8-Abstract-Conference.html">NeurIPS 2024</a>; Dynamo: <a href="https://docs.nvidia.com/dynamo/digest/agentic-inference">official docs</a></span></td>
+      <td>把 LLM inference serving 做成高性能执行层：batching、prefill/decode、KV/prefix cache、priority scheduling、cache-aware routing。</td>
+      <td>它们是 BudgetFlow future work 的真实 substrate，也说明 agentic inference 是值得研究的系统问题。</td>
+      <td class="bf-diff">BudgetFlow 研究 Task Value、shared budget 和 verified outcome 如何形成 priority、continuation、strong-model opportunity 等信号。</td>
+      <td>直觉例子：<span class="cite">像数据中心已经有一套高速路网；BudgetFlow 研究的是预算有限时，哪些任务的车先上路、哪些继续跑、哪些及时下线。</span><br>正文一笔带过，作为 serving substrate。</td>
     </tr>
   </tbody>
 </table>
 </div>
 
 <div class="drop-note">
-  <strong class="key">Related Work 不需要铺太开：</strong><span class="key">正文重点写 OpenSquilla / Claw-SWE-Bench、RouteLLM、RouteNLP、BAMAS、INTENT 就够了。</span> 像 ORBIT、RouteJudge、LLMRouterBench、OpenRouter、Portkey、Langfuse 这些一笔带过即可，不要把主线写散。
+  <strong class="key">Related Work 保持收敛：</strong><span class="key">正文重点写 OpenSquilla / Claw-SWE-Bench、RouteLLM、RouteNLP、BAMAS、INTENT；vLLM / SGLang / Dynamo 作为 serving substrate 一笔带过。</span> ORBIT、RouteJudge、LLMRouterBench、OpenRouter、Portkey、Langfuse 这些一笔带过即可，主线保持集中。
 </div>
 
 <h2>这会怎样改变我们的论文写法</h2>
 <div class="framing">
   <ul>
-    <li><strong class="key">第一段要更收敛。</strong> <span class="key">不要再泛泛说“same budget, better results”。要直接说：固定任务批次、一个共享硬预算、任务价值不同、结果由 verifier 结算。</span></li>
+    <li><strong class="key">第一段要更收敛。</strong> <span class="key">直接说：固定任务批次、一个共享硬预算、任务价值不同、结果由 verifier 结算。</span></li>
     <li><strong class="key">Claim 1 的主表要同时报标准指标和论文指标。</strong> 也就是 Resolved Count / Resolved Rate 加上 Total Resolved Value / TRV per Dollar。</li>
     <li><strong>要明确承认 OpenSquilla / Claw-SWE-Bench 的工程强度。</strong> 这样不是示弱，而是让我们的边界更可信。</li>
     <li><strong class="key">要把 strongest baseline 保持强。</strong> pure T3、RouteLLM-inspired、budget-only 都不能偷着削弱；BudgetFlow 输了就诚实写边界，赢了才更有说服力。</li>
-    <li><strong class="key">Related Work 的落点不是“别人都不如我们”，而是“别人解的是相邻问题，我们解的是这个更具体、更窄但也更清晰的问题”。</strong></li>
+    <li><strong class="key">Related Work 的落点是：别人解的是相邻问题，我们解的是这个更具体、更窄但也更清晰的问题。</strong></li>
   </ul>
 </div>
 
@@ -331,8 +339,8 @@ tr.bf-row:nth-child(even) td { background: #e6f7f0; }
   <h3>审稿人版本</h3>
   <ul>
     <li>OpenSquilla / Claw-SWE-Bench 证明了 cost-aware agent runtime 和 cost-aware benchmark 已经很成熟。</li>
-    <li><span class="key">BudgetFlow 要守住的贡献，不是再发明一个 router，而是提出并验证：当一批任务共享一个硬预算、任务价值不同、结果可验证时，怎样做跨任务预算治理。</span></li>
-    <li><span class="key">只要这句话立得住，related work 就是在增强我们，而不是削弱我们。</span></li>
+    <li><span class="key">BudgetFlow 要守住的贡献是：当一批任务共享一个硬预算、任务价值不同、结果可验证时，怎样做跨任务预算治理。</span></li>
+    <li><span class="key">只要这句话立得住，related work 就会增强我们的边界。</span></li>
   </ul>
 </div>
 
