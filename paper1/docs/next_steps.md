@@ -89,6 +89,39 @@ points.
   budget, and outcome history to serving substrates such as vLLM, SGLang, and
   NVIDIA Dynamo, then extend from one budget owner to multiple budget owners.
 
+## Submission Strategy
+
+Use the conference survey files under `paper1/paper/conference/` as reference
+material, then verify the target CFP page again before any submission.
+
+Current strategy: list five candidate venues, but act on the top one or two
+first. The goal of the first submission is reviewer feedback, not maximizing
+the prestige of the first target.
+
+Recommended short list:
+
+1. **AgenticDev 2026 @ ASE** — first-choice practice target. It is the closest
+   topic match for agentic software development and has a fast workshop review
+   cycle.
+2. **RASE 2026 @ ASE** — strong practice backup if the paper is framed around
+   reliability, trustworthy automation, or software-engineering implications.
+3. **APSEC 2026** — C-class main-conference path for formal external feedback,
+   pending final deadline confirmation on the official submission page.
+4. **ICECCS 2026** — engineering-systems backup with a near-term deadline.
+5. **AAAI-27** — high-risk feedback source with a near deadline and two-phase
+   review. Use it to test whether broad AI reviewers buy the claim, not as the
+   only first submission plan.
+
+Execution plan after the next draft:
+
+- Prepare an AgenticDev-ready version first.
+- Keep an AAAI abstract/title version ready if the draft quality is strong by
+  the July deadline.
+- Pick one main-conference practice target from APSEC or ICECCS after checking
+  the live CFP and formatting constraints.
+- Preserve stronger later targets such as AAMAS, SANER, MSR, or FSE for a
+  revised paper that has benefited from the first review cycle.
+
 ## Guardrails
 
 - Use the canonical terms in `north_star.md`.
