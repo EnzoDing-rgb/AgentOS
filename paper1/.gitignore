@@ -30,6 +30,17 @@ misc/deck/**/.claude/
 .vscode/
 .idea/
 
+# LaTeX build byproducts
+paper/*.aux
+paper/*.bbl
+paper/*.blg
+paper/*.fdb_latexmk
+paper/*.fls
+paper/*.log
+paper/*.out
+paper/*.toc
+paper/*.synctex.gz
+
 # Deliberately NOT ignored — AutoResearch evidence ledger:
 #   .autoresearch/issues/
 #   .autoresearch/workflows/
