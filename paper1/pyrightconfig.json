@@ -1,5 +1,5 @@
 {
-  "include": ["src"],
-  "extraPaths": ["src"],
+  "include": ["code"],
+  "extraPaths": ["code"],
   "exclude": ["data", "external", "**/__pycache__", "**/node_modules"]
 }

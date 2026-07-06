@@ -4,9 +4,11 @@
 
 # Python
 __pycache__/
+**/__pycache__/
 *.py[cod]
 *.pyo
 .pytest_cache/
+**/.pytest_cache/
 .mypy_cache/
 .ruff_cache/
 *.egg-info/
@@ -28,7 +30,7 @@ paper1/external/SWE-agent/
 
 # Local data & experiment artifacts
 paper1/data/
-paper1/src/data/
+paper1/code/data/
 
 # SWE-bench clones (legacy explicit paths kept for clarity)
 paper1/data/SWE-bench/
@@ -44,6 +46,8 @@ paper1/data/swebench_lite_export/
 # Runtime / crash artifacts
 paper1/logs/
 paper1/tmp/
+paper1/code/tmp/
+paper1/code/logs/
 paper1/misc/deck/.agents/
 paper1/misc/deck/**/.agents/
 paper1/misc/deck/**/.claude/
@@ -67,9 +71,19 @@ paper1/misc/**/*.pdf
 
 # Node / slide decks
 node_modules/
+**/node_modules/
 .pnpm-store/
+**/.pnpm-store/
 dist/
+**/dist/
 .netlify/
+**/.netlify/
+.next/
+**/.next/
+playwright-report/
+**/playwright-report/
+test-results/
+**/test-results/
 
 # OS
 .DS_Store

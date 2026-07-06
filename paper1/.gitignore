@@ -1,5 +1,6 @@
 # paper1 BudgetFlow runtime artifacts
-# NOTE: parent AgentOS/.gitignore already covers paper1/data/, __pycache__/, .pytest_cache/
+# NOTE: parent AgentOS/.gitignore covers broad Python, node, data, and runtime
+# artifacts. This file keeps paper1-specific paths explicit.
 
 # Runtime worktrees (now default to /tmp/budgetflow_worktrees via env/CLI,
 # but NFS fallback may still write here)
@@ -20,6 +21,8 @@ data/runs/*.tmp
 # Runtime logs and temp dirs (build, evaluation, scratch)
 logs/
 tmp/
+code/logs/
+code/tmp/
 
 # Deck-local agent skill copies (source decks stay tracked)
 misc/deck/.agents/
@@ -29,6 +32,10 @@ misc/deck/**/.claude/
 # IDE / editor
 .vscode/
 .idea/
+
+# Local external dependencies
+external/mini-swe-agent/
+external/SWE-agent/
 
 # LaTeX build byproducts
 paper/*.aux
