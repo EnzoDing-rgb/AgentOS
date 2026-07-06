@@ -313,14 +313,14 @@ tr.bf-row:nth-child(even) td { background: #e6f7f0; }
       <td>把 LLM inference serving 做成高性能执行层：batching、prefill/decode、KV/prefix cache、priority scheduling、cache-aware routing。</td>
       <td>它们是 BudgetFlow future work 的真实 substrate，也说明 agentic inference 是值得研究的系统问题。</td>
       <td class="bf-diff">BudgetFlow 研究 Task Value、shared budget 和 verified outcome 如何形成 priority、continuation、strong-model opportunity 等信号。</td>
-      <td>直觉例子：<span class="cite">像数据中心已经有一套高速路网；BudgetFlow 研究的是预算有限时，哪些任务的车先上路、哪些继续跑、哪些及时下线。</span><br>正文一笔带过，作为 serving substrate。</td>
+      <td>直觉例子：<span class="cite">像数据中心已经有一套高速路网；BudgetFlow 研究的是预算有限时，哪些任务的车先上路、哪些继续跑、哪些及时下线。</span><br>正文要清楚写出它们和 BudgetFlow 的边界，篇幅保持克制。</td>
     </tr>
   </tbody>
 </table>
 </div>
 
 <div class="drop-note">
-  <strong class="key">Related Work 保持收敛：</strong><span class="key">正文重点写 OpenSquilla / Claw-SWE-Bench、RouteLLM、RouteNLP、BAMAS、INTENT；vLLM / SGLang / Dynamo 作为 serving substrate 一笔带过。</span> ORBIT、RouteJudge、LLMRouterBench、OpenRouter、Portkey、Langfuse 这些一笔带过即可，主线保持集中。
+  <strong class="key">Related Work 保持收敛：</strong><span class="key">正文重点写 OpenSquilla / Claw-SWE-Bench、RouteLLM、RouteNLP、BAMAS、INTENT；vLLM / SGLang / Dynamo 要写清楚 serving substrate 与 value-aware batch governance 的边界。</span> ORBIT、RouteJudge、LLMRouterBench、OpenRouter、Portkey、Langfuse 这些一笔带过即可，主线保持集中。
 </div>
 
 <h2>这会怎样改变我们的论文写法</h2>

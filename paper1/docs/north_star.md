@@ -41,7 +41,11 @@ The paper draft uses a PDF-first LaTeX workflow.
 - `paper1/paper/main.tex` is the main paper source.
 - `paper1/paper/references.bib` stores bibliography entries.
 - `paper1/paper/figures/` stores paper figures.
-- The working review artifact is `paper1/paper/main.pdf`.
+- Build outputs should use the paper's English title, for example
+  `paper1/paper/BudgetFlow_Value_Aware_Budget_Governance_for_Agent_Tasks.pdf`.
+- Paper-facing artifacts should be written in English.
+- A useful paper scaffold includes `main.tex`, `references.bib`, `figures/`,
+  and a one-command build path. It is more than an empty directory.
 
 HTML files are auxiliary visual documents. The active related-work visual is
 `paper1/docs/related_work.html`, and its path stays fixed.
@@ -55,6 +59,13 @@ primary-source claims should land there first.
 The paper's Related Work section should then be written from the corrected
 `related_work.html`. Citation hygiene can use narrow checks, but the correction
 target remains `related_work.html`, not a temporary draft paragraph.
+
+Serving systems such as vLLM, SGLang, and NVIDIA Dynamo should be described
+clearly rather than waved away. They are strong execution substrates for
+batching, prefill/decode, KV/prefix cache, priority scheduling, and cache-aware
+routing. BudgetFlow studies how Task Value, shared hard budget state, and
+verified outcome history generate the priority, continuation, and strong-model
+opportunity signals that such substrates can consume.
 
 ## Canonical Terms
 
