@@ -203,18 +203,13 @@ across every domain.
 
 ## Future Work
 
-Future work should cover finer-grained routing and within-task budget control:
-stage-aware routing, escalation policies, learned stop/continue decisions, and
-continual memory. These ideas should not block the Main Claim paper.
-
-Two systems extensions are worth keeping as future work.
+Future work has two natural systems extensions.
 
 First, BudgetFlow can become serving-aware. In a local serving stack, engines
 such as vLLM or SGLang expose batching, prefill latency, and KV/prefix-cache
-locality that cloud APIs often hide. A bounded follow-up can test whether
-BudgetFlow's allocation gains survive cache-locality costs by comparing normal
-BudgetFlow with a cache-sticky variant under the same shared budget. This is a
-future serving-layer study, not part of the Main Claim.
+locality that cloud APIs often hide. A bounded follow-up can compare normal
+BudgetFlow with a cache-sticky variant under the same shared budget and measure
+whether cache-locality costs change the cost-value frontier.
 
 Second, BudgetFlow can extend from one budget owner to multiple budget owners.
 The current paper studies one entity allocating one shared hard budget across a
