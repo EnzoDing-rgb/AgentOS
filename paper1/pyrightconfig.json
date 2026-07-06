@@ -1,0 +1,5 @@
+{
+  "include": ["src"],
+  "extraPaths": ["src"],
+  "exclude": ["data", "external", "**/__pycache__", "**/node_modules"]
+}
