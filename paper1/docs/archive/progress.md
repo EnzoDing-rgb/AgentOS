@@ -2,6 +2,32 @@
 
 > 单一入口：进度、跑法、历史结果。
 
+## 2026-07-06 — ICML short draft complete; pending Fengde Ding review
+
+- Current paper artifact is the ICML 2026 preprint-style short draft:
+  `paper1/paper/BudgetFlow_Value_Aware_Budget_Governance_for_Agent_Tasks.pdf`.
+  It is intentionally compact so Fengde Ding can review the core framing before
+  the draft is expanded.
+- Current GitHub revision: `dbfd93b` (`Add ICML BudgetFlow paper draft`), pushed
+  to `main`.
+- Author metadata for future non-anonymous drafts: Fengde Ding
+  `<fengde_ding@uir.edu.cn>`. Keep the current PDF anonymous until the paper
+  mode changes from review/preprint planning to an author-visible draft.
+- Pending review decision: Fengde Ding should first review the short PDF for
+  claim framing, terminology, metric presentation, and whether the cost-value
+  frontier narrative reads correctly.
+- Agreed v0.2 direction after review: expand toward a complete 8--10 page
+  ICML-style draft only when review feedback is ready. Do not expand immediately.
+- Planned v0.2 structure: Introduction, Related Work, Problem Formulation,
+  BudgetFlow, Experimental Setup, Results, Sensitivity Analysis, Discussion and
+  Future Work, Conclusion.
+- Planned v0.2 content changes: move Related Work after Introduction; expand
+  Related Work using `paper1/docs/related_work.html`; strengthen method details
+  around Task Value, Estimated Token Demand, Model Fit, Verifier, route,
+  escalation, stop, and defer decisions; expand the multi-run operating-condition
+  analysis; keep formulas only where they clarify the objective, metrics, or
+  actual allocation policy.
+
 ## 2026-06-30 — Claim 1 strongest positive readout after resumed 5x30 frontier-fix
 
 - Current top-line Claim 1 evidence is the resumed 5-policy x 30-task
