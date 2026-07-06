@@ -207,6 +207,21 @@ Future work should cover finer-grained routing and within-task budget control:
 stage-aware routing, escalation policies, learned stop/continue decisions, and
 continual memory. These ideas should not block the Main Claim paper.
 
+Two systems extensions are worth keeping as future work.
+
+First, BudgetFlow can become serving-aware. In a local serving stack, engines
+such as vLLM or SGLang expose batching, prefill latency, and KV/prefix-cache
+locality that cloud APIs often hide. A bounded follow-up can test whether
+BudgetFlow's allocation gains survive cache-locality costs by comparing normal
+BudgetFlow with a cache-sticky variant under the same shared budget. This is a
+future serving-layer study, not part of the Main Claim.
+
+Second, BudgetFlow can extend from one budget owner to multiple budget owners.
+The current paper studies one entity allocating one shared hard budget across a
+batch of tasks. A natural follow-up is multi-tenant agent budget governance:
+multiple teams, users, or services share an agent execution substrate while
+retaining separate budgets, priorities, and service objectives.
+
 ## Guardrails
 
 - Freeze Task Value before execution.
