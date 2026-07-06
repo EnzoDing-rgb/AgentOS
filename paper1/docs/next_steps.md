@@ -1,7 +1,8 @@
 # BudgetFlow Next Steps
 
 Pending-review entry point. Use this file together with `north_star.md` and
-`related_work.html`. Treat `archive/progress.md` as historical context.
+`related_work.html`. Treat `paper1/misc/archive/progress.md` as historical
+context.
 
 ## Current State
 
@@ -53,7 +54,30 @@ mechanism because they are narrow to the benchmark.
   formulas.
 - Add clearer figures and tables for the cost-value curve, operating
   conditions, and sensitivity results.
+- Replace the current placeholder-style result visuals with two main figures:
+  a multi-run main-evidence figure and a latest-5x30 sensitivity figure.
 - Keep wording direct, technical, and readable.
+
+## Figure Plan
+
+Use two separate visual dimensions.
+
+1. **Multi-Run Main Evidence.** This figure supports the main claim. It should
+   show the 4x30 run plus the three 5x30 runs as operating conditions, with
+   BudgetFlow, cheap-model-only, strong-model-only, learned task-router, and
+   budget-only policies shown consistently. It should make the main positive
+   signals visible: the latest 5x30 full win, the 4x30 TRV/TRV-per-Dollar win,
+   and the close boundary cases where the strong model leads.
+2. **Latest 5x30 Sensitivity.** This figure supports robustness and diagnosis.
+   It should use only the latest audited 5x30 run for Task Value sensitivity,
+   budget sensitivity, and KV Cache Cost-Discount sensitivity.
+
+Tables and figures should guide the reader's eye to the positive signals.
+Use boldface in tables for the winning or most important entries. Use color,
+larger markers, frontier lines, and concise annotations in figures. The visual
+style should be closer to frontier/scaling-law figures: clean grid, colored
+policy curves or point series, clear boundary line, and a few labeled key
+points.
 
 ## Future Work Emphasis
 
