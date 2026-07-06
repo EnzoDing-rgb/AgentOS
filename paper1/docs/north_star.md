@@ -16,7 +16,7 @@ The main narrative has one primary objective and one explanatory matrix. The
 primary objective is Total Resolved Value under one fixed shared hard budget.
 The explanatory matrix reports budget tightness, Strongest Model total cost,
 reference-tier solvability, learned-router competitiveness, value placement,
-KV-cache sensitivity, execution coverage, and gap to a frontier or
+budget-cap sensitivity, KV-cache sensitivity, execution coverage, and gap to a frontier or
 observed-tier upper bound. This makes mixed results interpretable instead of
 contradictory.
 
@@ -94,7 +94,10 @@ Sixth, the initial draft should present the completed paid runs as an
 operating-condition matrix, not as cherry-picked single-run proof. The current
 readout is now stronger than a single win: it contains positive BudgetFlow
 conditions, a pure-Strongest frontier condition, and a learned-router stress
-test.
+test. Internal execution details such as interruption and continuation are
+forensic reproducibility notes, not paper claims. Reviewer-facing text should
+describe each included artifact as one completed audited run over the fixed
+task set, fixed budget protocol, and fixed metric protocol.
 
 - The corrected 3x30 run is a value-maximization condition: BudgetFlow wins Total
   Resolved Value against pure T2 and pure T3, while pure T3 remains a strong
@@ -109,7 +112,7 @@ test.
   evidence for the paper's boundary claim: when T3 is both capable and cheap in
   total, the correct scientific conclusion is to report that frontier, not to
   hide it.
-- The resumed 5x30 frontier-fix run is the strongest current Claim 1 signal:
+- The latest audited 5x30 run is the strongest current Claim 1 signal:
   BudgetFlow completes the fixed 30-task set under the same shared hard cap and
   beats every active control on both standard SWE-bench resolved count and
   paper-defined Total Resolved Value. BudgetFlow resolves 16/30 tasks for 18.00
@@ -128,18 +131,31 @@ allocation problem has collapsed into a strong pure-tier frontier. The latest
 the main table, learned-router baselines can still be close, and pure T3 can be
 the right boundary in a different cost/turn condition.
 
+The four main paid artifacts currently planned for Claim 1 reporting are:
+
+| Reviewer-facing role | Internal artifact stem | Completed at, Beijing time | Paper use |
+|---|---|---:|---|
+| 4x30 value-aware allocation case | `mainline_4x30_lhm_cycle_4policy_cleanresume_20260627` | 2026-06-27 23:15:21 | BudgetFlow wins Total Resolved Value and value per dollar while losing one raw resolved task to pure T3. |
+| 5x30 Strongest Model frontier case | `mainline_5x30_claim1_retryfix_clean_20260629` | 2026-06-29 18:54:11 | Pure T3 wins; report as frontier-dominance boundary, not as a failed universal claim. |
+| 5x30 learned-router stress case | `mainline_5x30_claim1_learnedprior_final_20260630` | 2026-06-30 03:28:17 | Pure T3 narrowly wins; BudgetFlow is close to a strong learned/prior frontier. |
+| latest audited 5x30 main positive case | `mainline_5x30_claim1_frontierfix_20260630` | 2026-07-01 00:32:07 | BudgetFlow wins resolved count, Total Resolved Value, and value per dollar against the five-policy table. |
+
 The latest 5x30 audit also strengthens the reviewer-defense layer. BudgetFlow's
 margin over the best control is stable under equal value, compressed
 criticality, expanded criticality, and the frozen criticality ValueSource
 (+1.00 Total Resolved Value in each profile). Value permutation wins in 64/64
 diagnostic shuffles, so the result is not obviously a single hand-picked value
-placement. The runtime CostSource used KV0; KV50/KV90/KV98/KV99 remain no-paid
-recosting sensitivities. At KV0, BudgetFlow still beats the best control by
-Total Resolved Value per dollar; at very high KV, RouteLLM-inspired routing can
-become the best value-per-dollar control while BudgetFlow keeps the highest
-fixed-outcome Total Resolved Value. This is the right shape for the paper: a
-main positive Claim 1 result plus explicit boundary conditions rather than a
-claim of universal dominance.
+placement. Budget-cap replay is also useful and should be reported as the
+budget-tightness sensitivity: in the latest audited 5x30 run, BudgetFlow wins
+or ties some cap levels, while pure T3 or RouteLLM-inspired controls win other
+levels. That is not a contradiction; it shows where allocation room exists and
+where a uniform or learned frontier is already strong. The runtime CostSource
+used KV0; KV50/KV90/KV98/KV99 remain no-paid recosting sensitivities. At KV0,
+BudgetFlow still beats the best control by Total Resolved Value per dollar; at
+very high KV, RouteLLM-inspired routing can become the best value-per-dollar
+control while BudgetFlow keeps the highest fixed-outcome Total Resolved Value.
+This is the right shape for the paper: a main positive Claim 1 result plus
+explicit boundary conditions rather than a claim of universal dominance.
 
 Seventh, KV cache must not be hidden inside the main CostSource. The main paid
 experiment uses the frozen pre-registered catalog and physical model bindings.
@@ -158,10 +174,12 @@ a five-policy ranking table. The required Claim 1 readout is:
 - execution coverage: planned tasks, paid attempts, zero-cost budget-exhaustion
   rows, aborts, and missing rows;
 - task-level T2/T3 frontier buckets: T2 cheaper pass, T3 cheaper pass, T2-only
-  pass, T3-only pass, and both fail;
-- sensitivity: equal value, compressed/expanded criticality, value
-  permutation, budget-cap replay, KV-cache recost, and dynamic KV replay where
-  justified;
+  pass, T3-only pass, and both fail. These are mechanism diagnostics, not
+  sensitivity tables;
+- sensitivity: ValueSource sensitivity (equal value, compressed/expanded
+  criticality, value permutation), Budget Cap sensitivity (no-paid replay under
+  tighter or looser shared caps), and CostSource/KV sensitivity (KV-cache
+  recost, plus dynamic KV replay only when justified);
 - upper bounds: observed-tier oracle or gap-to-frontier when counterfactual
   rows exist.
 
@@ -172,7 +190,7 @@ are weak" is answered by pure-tier frontiers, a RouteLLM-inspired learned
 router, a value-blind budget-only control, and observed-tier upper bounds.
 "Your result is cherry-picked" is answered by showing 3x30, 4x30, and the
 multiple 5x30 observations as different operating conditions, including both
-the run where pure T3 wins and the resumed frontier-fix run where BudgetFlow
+the run where pure T3 wins and the latest audited 5x30 run where BudgetFlow
 wins the five-policy main table.
 
 ## Core Terminology
