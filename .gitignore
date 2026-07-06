@@ -45,6 +45,7 @@ paper1/data/swebench_lite_export/
 paper1/logs/
 paper1/tmp/
 paper1/misc/deck/.agents/
+paper1/misc/deck/**/.agents/
 paper1/misc/deck/**/.claude/
 
 # Test / coverage artifacts
