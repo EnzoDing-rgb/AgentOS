@@ -36,6 +36,8 @@ misc/deck/**/.claude/
 # Local external dependencies
 external/mini-swe-agent/
 external/SWE-agent/
+code/external/mini-swe-agent/
+code/external/SWE-agent/
 
 # LaTeX build byproducts
 paper/*.aux

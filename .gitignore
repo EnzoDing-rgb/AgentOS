@@ -27,6 +27,9 @@ skills-lock.json
 paper1/external/mini-swe-agent/
 paper1/external/mini-swe-agent
 paper1/external/SWE-agent/
+paper1/code/external/mini-swe-agent/
+paper1/code/external/mini-swe-agent
+paper1/code/external/SWE-agent/
 
 # Local data & experiment artifacts
 paper1/data/

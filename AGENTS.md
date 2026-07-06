@@ -2,15 +2,6 @@
 
 This file is the repo-level operating contract for Codex-style agents working in this repository.
 
-## North Star
-
-- Use Claim 1 and Claim 2 for paper claims. Reserve T1/T2/T3 for model tiers only.
-- Claim 1 is the compass: under a shared hard budget, BudgetFlow maximizes Total Resolved Value, the paper-defined sum of pre-registered Task Value over verified resolved tasks.
-- Claim 2 is the mechanism claim: BudgetFlow's value-aware budget allocation, routing, escalation, stop, and learning mechanisms explain how Claim 1 is achieved and must improve or preserve value/cost efficiency against strong diagnostic controls.
-- Claim 2 serves Claim 1. Do not optimize routing savings, model-tier switching, or stop-loss behavior in a way that reduces value-weighted outcomes.
-- Treat T1/T2/T3 as normalized model-tier slots. Provider/model endpoint swaps inside a catalog semantic revision change base URL, token, and physical backend, but they do not by themselves change normalized cost or routing semantics.
-- ModelFit calibration is physical-model evidence. Semantic-compatible history can inform diagnosis, but runtime ModelFit must not trust rows from a different physical catalog hash/revision.
-
 ## Experiment Gold Standard
 
 After every experiment, inspect artifacts before drawing conclusions:
@@ -68,28 +59,3 @@ These are the short-form checks every worker should keep in view:
 - Use Strongest Model for the strongest configured tier. Prefer model-tier diagnostics unless a specific runtime field is explicitly tier-specific.
 - Say infra. Do not introduce infer, info, or other speech-to-text artifacts as project concepts.
 - The user often uses speech input. Treat odd symbols, malformed words, and sudden unfamiliar terms as possible speech-to-text noise unless the user explicitly introduces them as new vocabulary, concepts, symbols, or terms. Filter obvious noise silently; when meaning is unclear, ask the user instead of adopting the noisy phrase into project terminology.
-
-## Agent Workflow
-
-- Main-agent judgment owns architecture, routing, evaluation, learning, and paper-claim decisions.
-- Use subagents for low-value, high-token scans, narrow code/test edits, artifact enumeration, or failure classification when it saves cost or wall time without outsourcing main-agent judgment. Main-agent judgment owns architecture, routing, evaluation, learning, and paper-claim decisions.
-- Use skills only when they materially improve the current work. Do not mechanically read or invoke generic system skills in a way that distracts from BudgetFlow's north star, experiment discipline, or the user's immediate instruction. In particular, do not force a Test-Driven Development workflow for documentation-only work, experiment judgment, review, or other changes where it is not actually needed.
-- Avoid broad, unbounded repo archaeology. Read the few files and artifacts needed to answer the current evidence question, then act or summarize the remaining uncertainty.
-- Do not keep historical compatibility in active runtime, tests, or current docs unless it protects a current paid-run safety boundary. Delete retired aliases, fallback branches, and stale schemas instead of carrying them forward. Historical JSONL/reports are forensic evidence; old schemas and retired terms must not drive Learn Policy Inputs, ValueSource, CostSource, routing, or paper metrics.
-- When an obsolete path is exposed by a concrete bug, audit, or failing test, delete that path and the tests that assert retired behavior. Do not preserve compatibility shims, and do not turn one exposed deletion into a broad compatibility sweep; leave unexposed tests alone until they fail or block current work.
-- Keep docs meaningful: update `paper1/docs/north_star.md` only when a real decision changes.
-- Commit and push stable slices after no-paid gates pass. Avoid noisy commits, but do not leave verified mechanism changes uncommitted.
-
-## Worker Reports
-
-- For substantial worker implementation slices, write a new report under `paper1/docs/reports/`.
-- The report should include: objective, files changed, interface decisions, deleted stale paths/tests, verification commands and results, residual risks, and next recommended slice.
-- Do not spend time rewriting historical reports. New reports describe new work.
-
-## Learning Scope
-
-- Do not assume every failure signal is learnable. Pick a few general, reusable signals and make sure the runtime actually consumes them.
-- Current learning signals are cap sufficiency/cost, routing outcome by task/repo/segment, model-tier productivity versus no-progress cost, provider/parser failures, and harness-trusted verified outcome.
-- A new signal earns its place only if it can influence a future cap, route, stop/continue, or escalation decision and can be audited from JSONL.
-- Schema-aware learning matters: Memory loading uses current-schema, harness-trusted records. Archived rows are forensic and cannot enter active Learn Policy Inputs.
-- Cost Memory, Routing Memory, and Escalation Memory learn from clean current records and explicit adapter configuration. Historical runs inform design review and reports, not runtime routing behavior.
