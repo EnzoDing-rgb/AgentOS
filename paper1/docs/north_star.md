@@ -205,17 +205,21 @@ across every domain.
 
 Future work has three natural extensions.
 
-First, BudgetFlow can study finer-grained policy control. This includes
-stage-aware routing, segment-level routing, escalation policies, learned
-stop/continue decisions, and continual memory.
+First, BudgetFlow can study finer-grained allocation policy. This combines
+stage-aware routing, segment-level routing, and escalation into one question:
+when should scarce strong-model opportunities be spent inside a task?
 
-Second, BudgetFlow can become serving-aware. In a local serving stack, engines
+Second, BudgetFlow can study continual policy learning. This combines learned
+stop/continue decisions and memory into one question: how should completed
+runs improve future allocation without weakening auditability?
+
+Third, BudgetFlow can become serving-aware. In a local serving stack, engines
 such as vLLM or SGLang expose batching, prefill latency, and KV/prefix-cache
 locality that cloud APIs often hide. A bounded follow-up can compare normal
 BudgetFlow with a cache-sticky variant under the same shared budget and measure
 whether cache-locality costs change the cost-value frontier.
 
-Third, BudgetFlow can extend from one budget owner to multiple budget owners.
+Fourth, BudgetFlow can extend from one budget owner to multiple budget owners.
 The current paper studies one entity allocating one shared hard budget across a
 batch of tasks. A natural follow-up is multi-tenant agent budget governance:
 multiple teams, users, or services share an agent execution substrate while
