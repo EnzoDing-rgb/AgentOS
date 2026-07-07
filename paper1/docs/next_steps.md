@@ -62,7 +62,8 @@ mechanism because they are narrow to the benchmark.
 
 - Expand only after Fengde Ding reviews the short PDF.
 - Target a complete 8--10 page ICML-style draft when the content justifies it.
-- Move Related Work after Introduction.
+- Move Related Work directly after Introduction so readers see the per-query,
+  per-task, serving-systems, and batch-budget boundaries before the method.
 - Use `paper1/docs/related_work.html` as the source for Related Work.
 - Expand the method section around the actual allocation policy, not decorative
   formulas.
@@ -106,11 +107,12 @@ Use two separate visual dimensions.
    budget sensitivity, and KV Cache Cost-Discount sensitivity.
 
 Tables and figures should guide the reader's eye to the positive signals.
-Use boldface in tables for the winning or most important entries. Use color,
-larger markers, frontier lines, and concise annotations in figures. The visual
-style should be closer to frontier/scaling-law figures: clean grid, colored
-policy curves or point series, clear boundary line, and a few labeled key
-points.
+Use boldface and red text in tables for the winning or most important positive
+entries, such as the latest 5x30 BudgetFlow wins and the 4x30 TRV/TRV-per-Dollar
+wins. Use color, larger markers, frontier lines, and concise annotations in
+figures. The visual style should be closer to frontier/scaling-law figures:
+clean grid, colored policy curves or point series, clear boundary line, and a
+few labeled key points.
 
 ## Future Work Emphasis
 
@@ -126,6 +128,10 @@ points.
 
 Use the conference survey files under `paper1/paper/conference/` as reference
 material, then verify the target CFP page again before any submission.
+
+Submission targets are planning inputs, not writing constraints. The draft
+should stay faithful to the Main Claim rather than bending the narrative toward
+one venue.
 
 Current strategy: list five candidate venues, but act on the top one or two
 first. The goal of the first submission is reviewer feedback, not maximizing
