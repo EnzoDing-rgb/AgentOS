@@ -29,6 +29,12 @@
 \captionsetup[table]{position=below}
 \hypersetup{pdfauthor={Fengde Ding}}
 
+\renewenvironment{abstract}
+{%
+  \centerline{\large\bf Abstract}
+  \vspace{-0.12in}\par\noindent}
+{\par\vskip 0.12in}
+
 \icmltitlerunning{BudgetFlow: Value-Aware Budget Governance for Agent Tasks}
 
 \begin{document}
@@ -43,20 +49,20 @@
   }
   \icmlkeywords{Agent Systems, Budget Allocation, Model Routing, SWE-bench}
 
-  \vskip 0.2in
-
-  \begin{abstract}
-Multi-step AI agent tasks consume variable amounts of model budget, and the tasks in a batch often have unequal value. Existing model-routing work primarily decides which model should answer one request or how one task should spend its own budget. We study \emph{Batch-Level Task Budget Allocation}: a task batch shares one hard budget, and the system must allocate model opportunities across tasks before the budget is exhausted.
-
-We introduce \method, a value-aware budget governance framework for task batches. Each task exposes four interfaces: \taskvalue, \tokendemand, \modelfit, and a \verifier. \method uses the first three signals to allocate budget and model tiers, while the \verifier settles outcomes. We evaluate \method on SWE-bench-style verified bug-fixing tasks under fixed task sets and shared hard budgets. The paper reports three primary metrics: Resolved Rate, Total Resolved Value (\trv), and \trv per Dollar.
-
-Across one 4-policy run and three 5-policy runs over 30-task batches, \method wins the latest audited run on all three primary metrics, wins a 4-policy run on \trv and \trv per Dollar, and closely approaches the strong-model-only boundary in two runs where the strong model is unusually cost-effective. Sensitivity analyses over Task Value, budget cap, and KV-cache cost discount show how the cost-value frontier changes under different operating conditions. These results support \method as a concrete formulation of value-aware task-batch budgeting, with SWE-bench as a verified coding instantiation.
-  \end{abstract}
+  \vskip 0.3in
 ]
 
 \makeatletter
 \global\icml@noticeprintedtrue
 \makeatother
+
+\begin{abstract}
+Multi-step AI agent tasks consume variable amounts of model budget, and the tasks in a batch often have unequal value. Existing model-routing work primarily decides which model should answer one request or how one task should spend its own budget. We study \emph{Batch-Level Task Budget Allocation}: a task batch shares one hard budget, and the system must allocate model opportunities across tasks before the budget is exhausted.
+
+We introduce \method, a value-aware budget governance framework for task batches. Each task exposes four interfaces: \taskvalue, \tokendemand, \modelfit, and a \verifier. \method uses the first three signals to allocate budget and model tiers, while the \verifier settles outcomes. We evaluate \method on SWE-bench-style verified bug-fixing tasks under fixed task sets and shared hard budgets. The paper reports three primary metrics: Resolved Rate, Total Resolved Value (\trv), and \trv per Dollar.
+
+Across one 4-policy run and three 5-policy runs over 30-task batches, \method wins the latest audited run on all three primary metrics, wins a 4-policy run on \trv and \trv per Dollar, and closely approaches the strong-model-only boundary in two runs where the strong model is unusually cost-effective. Sensitivity analyses over Task Value, budget cap, and KV-cache cost discount show how the cost-value frontier changes under different operating conditions. These results support \method as a concrete formulation of value-aware task-batch budgeting, with SWE-bench as a verified coding instantiation.
+\end{abstract}
 
 \section{Introduction}
 AI agents increasingly execute multi-step tasks: they inspect context, call tools, edit artifacts, run checks, and decide whether another model call is worth the cost. These tasks consume budget unevenly. One task may finish after a short reasoning loop; another may require repeated search, repair, and verification. In a batch, this variation means that a fixed model budget can be exhausted before every task receives the same opportunity to succeed.
