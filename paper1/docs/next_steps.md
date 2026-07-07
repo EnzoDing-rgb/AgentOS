@@ -24,6 +24,20 @@ context.
 - Sensitivity families: Task Value sensitivity, budget sensitivity, and
   KV Cache Cost-Discount sensitivity.
 
+## Narrative Revision
+
+The next draft should start from the general problem, then instantiate it on
+SWE-bench. The paper should first define the transferable setting: many
+valuable tasks share one hard budget; each task exposes Task Value, runway/cap
+planning information from Estimated Token Demand, Model Fit, and a Verifier;
+the system allocates scarce model opportunities to maximize verified value.
+
+SWE-bench should then appear as a strict testbed for that setting: a task batch,
+pre-registered values, different model tiers, measurable spend, and a
+test-based verifier. This ordering makes BudgetFlow read as a general
+batch-budget interface with one rigorous instantiation, rather than a
+SWE-bench-specific system followed by a portability claim.
+
 ## System Design Position
 
 Present BudgetFlow's design as the bridge between the value objective and the
@@ -57,6 +71,25 @@ mechanism because they are narrow to the benchmark.
 - Replace the current placeholder-style result visuals with two main figures:
   a multi-run main-evidence figure and a latest-5x30 sensitivity figure.
 - Keep wording direct, technical, and readable.
+
+## Policy Comparison Table
+
+Replace the current bullet list of five policies with a compact table. The
+table should compare policy inputs and the shared outcome contract, not prose
+definitions.
+
+| Policy | Same shared budget | **Task Value** | Runway / cap planning | Model choice | Same verifier |
+|---|---:|---:|---:|---|---:|
+| cheap-model-only | yes |  |  | fixed cheap model | yes |
+| strong-model-only | yes |  |  | fixed strong model | yes |
+| learned task-router | yes |  |  | value-blind learned choice | yes |
+| budget-only | yes |  | yes | budget-pressure choice | yes |
+| **BudgetFlow** | yes | **yes** | yes | value-aware choice | yes |
+
+The table should make Task Value visually prominent. The shared budget and the
+Verifier are held constant across all policies; the key contrast is whether
+Task Value enters allocation of scarce model opportunities. Explain that
+runway/cap planning is the decision-facing form of Estimated Token Demand.
 
 ## Figure Plan
 
