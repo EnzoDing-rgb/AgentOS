@@ -20,6 +20,7 @@
 \newcommand{\modelfit}{Model Fit\xspace}
 \newcommand{\verifier}{Verifier\xspace}
 \newcommand{\pos}[1]{\textcolor{red}{\textbf{#1}}}
+\newcommand{\ctrl}[1]{\textcolor{bfblue}{\textbf{#1}}}
 \definecolor{bfred}{HTML}{C62828}
 \definecolor{bfblue}{HTML}{1565C0}
 \definecolor{bfteal}{HTML}{00897B}
@@ -262,7 +263,7 @@ The main paid runs show observed frontier points. The sensitivity analyses ask h
 \section{Results}
 \label{sec:results}
 \subsection{Main Paid Evidence}
-Table~\ref{tab:main-evidence} summarizes four paid task-batch runs. Red entries mark the positive BudgetFlow signals that should anchor the reader's attention. The latest audited 5-policy run is the strongest positive signal: \method resolves 16/30 tasks, reaches \trv 18.00, and achieves 1.81 \trv per Dollar. The next-best learned task-router resolves 15/30 tasks, reaches \trv 17.00, and achieves 1.71 \trv per Dollar.
+Table~\ref{tab:main-evidence} summarizes four paid task-batch runs. Red entries mark BudgetFlow frontier signals; blue entries mark the strongest control when a control defines the boundary. The latest audited 5-policy run is the strongest positive signal: \method resolves 16/30 tasks, reaches \trv 18.00, and achieves 1.81 \trv per Dollar. The next-best learned task-router resolves 15/30 tasks, reaches \trv 17.00, and achieves 1.71 \trv per Dollar.
 
 \begin{table*}[t]
 \centering
@@ -272,12 +273,12 @@ Table~\ref{tab:main-evidence} summarizes four paid task-batch runs. Red entries 
 Run & Leading policy & Resolved Rate & Spend & TRV & TRV per Dollar \\
 \midrule
 4-policy value-aware allocation case & \method & 14/30 (46.7\%) & \$7.52 & \pos{18.50} & \pos{2.46} \\
- & strong-model-only & \textbf{15/30 (50.0\%)} & \$9.46 & 18.00 & 1.90 \\
+ & strong-model-only & \ctrl{15/30 (50.0\%)} & \$9.46 & 18.00 & 1.90 \\
 \addlinespace
-5-policy strong-model boundary case & strong-model-only & \textbf{17/30 (56.7\%)} & \$9.95 & \textbf{20.00} & \textbf{2.01} \\
+5-policy strong-model boundary case & strong-model-only & \ctrl{17/30 (56.7\%)} & \$9.95 & \ctrl{20.00} & \ctrl{2.01} \\
  & \method & 15/30 (50.0\%) & \$9.95 & 17.50 & 1.76 \\
 \addlinespace
-5-policy learned-router stress case & strong-model-only & \textbf{18/30 (60.0\%)} & \$9.88 & \textbf{19.00} & \textbf{1.92} \\
+5-policy learned-router stress case & strong-model-only & \ctrl{18/30 (60.0\%)} & \$9.88 & \ctrl{19.00} & \ctrl{1.92} \\
  & \method & 17/30 (56.7\%) & \$9.95 & 18.50 & 1.86 \\
 \addlinespace
 Latest audited 5-policy positive case & \method & \pos{16/30 (53.3\%)} & \$9.95 & \pos{18.00} & \pos{1.81} \\
@@ -285,7 +286,7 @@ Latest audited 5-policy positive case & \method & \pos{16/30 (53.3\%)} & \$9.95 
  & strong-model-only & 15/30 (50.0\%) & \$9.95 & 16.50 & 1.66 \\
 \bottomrule
 \end{tabular}
-\caption{Main paid evidence. Each row reports the leader for one 30-task batch. Resolved Rate, \trv, and \trv per Dollar are the three primary metrics. Red bold entries mark positive BudgetFlow signals; black bold entries mark the strongest control in boundary runs.}
+\caption{Main paid evidence. Each row reports the leader for one 30-task batch. Resolved Rate, \trv, and \trv per Dollar are the three primary metrics. Red bold entries mark BudgetFlow frontier signals; blue bold entries mark the strongest control in boundary runs.}
 \label{tab:main-evidence}
 \end{table*}
 
@@ -319,8 +320,10 @@ These outcomes should be read together. The 4-policy run is the clearest value-a
 \addlegendentry{BudgetFlow}
 \addplot+[fill=bfblue!55, draw=bfblue] coordinates {(1,1.90) (2,2.01) (3,1.92) (4,1.71)};
 \addlegendentry{best control}
-\node[font=\scriptsize, text=bfred, anchor=south] at (axis cs:1,2.53) {value-efficiency lead};
-\node[font=\scriptsize, text=bfred, anchor=south] at (axis cs:4,1.88) {latest lead};
+\node[font=\scriptsize, text=bfred, anchor=south] at (axis cs:1,2.53) {BF lead};
+\node[font=\scriptsize, text=bfblue, anchor=south] at (axis cs:2,2.08) {control lead};
+\node[font=\scriptsize, text=bfblue, anchor=south] at (axis cs:3,1.99) {control lead};
+\node[font=\scriptsize, text=bfred, anchor=south] at (axis cs:4,1.88) {BF lead};
 \end{axis}
 \end{tikzpicture}
 \caption{Multi-run main evidence. Each pair compares BudgetFlow with the best available control in that run on \trv per Dollar. The figure separates the repeated-run evidence from the sensitivity analysis in Section~\ref{sec:sensitivity}.}
@@ -393,20 +396,20 @@ Budget sensitivity is the closest analogue to a frontier plot. Figure~\ref{fig:b
     legend style={font=\scriptsize, at={(0.5,-0.20)}, anchor=north, draw=none, fill=white, legend columns=3},
     tick label style={font=\scriptsize},
     label style={font=\small},
-    grid=both,
-    grid style={line width=.1pt, draw=gray!20},
+    grid=major,
+    grid style={line width=.1pt, draw=gray!10},
     axis line style={black!65},
     clip=false,
 ]
-\addplot+[mark=*, semithick, color=bfgray!55, opacity=0.55] coordinates {(2.99,5.50) (3.98,7.50) (4.98,7.50) (5.97,8.50) (7.47,11.00) (9.95,12.00)};
+\addplot+[mark=*, thin, color=bfgray!45, opacity=0.38] coordinates {(2.99,5.50) (3.98,7.50) (4.98,7.50) (5.97,8.50) (7.47,11.00) (9.95,12.00)};
 \addlegendentry{cheap-only}
-\addplot+[mark=square*, semithick, color=bfblue!65, opacity=0.7] coordinates {(2.99,7.50) (3.98,8.50) (4.98,11.00) (5.97,12.00) (7.47,12.00) (9.95,16.50)};
+\addplot+[mark=square*, semithick, color=bfblue!55, opacity=0.56] coordinates {(2.99,7.50) (3.98,8.50) (4.98,11.00) (5.97,12.00) (7.47,12.00) (9.95,16.50)};
 \addlegendentry{strong-only}
-\addplot+[mark=triangle*, semithick, color=bfteal!65, opacity=0.7] coordinates {(2.99,7.50) (3.98,8.50) (4.98,8.50) (5.97,11.00) (7.47,13.00) (9.95,17.00)};
+\addplot+[mark=triangle*, semithick, color=bfteal!55, opacity=0.50] coordinates {(2.99,7.50) (3.98,8.50) (4.98,8.50) (5.97,11.00) (7.47,13.00) (9.95,17.00)};
 \addlegendentry{learned router}
-\addplot+[mark=diamond*, semithick, color=bforange!65, opacity=0.7] coordinates {(2.99,6.00) (3.98,6.00) (4.98,7.00) (5.97,9.50) (7.47,10.50) (9.95,13.00)};
+\addplot+[mark=diamond*, semithick, color=bforange!55, opacity=0.50] coordinates {(2.99,6.00) (3.98,6.00) (4.98,7.00) (5.97,9.50) (7.47,10.50) (9.95,13.00)};
 \addlegendentry{budget-only}
-\addplot+[mark=none, dashed, very thick, color=black!55] coordinates {(2.99,7.50) (3.98,9.00) (4.98,11.00) (5.97,12.00) (7.47,13.00) (9.95,17.00)};
+\addplot+[mark=none, dashed, ultra thick, color=black!75] coordinates {(2.99,7.50) (3.98,9.00) (4.98,11.00) (5.97,12.00) (7.47,13.00) (9.95,17.00)};
 \addlegendentry{observed frontier}
 \addplot+[mark=star, mark size=3.2pt, very thick, color=bfred] coordinates {(2.99,7.50) (3.98,9.00) (4.98,10.00) (5.97,11.00) (7.47,12.00) (9.95,17.00)};
 \addlegendentry{BudgetFlow}
@@ -433,8 +436,8 @@ KV profile & BF & Best control & BF margin \\
 KV0 & \pos{1.81} & 1.71 & \pos{+0.10} \\
 KV50 & \pos{3.26} & 3.14 & \pos{+0.11} \\
 KV90 & \pos{9.06} & 8.98 & \pos{+0.09} \\
-KV98 & 14.08 & \textbf{14.28} & -0.20 \\
-KV99 & 15.13 & \textbf{15.41} & -0.29 \\
+KV98 & 14.08 & \ctrl{14.28} & -0.20 \\
+KV99 & 15.13 & \ctrl{15.41} & -0.29 \\
 \bottomrule
 \end{tabular}
 \caption{KV Cache Cost-Discount sensitivity. Values are \trv per Dollar.}
@@ -450,18 +453,18 @@ The SWE-bench experiments instantiate the formulation in a verified coding domai
 The four paid runs show different frontier leaders. This is the intended evidence shape for Batch-Level Task Budget Allocation. A value-aware policy can improve \trv and \trv per Dollar, a strong model can define the best boundary in favorable conditions, and a learned task-router can be a strong control when value placement is less important. Reporting the frontier makes these cases visible.
 
 \paragraph{Future work.}
-First, \method can move from task-level allocation to finer-grained execution control inside a task. The current paper assigns model opportunities at the task level. A richer policy could decide which task stage or segment deserves the strong model, how much repair runway to preserve, and when stop/defer decisions should be made inside a long attempt. This direction should be evaluated against task-level controls because finer granularity can improve allocation only when the stage signal is reliable enough to justify the added switching cost.
+\textbf{Fine-grained task execution control.} \method can move from task-level allocation to finer-grained execution control inside a task. The current paper assigns model opportunities at the task level. \textbf{A richer policy could decide which task stage or segment deserves the strong model, how much repair runway to preserve, and when stop/defer decisions should be made inside a long attempt.} This direction should be evaluated against task-level controls because finer granularity can improve allocation only when the stage signal is reliable enough to justify the added switching cost.
 
-Second, \method can study continual policy learning with auditability. Completed batches produce cost traces, routing outcomes, verifier results, and frontier positions. A future policy can use those records to update future caps, route choices, and stop/continue decisions. The important systems constraint is that each learned update should remain inspectable: the next allocation should be explainable through the same value ledger, demand estimate, model-fit evidence, and verifier-settled outcome history.
+\textbf{Continual policy learning with auditability.} Completed batches produce cost traces, routing outcomes, verifier results, and frontier positions. \textbf{A future policy can use those records to update future caps, route choices, and stop/continue decisions.} The important systems constraint is that each learned update should remain inspectable: the next allocation should be explainable through the same value ledger, demand estimate, model-fit evidence, and verifier-settled outcome history.
 
-Third, \method can become serving-aware and multi-tenant. Serving systems such as vLLM, SGLang, and Dynamo optimize execution substrates: batching, cache locality, scheduling, and inference throughput. \method operates at the task-budget layer above that substrate. A serving-aware BudgetFlow could pass task value, remaining budget, estimated demand, and outcome history into scheduling hints such as priority, continuation, model opportunity, and cache-sticky execution. The same interface can then extend from one budget owner to multiple teams, users, or services that share an agent execution substrate with distinct budgets and priorities. This turns Batch-Level Task Budget Allocation into a candidate control plane for multi-tenant agent workloads.
+\textbf{Serving-aware and multi-tenant BudgetFlow.} Serving systems such as vLLM, SGLang, and Dynamo optimize execution substrates: batching, cache locality, scheduling, and inference throughput. \method operates at the task-budget layer above that substrate. A serving-aware BudgetFlow could pass task value, remaining budget, estimated demand, and outcome history into scheduling hints such as priority, continuation, model opportunity, and cache-sticky execution. The same interface can then extend from one budget owner to multiple teams, users, or services that share an agent execution substrate with distinct budgets and priorities. \textbf{This turns Batch-Level Task Budget Allocation into a candidate control plane for multi-tenant agent workloads.}
 
 \section{Conclusion}
 This paper formulates Batch-Level Task Budget Allocation for multi-step agent tasks under a shared hard budget. The core question is which task should receive the next scarce model opportunity when tasks have different value, different expected demand, and different model-tier fit. \method answers this question with a simple auditable interface: \taskvalue, \tokendemand, \modelfit, a shared budget ledger, and a \verifier-settled outcome.
 
-The SWE-bench experiments instantiate this interface in a verified coding domain. In the latest audited 5-policy run, \method improves Resolved Rate, \trv, and \trv per Dollar. Across the broader paid evidence, different policies occupy the frontier under different operating conditions, which is precisely why the paper reports cost-value curves rather than a single point estimate. The sensitivity analyses show how the frontier responds to value profiles, budget caps, and serving cost assumptions.
+\textbf{The SWE-bench experiments instantiate this interface in a verified coding domain. In the latest audited 5-policy run, \method improves Resolved Rate, \trv, and \trv per Dollar.} Across the broader paid evidence, different policies occupy the frontier under different operating conditions, which is precisely why the paper reports cost-value curves rather than a single point estimate. The sensitivity analyses show how the frontier responds to value profiles, budget caps, and serving cost assumptions.
 
-The broader value of \method is the formulation. Coding tasks provide a strict verifier and measurable spend, but the same batch-budget structure appears whenever many agent tasks compete for one resource pool and produce outcomes with unequal value. By separating allocation signals from outcome settlement, BudgetFlow offers a portable way to reason about verified value under fixed resource constraints, from SWE-bench-style coding to future serving-aware and multi-tenant agent systems.
+The broader value of \method is the formulation. Coding tasks provide a strict verifier and measurable spend, but the same batch-budget structure appears whenever many agent tasks compete for one resource pool and produce outcomes with unequal value. \textbf{By separating allocation signals from outcome settlement, BudgetFlow offers a portable way to reason about verified value under fixed resource constraints, from SWE-bench-style coding to future serving-aware and multi-tenant agent systems.}
 
 \bibliographystyle{icml2026}
 \bibliography{references}
