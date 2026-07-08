@@ -557,15 +557,15 @@
   </section>
 
   <section class="section">
-    <h2>3. 立体报告：三种状态，不是随机输赢</h2>
+    <h2>3. 立体报告：frontier mode、机制和操作条件</h2>
     <p>
-      这部分只回答一个问题：同一套 shared budget 下，什么因素在决定 frontier。数据里有三种清楚状态：value placement、strong-model coverage、model-fit routing。
+      这部分回答一个问题：同一套 shared budget 下，当前 batch 由哪个机制决定 frontier。数据给出三类 operating condition：value placement、strong-model coverage、model-fit routing。
     </p>
 
     <div class="regime-examples">
       <div class="regime-example bf">
-        <strong>1. BudgetFlow 有价值：高价值任务需要被优先保护</strong>
-        当任务价值差异明显、强模型只对部分任务有用时，关键不是多解一个普通任务，而是把预算放到更值钱的任务上。4-policy value case 里，高价值任务（Task Value ≥ 1.5）上 BudgetFlow 解出 5 个、价值 9.50；pure strong 解出 4 个、价值 7.00。
+        <strong>1. BudgetFlow 赢：value placement 决定 frontier</strong>
+        条件：任务价值差异大，T2 和 T3 都有可用机会，强模型收益集中在部分任务。机制：BudgetFlow 把 shared budget 放到高价值、且有模型收益空间的任务上。4-policy value case 里，BudgetFlow 少解 1 个任务，但 TRV 和 TRV/$ 都更高；高价值任务（Task Value ≥ 1.5）上解出 5 个、价值 9.50，pure strong 解出 4 个、价值 7.00。
         <table class="mini-table">
           <tbody>
             <tr class="red-row"><td>BudgetFlow</td><td>14/30</td><td>TRV 18.50</td><td>TRV/$ 2.32</td></tr>
@@ -573,11 +573,12 @@
             <tr><td>learned router</td><td>13/30</td><td>TRV 15.00</td><td>TRV/$ 1.60</td></tr>
           </tbody>
         </table>
+        具体任务证据：相对 strong-only，BudgetFlow-only 解决了 pallets__flask-4992（2.50）和 sympy__sympy-17655（1.00），而 strong-only-only 的 3 个任务各为 1.00。相对 learned router，BudgetFlow-only value 是 6.50，route-only value 是 3.00。可泛化结论：当任务价值差异真实存在，frontier 由“把预算放到哪里”决定。
       </div>
 
       <div class="regime-example control">
-        <strong>2. strong-only 接近或形成边界：强模型覆盖面足够大</strong>
-        当强模型对这一批任务整体有效，而且多轮尝试没有把共享预算压垮时，直接使用 strong model 会成为强边界。这个判断来自覆盖和效率，不是来自“它赢了所以它强”：strong boundary run 里 strong-only 完整覆盖 30/30，17 个 trusted pass；BudgetFlow 只在 25 个 paid attempts 中得到 15 个 pass。
+        <strong>2. strong-only 赢：coverage 决定 frontier</strong>
+        条件：强模型能在 shared budget 内覆盖整批任务，并且能补上尾部 T3-resolvable tasks。机制：strong-only 用完整覆盖换取 tail completion；BudgetFlow 在部分任务上节省预算，但错过了更多 T3-only tail value。strong boundary run 里 strong-only 覆盖 30/30、17 个 trusted pass；BudgetFlow 是 25 个 paid attempts、15 个 pass。
         <table class="mini-table">
           <tbody>
             <tr class="blue-row"><td>strong-only</td><td>17/30</td><td>TRV 20.00</td><td>TRV/$ 2.01</td></tr>
@@ -585,11 +586,12 @@
             <tr><td>near-boundary</td><td>18 vs 17</td><td>19.00 vs 18.50</td><td>1.92 vs 1.86</td></tr>
           </tbody>
         </table>
+        具体任务证据：两者共同解决 13 个任务、价值 15.50；BudgetFlow-only 是 2 个任务、价值 2.00；T3-only 是 4 个任务、价值 4.50，包括 mwaskom__seaborn-3407（1.50）、django__django-13964（1.00）、sphinx-doc__sphinx-7975（1.00）、sympy__sympy-18621（1.00）。可泛化结论：当强模型覆盖面足够大、预算足够支撑全批覆盖时，strong-model frontier 是系统应识别的边界。
       </div>
 
       <div class="regime-example router">
-        <strong>3. learned router 赢或接近：model-fit 信号很准</strong>
-        learned router 的胜场是好事：它说明 baseline 很强，也暴露出当前 BudgetFlow 路由公式还有可吸收的 model-fit 信号。diagnostic audit 里，learned router 的 T3-start 是 7 次、5 次 pass；BudgetFlow 也是 7 次 T3-start，但只有 2 次 pass、5 次 true fail。
+        <strong>3. learned router 赢或接近：model-fit 决定 frontier</strong>
+        条件：任务价值摆放的收益较小，模型适配判断本身足够准。机制：learned router 把有限的 T3 机会放到更可能成功的任务上，也避免了一些 T3 误投。diagnostic audit 里，learned router 的 T3-start 是 7 次、5 次 pass；BudgetFlow 也是 7 次 T3-start，但只有 2 次 pass、5 次 true fail。
         <table class="mini-table">
           <tbody>
             <tr class="blue-row"><td>diagnostic router</td><td>19/30</td><td>TRV 21.00</td><td>TRV/$ 2.11</td></tr>
@@ -597,18 +599,19 @@
             <tr><td>latest run</td><td><span class="hot">16 vs 15</span></td><td><span class="hot">18.00 vs 17.00</span></td><td><span class="hot">1.81 vs 1.71</span></td></tr>
           </tbody>
         </table>
+        具体任务证据：diagnostic audit 里 Route-only 是 5 个任务、价值 6.00，BudgetFlow-only 是 0。Route-only 包括 mwaskom__seaborn-3190（1.50，router 用 T2 pass，BudgetFlow 用 T3 fail）、mwaskom__seaborn-3407（1.50，router 用 T2 pass，BudgetFlow 用 T3 fail）、sympy__sympy-15346（1.00，router 用 T3 pass，BudgetFlow 用 T2 fail）。可泛化结论：当 model-fit signal 主导 batch，BudgetFlow 应吸收这个信号，同时保留 Task Value、cost/token consumption 和 shared budget 的治理接口。
       </div>
     </div>
 
     <div class="story">
       <p>
-        直观讲：BudgetFlow 赢在“任务价值摆放”重要的时候；strong-only 强在“强模型覆盖面足够大”的时候；learned router 强在“哪个模型适合哪个任务”本身已经能解释大部分收益的时候。
+        直观讲：BudgetFlow 的价值来自 value-aware batch governance；strong-only 的优势来自 full-batch strong coverage；learned router 的优势来自准确 model-fit placement。
       </p>
       <p>
-        这反而强化论文价值：我们不是报告一个永远第一的策略，而是报告一个 cost-value frontier。它告诉系统管理者当前 batch 应该依赖 value-aware allocation、strong-model frontload，还是更强的 learned model-fit router。
+        latest positive run 说明三者可以被统一起来：BudgetFlow 16/30、TRV 18.00、TRV/$ 1.81，高于 learned router 的 15/30、17.00、1.71，也高于 strong-only 的 15/30、16.50、1.66。那一轮 BudgetFlow-only 是 django__django-15814 和 django__django-12908，Route-only 是 sympy__sympy-17655。
       </p>
       <p>
-        下一版 BudgetFlow 的自然改进也很明确：保留 Task Value、成本和 token 消耗、shared budget 的治理接口，同时把 learned router 暴露出的 model-fit 准确信号吸收到路由公式里。
+        因此论文报告的不是单一排行榜，而是 frontier mode：在什么条件下 value placement、strong coverage、model-fit routing 分别决定 frontier。这个报告方式可以迁移到客服、文档、表格、科研任务等有 Task Value、cost/token consumption、model-fit prior 和 verifier 的 agent workload。
       </p>
     </div>
   </section>
