@@ -476,14 +476,27 @@
         BudgetFlow 在 latest run 中价值效率最高。
       </div>
     </div>
+    <div class="story" style="margin-top: 18px;">
+      <p>
+        <span class="hot">贡献 1：Value-Driven Batch Budget Allocation。</span>BudgetFlow 把 strong model access 从临时人工决定，变成可审计的 batch allocation decision。企业里 coding、marketing、PPT、support、research 等任务共享预算时，系统用显式信号决定谁值得使用更贵模型。
+      </p>
+      <p>
+        <span class="hot">贡献 2：Generalizable Interface。</span>BudgetFlow 要求每个任务提供 Task Value、cost/token consumption、model-fit prior、verifier 和 remaining shared budget。这些接口不绑定 SWE-bench，也可以映射到客服、文档、表格、科研任务。
+      </p>
+      <p>
+        <span class="hot">贡献 3：Frontier Mode Diagnosis。</span>论文报告的不只是一个胜负表，而是判断当前 batch 由 value placement、strong-model coverage，还是 model-fit routing 决定 frontier。这让系统可以通过少量真实 batch 调整路由策略。
+      </p>
+    </div>
     <table class="regime-table">
       <thead>
-        <tr><th>Contribution</th><th>What it adds</th></tr>
+        <tr><th>Interface</th><th>Meaning</th><th>Cross-domain example</th></tr>
       </thead>
       <tbody>
-        <tr><td>Value-Driven Batch Budget Allocation</td><td>把 strong model access 从临时人工决定，变成可审计的 batch allocation decision。</td></tr>
-        <tr><td>Generalizable Interface</td><td>Task Value、cost/token consumption、model-fit prior、verifier、remaining shared budget。</td></tr>
-        <tr><td>Frontier Mode Diagnosis</td><td>报告 value placement、strong-model coverage、model-fit routing 在什么条件下决定 frontier。</td></tr>
+        <tr><td>Task Value</td><td>任务被 verifier 接受后的预注册价值。</td><td>高优先级 bug、VIP 客服单、关键投标 PPT。</td></tr>
+        <tr><td>Cost / token consumption</td><td>执行前估计的预算和上下文消耗。</td><td>repo 大小、文档长度、support thread 长度。</td></tr>
+        <tr><td>Model-fit prior</td><td>strong model 相对 cheap model 的预期收益。</td><td>复杂修复、长推理分析、格式化文案任务的模型适配差异。</td></tr>
+        <tr><td>Verifier</td><td>任务结果是否被接受的验收信号。</td><td>测试通过、人工审核、规则引擎、业务 SLA。</td></tr>
+        <tr><td>Remaining shared budget</td><td>当前 batch 还剩多少模型预算。</td><td>部门月度预算、项目预算、一次批处理预算。</td></tr>
       </tbody>
     </table>
   </section>
