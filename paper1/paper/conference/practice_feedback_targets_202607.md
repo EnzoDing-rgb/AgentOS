@@ -61,3 +61,56 @@
 - 来源：
   - <https://conf.researchr.org/home/ase-2026/rase-2026>
   - <https://easychair.org/conferences/?conf=rase2026>
+
+---
+
+## 4. 三个月内可投的 CCF 正式候选
+
+时间基准：2026-07-08。下面三项是 **CCF 第七版 A/B/C 正式会议或正式 track**，区别于上面的 workshop 练手渠道。
+
+### 4.1 APSEC 2026 ERA / Technical Track
+
+- **CCF：C 类**（软件工程方向）
+- 会议：**APSEC 2026: Asia-Pacific Software Engineering Conference**
+- 截稿：
+  - **ERA：2026-08-03**
+  - **Technical Track：2026-07-20**
+- 通知：
+  - **ERA：2026-09-21**
+  - **Technical Track：2026-09-14**
+- 投稿系统：**EasyChair** — <https://easychair.org/conferences/?conf=apsec2026>
+- 费用：官方 CFP 未写投稿费；录用后至少一位作者注册并报告
+- 匹配度：强 — agentic SE、AI4SE、benchmark、cost-aware evaluation 都能放进软件工程语境
+- 为什么适合练手：**ERA 明确面向 early research / preliminary results**，最适合拿反馈；Technical Track 是更正式的 CCF C 主会口径
+- 来源：
+  - <https://conf.researchr.org/track/apsec-2026/apsec-2026-papers>
+  - <https://conf.researchr.org/track/apsec-2026/apsec-2026-technical-track>
+
+### 4.2 ICECCS 2026
+
+- **CCF：C 类**（软件工程方向）
+- 会议：**ICECCS 2026: International Conference on Engineering of Complex Computer Systems**
+- 截稿：**2026-07-20，AoE**
+- 通知：官网时间线仍有旧日期残留，提交前以 EasyChair / 官网最新公告为准
+- 类型 / 页数：Technical / Experience Report、Short Paper
+- 投稿系统：**EasyChair** — <https://easychair.org/conferences/?conf=iceccs2026>
+- 费用：官方 CFP 未写投稿费；registration TBA
+- 匹配度：中到强 — 官方 topic 包含 **LLM-based Agents、AI4SE and SE4AI、LLM integration、AI-driven systems efficiency**
+- 为什么适合练手：scope 比较宽，能把 BudgetFlow 写成复杂 agent 系统里的 cost-aware orchestration / evaluation framework
+- 来源：
+  - <https://formal-analysis.com/iceccs/2026/>
+
+### 4.3 SANER 2027 Research Track
+
+- **CCF：B 类**（软件工程方向）
+- 会议：**SANER 2027: IEEE International Conference on Software Analysis, Evolution, and Reengineering**
+- 截稿：**摘要 2026-09-21（mandatory）**；**全文 2026-09-25**
+- 通知：**2026-12-01**
+- 投稿系统：**EasyChair** — <https://easychair.org/my/conference?conf=saner2027>
+- 费用：官方 CFP 未写投稿费；录用后至少一位作者 full registration 并报告
+- 匹配度：中到强 — 如果论文强调 SWE-bench、agent workflow evaluation、software analysis / reengineering for agents，会比较自然
+- 为什么适合练手：比 APSEC / ICECCS 难，但反馈质量更接近正式软件工程研究轨；适合作为 9 月升级版
+- 来源：
+  - <https://conf.researchr.org/track/saner-2027/saner-2027-papers>
+
+**建议排序：** APSEC ERA 拿最快反馈；ICECCS 作为 7 月正式 CCF C 候选；SANER 作为 9 月更正式的 B 类升级目标。
