@@ -1,0 +1,584 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BudgetFlow Teacher Brief</title>
+  <style>
+    :root {
+      --bf: #c62828;
+      --bf-soft: #fde9e7;
+      --control: #1565c0;
+      --control-soft: #e8f1fd;
+      --ink: #17202a;
+      --muted: #5d6d7e;
+      --line: #d8dee8;
+      --bg: #f7f9fc;
+      --panel: #ffffff;
+      --green: #127c56;
+      --orange: #b45f06;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC",
+        "Microsoft YaHei", Arial, sans-serif;
+      line-height: 1.55;
+    }
+
+    main {
+      width: min(1120px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 28px 0 56px;
+    }
+
+    .hero {
+      background: linear-gradient(135deg, #ffffff 0%, #f8fbff 62%, #fff4f2 100%);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 28px;
+      box-shadow: 0 16px 40px rgba(23, 32, 42, 0.08);
+    }
+
+    h1, h2, h3 { margin: 0; letter-spacing: 0; }
+
+    h1 {
+      font-size: clamp(30px, 5vw, 56px);
+      line-height: 1.02;
+      max-width: 900px;
+    }
+
+    h2 {
+      font-size: clamp(22px, 3vw, 34px);
+      margin-bottom: 12px;
+    }
+
+    h3 {
+      font-size: 18px;
+      margin-bottom: 8px;
+    }
+
+    p {
+      margin: 0;
+      font-size: 17px;
+    }
+
+    .subtitle {
+      margin-top: 16px;
+      max-width: 850px;
+      color: var(--muted);
+      font-size: 19px;
+    }
+
+    .headline {
+      margin-top: 22px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+
+    .headline-card {
+      background: rgba(255, 255, 255, 0.84);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    .headline-card strong {
+      display: block;
+      color: var(--bf);
+      font-size: 28px;
+      line-height: 1.1;
+      margin-bottom: 6px;
+    }
+
+    .section {
+      margin-top: 24px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 24px;
+      box-shadow: 0 12px 30px rgba(23, 32, 42, 0.055);
+    }
+
+    .note {
+      color: var(--muted);
+      font-size: 15px;
+      margin-top: 6px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    .chart {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      background: #fff;
+      min-height: 100%;
+    }
+
+    .bar-row {
+      display: grid;
+      grid-template-columns: 150px 1fr 72px;
+      gap: 10px;
+      align-items: center;
+      margin: 10px 0;
+      font-size: 14px;
+    }
+
+    .label {
+      color: #34495e;
+      white-space: nowrap;
+    }
+
+    .track {
+      height: 16px;
+      background: #eef2f7;
+      border-radius: 999px;
+      overflow: hidden;
+      border: 1px solid #e3e9f1;
+    }
+
+    .bar {
+      height: 100%;
+      width: var(--w);
+      border-radius: 999px;
+      background: var(--color);
+    }
+
+    .value {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      color: #2c3e50;
+    }
+
+    .bf-label,
+    .bf-value { color: var(--bf); font-weight: 800; }
+
+    .control-label,
+    .control-value { color: var(--control); font-weight: 800; }
+
+    .metric-strip {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .metric {
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      padding: 14px;
+      background: #fff;
+    }
+
+    .metric .name {
+      color: var(--muted);
+      font-size: 14px;
+      margin-bottom: 5px;
+    }
+
+    .metric .num {
+      font-size: 28px;
+      font-weight: 800;
+      color: var(--bf);
+      line-height: 1.1;
+    }
+
+    .metric .compare {
+      margin-top: 4px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    .takeaway {
+      margin-top: 16px;
+      padding: 14px 16px;
+      border-radius: 8px;
+      background: var(--bf-soft);
+      border: 1px solid #f4b8b1;
+      color: #5f1717;
+      font-weight: 700;
+    }
+
+    .formula-box {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    .rule {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+      background: #fff;
+    }
+
+    .rule-list {
+      margin: 14px 0 0;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 10px;
+    }
+
+    .rule-list li {
+      display: grid;
+      grid-template-columns: 92px 1fr;
+      gap: 10px;
+      align-items: start;
+      padding: 10px;
+      border-radius: 8px;
+      background: #f8fafc;
+      border: 1px solid #edf1f6;
+    }
+
+    .tag {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 3px 9px;
+      font-size: 13px;
+      font-weight: 800;
+      color: #fff;
+      background: var(--control);
+      text-align: center;
+    }
+
+    .tag.red { background: var(--bf); }
+    .tag.green { background: var(--green); }
+    .tag.orange { background: var(--orange); }
+
+    .decision {
+      display: grid;
+      gap: 10px;
+    }
+
+    .decision-card {
+      border-radius: 8px;
+      padding: 13px;
+      border: 1px solid var(--line);
+      background: #fff;
+    }
+
+    .decision-card strong {
+      color: var(--bf);
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .story {
+      display: grid;
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    .story p {
+      padding-left: 14px;
+      border-left: 4px solid var(--bf);
+      color: #2d3a45;
+    }
+
+    .footer {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 18px;
+    }
+
+    .boundary-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+      margin-top: 18px;
+    }
+
+    .boundary-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 16px;
+    }
+
+    .boundary-card .title {
+      font-weight: 850;
+      font-size: 18px;
+      margin-bottom: 10px;
+    }
+
+    .mini-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+      margin-top: 10px;
+    }
+
+    .mini-table th,
+    .mini-table td {
+      border-bottom: 1px solid #edf1f6;
+      padding: 7px 5px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .mini-table th:first-child,
+    .mini-table td:first-child {
+      text-align: left;
+    }
+
+    .mini-table tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .blue-row td {
+      color: var(--control);
+      font-weight: 800;
+    }
+
+    .red-row td {
+      color: var(--bf);
+      font-weight: 800;
+    }
+
+    @media (max-width: 820px) {
+      main { width: min(100% - 20px, 1120px); padding-top: 14px; }
+      .hero, .section { padding: 18px; }
+      .headline, .grid-2, .formula-box, .metric-strip, .boundary-grid {
+        grid-template-columns: 1fr;
+      }
+      .bar-row {
+        grid-template-columns: 120px 1fr 58px;
+      }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <section class="hero">
+    <h1>BudgetFlow: 把 agent 批量任务变成可解释的预算治理问题</h1>
+    <p class="subtitle">
+      这篇论文的价值不是只在 SWE-bench 上多赢一个数字，而是把“很多任务共享一笔模型预算”变成一个可以度量、比较、解释和迁移的 cost-value frontier。
+    </p>
+    <div class="headline">
+      <div class="headline-card">
+        <strong>16 / 30</strong>
+        latest 5-policy run 中 BudgetFlow 解决任务数最高。
+      </div>
+      <div class="headline-card">
+        <strong>TRV 18.00</strong>
+        同样预算下，BudgetFlow 解决的任务价值最高。
+      </div>
+      <div class="headline-card">
+        <strong>1.81 TRV/$</strong>
+        BudgetFlow 在 latest run 中价值效率最高。
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>1. Latest 5-policy run：三项主指标全赢</h2>
+    <p>
+      这一轮是最直观的正面结果：BudgetFlow 同时赢 Resolved Rate、Total Resolved Value 和 TRV per Dollar。
+    </p>
+
+    <div class="metric-strip">
+      <div class="metric">
+        <div class="name">Resolved Rate</div>
+        <div class="num">16 / 30</div>
+        <div class="compare">learned router / strong-model-only: 15 / 30</div>
+      </div>
+      <div class="metric">
+        <div class="name">Total Resolved Value</div>
+        <div class="num">18.00</div>
+        <div class="compare">learned router: 17.00; strong-model-only: 16.50</div>
+      </div>
+      <div class="metric">
+        <div class="name">TRV per Dollar</div>
+        <div class="num">1.81</div>
+        <div class="compare">learned router: 1.71; strong-model-only: 1.66</div>
+      </div>
+    </div>
+
+    <div class="grid-2" style="margin-top: 18px;">
+      <div class="chart">
+        <h3>Resolved tasks</h3>
+        <div class="bar-row"><div class="label bf-label">BudgetFlow</div><div class="track"><div class="bar" style="--w:100%;--color:var(--bf);"></div></div><div class="value bf-value">16</div></div>
+        <div class="bar-row"><div class="label control-label">learned router</div><div class="track"><div class="bar" style="--w:93.75%;--color:var(--control);"></div></div><div class="value control-value">15</div></div>
+        <div class="bar-row"><div class="label">strong-only</div><div class="track"><div class="bar" style="--w:93.75%;--color:#7f8c8d;"></div></div><div class="value">15</div></div>
+        <div class="bar-row"><div class="label">budget-only</div><div class="track"><div class="bar" style="--w:75%;--color:#95a5a6;"></div></div><div class="value">12</div></div>
+        <div class="bar-row"><div class="label">cheap-only</div><div class="track"><div class="bar" style="--w:68.75%;--color:#bdc3c7;"></div></div><div class="value">11</div></div>
+      </div>
+
+      <div class="chart">
+        <h3>Total Resolved Value</h3>
+        <div class="bar-row"><div class="label bf-label">BudgetFlow</div><div class="track"><div class="bar" style="--w:100%;--color:var(--bf);"></div></div><div class="value bf-value">18.00</div></div>
+        <div class="bar-row"><div class="label control-label">learned router</div><div class="track"><div class="bar" style="--w:94.4%;--color:var(--control);"></div></div><div class="value control-value">17.00</div></div>
+        <div class="bar-row"><div class="label">strong-only</div><div class="track"><div class="bar" style="--w:91.7%;--color:#7f8c8d;"></div></div><div class="value">16.50</div></div>
+        <div class="bar-row"><div class="label">budget-only</div><div class="track"><div class="bar" style="--w:72.2%;--color:#95a5a6;"></div></div><div class="value">13.00</div></div>
+        <div class="bar-row"><div class="label">cheap-only</div><div class="track"><div class="bar" style="--w:66.7%;--color:#bdc3c7;"></div></div><div class="value">12.00</div></div>
+      </div>
+    </div>
+
+    <div class="takeaway">
+      老师可以直接听懂的版本：同样 30 个任务、同样预算，BudgetFlow 解得最多，解到的任务总价值最高，每美元产生的任务价值也最高。
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>2. 4-policy run：少解一个，但预算用得更有价值</h2>
+    <p>
+      这一轮更能说明论文为什么不能只看 pass rate。Strong-model-only 解了 15 个任务，BudgetFlow 解了 14 个任务；但 BudgetFlow 解到的任务价值更高，而且花费更低。
+    </p>
+
+    <div class="grid-2" style="margin-top: 18px;">
+      <div class="chart">
+        <h3>Resolved tasks</h3>
+        <div class="bar-row"><div class="label control-label">strong-only</div><div class="track"><div class="bar" style="--w:100%;--color:var(--control);"></div></div><div class="value control-value">15</div></div>
+        <div class="bar-row"><div class="label bf-label">BudgetFlow</div><div class="track"><div class="bar" style="--w:93.3%;--color:var(--bf);"></div></div><div class="value bf-value">14</div></div>
+        <div class="bar-row"><div class="label">learned router</div><div class="track"><div class="bar" style="--w:86.7%;--color:#7f8c8d;"></div></div><div class="value">13</div></div>
+        <div class="bar-row"><div class="label">cheap-only</div><div class="track"><div class="bar" style="--w:80%;--color:#bdc3c7;"></div></div><div class="value">12</div></div>
+      </div>
+
+      <div class="chart">
+        <h3>TRV per Dollar</h3>
+        <div class="bar-row"><div class="label bf-label">BudgetFlow</div><div class="track"><div class="bar" style="--w:100%;--color:var(--bf);"></div></div><div class="value bf-value">2.32</div></div>
+        <div class="bar-row"><div class="label control-label">strong-only</div><div class="track"><div class="bar" style="--w:81.9%;--color:var(--control);"></div></div><div class="value control-value">1.90</div></div>
+        <div class="bar-row"><div class="label">learned router</div><div class="track"><div class="bar" style="--w:69%;--color:#7f8c8d;"></div></div><div class="value">1.60</div></div>
+        <div class="bar-row"><div class="label">cheap-only</div><div class="track"><div class="bar" style="--w:55.6%;--color:#bdc3c7;"></div></div><div class="value">1.29</div></div>
+      </div>
+    </div>
+
+    <div class="takeaway">
+      这一轮的重点：BudgetFlow 不是简单追求“多解一个”，而是在共享预算下把预算流向更有价值的任务。14 个 BudgetFlow resolved tasks 产生 TRV 18.50，高于 strong-only 的 18.00。
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>3. 立体报告：BudgetFlow 没赢时，边界也有信息</h2>
+    <p>
+      这里不能讲成“BudgetFlow 随机输赢”。更好的讲法是：BudgetFlow 把不同策略放到同一个 cost-value frontier 里，让我们知道当前 batch 属于哪种 operating regime。
+    </p>
+
+    <div class="boundary-grid">
+      <div class="boundary-card">
+        <div class="title">Strong-model boundary case</div>
+        <p class="note">这轮强模型本身很有效，直接全用 strong model 就形成了很强的 frontier point。</p>
+        <table class="mini-table">
+          <thead>
+            <tr><th>Policy</th><th>Resolved</th><th>TRV</th><th>TRV/$</th></tr>
+          </thead>
+          <tbody>
+            <tr class="blue-row"><td>strong-only</td><td>17/30</td><td>20.00</td><td>2.01</td></tr>
+            <tr class="red-row"><td>BudgetFlow</td><td>15/30</td><td>17.50</td><td>1.76</td></tr>
+          </tbody>
+        </table>
+        <div class="takeaway">
+          讲法：当强模型在这批任务上又强又不超预算，最优动作就是多用强模型。BudgetFlow 的价值是把这个边界识别出来，而不是假装所有 batch 都需要复杂分配。
+        </div>
+      </div>
+
+      <div class="boundary-card">
+        <div class="title">Near-boundary stress case</div>
+        <p class="note">这轮 strong-only 领先很小，BudgetFlow 接近 frontier，说明当前 policy 已经靠近强模型边界。</p>
+        <table class="mini-table">
+          <thead>
+            <tr><th>Policy</th><th>Resolved</th><th>TRV</th><th>TRV/$</th></tr>
+          </thead>
+          <tbody>
+            <tr class="blue-row"><td>strong-only</td><td>18/30</td><td>19.00</td><td>1.92</td></tr>
+            <tr class="red-row"><td>BudgetFlow</td><td>17/30</td><td>18.50</td><td>1.86</td></tr>
+          </tbody>
+        </table>
+        <div class="takeaway">
+          讲法：这里不是 BudgetFlow 没价值，而是强模型边界很近。它告诉我们后续优化方向：吸收 strong-only 的有效使用模式，同时保留 task value 和 shared budget 的治理能力。
+        </div>
+      </div>
+    </div>
+
+    <div class="story">
+      <p>
+        立体报告的核心不是找一个永远第一的策略，而是报告三种清晰状态：BudgetFlow 明显推动 frontier、BudgetFlow 用价值效率超过 pass-rate 更高的对照组、强模型本身形成 frontier boundary。
+      </p>
+      <p>
+        这反而加强论文价值：真实 agent 系统部署时，管理者需要知道自己处在哪个状态，然后决定用 value-aware allocation、strong-model frontload，还是更简单的 learned router。
+      </p>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>4. BudgetFlow 的路由公式，用白话讲就是四个问题</h2>
+    <p>
+      论文里的公式不是为了制造复杂感。它表达的是一个非常直接的判断：把下一次稀缺的模型机会给哪个任务，值不值。
+    </p>
+
+    <div class="formula-box" style="margin-top: 18px;">
+      <div class="rule">
+        <h3>每个任务先回答四个问题</h3>
+        <ul class="rule-list">
+          <li><span class="tag red">Value</span><span>这个任务如果解决了，价值有多高？高价值任务值得更多预算关注。</span></li>
+          <li><span class="tag">Demand</span><span>这个任务预计要多少 token / runway？太长的任务需要提前规划 cap。</span></li>
+          <li><span class="tag green">Fit</span><span>强模型相对便宜模型是否真的更有帮助？只有有明显收益时，强模型机会才更值。</span></li>
+          <li><span class="tag orange">Budget</span><span>当前 batch 还剩多少钱？给当前任务多花一点，就会影响后面任务。</span></li>
+        </ul>
+      </div>
+
+      <div class="decision">
+        <div class="decision-card">
+          <strong>给 strong model</strong>
+          高价值任务，强模型收益明显，预计 runway 足够，batch 预算还允许。
+        </div>
+        <div class="decision-card">
+          <strong>给 cheap model</strong>
+          任务价值正常，便宜模型已经有足够机会，强模型增益不明显。
+        </div>
+        <div class="decision-card">
+          <strong>stop / defer</strong>
+          继续花钱的预期价值低，或者剩余预算更应该留给后续任务。
+        </div>
+      </div>
+    </div>
+
+    <div class="story">
+      <p>
+        一个直观例子：任务 A 价值 2.5，强模型历史上对这类任务更有效，预计成本可控，BudgetFlow 会倾向于给它 strong-model opportunity。
+      </p>
+      <p>
+        任务 B 价值 1.0，便宜模型已经能解决类似任务，强模型增益很小，BudgetFlow 会倾向于用 cheap model，把强模型机会留给更需要的任务。
+      </p>
+      <p>
+        任务 C 两个模型都很可能失败，而且预计很耗预算，BudgetFlow 会倾向于少投入或停止，把共享预算保护下来。
+      </p>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>5. 这篇论文最值得讲给老师的价值</h2>
+    <div class="story">
+      <p>
+        BudgetFlow 把 agent 系统从“单个请求怎么选模型”推进到“一个任务 batch 怎么共享预算”。
+      </p>
+      <p>
+        数据说明任务之间确实有差异：有些任务便宜模型更划算，有些任务强模型更划算，还有些任务两个模型都失败。
+      </p>
+      <p>
+        因此我们需要的不只是一个 router，而是一个能同时看任务价值、模型收益、预计消耗和剩余预算的 budget governance framework。
+      </p>
+      <p>
+        SWE-bench 是严格 verifier 的实例；同一套接口也可以迁移到客服、文档、表格、科研任务等有验收信号的 agent workload。
+      </p>
+    </div>
+    <div class="footer">
+      Data shown here highlights the latest audited positive run, the 4-policy value-aware allocation run, and two compact boundary diagnostics from the paid evidence matrix.
+    </div>
+  </section>
+</main>
+</body>
+</html>
