@@ -462,53 +462,56 @@
   </section>
 
   <section class="section">
-    <h2>3. 立体报告：BudgetFlow 没赢时，边界也有信息</h2>
+    <h2>3. 立体报告：数据告诉我们 BudgetFlow 什么时候能赢</h2>
     <p>
-      这里不能讲成“BudgetFlow 随机输赢”。更好的讲法是：BudgetFlow 把不同策略放到同一个 cost-value frontier 里，让我们知道当前 batch 属于哪种 operating regime。
+      这部分不能写成“BudgetFlow 有时赢有时输”。更硬的讲法是：四轮数据把 operating regimes 分开了。BudgetFlow 赢在 mixed batch；strong-only 赢在强模型本身已经覆盖 batch 的情况。
     </p>
 
     <div class="boundary-grid">
       <div class="boundary-card">
-        <div class="title">Strong-model boundary case</div>
-        <p class="note">这轮强模型本身很有效，直接全用 strong model 就形成了很强的 frontier point。</p>
+        <div class="title">BudgetFlow winning regimes</div>
+        <p class="note">当任务价值和模型收益都不均匀时，BudgetFlow 把预算放到更值得解决的任务上。</p>
         <table class="mini-table">
           <thead>
-            <tr><th>Policy</th><th>Resolved</th><th>TRV</th><th>TRV/$</th></tr>
+            <tr><th>Run</th><th>Resolved Δ</th><th>TRV Δ</th><th>TRV/$ Δ</th></tr>
           </thead>
           <tbody>
-            <tr class="blue-row"><td>strong-only</td><td>17/30</td><td>20.00</td><td>2.01</td></tr>
-            <tr class="red-row"><td>BudgetFlow</td><td>15/30</td><td>17.50</td><td>1.76</td></tr>
+            <tr class="red-row"><td>latest 5-policy</td><td>+1</td><td>+1.00</td><td>+0.10</td></tr>
+            <tr class="red-row"><td>4-policy value case</td><td>-1</td><td>+0.50</td><td>+0.42</td></tr>
           </tbody>
         </table>
         <div class="takeaway">
-          讲法：当强模型在这批任务上又强又不超预算，最优动作就是多用强模型。BudgetFlow 的价值是把这个边界识别出来，而不是假装所有 batch 都需要复杂分配。
+          具体数据：latest run 中 BudgetFlow 16/30、TRV 18.00、TRV/$ 1.81，超过 best control 的 15/30、17.00、1.71。4-policy run 中 BudgetFlow 少解 1 个，但 TRV 18.50 > 18.00，TRV/$ 2.32 > 1.90。
         </div>
       </div>
 
       <div class="boundary-card">
-        <div class="title">Near-boundary stress case</div>
-        <p class="note">这轮 strong-only 领先很小，BudgetFlow 接近 frontier，说明当前 policy 已经靠近强模型边界。</p>
+        <div class="title">Strong-model regimes</div>
+        <p class="note">当强模型在这批任务上足够有效、预算也能覆盖时，strong-only 会成为当前最强 operating point。</p>
         <table class="mini-table">
           <thead>
-            <tr><th>Policy</th><th>Resolved</th><th>TRV</th><th>TRV/$</th></tr>
+            <tr><th>Run</th><th>Resolved Δ</th><th>TRV Δ</th><th>TRV/$ Δ</th></tr>
           </thead>
           <tbody>
-            <tr class="blue-row"><td>strong-only</td><td>18/30</td><td>19.00</td><td>1.92</td></tr>
-            <tr class="red-row"><td>BudgetFlow</td><td>17/30</td><td>18.50</td><td>1.86</td></tr>
+            <tr class="blue-row"><td>strong boundary</td><td>-2</td><td>-2.50</td><td>-0.25</td></tr>
+            <tr class="blue-row"><td>near-boundary</td><td>-1</td><td>-0.50</td><td>-0.06</td></tr>
           </tbody>
         </table>
         <div class="takeaway">
-          讲法：这里不是 BudgetFlow 没价值，而是强模型边界很近。它告诉我们后续优化方向：吸收 strong-only 的有效使用模式，同时保留 task value 和 shared budget 的治理能力。
+          具体数据：strong boundary run 中 strong-only 是 17/30、TRV 20.00、TRV/$ 2.01，BudgetFlow 是 15/30、17.50、1.76。near-boundary run 中 strong-only 是 18/30、19.00、1.92，BudgetFlow 是 17/30、18.50、1.86。
         </div>
       </div>
     </div>
 
     <div class="story">
       <p>
-        立体报告的核心不是找一个永远第一的策略，而是报告三种清晰状态：BudgetFlow 明显推动 frontier、BudgetFlow 用价值效率超过 pass-rate 更高的对照组、强模型本身形成 frontier boundary。
+        所以结论不是随机输赢。BudgetFlow 能赢的具体条件是 mixed batch：任务价值差异明显，强模型只对部分任务值得花钱，便宜模型也有可用机会。
       </p>
       <p>
-        这反而加强论文价值：真实 agent 系统部署时，管理者需要知道自己处在哪个状态，然后决定用 value-aware allocation、strong-model frontload，还是更简单的 learned router。
+        数据支撑这个条件：latest run 的可比较任务中，cheap-model-favorable pass 有 6 个，strong-model-favorable pass 有 5 个，both-fail 有 7 个。这个结构给了 BudgetFlow 分配空间。
+      </p>
+      <p>
+        strong-only 赢的条件也很明确：强模型对这一批任务整体有效，而且共享预算足够覆盖。此时该讲成 strong-model regime，而不是把 BudgetFlow 包装成稳赢算法。
       </p>
     </div>
   </section>
