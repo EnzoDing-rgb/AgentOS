@@ -460,7 +460,7 @@
   <section class="hero">
     <h1>BudgetFlow: 把 agent 批量任务变成可解释的预算治理问题</h1>
     <p class="subtitle">
-      这篇论文的价值不是只在 SWE-bench 上多赢一个数字，而是把“很多任务共享一笔模型预算”变成一个可以度量、比较、解释和迁移的 cost-value frontier。
+      这篇论文的核心贡献有三点：提出 Value-Driven Batch Budget Allocation，给出跨任务可迁移的治理接口，并用 frontier mode 解释什么条件下 BudgetFlow、strong-only 或 learned router 决定边界。
     </p>
     <div class="headline">
       <div class="headline-card">
@@ -476,6 +476,16 @@
         BudgetFlow 在 latest run 中价值效率最高。
       </div>
     </div>
+    <table class="regime-table">
+      <thead>
+        <tr><th>Contribution</th><th>What it adds</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Value-Driven Batch Budget Allocation</td><td>把 strong model access 从临时人工决定，变成可审计的 batch allocation decision。</td></tr>
+        <tr><td>Generalizable Interface</td><td>Task Value、cost/token consumption、model-fit prior、verifier、remaining shared budget。</td></tr>
+        <tr><td>Frontier Mode Diagnosis</td><td>报告 value placement、strong-model coverage、model-fit routing 在什么条件下决定 frontier。</td></tr>
+      </tbody>
+    </table>
   </section>
 
   <section class="section">
@@ -608,7 +618,10 @@
         直观讲：BudgetFlow 的价值来自 value-aware batch governance；strong-only 的优势来自 full-batch strong coverage；learned router 的优势来自准确 model-fit placement。
       </p>
       <p>
-        latest positive run 说明三者可以被统一起来：BudgetFlow 16/30、TRV 18.00、TRV/$ 1.81，高于 learned router 的 15/30、17.00、1.71，也高于 strong-only 的 15/30、16.50、1.66。那一轮 BudgetFlow-only 是 django__django-15814 和 django__django-12908，Route-only 是 sympy__sympy-17655。
+        输给 strong-only 或 learned router 时，含义也直接：当前 routing 对 coverage 或 model-fit signal 的权重还需要调整。真实系统可以先跑少量 batch，再吸收有效信号。
+      </p>
+      <p>
+        latest positive run 说明这些信号可以被统一起来：BudgetFlow 16/30、TRV 18.00、TRV/$ 1.81，高于 learned router 的 15/30、17.00、1.71，也高于 strong-only 的 15/30、16.50、1.66。那一轮 BudgetFlow-only 是 django__django-15814 和 django__django-12908，Route-only 是 sympy__sympy-17655。
       </p>
       <p>
         因此论文报告的不是单一排行榜，而是 frontier mode：在什么条件下 value placement、strong coverage、model-fit routing 分别决定 frontier。这个报告方式可以迁移到客服、文档、表格、科研任务等有 Task Value、cost/token consumption、model-fit prior 和 verifier 的 agent workload。
@@ -619,7 +632,7 @@
   <section class="section">
     <h2>4. BudgetFlow 的路由公式，用白话讲就是四个问题</h2>
     <p>
-      论文里的公式不是为了制造复杂感。它表达的是一个非常直接的判断：把下一次稀缺的模型机会给哪个任务，值不值。
+      论文里的公式表达的是一个直接判断：在当前 shared budget 下，把下一次稀缺的 strong-model opportunity 给哪个任务，值不值。
     </p>
 
     <div class="formula-box" style="margin-top: 18px;">
@@ -662,6 +675,9 @@
       <p>
         任务 C 两个模型都很可能失败，而且预计很耗预算，BudgetFlow 会倾向于少投入或停止，把共享预算保护下来。
       </p>
+      <p>
+        这套路由可以迭代：如果 strong-only 覆盖更稳，就提高 coverage signal；如果 learned router 更准，就提高 model-fit signal。
+      </p>
     </div>
   </section>
 
@@ -670,6 +686,9 @@
     <div class="story">
       <p>
         BudgetFlow 把 agent 系统从“单个请求怎么选模型”推进到<span class="hot">“一个任务 batch 怎么共享预算”</span>。
+      </p>
+      <p>
+        这也是企业治理问题：strong model capacity 是稀缺资源，BudgetFlow 用可记录、可审计的接口信号做 allocation。
       </p>
       <p>
         数据说明<span class="hot">任务之间确实有差异</span>：有些任务便宜模型更划算，有些任务强模型更划算，还有些任务两个模型都失败。
