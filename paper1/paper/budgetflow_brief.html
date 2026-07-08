@@ -164,6 +164,11 @@
     .bf-label,
     .bf-value { color: var(--bf); font-weight: 800; }
 
+    .hot {
+      color: var(--bf);
+      font-weight: 800;
+    }
+
     .control-label,
     .control-value { color: var(--control); font-weight: 800; }
 
@@ -276,6 +281,20 @@
       margin-bottom: 4px;
     }
 
+    .route-score {
+      margin-top: 14px;
+      padding: 14px 16px;
+      border-radius: 8px;
+      background: #fff7f6;
+      border: 1px solid #f4b8b1;
+      color: #4d1a16;
+      font-size: 16px;
+    }
+
+    .route-score strong {
+      color: var(--bf);
+    }
+
     .story {
       display: grid;
       gap: 12px;
@@ -338,6 +357,35 @@
       border-bottom: 0;
     }
 
+    .regime-table {
+      margin-top: 16px;
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .regime-table th,
+    .regime-table td {
+      padding: 10px;
+      border-bottom: 1px solid #edf1f6;
+      vertical-align: top;
+      text-align: left;
+    }
+
+    .regime-table th {
+      background: #f8fafc;
+      color: #394b59;
+      font-weight: 800;
+    }
+
+    .regime-table tr:last-child td {
+      border-bottom: 0;
+    }
+
     .blue-row td {
       color: var(--control);
       font-weight: 800;
@@ -348,10 +396,57 @@
       font-weight: 800;
     }
 
+    .regime-examples {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-top: 16px;
+    }
+
+    .regime-example {
+      border-radius: 8px;
+      padding: 15px;
+      border: 1px solid var(--line);
+      background: #fff;
+    }
+
+    .regime-example strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 17px;
+    }
+
+    .regime-example.bf {
+      border-color: #f4b8b1;
+      background: #fff7f6;
+    }
+
+    .regime-example.bf strong {
+      color: var(--bf);
+    }
+
+    .regime-example.control {
+      border-color: #b9d2f2;
+      background: #f5f9ff;
+    }
+
+    .regime-example.control strong {
+      color: var(--control);
+    }
+
+    .regime-example.router {
+      border-color: #c5d7ea;
+      background: #f7fbff;
+    }
+
+    .regime-example.router strong {
+      color: var(--control);
+    }
+
     @media (max-width: 820px) {
       main { width: min(100% - 20px, 1120px); padding-top: 14px; }
       .hero, .section { padding: 18px; }
-      .headline, .grid-2, .formula-box, .metric-strip, .boundary-grid {
+      .headline, .grid-2, .formula-box, .metric-strip, .boundary-grid, .regime-examples {
         grid-template-columns: 1fr;
       }
       .bar-row {
@@ -464,8 +559,50 @@
   <section class="section">
     <h2>3. 立体报告：数据告诉我们 BudgetFlow 什么时候能赢</h2>
     <p>
-      这部分不能写成“BudgetFlow 有时赢有时输”。更硬的讲法是：四轮数据把 operating regimes 分开了。BudgetFlow 赢在 mixed batch；strong-only 赢在强模型本身已经覆盖 batch 的情况。
+      这部分的核心是把不同数据状态分清楚：BudgetFlow 赢在 mixed batch；strong-only 赢在强模型本身已经覆盖 batch 的情况；learned router 在模型选择信号足够准、Task Value 不是主要差异时会贴近 frontier。
     </p>
+
+    <div class="regime-examples">
+      <div class="regime-example bf">
+        <strong>例子 1：mixed batch regime</strong>
+        一个 batch 里有高价值任务、普通任务和很难救的任务；强模型只对其中一部分任务有明显收益，便宜模型也能解决一部分任务。此时 BudgetFlow 的动作是把 strong-model opportunity 留给高价值且强模型有增益的任务。latest run 对应这个状态：BudgetFlow 16/30、TRV 18.00、TRV/$ 1.81，领先 best control 的 15/30、17.00、1.71。
+      </div>
+      <div class="regime-example control">
+        <strong>例子 2：strong-model regime</strong>
+        一个 batch 里强模型对大多数可解决任务都有效，而且 $9.95 共享预算足够支撑强模型覆盖主要任务。此时 strong-only 就是很强的 frontier point。strong boundary run 对应这个状态：strong-only 17/30、TRV 20.00、TRV/$ 2.01，领先 BudgetFlow 的 15/30、17.50、1.76。
+      </div>
+      <div class="regime-example router">
+        <strong>例子 3：learned-router regime</strong>
+        一个 batch 里“哪个模型更适合这个任务”本身就是主要信号，Task Value 排序带来的额外收益较小。此时 learned router 会很接近甚至领先 frontier。一个 diagnostic audit 中，learned router 达到 19/30、TRV 21.00、TRV/$ 2.11，高于 BudgetFlow 的 14/30、15.00、1.51。
+      </div>
+    </div>
+
+    <table class="regime-table">
+      <thead>
+        <tr>
+          <th>Observed regime</th>
+          <th>Data pattern</th>
+          <th>What the data says</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="hot">BudgetFlow-led mixed batch</span></td>
+          <td>latest 5-policy: BudgetFlow leads by +1 resolved, +1.00 TRV, +0.10 TRV/$. 4-policy value case: BudgetFlow trails by 1 resolved task but leads by +0.50 TRV and +0.42 TRV/$.</td>
+          <td>这里的关键差别是任务价值和模型收益没有对齐。多解一个任务不一定最高价值；BudgetFlow 把预算放到更值钱、强模型更有用的任务上。</td>
+        </tr>
+        <tr>
+          <td><span class="control-label">Strong-model-led boundary</span></td>
+          <td>strong boundary: strong-only leads 17/30 vs 15/30, TRV 20.00 vs 17.50, TRV/$ 2.01 vs 1.76. near-boundary: strong-only leads 18/30 vs 17/30, TRV 19.00 vs 18.50, TRV/$ 1.92 vs 1.86.</td>
+          <td>这里的关键差别是强模型整体有效，而且预算能覆盖主要尝试。分配策略的空间变小，frontier 由 strong-only 给出。</td>
+        </tr>
+        <tr>
+          <td><span class="control-label">Learned-router-led / near-frontier</span></td>
+          <td>diagnostic audit: learned router 19/30, TRV 21.00, TRV/$ 2.11 vs BudgetFlow 14/30, 15.00, 1.51. latest run: learned router is close at 15/30, 17.00, 1.71 vs BudgetFlow 16/30, 18.00, 1.81. KV98/KV99: learned router leads TRV/$ 14.28 vs 14.08 and 15.41 vs 15.13.</td>
+          <td>这里的关键差别是 value-blind model-fit signal 已经很强，或者 KV cache 把 cost / token consumption 压低。此时 learned router 可以贴近 BudgetFlow；在极高 KV 折扣下，它会越过 efficiency frontier，但 BudgetFlow 仍保持更高 TRV。</td>
+        </tr>
+      </tbody>
+    </table>
 
     <div class="boundary-grid">
       <div class="boundary-card">
@@ -503,6 +640,33 @@
       </div>
     </div>
 
+    <div class="boundary-grid">
+      <div class="boundary-card">
+        <div class="title">Learned-router near-frontier cases</div>
+        <p class="note">当 per-task model fit 已经解释了大部分收益时，learned router 会成为很强的 value-blind control。</p>
+        <table class="mini-table">
+          <thead>
+            <tr><th>Case</th><th>Learned router</th><th>BudgetFlow</th><th>Reading</th></tr>
+          </thead>
+          <tbody>
+            <tr class="blue-row"><td>diagnostic audit</td><td>19/30, 21.00, 2.11</td><td>14/30, 15.00, 1.51</td><td>router wins</td></tr>
+            <tr><td>latest 5-policy</td><td>15/30, 17.00, 1.71</td><td><span class="hot">16/30, 18.00, 1.81</span></td><td>close control</td></tr>
+            <tr class="blue-row"><td>KV98 / KV99</td><td>14.28 / 15.41 TRV/$</td><td>14.08 / 15.13 TRV/$</td><td>efficiency lead</td></tr>
+          </tbody>
+        </table>
+        <div class="takeaway">
+          learned router 赢或接近的条件：模型选择信号本身足够准，或者 serving cost model 让重复上下文很便宜。它的弱点也由 4-policy value case 给出：当 Task Value placement 很重要时，learned router 13/30、TRV 15.00、TRV/$ 1.60，落后 BudgetFlow 的 14/30、18.50、2.32。
+        </div>
+      </div>
+      <div class="boundary-card">
+        <div class="title">Why this helps the paper</div>
+        <p class="note">这不是把 learned router 当成附属 baseline，而是把它放进同一个 frontier 报告框架。</p>
+        <div class="takeaway">
+          三种状态一起构成论文价值：BudgetFlow 说明 value-aware allocation 什么时候创造价值；strong-only 说明强模型什么时候已经形成边界；learned router 说明 per-task model fit 什么时候已经足够强。
+        </div>
+      </div>
+    </div>
+
     <div class="story">
       <p>
         所以结论不是随机输赢。BudgetFlow 能赢的具体条件是 mixed batch：任务价值差异明显，强模型只对部分任务值得花钱，便宜模型也有可用机会。
@@ -511,7 +675,10 @@
         数据支撑这个条件：latest run 的可比较任务中，cheap-model-favorable pass 有 6 个，strong-model-favorable pass 有 5 个，both-fail 有 7 个。这个结构给了 BudgetFlow 分配空间。
       </p>
       <p>
-        strong-only 赢的条件也很明确：强模型对这一批任务整体有效，而且共享预算足够覆盖。此时该讲成 strong-model regime，而不是把 BudgetFlow 包装成稳赢算法。
+        strong-only 赢在两轮：strong boundary 和 near-boundary。它们的共同特征是 strong-only 同时拿到更高 resolved count、更高 TRV 和更高 TRV/$；这说明那两批任务中强模型整体覆盖有效，预算也没有把 strong-only 压垮。
+      </p>
+      <p>
+        learned router 赢或接近 frontier 的条件也清楚：它的 value-blind model-fit signal 足够准，或者 cost / token consumption 因 KV cache 折扣变得很低。此时 Task Value 带来的额外治理收益会变小；当高价值任务需要被优先保护时，BudgetFlow 的优势重新变大。
       </p>
     </div>
   </section>
@@ -527,16 +694,19 @@
         <h3>每个任务先回答四个问题</h3>
         <ul class="rule-list">
           <li><span class="tag red">Value</span><span>这个任务如果解决了，价值有多高？高价值任务值得更多预算关注。</span></li>
-          <li><span class="tag">Demand</span><span>这个任务预计要多少 token / runway？太长的任务需要提前规划 cap。</span></li>
+          <li><span class="tag">Cost / Token</span><span>这个任务预计会消耗多少 cost / token？高消耗任务需要提前规划 cap。</span></li>
           <li><span class="tag green">Fit</span><span>强模型相对便宜模型是否真的更有帮助？只有有明显收益时，强模型机会才更值。</span></li>
           <li><span class="tag orange">Budget</span><span>当前 batch 还剩多少钱？给当前任务多花一点，就会影响后面任务。</span></li>
         </ul>
+        <div class="route-score">
+          <strong>直观路由分数：</strong>值得花钱的程度 ≈ 任务价值 × 强模型增益 ÷ 预计 cost / token consumption，并且必须通过剩余 batch 预算检查。
+        </div>
       </div>
 
       <div class="decision">
         <div class="decision-card">
           <strong>给 strong model</strong>
-          高价值任务，强模型收益明显，预计 runway 足够，batch 预算还允许。
+          高价值任务，强模型收益明显，预计 cost / token consumption 可控，batch 预算还允许。
         </div>
         <div class="decision-card">
           <strong>给 cheap model</strong>
@@ -551,7 +721,7 @@
 
     <div class="story">
       <p>
-        一个直观例子：任务 A 价值 2.5，强模型历史上对这类任务更有效，预计成本可控，BudgetFlow 会倾向于给它 strong-model opportunity。
+        一个直观例子：任务 A 价值 2.5，强模型历史上对这类任务更有效，预计 cost / token consumption 可控，BudgetFlow 会倾向于给它 strong-model opportunity。
       </p>
       <p>
         任务 B 价值 1.0，便宜模型已经能解决类似任务，强模型增益很小，BudgetFlow 会倾向于用 cheap model，把强模型机会留给更需要的任务。
@@ -566,16 +736,16 @@
     <h2>5. 这篇论文最值得讲清楚的价值</h2>
     <div class="story">
       <p>
-        BudgetFlow 把 agent 系统从“单个请求怎么选模型”推进到“一个任务 batch 怎么共享预算”。
+        BudgetFlow 把 agent 系统从“单个请求怎么选模型”推进到<span class="hot">“一个任务 batch 怎么共享预算”</span>。
       </p>
       <p>
-        数据说明任务之间确实有差异：有些任务便宜模型更划算，有些任务强模型更划算，还有些任务两个模型都失败。
+        数据说明<span class="hot">任务之间确实有差异</span>：有些任务便宜模型更划算，有些任务强模型更划算，还有些任务两个模型都失败。
       </p>
       <p>
-        因此我们需要的不只是一个 router，而是一个能同时看任务价值、模型收益、预计消耗和剩余预算的 budget governance framework。
+        因此我们需要的不只是一个 router，而是一个能同时看<span class="hot">任务价值、模型收益、预计 cost / token consumption 和剩余预算</span>的 budget governance framework。
       </p>
       <p>
-        SWE-bench 是严格 verifier 的实例；同一套接口也可以迁移到客服、文档、表格、科研任务等有验收信号的 agent workload。
+        SWE-bench 是严格 verifier 的实例；<span class="hot">同一套接口也可以迁移</span>到客服、文档、表格、科研任务等有验收信号的 agent workload。
       </p>
     </div>
     <div class="footer">
