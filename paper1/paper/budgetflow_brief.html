@@ -481,7 +481,7 @@
         <span class="hot">贡献 1：Batch-Level Value Allocation Problem。</span>给定一批任务、一个 shared hard budget、多个 model tiers 和 verifier outcomes，BudgetFlow 的目标是在固定预算内最大化 verifier-confirmed Total Resolved Value，同时报告 resolved rate 和 TRV per dollar。
       </p>
       <p>
-        <span class="hot">贡献 2：Generalizable BudgetFlow Interface。</span>每个任务通过 Task Value、cost/token consumption、model-fit prior、verifier 和 remaining shared budget 进入同一套 allocation rule。coding、marketing、PPT、support、research 是任务来源，不是 strong model access 的决策特征。
+        <span class="hot">贡献 2：Generalizable BudgetFlow Interface。</span>每个任务通过 Task Value、Estimated Token Cost、model-fit prior、verifier 和 Shared Budget 进入同一套 allocation rule。coding、marketing、PPT、support、research 是任务来源，不是 strong model access 的决策特征。
       </p>
       <p>
         <span class="hot">贡献 3：Frontier Mode Analysis。</span>多轮 30-task evidence 显示 frontier 由三类机制主导：Value Divergence、Strong Coverage、Model Fit。这个分析解释为什么不同 policy 会形成边界，并指出 BudgetFlow 应吸收哪个信号。
@@ -493,10 +493,10 @@
       </thead>
       <tbody>
         <tr><td>Task Value</td><td>任务被 verifier 接受后的预注册价值。</td><td>高优先级 bug、VIP 客服单、关键投标 PPT。</td></tr>
-        <tr><td>Cost / token consumption</td><td>执行前估计的预算和上下文消耗。</td><td>repo 大小、文档长度、support thread 长度。</td></tr>
+        <tr><td>Estimated Token Cost</td><td>执行前估计的 token 成本，用于规划 cap 和模型机会。</td><td>repo 大小、文档长度、support thread 长度。</td></tr>
         <tr><td>Model-fit prior</td><td>strong model 相对 cheap model 的预期收益。</td><td>复杂修复、长推理分析、格式化文案任务的模型适配差异。</td></tr>
         <tr><td>Verifier</td><td>任务结果是否被接受的验收信号。</td><td>测试通过、人工审核、规则引擎、业务 SLA。</td></tr>
-        <tr><td>Remaining shared budget</td><td>当前 batch 还剩多少模型预算。</td><td>部门月度预算、项目预算、一次批处理预算。</td></tr>
+        <tr><td>Shared Budget</td><td>整个 batch 共享的一笔 hard budget。</td><td>部门月度预算、项目预算、一次批处理预算。</td></tr>
       </tbody>
     </table>
   </section>
@@ -622,7 +622,7 @@
             <tr><td>latest run</td><td><span class="hot">16 vs 15</span></td><td><span class="hot">18.00 vs 17.00</span></td><td><span class="hot">1.81 vs 1.71</span></td></tr>
           </tbody>
         </table>
-        具体任务证据：diagnostic audit 里 Route-only 是 5 个任务、价值 6.00，BudgetFlow-only 是 0。Route-only 包括 mwaskom__seaborn-3190（1.50，router 用 T2 pass，BudgetFlow 用 T3 fail）、mwaskom__seaborn-3407（1.50，router 用 T2 pass，BudgetFlow 用 T3 fail）、sympy__sympy-15346（1.00，router 用 T3 pass，BudgetFlow 用 T2 fail）。可泛化结论：当 model-fit signal 主导 batch，BudgetFlow 应吸收这个信号，同时保留 Task Value、cost/token consumption 和 shared budget 的治理接口。
+        具体任务证据：diagnostic audit 里 Route-only 是 5 个任务、价值 6.00，BudgetFlow-only 是 0。Route-only 包括 mwaskom__seaborn-3190（1.50，router 用 T2 pass，BudgetFlow 用 T3 fail）、mwaskom__seaborn-3407（1.50，router 用 T2 pass，BudgetFlow 用 T3 fail）、sympy__sympy-15346（1.00，router 用 T3 pass，BudgetFlow 用 T2 fail）。可泛化结论：当 model-fit signal 主导 batch，BudgetFlow 应吸收这个信号，同时保留 Task Value、Estimated Token Cost 和 Shared Budget 的治理接口。
       </div>
     </div>
 
@@ -637,7 +637,7 @@
         latest positive run 说明这些信号可以被统一起来：BudgetFlow 16/30、TRV 18.00、TRV/$ 1.81，高于 learned router 的 15/30、17.00、1.71，也高于 strong-only 的 15/30、16.50、1.66。那一轮 BudgetFlow-only 是 django__django-15814 和 django__django-12908，Route-only 是 sympy__sympy-17655。
       </p>
       <p>
-        因此论文报告的不是单一排行榜，而是 frontier mode：在什么条件下 Value Divergence、Strong Coverage、Model Fit 分别决定 frontier。这个报告方式可以迁移到客服、文档、表格、科研任务等有 Task Value、cost/token consumption、model-fit prior 和 verifier 的 agent workload。
+        因此论文报告的不是单一排行榜，而是 frontier mode：在什么条件下 Value Divergence、Strong Coverage、Model Fit 分别决定 frontier。这个报告方式可以迁移到客服、文档、表格、科研任务等有 Task Value、Estimated Token Cost、model-fit prior 和 verifier 的 agent workload。
       </p>
     </div>
   </section>
@@ -653,19 +653,19 @@
         <h3>每个任务先回答四个问题</h3>
         <ul class="rule-list">
           <li><span class="tag red">Value</span><span>这个任务如果解决了，价值有多高？高价值任务值得更多预算关注。</span></li>
-          <li><span class="tag">Cost + Token</span><span>这个任务预计会消耗多少成本和 token？高消耗任务需要提前规划 cap。</span></li>
+          <li><span class="tag">Token Cost</span><span>这个任务预计会消耗多少 token 成本？高消耗任务需要提前规划 cap。</span></li>
           <li><span class="tag green">Fit</span><span>强模型相对便宜模型是否真的更有帮助？只有有明显收益时，强模型机会才更值。</span></li>
           <li><span class="tag orange">Budget</span><span>当前 batch 还剩多少钱？给当前任务多花一点，就会影响后面任务。</span></li>
         </ul>
         <div class="route-score">
-          <strong>直观路由分数：</strong>值得花钱的程度 ≈ 任务价值 × 强模型增益 ÷ 预计成本和 token 消耗，并且必须通过剩余 batch 预算检查。
+          <strong>直观路由分数：</strong>值得花钱的程度 ≈ 任务价值 × 强模型增益 ÷ 预计 token 成本，并且必须通过 Shared Budget 检查。
         </div>
       </div>
 
       <div class="decision">
         <div class="decision-card">
           <strong>给 strong model</strong>
-          高价值任务，强模型收益明显，预计成本和 token 消耗可控，batch 预算还允许。
+          高价值任务，强模型收益明显，预计 token 成本可控，Shared Budget 还允许。
         </div>
         <div class="decision-card">
           <strong>给 cheap model</strong>
@@ -680,7 +680,7 @@
 
     <div class="story">
       <p>
-        一个直观例子：任务 A 价值 2.5，强模型历史上对这类任务更有效，预计成本和 token 消耗可控，BudgetFlow 会倾向于给它 strong-model opportunity。
+        一个直观例子：任务 A 价值 2.5，强模型历史上对这类任务更有效，预计 token 成本可控，BudgetFlow 会倾向于给它 strong-model opportunity。
       </p>
       <p>
         任务 B 价值 1.0，便宜模型已经能解决类似任务，强模型增益很小，BudgetFlow 会倾向于用 cheap model，把强模型机会留给更需要的任务。
@@ -707,7 +707,7 @@
         数据说明<span class="hot">任务之间确实有差异</span>：有些任务便宜模型更划算，有些任务强模型更划算，还有些任务两个模型都失败。
       </p>
       <p>
-        因此我们需要的不只是一个 router，而是一个能同时看<span class="hot">任务价值、模型收益、预计成本和 token 消耗、剩余预算</span>的 budget governance framework。
+        因此我们需要的不只是一个 router，而是一个能同时看<span class="hot">任务价值、模型收益、Estimated Token Cost、Shared Budget</span>的 budget governance framework。
       </p>
       <p>
         SWE-bench 是严格 verifier 的实例；<span class="hot">同一套接口也可以迁移</span>到客服、文档、表格、科研任务等有验收信号的 agent workload。

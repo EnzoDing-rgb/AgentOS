@@ -16,8 +16,9 @@
 \newcommand{\method}{BudgetFlow\xspace}
 \newcommand{\trv}{TRV\xspace}
 \newcommand{\taskvalue}{Task Value\xspace}
-\newcommand{\tokendemand}{Estimated Token Demand\xspace}
+\newcommand{\tokencost}{Estimated Token Cost\xspace}
 \newcommand{\modelfit}{Model Fit\xspace}
+\newcommand{\sharedbudget}{Shared Budget\xspace}
 \newcommand{\verifier}{Verifier\xspace}
 \newcommand{\pos}[1]{\textcolor{red}{\textbf{#1}}}
 \newcommand{\ctrl}[1]{\textcolor{bfblue}{\textbf{#1}}}
@@ -59,7 +60,7 @@
 \begin{abstract}
 Multi-step AI agent tasks consume variable amounts of model budget, and the tasks in a batch often have unequal value. Existing model-routing work primarily decides which model should answer one request or how one task should spend its own budget. We study \emph{Batch-Level Task Budget Allocation}: a task batch shares one hard budget, and the system must allocate model opportunities across tasks before the budget is exhausted.
 
-We introduce \method, a value-aware budget governance framework for task batches. Each task exposes four interfaces: \taskvalue, \tokendemand, \modelfit, and a \verifier. \method uses the first three signals to allocate budget and model tiers, while the \verifier settles outcomes. We evaluate \method on SWE-bench-style verified bug-fixing tasks under fixed task sets and shared hard budgets. The paper reports three primary metrics: Resolved Rate, Total Resolved Value (\trv), and \trv per Dollar.
+We introduce \method, a value-aware budget governance framework for task batches. Its interface combines task-level signals---\taskvalue, \tokencost, \modelfit, and a \verifier---with batch-level \sharedbudget state. \method uses the first three task signals and the \sharedbudget to allocate budget and model tiers, while the \verifier settles outcomes. We evaluate \method on SWE-bench-style verified bug-fixing tasks under fixed task sets and shared hard budgets. The paper reports three primary metrics: Resolved Rate, Total Resolved Value (\trv), and \trv per Dollar.
 
 Across one 4-policy run and three 5-policy runs over 30-task batches, \method provides both a policy and a frontier-reporting interface. The framework produces the latest audited run's best Resolved Rate, \trv, and \trv per Dollar; it also exposes a value-efficiency gain in an earlier run where raw resolved count favors the strong-model-only baseline. Sensitivity analyses over Task Value, budget cap, and KV-cache cost discount show how the cost-value frontier moves as value, budget pressure, and serving costs change. These results support \method as a concrete formulation of value-aware task-batch budgeting, with SWE-bench as a verified coding instantiation.
 \end{abstract}
@@ -71,31 +72,32 @@ A central issue is that tasks rarely have equal value. A support ticket with an 
 
 This paper studies \emph{Batch-Level Task Budget Allocation}. The general setting has many tasks, one shared hard budget, model tiers with different costs and capabilities, and an outcome rule that decides whether a task is resolved. The objective is to allocate scarce model opportunities so the batch produces more verified task value under the same resource constraint.
 
-The operational decision is simple: which task should receive the next scarce model opportunity, under the same shared budget?
+The operational decision is simple: which task should receive the next scarce model opportunity, under the same \sharedbudget?
 
-\method is a budget governance framework for this setting. It treats each task as exposing four interfaces:
+\method is a budget governance framework for this setting. It uses four task-level signals and one batch-level budget state:
 
 \begin{itemize}
     \item \textbf{\taskvalue}: the pre-registered value gained if the task is resolved;
-    \item \textbf{\tokendemand}: the pre-run estimate of token/runway demand;
+    \item \textbf{\tokencost}: the pre-run estimate of token cost used for cap planning;
     \item \textbf{\modelfit}: evidence about how well each model tier fits the task;
-    \item \textbf{\verifier}: the outcome rule that maps a completed attempt to resolved or unresolved.
+    \item \textbf{\verifier}: the outcome rule that maps a completed attempt to resolved or unresolved;
+    \item \textbf{\sharedbudget}: the hard batch-level resource constraint shared by all tasks.
 \end{itemize}
 
-The first three interfaces drive allocation decisions. The \verifier settles outcomes and defines the objective. This separation is the core interface. The policy can change how it routes, caps, assigns model opportunities, or stops tasks, while the outcome contract remains explicit.
+The first three task-level signals and the \sharedbudget drive allocation decisions. The \verifier settles outcomes and defines the objective. This separation is the core interface. The policy can change how it routes, caps, assigns model opportunities, or stops tasks, while the outcome contract remains explicit. Task-source labels such as coding, marketing, support, or document production can be recorded as context, but they are not themselves the decision rule for strong-model access.
 
 We instantiate this formulation on SWE-bench-style verified coding tasks. SWE-bench is useful here because it gives a strict task-batch testbed: each task is a real bug-fixing issue, each attempt has measurable model spend, and each outcome is settled by a test-based harness. The benchmark is the evidence domain, while the allocation interface is the research object.
 
 The paper uses three primary metrics. \textbf{Resolved Rate} anchors the evaluation to standard verified success. \textbf{Total Resolved Value} (\trv) sums pre-registered \taskvalue over resolved tasks. \textbf{\trv per Dollar} measures value efficiency under the shared hard budget.
 
-The central empirical result is the \method frontier view. \method wins the latest audited 5-policy, 30-task run on Resolved Rate, \trv, and \trv per Dollar. It also wins a 4-policy run on value and value efficiency while resolving one fewer task than the strong-model-only baseline. Strong-model-led runs are informative within this same framework: they mark operating conditions where broad use of the strong model is already a strong frontier point. Together, these outcomes show the frontier created by shared budget pressure, task value, and model-tier fit.
+The central empirical result is the \method frontier view. \method wins the latest audited 5-policy, 30-task run on Resolved Rate, \trv, and \trv per Dollar. It also wins a 4-policy run on value and value efficiency while resolving one fewer task than the strong-model-only baseline. Strong-model-led runs are informative within this same framework: they mark operating conditions where broad use of the strong model is already a strong frontier point. Together, these outcomes show the frontier created by \sharedbudget pressure, task value, and model-tier fit.
 
 This paper makes three contributions:
 
 \begin{enumerate}
-    \item We formulate Batch-Level Task Budget Allocation with pre-registered \taskvalue, \tokendemand, \modelfit, a shared hard budget, and a \verifier-settled objective.
-    \item We present \method, a task-batch budget governance framework that allocates model opportunities using value, estimated demand, model fit, and remaining budget.
-    \item We evaluate \method against cheap-model-only, strong-model-only, learned task-router, and budget-only baselines, reporting Resolved Rate, \trv, \trv per Dollar, and sensitivity curves that make the cost-value frontier visible.
+    \item We formulate Batch-Level Task Budget Allocation with pre-registered \taskvalue, \tokencost, \modelfit, a shared hard budget, and a \verifier-settled objective.
+    \item We present a generalizable \method interface that allocates model opportunities using \taskvalue, \tokencost, \modelfit, \sharedbudget, and a \verifier-settled outcome contract.
+    \item We evaluate \method against cheap-model-only, strong-model-only, learned task-router, and budget-only baselines, reporting Resolved Rate, \trv, \trv per Dollar, and frontier modes driven by Value Divergence, Strong Coverage, and Model Fit.
 \end{enumerate}
 
 \section{Related Work}
@@ -114,7 +116,7 @@ vLLM improves LLM serving through PagedAttention and KV-cache management~\cite{v
 
 \section{Problem Formulation}
 \label{sec:formulation}
-Let a task batch contain tasks $\mathcal{T}=\{1,\ldots,n\}$ and let $B$ denote the shared hard budget. Each task $i$ has a pre-registered value $v_i>0$, an estimated token demand $d_i>0$, and model-fit evidence $m_{i,k}$ for each model tier $k$. A policy $\pi$ chooses a sequence of actions that spend budget on model calls and task attempts. Let $c_i(\pi)$ be the spend on task $i$, and let
+Let a task batch contain tasks $\mathcal{T}=\{1,\ldots,n\}$ and let $B$ denote the \sharedbudget. Each task $i$ has a pre-registered value $v_i>0$, an estimated token cost $d_i>0$, and model-fit evidence $m_{i,k}$ for each model tier $k$. A policy $\pi$ chooses a sequence of actions that spend budget on model calls and task attempts. Let $c_i(\pi)$ be the spend on task $i$, and let
 \[
     \sum_{i=1}^{n} c_i(\pi) \le B
 \]
@@ -151,9 +153,10 @@ Term & Reading \\
 \midrule
 Batch-Level Task Budget Allocation & A task batch shares one hard budget; a 30-task run spends at most \$9.95 total. \\
 \taskvalue & Pre-registered value gained when the task passes the \verifier. \\
-\tokendemand & Pre-run token/runway estimate used for cap planning. \\
+\tokencost & Pre-run token-cost estimate used for cap planning. \\
 \modelfit & Evidence about which model tier is likely to help this task. \\
 \verifier & Domain outcome rule; SWE-bench uses a test-based harness. \\
+\sharedbudget & Hard batch-level resource constraint shared by all tasks. \\
 Resolved Rate & Verifier-passed tasks divided by all tasks; 16/30 means 53.3\%. \\
 Total Resolved Value (\trv) & Sum of \taskvalue over verifier-passed tasks. \\
 \trv per Dollar & \trv divided by total spend; \trv 18.0 at \$9.95 gives 1.81 \trv/\$. \\
@@ -163,9 +166,9 @@ Total Resolved Value (\trv) & Sum of \taskvalue over verifier-passed tasks. \\
 \label{tab:glossary}
 \end{table}
 
-The \verifier is an outcome settlement rule. The policy uses \taskvalue, \tokendemand, and \modelfit for allocation; the \verifier settles the final outcome after execution. In our SWE-bench instantiation, $V_i$ is the test-based harness. This gives a strict external success signal while preserving the task-batch allocation structure.
+The \verifier is an outcome settlement rule. The policy uses \taskvalue, \tokencost, \modelfit, and \sharedbudget state for allocation; the \verifier settles the final outcome after execution. In our SWE-bench instantiation, $V_i$ is the test-based harness. This gives a strict external success signal while preserving the task-batch allocation structure.
 
-The four interfaces have different portability requirements. \taskvalue must be fixed before execution. \tokendemand is a pre-run planning estimate; final spend is measured after execution. \modelfit can come from catalog priors, historical outcomes, or calibration runs. The \verifier must be a trusted outcome rule for the domain. Their concrete calibration changes by domain, but the allocation problem consumes the same interface.
+The interfaces have different portability requirements. \taskvalue must be fixed before execution. \tokencost is a pre-run planning estimate; final spend is measured after execution. \modelfit can come from catalog priors, historical outcomes, or calibration runs. The \verifier must be a trusted outcome rule for the domain. The \sharedbudget is set at the batch level. Their concrete calibration changes by domain, but the allocation problem consumes the same interface.
 
 \begin{table*}[t]
 \centering
@@ -175,9 +178,10 @@ The four interfaces have different portability requirements. \taskvalue must be 
 Interface & SWE-bench instantiation & Other task-batch instantiations \\
 \midrule
 \taskvalue & pre-registered criticality value & business priority, user tier, task owner value \\
-\tokendemand & pre-run token/runway estimate from task metadata & expected context size, tool steps, artifact size \\
+\tokencost & pre-run token-cost estimate from task metadata & expected context size, tool steps, artifact size \\
 \modelfit & tier evidence from prior runs and catalog priors & domain-specific success prior by model tier \\
 \verifier & test-based harness & human review, rule check, delayed business outcome \\
+\sharedbudget & batch-level cap in dollars & team budget, project budget, processing window budget \\
 \bottomrule
 \end{tabular}
 \caption{Domain interfaces for Batch-Level Task Budget Allocation. The paper evaluates the SWE-bench instantiation.}
@@ -187,42 +191,42 @@ Interface & SWE-bench instantiation & Other task-batch instantiations \\
 
 \section{BudgetFlow}
 \label{sec:method}
-\method maintains a shared budget ledger across the task batch. For each task, it estimates whether the next model opportunity should use the cheap model, the strong model, or defer additional spend. The ledger is hard: the remaining batch budget gates each planned action.
+\method maintains a \sharedbudget ledger across the task batch. For each task, it estimates whether the next model opportunity should use the cheap model, the strong model, or defer additional spend. The ledger is hard: \sharedbudget gates each planned action.
 
 The policy uses three allocation inputs:
 
 \begin{itemize}
     \item $v_i$, the \taskvalue;
-    \item $d_i$, the \tokendemand;
+    \item $d_i$, the \tokencost;
     \item $m_{i,k}$, the \modelfit for tier $k$.
 \end{itemize}
 
-These inputs enter distinct decisions. \taskvalue prioritizes tasks that create more value if verified. \tokendemand becomes runway and cap planning: the policy estimates how much budget a task may need before it can produce a useful artifact. \modelfit estimates whether the strong model is likely to improve the outcome relative to the cheap model. Remaining budget controls affordability and stop/defer decisions.
+These inputs enter distinct decisions. \taskvalue prioritizes tasks that create more value if verified. \tokencost becomes cap planning: the policy estimates how much token cost a task may need before it can produce a useful artifact. \modelfit estimates whether the strong model is likely to improve the outcome relative to the cheap model. \sharedbudget controls affordability and stop/defer decisions.
 
-Let $h$ denote budget pressure, with higher $h$ indicating less remaining headroom. Let $k_c$ be the cheap model and $k_s$ be the strong model. A simplified task-start score for giving task $i$ a strong-model opportunity is
+Let $h$ denote budget pressure, with higher $h$ indicating tighter \sharedbudget state. Let $k_c$ be the cheap model and $k_s$ be the strong model. A simplified task-start score for giving task $i$ a strong-model opportunity is
 \[
     S_i =
-    \frac{v_i \cdot \max(m_{i,k_s}-m_{i,k_c},0)\cdot g(d_i)}
-    {\max(\hat{c}_{i,k_s}-\hat{c}_{i,k_c},\epsilon)}
+    \frac{v_i \cdot \max(m_{i,k_s}-m_{i,k_c},0)}
+    {\max(d_i,\epsilon)}
     \cdot q(h),
 \]
-where $\hat{c}_{i,k}$ is the estimated cost for tier $k$, $g(d_i)$ scales the opportunity by estimated runway, and $q(h)$ reduces strong-model access as the shared budget tightens. The implementation uses this score with affordability checks, learned task-router priors, and hard-budget gates. The formula captures the core allocation principle: strong-model budget is most valuable when a task has high value, sufficient expected model-fit gain, enough estimated runway, and enough remaining budget.
+where $d_i$ is the task's \tokencost and $q(h)$ reduces strong-model access as \sharedbudget tightens. The implementation uses this score with affordability checks, learned task-router priors, and hard-budget gates. The formula captures the core allocation principle: strong-model budget is most valuable when a task has high value, sufficient expected model-fit gain, manageable \tokencost, and enough \sharedbudget.
 
-\method separates allocation from outcome settlement. It uses \taskvalue, \tokendemand, \modelfit, and the shared budget state to choose model opportunities. The \verifier evaluates the resulting patch or artifact after the task attempt. This design keeps the value objective auditable: the policy can explain why a task received budget, and the verifier independently determines whether that spend produced resolved value.
+\method separates allocation from outcome settlement. It uses \taskvalue, \tokencost, \modelfit, and \sharedbudget state to choose model opportunities. The \verifier evaluates the resulting patch or artifact after the task attempt. This design keeps the value objective auditable: the policy can explain why a task received budget, and the verifier independently determines whether that spend produced resolved value.
 
 \paragraph{Allocation decisions.}
-At task start, \method assigns a route and an initial cap from value, estimated runway, model fit, and remaining budget. During execution, it can assign a strong-model opportunity when the strong model has expected upside and sufficient budget remains. It can stop or defer when additional spend has low expected value or would threaten the shared budget. These decisions are task-level in the current paper; finer stage or segment routing is left for future work.
+At task start, \method assigns a route and an initial cap from value, \tokencost, \modelfit, and \sharedbudget. During execution, it can assign a strong-model opportunity when the strong model has expected upside and \sharedbudget allows it. It can stop or defer when additional spend has low expected value or would threaten the batch budget. These decisions are task-level in the current paper; finer stage or segment routing is left for future work.
 
 \begin{algorithm}[t]
 \caption{BudgetFlow batch policy sketch}
 \label{alg:budgetflow}
 \begin{algorithmic}[1]
-\STATE \textbf{Initialize} remaining budget $R \leftarrow B$.
+\STATE \textbf{Initialize} \sharedbudget state $R \leftarrow B$.
 \FOR{task $i$ in the batch}
     \STATE \textbf{Read} $(v_i,d_i,m_{i,k_c},m_{i,k_s})$ and current $R$.
-    \STATE \textbf{Set} an initial task cap from \taskvalue, \tokendemand, and $R$.
+    \STATE \textbf{Set} an initial task cap from \taskvalue, \tokencost, and $R$.
     \STATE \textbf{Choose} cheap or strong model from \modelfit, value upside, and affordability.
-    \STATE \textbf{Execute} the task while updating spend and remaining budget.
+    \STATE \textbf{Execute} the task while updating spend and \sharedbudget.
     \STATE \textbf{Continue}, \textbf{stop}, or \textbf{defer} using value upside and budget pressure.
     \STATE \textbf{Settle} the final artifact with $V_i$ and record $r_i$.
 \ENDFOR
@@ -247,7 +251,7 @@ The 4-policy run uses the four policies available in that experimental line. All
 \small
 \begin{tabular}{lccclc}
 \toprule
-Policy & Same budget & \textbf{Task Value} & Runway/cap planning & Model choice & Same verifier \\
+Policy & Same budget & \textbf{Task Value} & Token-cost cap planning & Model choice & Same verifier \\
 \midrule
 cheap-model-only & yes &  &  & fixed cheap model & yes \\
 strong-model-only & yes &  &  & fixed strong model & yes \\
@@ -256,7 +260,7 @@ budget-only & yes &  & yes & budget-pressure choice & yes \\
 \textbf{\method} & yes & yes & yes & value-aware choice & yes \\
 \bottomrule
 \end{tabular}
-\caption{Policy inputs and shared outcome contract. Runway/cap planning is the decision-facing use of Estimated Token Demand.}
+\caption{Policy inputs and shared outcome contract. Token-cost cap planning is the decision-facing use of Estimated Token Cost.}
 \label{tab:policies}
 \end{table*}
 
@@ -299,6 +303,25 @@ Latest audited 5-policy positive case & \method & \pos{16/30 (53.3\%)} & \$9.95 
 The runs show why \method is useful beyond a single leaderboard row. First, value-aware allocation can protect high-value tasks and \textbf{improve \trv and \trv per Dollar} even when it resolves one fewer task than strong-model-only. Second, \method exposes cases where \textbf{a strong model is already a strong frontier point} because it is both capable and cost-effective under the cap. Third, with the latest audited policy, \method \textbf{improves all three primary metrics} against the five-policy table.
 
 These outcomes should be read together. The 4-policy run is the clearest value-aware allocation case: raw resolved count alone favors the strong-model-only baseline, but the resolved tasks under \method \textbf{carry more value and cost less}. The two 5-policy boundary runs show that strong controls are meaningful operating points inside the same frontier analysis. The latest audited 5-policy run shows the desired frontier movement: \method \textbf{leads on standard resolution, value, and value per dollar} under the same cap.
+
+\subsection{Frontier Mode Analysis}
+Table~\ref{tab:frontier-modes} summarizes the mechanism exposed by each main operating regime. This analysis is not a separate metric family. It is the interpretation layer for the same Resolved Rate, \trv, and \trv per Dollar evidence in Table~\ref{tab:main-evidence}. The key point is that a shared-budget batch can be frontier-limited by different signals: value divergence, broad strong-model coverage, or accurate model-fit routing.
+
+\begin{table*}[t]
+\centering
+\footnotesize
+\begin{tabular}{@{}p{0.15\textwidth}p{0.25\textwidth}p{0.27\textwidth}p{0.22\textwidth}@{}}
+\toprule
+Mode & Operating condition & Evidence & Interpretation \\
+\midrule
+Value Divergence & Task values differ and model gains are selective. & In the 4-policy case, \method resolves 14/30 but reaches \trv 18.50 and 2.32 \trv/\$, above strong-model-only's \trv 18.00 and 1.90 \trv/\$. & Value-aware allocation moves budget toward higher-value resolved tasks. \\
+Strong Coverage & The strong model covers the batch broadly under the cap. & In the strong boundary case, strong-model-only reaches 17/30, \trv 20.00, and 2.01 \trv/\$, above \method's 15/30, \trv 17.50, and 1.76 \trv/\$. & The strong model itself forms a frontier boundary. \\
+Model Fit & The learned routing signal places model tiers accurately. & In the router diagnostic, learned routing reaches 19/30, \trv 21.00, and 2.11 \trv/\$, with stronger T3-start placement than \method. & Future \method policies should absorb the model-fit signal while retaining \taskvalue and \sharedbudget governance. \\
+\bottomrule
+\end{tabular}
+\caption{Frontier mode analysis. Each mode explains which signal limits or moves the observed cost-value frontier under the same batch-level objective.}
+\label{tab:frontier-modes}
+\end{table*}
 
 \begin{figure*}[t]
 \centering
@@ -358,7 +381,7 @@ cheap-model-only & 11/30 (36.7\%) & 12.00 & 1.21 \\
 \end{table}
 
 \subsection{Task-Level Model Advantage}
-The latest run contains real model-tier heterogeneity. Among tasks where both cheap and strong model rows consumed model budget, there are \textbf{six cheap-model-favorable passes, five strong-model-favorable passes, and seven comparable failures under both}. This is the mechanism-level reason a batch-budget framework is useful: the task batch contains cheap-model opportunities, strong-model opportunities, and ceiling tasks in the same shared budget.
+The latest run contains real model-tier heterogeneity. Among tasks where both cheap and strong model rows consumed model budget, there are \textbf{six cheap-model-favorable passes, five strong-model-favorable passes, and seven comparable failures under both}. This is the mechanism-level reason a batch-budget framework is useful: the task batch contains cheap-model opportunities, strong-model opportunities, and ceiling tasks in the same \sharedbudget.
 
 \textbf{This task-level heterogeneity motivates selective strong-model use.} When strong-model upside is concentrated on a subset of tasks, the allocation policy should preserve strong-model opportunities for those tasks while spending less on tasks where the cheap model is sufficient or both tiers are unlikely to pass.
 
@@ -453,24 +476,24 @@ KV99 & 15.13 & \ctrl{15.41} & -0.29 \\
 \section{Discussion and Future Work}
 \label{sec:discussion}
 \paragraph{Formulation-level generalization.}
-The SWE-bench experiments instantiate the formulation in a verified coding domain. The formulation applies to task domains where tasks expose \taskvalue, \tokendemand, \modelfit, and a \verifier. Coding tasks use tests as the \verifier. Support tasks can use policy checks and service outcomes. Spreadsheet tasks can use cell-level checks or rule engines. Research and document-production tasks can use human review or domain checks. The calibration of each interface is domain-specific; the allocation objective and budget ledger are shared.
+The SWE-bench experiments instantiate the formulation in a verified coding domain. The formulation applies to task domains where tasks expose \taskvalue, \tokencost, \modelfit, and a \verifier. Coding tasks use tests as the \verifier. Support tasks can use policy checks and service outcomes. Spreadsheet tasks can use cell-level checks or rule engines. Research and document-production tasks can use human review or domain checks. The calibration of each interface is domain-specific; the allocation objective and budget ledger are shared.
 
 \paragraph{Frontier-aware reporting.}
-The same \method framework explains multiple frontier positions across the paid runs. A value-aware policy can improve \trv and \trv per Dollar, a strong model can define the best boundary in favorable conditions, and a learned task-router can be a strong control when value placement is less important. Reporting the frontier turns these cases into an operating guide for shared-budget agent batches.
+The same \method framework explains multiple frontier positions across the paid runs. Value Divergence favors value-aware allocation, Strong Coverage lets the strong-model-only baseline define a boundary, and Model Fit lets a learned task-router approach or form a boundary. Reporting the frontier turns these cases into an operating guide for shared-budget agent batches.
 
 \paragraph{Future work.}
 \textbf{Fine-grained task execution control.} \method can move from task-level allocation to finer-grained execution control inside a task. The current paper assigns model opportunities at the task level. A richer policy could decide which task stage or segment deserves the strong model, how much repair runway to preserve, and when stop/defer decisions should be made inside a long attempt. This direction should be evaluated against task-level controls because finer granularity can improve allocation only when the stage signal is reliable enough to justify the added switching cost.
 
-\textbf{Continual policy learning with auditability.} Completed batches produce cost traces, routing outcomes, verifier results, and frontier positions. \textbf{A future policy can use those records to update future caps, route choices, and stop/continue decisions.} The important systems constraint is that each learned update should remain inspectable: the next allocation should be explainable through the same value ledger, demand estimate, model-fit evidence, and verifier-settled outcome history.
+\textbf{Continual policy learning with auditability.} Completed batches produce cost traces, routing outcomes, verifier results, and frontier positions. \textbf{A future policy can use those records to update future caps, route choices, and stop/continue decisions.} The important systems constraint is that each learned update should remain inspectable: the next allocation should be explainable through the same value ledger, \tokencost estimate, model-fit evidence, \sharedbudget state, and verifier-settled outcome history.
 
-\textbf{Serving-aware and multi-tenant BudgetFlow.} Serving systems such as vLLM, SGLang, and Dynamo optimize execution substrates: batching, cache locality, scheduling, and inference throughput. \method operates at the task-budget layer above that substrate. A serving-aware BudgetFlow could pass task value, remaining budget, estimated demand, and outcome history into scheduling hints such as priority, continuation, model opportunity, and cache-sticky execution. The same interface can then extend from one budget owner to multiple teams, users, or services that share an agent execution substrate with distinct budgets and priorities. \textbf{This turns Batch-Level Task Budget Allocation into a candidate control plane for multi-tenant agent workloads.}
+\textbf{Serving-aware and multi-tenant BudgetFlow.} Serving systems such as vLLM, SGLang, and Dynamo optimize execution substrates: batching, cache locality, scheduling, and inference throughput. \method operates at the task-budget layer above that substrate. A serving-aware BudgetFlow could pass task value, \sharedbudget state, \tokencost, and outcome history into scheduling hints such as priority, continuation, model opportunity, and cache-sticky execution. The same interface can then extend from one budget owner to multiple teams, users, or services that share an agent execution substrate with distinct budgets and priorities. \textbf{This turns Batch-Level Task Budget Allocation into a candidate control plane for multi-tenant agent workloads.}
 
 \section{Conclusion}
-This paper formulates Batch-Level Task Budget Allocation for multi-step agent tasks under a shared hard budget. The core question is which task should receive the next scarce model opportunity when tasks have different value, different expected demand, and different model-tier fit. \method answers this question with a simple auditable interface: \taskvalue, \tokendemand, \modelfit, shared budget state, and a \verifier-settled outcome.
+This paper formulates Batch-Level Task Budget Allocation for multi-step agent tasks under a shared hard budget. The core question is which task should receive the next scarce model opportunity when tasks have different value, different estimated token cost, and different model-tier fit. \method answers this question with a simple auditable interface: \taskvalue, \tokencost, \modelfit, \sharedbudget state, and a \verifier-settled outcome.
 
-The practical role of \trv is value accounting. It is a frozen value score that asks whether the same spend resolves more pre-declared task value. This makes mixed outcomes meaningful: the paper reports which policy lies on the cost-value frontier under a shared budget, instead of reducing the evidence to one point comparison.
+The practical role of \trv is value accounting. It is a frozen value score that asks whether the same spend resolves more pre-declared task value. This makes mixed outcomes meaningful: the paper reports which policy lies on the cost-value frontier under a \sharedbudget, instead of reducing the evidence to one point comparison.
 
-The SWE-bench experiments instantiate this interface in a verified coding domain. In the latest audited 5-policy run, \method \textbf{improves Resolved Rate, \trv, and \trv per Dollar}. Across the broader paid evidence, \method also explains the frontier positions induced by task value, model-tier advantage, and budget pressure. It is most useful when task values are uneven, model-tier advantage is task-specific, and the shared budget forces tradeoffs across tasks. Strong-model-only defines a boundary when the strong model is broadly cost-effective under the cap. A learned task-router defines a strong operating point when model fit explains most of the useful routing signal and value placement carries less weight. The sensitivity analyses show how the frontier moves under alternate value profiles, budget caps, and serving cost assumptions.
+The SWE-bench experiments instantiate this interface in a verified coding domain. In the latest audited 5-policy run, \method \textbf{improves Resolved Rate, \trv, and \trv per Dollar}. Across the broader paid evidence, \method also explains frontier modes induced by Value Divergence, Strong Coverage, and Model Fit. It is most useful when task values are uneven, model-tier advantage is task-specific, and the \sharedbudget forces tradeoffs across tasks. Strong-model-only defines a boundary when the strong model is broadly cost-effective under the cap. A learned task-router defines a strong operating point when Model Fit explains most of the useful routing signal. The sensitivity analyses show how the frontier moves under alternate value profiles, budget caps, and serving cost assumptions.
 
 The broader value of \method is the formulation. Coding tasks provide a strict verifier and measurable spend, but the same batch-budget structure appears whenever many agent tasks compete for one resource pool and produce outcomes with unequal value. By \textbf{separating allocation signals from outcome settlement}, BudgetFlow offers a portable way to reason about verified value under fixed resource constraints, from SWE-bench-style coding to future serving-aware and multi-tenant agent systems.
 
