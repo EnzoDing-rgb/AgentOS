@@ -99,7 +99,7 @@ This paper makes three contributions:
 \begin{enumerate}
     \item We formulate Batch-Level Task Budget Allocation as a value-governance problem with pre-registered \taskvalue, \tokencost, \modelfit, a shared hard budget, and a \verifier-settled objective.
     \item We present a generalizable \method framework and interface that allocate model opportunities through \taskvalue, \tokencost, \modelfit, \sharedbudget, and a \verifier-settled outcome contract across task domains.
-    \item We propose a frontier-mode framework for interpreting shared-budget agent batches, identifying Strong Coverage, Model Fit, and Value-Aware Budget Flow as three frontier modes. Value-Aware Budget Flow is the central mode targeted by \method.
+    \item We propose a frontier-mode framework for interpreting shared-budget agent batches, identifying \textbf{Strong Coverage}, \textbf{Model Fit}, and \textbf{Value-Aware Budget Flow} as three frontier modes. \textbf{Value-Aware Budget Flow} is the central mode targeted by \method.
 \end{enumerate}
 
 \section{Related Work}
@@ -162,6 +162,9 @@ Batch-Level Task Budget Allocation & A task batch shares one hard budget; a 30-t
 Resolved Rate & Verifier-passed tasks divided by all tasks; 16/30 means 53.3\%. \\
 Total Resolved Value (\trv) & Sum of \taskvalue over verifier-passed tasks. \\
 \trv per Dollar & \trv divided by total spend; \trv 18.0 at \$9.95 gives 1.81 \trv/\$. \\
+Strong Coverage & Frontier mode where broad strong-model use is cost-effective under the shared budget. \\
+Model Fit & Frontier mode where accurate task-to-model matching forms a strong frontier point. \\
+Value-Aware Budget Flow & Central \method frontier mode where task value, estimated token cost, model fit, and shared budget jointly govern allocation. \\
 \bottomrule
 \end{tabular}
 \caption{Core terms and metrics. The examples show how to read the reported numbers.}
@@ -310,24 +313,24 @@ Latest audited Value-Aware Budget Flow case & \method & \pos{16/30 (53.3\%)} & \
 
 The runs show why \method is useful beyond a single point comparison. First, Value-Aware Budget Flow can protect high-value tasks and \textbf{improve \trv and \trv per Dollar} even when a strong-model policy resolves one additional task. Second, Strong Coverage explains cases where \textbf{a strong model is already a strong frontier point} because broad strong-model coverage is cost-effective under the cap. Third, the latest audited policy shows the desired \method frontier movement: \method \textbf{leads on standard resolution, value, and value per dollar} under the same cap.
 
-These outcomes should be read together. The 4-policy and latest 5-policy positive cases are the two strongest Value-Aware Budget Flow examples: the former shows higher value efficiency despite one fewer resolved task, and the latter shows \method leading all three primary metrics. The strong-model boundary runs show the Strong Coverage mode: strong-model-only is valuable when the strong tier covers enough tasks under the shared cap. The router diagnostic in Table~\ref{tab:frontier-modes} shows the Model Fit mode: a learned router is valuable when it places expensive model opportunities on tasks where the strong tier is productive.
+These outcomes should be read together. The 4-policy and latest 5-policy positive cases are the two strongest Value-Aware Budget Flow examples: the former shows higher value efficiency despite one fewer resolved task, and the latter shows \method leading all three primary metrics. The strong-model boundary runs show the Strong Coverage mode: strong-model-only is valuable when the strong tier covers enough tasks under the shared cap. Table~\ref{tab:frontier-modes} then maps all three frontier modes, including the learned-router Model Fit diagnostic, to representative evidence.
 
 \subsection{Frontier Mode Analysis}
-Table~\ref{tab:frontier-modes} summarizes the mechanism exposed by each frontier mode. This analysis is the interpretation layer for the same Resolved Rate, \trv, and \trv per Dollar evidence in Table~\ref{tab:main-evidence}. A shared-budget batch can be frontier-shaped by different signals: value-aware budget flow, broad strong-model coverage, or accurate model-fit routing. The \method contribution is to make Value-Aware Budget Flow concrete through a framework and interface for value-governed allocation.
+Table~\ref{tab:frontier-modes} maps each frontier mode to representative evidence. This analysis is the interpretation layer for the same Resolved Rate, \trv, and \trv per Dollar evidence in Table~\ref{tab:main-evidence}, plus the router diagnostic that makes the Model Fit mode explicit. A shared-budget batch can be frontier-shaped by different signals: value-aware budget flow, broad strong-model coverage, or accurate model-fit routing. The \method contribution is to make Value-Aware Budget Flow concrete through a framework and interface for value-governed allocation.
 
 \begin{table*}[t]
 \centering
 \footnotesize
-\begin{tabular}{@{}p{0.15\textwidth}p{0.25\textwidth}p{0.27\textwidth}p{0.22\textwidth}@{}}
+\begin{tabular}{@{}p{0.18\textwidth}p{0.25\textwidth}p{0.31\textwidth}p{0.16\textwidth}@{}}
 \toprule
-Frontier mode & Condition & Evidence & Interpretation \\
+Frontier mode & Condition & Representative evidence & Reading \\
 \midrule
-Value-Aware Budget Flow & Task values differ, estimated token costs differ, and model gains are selective. & In the 4-policy case, \method resolves 14/30 but reaches \trv 18.50 and 2.32 \trv/\$, above strong-model-only's \trv 18.00 and 1.90 \trv/\$. & This is the central \method mode: scarce model opportunities flow toward tasks with higher expected verified value. \\
-Strong Coverage & The strong model covers the batch broadly under the cap. & In the strong boundary case, strong-model-only reaches 17/30, \trv 20.00, and 2.01 \trv/\$, above \method's 15/30, \trv 17.50, and 1.76 \trv/\$. & Broad strong-model coverage can form a frontier boundary that \method should recognize. \\
-Model Fit & The learned routing signal places model tiers accurately. & In the router diagnostic, learned routing reaches 19/30, \trv 21.00, and 2.11 \trv/\$, with 5/7 productive T3-starts versus 2/7 for \method. & Accurate \modelfit can form a frontier boundary when task-to-model matching dominates the batch. \\
+Value-Aware Budget Flow & Task values differ, estimated token costs differ, and model gains are selective. & Main paid evidence: \method reaches \pos{18.50 \trv} and \pos{2.32 \trv/\$} in the 4-policy case, and \pos{16/30}, \pos{18.00 \trv}, \pos{1.81 \trv/\$} in the latest 5-policy case. & Central \method mode. \\
+Strong Coverage & The strong model covers the batch broadly under the cap. & Main paid evidence: strong-model-only reaches \ctrl{17/30}, \ctrl{20.00 \trv}, \ctrl{2.01 \trv/\$} in the boundary case, and \ctrl{18/30}, \ctrl{19.00 \trv}, \ctrl{1.92 \trv/\$} in the stress case. & Strong-model frontier boundary. \\
+Model Fit & The learned routing signal places model tiers accurately. & Router diagnostic: learned routing reaches \ctrl{19/30}, \ctrl{21.00 \trv}, \ctrl{2.11 \trv/\$}, with \ctrl{5/7} productive T3-starts versus 2/7 for \method. & Learned-router frontier boundary. \\
 \bottomrule
 \end{tabular}
-\caption{Frontier mode analysis. Each mode explains which signal shapes the observed cost-value frontier under the same batch-level objective.}
+\caption{Frontier modes and representative evidence. Main paid evidence establishes the Value-Aware Budget Flow and Strong Coverage cases; the router diagnostic gives Model Fit an explicit frontier reference.}
 \label{tab:frontier-modes}
 \end{table*}
 
