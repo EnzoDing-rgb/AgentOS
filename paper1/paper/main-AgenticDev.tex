@@ -1,7 +1,6 @@
 \documentclass[sigconf,review,anonymous]{acmart}
 
-%% AgenticDev 2026 / ASE workshop ACM template track.
-%% Companion to main-ICML.tex (ICML 2026 template).
+%% AgenticDev 2026 submission (ASE workshop). Companion to main-ICML.tex.
 
 \usepackage{booktabs}
 \usepackage{amsmath}
@@ -20,7 +19,6 @@
 \acmYear{2026}
 \acmDOI{}
 \acmISBN{}
-
 
 \newcommand{\method}{BudgetFlow\xspace}
 \newcommand{\trv}{TRV\xspace}
@@ -77,7 +75,7 @@ Multi-step AI agent tasks consume variable amounts of model budget, and tasks in
 
 We introduce \method, a value-aware budget governance framework for task batches. Its general interface combines task-level signals---\taskvalue, \tokencost, \modelfit, and a \verifier---with batch-level \sharedbudget state. \method uses the first three task signals and the \sharedbudget to allocate budget and model tiers, while the \verifier settles outcomes. This separates allocation signals from outcome settlement, so the same interface can describe coding, support, document, spreadsheet, and research task batches once each domain supplies a trusted verifier.
 
-We evaluate \method on SWE-bench-style verified bug-fixing tasks under fixed task sets and shared hard budgets. The paper reports Resolved Rate, Total Resolved Value (\trv), and \trv per Dollar. Across one 4-policy run and three 5-policy runs over 30-task batches, \method produces the latest audited run's best Resolved Rate, \trv, and \trv per Dollar; it also exposes a value-efficiency gain in an earlier run where raw resolved count favors the strong-model-only baseline. To make the evidence interpretable, we propose a frontier-mode framework with three modes: Strong Coverage, Model Fit, and Value-Aware Budget Flow. The third mode is the central target of \method.
+We evaluate \method on SWE-bench-style verified bug-fixing tasks under fixed task sets and shared hard budgets. The paper reports Resolved Rate, Total Resolved Value (\trv), and \trv per Dollar. Across one 4-policy run and three 5-policy runs over 30-task batches, \method produces two value-aware frontier results: with metadata-only estimates, it resolves higher value than the strong-model-only baseline at about 16\% lower spend; with prior-batch observations, it leads all three reported metrics. To make the evidence interpretable, we propose a frontier-mode framework with three modes: Strong Coverage, Model Fit, and Value-Aware Budget Flow. The third mode is the central target of \method.
 \end{abstract}
 
 \maketitle
@@ -109,7 +107,7 @@ We instantiate this formulation on SWE-bench-style verified coding tasks. SWE-be
 
 The paper uses three primary metrics. \textbf{Resolved Rate} anchors the evaluation to standard verified success. \textbf{Total Resolved Value} (\trv) sums pre-registered \taskvalue over resolved tasks. \textbf{\trv per Dollar} measures value efficiency under the shared hard budget.
 
-The central empirical result is the \method frontier-mode evidence. \method wins the latest audited 5-policy, 30-task run on Resolved Rate, \trv, and \trv per Dollar. It also wins a 4-policy run on value and value efficiency while resolving one fewer task than the strong-model-only baseline. Strong-model-led and learned-router-led diagnostics serve as frontier references: they show how Strong Coverage and Model Fit can form efficient boundary points. Together, these outcomes show how the frontier is shaped by \sharedbudget pressure, \taskvalue, \tokencost, and \modelfit.
+The central empirical result is the \method frontier-mode evidence. In a 4-policy metadata-only batch, \method reaches \trv 18.50 at \$7.98, while strong-model-only reaches \trv 18.00 at \$9.46 and resolves one additional task. In a 5-policy batch with prior-batch observations, \method leads Resolved Rate, \trv, and \trv per Dollar. The remaining main batches show Strong Coverage: broad use of the strong model forms the observed frontier. Learned routing remains a Model Fit reference for cases where accurate task-to-model matching is the dominant signal. Together, these outcomes show how the frontier is shaped by \sharedbudget pressure, \taskvalue, \tokencost, and \modelfit.
 
 This paper makes three contributions:
 
@@ -180,7 +178,7 @@ Resolved Rate & Verifier-passed tasks divided by all tasks; 16/30 means 53.3\%. 
 Total Resolved Value (\trv) & Sum of \taskvalue over verifier-passed tasks. \\
 \trv per Dollar & \trv divided by total spend; \trv 18.0 at \$9.95 gives 1.81 \trv/\$. \\
 Strong Coverage & Frontier mode where broad strong-model use is cost-effective under the shared budget. \\
-Model Fit & Frontier mode where accurate task-to-model matching forms a strong frontier point. \\
+Model Fit & Frontier mode where accurate task-to-model matching can form a strong frontier point. \\
 Value-Aware Budget Flow & Central \method frontier mode where task value, estimated token cost, model fit, and shared budget jointly govern allocation. \\
 \bottomrule
 \end{tabular}
@@ -200,8 +198,8 @@ The interfaces have different portability requirements. \taskvalue must be fixed
 Interface & SWE-bench instantiation & Other task-batch instantiations \\
 \midrule
 \taskvalue & pre-registered criticality value & business priority, user tier, task owner value \\
-\tokencost & pre-run token-cost estimate from task metadata & expected context size, tool steps, artifact size \\
-\modelfit & tier evidence from prior runs and catalog priors & domain-specific success prior by model tier \\
+\tokencost & metadata-only estimates or prior-batch observations & expected context size, tool steps, artifact size, or prior workload traces \\
+\modelfit & catalog priors, prior outcomes, or router priors & domain-specific success prior by model tier \\
 \verifier & test-based harness & human review, rule check, delayed business outcome \\
 \sharedbudget & batch-level cap in dollars & team budget, project budget, processing window budget \\
 \bottomrule
@@ -234,7 +232,7 @@ Let $h$ denote budget pressure, with higher $h$ indicating tighter \sharedbudget
     {\max(d_i,\epsilon)}
     \cdot q(h),
 \]
-where $d_i$ is the task's \tokencost and $q(h)$ reduces strong-model access as \sharedbudget tightens. The implementation uses this score with affordability checks, learned task-router priors, and hard-budget gates. The formula captures the core allocation principle: strong-model budget is most valuable when a task has high value, sufficient expected model-fit gain, manageable \tokencost, and enough \sharedbudget.
+where $d_i$ is the task's \tokencost and $q(h)$ reduces strong-model access as \sharedbudget tightens. The implementation uses this score with affordability checks, learned task-router priors, and hard-budget gates. In the SWE-bench implementation, \modelfit combines catalog priors, batch-level tier-fit evidence from completed outcomes, and learned-router priors when available. The formula captures the core allocation principle: strong-model budget is most valuable when a task has high value, sufficient expected model-fit gain, manageable \tokencost, and enough \sharedbudget.
 
 This makes \method a governance layer over task categories. The score can favor a coding issue, a spreadsheet repair, or a support response for the same reason: the task has high declared value, a feasible token-cost estimate, useful model-fit upside, and enough shared budget to make the model opportunity affordable.
 
@@ -265,7 +263,7 @@ Algorithm~\ref{alg:budgetflow} is the implementation-facing sketch of the framew
 \section{Experimental Setup}
 \label{sec:setup}
 \paragraph{Task set.}
-We evaluate on fixed 30-task SWE-bench-style bug-fixing batches. Each task requires an agent to inspect a repository, edit code, and produce a patch. Outcomes are scored by the local harness and cross-checked with exported official predictions where available. Task values are pre-registered before execution.
+We evaluate on fixed 30-task SWE-bench-style bug-fixing batches. Each task requires an agent to inspect a repository, edit code, and produce a patch. Outcomes are scored by a local test-based harness, and every run exports official-format predictions for independent re-evaluation. Task values are pre-registered before execution.
 
 \paragraph{Policies.}
 Table~\ref{tab:policies} compares the five policies by the inputs they use. All policies run under the same shared hard budget and the same verifier. The key contrast is whether \taskvalue enters allocation of scarce model opportunities.
@@ -277,17 +275,35 @@ The 4-policy run uses the four policies available in that experimental line. All
 \small
 \begin{tabular}{lccclc}
 \toprule
-Policy & Same budget & \textbf{Task Value} & Token-cost cap planning & Model choice & Same verifier \\
+Policy & Shared budget & \textbf{Task Value} & Budget planning input & Model choice & Same verifier \\
 \midrule
-cheap-model-only & yes &  &  & fixed cheap model & yes \\
-strong-model-only & yes &  &  & fixed strong model & yes \\
-learned task-router & yes &  &  & value-blind learned choice & yes \\
-budget-only & yes &  & yes & budget-pressure choice & yes \\
-\textbf{\method} & yes & yes & yes & value-aware choice & yes \\
+cheap-model-only & yes &  & shared cap & fixed cheap model & yes \\
+strong-model-only & yes &  & shared cap & fixed strong model & yes \\
+learned task-router & yes &  & shared cap & value-blind learned choice & yes \\
+budget-only & yes &  & budget pressure & budget-pressure choice & yes \\
+\textbf{\method} & yes & yes & value-aware task budgets & value-aware choice & yes \\
 \bottomrule
 \end{tabular}
-\caption{Policy inputs and shared outcome contract. Token-cost cap planning is the decision-facing use of Estimated Token Cost.}
+\caption{Policy inputs and shared outcome contract. Budget planning input describes what each policy uses beyond the shared hard cap.}
 \label{tab:policies}
+\end{table*}
+
+\begin{table*}[t]
+\centering
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}p{0.24\textwidth}p{0.07\textwidth}p{0.17\textwidth}p{0.16\textwidth}p{0.14\textwidth}p{0.14\textwidth}@{}}
+\toprule
+Batch & Policies & Planning input & Catalog & Value ledger & Hard cap \\
+\midrule
+4-policy Value-Aware Budget Flow case & 4 & metadata-only estimates & 2026-06-22 T2/T3x5 & 10 high-value; max 2.5 & \$10.44 stage-prefix pressure \\
+5-policy Strong Coverage boundary case & 5 & metadata-only estimates & 2026-06-22 T2/T3x5 & 10 high-value; max 2.5 & \$9.95 strongest spend divided by 0.95 \\
+5-policy Strong Coverage stress case & 5 & prior-batch observations & 2026-06-30 nonthinking T2 & 6 high-value; max 1.5 & \$9.95 strongest spend divided by 0.95 \\
+5-policy Value-Aware Budget Flow case & 5 & prior-batch observations & 2026-06-30 nonthinking T2 & 6 high-value; max 1.5 & \$9.95 strongest spend divided by 0.95 \\
+\bottomrule
+\end{tabular}
+\caption{Run configuration summary. Planning input identifies whether \tokencost and \modelfit use metadata-only estimates or prior-batch observations. The batches are interpreted separately because catalog revision and value ledger differ.}
+\label{tab:run-config}
 \end{table*}
 
 \paragraph{Metrics.}
@@ -299,9 +315,11 @@ The main paid runs show observed frontier points. The sensitivity analyses ask h
 \section{Results}
 \label{sec:results}
 \subsection{Main Paid Evidence}
-Table~\ref{tab:main-evidence} summarizes four paid task-batch runs through the \method framework. Red entries mark BudgetFlow frontier signals; blue entries mark the strongest control when a control defines the observed frontier. The table should be read as a frontier-mode report: the same shared-budget objective can be shaped by Value-Aware Budget Flow, Strong Coverage, or Model Fit.
+Table~\ref{tab:main-evidence} summarizes four paid task-batch runs through the \method framework, with configuration details in Table~\ref{tab:run-config}. Red entries mark BudgetFlow frontier signals; blue entries mark the strongest control when a control defines the observed frontier. The table should be read as batch-level frontier evidence, not as a cross-run leaderboard.
 
-The \textbf{latest audited 5-policy run is the clearest positive policy result}: \method resolves 16/30 tasks, reaches \trv 18.00, and achieves 1.81 \trv per Dollar. The next-best learned task-router resolves 15/30 tasks, reaches \trv 17.00, and achieves 1.71 \trv per Dollar. The 4-policy run gives a complementary value-governance result: \method reaches \trv 18.50 and 2.32 \trv per Dollar while strong-model-only resolves one more task but reaches lower value and lower value efficiency.
+The first value-aware result is the 4-policy Value-Aware Budget Flow case. \method reaches \textbf{\trv 18.50 at \$7.98}, while strong-model-only reaches \trv 18.00 at \$9.46. This is a strict improvement in the $(\mathrm{spend}, \mathrm{\trv})$ plane---higher resolved value at about 16\% lower spend---while strong-model-only resolves one additional task (15/30 vs. 14/30). The value gain is concentrated where the value ledger says it should be: on high-value tasks (\taskvalue $\geq$ 1.5), \method resolves 9.50 value against 7.00 for strong-model-only.
+
+The second value-aware result is the 5-policy Value-Aware Budget Flow case. \method resolves 16/30 tasks, reaches \trv 18.00, and achieves 1.81 \trv per Dollar. The next-best learned task-router resolves 15/30 tasks, reaches \trv 17.00, and achieves 1.71 \trv per Dollar. The two 5-policy Strong Coverage cases show the other main pattern: strong-model-only forms the observed frontier when broad strong-model coverage is cost-effective under the cap.
 
 \begin{table*}[t]
 \centering
@@ -319,21 +337,21 @@ Run & Leading policy & Resolved Rate & Spend & TRV & TRV per Dollar \\
 5-policy Strong Coverage stress case & strong-model-only & \ctrl{18/30 (60.0\%)} & \$9.88 & \ctrl{19.00} & \ctrl{1.92} \\
  & \method & 17/30 (56.7\%) & \$9.95 & 18.50 & 1.86 \\
 \addlinespace
-Latest audited Value-Aware Budget Flow case & \method & \pos{16/30 (53.3\%)} & \$9.95 & \pos{18.00} & \pos{1.81} \\
+5-policy Value-Aware Budget Flow case & \method & \pos{16/30 (53.3\%)} & \$9.95 & \pos{18.00} & \pos{1.81} \\
  & learned task-router & 15/30 (50.0\%) & \$9.95 & 17.00 & 1.71 \\
  & strong-model-only & 15/30 (50.0\%) & \$9.95 & 16.50 & 1.66 \\
 \bottomrule
 \end{tabular}
-\caption{Main paid evidence. Each row reports the leader for one 30-task batch. Resolved Rate, \trv, and \trv per Dollar are the three primary metrics. Red bold entries mark BudgetFlow frontier signals; blue bold entries mark the strongest control in boundary runs. The 4-policy BudgetFlow row uses total observed spend, including non-scoreable abort overhead.}
+\caption{Main paid evidence. Each group reports one 30-task batch. Resolved Rate, \trv, and \trv per Dollar are the three primary metrics. Red bold entries mark BudgetFlow frontier signals; blue bold entries mark the strongest control in boundary runs. The 4-policy BudgetFlow row uses total observed spend, including non-scoreable abort overhead.}
 \label{tab:main-evidence}
 \end{table*}
 
-The runs show why \method is useful beyond a single point comparison. First, Value-Aware Budget Flow can protect high-value tasks and \textbf{improve \trv and \trv per Dollar} even when a strong-model policy resolves one additional task. Second, Strong Coverage explains cases where \textbf{a strong model is already a strong frontier point} because broad strong-model coverage is cost-effective under the cap. Third, the latest audited policy shows the desired \method frontier movement: \method \textbf{leads on standard resolution, value, and value per dollar} under the same cap.
+The four main batches show two frontier patterns. First, Value-Aware Budget Flow can protect high-value tasks and \textbf{improve \trv and \trv per Dollar} even when a strong-model policy resolves one additional task. Second, Strong Coverage explains cases where \textbf{a strong model is already a strong frontier point} because broad strong-model coverage is cost-effective under the cap. The 5-policy Value-Aware Budget Flow case shows the desired \method frontier movement: \method \textbf{leads on standard resolution, value, and value per dollar} under the same cap.
 
-These outcomes should be read together. The 4-policy and latest 5-policy positive cases are the two strongest Value-Aware Budget Flow examples: the former shows higher value efficiency despite one fewer resolved task, and the latter shows \method leading all three primary metrics. The strong-model boundary runs show the Strong Coverage mode: strong-model-only is valuable when the strong tier covers enough tasks under the shared cap. Table~\ref{tab:frontier-modes} then maps all three frontier modes, including the learned-router Model Fit diagnostic, to representative evidence.
+These outcomes should be read together. The 4-policy Value-Aware Budget Flow case and the 5-policy Value-Aware Budget Flow case are the two strongest value-aware examples: the former shows higher value efficiency despite one fewer resolved task, and the latter shows \method leading all three primary metrics. The two 5-policy Strong Coverage cases show that strong-model-only is valuable when the strong tier covers enough tasks under the shared cap. Table~\ref{tab:frontier-modes} maps the resulting frontier modes to representative evidence.
 
 \subsection{Frontier Mode Analysis}
-Table~\ref{tab:frontier-modes} maps each frontier mode to representative evidence. This analysis is the interpretation layer for the same Resolved Rate, \trv, and \trv per Dollar evidence in Table~\ref{tab:main-evidence}, plus the router diagnostic that makes the Model Fit mode explicit. A shared-budget batch can be frontier-shaped by different signals: value-aware budget flow, broad strong-model coverage, or accurate model-fit routing. The \method contribution is to make Value-Aware Budget Flow concrete through a framework and interface for value-governed allocation.
+Table~\ref{tab:frontier-modes} maps each frontier mode to representative evidence. This analysis is the interpretation layer for the same Resolved Rate, \trv, and \trv per Dollar evidence in Table~\ref{tab:main-evidence}. A shared-budget batch can be frontier-shaped by different signals: value-aware budget flow, broad strong-model coverage, or accurate model-fit routing. The \method contribution is to make Value-Aware Budget Flow concrete through a framework and interface for value-governed allocation.
 
 \begin{table*}[t]
 \centering
@@ -342,12 +360,12 @@ Table~\ref{tab:frontier-modes} maps each frontier mode to representative evidenc
 \toprule
 Frontier mode & Condition & Representative evidence & Reading \\
 \midrule
-Value-Aware Budget Flow & Task values differ, estimated token costs differ, and model gains are selective. & Main paid evidence: \method reaches \pos{18.50 \trv} and \pos{2.32 \trv/\$} in the 4-policy case, and \pos{16/30}, \pos{18.00 \trv}, \pos{1.81 \trv/\$} in the latest 5-policy case. & Central \method mode. \\
+Value-Aware Budget Flow & Task values differ, estimated token costs differ, and model gains are selective. & Main paid evidence: \method reaches \pos{18.50 \trv} and \pos{2.32 \trv/\$} in the 4-policy Value-Aware Budget Flow case, and \pos{16/30}, \pos{18.00 \trv}, \pos{1.81 \trv/\$} in the 5-policy Value-Aware Budget Flow case. & Central \method mode. \\
 Strong Coverage & The strong model covers the batch broadly under the cap. & Main paid evidence: strong-model-only reaches \ctrl{17/30}, \ctrl{20.00 \trv}, \ctrl{2.01 \trv/\$} in the boundary case, and \ctrl{18/30}, \ctrl{19.00 \trv}, \ctrl{1.92 \trv/\$} in the stress case. & Strong-model frontier boundary. \\
-Model Fit & The learned routing signal places model tiers accurately. & Router diagnostic: learned routing reaches \ctrl{19/30}, \ctrl{21.00 \trv}, \ctrl{2.11 \trv/\$}, with \ctrl{5/7} productive T3-starts versus 2/7 for \method. & Learned-router frontier boundary. \\
+Model Fit & The learned routing signal places model tiers accurately. & Main paid evidence: learned routing is the closest mixed-policy control in the 5-policy Value-Aware Budget Flow case, reaching 15/30, 17.00 \trv, and 1.71 \trv/\$. & Frontier reference. \\
 \bottomrule
 \end{tabular}
-\caption{Frontier modes and representative evidence. Main paid evidence establishes the Value-Aware Budget Flow and Strong Coverage cases; the router diagnostic gives Model Fit an explicit frontier reference.}
+\caption{Frontier modes and representative evidence. Main paid evidence establishes the Value-Aware Budget Flow and Strong Coverage cases; learned routing remains the Model Fit reference for task-to-model matching.}
 \label{tab:frontier-modes}
 \end{table*}
 
@@ -361,7 +379,7 @@ Model Fit & The learned routing signal places model tiers accurately. & Router d
     ymin=1.45, ymax=2.65,
     ylabel={TRV per Dollar},
     xtick={1,2,3,4},
-    xticklabels={VABF case,Strong Coverage boundary,Strong Coverage stress,latest VABF},
+    xticklabels={4-policy VABF,Strong boundary,Strong stress,5-policy VABF},
     x tick label style={font=\scriptsize, rotate=12, anchor=east},
     tick label style={font=\scriptsize},
     label style={font=\small},
@@ -389,8 +407,8 @@ Model Fit & The learned routing signal places model tiers accurately. & Router d
 \label{fig:main-evidence}
 \end{figure*}
 
-\subsection{Full Latest 5-Policy Table}
-Table~\ref{tab:latest} gives the full latest audited run. \textbf{\method leads all three primary metrics.} This is the clearest point-wise evidence for the current \method policy instantiation and a direct Value-Aware Budget Flow case; Section~\ref{sec:sensitivity} reports sensitivity curves for alternate frontier modes.
+\subsection{Full 5-Policy Value-Aware Budget Flow Case}
+Table~\ref{tab:full-vabf-case} gives the full 5-policy Value-Aware Budget Flow case. \textbf{\method leads all three primary metrics.} This is the clearest point-wise evidence for the current \method policy instantiation; Section~\ref{sec:sensitivity} reports sensitivity curves for alternate frontier modes.
 
 \begin{table}[t]
 \centering
@@ -406,12 +424,12 @@ budget-only & 12/30 (40.0\%) & 13.00 & 1.31 \\
 cheap-model-only & 11/30 (36.7\%) & 12.00 & 1.21 \\
 \bottomrule
 \end{tabular}
-\caption{Latest audited 5-policy run over 30 tasks.}
-\label{tab:latest}
+\caption{5-policy Value-Aware Budget Flow case over 30 tasks.}
+\label{tab:full-vabf-case}
 \end{table}
 
 \subsection{Task-Level Model Advantage}
-The latest run contains real model-tier heterogeneity. Among tasks where both cheap and strong model rows consumed model budget, there are \textbf{six cheap-model-favorable passes, five strong-model-favorable passes, and seven comparable failures under both}. This is the mechanism-level reason a batch-budget framework is useful: the task batch contains cheap-model opportunities, strong-model opportunities, and ceiling tasks in the same \sharedbudget.
+The 5-policy Value-Aware Budget Flow case contains real model-tier heterogeneity. Among tasks where both cheap and strong model rows consumed model budget, there are \textbf{six cheap-model-favorable passes, five strong-model-favorable passes, and seven comparable failures under both}. This is the mechanism-level reason a batch-budget framework is useful: the task batch contains cheap-model opportunities, strong-model opportunities, and ceiling tasks in the same \sharedbudget.
 
 \textbf{This task-level heterogeneity motivates selective strong-model use.} When strong-model upside is concentrated on a subset of tasks, the allocation policy should preserve strong-model opportunities for those tasks while spending less on tasks where the cheap model is sufficient or both tiers are unlikely to pass.
 
@@ -420,7 +438,7 @@ The latest run contains real model-tier heterogeneity. Among tasks where both ch
 The sensitivity section has a different role from the main paid evidence. The main evidence reports observed runs; sensitivity analysis shows how the same completed outcomes move under alternate value, budget, and serving-cost assumptions. We therefore treat sensitivity as a frontier diagnostic: each table or curve explains how the frontier mode changes when the accounting environment changes.
 
 \subsection{Task Value Sensitivity}
-Task Value sensitivity tests the Value-Aware Budget Flow mode under alternate ledgers. Table~\ref{tab:value-sensitivity} re-scores the latest audited run under alternate Task Value profiles. \method remains ahead of the best control under equal value, criticality value, compressed criticality, and expanded criticality. A value permutation diagnostic over 64 permutations gives \method a positive margin in all samples, with median margin +1.00 \trv. The conclusion is that the latest frontier movement is visible across several value ledgers, including the plain resolved-count setting where all resolved tasks have equal value.
+Task Value sensitivity tests the Value-Aware Budget Flow mode under alternate ledgers. Table~\ref{tab:value-sensitivity} re-scores the 5-policy Value-Aware Budget Flow case under alternate Task Value profiles. \method remains ahead of the best control under equal value, criticality value, compressed criticality, and expanded criticality. A value permutation diagnostic over 64 permutations gives \method a positive margin in all samples, with median margin +1.00 \trv. The conclusion is that this frontier movement is visible across several value ledgers, including the plain resolved-count setting where all resolved tasks have equal value.
 
 \begin{table}[t]
 \centering
@@ -435,12 +453,12 @@ compressed & \pos{17.00} & 16.00 & \pos{+1.00} \\
 expanded & \pos{20.00} & 19.00 & \pos{+1.00} \\
 \bottomrule
 \end{tabular}
-\caption{Task Value sensitivity on the latest audited run.}
+\caption{Task Value sensitivity on the 5-policy Value-Aware Budget Flow case.}
 \label{tab:value-sensitivity}
 \end{table}
 
 \subsection{Budget Sensitivity}
-Budget sensitivity is the closest analogue to a frontier plot. Figure~\ref{fig:budget-frontier} fixes observed outcomes and replays budget accounting at different caps. It therefore describes the observed cost-value frontier for this completed run. The strong-model-only policy is strongest at some low and mid caps, while \method reaches the observed frontier at the full cap. The important reading is the frontier shape: budget pressure can move a batch between Strong Coverage, Model Fit, and Value-Aware Budget Flow modes, and \method provides the framework and interface that make this movement reportable.
+Budget sensitivity is the closest analogue to a frontier plot. Figure~\ref{fig:budget-frontier} fixes observed outcomes and replays budget accounting at different caps. This is not a new lower-cap planning run: the replay keeps the completed full-cap task order, outcomes, and accounting rules, then asks what would remain under tighter caps. It therefore describes the observed cost-value frontier for this completed run. The strong-model-only policy is strongest at some low and mid caps, while \method reaches the observed frontier at the full cap. The important reading is the frontier shape: budget pressure can move a batch between Strong Coverage, Model Fit, and Value-Aware Budget Flow modes, and \method provides the framework and interface that make this movement reportable.
 
 \begin{figure*}[t]
 \centering
@@ -476,7 +494,7 @@ Budget sensitivity is the closest analogue to a frontier plot. Figure~\ref{fig:b
 \node[font=\scriptsize, text=black!65, anchor=south west] at (axis cs:4.98,11.15) {control boundary};
 \end{axis}
 \end{tikzpicture}
-\caption{Budget sensitivity diagnostic on the latest audited run. Outcomes are fixed; budget accounting is replayed at alternate caps. The dashed line is the observed frontier; BudgetFlow is emphasized in red, while controls are shown as lighter diagnostic curves.}
+\caption{Budget sensitivity diagnostic on the 5-policy Value-Aware Budget Flow case. Outcomes are fixed; budget accounting is replayed at alternate caps without re-planning task order or routing. The dashed line is the observed frontier; BudgetFlow is emphasized in red, while controls are shown as lighter diagnostic curves.}
 \label{fig:budget-frontier}
 \end{figure*}
 
@@ -523,7 +541,7 @@ This paper formulates Batch-Level Task Budget Allocation for multi-step agent ta
 
 The practical role of \trv is value accounting. It is a frozen value score that asks whether the same spend resolves more pre-declared task value. This makes mixed frontier positions meaningful: the paper reports which frontier mode shapes the cost-value frontier under a \sharedbudget.
 
-The SWE-bench experiments instantiate this interface in a verified coding domain. In the latest audited 5-policy run, \method \textbf{improves Resolved Rate, \trv, and \trv per Dollar}. In the 4-policy value case, \method resolves one fewer task than strong-model-only while producing higher \trv and higher \trv per Dollar. Across the broader paid evidence, the frontier is explained by three frontier modes. Strong Coverage describes batches where broad strong-model use is cost-effective under the cap. Model Fit describes batches where learned routing accurately places model tiers. Value-Aware Budget Flow describes the central \method regime: task values are uneven, model-tier advantage is selective, and the \sharedbudget forces cross-task tradeoffs.
+The SWE-bench experiments instantiate this interface in a verified coding domain. In the 5-policy Value-Aware Budget Flow case, \method \textbf{improves Resolved Rate, \trv, and \trv per Dollar}. In the 4-policy Value-Aware Budget Flow case, \method resolves one fewer task than strong-model-only while producing higher \trv and higher \trv per Dollar. Across the broader paid evidence, the frontier is explained by three frontier modes. Strong Coverage describes batches where broad strong-model use is cost-effective under the cap. Model Fit describes batches where learned routing accurately places model tiers. Value-Aware Budget Flow describes the central \method setting: task values are uneven, model-tier advantage is selective, and the \sharedbudget forces cross-task tradeoffs.
 
 The broader value of \method is the framework and interface. Coding tasks provide a strict verifier and measurable spend, making SWE-bench a strong testbed for the allocation contract. The transferable object is the interface: tasks expose \taskvalue, \tokencost, \modelfit, \sharedbudget state, and verifier-settled outcomes. By \textbf{separating allocation signals from outcome settlement}, BudgetFlow offers a portable way to reason about verified value under fixed resource constraints, from SWE-bench-style coding to future serving-aware and multi-tenant agent systems.
 
