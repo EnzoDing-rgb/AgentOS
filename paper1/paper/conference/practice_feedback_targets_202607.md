@@ -1,116 +1,113 @@
 # BudgetFlow / AgentOS 练手投稿目标（2026 年 7 月）
 
-时间基准：2026-07-08。目标不是冲最高档会议，而是 **一个月内能拿到有用 reviewer 反馈** 的现实首投。
+时间基准：**2026-07-14**。
 
-## CCF 说明（必读）
-
-| 候选 | CCF 分级 | 说明 |
-|------|----------|------|
-| AgenticDev 2026 | **无** | Workshop，不在第七版目录；**不算 A/B/C** |
-| MAS-GAIN 2026 | **无** | 同上 |
-| RASE 2026 | **无** | 同上 |
-| 挂靠主会 **ASE 2026** | **A 类**（软件工程领域） | 仅指 ASE **Research 等主会 full paper** |
-
-第七版目录写明：Workshop、Short paper、Demo 等 **不计入** 推荐会议条目。这三个都是 **ASE 2026 同期 workshop**，录用进 workshop proceedings，**不能按 CCF A 类 ASE 主会论文计**。
-
-若单位只认 CCF 主会 full paper，这三个是 **练手/反馈渠道**，不是冲榜目标。
+**原则：** 只列 **现在还能交、拿反馈练手** 的口。已过注册/截稿的（如 SoCC R2 新开稿）不写。Agent / LLM / budget / routing / SWE-bench **能蹭边就行**——目标是交出去拿审稿，不是保中。
 
 ---
 
-## 1. AgenticDev 2026
+## 0. 可以立刻练手了（按截稿早晚）
 
-- **CCF：无**（Workshop；主会 ASE = A，但不继承到 workshop）
-- 会议：**AgenticDev 2026: International Workshop on Agentic AI for Next-Generation Software Development**（@ **ASE 2026**）
-- 截稿：**2026-07-15，AoE (UTC-12)，23:59**
-- 类型 / 页数：**Full ≤10 页**、**Short ≤5 页**、**Demo/Tool ≤5 页**；参考文献可另加 2 页
-- 投稿系统：**HotCRP** — <https://agenticdev2026.hotcrp.com>
-- 费用：官网 **未写投稿费**；注册信息见 ASE 2026
-- 匹配度：极强 — **AI agents、编码/测试/维护 agent、编排、human-in-the-loop、可信度、benchmark、实证评估**
-- 为何适合练手：明确收 **short / vision / demo-tool**，适合早期 BudgetFlow / AgentOS 稿求反馈，不必等 flagship 完稿
-- 风险：deadline 紧；scope 宽，正文须突出 **agentic SE**，不能只写 cost optimization
-- 来源：
-  - <https://conf.researchr.org/home/ase-2026/agenticdev-2026>
-  - <https://agenticdev2026.hotcrp.com>
+| # | 会 | 档次 | 截稿 | 反馈节点 | 蹭边角度 |
+|---|-----|------|------|----------|----------|
+| **1** | **AgenticDev 2026** | 无 CCF（workshop） | **07-15** AoE | 通知 **08-21** | agentic SE；short/vision 最快 |
+| **2** | **MAS-GAIN 2026** | 无 CCF（workshop） | abs **07-17** / full **07-22** AoE | 通知 **08-23** | multi-agent / routing / tool |
+| **3** | **ICECCS 2026** | CCF **C** | **07-20** AoE | 以官网为准 | LLM agents / AI4SE |
+| **4** | **APSEC 2026 Technical** | CCF **C** | **07-20** | 通知 **09-14** | SE technical；正式会练手 |
+| **5** | **AAAI-27 Main** | CCF **A** | abs **07-21** / full **07-28** | Phase 1 **09-24**（拒也能见审稿） | multiagent / resource allocation |
+| **6** | **RASE 2026** | 无 CCF（workshop） | **07-24** AoE | 以官网为准 | trustworthy ASE / cost-aware eval |
+| **7** | **ARR Aug → EACL 2027** | *CL 审稿；EACL=CCF **B** | **08-03** | reviews **09-07**；meta **10-08** | LLM Agents / code / evaluation |
+| **8** | **APSEC 2026 ERA** | CCF **C** | **08-03** | 通知 **09-21** | early / preliminary 反馈 |
 
-## 2. MAS-GAIN 2026
-
-- **CCF：无**（Workshop；主会 ASE = A，但不继承到 workshop）
-- 会议：**MAS-GAIN 2026: Multi-Agent Systems and Generative AI for Automated Software Engineering**（@ **ASE 2026**）
-- 截稿：**2026-07-17，AoE，23:59**；abstract **2026-07-10**
-- 类型 / 页数：**Regular ≤8 页**、**Short ≤4 页**（含参考文献）；收 research / experience / tool
-- 投稿系统：**EasyChair** — <https://easychair.org/conferences/?conf=masgain2026>
-- 费用：**未写投稿费**；录用后至少 1 作者注册
-- 匹配度：强 — **多 agent 编码、routing/编排、任务级 agent 选择、资源优化、AI 代码验证、人机协作、实证**
-- 为何适合练手：早期系统稿友好；宜包装成 **multi-agent / routing / tool / experience**，而非 polished theory
-- 风险：偏 **multi-agent systems** 多于纯 coding-agent eval；SE 与 evaluation 故事要写具体
-- 来源：
-  - <https://conf.researchr.org/home/ase-2026/mas-gain-2026>
-  - <https://easychair.org/conferences/?conf=masgain2026>
-
-## 3. RASE 2026
-
-- **CCF：无**（Workshop；主会 ASE = A，但不继承到 workshop）
-- 会议：**RASE 2026: Reliable and Trustworthy Automated Software Engineering**（@ **ASE 2026**）
-- 截稿：**2026-07-24，AoE，23:59**
-- 类型 / 页数：**Regular ≤8 页**、**Short/Demo ≤4 页**、**Position ≤2 页**（含参考文献）
-- 投稿系统：**EasyChair** — <https://easychair.org/conferences/?conf=rase2026>
-- 费用：**未写投稿费**
-- 匹配度：强 — **AI 代码生成/修复可信度、AI 辅助开发工具实证、指标与 benchmark、可信 ASE 系统评测**
-- 为何适合练手：首稿若强调 **评估质量、可靠性、cost-aware 控制、benchmark 证据** 很贴；short/demo/position 门槛更低
-- 风险：不如 AgenticDev / MAS-GAIN 贴「agent systems」品牌；须把 BudgetFlow 明确挂到 **trustworthy automated SE**
-- 来源：
-  - <https://conf.researchr.org/home/ase-2026/rase-2026>
-  - <https://easychair.org/conferences/?conf=rase2026>
+**Dual-submission：** AAAI 与 ARR（及多数正式会 archival）**不能并行**。Workshop 一般可并行，以各自 CFP 为准。一次主投只锁一个 archival。
 
 ---
 
-## 4. 三个月内可投的 CCF 正式候选
+## 1. Workshop（无 CCF；ASE 主会 A 不继承）
 
-时间基准：2026-07-08。下面三项是 **CCF 第七版 A/B/C 正式会议或正式 track**，区别于上面的 workshop 练手渠道。
+Workshop / Short / Demo **不计** CCF 推荐会议条目。挂靠主会 ASE 2026 = CCF **A** 只适用于主会 Research 等 full paper。
 
-### 4.1 APSEC 2026 ERA / Technical Track
+### 1.1 AgenticDev 2026
 
-- **CCF：C 类**（软件工程方向）
-- 会议：**APSEC 2026: Asia-Pacific Software Engineering Conference**
-- 截稿：
-  - **ERA：2026-08-03**
-  - **Technical Track：2026-07-20**
-- 通知：
-  - **ERA：2026-09-21**
-  - **Technical Track：2026-09-14**
-- 投稿系统：**EasyChair** — <https://easychair.org/conferences/?conf=apsec2026>
-- 费用：官方 CFP 未写投稿费；录用后至少一位作者注册并报告
-- 匹配度：强 — agentic SE、AI4SE、benchmark、cost-aware evaluation 都能放进软件工程语境
-- 为什么适合练手：**ERA 明确面向 early research / preliminary results**，最适合拿反馈；Technical Track 是更正式的 CCF C 主会口径
-- 来源：
-  - <https://conf.researchr.org/track/apsec-2026/apsec-2026-papers>
-  - <https://conf.researchr.org/track/apsec-2026/apsec-2026-technical-track>
+- **CCF：无** · @ ASE 2026
+- **截稿：** **2026-07-15 AoE**（今天/明天；以官网为准）
+- **页数：** Full ≤10 / Short ≤5 / Demo ≤5（+2 页参考文献）
+- **投稿：** <https://agenticdev2026.hotcrp.com>
+- **CFP：** <https://conf.researchr.org/home/ase-2026/agenticdev-2026>
+- **匹配：** agentic SE 极强；适合 short/vision 求反馈
+- **立刻动作：** **今天交**（最紧）
 
-### 4.2 ICECCS 2026
+### 1.2 MAS-GAIN 2026
 
-- **CCF：C 类**（软件工程方向）
-- 会议：**ICECCS 2026: International Conference on Engineering of Complex Computer Systems**
-- 截稿：**2026-07-20，AoE**
-- 通知：官网时间线仍有旧日期残留，提交前以 EasyChair / 官网最新公告为准
-- 类型 / 页数：Technical / Experience Report、Short Paper
-- 投稿系统：**EasyChair** — <https://easychair.org/conferences/?conf=iceccs2026>
-- 费用：官方 CFP 未写投稿费；registration TBA
-- 匹配度：中到强 — 官方 topic 包含 **LLM-based Agents、AI4SE and SE4AI、LLM integration、AI-driven systems efficiency**
-- 为什么适合练手：scope 比较宽，能把 BudgetFlow 写成复杂 agent 系统里的 cost-aware orchestration / evaluation framework
-- 来源：
-  - <https://formal-analysis.com/iceccs/2026/>
+- **CCF：无** · @ ASE 2026
+- **截稿：** abs **07-17** / full **07-22** AoE（已延期，以 [站点](https://masgain.github.io/masgain/masgain2026/) 为准）
+- **页数：** Regular ≤8 / Short ≤4
+- **投稿：** <https://easychair.org/conferences/?conf=masgain2026>
+- **CFP：** <https://conf.researchr.org/home/ase-2026/mas-gain-2026>
+- **匹配：** multi-agent / routing / tool / experience
+- **立刻动作：** **先交 abstract（07-17）→ full（07-22）**
 
-### 4.3 SANER 2027 Research Track
+### 1.3 RASE 2026
 
-- **CCF：B 类**（软件工程方向）
-- 会议：**SANER 2027: IEEE International Conference on Software Analysis, Evolution, and Reengineering**
-- 截稿：**摘要 2026-09-21（mandatory）**；**全文 2026-09-25**
-- 通知：**2026-12-01**
-- 投稿系统：**EasyChair** — <https://easychair.org/my/conference?conf=saner2027>
-- 费用：官方 CFP 未写投稿费；录用后至少一位作者 full registration 并报告
-- 匹配度：中到强 — 如果论文强调 SWE-bench、agent workflow evaluation、software analysis / reengineering for agents，会比较自然
-- 为什么适合练手：比 APSEC / ICECCS 难，但反馈质量更接近正式软件工程研究轨；适合作为 9 月升级版
-- 来源：
-  - <https://conf.researchr.org/track/saner-2027/saner-2027-papers>
+- **CCF：无** · @ ASE 2026
+- **截稿：** **2026-07-24 AoE**
+- **页数：** Regular ≤8 / Short-Demo ≤4 / Position ≤2
+- **投稿：** <https://easychair.org/conferences/?conf=rase2026>
+- **CFP：** <https://conf.researchr.org/home/ase-2026/rase-2026>
+- **匹配：** trustworthy ASE / benchmark / cost-aware evaluation
+- **立刻动作：** 本周可写，**07-24 前交**
 
-**建议排序：** APSEC ERA 拿最快反馈；ICECCS 作为 7 月正式 CCF C 候选；SANER 作为 9 月更正式的 B 类升级目标。
+---
+
+## 2. 正式会练手（仍开着的 C / A / ARR）
+
+### 2.1 ICECCS 2026
+
+- **CCF：C** · **07-20 AoE**
+- EasyChair：<https://easychair.org/conferences/?conf=iceccs2026>
+- Topic 含 LLM-based Agents、AI4SE
+- **立刻动作：** **本周交（07-20）**
+
+### 2.2 APSEC 2026 Technical
+
+- **CCF：C** · **07-20** · 通知 **09-14**
+- EasyChair：<https://easychair.org/conferences/?conf=apsec2026>
+- **立刻动作：** **本周交（07-20）**
+
+### 2.3 AAAI-27 Main Technical Track
+
+- **CCF：A** · 两阶段审稿；**Phase 1 被拒也能立刻看到审稿**（练手反馈强）
+- **截稿：** abstract **07-21 AoE**；full **07-28**；补充 **07-31**
+- **页数：** 正文 ≤7 + 参考文献至多总 9 页；reproducibility checklist
+- **投稿：** [OpenReview](https://openreview.net/group?id=AAAI.org/2027/Conference)
+- **CFP：** [Main Track](https://aaai.org/conference/aaai/aaai-27/main-technical-track-call/) · [说明](https://aaai.org/conference/aaai/aaai-27/submission-instructions/)
+- **包装：** multi-agent / planning / resource allocation；少写纯 harness
+- **立刻动作：** **本周交 abstract（最晚 07-21）→ 07-28 full**
+- **注意：** 投后勿并行其他 archival
+
+### 2.4 ARR August 2026 → EACL 2027
+
+- ***CL 审稿**；commit EACL = CCF **B**
+- **为何练手：** ARR **非 desk-reject 必出 reviews**
+- **截稿：** **08-03 AoE**；作者 reviewer 注册 **08-05**
+- **反馈：** reviews due **09-07**；response **09-14–19**；meta **10-08**；commit EACL **10-11**
+- **来源：** [ARR dates](http://aclrollingreview.org/dates) · [EACL CFP](https://2027.eacl.org/calls/papers/)
+- **立刻动作：** 若不上 AAAI（或已撤），**08-03 交 ARR**；与 AAAI **不可并行**
+
+### 2.5 APSEC 2026 ERA
+
+- **CCF：C** · ERA **08-03** · 通知 **09-21**
+- EasyChair：<https://easychair.org/conferences/?conf=apsec2026>
+- **立刻动作：** early / preliminary 叙事，**08-03 前交**
+
+---
+
+## 3. 本周执行顺序（只练手）
+
+1. **今天–明天：** AgenticDev（**07-15**）— 最紧  
+2. **本周：** MAS-GAIN abstract（**07-17**）→ ICECCS / APSEC Technical（**07-20**）  
+3. **若要严审练手：** AAAI abstract（**07-21**）→ full（**07-28**）  
+4. **下周：** RASE（**07-24**）；MAS-GAIN full（**07-22**）  
+5. **八月初：** 不上 AAAI 则 ARR 或 APSEC ERA（**08-03**）
+
+**不在本表：** SoCC R2 新开稿（registration 已过）、九月及以后尚未到练手窗口的会。
