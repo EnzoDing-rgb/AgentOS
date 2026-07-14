@@ -370,12 +370,14 @@ Model Fit & The learned routing signal places model tiers accurately. & Router d
     legend style={font=\scriptsize, at={(0.5,-0.25)}, anchor=north, draw=none, legend columns=2},
     grid=major,
     grid style={line width=.1pt, draw=gray!20},
+    point meta=y,
     nodes near coords,
-    every node near coord/.append style={font=\scriptsize},
+    nodes near coords={\pgfmathprintnumber[fixed, zerofill, precision=2]{\pgfplotspointmeta}},
+    every node near coord/.append style={font=\scriptsize, text=black!75},
 ]
-\addplot+[fill=bfred!75, draw=bfred] coordinates {(1,2.32) (2,1.76) (3,1.86) (4,1.81)};
+\addplot[fill=bfred!75, draw=bfred] coordinates {(1,2.32) (2,1.76) (3,1.86) (4,1.81)};
 \addlegendentry{BudgetFlow}
-\addplot+[fill=bfblue!55, draw=bfblue] coordinates {(1,1.90) (2,2.01) (3,1.92) (4,1.71)};
+\addplot[fill=bfblue!55, draw=bfblue] coordinates {(1,1.90) (2,2.01) (3,1.92) (4,1.71)};
 \addlegendentry{best control}
 \node[font=\scriptsize, text=bfred, anchor=south] at (axis cs:1,2.39) {BF lead};
 \node[font=\scriptsize, text=bfblue, anchor=south] at (axis cs:2,2.08) {control lead};
@@ -458,17 +460,17 @@ Budget sensitivity is the closest analogue to a frontier plot. Figure~\ref{fig:b
     axis line style={black!65},
     clip=false,
 ]
-\addplot+[mark=*, thin, color=bfgray!45, opacity=0.38] coordinates {(2.99,5.50) (3.98,7.50) (4.98,7.50) (5.97,8.50) (7.47,11.00) (9.95,12.00)};
+\addplot[mark=*, thin, color=bfgray!45, opacity=0.38] coordinates {(2.99,5.50) (3.98,7.50) (4.98,7.50) (5.97,8.50) (7.47,11.00) (9.95,12.00)};
 \addlegendentry{cheap-only}
-\addplot+[mark=square*, semithick, color=bfblue!55, opacity=0.56] coordinates {(2.99,7.50) (3.98,8.50) (4.98,11.00) (5.97,12.00) (7.47,12.00) (9.95,16.50)};
+\addplot[mark=square*, semithick, color=bfblue!55, opacity=0.56] coordinates {(2.99,7.50) (3.98,8.50) (4.98,11.00) (5.97,12.00) (7.47,12.00) (9.95,16.50)};
 \addlegendentry{strong-only}
-\addplot+[mark=triangle*, semithick, color=bfteal!55, opacity=0.50] coordinates {(2.99,7.50) (3.98,8.50) (4.98,8.50) (5.97,11.00) (7.47,13.00) (9.95,17.00)};
+\addplot[mark=triangle*, semithick, color=bfteal!55, opacity=0.50] coordinates {(2.99,7.50) (3.98,8.50) (4.98,8.50) (5.97,11.00) (7.47,13.00) (9.95,17.00)};
 \addlegendentry{learned router}
-\addplot+[mark=diamond*, semithick, color=bforange!55, opacity=0.50] coordinates {(2.99,6.00) (3.98,6.00) (4.98,7.00) (5.97,9.50) (7.47,10.50) (9.95,13.00)};
+\addplot[mark=diamond*, semithick, color=bforange!55, opacity=0.50] coordinates {(2.99,6.00) (3.98,6.00) (4.98,7.00) (5.97,9.50) (7.47,10.50) (9.95,13.00)};
 \addlegendentry{budget-only}
-\addplot+[mark=none, dashed, ultra thick, color=black!75] coordinates {(2.99,7.50) (3.98,9.00) (4.98,11.00) (5.97,12.00) (7.47,13.00) (9.95,17.00)};
+\addplot[mark=none, dashed, ultra thick, color=black!75] coordinates {(2.99,7.50) (3.98,9.00) (4.98,11.00) (5.97,12.00) (7.47,13.00) (9.95,17.00)};
 \addlegendentry{observed frontier}
-\addplot+[mark=star, mark size=3.2pt, very thick, color=bfred] coordinates {(2.99,7.50) (3.98,9.00) (4.98,10.00) (5.97,11.00) (7.47,12.00) (9.95,17.00)};
+\addplot[mark=star, mark size=3.2pt, very thick, color=bfred] coordinates {(2.99,7.50) (3.98,9.00) (4.98,10.00) (5.97,11.00) (7.47,12.00) (9.95,17.00)};
 \addlegendentry{BudgetFlow}
 \node[font=\scriptsize, text=bfred, anchor=south east] at (axis cs:9.95,17.18) {full-cap BF frontier point};
 \node[font=\scriptsize, text=black!65, anchor=south west] at (axis cs:4.98,11.15) {control boundary};
