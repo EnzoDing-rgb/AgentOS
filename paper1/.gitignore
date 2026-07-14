@@ -41,6 +41,7 @@ code/external/SWE-agent/
 
 # LaTeX build byproducts
 paper/main.pdf
+paper/main-*.pdf
 paper/*.aux
 paper/*.bbl
 paper/*.blg
