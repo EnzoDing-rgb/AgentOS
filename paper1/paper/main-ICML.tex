@@ -92,7 +92,7 @@ We instantiate this formulation on SWE-bench-style verified coding tasks. SWE-be
 
 The paper uses three primary metrics. \textbf{Resolved Rate} anchors the evaluation to standard verified success. \textbf{Total Resolved Value} (\trv) sums pre-registered \taskvalue over resolved tasks. \textbf{\trv per Dollar} measures value efficiency under the shared hard budget.
 
-The central empirical result is the \method frontier-mode evidence. In a 4-policy metadata-only batch, \method reaches \trv 18.50 at \$7.98, while strong-model-only reaches \trv 18.00 at \$9.46 and resolves one additional task. In a 5-policy batch with prior-batch observations, \method leads Resolved Rate, \trv, and \trv per Dollar. The remaining main batches show Strong Coverage: broad use of the strong model forms the observed frontier, once by a clear margin and once by a narrow margin. Serving-cost sensitivity shows the Model Fit case: under extreme KV-cache discounts, learned routing becomes the best \trv-per-Dollar point while \method keeps higher \trv. Together, these outcomes show how the frontier is shaped by \sharedbudget pressure, \taskvalue, \tokencost, and \modelfit.
+The central empirical result is the \method frontier-mode evidence. In a 4-policy metadata-only batch, \method reaches \trv 18.50 at \$7.98, while strong-model-only reaches \trv 18.00 at \$9.46 and resolves one additional task. In a 5-policy batch with prior-batch observations, \method leads Resolved Rate, \trv, and \trv per Dollar. The remaining main batches show Strong Coverage: broad use of the strong model forms the observed frontier, once with a larger lead and once with a close lead. Serving-cost sensitivity shows the Model Fit case: under extreme KV-cache discounts, learned routing becomes the best \trv-per-Dollar point while \method keeps higher \trv. Together, these outcomes show how the frontier is shaped by \sharedbudget pressure, \taskvalue, \tokencost, and \modelfit.
 
 This paper makes three contributions:
 
@@ -282,9 +282,9 @@ budget-only & yes &  & budget pressure & budget-pressure choice & yes \\
 Batch & Policies & Planning input & Catalog & Value ledger & Hard cap \\
 \midrule
 4-policy BudgetFlow Pareto case & 4 & metadata-only estimates & 2026-06-22 T2/T3x5 & 10 high-value; max 2.5 & \$10.44 stage-prefix pressure \\
-5-policy Strong Coverage clear case & 5 & metadata-only estimates & 2026-06-22 T2/T3x5 & 10 high-value; max 2.5 & \$9.95 strongest spend divided by 0.95 \\
-5-policy Strong Coverage narrow case & 5 & prior-batch observations & 2026-06-30 nonthinking T2 & 6 high-value; max 1.5 & \$9.95 strongest spend divided by 0.95 \\
-5-policy BudgetFlow all-metric case & 5 & prior-batch observations & 2026-06-30 nonthinking T2 & 6 high-value; max 1.5 & \$9.95 strongest spend divided by 0.95 \\
+5-policy Strong Coverage larger-lead case & 5 & metadata-only estimates & 2026-06-22 T2/T3 catalog & 10 high-value; max 2.5 & \$9.95 strongest spend divided by 0.95 \\
+5-policy Strong Coverage close-lead case & 5 & prior-batch observations & 2026-06-30 T2/T3 catalog & 6 high-value; max 1.5 & \$9.95 strongest spend divided by 0.95 \\
+5-policy BudgetFlow leads-all case & 5 & prior-batch observations & 2026-06-30 T2/T3 catalog & 6 high-value; max 1.5 & \$9.95 strongest spend divided by 0.95 \\
 \bottomrule
 \end{tabular}
 \caption{Run configuration summary. Planning input identifies whether \tokencost and \modelfit use metadata-only estimates or prior-batch observations. The batches are interpreted separately because catalog revision and value ledger differ.}
@@ -304,7 +304,7 @@ Table~\ref{tab:main-evidence} summarizes four paid task-batch runs through the \
 
 The first value-aware result is the 4-policy BudgetFlow Pareto case. \method reaches \textbf{\trv 18.50 at \$7.98}, while strong-model-only reaches \trv 18.00 at \$9.46. This is a strict improvement in the $(\mathrm{spend}, \mathrm{\trv})$ plane---higher resolved value at about 16\% lower spend---while strong-model-only resolves one additional task (15/30 vs. 14/30). The value gain is concentrated where the value ledger says it should be: on high-value tasks (\taskvalue $\geq$ 1.5), \method resolves 9.50 value against 7.00 for strong-model-only.
 
-The second value-aware result is the 5-policy BudgetFlow all-metric case. \method resolves 16/30 tasks, reaches \trv 18.00, and achieves 1.81 \trv per Dollar. The next-best learned task-router resolves 15/30 tasks, reaches \trv 17.00, and achieves 1.71 \trv per Dollar. The two 5-policy Strong Coverage cases show the other main pattern: one is a clear strong-model frontier, and the other is a narrow strong-model frontier where \method remains close.
+The second value-aware result is the 5-policy BudgetFlow leads-all case. \method resolves 16/30 tasks, reaches \trv 18.00, and achieves 1.81 \trv per Dollar. The next-best learned task-router resolves 15/30 tasks, reaches \trv 17.00, and achieves 1.71 \trv per Dollar. The two 5-policy Strong Coverage cases show the other main pattern: in both, strong-model-only forms the observed frontier, but the margin is large in one batch and close in the other.
 
 \begin{table*}[t]
 \centering
@@ -316,24 +316,24 @@ Batch reading & Policy & Resolved Rate & Spend & TRV & TRV per Dollar \\
 \textbf{BudgetFlow Pareto}: higher \trv at lower spend & \method & 14/30 (46.7\%) & \$7.98 & \pos{18.50} & \pos{2.32} \\
  & strong-model-only & \ctrl{15/30 (50.0\%)} & \$9.46 & 18.00 & 1.90 \\
 \addlinespace
-\textbf{Strong Coverage}: clear strong-model lead & strong-model-only & \ctrl{17/30 (56.7\%)} & \$9.95 & \ctrl{20.00} & \ctrl{2.01} \\
+\textbf{Strong Coverage}: larger strong-model lead & strong-model-only & \ctrl{17/30 (56.7\%)} & \$9.95 & \ctrl{20.00} & \ctrl{2.01} \\
  & \method & 15/30 (50.0\%) & \$9.95 & 17.50 & 1.76 \\
 \addlinespace
-\textbf{Strong Coverage}: narrow strong-model lead & strong-model-only & \ctrl{18/30 (60.0\%)} & \$9.88 & \ctrl{19.00} & \ctrl{1.92} \\
+\textbf{Strong Coverage}: close strong-model lead & strong-model-only & \ctrl{18/30 (60.0\%)} & \$9.88 & \ctrl{19.00} & \ctrl{1.92} \\
  & \method & 17/30 (56.7\%) & \$9.95 & 18.50 & 1.86 \\
 \addlinespace
-\textbf{BudgetFlow all-metric}: leads all primary metrics & \method & \pos{16/30 (53.3\%)} & \$9.95 & \pos{18.00} & \pos{1.81} \\
+\textbf{BudgetFlow leads all}: all primary metrics & \method & \pos{16/30 (53.3\%)} & \$9.95 & \pos{18.00} & \pos{1.81} \\
  & learned task-router & 15/30 (50.0\%) & \$9.95 & 17.00 & 1.71 \\
  & strong-model-only & 15/30 (50.0\%) & \$9.95 & 16.50 & 1.66 \\
 \bottomrule
 \end{tabular}
-\caption{Main paid evidence. Each group reports one 30-task batch. The two BudgetFlow-leading groups show the value-aware cases: one improves the spend--\trv frontier, and one leads all primary metrics. The two Strong Coverage groups should be read together: in both, broad strong-model use is cost-effective under the cap; clear and narrow describe the observed margin. Red bold entries mark BudgetFlow frontier signals; blue bold entries mark the strongest control in Strong Coverage runs. The 4-policy BudgetFlow row uses total observed spend, including non-scoreable abort overhead.}
+\caption{Main paid evidence. Each group reports one 30-task batch. The two BudgetFlow-leading groups show the value-aware cases: one improves the spend--\trv frontier, and one leads all primary metrics. The two Strong Coverage groups should be read together: in both, broad strong-model use is cost-effective under the cap; larger and close describe the observed lead. Red bold entries mark BudgetFlow frontier signals; blue bold entries mark the strongest control in Strong Coverage runs. The 4-policy BudgetFlow row uses total observed spend, including non-scoreable abort overhead.}
 \label{tab:main-evidence}
 \end{table*}
 
-The four main batches show two frontier patterns. First, Value-Aware Budget Flow can protect high-value tasks and \textbf{improve \trv and \trv per Dollar} even when a strong-model policy resolves one additional task. Second, Strong Coverage explains cases where \textbf{a strong model is already a strong frontier point} because broad strong-model coverage is cost-effective under the cap. The two Strong Coverage rows are the same condition at two margins, not two different mechanisms. The 5-policy BudgetFlow all-metric case shows the desired \method frontier movement: \method \textbf{leads on standard resolution, value, and value per dollar} under the same cap.
+The four main batches show two frontier patterns. First, Value-Aware Budget Flow can protect high-value tasks and \textbf{improve \trv and \trv per Dollar} even when a strong-model policy resolves one additional task. Second, Strong Coverage explains cases where \textbf{a strong model is already a strong frontier point} because broad strong-model coverage is cost-effective under the cap. The two Strong Coverage rows are the same condition at two margins, not two different mechanisms. The 5-policy BudgetFlow leads-all case shows the desired \method frontier movement: \method \textbf{leads on standard resolution, value, and value per dollar} under the same cap.
 
-These outcomes should be read together. The 4-policy BudgetFlow Pareto case and the 5-policy BudgetFlow all-metric case are the two strongest value-aware examples: the former shows higher value efficiency despite one fewer resolved task, and the latter shows \method leading all three primary metrics. The clear Strong Coverage case shows a wider strong-only lead; the narrow Strong Coverage case shows \method close to that frontier, trailing by 0.50 \trv and 0.06 \trv per Dollar. The Model Fit case appears in serving-cost sensitivity, where learned routing becomes the best \trv-per-Dollar point under extreme KV-cache discounts. Table~\ref{tab:frontier-modes} maps the resulting frontier modes to representative evidence.
+These outcomes should be read together. The 4-policy BudgetFlow Pareto case and the 5-policy BudgetFlow leads-all case are the two strongest value-aware examples: the former shows higher value efficiency despite one fewer resolved task, and the latter shows \method leading all three primary metrics. In one Strong Coverage case, strong-model-only has a larger lead; in the other, \method is close to that frontier, trailing by 0.50 \trv and 0.06 \trv per Dollar. The Model Fit case appears in serving-cost sensitivity, where learned routing becomes the best \trv-per-Dollar point under extreme KV-cache discounts. Table~\ref{tab:frontier-modes} maps the resulting frontier modes to representative evidence.
 
 \subsection{Frontier Mode Analysis}
 Table~\ref{tab:frontier-modes} maps each frontier mode to representative evidence. This analysis is the interpretation layer for the same Resolved Rate, \trv, and \trv per Dollar evidence in Table~\ref{tab:main-evidence}. A shared-budget batch can be frontier-shaped by different signals: value-aware budget flow, broad strong-model coverage, or accurate model-fit routing. The \method contribution is to make Value-Aware Budget Flow concrete through a framework and interface for value-governed allocation.
@@ -345,8 +345,8 @@ Table~\ref{tab:frontier-modes} maps each frontier mode to representative evidenc
 \toprule
 Frontier mode & Condition & Representative evidence & Reading \\
 \midrule
-Value-Aware Budget Flow & Task values differ, estimated token costs differ, and model gains are selective. & Main paid evidence: \method reaches \pos{18.50 \trv} and \pos{2.32 \trv/\$} in the BudgetFlow Pareto case, and \pos{16/30}, \pos{18.00 \trv}, \pos{1.81 \trv/\$} in the BudgetFlow all-metric case. & Central \method mode. \\
-Strong Coverage & The strong model covers the batch broadly under the cap. & Main paid evidence: strong-model-only reaches \ctrl{17/30}, \ctrl{20.00 \trv}, \ctrl{2.01 \trv/\$} in the clear Strong Coverage case, and \ctrl{18/30}, \ctrl{19.00 \trv}, \ctrl{1.92 \trv/\$} in the narrow Strong Coverage case. & Strong-model frontier point. \\
+Value-Aware Budget Flow & Task values differ, estimated token costs differ, and model gains are selective. & Main paid evidence: \method reaches \pos{18.50 \trv} and \pos{2.32 \trv/\$} in the BudgetFlow Pareto case, and \pos{16/30}, \pos{18.00 \trv}, \pos{1.81 \trv/\$} in the BudgetFlow leads-all case. & Central \method mode. \\
+Strong Coverage & The strong model covers the batch broadly under the cap. & Main paid evidence: strong-model-only reaches \ctrl{17/30}, \ctrl{20.00 \trv}, \ctrl{2.01 \trv/\$} in the larger-lead case, and \ctrl{18/30}, \ctrl{19.00 \trv}, \ctrl{1.92 \trv/\$} in the close-lead case. & Strong-model frontier point. \\
 Model Fit & The learned routing signal places model tiers accurately. & Serving-cost sensitivity: at KV98 and KV99, the learned task-router reaches \ctrl{14.28} and \ctrl{15.41 \trv/\$}, ahead of \method on \trv per Dollar while \method keeps higher \trv. & Model-fit frontier point under extreme cache discount. \\
 \bottomrule
 \end{tabular}
@@ -364,7 +364,7 @@ Model Fit & The learned routing signal places model tiers accurately. & Serving-
     ymin=1.45, ymax=2.65,
     ylabel={TRV per Dollar},
     xtick={1,2,3,4},
-    xticklabels={BF Pareto,Strong clear,Strong narrow,BF all-metric},
+    xticklabels={BF Pareto,strong-only larger,strong-only close,BF leads all},
     x tick label style={font=\scriptsize, rotate=12, anchor=east},
     tick label style={font=\scriptsize},
     label style={font=\small},
@@ -383,12 +383,12 @@ Model Fit & The learned routing signal places model tiers accurately. & Serving-
 \addplot[fill=bfblue!55, draw=bfblue] coordinates {(1,1.90) (2,2.01) (3,1.92) (4,1.71)};
 \addlegendentry{best control}
 \node[font=\scriptsize, text=bfred, align=center, anchor=south] at (axis cs:1,2.39) {higher TRV\\lower spend};
-\node[font=\scriptsize, text=bfblue, anchor=south] at (axis cs:2,2.08) {strong clear};
-\node[font=\scriptsize, text=bfblue, anchor=south] at (axis cs:3,1.99) {strong narrow};
-\node[font=\scriptsize, text=bfred, anchor=south] at (axis cs:4,1.88) {BF all metrics};
+\node[font=\scriptsize, text=bfblue, anchor=south] at (axis cs:2,2.08) {larger lead};
+\node[font=\scriptsize, text=bfblue, anchor=south] at (axis cs:3,1.99) {close lead};
+\node[font=\scriptsize, text=bfred, anchor=south] at (axis cs:4,1.88) {BF leads all};
 \end{axis}
 \end{tikzpicture}
-\caption{Main evidence compressed to value efficiency. Each pair compares BudgetFlow with the best available control from the same paid batch on \trv per Dollar. The first and fourth pairs are the value-aware BudgetFlow cases; the middle pairs are Strong Coverage cases, with one clear strong-model lead and one narrow lead.}
+\caption{Main evidence compressed to value efficiency. Each pair compares BudgetFlow with the best available control from the same paid batch on \trv per Dollar. The first and fourth pairs are the value-aware BudgetFlow cases; the middle pairs are Strong Coverage cases, with one larger strong-model lead and one close lead.}
 \label{fig:main-evidence}
 \end{figure*}
 
