@@ -92,7 +92,7 @@ We instantiate this formulation on SWE-bench-style verified coding tasks. SWE-be
 
 The paper uses three primary metrics. \textbf{Resolved Rate} anchors the evaluation to standard verified success. \textbf{Total Resolved Value} (\trv) sums pre-registered \taskvalue over resolved tasks. \textbf{\trv per Dollar} measures value efficiency under the shared hard budget.
 
-The central empirical result is the \method frontier-mode evidence. In a 4-policy metadata-only batch, \method reaches \trv 18.50 at \$7.98, while strong-model-only reaches \trv 18.00 at \$9.46 and resolves one additional task. In a 5-policy batch with prior-batch observations, \method leads Resolved Rate, \trv, and \trv per Dollar. The remaining main batches show Strong Coverage: broad use of the strong model forms the observed frontier. Learned routing remains a Model Fit reference for cases where accurate task-to-model matching is the dominant signal. Together, these outcomes show how the frontier is shaped by \sharedbudget pressure, \taskvalue, \tokencost, and \modelfit.
+The central empirical result is the \method frontier-mode evidence. In a 4-policy metadata-only batch, \method reaches \trv 18.50 at \$7.98, while strong-model-only reaches \trv 18.00 at \$9.46 and resolves one additional task. In a 5-policy batch with prior-batch observations, \method leads Resolved Rate, \trv, and \trv per Dollar. The remaining main batches show Strong Coverage: broad use of the strong model forms the observed frontier. Serving-cost sensitivity shows the Model Fit case: under extreme KV-cache discounts, learned routing becomes the best \trv-per-Dollar point while \method keeps higher \trv. Together, these outcomes show how the frontier is shaped by \sharedbudget pressure, \taskvalue, \tokencost, and \modelfit.
 
 This paper makes three contributions:
 
@@ -282,8 +282,8 @@ budget-only & yes &  & budget pressure & budget-pressure choice & yes \\
 Batch & Policies & Planning input & Catalog & Value ledger & Hard cap \\
 \midrule
 4-policy Value-Aware Budget Flow case & 4 & metadata-only estimates & 2026-06-22 T2/T3x5 & 10 high-value; max 2.5 & \$10.44 stage-prefix pressure \\
-5-policy Strong Coverage boundary case & 5 & metadata-only estimates & 2026-06-22 T2/T3x5 & 10 high-value; max 2.5 & \$9.95 strongest spend divided by 0.95 \\
-5-policy Strong Coverage stress case & 5 & prior-batch observations & 2026-06-30 nonthinking T2 & 6 high-value; max 1.5 & \$9.95 strongest spend divided by 0.95 \\
+5-policy Strong Coverage case & 5 & metadata-only estimates & 2026-06-22 T2/T3x5 & 10 high-value; max 2.5 & \$9.95 strongest spend divided by 0.95 \\
+5-policy Strong Coverage case & 5 & prior-batch observations & 2026-06-30 nonthinking T2 & 6 high-value; max 1.5 & \$9.95 strongest spend divided by 0.95 \\
 5-policy Value-Aware Budget Flow case & 5 & prior-batch observations & 2026-06-30 nonthinking T2 & 6 high-value; max 1.5 & \$9.95 strongest spend divided by 0.95 \\
 \bottomrule
 \end{tabular}
@@ -295,7 +295,7 @@ Batch & Policies & Planning input & Catalog & Value ledger & Hard cap \\
 The main tables report Resolved Rate, \trv, and \trv per Dollar, as defined in Table~\ref{tab:glossary}. Resolved Rate is written as both count and percentage. Spend is included as budget context because \trv per Dollar depends on it.
 
 \paragraph{Sensitivity analyses.}
-The main paid runs show observed frontier points. The sensitivity analyses ask how that frontier changes when the value ledger, the budget cap, or the serving cost model changes while the completed outcomes stay fixed. Task Value sensitivity re-scores fixed outcomes under alternate value profiles. Budget sensitivity replays the observed task order under different shared budget caps. KV Cache Cost-Discount sensitivity re-costs repeated input tokens under explicit cache-discount assumptions. Together, these diagnostics separate outcome quality from the accounting assumptions that determine cost-value efficiency.
+The main paid runs show observed frontier points. The sensitivity analyses do not add new paid runs or cross-run frontier points; they replay one completed batch under alternate accounting assumptions. Task Value sensitivity re-scores fixed outcomes under alternate value profiles. Budget sensitivity replays the observed task order under sampled shared-budget caps. KV Cache Cost-Discount sensitivity re-costs repeated input tokens under explicit cache-discount assumptions. Together, these diagnostics separate outcome quality from the accounting assumptions that determine cost-value efficiency.
 
 \section{Results}
 \label{sec:results}
@@ -316,10 +316,10 @@ Run & Leading policy & Resolved Rate & Spend & TRV & TRV per Dollar \\
 4-policy Value-Aware Budget Flow case & \method & 14/30 (46.7\%) & \$7.98 & \pos{18.50} & \pos{2.32} \\
  & strong-model-only & \ctrl{15/30 (50.0\%)} & \$9.46 & 18.00 & 1.90 \\
 \addlinespace
-5-policy Strong Coverage boundary case & strong-model-only & \ctrl{17/30 (56.7\%)} & \$9.95 & \ctrl{20.00} & \ctrl{2.01} \\
+5-policy Strong Coverage case & strong-model-only & \ctrl{17/30 (56.7\%)} & \$9.95 & \ctrl{20.00} & \ctrl{2.01} \\
  & \method & 15/30 (50.0\%) & \$9.95 & 17.50 & 1.76 \\
 \addlinespace
-5-policy Strong Coverage stress case & strong-model-only & \ctrl{18/30 (60.0\%)} & \$9.88 & \ctrl{19.00} & \ctrl{1.92} \\
+5-policy Strong Coverage case & strong-model-only & \ctrl{18/30 (60.0\%)} & \$9.88 & \ctrl{19.00} & \ctrl{1.92} \\
  & \method & 17/30 (56.7\%) & \$9.95 & 18.50 & 1.86 \\
 \addlinespace
 5-policy Value-Aware Budget Flow case & \method & \pos{16/30 (53.3\%)} & \$9.95 & \pos{18.00} & \pos{1.81} \\
@@ -327,13 +327,13 @@ Run & Leading policy & Resolved Rate & Spend & TRV & TRV per Dollar \\
  & strong-model-only & 15/30 (50.0\%) & \$9.95 & 16.50 & 1.66 \\
 \bottomrule
 \end{tabular}
-\caption{Main paid evidence. Each group reports one 30-task batch. Resolved Rate, \trv, and \trv per Dollar are the three primary metrics. Red bold entries mark BudgetFlow frontier signals; blue bold entries mark the strongest control in boundary runs. The 4-policy BudgetFlow row uses total observed spend, including non-scoreable abort overhead.}
+\caption{Main paid evidence. Each group reports one 30-task batch. Resolved Rate, \trv, and \trv per Dollar are the three primary metrics. Red bold entries mark BudgetFlow frontier signals; blue bold entries mark the strongest control in Strong Coverage runs. The 4-policy BudgetFlow row uses total observed spend, including non-scoreable abort overhead.}
 \label{tab:main-evidence}
 \end{table*}
 
 The four main batches show two frontier patterns. First, Value-Aware Budget Flow can protect high-value tasks and \textbf{improve \trv and \trv per Dollar} even when a strong-model policy resolves one additional task. Second, Strong Coverage explains cases where \textbf{a strong model is already a strong frontier point} because broad strong-model coverage is cost-effective under the cap. The 5-policy Value-Aware Budget Flow case shows the desired \method frontier movement: \method \textbf{leads on standard resolution, value, and value per dollar} under the same cap.
 
-These outcomes should be read together. The 4-policy Value-Aware Budget Flow case and the 5-policy Value-Aware Budget Flow case are the two strongest value-aware examples: the former shows higher value efficiency despite one fewer resolved task, and the latter shows \method leading all three primary metrics. The two 5-policy Strong Coverage cases show that strong-model-only is valuable when the strong tier covers enough tasks under the shared cap. Table~\ref{tab:frontier-modes} maps the resulting frontier modes to representative evidence.
+These outcomes should be read together. The 4-policy Value-Aware Budget Flow case and the 5-policy Value-Aware Budget Flow case are the two strongest value-aware examples: the former shows higher value efficiency despite one fewer resolved task, and the latter shows \method leading all three primary metrics. The two 5-policy Strong Coverage cases show that strong-model-only is valuable when the strong tier covers enough tasks under the shared cap. The Model Fit case appears in serving-cost sensitivity, where learned routing becomes the best \trv-per-Dollar point under extreme KV-cache discounts. Table~\ref{tab:frontier-modes} maps the resulting frontier modes to representative evidence.
 
 \subsection{Frontier Mode Analysis}
 Table~\ref{tab:frontier-modes} maps each frontier mode to representative evidence. This analysis is the interpretation layer for the same Resolved Rate, \trv, and \trv per Dollar evidence in Table~\ref{tab:main-evidence}. A shared-budget batch can be frontier-shaped by different signals: value-aware budget flow, broad strong-model coverage, or accurate model-fit routing. The \method contribution is to make Value-Aware Budget Flow concrete through a framework and interface for value-governed allocation.
@@ -346,11 +346,11 @@ Table~\ref{tab:frontier-modes} maps each frontier mode to representative evidenc
 Frontier mode & Condition & Representative evidence & Reading \\
 \midrule
 Value-Aware Budget Flow & Task values differ, estimated token costs differ, and model gains are selective. & Main paid evidence: \method reaches \pos{18.50 \trv} and \pos{2.32 \trv/\$} in the 4-policy Value-Aware Budget Flow case, and \pos{16/30}, \pos{18.00 \trv}, \pos{1.81 \trv/\$} in the 5-policy Value-Aware Budget Flow case. & Central \method mode. \\
-Strong Coverage & The strong model covers the batch broadly under the cap. & Main paid evidence: strong-model-only reaches \ctrl{17/30}, \ctrl{20.00 \trv}, \ctrl{2.01 \trv/\$} in the boundary case, and \ctrl{18/30}, \ctrl{19.00 \trv}, \ctrl{1.92 \trv/\$} in the stress case. & Strong-model frontier boundary. \\
-Model Fit & The learned routing signal places model tiers accurately. & Main paid evidence: learned routing is the closest mixed-policy control in the 5-policy Value-Aware Budget Flow case, reaching 15/30, 17.00 \trv, and 1.71 \trv/\$. & Frontier reference. \\
+Strong Coverage & The strong model covers the batch broadly under the cap. & Main paid evidence: strong-model-only reaches \ctrl{17/30}, \ctrl{20.00 \trv}, \ctrl{2.01 \trv/\$} in one 5-policy Strong Coverage case, and \ctrl{18/30}, \ctrl{19.00 \trv}, \ctrl{1.92 \trv/\$} in another. & Strong-model frontier point. \\
+Model Fit & The learned routing signal places model tiers accurately. & Serving-cost sensitivity: at KV98 and KV99, the learned task-router reaches \ctrl{14.28} and \ctrl{15.41 \trv/\$}, ahead of \method on \trv per Dollar while \method keeps higher \trv. & Model-fit frontier point under extreme cache discount. \\
 \bottomrule
 \end{tabular}
-\caption{Frontier modes and representative evidence. Main paid evidence establishes the Value-Aware Budget Flow and Strong Coverage cases; learned routing remains the Model Fit reference for task-to-model matching.}
+\caption{Frontier modes and representative evidence. Main paid evidence establishes the Value-Aware Budget Flow and Strong Coverage cases; serving-cost sensitivity supplies the Model Fit frontier point.}
 \label{tab:frontier-modes}
 \end{table*}
 
@@ -364,7 +364,7 @@ Model Fit & The learned routing signal places model tiers accurately. & Main pai
     ymin=1.45, ymax=2.65,
     ylabel={TRV per Dollar},
     xtick={1,2,3,4},
-    xticklabels={4-policy VABF,Strong boundary,Strong stress,5-policy VABF},
+    xticklabels={4-policy VABF,Strong Coverage,Strong Coverage,5-policy VABF},
     x tick label style={font=\scriptsize, rotate=12, anchor=east},
     tick label style={font=\scriptsize},
     label style={font=\small},
@@ -420,7 +420,7 @@ The 5-policy Value-Aware Budget Flow case contains real model-tier heterogeneity
 
 \section{Sensitivity Analysis}
 \label{sec:sensitivity}
-The sensitivity section has a different role from the main paid evidence. The main evidence reports observed runs; sensitivity analysis shows how the same completed outcomes move under alternate value, budget, and serving-cost assumptions. We therefore treat sensitivity as a frontier diagnostic: each table or curve explains how the frontier mode changes when the accounting environment changes.
+The sensitivity section has a different role from the main paid evidence. The main evidence reports observed paid batches; sensitivity analysis reuses one completed batch and shows how the same outcomes move under alternate value, budget, and serving-cost assumptions. We therefore treat sensitivity as a frontier diagnostic: each table or curve explains how the frontier mode changes when the accounting environment changes.
 
 \subsection{Task Value Sensitivity}
 Task Value sensitivity tests the Value-Aware Budget Flow mode under alternate ledgers. Table~\ref{tab:value-sensitivity} re-scores the 5-policy Value-Aware Budget Flow case under alternate Task Value profiles. \method remains ahead of the best control under equal value, criticality value, compressed criticality, and expanded criticality. A value permutation diagnostic over 64 permutations gives \method a positive margin in all samples, with median margin +1.00 \trv. The conclusion is that this frontier movement is visible across several value ledgers, including the plain resolved-count setting where all resolved tasks have equal value.
@@ -443,7 +443,7 @@ expanded & \pos{20.00} & 19.00 & \pos{+1.00} \\
 \end{table}
 
 \subsection{Budget Sensitivity}
-Budget sensitivity is the closest analogue to a frontier plot. Figure~\ref{fig:budget-frontier} fixes observed outcomes and replays budget accounting at different caps. This is not a new lower-cap planning run: the replay keeps the completed full-cap task order, outcomes, and accounting rules, then asks what would remain under tighter caps. It therefore describes the observed cost-value frontier for this completed run. The strong-model-only policy is strongest at some low and mid caps, while \method reaches the observed frontier at the full cap. The important reading is the frontier shape: budget pressure can move a batch between Strong Coverage, Model Fit, and Value-Aware Budget Flow modes, and \method provides the framework and interface that make this movement reportable.
+Budget sensitivity is the closest analogue to a frontier plot. Figure~\ref{fig:budget-frontier} fixes observed outcomes and replays budget accounting at sampled caps. This is not a new lower-cap planning run: the replay keeps the completed full-cap task order, outcomes, and accounting rules, then asks what would remain under tighter caps. It is also not a cross-run plot; all points come from the same completed 5-policy Value-Aware Budget Flow case. The strong-model-only policy is strongest at some low and mid replay caps, while \method reaches the replay frontier at the largest sampled cap. The important reading is the frontier shape: budget pressure can move a batch between Strong Coverage, Model Fit, and Value-Aware Budget Flow modes, and \method provides the framework and interface that make this movement reportable.
 
 \begin{figure*}[t]
 \centering
@@ -451,10 +451,12 @@ Budget sensitivity is the closest analogue to a frontier plot. Figure~\ref{fig:b
 \begin{axis}[
     width=0.9\textwidth,
     height=0.42\textwidth,
-    xlabel={Budget cap (\$)},
+    xlabel={Replay cap (\$)},
     ylabel={Total Resolved Value},
     xmin=2.7, xmax=10.3,
     ymin=4.5, ymax=18.2,
+    xtick={2.99,3.98,4.98,5.97,7.47,9.95},
+    xticklabels={2.99,3.98,4.98,5.97,7.47,9.95},
     legend style={font=\scriptsize, at={(0.5,-0.20)}, anchor=north, draw=none, fill=white, legend columns=3},
     tick label style={font=\scriptsize},
     label style={font=\small},
@@ -472,28 +474,28 @@ Budget sensitivity is the closest analogue to a frontier plot. Figure~\ref{fig:b
 \addplot[mark=diamond*, semithick, color=bforange!55, opacity=0.50] coordinates {(2.99,6.00) (3.98,6.00) (4.98,7.00) (5.97,9.50) (7.47,10.50) (9.95,13.00)};
 \addlegendentry{budget-only}
 \addplot[mark=none, dashed, ultra thick, color=black!75] coordinates {(2.99,7.50) (3.98,9.00) (4.98,11.00) (5.97,12.00) (7.47,13.00) (9.95,17.00)};
-\addlegendentry{observed frontier}
+\addlegendentry{replay frontier}
 \addplot[mark=star, mark size=3.2pt, very thick, color=bfred] coordinates {(2.99,7.50) (3.98,9.00) (4.98,10.00) (5.97,11.00) (7.47,12.00) (9.95,17.00)};
 \addlegendentry{BudgetFlow}
-\node[font=\scriptsize, text=bfred, anchor=south east] at (axis cs:9.95,17.18) {full-cap BF frontier point};
-\node[font=\scriptsize, text=black!65, anchor=south west] at (axis cs:4.98,11.15) {control boundary};
+\node[font=\scriptsize, text=bfred, anchor=south east] at (axis cs:9.95,17.18) {BF replay frontier point};
+\node[font=\scriptsize, text=black!65, anchor=south west] at (axis cs:4.98,11.15) {control lead};
 \end{axis}
 \end{tikzpicture}
-\caption{Budget sensitivity diagnostic on the 5-policy Value-Aware Budget Flow case. Outcomes are fixed; budget accounting is replayed at alternate caps without re-planning task order or routing. The dashed line is the observed frontier; BudgetFlow is emphasized in red, while controls are shown as lighter diagnostic curves.}
+\caption{Budget sensitivity diagnostic on the 5-policy Value-Aware Budget Flow case. Outcomes are fixed; budget accounting is replayed at sampled caps without re-planning task order or routing. The dashed line is the replay frontier for this completed batch; BudgetFlow is emphasized in red, while controls are shown as lighter diagnostic curves.}
 \label{fig:budget-frontier}
 \end{figure*}
 
 \subsection{KV Cache Cost-Discount Sensitivity}
-KV Cache Cost-Discount sensitivity tests a serving-cost question. Modern serving substrates can make repeated input context cheaper; this changes effective spend while leaving verified outcomes unchanged. Table~\ref{tab:kv-sensitivity} re-costs repeated input tokens under KV-cache discounts. \method leads or stays close through KV90. At KV98 and KV99, the learned task-router has the highest \trv per Dollar, while \method keeps a higher \trv than the learned task-router in the fixed-outcome table.
+KV Cache Cost-Discount sensitivity tests a serving-cost question. Modern serving substrates can make repeated input context cheaper; this changes effective spend while leaving verified outcomes unchanged. Table~\ref{tab:kv-sensitivity} re-costs repeated input tokens under KV-cache discounts. \method leads or stays close through KV90. At KV98 and KV99, the learned task-router becomes the Model Fit frontier point by \trv per Dollar, while \method keeps a higher \trv than the learned task-router in the fixed-outcome table.
 
-This pattern gives a useful serving-cost reading. \method gains part of its efficiency by allocating scarce budget across tasks. When cache discounts become extreme, the cost penalty of repeated or stronger model use shrinks, and value-blind controls can become more competitive on \trv per Dollar. The result makes the serving boundary explicit: BudgetFlow is most useful under meaningful budget pressure, and serving optimizations can move the batch toward Strong Coverage or Model Fit frontier modes.
+This pattern gives a useful serving-cost reading. \method gains part of its efficiency by allocating scarce budget across tasks. When cache discounts become extreme, the cost penalty of repeated or stronger model use shrinks, and accurate task-to-model matching can become more competitive on \trv per Dollar. The result makes the serving boundary explicit: BudgetFlow is most useful under meaningful budget pressure, and serving optimizations can move the batch toward Strong Coverage or Model Fit frontier modes.
 
 \begin{table}[t]
 \centering
 \small
 \begin{tabular}{lccc}
 \toprule
-KV profile & BF & Best control & BF margin \\
+KV profile & BF & Learned router & BF margin \\
 \midrule
 KV0 & \pos{1.81} & 1.71 & \pos{+0.10} \\
 KV50 & \pos{3.26} & 3.14 & \pos{+0.11} \\
@@ -502,7 +504,7 @@ KV98 & 14.08 & \ctrl{14.28} & -0.20 \\
 KV99 & 15.13 & \ctrl{15.41} & -0.29 \\
 \bottomrule
 \end{tabular}
-\caption{KV Cache Cost-Discount sensitivity. Values are \trv per Dollar.}
+\caption{KV Cache Cost-Discount sensitivity on the 5-policy Value-Aware Budget Flow case. Values are \trv per Dollar; the learned task-router is the best control in this fixed-outcome re-costing.}
 \label{tab:kv-sensitivity}
 \end{table}
 
