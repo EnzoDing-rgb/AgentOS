@@ -40,7 +40,7 @@ DAI 2026、APSEC 2026 早期研究成果轨是同窗口备投；一稿多投政�
 |------|----------|-----------|------|
 | BAMAS | `reference/BAMAS_AAAI26.pdf` · https://ojs.aaai.org/index.php/AAAI/article/view/40226 | AutoGen、MetaGPT、ChatDev；Naive-CostAware | GSM8K、MBPP、MATH |
 | ZeroRouter | `reference/ZeroRouter_AAAI26.pdf` · https://ojs.aaai.org/index.php/AAAI/article/view/40970 | CIT-LLM-Routing、RouteLLM、GraphRouter、FORC | IFEval、BBH、MATH、GPQA、MMLU-PRO、ARC-C、HumanEval 等 |
-| STEER | `reference/STEER_AAAI26.pdf` · https://ojs.aaai.org/index.php/AAAI/article/view/40413 | RSD；Damani question-level；内部置信度 | MATH500、AIME、Omni-Math、ACPBench、MuSiQue、KOR-Bench |
+| STEER | `reference/STEER_AAAI26.pdf` · https://ojs.aaai.org/index.php/AAAI/article/view/40413 | RSD；Damani 问题级分配；SpecReason；见下方详解 | MATH500、AIME、Omni-Math、ACPBench、MuSiQue、KOR-Bench |
 
 稿内对照骨架：cheap-only · strong-only · 学得/静态路由 · 预算感知多智能体；主指标 TRV（价值冻结）。
 
@@ -75,6 +75,12 @@ DAI 2026、APSEC 2026 早期研究成果轨是同窗口备投；一稿多投政�
 **得到的结论是什么。**  
 在三个数据集上，BAMAS 在给定预算下可以达到与 AutoGen / MetaGPT / ChatDev 相近甚至更高的正确率，同时平均费用明显更低；作者报告费用最多可降约 86%，并且实际花费能卡在预设预算内。消融显示，相对 Naive-CostAware，联合做模型配置与拓扑选择更好。拓扑分布上，预算紧时更常选简单拓扑；预算更宽时，拓扑选择会随数据集（任务类型）变化。
 
+**对我们有没有启示。**  
+有，主要是定位和写法，不是要照抄他们的两套优化器。  
+1. Related Work 里应明确写：BAMAS 解决的是「单个任务内部、在费用上限下如何选模型与协作结构」；BudgetFlow 解决的是「一批任务共用一个硬预算时，稀缺模型机会按 Task Value 如何分配」。这是同会审稿人最容易对齐的分层。  
+2. 报告习惯可对齐：同时报正确率（或解决数）与花费，并展示多档预算下的费用–效果曲线；我们主线对应的是 TRV、Resolved Rate、花费，以及固定共享硬预算。  
+3. 不必把整数线性规划选模型、离线强化学习选拓扑搬进我们的主实验；那是另一层机制，也不是低垂果实。
+
 #### ZeroRouter：Breaking Model Lock-in（零样本大模型路由）
 
 **研究问题是什么。**  
@@ -102,6 +108,12 @@ DAI 2026、APSEC 2026 早期研究成果轨是同窗口备投；一稿多投政�
 
 **得到的结论是什么。**  
 在分布内数据上，ZeroRouter 在「尽量准 / 尽量省 / 尽量低延迟」三组目标下，相对四个基线往往同时更好，而不是只在某一个目标上交换。在分布外三套任务上，优势更明显：作者报告例如大规模模型组上 Max-Acc 约 0.68，对上最强基线约 0.62，同时在 Min-Cost、Min-Lat 上也更好。消融表明，用 D-最优选锚点题比随机抽样、只按难度或只按区分度选点更有效。总结论：把「查询难不难」和「模型强不强」拆开表示之后，路由可以少绑死在固定模型名单上，新模型可用少量锚点评测接入，并且对未见任务集合更稳。
+
+**对我们有没有启示。**  
+几乎没有机制上的启示；有一点引用层面的提醒。  
+1. 它再次说明 AAAI 审稿人熟悉「查询级、多目标路由」这条线，所以我们正文里需要有 cheap-only / strong-only / 学得或静态路由对照，并把决策单位写成「批次任务」而不是「单条查询」。  
+2. 他们的核心贡献——六十模型池、IRT 潜在空间、新模型零样本接入——不是 BudgetFlow 要解决的问题，也不是当前主线实验该扩的方向。  
+3. 诚实结论：不要为对齐 ZeroRouter 去重跑大模型池或接入潜在空间路由；最多在 Related Work 把它列为查询级路由代表。
 
 #### STEER：Confidence-Guided Stepwise Model Routing
 
