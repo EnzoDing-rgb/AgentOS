@@ -34,22 +34,27 @@ DAI 2026、APSEC 2026 早期研究成果轨是同窗口备投；一稿多投政�
 | Author Kit | https://aaai.org/conference/aaai/aaai-27/ |
 | 格式 | 双栏 US Letter；正文 ≤7 页；第 8–9 页仅参考文献；双盲；Reproducibility Checklist |
 
-**同会近邻 PDF（深读 5 + 扫到入库 3）：**
+同会近邻 PDF（以 AAAI 2026 为主；深读 5 篇 + 同届扫到 2 篇）：
 
-| 论文 | 年 | 本地文件 | Baselines | 数据 | 处置 |
-|------|----|----------|-----------|------|------|
-| BAMAS | 2026 | `reference/BAMAS_AAAI26.pdf` · https://ojs.aaai.org/index.php/AAAI/article/view/40226 | AutoGen、MetaGPT、ChatDev；Naive-CostAware | GSM8K、MBPP、MATH | **深读** |
-| ZeroRouter | 2026 | `reference/ZeroRouter_AAAI26.pdf` · https://ojs.aaai.org/index.php/AAAI/article/view/40970 | CIT-LLM-Routing、RouteLLM、GraphRouter、FORC | IFEval、BBH、MATH、GPQA、MMLU-PRO、ARC-C、HumanEval 等 | **深读** |
-| STEER | 2026 | `reference/STEER_AAAI26.pdf` · https://ojs.aaai.org/index.php/AAAI/article/view/40413 | RSD；Damani 问题级分配；SpecReason | MATH500、AIME、Omni-Math、ACPBench、MuSiQue、KOR-Bench | **深读** |
-| **CCPO** | 2026 | `reference/CCPO_AAAI26.pdf` · https://ojs.aaai.org/index.php/AAAI/article/view/39739 | Random；LLM 策略；LLM-EXIT；UALA；CPO / CPO batch / CPO online | HotpotQA、MMLU | **深读（新增）** |
-| **Online Multi-LLM Selection**（上下文赌博机） | 2026 | `reference/OnlineMultiLLM_AAAI26.pdf` · https://ojs.aaai.org/index.php/AAAI/article/view/39672 | MetaLLM、MixLLM、多数投票；单模型 | MMLU-Pro、GPQA、AIME、Math500 | **深读（新增）** |
-| Capability Instruction Tuning（MODEL-SAT） | **2025** | `reference/MODEL-SAT_AAAI25.pdf` · https://ojs.aaai.org/index.php/AAAI/article/view/34790 | 多种路由设定；ZeroRouter 亦以其为对照 | 多模型池路由基准（含多模态扩展） | 扫到入库；性能向路由，费用不是一等公民 |
-| ICL-Router | 2026 | `reference/ICL-Router_AAAI26.pdf` · https://ojs.aaai.org/index.php/AAAI/article/view/40628 | 既有路由；强调新模型免重训 | 分布内 / 分布外路由任务 | 扫到入库；路由表示，少谈硬预算 |
-| CP-Router | 2026 | `reference/CP-Router_AAAI26.pdf` · https://ojs.aaai.org/index.php/AAAI/article/view/40589 | LLM vs LRM；共形预测路由 | 多选问答等；降 token | 扫到入库；LLM/LRM 二选一，非批次预算 |
+| 论文 | 研究什么问题（人话） | 本地文件 | Baselines | 数据 | 处置 |
+|------|----------------------|----------|-----------|------|------|
+| BAMAS | 给定一个任务、一堆可选大模型、和一个费用上限，怎么搭多智能体：先选哪些模型进系统，再用什么协作结构一起干活，既尽量做对又不超预算。 | `reference/BAMAS_AAAI26.pdf` · https://ojs.aaai.org/index.php/AAAI/article/view/40226 | AutoGen、MetaGPT、ChatDev；Naive-CostAware | GSM8K、MBPP、MATH | 深读 |
+| ZeroRouter | 大模型越来越多，旧路由器常绑死在训练时见过的那几个上；怎样做查询级路由，既能在准/省钱/低延迟之间权衡，又能几乎不重训就把新模型接进来。 | `reference/ZeroRouter_AAAI26.pdf` · https://ojs.aaai.org/index.php/AAAI/article/view/40970 | CIT-LLM-Routing、RouteLLM、GraphRouter、FORC | IFEval、BBH、MATH、GPQA、MMLU-PRO、ARC-C、HumanEval 等 | 深读 |
+| STEER | 推理又贵又长：怎样在每一步决定「这一步继续让小模型写，还是交给大模型」，尽量少靠外部训练好的路由器，又保住正确率、少算力。 | `reference/STEER_AAAI26.pdf` · https://ojs.aaai.org/index.php/AAAI/article/view/40413 | RSD；Damani 问题级分配；SpecReason | MATH500、AIME、Omni-Math、ACPBench、MuSiQue、KOR-Bench | 深读 |
+| CCPO | 答题时便宜模型和贵模型、工具可以轮流上；怎样在「用户要求的可靠程度」卡死的前提下，尽量少花钱把题答完。 | `reference/CCPO_AAAI26.pdf` · https://ojs.aaai.org/index.php/AAAI/article/view/39739 | Random；LLM 策略；LLM-EXIT；UALA；CPO / CPO batch / CPO online | HotpotQA、MMLU | 深读 |
+| Online Multi-LLM Selection | 用户多轮改提示、上下文怎么变事先说不清；怎样在线一步步选该调哪个大模型，并可在单查询费用上限下做预算感知选择。 | `reference/OnlineMultiLLM_AAAI26.pdf` · https://ojs.aaai.org/index.php/AAAI/article/view/39672 | MetaLLM、MixLLM、多数投票；单模型 | MMLU-Pro、GPQA、AIME、Math500 | 深读 |
+| ICL-Router | 路由要靠「每个模型擅长什么」的表示；怎样用上下文向量刻画模型能力，让新模型进来时不必把路由器整机重训一遍。 | `reference/ICL-Router_AAAI26.pdf` · https://ojs.aaai.org/index.php/AAAI/article/view/40628 | 既有路由；强调新模型免重训 | 分布内 / 分布外路由任务 | 扫到入库 |
+| CP-Router | 普通大模型和更会推理、更贵的推理模型之间二选一：怎样用不确定性（共形预测）判断这题该上谁，从而少花 token。 | `reference/CP-Router_AAAI26.pdf` · https://ojs.aaai.org/index.php/AAAI/article/view/40589 | LLM vs LRM；共形预测路由 | 多选问答等；降 token | 扫到入库 |
+
+次要（非 2026，仅背景对照，不进主叙事）：
+
+| 论文 | 年 | 研究什么问题（人话） | 本地文件 | 处置 |
+|------|----|----------------------|----------|------|
+| Capability Instruction Tuning（MODEL-SAT） | 2025 | 一堆大小不一的模型里，怎样按「这条指令更适合谁」做路由，尽量选对模型把题做对；费用不是主目标。 | `reference/MODEL-SAT_AAAI25.pdf` · https://ojs.aaai.org/index.php/AAAI/article/view/34790 | 扫到入库；ZeroRouter 亦以其为对照 |
 
 稿内对照骨架：cheap-only · strong-only · 学得/静态路由 · 预算感知多智能体；主指标 TRV（价值冻结）。
 
-**诚实边界：** 上表不是「AAAI 全文检索的完备枚举」。它是按路由 / 选模 / 省钱 / 预算关键词在 OJS 与相关引用链上扫到的**已确认录用件**。若还有更边角的「路由」同义词篇目，不排除漏网；但「只有 BAMAS / ZeroRouter / STEER 三篇」这一判断**已被证伪**。
+诚实边界：上表不是「AAAI 全文检索的完备枚举」。它是按路由 / 选模 / 省钱 / 预算关键词在 OJS 与相关引用链上扫到的已确认录用件。若还有更边角的「路由」同义词篇目，不排除漏网；但「只有 BAMAS / ZeroRouter / STEER 三篇」这一判断已被证伪。
 
 ---
 
