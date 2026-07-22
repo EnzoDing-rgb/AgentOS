@@ -1,211 +1,187 @@
-# BudgetFlow 投稿调研（按参考文献去向 · 7–10 月窗口）
+# BudgetFlow 投稿作战图
 
-时间基准：2026-07-22。  
-论文主题：任务批共享硬预算 · Task Value · 智能体 / SWE 验证 · Total Resolved Value（TRV）。  
-本地 PDF：`paper1/paper/reference/`。
-
-**怎么用这份文档：** 先看「总表」，再按需要下钻到会议细则或相关工作实验。HPCA 等体系结构会议的材料保留备查，但不作为有效投稿方向。
-
----
-
-## 0. 总表（能投在前）
-
-| 优先级 | 会议 / 轨道 | CCF | 截止 | 与本稿匹配 | 动作 |
-|--------|-------------|-----|------|------------|------|
-| 1 | **AAAI 2027** 主技术轨 | A · 人工智能 | 全文 **07-28** AoE（摘要已交） | 高：预算感知智能体 / 路由同会已有 BAMAS、ZeroRouter、STEER | 交 Author Kit PDF + 复现清单 |
-| 2 | **APSEC 2026** 早期研究成果轨（Early Research Achievements） | C · 软件工程 | **08-03** | 中高：SE 短文、初步证据；技术轨已于 07-13 截止 | 写 ≤5 页 IEEE 双栏短文 |
-| 3 | **SANER 2027** Agentic AI4SE 轨（新轨） | B · 软件工程 | 摘要 **10-19** · 全文 **10-23** AoE | **很高**：征稿直接写 agentic AI4SE、成本、benchmark、约束下执行 | 按 SE + agent harness / TRV 叙事准备 |
-| 4 | **AAMAS 2027** 主轨 | B · 人工智能 | **约 early Oct 2026**（官网 TBC） | 很高：多智能体旗舰会 | 盯 Warwick 官网定稿日期 |
-| 5 | **FSE 2027** Research Papers | A · 软件工程 | **10-02** | 中：需强调 harness、验证、软件过程，少写纯 ML 路由 | SE 口味改写后可冲 |
-| 6 | **ICSE 2027** New Ideas and Emerging Results（NIER） | A · 软件工程（短文轨） | **10-23** AoE | 中：≤4 页 + Future Plans；适合早期主张 | 有初步实验即可 |
-| 7 | **ICLR 2027** | A · 人工智能（第七版升 A） | 历史窗口约 **9 月下旬**；**官方 2027 日期未挂** | 高（RouteLLM、SWE-bench 同会） | 盯 iclr.cc；勿用第三方站当死线 |
-| — | COLING 2027（经 ACL Rolling Review 10 月轮） | B · 人工智能 | ARR **10-12** | 低：NLP 口味偏重 | 仅当稿件明显 NLP 化再考虑 |
-| — | **HPCA 2027** | A · 体系结构 | 题录 07-24 · 全文 07-31 | **方向不匹配**（硬件 / 推理集群） | 材料见文末备查，不进主线 |
-| — | ASE 2027 主轨 | A · 软件工程 | **未官宣**（ASE 2026 主截稿在春季） | — | 不进本窗口 |
-| — | NeurIPS 2026 / ICSE 2027 主轨 | A | 已过（NeurIPS 05-04/06；ICSE 主轨 06-23/30） | — | 已关闭 |
+基准日：2026-07-22。  
+问题：任务批共享硬预算 · Task Value · 智能体 / SWE 验证 · Total Resolved Value（TRV）。  
+CCF 依据：第七版《中国计算机学会推荐国际学术会议和期刊目录》（正式版），已全文扫描人工智能与软件工程两个会议分册。  
+已发表近邻 PDF：`paper1/paper/reference/`。  
+时间一律写 **北京时间**（截稿按「世界任意时区当天结束」换算：该日历日结束后 ≈ 北京时间次日 19:59）。
 
 ---
 
-## 1. 参考文献 → 会议地图（投稿去向）
+## 拍板（先看这里）
 
-来源：`paper1/paper/src/references.bib` + Related Work 中的近邻工作。只列有明确会议/期刊归属、且对选会有用的条目。
+**7–8 月窗口里，方向匹配且仍可投的只有三条线：**
 
-| 文献（本稿引用或近邻） | 发表去向 | CCF 启示 | 对 BudgetFlow 的含义 |
-|------------------------|----------|----------|----------------------|
-| SWE-bench | **ICLR 2024** | A · 人工智能 | 验证型 coding agent 的主战场之一 |
-| RouteLLM | **ICLR 2025** | A · 人工智能 | 单查询强弱模型路由；成本–质量曲线是审稿人熟悉语言 |
-| Cascade Routing | **ICML 2025** | A · 人工智能 | 路由 + cascading；实验含 **RouterBench** 与 **SWE-Bench** |
-| BAMAS | **AAAI 2026** | A · 人工智能 | 预算感知多智能体；与 AAAI-27 同会系 |
-| ZeroRouter / STEER | **AAAI 2026** | A · 人工智能 | 零样本路由 / 逐步路由；AAAI 审稿人已见过此类对照 |
-| RouteNLP | **ACL 2026 Industry Track** | ACL 主会为 A；Industry Track 评价口径不同 | 企业查询路由；口味偏 NLP 落地 |
-| INTENT | arXiv:2602.11541（2026） | 预印本 | **单任务内** 工具预算；与批次级 TRV 互补 |
-| UCCI | arXiv:2605.18796（2026） | 预印本 | 校准置信度 → cascade；生产 NER 负载 |
-| Claw-SWE-Bench | arXiv:2606.12344（2026） | 预印本 | harness / 成本报告；SE 叙事素材 |
-| vLLM | **SOSP 2023** | A · 系统 | 执行底座，不是投稿主会 |
-| SGLang | **NeurIPS 2024** | A · 人工智能 | 同上：系统优化侧 |
+| # | 会议 | CCF | 北京时间截稿 | 判定 |
+|---|------|-----|--------------|------|
+| 1 | **AAAI 2027** 主技术轨 | A · 人工智能 | 全文 **07-29 19:59**；补充材料 **08-01 19:59**（摘要已交） | **主投。立刻交 Author Kit PDF。** |
+| 2 | **DAI 2026** Research / Industry | C · 人工智能 | 摘要登记 **07-28 19:59**；Research/Industry 全文 **08-04 19:59**；另有 AI Paper Track **08-11 19:59** | **强烈备投。** 征稿直接覆盖 multi-agent / agentic AI / 部署系统。 |
+| 3 | **APSEC 2026** 早期研究成果轨 | C · 软件工程 | **08-03**（按会议日计；以 EasyChair 页面为准） | **SE 短文备投。** 技术轨已截止；只走早期研究成果轨。 |
 
-**选会结论（锋利版）：**  
-竞品与相关工作主要落在 **ICLR / ICML / AAAI**（人工智能 A）与 **SWE / agent harness** 叙事；软件工程侧应盯 **SANER Agentic AI4SE、FSE、ICSE NIER、APSEC**。体系结构顶会（HPCA）与本稿问题陈述不对齐。
+**9–10 月已官宣、方向匹配的下一批：** SANER 2027 Agentic AI4SE（B）→ AAMAS 2027（B，约 10 月初）→ FSE 2027（A）→ ICSE 2027 NIER（A 短想法轨）。  
+ICLR 2027：相关工作大量发在此会，但 **官方 2027 截稿页尚未挂出**——不进本窗口决策表，只在附录记「盯官网」。
 
 ---
 
-## 2. 能投会议细则（按时间）
+## 1. 可投会议（相关在前）
 
-### 2.1 AAAI 2027（立刻 · CCF A）
+### 1.1 AAAI 2027（CCF A · 立刻）
 
 | 项 | 内容 |
 |----|------|
-| 状态 | 摘要已在 OpenReview 登记；下一步交全文 PDF |
-| 全文 | 2026-07-28 23:59 AoE |
-| 补充材料 | 2026-07-31 AoE |
+| 北京时间 | 摘要已交；全文 **2026-07-29 19:59**；补充材料/代码 **2026-08-01 19:59** |
 | 投稿 | https://openreview.net/group?id=AAAI.org/2027/Conference |
-| 说明 / Kit | https://aaai.org/conference/aaai/aaai-27/submission-instructions/ |
-| 格式 | Author Kit：双栏 US Letter；正文 ≤7 页；参考文献可到总 9 页；双盲；另传 Reproducibility Checklist |
+| 说明 | https://aaai.org/conference/aaai/aaai-27/submission-instructions/ |
+| Author Kit | https://aaai.org/conference/aaai/aaai-27/ |
+| 格式 | 双栏 US Letter；正文 ≤7 页；第 8–9 页仅参考文献；双盲；另传 Reproducibility Checklist |
+| 一稿政策 | 全文截止前，同一工作不得同时在审于其他存档会议/期刊 |
 
-**同会系已接收工作（实验口径，本地 PDF）：**
+**同会系已发表近邻（本地 PDF → 对照口径）：**
 
-#### BAMAS（`BAMAS_AAAI26.pdf`）
+| 论文 | 文件 | Baselines | 数据 |
+|------|------|-----------|------|
+| BAMAS | `reference/BAMAS_AAAI26.pdf` | AutoGen、MetaGPT、ChatDev；Naive-CostAware | GSM8K、MBPP、MATH |
+| ZeroRouter | `reference/ZeroRouter_AAAI26.pdf` | CIT-LLM-Routing、RouteLLM、GraphRouter、FORC | IFEval、BBH、MATH、GPQA、MMLU-PRO、ARC-C、HumanEval 等约 9 套 |
+| STEER | `reference/STEER_AAAI26.pdf` | RSD；Damani question-level；内部置信度 | MATH500、AIME、Omni-Math、ACPBench、MuSiQue、KOR-Bench |
 
-- **Baselines：** AutoGen、MetaGPT、ChatDev；启发式 Naive-CostAware（Level 1–5 贪心）。固定 LLM 类型，分别跑 DeepSeek-V3 与 GPT-4.1 nano。  
-- **Datasets：** GSM8K、MBPP、MATH；预算档 GSM8K/MBPP 约 500–2000。
-
-#### ZeroRouter（`ZeroRouter_AAAI26.pdf`）
-
-- **Baselines：** CIT-LLM-Routing、RouteLLM、GraphRouter、FORC。  
-- **Datasets（约 9 个）：** ID 含 IFEval、BBH、MATH、GPQA、MMLU-PRO 等；OOD 含 ARC-C、HumanEval 等。目标 Max-Acc / Min-Cost / Min-Lat；模型池约 60。
-
-#### STEER（`STEER_AAAI26.pdf`）
-
-- **Baselines：** RSD；Damani 等 question-level 分配；内部置信度对照。  
-- **Benchmarks：** MATH500、AIME、Omni-Math、ACPBench、MuSiQue、KOR-Bench 子集。
-
-**对稿件：** 对照里保留 cheap-only / strong-only / 学习型路由 / 预算感知多智能体；用 TRV + 固定 30-task SWE 批次说明与「单查询路由」的差异。
+稿内对照建议：cheap-only · strong-only · 学得/静态路由 · 预算感知多智能体；主指标仍用冻结价值下的 TRV。
 
 ---
 
-### 2.2 APSEC 2026 早期研究成果轨（8 月 · CCF C）
+### 1.2 DAI 2026（CCF C · 7 月底—8 月初）
 
 | 项 | 内容 |
 |----|------|
-| 截稿 | 2026-08-03 |
+| 会议 | 2026-11-29 – 12-02，香港城市大学 |
+| 北京时间 | 摘要登记 **07-28 19:59**；Research / Industry **08-04 19:59**；AI Paper Track **08-11 19:59** |
+| 官网 | https://www.adai.ai/dai/2026/ |
+| 日期 | https://www.adai.ai/dai/2026/dates.html |
+| 口味 | Distributed AI · multi-agent · autonomous agents · **agentic AI** · 部署系统 |
+
+这是扫完整个人工智能 C 类名单后，**唯一在 7–8 月仍开、且征稿与 agent/多智能体直接对齐**的 CCF 会议（相对 ACML / ICTAI / PRICAI / NLPCC 等已关闭项）。  
+写法侧重点：多任务共享资源、agent 协调与成本约束；SWE 批次作为部署/评测证据。
+
+---
+
+### 1.3 APSEC 2026 早期研究成果轨（CCF C · 8 月）
+
+| 项 | 内容 |
+|----|------|
+| 截稿 | **2026-08-03** |
 | 通知 | 2026-09-21 |
 | 轨道 | https://conf.researchr.org/track/apsec-2026/apsec-2026-papers |
 | 投稿 | https://easychair.org/conferences/?conf=apsec2026 |
-| 格式 | IEEE 双栏 A4，`IEEEtran` 10pt；Regular ≤5 页（含参考文献）；Short ≤2 页；双盲 |
+| 格式 | IEEE 双栏 A4，`IEEEtran` 10pt；Regular ≤5 页；Short ≤2 页；双盲 |
 
-**同会系范文 SEMAP（`SEMAP_APSEC25.pdf`，早期研究成果轨）：**
+范文：`reference/SEMAP_APSEC25.pdf`（MetaGPT 角色智能体；HumanEval / 漏洞子集；MAST + LLM-as-Judge）。
 
-- **Baseline：** MetaGPT 多智能体（开发五角色 / 漏洞三角色）。  
-- **Datasets：** HumanEval；Big-Vul 抽 100；vudenc100（CVEFixes）。  
-- **度量：** MAST 失败分类；LLM-as-Judge（gpt-4o）。
-
-技术轨摘要/全文已于 7 月中截止；本窗口只剩早期研究成果轨。
+注意与 AAAI 的一稿多投政策：AAAI 在审期间，同一存档贡献不要并行投其他存档会；短文若叙事错开且政策允许，再单独判断。
 
 ---
 
-### 2.3 九月—十月主候选
+### 1.4 九月—十月（已官宣截稿）
 
-#### SANER 2027 · Agentic AI4SE 轨（CCF B · 强烈推荐盯）
-
-| 项 | 内容 |
-|----|------|
-| 摘要（强制） | 2026-10-19 AoE |
-| 全文 | 2026-10-23 AoE |
-| 通知 | 2026-12-08 |
-| 征稿 | https://conf.researchr.org/track/saner-2027/saner-2027-agentic-ai4se-track |
-| 投稿 | https://easychair.org/my/conference?conf=saner2027（选 Agentic AI4SE） |
-| 篇幅 | ≤10 页 + 参考文献 ≤2 页；IEEE；双盲 |
-
-征稿明确欢迎：agent 作 SE 系统、成本与可靠性约束、benchmarking、tool use、multi-agent workflow。与 BudgetFlow（批次硬预算 + SWE 验证 + harness）对齐度高于「纯体系结构」或「纯 NLP」会。
-
-同系列研究轨更早：摘要 09-21 / 全文 09-25（常规 Research Track）。若稿件更偏软件演化分析而非 agentic，可走研究轨；agent 主叙事优先新轨。
-
-#### AAMAS 2027（CCF B · 多智能体旗舰）
-
-| 项 | 内容 |
-|----|------|
-| 会议 | 2027-05-03–07，Hanoi |
-| 截稿 | **early Oct 2026（TBC）** |
-| 官网 | https://warwick.ac.uk/fac/sci/dcs/aamas2027/ |
-| 参照 AAMAS 2026 | 摘要约 Oct 1 · 全文约 Oct 8 AoE；主轨 8 页 + 参考文献 |
-
-题目匹配极强；以官网最终日期为准。
-
-#### FSE 2027 Research Papers（CCF A · 软件工程）
-
-| 项 | 内容 |
-|----|------|
-| 全文 | 2026-10-02 |
-| 日期页 | https://conf.researchr.org/dates/fse-2027 |
-| 会议 | 2027-07-12–16，深圳 |
-
-适合「agent harness / 验证 / 预算治理作为软件工程问题」；不宜写成纯路由算法短文。
-
-#### ICSE 2027 NIER（CCF A · 短想法轨）
-
-| 项 | 内容 |
-|----|------|
-| 截稿 | 2026-10-23 AoE |
-| 通知 | 2026-12-18 |
-| 篇幅 | 正文 ≤4 页 + 参考文献 1 页；须含 Future Plans |
-| 投稿 | https://icse2027-nier.hotcrp.com/ |
-| CFP | https://conf.researchr.org/track/icse-2027/icse-2027-new-ideas-and-emerging-results--nier- |
-
-主轨已关闭；NIER 适合把 TRV / Value-Triggered Escalation 写成可检验主张。
-
-#### ICLR 2027（CCF A · 盯官方）
-
-相关工作 RouteLLM、SWE-bench 均在 ICLR。历史节奏：摘要约 9 月 19 日前后、全文约 9 月 24 日 AoE（以 ICLR 2026 为准）。**ICLR 2027 官方日期页尚未发布**；第三方「Sep 19/24 2026」仅作规划锚点，以 https://iclr.cc/ 为准。
+| 会议 | CCF | 北京时间截稿 | 链接 | 用法 |
+|------|-----|--------------|------|------|
+| **SANER 2027** Agentic AI4SE 轨 | B · 软件工程 | 摘要 **10-20 19:59**；全文 **10-24 19:59** | https://conf.researchr.org/track/saner-2027/saner-2027-agentic-ai4se-track | **最对齐的 SE 专轨**：agent + 成本 + benchmark + 工具使用 |
+| **SANER 2027** Research Track | B | 摘要 **09-22 19:59**；全文 **09-26 19:59** | https://conf.researchr.org/track/saner-2027/saner-2027-papers | 偏演化分析时走此轨 |
+| **AAMAS 2027** | B · 人工智能 | 官网写 **early Oct 2026**（具体日以 Warwick 页更新为准） | https://warwick.ac.uk/fac/sci/dcs/aamas2027/ | 多智能体旗舰；参照 AAMAS 2026 约为 10 月初摘要/全文 |
+| **FSE 2027** Research | A · 软件工程 | **10-03 19:59** | https://conf.researchr.org/dates/fse-2027 | harness / 验证 / 预算治理写成 SE 问题 |
+| **ICSE 2027** NIER | A · 软件工程（短想法） | **10-24 19:59** | https://conf.researchr.org/track/icse-2027/icse-2027-new-ideas-and-emerging-results--nier- | ≤4 页 + Future Plans；HotCRP：https://icse2027-nier.hotcrp.com/ |
 
 ---
 
-## 3. 参考文献实验对照（精读摘要）
+## 2. 参考文献 → 会议地图
 
-| 工作 | 去向 | Baselines（文中） | 数据 / 负载 | 与 BudgetFlow 的差一层 |
-|------|------|-------------------|-------------|------------------------|
-| RouteLLM（`RouteLLM_ICLR25.pdf`） | ICLR 2025 | 随机路由；多类学得路由器（矩阵分解 / BERT / causal LLM 等） | 训练：Chatbot Arena 偏好；增强 MMLU val、Nectar+GPT-4 judge。评测：MMLU、MT Bench、GSM8K（OOD） | **单查询** 强弱二选一；无任务批硬预算、无 TRV |
-| Cascade Routing（`CascadeRouting_ICML25.pdf`） | ICML 2025 | 单独 routing、单独 cascading、既有 threshold cascade | RouterBench；**SWE-Bench**；文称相对对照最高约 +8% / +14% | 仍是查询级模型选择；SWE 作质量任务，不是批次价值分配 |
-| SWE-bench（`SWEbench_ICLR24.pdf`） | ICLR 2024 | GPT-3.5、GPT-4、Claude 2、SWE-Llama；BM25 / oracle retrieval | 2,294 GitHub issue→PR；SWE-bench Lite；train ~19k | **测试床**；BudgetFlow 在其上做预算与价值，不重造基准 |
-| INTENT（`INTENT_arXiv2602.pdf`） | arXiv 2026 | Soft（指令/提示预算）与 Enforce（硬阻断）两组 | cost-augmented **StableToolBench** | **单 agent 任务内** 工具花费；与批次级共享预算正交 |
-| UCCI（`UCCI_arXiv2605.pdf`） | arXiv 2026 | entropy 阈值、split-conformal、FrugalGPT 风格学得阈值；单模型 4B/12B | 生产 NER 75k 查询；H100 实测延迟作成本 | 生产 cascade；领域窄（NER），无多任务价值 |
-| BAMAS / ZeroRouter / STEER | AAAI 2026 | 见 §2.1 | GSM8K/MBPP/MATH；路由基准套件；数学/推理套件 | AAAI 审稿人熟悉的对照语言 |
-| SEMAP | APSEC 2025 ERA | MetaGPT 角色智能体 | HumanEval；漏洞子集 | SE 短文写法与度量参考 |
+来自 `src/references.bib` 与同会近邻；只列已发表去向。
 
-**统一对照建议（写进稿）：**  
-cheap-only · strong-only · 学得/静态路由（RouteLLM 类）· 预算感知多智能体（BAMAS 类）·（可选）任务内预算规划（INTENT 类）。主指标保持 TRV / Resolved Value per Dollar；SWE 批次固定、价值冻结。
+| 工作 | 去向 | CCF | 启示 |
+|------|------|-----|------|
+| SWE-bench | ICLR 2024 | A · 人工智能 | 验证型 coding agent 测试床 |
+| RouteLLM | ICLR 2025 | A · 人工智能 | 单查询强弱路由 |
+| Cascade Routing | ICML 2025 | A · 人工智能 | 路由+cascading；含 RouterBench 与 SWE-Bench |
+| BAMAS / ZeroRouter / STEER | AAAI 2026 | A · 人工智能 | 预算多智能体 / 路由；支撑投 AAAI-27 |
+| RouteNLP | ACL 2026 Industry Track | ACL 主会 A；Industry 口径另计 | NLP 落地路由 |
+| SEMAP | APSEC 2025 ERA | C · 软件工程 | SE 短文写法 |
+| vLLM | SOSP 2023 | A · 系统 | 执行底座 |
+| SGLang | NeurIPS 2024 | A · 人工智能 | 执行底座 |
 
----
-
-## 4. 备查：方向不匹配或窗口外（保留材料）
-
-### HPCA 2027（CCF A · 体系结构）— 不作为有效方向
-
-题录 07-24 / 全文 07-31；征稿 https://conf.researchr.org/track/hpca-2027/hpca-2027-main-conference。  
-问题是硬件、缓存、能耗、SLO 集群调度；与「任务价值驱动的批次预算治理」不是同一审稿共同体。本地已留 DynamoLLM / BitMoD / InstAttention 精读，仅作系统侧对照，**不进投稿主线**。
-
-| 论文 | Baseline / 负载（摘要） |
-|------|-------------------------|
-| DynamoLLM（`DynamoLLM_HPCA25.pdf`） | SinglePool、MultiPool、Scale*；Azure Coding/Conversation trace；对接 vLLM |
-| BitMoD（`BitMoD_HPCA25.pdf`） | FP16；ANT、OliVe；六类 LLM |
-| InstAttention（`InstAttention_HPCA25.pdf`） | FlexGen 等卸载；长序列吞吐 |
-
-### 其它同窗但匹配偏低
-
-| 时间 | 会议 | 说明 |
-|------|------|------|
-| 约 07-25 / 08-01 | VLDB / PVLDB 八月轮 | 数据库；口味远 |
-| 08-03 | PPoPP 2027 | 并行；口味远 |
-| ARR 08-03 / 10-12 | EACL 2027 / COLING·NAACL 2027 | NLP 主；本稿非主战场 |
-
-### 已关闭或未到本窗口
-
-NeurIPS 2026（05-04/06）、ICSE 2027 主轨（06-23/30）、ASE 2026 主轨（已过；ASE 2027 未宣）、APSEC 2026 技术轨（07-13）。
+竞品会系：**ICLR / ICML / AAAI + SE（APSEC / SANER / FSE / ICSE）**。  
+体系结构会系（HPCA 等）与本稿问题陈述不对齐——见附录。
 
 ---
 
-## 5. 建议动作顺序
+## 3. `reference/` 内实验对照（已发表 PDF）
 
-1. **07-28 前：** AAAI Author Kit 全文 + checklist。  
-2. **08-03：** 若要快速 SE 反馈，交 APSEC 早期研究成果轨短文（可与 AAAI 错开叙事侧重点，注意一稿多投政策）。  
-3. **9–10 月主线：** 优先准备 **SANER Agentic AI4SE**；并行盯 **AAMAS** 官宣日期与 **ICLR** 官方 CFP；有 SE 全长证据再冲 **FSE**；想法轨备用 **ICSE NIER**。  
-4. 实验写作：对齐 §3 表中的对照与数据语言；主证据仍是冻结价值下的 TRV，而非另开 GSM8K 主实验。
+| 工作 | 文件 | Baselines | 数据 / 负载 | 与本稿差一层 |
+|------|------|-----------|-------------|--------------|
+| RouteLLM | `RouteLLM_ICLR25.pdf` | 随机路由；矩阵分解 / BERT / causal LLM 等学得路由 | 训练 Chatbot Arena；评测 MMLU、MT Bench、GSM8K | 单查询二选一 |
+| Cascade Routing | `CascadeRouting_ICML25.pdf` | 单独 routing、单独 cascading、threshold cascade | RouterBench；SWE-Bench | 查询级选择；非批次价值分配 |
+| SWE-bench | `SWEbench_ICLR24.pdf` | GPT-3.5、GPT-4、Claude 2、SWE-Llama | 2294 GitHub issue→PR；Lite；train ~19k | 测试床本身 |
+| BAMAS / ZeroRouter / STEER | 见 §1.1 | 见上表 | 见上表 | AAAI 审稿人熟悉语言 |
+| SEMAP | `SEMAP_APSEC25.pdf` | MetaGPT 角色智能体 | HumanEval；漏洞子集 | SE 短文度量参考 |
+
+统一对照骨架：cheap-only · strong-only · RouteLLM 类路由 · BAMAS 类预算多智能体。主证据：固定 30-task、冻结价值、TRV / Resolved Value per Dollar。
+
+---
+
+## 4. 建议动作顺序
+
+1. **现在 → 07-29 19:59：** 交 AAAI Author Kit 全文 + Reproducibility Checklist。  
+2. **07-28 19:59 前：** 若走 DAI，完成摘要登记；**08-04 19:59** 前交 Research/Industry 全文（注意与 AAAI 一稿政策）。  
+3. **08-03：** 需要 SE 短反馈时交 APSEC 早期研究成果轨。  
+4. **9–10 月：** 主准备 SANER Agentic AI4SE；并行盯 AAMAS 官宣日；有 SE 全长证据冲 FSE；想法轨备用 ICSE NIER。
+
+---
+
+## 附录 A. CCF 人工智能 / 软件工程会议扫描结论
+
+扫描范围：第七版目录中 **人工智能** 与 **软件工程/系统软件/程序设计语言** 全部会议 A/B/C（本地副本：`archive/survey/CCF7_recommended_conferences_journals.pdf`）。  
+判定口径：主题是否贴近「预算 / 路由 / 智能体 / SWE 验证」；截稿是否落在 2026-07–10 且仍开放。
+
+### A.1 7–8 月已关闭或口味偏离（不进主决策）
+
+| 会议 | CCF | 截稿情况（北京时间口径） | 说明 |
+|------|-----|--------------------------|------|
+| NeurIPS 2026 | A · AI | 已过（约 05-04/06） | 下届太远 |
+| ICML 2026 | A · AI | 已开会（首尔） | 下届约 2027 年初截稿 |
+| ACL / EMNLP / NAACL / COLING 主线 | A/B · AI | 本窗口无匹配开放轨，或偏 NLP | RouteNLP 类才贴 |
+| CVPR / ICCV / ECCV / ICRA / IROS | A/B/C · 视觉/机器人 | — | 方向偏离 |
+| COLT / KR / UAI / ALT | B/C · 理论 | — | 方向偏离 |
+| ACML 2026 | C · AI | 已过（延至 07-05） | 已关闭 |
+| ICTAI 2026 | C · AI | 已过（约 06-30） | 已关闭 |
+| PRICAI 2026 | C · AI | 已过（约 06-27） | 已关闭 |
+| NLPCC 2026 | C · AI | 已过（延至 06-20） | 已关闭 |
+| ICONIP / KSEM / GECCO / IEEE CEC 等 | C · AI | 本窗口已过或偏演化/神经网络 | 不优先 |
+| ICSE 2027 主轨 | A · SE | 已过（06-23/30） | 改走 NIER（10 月） |
+| ASE 2026 主轨 | A · SE | 已过（约 03-26） | ASE 2027 未宣 |
+| APSEC 2026 技术轨 | C · SE | 已过（07-13） | 改走早期研究成果轨 |
+| SEKE / QRS / COMPSAC / TASE 2026 | C · SE | 已过 | — |
+| ICECCS 2026（formal-analysis 系列） | C · SE | 已过（延至 07-20 当天结束 ≈ 07-21 19:59） | 虽列 LLM-based Agents，但窗口已关：https://formal-analysis.com/iceccs/2026/ |
+| ECAI 2026 | B · AI | 已过 | — |
+
+### A.2 方向不匹配：体系结构 / 网络 / 数据库等同窗 A 类
+
+社区 DDL 站在 7–8 月还会刷出 HPCA、INFOCOM、VLDB、PPoPP、SIGKDD、UbiComp 等。  
+它们是 CCF A，但审稿共同体是体系结构 / 网络 / 数据库 / HCI，**不是本稿主战场**。HPCA 相关 PDF 已迁至 `archive/arch-hpca/`，不进 `reference/`。
+
+### A.3 官方截稿尚未挂出、因此不进本窗口决策表
+
+| 会议 | CCF | 状态 | 盯梢链接 |
+|------|-----|------|----------|
+| ICLR 2027 | A · AI | 历史节奏约 9 月下旬；**iclr.cc 尚未公布 2027 截稿** | https://iclr.cc/ |
+| AAMAS 2027 精确日 | B · AI | 官网仅写 early Oct 2026 | https://warwick.ac.uk/fac/sci/dcs/aamas2027/ |
+| ASE 2027 | A · SE | 未宣（系列主截稿常在春季） | https://conf.researchr.org/series/ase |
+| IJCAI 2027 | B · AI（第七版由 A 降 B） | 未进本窗口 | https://www.ijcai.org/ |
+| ICAPS 2027 | B · AI | 规划/调度相关，日期未进本窗口 | https://www.icaps-conference.org/ |
+
+### A.4 目录约定（本次整理）
+
+| 路径 | 内容 |
+|------|------|
+| `paper/practice_feedback_targets_202607.md` | 本作战图（唯一主调研入口） |
+| `paper/reference/*.pdf` | 仅已发表、且用于对齐实验的近邻 PDF |
+| `paper/archive/survey/` | CCF 原件与旧调研 md |
+| `paper/archive/arxiv/` | 纯预印本（INTENT、UCCI） |
+| `paper/archive/arch-hpca/` | 体系结构方向材料 |
+| `paper/archive/agenticdev/` | 已放弃的 AgenticDev 稿 |

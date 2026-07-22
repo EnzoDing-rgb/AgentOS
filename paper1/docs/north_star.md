@@ -40,11 +40,12 @@ The paper draft uses a PDF-first LaTeX workflow.
 - The canonical manuscript source lives under `paper1/paper/src/`.
 - `paper1/paper/src/main-ICML.tex` is the main paper source.
 - `paper1/paper/src/references.bib` stores bibliography entries.
-- `paper1/paper/figures/` stores paper figures.
+- Published matching related-work PDFs live under `paper1/paper/reference/`.
+- The live conference survey is `paper1/paper/practice_feedback_targets_202607.md`.
 - Build intermediates go under `paper1/paper/build/`; the installed PDF is
   `paper1/paper/BudgetFlow_Value_Aware_Budget_Governance_for_Agent_Tasks-ICML.pdf`.
 - Paper-facing artifacts should be written in English.
-- A useful paper scaffold includes `src/`, `figures/`, `reference/`, `archive/`,
+- A useful paper scaffold includes `src/`, `reference/`, `archive/`,
   and a one-command build path via `Makefile`. It is more than an empty directory.
 
 HTML files are auxiliary visual documents. The active related-work visual is
