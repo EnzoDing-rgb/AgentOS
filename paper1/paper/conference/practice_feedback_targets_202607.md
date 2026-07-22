@@ -1,153 +1,153 @@
-# BudgetFlow：CCF 可投目标（仅 A/B/C）
+# BudgetFlow：CCF 推荐会议投稿目标
 
-时间基准：**2026-07-22**。数据源：[ccf4sc](https://ccf.tjunsl.com/) + 各会官网。  
-**只列 CCF 第七版 A/B/C；从零可开稿。** Workshop / 非 CCF 全删。  
-**相关度：** 满分 **10**（相对 BudgetFlow：批共享硬预算 · Task Value · agent/SWE · TRV）。档位标签：高≥7 · 中 4–6 · 低≤3。  
-**推荐规则：** 同窗期内 **A > B > C**；同档比相关度。
+时间基准：2026 年 7 月 22 日。  
+数据来源：[ccf4sc 会议截稿表](https://ccf.tjunsl.com/) 与各会议官网。
 
----
+本文件只收录中国计算机学会第七版推荐目录中的 **A 类、B 类、C 类正式会议**。研讨会（workshop）不收录。  
+下列会议均支持你从零新开投稿。
 
-## Top 3（7–8 月最值得投）
+**相关度打分：** 满分 10 分，对照 BudgetFlow 主题（任务批共享硬预算、任务价值、智能体 / 软件工程修复、已验证解决价值）。  
+- 高：7–10 分  
+- 中：4–6 分  
+- 低：1–3 分  
 
-| 优先 | 会 | CCF | 相关度 | 截稿动作 | 为什么 |
-|------|-----|-----|--------|----------|--------|
-| **1** | **AAAI-27 Main** | **A** | **9/10 · 高** | **今晚开稿** → 07-28 全文 | 唯一正对口 AI A；已有 BAMAS 等预算多代理先例 |
-| **2** | **HPCA 2027** | **A** | **4/10 · 中低** | 题录 **07-24** → 全文 **07-31** | 八月窗口里还开着的 A；须改写成 runtime/cache/scheduling |
-| **3** | **APSEC 2026 ERA** | **C** | **7/10 · 高** | **08-03** 直接交 PDF | 七月后最近、对口的 SE 正式口（Technical 已过，只剩 ERA） |
-
-> 没有排进 Top3 但仍开着的八月 A（VLDB/PPoPP/安全等）相关度更低，见下表。  
-> **同文勿并行** AAAI 与 HPCA/ERA。
-
-**AAAI 入口：** https://openreview.net/group?id=AAAI.org/2027/Conference
+**排序规则：** 同一时间窗口内，优先 A 类，其次 B 类，再次 C 类；同档比较相关度分数。
 
 ---
 
-## 七月能投｜八月能投
+## 七八月最值得投的三个会议
 
-### 七月（从零仍开）
+| 优先 | 会议 | CCF 等级 | 相关度 | 你要做的事 | 理由 |
+|------|------|----------|--------|------------|------|
+| 1 | AAAI 2027 主技术轨 | A 类（人工智能） | 9 分 · 高 | 今晚在 OpenReview 登记题目与摘要；7 月 28 日前交全文 | 与主题最贴的人工智能 A 类会议；往年已有预算约束多智能体工作（如 BAMAS） |
+| 2 | HPCA 2027 | A 类（计算机体系结构） | 4 分 · 中低 | 7 月 24 日前登记题目与摘要；7 月 31 日前交全文 | 仍开放的 A 类窗口；须改写成智能体 / 大模型运行时、缓存与调度叙事 |
+| 3 | APSEC 2026 早期研究成果轨 | C 类（软件工程） | 7 分 · 高 | 8 月 3 日前直接提交 PDF | 软件工程方向最近可投的正式会议轨；亚太软件工程大会的技术全文轨已于 7 月 20 日截稿，当前开放的是早期研究成果轨（Early Research Achievements，简称 ERA，接受初步实证与早期想法，篇幅约 5 页） |
 
-| 会 | CCF | 相关度 | 档 | 截稿 | 链接 |
-|----|-----|--------|----|------|------|
-| **AAAI-27 Main** | A | **9/10** | 高 | 题录今晚 ~19:59；全文 07-28 | [OpenReview](https://openreview.net/group?id=AAAI.org/2027/Conference) |
-| **HPCA 2027** | A | **4/10** | 中低 | 题录 07-24 AoE；全文 07-31 AoE | [CFP](https://conf.researchr.org/track/hpca-2027/hpca-2027-main-conference) |
-| **VLDB 2027（本轮）** | A | **2/10** | 低 | 题录 ~07-26；全文 08-02 | [vldb.org/2027](https://www.vldb.org/2027/) |
-| **APSEC 2026 ERA** | C | **7/10** | 高 | 08-03（七月内准备、八月交） | [ERA](https://conf.researchr.org/track/apsec-2026/apsec-2026-papers) |
+同一篇稿件请只投其中一个正式会议，勿并行投 AAAI、HPCA 与 APSEC。
 
-**七月已晚（题录过，从零开不了）：** SIGKDD（A，题录 07-19）· INFOCOM（A，题录 07-17）· ICECCS / APSEC Technical（07-20）
-
-### 八月（从零仍开 / 本月截稿）
-
-| 会 | CCF | 相关度 | 档 | 截稿 | 链接 |
-|----|-----|--------|----|------|------|
-| **HPCA 2027** | A | **4/10** | 中低 | 全文 07-31（跨到八月审） | 同上 |
-| **VLDB 2027（本轮）** | A | **2/10** | 低 | 08-02 | 同上 |
-| **UbiComp/ISWC 2026** | A | **1/10** | 低 | 08-02 | [ccf4sc](https://ccf.tjunsl.com/) |
-| **PPoPP 2027** | A | **2/10** | 低 | 08-04 | [ccf4sc](https://ccf.tjunsl.com/) |
-| **APSEC 2026 ERA** | C | **7/10** | 高 | **08-03** | [EasyChair](https://easychair.org/conferences/?conf=apsec2026) |
-| **CSFW 2027** | B | **1/10** | 低 | 08-04 | 安全，不对口 |
-| **NDSS 2027** | A | **1/10** | 低 | 08-20 | 安全 |
-| **USENIX Security 2027** | A | **1/10** | 低 | 08-26 | 安全 |
-
-**八月名义上有、但从零开不了：** EMNLP commitment（B，08-02）——必须五月 ARR 已出审。  
-**八月没有第二个「正对口 AI A」。** 正统下一档在秋：FSE（A SE，~10-02）· SANER（B，~09-21）· AAMAS（B，~10）。
+**AAAI 投稿入口：** https://openreview.net/group?id=AAAI.org/2027/Conference
 
 ---
 
-## 相关 PDF
+## 七月可投会议
 
-| 论文 | PDF |
-|------|-----|
-| BAMAS（AAAI-26） | https://ojs.aaai.org/index.php/AAAI/article/download/40226/44187 |
-| RouteLLM（ICLR-25） | https://proceedings.iclr.cc/paper_files/paper/2025/file/5503a7c69d48a2f86fc00b3dc09de686-Paper-Conference.pdf |
-| SEMAP（APSEC ERA） | https://arxiv.org/pdf/2510.12120 |
+| 会议 | CCF | 相关度 | 档 | 截稿 | 链接 |
+|------|-----|--------|----|------|------|
+| AAAI 2027 主技术轨 | A | 9 分 | 高 | 题目与摘要：今晚约 19:59；全文：7 月 28 日 | [OpenReview](https://openreview.net/group?id=AAAI.org/2027/Conference) |
+| HPCA 2027 | A | 4 分 | 中低 | 题目与摘要：7 月 24 日 AoE；全文：7 月 31 日 AoE | [征稿页](https://conf.researchr.org/track/hpca-2027/hpca-2027-main-conference) |
+| VLDB 2027（当前轮次） | A | 2 分 | 低 | 题目与摘要约 7 月 26 日；全文 8 月 2 日 | [VLDB 2027](https://www.vldb.org/2027/) |
+| APSEC 2026 早期研究成果轨 | C | 7 分 | 高 | 8 月 3 日交稿（七月内可准备） | [早期研究成果轨说明](https://conf.researchr.org/track/apsec-2026/apsec-2026-papers) |
 
-子页：[`venue_aaai27_budgetflow.md`](./venue_aaai27_budgetflow.md) · [`venue_apsec2026_era_budgetflow.md`](./venue_apsec2026_era_budgetflow.md) · [`venue_saner2027_budgetflow.md`](./venue_saner2027_budgetflow.md) · [`venue_aamas2027_budgetflow.md`](./venue_aamas2027_budgetflow.md)
+以下会议的题目登记已截止，从零新开已不可行：SIGKDD 2027（A 类，题目登记 7 月 19 日截止）、INFOCOM 2027（A 类，题目登记 7 月 17 日截止）、ICECCS 2026、APSEC 2026 技术全文轨（均于 7 月 20 日截稿）。
 
 ---
 
-## 1. AAAI-27 Main｜CCF A｜**今天必须动手**
+## 八月可投会议
 
-**子页：** [`venue_aaai27_budgetflow.md`](./venue_aaai27_budgetflow.md)
+| 会议 | CCF | 相关度 | 档 | 截稿 | 链接 |
+|------|-----|--------|----|------|------|
+| HPCA 2027 | A | 4 分 | 中低 | 全文 7 月 31 日 | 见上表 |
+| VLDB 2027（当前轮次） | A | 2 分 | 低 | 8 月 2 日 | 见上表 |
+| UbiComp / ISWC 2026 | A | 1 分 | 低 | 8 月 2 日 | [ccf4sc](https://ccf.tjunsl.com/) |
+| PPoPP 2027 | A | 2 分 | 低 | 8 月 4 日 | [ccf4sc](https://ccf.tjunsl.com/) |
+| APSEC 2026 早期研究成果轨 | C | 7 分 | 高 | 8 月 3 日 | [EasyChair](https://easychair.org/conferences/?conf=apsec2026) |
+| CSFW 2027 | B | 1 分 | 低 | 8 月 4 日 | 网络安全方向，与本文主题距离大 |
+| NDSS 2027 | A | 1 分 | 低 | 8 月 20 日 | 网络安全 |
+| USENIX Security 2027 | A | 1 分 | 低 | 8 月 26 日 | 网络安全 |
 
-| 项 | 内容 |
-|----|------|
+说明：
+
+- EMNLP 2026 的投稿确认截止约在 8 月 2 日（CCF B 类），但要求你已在 5 月 ACL 滚动审稿周期中完成审稿；从零新开不可行。  
+- 八月开放的 A 类会议多为体系结构、网络、数据库与安全方向；八月没有第二个与 AAAI 同等对口的人工智能 A 类主轨。  
+- 秋季可关注：FSE 2027（软件工程 A 类，约 10 月 2 日）、SANER 2027（软件工程 B 类，约 9 月 21 日）、AAMAS 2027（人工智能 B 类，约 10 月，日期待官网确认）。
+
+---
+
+## 建议阅读的论文 PDF
+
+| 论文 | 下载 |
+|------|------|
+| BAMAS（AAAI 2026）：预算感知多智能体系统 | https://ojs.aaai.org/index.php/AAAI/article/download/40226/44187 |
+| RouteLLM（ICLR 2025）：基于偏好数据的模型路由 | https://proceedings.iclr.cc/paper_files/paper/2025/file/5503a7c69d48a2f86fc00b3dc09de686-Paper-Conference.pdf |
+| SEMAP（APSEC 2025 早期研究成果轨）：协议驱动的多智能体软件工程 | https://arxiv.org/pdf/2510.12120 |
+
+分会议说明：[AAAI](./venue_aaai27_budgetflow.md) · [APSEC 早期研究成果轨](./venue_apsec2026_era_budgetflow.md) · [SANER](./venue_saner2027_budgetflow.md) · [AAMAS](./venue_aamas2027_budgetflow.md)
+
+---
+
+## 1. AAAI 2027 主技术轨（CCF A 类）
+
+详细说明见 [venue_aaai27_budgetflow.md](./venue_aaai27_budgetflow.md)。
+
+| 项目 | 内容 |
+|------|------|
 | 官网 | https://aaai.org/conference/aaai/aaai-27/ |
 | 投稿 | https://openreview.net/group?id=AAAI.org/2027/Conference |
-| 页数 | 正文 ≤7 + 参考文献至多总 9 |
-| 从零开稿 | OpenReview 注册 → **今天交完整 title+abstract** → **07-28 交 PDF** |
-| 反馈 | Phase 1 拒约 **09-24**（拒也能见审稿） |
+| 篇幅 | 正文最多 7 页，加上参考文献总共最多 9 页 |
+| 开稿步骤 | 在 OpenReview 注册 → 今晚提交完整题目与摘要 → 7 月 28 日前上传全文 PDF |
+| 反馈节奏 | 第一阶段拒稿通知约在 9 月 24 日；被拒也可看到审稿意见 |
 
-**相关度：高。** AAAI-26 已收 **BAMAS**（预算约束多代理）。你们要比的是 **batch 共享硬预算 + Task Value + SWE verifier + TRV**，不是再写一个 per-query 路由器。
+相关度高。AAAI 2026 已接收 BAMAS（预算约束下的多智能体构建）。你们应强调：一批任务共享一个硬预算、预注册任务价值、软件工程验证器结算、总已验证解决价值；这与「单次查询选哪个模型」的路由问题不同。
 
-**他们常用 baseline（从 BAMAS / 路由线）：** AutoGen / MetaGPT / ChatDev；cheap-only / strong-only；RouteLLM 类 learned router。  
-**他们常用数据：** GSM8K / MBPP / MATH / HumanEval；**很少**你们这种 30-task SWE-bench 批 + 美元硬帽——这是差异化也是风险。
+常见对照方法：AutoGen、MetaGPT、ChatDev；仅便宜模型、仅强模型；类似 RouteLLM 的学习型路由。  
+常见数据：GSM8K、MBPP、MATH、HumanEval。你们的固定 30 任务 SWE-bench 风格批次加美元硬预算是差异点，也是审稿风险点。
 
-**立刻动作：** 今晚 AoE 前开稿；否则七月 CCF A 没了。
+今晚在 AoE 截止前完成开稿登记。
 
 ---
 
-## 2. APSEC 2026 ERA｜CCF C｜08-03 从零交 PDF
+## 2. APSEC 2026 早期研究成果轨（CCF C 类）
 
-**子页：** [`venue_apsec2026_era_budgetflow.md`](./venue_apsec2026_era_budgetflow.md)
+详细说明见 [venue_apsec2026_era_budgetflow.md](./venue_apsec2026_era_budgetflow.md)。
 
-| 项 | 内容 |
-|----|------|
-| Track | https://conf.researchr.org/track/apsec-2026/apsec-2026-papers |
+亚太软件工程大会（Asia-Pacific Software Engineering Conference，APSEC）技术全文轨（Technical Track）已于 7 月 20 日截稿。当前仍开放的是早期研究成果轨（Early Research Achievements，ERA）：面向尚未完全成熟、但已有初步证据的工作，常规稿约 5 页（含参考文献）。
+
+| 项目 | 内容 |
+|------|------|
+| 轨道说明 | https://conf.researchr.org/track/apsec-2026/apsec-2026-papers |
 | 投稿 | https://easychair.org/conferences/?conf=apsec2026 |
-| 页数 | Regular **≤5 页含参考文献**；Short ≤2 |
-| 审稿 | 双盲；≥3 审稿人 |
-| 通知 | **09-21** |
+| 篇幅 | 常规稿最多 5 页（含参考文献）；短稿最多 2 页 |
+| 审稿 | 双盲；至少三位审稿人 |
+| 通知 | 约 9 月 21 日 |
 
-**相关度：中高。** APSEC 近年收 AI4SE / multi-agent / 效率；Technical 主轨 07-20 **已过**，只剩 ERA。
-
-**他们常用 baseline：** 无协议 MAS、ChatGPT vs 专用模型、覆盖率工具对比等。  
-**他们常用数据：** HumanEval、TFix、Big-Vul、漏洞集、图表→代码集。  
-**你们应对标：** cheap / strong / learned-router / budget-only + 固定共享预算。
-
----
-
-## 3. SANER 2027｜CCF B｜九月（目光，不是今晚）
-
-**子页：** [`venue_saner2027_budgetflow.md`](./venue_saner2027_budgetflow.md)
-
-| 项 | 内容 |
-|----|------|
-| CCF | **B**（软件工程） |
-| 截稿 | 约 **2026-09-21**（以官网为准） |
-| 口味 | 软件分析、演化、再工程、修复 |
-
-**相关度：中。** 可写成「仓库级 issue 批在共享预算下的价值感知分配」。七月不能交，但是 **下一档正经 SE CCF B**。
+相关度高。近年该会接收人工智能辅助软件工程、多智能体、效率类工作。  
+常见对照：无协议的多智能体、通用大模型与专用模型对比、测试覆盖工具对比。  
+常见数据：HumanEval、TFix、Big-Vul、漏洞数据集、图表到代码数据集。  
+你们应固定共享预算，并对照仅便宜模型、仅强模型、学习型任务路由、仅预算压力策略。
 
 ---
 
-## 4. AAMAS 2027｜CCF B｜约十月（目光）
+## 3. SANER 2027（CCF B 类，九月目光）
 
-**子页：** [`venue_aamas2027_budgetflow.md`](./venue_aamas2027_budgetflow.md)
+详细说明见 [venue_saner2027_budgetflow.md](./venue_saner2027_budgetflow.md)。
 
-| 项 | 内容 |
-|----|------|
-| CCF | **B**（人工智能 · 多代理） |
+| 项目 | 内容 |
+|------|------|
+| CCF | 软件工程 B 类 |
+| 截稿 | 约 2026 年 9 月 21 日（以官网为准） |
+| 口味 | 软件分析、演化、再工程、缺陷修复 |
+
+相关度中等。可写成：仓库级问题批次在共享预算下如何按价值分配修复算力。七月内交不了终稿；适合作为秋季软件工程 B 类目标。
+
+---
+
+## 4. AAMAS 2027（CCF B 类，约十月目光）
+
+详细说明见 [venue_aamas2027_budgetflow.md](./venue_aamas2027_budgetflow.md)。
+
+| 项目 | 内容 |
+|------|------|
+| CCF | 人工智能 B 类（多智能体） |
 | 官网 | https://warwick.ac.uk/fac/sci/dcs/aamas2027/ |
-| 截稿 | 官网写 **Oct 2026（TBC）** |
+| 截稿 | 官网目前写 Oct 2026，待确认 |
 
-**相关度：中高。** 多代理旗舰会；预算/资源分配叙事比 SANER 更贴 AI。七月不能交。
-
----
-
-## 已删除 / 不要再看
-
-| 类型 | 例子 | 原因 |
-|------|------|------|
-| Workshop | AgenticDev / MAS-GAIN / RASE / TRUST / SWGeno… | **无 CCF** |
-| ARR→EACL | EACL 2027 | **第七版目录无 EACL** |
-| 已过 CCF | ICECCS、APSEC Technical（07-20） | 截稿已过 |
-| 需上周 abstract 才能续交 | （不适用 AAAI——AAAI 是 **今天仍可新开**） | — |
+相关度中高。多智能体方向旗舰会议；预算与资源分配叙事比 SANER 更贴人工智能社区。七月内交不了终稿。
 
 ---
 
-## 一句话执行令
+## 执行顺序
 
-**今天：AAAI OpenReview 从零开稿（唯一 CCF A）。**  
-**八月：APSEC ERA（CCF C）。**  
-**目光：SANER / AAMAS（CCF B，秋）。**  
-**先下 PDF：BAMAS → RouteLLM → SEMAP。**
+1. 今天：在 OpenReview 完成 AAAI 2027 开稿登记。  
+2. 八月：准备 APSEC 2026 早期研究成果轨稿件。  
+3. 秋季目光：SANER 2027 或 AAMAS 2027。  
+4. 先读 PDF：BAMAS → RouteLLM → SEMAP。
