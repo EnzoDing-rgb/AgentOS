@@ -37,15 +37,15 @@ when a learned router is a strong competitor.
 
 The paper draft uses a PDF-first LaTeX workflow.
 
-- The canonical manuscript source lives under `paper1/paper/`.
-- `paper1/paper/main.tex` is the main paper source.
+- The canonical manuscript source lives under `paper1/paper/src/`.
+- `paper1/paper/src/main-ICML.tex` is the main paper source.
 - `paper1/paper/src/references.bib` stores bibliography entries.
 - `paper1/paper/figures/` stores paper figures.
-- Build outputs should use the paper's English title, for example
-  `paper1/paper/BudgetFlow_Value_Aware_Budget_Governance_for_Agent_Tasks.pdf`.
+- Build intermediates go under `paper1/paper/build/`; the installed PDF is
+  `paper1/paper/BudgetFlow_Value_Aware_Budget_Governance_for_Agent_Tasks-ICML.pdf`.
 - Paper-facing artifacts should be written in English.
-- A useful paper scaffold includes `main.tex`, `references.bib`, `figures/`,
-  and a one-command build path. It is more than an empty directory.
+- A useful paper scaffold includes `src/`, `figures/`, `reference/`, `archive/`,
+  and a one-command build path via `Makefile`. It is more than an empty directory.
 
 HTML files are auxiliary visual documents. The active related-work visual is
 `paper1/docs/related_work.html`, and its path stays fixed.
