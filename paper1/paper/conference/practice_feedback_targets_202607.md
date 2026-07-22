@@ -26,7 +26,7 @@
 
 - 录用页：https://ojs.aaai.org/index.php/AAAI/article/view/40226  
 - 本地：`reference/BAMAS_AAAI26_text_extract.txt`（AAAI OJS PDF 本机拉取超时；正文摘自正式录用全文）  
-- **Baselines（文中写明）：** AutoGen、MetaGPT、ChatDev；另加启发式 **Naive-CostAware**（按 Level 1–5 贪心选配置；纯启发式，靠人工档位而非 ILP/拓扑搜索）。对照时固定 LLM 类型，分别跑 DeepSeek-V3 与 GPT-4.1 nano 两套。  
+- **Baselines（文中写明）：** AutoGen、MetaGPT、ChatDev；另加启发式 **Naive-CostAware**（按 Level 1–5 贪心选配置）。对照时固定 LLM 类型，分别跑 DeepSeek-V3 与 GPT-4.1 nano 两套。  
 - **Datasets：** **GSM8K**（数学应用题）、**MBPP**（Python 编程，训练集约 374 题作 RL 语料）、**MATH**（高阶数学）。预算档：GSM8K/MBPP 为 500–2000；MATH 更高档（文中以 1000 为双模型参考成本量级）。
 
 #### 2. ZeroRouter（Breaking Model Lock-in: Cost-Efficient Zero-Shot LLM Routing）
