@@ -1,50 +1,92 @@
 # BudgetFlow：CCF 可投目标（仅 A/B/C）
 
-时间基准：**2026-07-22 12:00（北京）**。
+时间基准：**2026-07-22 12:10（北京）**。  
+数据源：[ccf4sc 实时 DDL](https://ccf.tjunsl.com/) + 各会官网（HPCA / KDD / INFOCOM / VLDB）。
 
-**硬过滤：** 只保留 **CCF 第七版 A/B/C 正式会议**。Workshop / ARR→EACL（EACL **不在**第七版目录）全部删除。  
-**投稿前提：** 你 **从未交过任何 abstract**；下列均为 **从零新开稿**。  
-**模型说明：** 你要求只用 Grok 3 做子代理调研——当前 Cursor 子代理 **没有 Grok 3**（可用含 `cursor-grok-4.5-high`）。本文件结论由当前会话直接核官网 + CCF 第七版 PDF + 可下载论文 PDF 写成。
+**硬过滤：** 只保留 **CCF 第七版 A/B/C 正式会议**。Workshop 全删。  
+**投稿前提：** 从零新开稿（你还没交过任何题录）。  
+**说明：** 八月 **不是没有 A**——有一串体系结构/网络/数据库/安全 A；之前漏报是因为我按「必须强 AI/SE 相关」滤太狠。下面 **分相关度** 写清楚。
 
 ---
 
-## 调研结论置顶（先看这里）
+## 调研结论置顶
 
-### 七月从零能投的 CCF，真实清单
+### A. 七月立刻能动手的 4 个候选（从零）
 
-| # | 会 | CCF | 从零能否立刻开稿 | 截稿 | 相关度 | 判决 |
-|---|-----|-----|------------------|------|--------|------|
-| **1** | **AAAI-27 Main** | **A**（人工智能） | **能——但今天必须开稿** | 开稿/题录截止约 **今晚北京 ~19:59**（07-21 AoE）；全文 **07-28** | **高**（已有 budget-aware multi-agent） | **唯一七月顶会窗口** |
-| **2** | **APSEC 2026 ERA** | **C**（软件工程） | **能**（直接交 PDF，无“上周 abstract”门槛） | **08-03** | **中高**（AI4SE / agent） | **最近的 SE 正式口** |
-| **3** | **SANER 2027** | **B**（软件工程） | 现在可准备，**九月才交** | abs/full 约 **09-21 / 09-25** | **中**（演化/分析/修复） | **目光放这里做下一档 B** |
-| **4** | **AAMAS 2027** | **B**（人工智能） | 现在可准备，**约十月才交** | 官网暂定 **Oct 2026** | **中高**（multi-agent） | **目光放这里做 agent 向 B** |
+| # | 会 | CCF | 今天能否开稿 | 关键截稿 | 相关度 | 官网/投稿 |
+|---|-----|-----|--------------|----------|--------|-----------|
+| **1** | **AAAI-27 Main** | **A** 人工智能 | **今晚前必须开** | 题录约 **今晚 ~19:59**；全文 **07-28** | **高** | [OpenReview](https://openreview.net/group?id=AAAI.org/2027/Conference) · [说明](https://aaai.org/conference/aaai/aaai-27/submission-instructions/) |
+| **2** | **HPCA 2027** | **A** 体系结构 | **能**（题录还开） | 题录 **07-24 AoE**；全文 **07-31 AoE** | **低–中**（写成 LLM/agent serving · runtime · 资源调度才蹭得上） | [CFP](https://conf.researchr.org/track/hpca-2027/hpca-2027-main-conference) |
+| **3** | **VLDB 2027（本轮）** | **A** 数据库 | **能**（滚动轮次） | 本轮题录约 **07-26**；全文 **08-02** | **低**（硬蹭：workload / cost-aware scheduling；审稿会问你是不是 DB） | [vldb.org/2027](https://www.vldb.org/2027/) |
+| **4** | **APSEC 2026 ERA** | **C** 软件工程 | **能**（直接交 PDF） | **08-03** | **中高**（AI4SE） | [ERA](https://conf.researchr.org/track/apsec-2026/apsec-2026-papers) · [EasyChair](https://easychair.org/conferences/?conf=apsec2026) |
 
-**没有第 5 个七月立刻能交的、又对口的 CCF A/B。**  
-ICECCS / APSEC Technical（07-20）、ICSE/FSE 等七月前或九月后窗口，**不在「立刻从零」里**。
+**主投排序：** **① AAAI（今晚）→ ② APSEC ERA（正统 SE C）→ ③ HPCA 仅当你要硬冲系统 A 且愿意改包装 → ④ VLDB 基本不建议。**
 
-**目光该放哪：**
+**已错过题录、七月别再幻想从零开的 A：**
 
-1. **今天晚上之前：AAAI**（唯一 CCF A；不开稿 = 七月顶会归零）  
-2. **八月初：APSEC ERA**（CCF C，5 页 early empirical）  
-3. **九月/十月：SANER（B）或 AAMAS（B）**——不是七月立刻交，但是下一档正经 CCF B  
+| 会 | CCF | 原因 |
+|----|-----|------|
+| SIGKDD 2027 | A | 题录 **07-19** 已过；全文 07-26 也救不了新开稿 |
+| INFOCOM 2027 | A | 题录 **07-17** 已过 |
 
-**Dual-submission：** AAAI 与 APSEC ERA / SANER / AAMAS 同文 **不能并行 archival**。一次只锁一个主投。
+---
 
-### 相关证据怎么读（有 PDF，没有「一整本杂志打包」也照样能读）
+### B. 八月到底有没有 CCF A / B？——有
 
-AAAI **没有**像某些 OS 会那样一个「全年所有论文一个 PDF」的方便册；正规做法是：
+来自 [ccf.tjunsl.com](https://ccf.tjunsl.com/)（2026-07-22 更新）：
 
-- **分卷页面：** [AAAI-26 Technical Tracks 35](https://ojs.aaai.org/index.php/AAAI/issue/view/717)（Multiagent Systems 卷）  
-- **单篇 PDF 直链（必下）：**
+#### 八月 CCF **A**（真实存在）
 
-| 论文 | 为何相关 | PDF |
-|------|----------|-----|
-| **BAMAS**（AAAI-26）budget-aware multi-agent | **最近邻**：显式预算下选 LLM + 拓扑 | https://ojs.aaai.org/index.php/AAAI/article/download/40226/44187 |
-| **RouteLLM**（ICLR-25，AAAI 审稿常引） | per-query 路由 baseline 标杆 | https://proceedings.iclr.cc/paper_files/paper/2025/file/5503a7c69d48a2f86fc00b3dc09de686-Paper-Conference.pdf |
-| **SEMAP**（APSEC 2025 ERA） | APSEC ERA 口味：multi-agent SE + 实证 | https://arxiv.org/pdf/2510.12120 |
-| **Chart2Code-MoLA**（APSEC 2025 Technical） | APSEC「routing/efficiency」近邻（MoE，不是 batch budget） | https://arxiv.org/pdf/2511.23321 |
+| 会 | 截止（约） | 领域 | 和 BudgetFlow |
+|----|------------|------|----------------|
+| **HPCA 2027** | 题录 07-24 / 全文 07-31 | 体系结构 | 蹭边：agent/LLM **runtime · cache · scheduling** |
+| **INFOCOM 2027** | 全文约 07-24（题录已过） | 网络 | **从零已晚** |
+| **VLDB 2027** | 本轮 08-02 | 数据库 | 蹭边弱 |
+| **UbiComp/ISWC 2026** | 08-02 | HCI/普适 | 基本不相关 |
+| **PPoPP 2027** | 08-04 | 并行 | 蹭边弱（并行调度） |
+| **NDSS 2027** | 08-20 | 安全 A | 不相关（除非硬写 agent 安全） |
+| **USENIX Security 2027** | 08-26 | 安全 A | 不相关 |
 
-细节、baseline、数据集见下方子页。
+#### 八月 CCF **B**
+
+| 会 | 截止（约） | 说明 |
+|----|------------|------|
+| **CSFW 2027** | 08-04 | 安全 B，和你们不对口 |
+| **EMNLP 2026 commitment** | 08-02 | CCF **B**，但必须 **五月 ARR 已审完** 才能 commit——**从零开不了** |
+| **ARR Aug → EACL** | 08-03 交 ARR | EACL **不在** CCF 第七版；别当 CCF B 报 |
+
+**八月没有「又一个 AAAI 这种正对口的 AI A」。**  
+八月的 A 主要是 **系统/网络/库/安全**；要正统 AI/SE 顶会，下一档是：
+
+| 会 | CCF | 大约截稿 | 相关度 |
+|----|-----|----------|--------|
+| **ASPLOS 2027** | A 系统 | ~09-09 | 中（AI/ML systems 包装） |
+| **EuroSys 2027 Fall** | A 系统 | ~09-17/24 | 中 |
+| **FSE 2027** | **A 软件工程** | ~10-02 | **高（SE 主战场）** |
+| **SANER 2027** | **B 软件工程** | ~09-21 | 中 |
+| **AAMAS 2027** | **B 人工智能** | ~10（TBC） | 中高 |
+
+---
+
+### C. 你今晚 + 本周目光
+
+1. **今晚：AAAI OpenReview 开稿**（唯一正对口 CCF A）  
+   https://openreview.net/group?id=AAAI.org/2027/Conference  
+2. **若还想多占一个系统 A 坑：** **07-24 前** 开 **HPCA** 题录（接受「蹭边」前提）  
+3. **八月 SE 正式：** **APSEC ERA（C）**  
+4. **秋：FSE（A SE）/ SANER（B）/ AAMAS（B）**
+
+**Dual-submission：** 同文同时投多个 archival = 违规。AAAI 开了就别并行 HPCA/ERA 同稿。
+
+### 相关 PDF（先下这三个）
+
+| 论文 | PDF |
+|------|-----|
+| BAMAS（AAAI-26） | https://ojs.aaai.org/index.php/AAAI/article/download/40226/44187 |
+| RouteLLM（ICLR-25） | https://proceedings.iclr.cc/paper_files/paper/2025/file/5503a7c69d48a2f86fc00b3dc09de686-Paper-Conference.pdf |
+| SEMAP（APSEC ERA） | https://arxiv.org/pdf/2510.12120 |
+
+细节子页：[`venue_aaai27_budgetflow.md`](./venue_aaai27_budgetflow.md) · [`venue_apsec2026_era_budgetflow.md`](./venue_apsec2026_era_budgetflow.md) · [`venue_saner2027_budgetflow.md`](./venue_saner2027_budgetflow.md) · [`venue_aamas2027_budgetflow.md`](./venue_aamas2027_budgetflow.md)
 
 ---
 
