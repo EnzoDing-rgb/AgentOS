@@ -39,9 +39,10 @@ external/SWE-agent/
 code/external/mini-swe-agent/
 code/external/SWE-agent/
 
-# LaTeX build byproducts
-paper/main.pdf
-paper/main-*.pdf
+# LaTeX build tree (intermediates + build-time PDFs)
+paper/build/
+
+# Legacy latex byproducts if any reappear at paper root
 paper/*.aux
 paper/*.bbl
 paper/*.blg
@@ -51,6 +52,8 @@ paper/*.log
 paper/*.out
 paper/*.toc
 paper/*.synctex.gz
+paper/main.pdf
+paper/main-*.pdf
 
 # Deliberately NOT ignored — AutoResearch evidence ledger:
 #   .autoresearch/issues/

@@ -4,7 +4,7 @@
 论文主题：任务批共享硬预算 · Task Value · 智能体 / SWE 验证 · TRV。
 
 **两个 CCF A：**（1）AAAI 2027（摘要已交，待全文 PDF）；（2）HPCA 2027（题录 07-24，全文 07-31）。  
-本地 PDF 目录：`paper1/paper/reference/`（已精读并摘 baseline / 数据集）。
+本地材料目录：`paper1/paper/reference/`（调研 md + 相关工作 PDF；已精读并摘 baseline / 数据集）。
 
 ---
 
