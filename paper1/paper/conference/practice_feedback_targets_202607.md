@@ -1,126 +1,136 @@
-# BudgetFlow / AgentOS 练手投稿目标（2026 年 7 月）
+# BudgetFlow：CCF 可投目标（仅 A/B/C）
 
-时间基准：**2026-07-22**。
+时间基准：**2026-07-22 12:00（北京）**。
 
-**原则：** 只列 **此刻还能交** 的口。已过截稿的一律放「已过时」区，不再当行动项。Agent / LLM / budget / routing / SWE-bench **能蹭边就行**——目标是交出去拿审稿，不是保中。
-
----
-
-## 0. 现在还能投（2026-07-22 起）
-
-### 0.1 两三天内（本周最紧）
-
-| 优先级 | 会 | 档次 | 截稿 | 链接 | 蹭边角度 |
-|--------|-----|------|------|------|----------|
-| **今天** | **MAS-GAIN 2026** | 无 CCF（workshop） | **07-22 AoE**（约北京 **07-23 中午**） | [EasyChair](https://easychair.org/conferences/?conf=masgain2026) · [CFP](https://masgain.github.io/masgain/masgain2026/) | multi-agent / routing / tool |
-| **明天** | **TRUST 2026** | 无 CCF（workshop） | **07-23** | [CFP](https://conf.researchr.org/home/ase-2026/trust-2026) | trustworthy autonomous / agent governance / oversight |
-| **后天** | **RASE 2026** | 无 CCF（workshop） | **07-24 AoE** | [EasyChair](https://easychair.org/conferences/?conf=rase2026) · [CFP](https://conf.researchr.org/home/ase-2026/rase-2026) | trustworthy ASE / cost-aware eval / benchmark |
-
-### 0.2 七月内还开着
-
-| 会 | 档次 | 截稿 | 链接 | 说明 |
-|----|------|------|------|------|
-| **AgenticDev 2026** | 无 CCF（workshop） | **07-25**（已延期） | [HotCRP](https://agenticdev2026.hotcrp.com) | **已投 #68**；截稿前还可 Replace 更新 PDF |
-| **SWGeno 2026** | 无 CCF（workshop） | **07-26** | [CFP](https://conf.researchr.org/home/ase-2026/swgeno-2026) | topic 含 **agentic SE**；可比 RASE 稍远 |
-| **AAAI-27 Main full** | CCF **A** | **07-28** | [OpenReview](https://openreview.net/group?id=AAAI.org/2027/Conference) | **仅当 07-21 前已交 abstract**；没交 abstract = **新开稿没戏** |
-| **Harness4GenUI** | 无 CCF（workshop） | **07-26** | [CFP](https://conf.researchr.org/home/ase-2026/harness4genui-2026) | GenUI harness，**蹭边弱**，默认不优先 |
-
-### 0.3 八月初仍算「七月窗口内能准备」
-
-| 会 | 档次 | 截稿 | 链接 | 说明 |
-|----|------|------|------|------|
-| **ARR Aug → EACL 2027** | *CL；EACL=CCF **B** | **08-03** | [ARR dates](http://aclrollingreview.org/dates) | 非 desk-reject 必出 reviews；与 AAAI archival **不可并行** |
-| **APSEC 2026 ERA** | CCF **C** | **08-03** | [EasyChair](https://easychair.org/conferences/?conf=apsec2026) | early / preliminary；双盲 |
-
-**Dual-submission：** AAAI / ARR / APSEC ERA 等 archival **不能并行**。Workshop 一般可并行，以各自 CFP 为准。
-
-### 0.4 本周建议动作
-
-1. **今天：** 冲 **MAS-GAIN**（07-22 AoE 最紧）  
-2. **07-23 / 07-24：** **TRUST** 或 **RASE**（二选一或都交 short/position）  
-3. **若已开 AAAI abstract：** **07-28** 交 full；否则别耗时间开新 AAAI  
-4. **07-25 前：** AgenticDev #68 如需改稿再 Replace  
-5. **八月初备选：** ARR 或 APSEC ERA（先定一个 archival）
+**硬过滤：** 只保留 **CCF 第七版 A/B/C 正式会议**。Workshop / ARR→EACL（EACL **不在**第七版目录）全部删除。  
+**投稿前提：** 你 **从未交过任何 abstract**；下列均为 **从零新开稿**。  
+**模型说明：** 你要求只用 Grok 3 做子代理调研——当前 Cursor 子代理 **没有 Grok 3**（可用含 `cursor-grok-4.5-high`）。本文件结论由当前会话直接核官网 + CCF 第七版 PDF + 可下载论文 PDF 写成。
 
 ---
 
-## 1. 仍开着的会：细节
+## 调研结论置顶（先看这里）
 
-### 1.1 MAS-GAIN 2026（@ ASE）
+### 七月从零能投的 CCF，真实清单
 
-- **CCF：无** · Regular ≤8 / Short ≤4  
-- **截稿：** full **07-22 AoE**（abs 已是 07-17）  
-- **通知：** **08-23**  
-- **匹配：** multi-agent + generative AI for ASE  
+| # | 会 | CCF | 从零能否立刻开稿 | 截稿 | 相关度 | 判决 |
+|---|-----|-----|------------------|------|--------|------|
+| **1** | **AAAI-27 Main** | **A**（人工智能） | **能——但今天必须开稿** | 开稿/题录截止约 **今晚北京 ~19:59**（07-21 AoE）；全文 **07-28** | **高**（已有 budget-aware multi-agent） | **唯一七月顶会窗口** |
+| **2** | **APSEC 2026 ERA** | **C**（软件工程） | **能**（直接交 PDF，无“上周 abstract”门槛） | **08-03** | **中高**（AI4SE / agent） | **最近的 SE 正式口** |
+| **3** | **SANER 2027** | **B**（软件工程） | 现在可准备，**九月才交** | abs/full 约 **09-21 / 09-25** | **中**（演化/分析/修复） | **目光放这里做下一档 B** |
+| **4** | **AAMAS 2027** | **B**（人工智能） | 现在可准备，**约十月才交** | 官网暂定 **Oct 2026** | **中高**（multi-agent） | **目光放这里做 agent 向 B** |
 
-### 1.2 TRUST 2026（@ ASE）
+**没有第 5 个七月立刻能交的、又对口的 CCF A/B。**  
+ICECCS / APSEC Technical（07-20）、ICSE/FSE 等七月前或九月后窗口，**不在「立刻从零」里**。
 
-- **CCF：无**  
-- **截稿：** **07-23**（[ASE dates](https://conf.researchr.org/dates/ase-2026)）  
-- **匹配：** trustworthy autonomous systems、governance、human-in-the-loop、agent 分配/监督；BudgetFlow 可写成 **budget/value 约束下的 agent 资源治理**  
+**目光该放哪：**
 
-### 1.3 RASE 2026（@ ASE）
+1. **今天晚上之前：AAAI**（唯一 CCF A；不开稿 = 七月顶会归零）  
+2. **八月初：APSEC ERA**（CCF C，5 页 early empirical）  
+3. **九月/十月：SANER（B）或 AAMAS（B）**——不是七月立刻交，但是下一档正经 CCF B  
 
-- **CCF：无** · Regular ≤8 / Short-Demo ≤4 / Position ≤2  
-- **截稿：** **07-24 AoE**  
-- **匹配：** trustworthy ASE / benchmark / cost-aware evaluation  
+**Dual-submission：** AAAI 与 APSEC ERA / SANER / AAMAS 同文 **不能并行 archival**。一次只锁一个主投。
 
-### 1.4 AgenticDev 2026（已投）
+### 相关证据怎么读（有 PDF，没有「一整本杂志打包」也照样能读）
 
-- **CCF：无** · Full ≤10 / Short ≤5（+2 参考文献）  
-- **截稿延期到 07-25**；稿号 **#68** ready for review  
-- **通知：** **08-21**  
-- HotCRP 可勾 Email notification；详细 reviews 登录看  
+AAAI **没有**像某些 OS 会那样一个「全年所有论文一个 PDF」的方便册；正规做法是：
 
-### 1.5 SWGeno 2026（@ ASE）
+- **分卷页面：** [AAAI-26 Technical Tracks 35](https://ojs.aaai.org/index.php/AAAI/issue/view/717)（Multiagent Systems 卷）  
+- **单篇 PDF 直链（必下）：**
 
-- **CCF：无** · **07-26**  
-- Topic 含 agentic program understanding / maintenance / multi-agent collaboration  
-- 比 RASE/MAS-GAIN 更「基因组隐喻」，能蹭但非首选  
+| 论文 | 为何相关 | PDF |
+|------|----------|-----|
+| **BAMAS**（AAAI-26）budget-aware multi-agent | **最近邻**：显式预算下选 LLM + 拓扑 | https://ojs.aaai.org/index.php/AAAI/article/download/40226/44187 |
+| **RouteLLM**（ICLR-25，AAAI 审稿常引） | per-query 路由 baseline 标杆 | https://proceedings.iclr.cc/paper_files/paper/2025/file/5503a7c69d48a2f86fc00b3dc09de686-Paper-Conference.pdf |
+| **SEMAP**（APSEC 2025 ERA） | APSEC ERA 口味：multi-agent SE + 实证 | https://arxiv.org/pdf/2510.12120 |
+| **Chart2Code-MoLA**（APSEC 2025 Technical） | APSEC「routing/efficiency」近邻（MoE，不是 batch budget） | https://arxiv.org/pdf/2511.23321 |
 
-### 1.6 AAAI-27 Main（条件开放）
-
-- **CCF：A** · 正文 ≤7 + 参考文献至多总 9  
-- abs **07-21 已过**；full **07-28** 只服务 **已注册 abstract** 的稿  
-- Phase 1 拒稿通知约 **09-24**（拒也能见审稿）  
-- 包装：multiagent / resource allocation；少写纯 harness  
-- 近邻：**BAMAS（AAAI-26）** budget-aware multi-agent；须讲清 **batch-level value governance ≠ 单查询路由 / ≠ 只选拓扑**  
-
-### 1.7 ARR August 2026 → EACL 2027
-
-- **截稿：** **08-03**；author reviewer 注册 **08-05**  
-- reviews **09-07**；meta **10-08**；commit EACL **10-11**  
-- 不上 AAAI（或已撤）再投；与 AAAI **不可并行**  
-
-### 1.8 APSEC 2026 ERA
-
-- **CCF：C** · **08-03** · 通知 **09-21**  
-- early / preliminary；双盲  
+细节、baseline、数据集见下方子页。
 
 ---
 
-## 2. 已过时（不要再排期）
+## 1. AAAI-27 Main｜CCF A｜**今天必须动手**
 
-| 会 | 截稿 | 状态 |
-|----|------|------|
-| SoCC 2026 R2 新开稿 | registration ~07-08 | 新注册已关 |
-| AgenticDev 原截稿 | 07-15 | 已投；窗口延期到 07-25 仅用于更新 |
-| ICECCS 2026 | **07-20** AoE | **已过** |
-| APSEC 2026 Technical | **07-20** | **已过** |
-| AAAI-27 abstract | **07-21** | **已过**；无 abstract 则 full 不能新开 |
-| MAS-GAIN abstract | 07-17 | 已过；今日只剩 full |
+**子页：** [`venue_aaai27_budgetflow.md`](./venue_aaai27_budgetflow.md)
 
-### 附录：ICECCS / APSEC Technical / AAAI 旧调研摘要（法医）
+| 项 | 内容 |
+|----|------|
+| 官网 | https://aaai.org/conference/aaai/aaai-27/ |
+| 投稿 | https://openreview.net/group?id=AAAI.org/2027/Conference |
+| 页数 | 正文 ≤7 + 参考文献至多总 9 |
+| 从零开稿 | OpenReview 注册 → **今天交完整 title+abstract** → **07-28 交 PDF** |
+| 反馈 | Phase 1 拒约 **09-24**（拒也能见审稿） |
 
-- **07-20 同日：** ICECCS 延期 + APSEC Technical 改期后的巧合，不是同一会。  
-- **领域：** ICECCS/APSEC 能蹭 AI4SE/agent，几乎无 batch TRV 同题；AAAI 最近（BAMAS 等）。  
-- **现在行动价值：无**——截稿已过，仅作历史记录。
+**相关度：高。** AAAI-26 已收 **BAMAS**（预算约束多代理）。你们要比的是 **batch 共享硬预算 + Task Value + SWE verifier + TRV**，不是再写一个 per-query 路由器。
+
+**他们常用 baseline（从 BAMAS / 路由线）：** AutoGen / MetaGPT / ChatDev；cheap-only / strong-only；RouteLLM 类 learned router。  
+**他们常用数据：** GSM8K / MBPP / MATH / HumanEval；**很少**你们这种 30-task SWE-bench 批 + 美元硬帽——这是差异化也是风险。
+
+**立刻动作：** 今晚 AoE 前开稿；否则七月 CCF A 没了。
 
 ---
 
-## 3. 一句话结论（2026-07-22）
+## 2. APSEC 2026 ERA｜CCF C｜08-03 从零交 PDF
 
-**立刻能冲：** MAS-GAIN（今天）→ TRUST（明天）→ RASE（后天）。  
-**七月内：** AgenticDev 可改稿到 07-25；SWGeno 07-26；AAAI full 仅限已交 abstract。  
-**八月初：** ARR 或 APSEC ERA。  
-**别再搞：** ICECCS / APSEC Technical / 无 abstract 的 AAAI 新开稿。
+**子页：** [`venue_apsec2026_era_budgetflow.md`](./venue_apsec2026_era_budgetflow.md)
+
+| 项 | 内容 |
+|----|------|
+| Track | https://conf.researchr.org/track/apsec-2026/apsec-2026-papers |
+| 投稿 | https://easychair.org/conferences/?conf=apsec2026 |
+| 页数 | Regular **≤5 页含参考文献**；Short ≤2 |
+| 审稿 | 双盲；≥3 审稿人 |
+| 通知 | **09-21** |
+
+**相关度：中高。** APSEC 近年收 AI4SE / multi-agent / 效率；Technical 主轨 07-20 **已过**，只剩 ERA。
+
+**他们常用 baseline：** 无协议 MAS、ChatGPT vs 专用模型、覆盖率工具对比等。  
+**他们常用数据：** HumanEval、TFix、Big-Vul、漏洞集、图表→代码集。  
+**你们应对标：** cheap / strong / learned-router / budget-only + 固定共享预算。
+
+---
+
+## 3. SANER 2027｜CCF B｜九月（目光，不是今晚）
+
+**子页：** [`venue_saner2027_budgetflow.md`](./venue_saner2027_budgetflow.md)
+
+| 项 | 内容 |
+|----|------|
+| CCF | **B**（软件工程） |
+| 截稿 | 约 **2026-09-21**（以官网为准） |
+| 口味 | 软件分析、演化、再工程、修复 |
+
+**相关度：中。** 可写成「仓库级 issue 批在共享预算下的价值感知分配」。七月不能交，但是 **下一档正经 SE CCF B**。
+
+---
+
+## 4. AAMAS 2027｜CCF B｜约十月（目光）
+
+**子页：** [`venue_aamas2027_budgetflow.md`](./venue_aamas2027_budgetflow.md)
+
+| 项 | 内容 |
+|----|------|
+| CCF | **B**（人工智能 · 多代理） |
+| 官网 | https://warwick.ac.uk/fac/sci/dcs/aamas2027/ |
+| 截稿 | 官网写 **Oct 2026（TBC）** |
+
+**相关度：中高。** 多代理旗舰会；预算/资源分配叙事比 SANER 更贴 AI。七月不能交。
+
+---
+
+## 已删除 / 不要再看
+
+| 类型 | 例子 | 原因 |
+|------|------|------|
+| Workshop | AgenticDev / MAS-GAIN / RASE / TRUST / SWGeno… | **无 CCF** |
+| ARR→EACL | EACL 2027 | **第七版目录无 EACL** |
+| 已过 CCF | ICECCS、APSEC Technical（07-20） | 截稿已过 |
+| 需上周 abstract 才能续交 | （不适用 AAAI——AAAI 是 **今天仍可新开**） | — |
+
+---
+
+## 一句话执行令
+
+**今天：AAAI OpenReview 从零开稿（唯一 CCF A）。**  
+**八月：APSEC ERA（CCF C）。**  
+**目光：SANER / AAMAS（CCF B，秋）。**  
+**先下 PDF：BAMAS → RouteLLM → SEMAP。**
