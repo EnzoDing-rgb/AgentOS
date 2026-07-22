@@ -26,7 +26,7 @@
 
 - 录用页：https://ojs.aaai.org/index.php/AAAI/article/view/40226  
 - 本地：`reference/BAMAS_AAAI26_text_extract.txt`（AAAI OJS PDF 本机拉取超时；正文摘自正式录用全文）  
-- **Baselines（文中写明）：** AutoGen、MetaGPT、ChatDev；另加启发式 **Naive-CostAware**（按 Level 1–5 贪心选配置，无 ILP、无拓扑选择）。对照时固定 LLM 类型，分别跑 DeepSeek-V3 与 GPT-4.1 nano 两套。  
+- **Baselines（文中写明）：** AutoGen、MetaGPT、ChatDev；另加启发式 **Naive-CostAware**（按 Level 1–5 贪心选配置；纯启发式，靠人工档位而非 ILP/拓扑搜索）。对照时固定 LLM 类型，分别跑 DeepSeek-V3 与 GPT-4.1 nano 两套。  
 - **Datasets：** **GSM8K**（数学应用题）、**MBPP**（Python 编程，训练集约 374 题作 RL 语料）、**MATH**（高阶数学）。预算档：GSM8K/MBPP 为 500–2000；MATH 更高档（文中以 1000 为双模型参考成本量级）。
 
 #### 2. ZeroRouter（Breaking Model Lock-in: Cost-Efficient Zero-Shot LLM Routing）
@@ -44,8 +44,8 @@
 - 录用页：https://ojs.aaai.org/index.php/AAAI/article/view/40413  
 - 本地 PDF：`reference/STEER_AAAI26.pdf`  
 - **Baselines：**  
-  - 有外部模型：RSD；Damani et al. 的 question-level 分配  
-  - 无外部模型：一组仅依赖模型内部信号的对照（文中 “No external models” 组）  
+  - External-models 组：RSD；Damani et al. 的 question-level 分配  
+  - Internal-signal 组：文中 “No external models” 对照，只用模型内部置信度  
 - **Datasets / Benchmarks：** MATH500、AIME、Omni-Math、ACPBench、MuSiQue、KOR-Bench（Cipher / Counterfactual / Logic 子集）。报告在 AIME 上相对大模型约 +20% 准确率、约 48% 更少 FLOPs。
 
 **对 BudgetFlow 的用法：** 对照里要有 cheap-only / strong-only / 学习型路由 / 预算感知多智能体构建；数据上 AAAI 审稿人熟悉 GSM8K/MBPP/MATH/路由基准——你们的 30-task SWE 批次是差异化，需用 TRV 语言解释清楚。
@@ -129,8 +129,8 @@ SE 口味、篇幅短（常规 ≤5 页含参考文献），适合有初步证�
 | 约 2026-10-02 | FSE 2027 | A · 软件工程 | https://conf.researchr.org/dates/fse-2027 |
 | ASE 2027 主截稿待官宣 | ASE | A · 软件工程 | 跟 https://conf.researchr.org/home/ase-2027 或系列 dates 页 |
 
-NeurIPS 2026：摘要 2026-05-04 AoE，全文 2026-05-06 AoE（https://neurips.cc/Conferences/2026/Dates）——本周期已结束。  
-ICSE 2027：摘要 2026-06-23，全文 2026-06-30（https://conf.researchr.org/track/icse-2027/icse-2027-research-track）——本周期已结束。
+NeurIPS 2026：摘要 2026-05-04 AoE，全文 2026-05-06 AoE（https://neurips.cc/Conferences/2026/Dates）。  
+ICSE 2027：摘要 2026-06-23，全文 2026-06-30（https://conf.researchr.org/track/icse-2027/icse-2027-research-track）。
 
 ---
 
