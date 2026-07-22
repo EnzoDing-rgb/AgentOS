@@ -25,7 +25,8 @@
 #### 1. BAMAS: Structuring Budget-Aware Multi-Agent Systems
 
 - 录用页：https://ojs.aaai.org/index.php/AAAI/article/view/40226  
-- 本地：`reference/BAMAS_AAAI26_text_extract.txt`（AAAI OJS PDF 本机拉取超时；正文摘自正式录用全文）  
+- 本地 PDF：`reference/BAMAS_AAAI26.pdf`（经本机 V2Ray `127.0.0.1:10809` 从 AAAI OJS 下载）  
+- 文字摘录备份：`reference/BAMAS_AAAI26_text_extract.txt`  
 - **Baselines（文中写明）：** AutoGen、MetaGPT、ChatDev；另加启发式 **Naive-CostAware**（按 Level 1–5 贪心选配置）。对照时固定 LLM 类型，分别跑 DeepSeek-V3 与 GPT-4.1 nano 两套。  
 - **Datasets：** **GSM8K**（数学应用题）、**MBPP**（Python 编程，训练集约 374 题作 RL 语料）、**MATH**（高阶数学）。预算档：GSM8K/MBPP 为 500–2000；MATH 更高档（文中以 1000 为双模型参考成本量级）。
 
