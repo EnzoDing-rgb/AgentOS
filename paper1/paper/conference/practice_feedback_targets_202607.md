@@ -1,84 +1,59 @@
 # BudgetFlow：CCF 可投目标（仅 A/B/C）
 
-时间基准：**2026-07-22 12:10（北京）**。  
-数据源：[ccf4sc 实时 DDL](https://ccf.tjunsl.com/) + 各会官网（HPCA / KDD / INFOCOM / VLDB）。
-
-**硬过滤：** 只保留 **CCF 第七版 A/B/C 正式会议**。Workshop 全删。  
-**投稿前提：** 从零新开稿（你还没交过任何题录）。  
-**说明：** 八月 **不是没有 A**——有一串体系结构/网络/数据库/安全 A；之前漏报是因为我按「必须强 AI/SE 相关」滤太狠。下面 **分相关度** 写清楚。
+时间基准：**2026-07-22**。数据源：[ccf4sc](https://ccf.tjunsl.com/) + 各会官网。  
+**只列 CCF 第七版 A/B/C；从零可开稿。** Workshop / 非 CCF 全删。  
+**相关度：** 满分 **10**（相对 BudgetFlow：批共享硬预算 · Task Value · agent/SWE · TRV）。档位标签：高≥7 · 中 4–6 · 低≤3。  
+**推荐规则：** 同窗期内 **A > B > C**；同档比相关度。
 
 ---
 
-## 调研结论置顶
+## Top 3（7–8 月最值得投）
 
-### A. 七月立刻能动手的 4 个候选（从零）
+| 优先 | 会 | CCF | 相关度 | 截稿动作 | 为什么 |
+|------|-----|-----|--------|----------|--------|
+| **1** | **AAAI-27 Main** | **A** | **9/10 · 高** | **今晚开稿** → 07-28 全文 | 唯一正对口 AI A；已有 BAMAS 等预算多代理先例 |
+| **2** | **HPCA 2027** | **A** | **4/10 · 中低** | 题录 **07-24** → 全文 **07-31** | 八月窗口里还开着的 A；须改写成 runtime/cache/scheduling |
+| **3** | **APSEC 2026 ERA** | **C** | **7/10 · 高** | **08-03** 直接交 PDF | 七月后最近、对口的 SE 正式口（Technical 已过，只剩 ERA） |
 
-| # | 会 | CCF | 今天能否开稿 | 关键截稿 | 相关度 | 官网/投稿 |
-|---|-----|-----|--------------|----------|--------|-----------|
-| **1** | **AAAI-27 Main** | **A** 人工智能 | **今晚前必须开** | 题录约 **今晚 ~19:59**；全文 **07-28** | **高** | [OpenReview](https://openreview.net/group?id=AAAI.org/2027/Conference) · [说明](https://aaai.org/conference/aaai/aaai-27/submission-instructions/) |
-| **2** | **HPCA 2027** | **A** 体系结构 | **能**（题录还开） | 题录 **07-24 AoE**；全文 **07-31 AoE** | **低–中**（写成 LLM/agent serving · runtime · 资源调度才蹭得上） | [CFP](https://conf.researchr.org/track/hpca-2027/hpca-2027-main-conference) |
-| **3** | **VLDB 2027（本轮）** | **A** 数据库 | **能**（滚动轮次） | 本轮题录约 **07-26**；全文 **08-02** | **低**（硬蹭：workload / cost-aware scheduling；审稿会问你是不是 DB） | [vldb.org/2027](https://www.vldb.org/2027/) |
-| **4** | **APSEC 2026 ERA** | **C** 软件工程 | **能**（直接交 PDF） | **08-03** | **中高**（AI4SE） | [ERA](https://conf.researchr.org/track/apsec-2026/apsec-2026-papers) · [EasyChair](https://easychair.org/conferences/?conf=apsec2026) |
+> 没有排进 Top3 但仍开着的八月 A（VLDB/PPoPP/安全等）相关度更低，见下表。  
+> **同文勿并行** AAAI 与 HPCA/ERA。
 
-**主投排序：** **① AAAI（今晚）→ ② APSEC ERA（正统 SE C）→ ③ HPCA 仅当你要硬冲系统 A 且愿意改包装 → ④ VLDB 基本不建议。**
-
-**已错过题录、七月别再幻想从零开的 A：**
-
-| 会 | CCF | 原因 |
-|----|-----|------|
-| SIGKDD 2027 | A | 题录 **07-19** 已过；全文 07-26 也救不了新开稿 |
-| INFOCOM 2027 | A | 题录 **07-17** 已过 |
+**AAAI 入口：** https://openreview.net/group?id=AAAI.org/2027/Conference
 
 ---
 
-### B. 八月到底有没有 CCF A / B？——有
+## 七月能投｜八月能投
 
-来自 [ccf.tjunsl.com](https://ccf.tjunsl.com/)（2026-07-22 更新）：
+### 七月（从零仍开）
 
-#### 八月 CCF **A**（真实存在）
+| 会 | CCF | 相关度 | 档 | 截稿 | 链接 |
+|----|-----|--------|----|------|------|
+| **AAAI-27 Main** | A | **9/10** | 高 | 题录今晚 ~19:59；全文 07-28 | [OpenReview](https://openreview.net/group?id=AAAI.org/2027/Conference) |
+| **HPCA 2027** | A | **4/10** | 中低 | 题录 07-24 AoE；全文 07-31 AoE | [CFP](https://conf.researchr.org/track/hpca-2027/hpca-2027-main-conference) |
+| **VLDB 2027（本轮）** | A | **2/10** | 低 | 题录 ~07-26；全文 08-02 | [vldb.org/2027](https://www.vldb.org/2027/) |
+| **APSEC 2026 ERA** | C | **7/10** | 高 | 08-03（七月内准备、八月交） | [ERA](https://conf.researchr.org/track/apsec-2026/apsec-2026-papers) |
 
-| 会 | 截止（约） | 领域 | 和 BudgetFlow |
-|----|------------|------|----------------|
-| **HPCA 2027** | 题录 07-24 / 全文 07-31 | 体系结构 | 蹭边：agent/LLM **runtime · cache · scheduling** |
-| **INFOCOM 2027** | 全文约 07-24（题录已过） | 网络 | **从零已晚** |
-| **VLDB 2027** | 本轮 08-02 | 数据库 | 蹭边弱 |
-| **UbiComp/ISWC 2026** | 08-02 | HCI/普适 | 基本不相关 |
-| **PPoPP 2027** | 08-04 | 并行 | 蹭边弱（并行调度） |
-| **NDSS 2027** | 08-20 | 安全 A | 不相关（除非硬写 agent 安全） |
-| **USENIX Security 2027** | 08-26 | 安全 A | 不相关 |
+**七月已晚（题录过，从零开不了）：** SIGKDD（A，题录 07-19）· INFOCOM（A，题录 07-17）· ICECCS / APSEC Technical（07-20）
 
-#### 八月 CCF **B**
+### 八月（从零仍开 / 本月截稿）
 
-| 会 | 截止（约） | 说明 |
-|----|------------|------|
-| **CSFW 2027** | 08-04 | 安全 B，和你们不对口 |
-| **EMNLP 2026 commitment** | 08-02 | CCF **B**，但必须 **五月 ARR 已审完** 才能 commit——**从零开不了** |
-| **ARR Aug → EACL** | 08-03 交 ARR | EACL **不在** CCF 第七版；别当 CCF B 报 |
+| 会 | CCF | 相关度 | 档 | 截稿 | 链接 |
+|----|-----|--------|----|------|------|
+| **HPCA 2027** | A | **4/10** | 中低 | 全文 07-31（跨到八月审） | 同上 |
+| **VLDB 2027（本轮）** | A | **2/10** | 低 | 08-02 | 同上 |
+| **UbiComp/ISWC 2026** | A | **1/10** | 低 | 08-02 | [ccf4sc](https://ccf.tjunsl.com/) |
+| **PPoPP 2027** | A | **2/10** | 低 | 08-04 | [ccf4sc](https://ccf.tjunsl.com/) |
+| **APSEC 2026 ERA** | C | **7/10** | 高 | **08-03** | [EasyChair](https://easychair.org/conferences/?conf=apsec2026) |
+| **CSFW 2027** | B | **1/10** | 低 | 08-04 | 安全，不对口 |
+| **NDSS 2027** | A | **1/10** | 低 | 08-20 | 安全 |
+| **USENIX Security 2027** | A | **1/10** | 低 | 08-26 | 安全 |
 
-**八月没有「又一个 AAAI 这种正对口的 AI A」。**  
-八月的 A 主要是 **系统/网络/库/安全**；要正统 AI/SE 顶会，下一档是：
-
-| 会 | CCF | 大约截稿 | 相关度 |
-|----|-----|----------|--------|
-| **ASPLOS 2027** | A 系统 | ~09-09 | 中（AI/ML systems 包装） |
-| **EuroSys 2027 Fall** | A 系统 | ~09-17/24 | 中 |
-| **FSE 2027** | **A 软件工程** | ~10-02 | **高（SE 主战场）** |
-| **SANER 2027** | **B 软件工程** | ~09-21 | 中 |
-| **AAMAS 2027** | **B 人工智能** | ~10（TBC） | 中高 |
+**八月名义上有、但从零开不了：** EMNLP commitment（B，08-02）——必须五月 ARR 已出审。  
+**八月没有第二个「正对口 AI A」。** 正统下一档在秋：FSE（A SE，~10-02）· SANER（B，~09-21）· AAMAS（B，~10）。
 
 ---
 
-### C. 你今晚 + 本周目光
-
-1. **今晚：AAAI OpenReview 开稿**（唯一正对口 CCF A）  
-   https://openreview.net/group?id=AAAI.org/2027/Conference  
-2. **若还想多占一个系统 A 坑：** **07-24 前** 开 **HPCA** 题录（接受「蹭边」前提）  
-3. **八月 SE 正式：** **APSEC ERA（C）**  
-4. **秋：FSE（A SE）/ SANER（B）/ AAMAS（B）**
-
-**Dual-submission：** 同文同时投多个 archival = 违规。AAAI 开了就别并行 HPCA/ERA 同稿。
-
-### 相关 PDF（先下这三个）
+## 相关 PDF
 
 | 论文 | PDF |
 |------|-----|
@@ -86,7 +61,7 @@
 | RouteLLM（ICLR-25） | https://proceedings.iclr.cc/paper_files/paper/2025/file/5503a7c69d48a2f86fc00b3dc09de686-Paper-Conference.pdf |
 | SEMAP（APSEC ERA） | https://arxiv.org/pdf/2510.12120 |
 
-细节子页：[`venue_aaai27_budgetflow.md`](./venue_aaai27_budgetflow.md) · [`venue_apsec2026_era_budgetflow.md`](./venue_apsec2026_era_budgetflow.md) · [`venue_saner2027_budgetflow.md`](./venue_saner2027_budgetflow.md) · [`venue_aamas2027_budgetflow.md`](./venue_aamas2027_budgetflow.md)
+子页：[`venue_aaai27_budgetflow.md`](./venue_aaai27_budgetflow.md) · [`venue_apsec2026_era_budgetflow.md`](./venue_apsec2026_era_budgetflow.md) · [`venue_saner2027_budgetflow.md`](./venue_saner2027_budgetflow.md) · [`venue_aamas2027_budgetflow.md`](./venue_aamas2027_budgetflow.md)
 
 ---
 
