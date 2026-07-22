@@ -126,7 +126,7 @@ few labeled key points.
 
 ## Submission Strategy
 
-Use the conference survey files under `paper1/paper/conference/` as reference
+Use the conference survey files under `paper1/paper/reference/` as reference
 material, then verify the target CFP page again before any submission.
 
 Submission targets are planning inputs, not writing constraints. The draft

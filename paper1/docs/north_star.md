@@ -39,7 +39,7 @@ The paper draft uses a PDF-first LaTeX workflow.
 
 - The canonical manuscript source lives under `paper1/paper/`.
 - `paper1/paper/main.tex` is the main paper source.
-- `paper1/paper/references.bib` stores bibliography entries.
+- `paper1/paper/src/references.bib` stores bibliography entries.
 - `paper1/paper/figures/` stores paper figures.
 - Build outputs should use the paper's English title, for example
   `paper1/paper/BudgetFlow_Value_Aware_Budget_Governance_for_Agent_Tasks.pdf`.
