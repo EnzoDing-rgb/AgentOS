@@ -36,21 +36,99 @@ DAI 2026、APSEC 2026 早期研究成果轨作为同窗口备投；一稿多投�
 
 同会近邻论文 PDF（当前主表只放三篇最相关、且均为 AAAI 2026 已发表工作）：
 
-| 论文 | 研究什么问题（人话） | 本地文件 | 对照方法和数据 | 与我们工作的区别 | 我们可以从它的 baseline 或数据集里学到什么 | 低垂的果实 |
-|------|----------------------|----------|----------------|------------------|--------------------------------------------|--------------|
-| BAMAS | 给定一个任务、一批可选大模型和一个费用上限，怎样搭建多智能体系统：先选哪些模型进系统，再决定它们用什么协作结构一起工作，从而既尽量做对，又不超预算。 | `reference/BAMAS_AAAI26.pdf` · https://ojs.aaai.org/index.php/AAAI/article/view/40226 | 对照 AutoGen、MetaGPT、ChatDev，以及 Naive-CostAware；数据用 GSM8K、MBPP、MATH。 | BAMAS 关注单个任务内部如何选模型和协作拓扑；BudgetFlow 关注一批软件工程任务共享硬预算时，稀缺的强模型机会该按任务价值分给谁。 | 它提醒我们，预算类论文不能只报准确率，还要同时报费用、预算是否守住，以及强基线在相同费用约束下的表现；Naive-CostAware 也可作为“简单预算感知策略”的命名参照。 | 在相关工作中明确写出“任务内预算构建”与“批次级任务价值分配”的差别；实验表里确保同时报告解决数、TRV、总花费和预算是否守住，不需要复现它的整数线性规划或拓扑强化学习。 |
-| ZeroRouter | 大模型越来越多，旧路由器常绑死在训练时见过的模型上；它研究怎样做查询级路由，既能在准确率、费用和延迟之间权衡，又能在几乎不重训的情况下接入新模型。 | `reference/ZeroRouter_AAAI26.pdf` · https://ojs.aaai.org/index.php/AAAI/article/view/40970 | 对照 CIT-LLM-Routing、RouteLLM、GraphRouter、FORC；数据覆盖 IFEval、BBH、MATH、GPQA、MMLU-PRO、ARC-C、HumanEval 等。 | ZeroRouter 关注单条查询该交给哪个模型，以及新模型如何接入；BudgetFlow 关注一批软件工程任务抢同一个硬预算时，预算机会如何按任务价值分配。 | 它给我们一组 AAAI 审稿人熟悉的路由基线名字，也提醒我们要区分“尽量准”“尽量省钱”“尽量低延迟”等不同目标；它的数据集设计也说明，分布内和分布外都要交代清楚。 | 正文中把 ZeroRouter 明确列为查询级多目标路由代表；实验对照命名上保留只用便宜模型、只用最强模型、学得路由或静态路由，不需要重跑六十模型池或接入潜在空间路由。 |
-| Online Multi-LLM Selection | 用户会多轮修改提示，后续上下文怎样变化事先说不清；它研究怎样在线、逐步选择该调用哪个大模型，并在单条查询的费用上限下做预算感知选择。 | `reference/OnlineMultiLLM_AAAI26.pdf` · https://ojs.aaai.org/index.php/AAAI/article/view/39672 | 对照 MetaLLM、MixLLM、多数投票和单模型；数据用 MMLU-Pro、GPQA、AIME、Math500，候选池约六个模型。 | 它的预算是单条查询多步交互里的费用上限；BudgetFlow 的预算是一批软件工程任务共同竞争的硬预算。 | 它提醒我们把“在线学习/反馈更新”和“预算感知选择”讲清楚：他们从逐步交互反馈更新选模，我们从验证框架可信的任务级记录更新费用记忆、路由记忆和升级记忆。 | 在方法和消融里明确说明学习回路消费的是任务级验证记录；写清“在线单查询预算”与“批次共享硬预算”的不同，不需要复现六模型上下文赌博机实验。 |
+<table>
+<thead>
+<tr>
+<th style="width:8%">论文</th>
+<th style="width:26%">研究什么问题（人话）</th>
+<th style="width:8%">本地文件</th>
+<th style="width:14%">对照方法和数据</th>
+<th style="width:16%">与我们工作的区别</th>
+<th style="width:14%">我们可以从它的 baseline 或数据集里学到什么</th>
+<th style="width:14%">低垂的果实</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>BAMAS</td>
+<td>给定一个任务、一批可选大模型和一个费用上限，怎样搭建多智能体系统：先选哪些模型进系统，再决定它们用什么协作结构一起工作，从而既尽量做对，又不超预算。</td>
+<td><a href="reference/BAMAS_AAAI26.pdf">BAMAS_AAAI26.pdf</a><br><a href="https://ojs.aaai.org/index.php/AAAI/article/view/40226">OJS</a></td>
+<td>对照 AutoGen、MetaGPT、ChatDev，以及 Naive-CostAware；数据用 GSM8K、MBPP、MATH。</td>
+<td>BAMAS 关注单个任务内部如何选模型和协作拓扑；BudgetFlow 关注一批软件工程任务共享硬预算时，稀缺的强模型机会该按任务价值分给谁。</td>
+<td>它提醒我们，预算类论文不能只报准确率，还要同时报费用、预算是否守住，以及强基线在相同费用约束下的表现；Naive-CostAware 也可作为“简单预算感知策略”的命名参照。</td>
+<td>在相关工作中明确写出“任务内预算构建”与“批次级任务价值分配”的差别；实验表里确保同时报告解决数、TRV、总花费和预算是否守住，不需要复现它的整数线性规划或拓扑强化学习。</td>
+</tr>
+<tr>
+<td>ZeroRouter</td>
+<td>大模型越来越多，旧路由器常绑死在训练时见过的模型上；它研究怎样做查询级路由，既能在准确率、费用和延迟之间权衡，又能在几乎不重训的情况下接入新模型。</td>
+<td><a href="reference/ZeroRouter_AAAI26.pdf">ZeroRouter_AAAI26.pdf</a><br><a href="https://ojs.aaai.org/index.php/AAAI/article/view/40970">OJS</a></td>
+<td>对照 CIT-LLM-Routing、RouteLLM、GraphRouter、FORC；数据覆盖 IFEval、BBH、MATH、GPQA、MMLU-PRO、ARC-C、HumanEval 等。</td>
+<td>ZeroRouter 关注单条查询该交给哪个模型，以及新模型如何接入；BudgetFlow 关注一批软件工程任务抢同一个硬预算时，预算机会如何按任务价值分配。</td>
+<td>它给我们一组 AAAI 审稿人熟悉的路由基线名字，也提醒我们要区分“尽量准”“尽量省钱”“尽量低延迟”等不同目标；它的数据集设计也说明，分布内和分布外都要交代清楚。</td>
+<td>正文中把 ZeroRouter 明确列为查询级多目标路由代表；实验对照命名上保留只用便宜模型、只用最强模型、学得路由或静态路由，不需要重跑六十模型池或接入潜在空间路由。</td>
+</tr>
+<tr>
+<td>Online Multi-LLM Selection</td>
+<td>用户会多轮修改提示，后续上下文怎样变化事先说不清；它研究怎样在线、逐步选择该调用哪个大模型，并在单条查询的费用上限下做预算感知选择。</td>
+<td><a href="reference/OnlineMultiLLM_AAAI26.pdf">OnlineMultiLLM_AAAI26.pdf</a><br><a href="https://ojs.aaai.org/index.php/AAAI/article/view/39672">OJS</a></td>
+<td>对照 MetaLLM、MixLLM、多数投票和单模型；数据用 MMLU-Pro、GPQA、AIME、Math500，候选池约六个模型。</td>
+<td>它的预算是单条查询多步交互里的费用上限；BudgetFlow 的预算是一批软件工程任务共同竞争的硬预算。</td>
+<td>它提醒我们把“在线学习/反馈更新”和“预算感知选择”讲清楚：他们从逐步交互反馈更新选模，我们从验证框架可信的任务级记录更新费用记忆、路由记忆和升级记忆。</td>
+<td>在方法和消融里明确说明学习回路消费的是任务级验证记录；写清“在线单查询预算”与“批次共享硬预算”的不同，不需要复现六模型上下文赌博机实验。</td>
+</tr>
+</tbody>
+</table>
 
 次要表格（备份记录；不进主表，但保留为 AAAI 相关工作线索）：
 
-| 论文 | 年 | 为什么放次要位置 | 本地文件 | 备注 |
-|------|----|------------------|----------|------|
-| CCPO | 2026 | 单题智能体编排，在可靠性约束下最小化费用；很有参考价值，但不如前三篇直接对应“路由/预算分配”的主线。 | `reference/CCPO_AAAI26.pdf` · https://ojs.aaai.org/index.php/AAAI/article/view/39739 | 已深读；详见附录 B。 |
-| STEER | 2026 | 推理步骤级小模型/大模型切换，信号来自逐步置信分数；不是批次任务之间的预算分配。 | `reference/STEER_AAAI26.pdf` · https://ojs.aaai.org/index.php/AAAI/article/view/40413 | 已深读；详见附录 B。 |
-| ICL-Router | 2026 | 用上下文向量表示模型能力，重点是新模型免重训接入；费用和硬预算不是主线。 | `reference/ICL-Router_AAAI26.pdf` · https://ojs.aaai.org/index.php/AAAI/article/view/40628 | 扫到入库。 |
-| CP-Router | 2026 | 在普通大模型和推理大模型之间用共形预测做二选一路由，目标是减少 token 消耗；问题粒度仍是单条提示。 | `reference/CP-Router_AAAI26.pdf` · https://ojs.aaai.org/index.php/AAAI/article/view/40589 | 扫到入库。 |
-| Capability Instruction Tuning（MODEL-SAT） | 2025 | 指令级能力路由，主要目标是选对模型把题做对；不是 2026 年，也不是费用/预算主线。 | `reference/MODEL-SAT_AAAI25.pdf` · https://ojs.aaai.org/index.php/AAAI/article/view/34790 | 扫到入库；ZeroRouter 也把它作为对照。 |
+<table>
+<thead>
+<tr>
+<th style="width:18%">论文</th>
+<th style="width:6%">年</th>
+<th style="width:48%">为什么放次要位置</th>
+<th style="width:12%">本地文件</th>
+<th style="width:16%">备注</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CCPO</td>
+<td>2026</td>
+<td>单题智能体编排，在可靠性约束下最小化费用；很有参考价值，但不如前三篇直接对应“路由/预算分配”的主线。</td>
+<td><a href="reference/CCPO_AAAI26.pdf">CCPO_AAAI26.pdf</a><br><a href="https://ojs.aaai.org/index.php/AAAI/article/view/39739">OJS</a></td>
+<td>已深读；详见附录 B。</td>
+</tr>
+<tr>
+<td>STEER</td>
+<td>2026</td>
+<td>推理步骤级小模型/大模型切换，信号来自逐步置信分数；不是批次任务之间的预算分配。</td>
+<td><a href="reference/STEER_AAAI26.pdf">STEER_AAAI26.pdf</a><br><a href="https://ojs.aaai.org/index.php/AAAI/article/view/40413">OJS</a></td>
+<td>已深读；详见附录 B。</td>
+</tr>
+<tr>
+<td>ICL-Router</td>
+<td>2026</td>
+<td>用上下文向量表示模型能力，重点是新模型免重训接入；费用和硬预算不是主线。</td>
+<td><a href="reference/ICL-Router_AAAI26.pdf">ICL-Router_AAAI26.pdf</a><br><a href="https://ojs.aaai.org/index.php/AAAI/article/view/40628">OJS</a></td>
+<td>扫到入库。</td>
+</tr>
+<tr>
+<td>CP-Router</td>
+<td>2026</td>
+<td>在普通大模型和推理大模型之间用共形预测做二选一路由，目标是减少 token 消耗；问题粒度仍是单条提示。</td>
+<td><a href="reference/CP-Router_AAAI26.pdf">CP-Router_AAAI26.pdf</a><br><a href="https://ojs.aaai.org/index.php/AAAI/article/view/40589">OJS</a></td>
+<td>扫到入库。</td>
+</tr>
+<tr>
+<td>Capability Instruction Tuning（MODEL-SAT）</td>
+<td>2025</td>
+<td>指令级能力路由，主要目标是选对模型把题做对；不是 2026 年，也不是费用/预算主线。</td>
+<td><a href="reference/MODEL-SAT_AAAI25.pdf">MODEL-SAT_AAAI25.pdf</a><br><a href="https://ojs.aaai.org/index.php/AAAI/article/view/34790">OJS</a></td>
+<td>扫到入库；ZeroRouter 也把它作为对照。</td>
+</tr>
+</tbody>
+</table>
 
 稿件中的对照骨架：只用便宜模型 · 只用最强模型 · 学得路由与静态路由 · 预算感知多智能体；主指标是价值冻结后的 TRV。
 
