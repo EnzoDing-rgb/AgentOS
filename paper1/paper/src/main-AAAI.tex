@@ -1,19 +1,30 @@
-\documentclass{article}
-
-\usepackage{microtype}
+\documentclass[letterpaper]{article}
+\def\aaaianonymous{true}
+\usepackage[submission]{aaai2026}
+\usepackage{times}
+\usepackage{helvet}
+\usepackage{courier}
+\usepackage[hyphens]{url}
 \usepackage{graphicx}
-\usepackage{booktabs}
-\usepackage{hyperref}
-\newcommand{\theHalgorithm}{\arabic{algorithm}}
-\usepackage[preprint]{icml2026}
+\urlstyle{rm}
+\def\UrlFont{\rm}
+\usepackage{natbib}
+\usepackage{caption}
+\frenchspacing
+\setlength{\pdfpagewidth}{8.5in}
+\setlength{\pdfpageheight}{11in}
 \usepackage{amsmath}
+\usepackage{booktabs}
 \usepackage{array}
 \usepackage{multirow}
+\usepackage{xcolor}
 \usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta,positioning,fit,calc,shapes.geometric}
 \usepackage{xspace}
-\pgfplotsset{compat=1.18}
+\usepackage{algorithm}
+\usepackage{algorithmic}
 
 \newcommand{\method}{BudgetFlow\xspace}
 \newcommand{\trv}{TRV\xspace}
@@ -23,41 +34,25 @@
 \newcommand{\sharedbudget}{Shared Budget\xspace}
 \newcommand{\verifier}{Verifier\xspace}
 \newcommand{\pos}[1]{\textcolor{red}{\textbf{#1}}}
-\newcommand{\ctrl}[1]{\textcolor{bfblue}{\textbf{#1}}}
+\newcommand{\ctrl}[1]{\textcolor{blue}{\textbf{#1}}}
 \definecolor{bfred}{HTML}{C62828}
 \definecolor{bfblue}{HTML}{1565C0}
 \definecolor{bfteal}{HTML}{00897B}
 \definecolor{bforange}{HTML}{EF6C00}
 \definecolor{bfgray}{HTML}{6D6D6D}
-\captionsetup[table]{position=below}
-\hypersetup{pdfauthor={Fengde Ding}}
 
-\renewenvironment{abstract}
-{%
-  \centerline{\large\bf Abstract}
-  \vspace{-0.12in}\par\noindent}
-{\par\vskip 0.12in}
+\pdfinfo{/TemplateVersion (2026.1)}
 
-\icmltitlerunning{BudgetFlow: Value-Aware Budget Governance for Agent Tasks}
+\title{BudgetFlow: Value-Aware Budget Governance for Agent Tasks}
+\author{
+    Anonymous Author(s)\\
+    Affiliation\\
+    Address\\
+    \texttt{email}
+}
 
 \begin{document}
-
-\twocolumn[
-  \icmltitle{BudgetFlow: Value-Aware Budget Governance for Agent Tasks}
-
-  {\centering
-    {\bf Fengde Ding}\textsuperscript{1}\par
-    {\small \texttt{fengde\_ding@uir.edu.cn}}\par
-    {\small \textsuperscript{1}University of International Relations}\par
-  }
-  \icmlkeywords{Agent Systems, Budget Allocation, Model Routing, SWE-bench}
-
-  \vskip 0.3in
-]
-
-\makeatletter
-\global\icml@noticeprintedtrue
-\makeatother
+\maketitle
 
 \begin{abstract}
 Multi-step AI agent tasks consume variable amounts of model budget, and tasks in a batch often have unequal value. We study \emph{Batch-Level Task Budget Allocation}: a task batch shares one hard budget, and scarce model opportunities should flow toward the tasks that create the most verified value.
@@ -182,7 +177,7 @@ We report three headline metrics:
 \subsection{Core Terms and Metric Reading}
 Table~\ref{tab:glossary} gives the compact reading guide used throughout the paper. The metrics are intentionally simple: success is verifier-settled, value is pre-registered, and efficiency is value divided by spend. This makes the frontier interpretable through standard verified outcomes and a pre-registered value ledger.
 
-\begin{table}[H]
+\begin{table}[t]
 \centering
 \footnotesize
 \begin{tabular}{@{}p{0.34\columnwidth}p{0.61\columnwidth}@{}}
@@ -568,7 +563,6 @@ The SWE-bench experiments instantiate this interface in a verified coding domain
 
 The broader value of \method is the framework and interface. Coding tasks provide a strict verifier and measurable spend, making SWE-bench a strong testbed for the allocation contract. The transferable object is the interface: tasks expose \taskvalue, \tokencost, \modelfit, \sharedbudget state, and verifier-settled outcomes. By \textbf{separating allocation signals from outcome settlement}, BudgetFlow offers a portable way to reason about verified value under fixed resource constraints, from SWE-bench-style coding to future serving-aware and multi-tenant agent systems.
 
-\bibliographystyle{icml2026}
-\bibliography{references}
 
+\bibliography{references}
 \end{document}
