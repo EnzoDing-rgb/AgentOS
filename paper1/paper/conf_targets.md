@@ -34,21 +34,28 @@ DAI 2026、APSEC 2026 早期研究成果轨是同窗口备投；一稿多投政�
 | Author Kit | https://aaai.org/conference/aaai/aaai-27/ |
 | 格式 | 双栏 US Letter；正文 ≤7 页；第 8–9 页仅参考文献；双盲；Reproducibility Checklist |
 
-**同会近邻 PDF（3）：**
+**同会近邻 PDF（深读 5 + 扫到入库 3）：**
 
-| 论文 | 本地文件 | Baselines | 数据 |
-|------|----------|-----------|------|
-| BAMAS | `reference/BAMAS_AAAI26.pdf` · https://ojs.aaai.org/index.php/AAAI/article/view/40226 | AutoGen、MetaGPT、ChatDev；Naive-CostAware | GSM8K、MBPP、MATH |
-| ZeroRouter | `reference/ZeroRouter_AAAI26.pdf` · https://ojs.aaai.org/index.php/AAAI/article/view/40970 | CIT-LLM-Routing、RouteLLM、GraphRouter、FORC | IFEval、BBH、MATH、GPQA、MMLU-PRO、ARC-C、HumanEval 等 |
-| STEER | `reference/STEER_AAAI26.pdf` · https://ojs.aaai.org/index.php/AAAI/article/view/40413 | RSD；Damani 问题级分配；SpecReason；见下方详解 | MATH500、AIME、Omni-Math、ACPBench、MuSiQue、KOR-Bench |
+| 论文 | 年 | 本地文件 | Baselines | 数据 | 处置 |
+|------|----|----------|-----------|------|------|
+| BAMAS | 2026 | `reference/BAMAS_AAAI26.pdf` · https://ojs.aaai.org/index.php/AAAI/article/view/40226 | AutoGen、MetaGPT、ChatDev；Naive-CostAware | GSM8K、MBPP、MATH | **深读** |
+| ZeroRouter | 2026 | `reference/ZeroRouter_AAAI26.pdf` · https://ojs.aaai.org/index.php/AAAI/article/view/40970 | CIT-LLM-Routing、RouteLLM、GraphRouter、FORC | IFEval、BBH、MATH、GPQA、MMLU-PRO、ARC-C、HumanEval 等 | **深读** |
+| STEER | 2026 | `reference/STEER_AAAI26.pdf` · https://ojs.aaai.org/index.php/AAAI/article/view/40413 | RSD；Damani 问题级分配；SpecReason | MATH500、AIME、Omni-Math、ACPBench、MuSiQue、KOR-Bench | **深读** |
+| **CCPO** | 2026 | `reference/CCPO_AAAI26.pdf` · https://ojs.aaai.org/index.php/AAAI/article/view/39739 | Random；LLM 策略；LLM-EXIT；UALA；CPO / CPO batch / CPO online | HotpotQA、MMLU | **深读（新增）** |
+| **Online Multi-LLM Selection**（上下文赌博机） | 2026 | `reference/OnlineMultiLLM_AAAI26.pdf` · https://ojs.aaai.org/index.php/AAAI/article/view/39672 | MetaLLM、MixLLM、多数投票；单模型 | MMLU-Pro、GPQA、AIME、Math500 | **深读（新增）** |
+| Capability Instruction Tuning（MODEL-SAT） | **2025** | `reference/MODEL-SAT_AAAI25.pdf` · https://ojs.aaai.org/index.php/AAAI/article/view/34790 | 多种路由设定；ZeroRouter 亦以其为对照 | 多模型池路由基准（含多模态扩展） | 扫到入库；性能向路由，费用不是一等公民 |
+| ICL-Router | 2026 | `reference/ICL-Router_AAAI26.pdf` · https://ojs.aaai.org/index.php/AAAI/article/view/40628 | 既有路由；强调新模型免重训 | 分布内 / 分布外路由任务 | 扫到入库；路由表示，少谈硬预算 |
+| CP-Router | 2026 | `reference/CP-Router_AAAI26.pdf` · https://ojs.aaai.org/index.php/AAAI/article/view/40589 | LLM vs LRM；共形预测路由 | 多选问答等；降 token | 扫到入库；LLM/LRM 二选一，非批次预算 |
 
 稿内对照骨架：cheap-only · strong-only · 学得/静态路由 · 预算感知多智能体；主指标 TRV（价值冻结）。
 
+**诚实边界：** 上表不是「AAAI 全文检索的完备枚举」。它是按路由 / 选模 / 省钱 / 预算关键词在 OJS 与相关引用链上扫到的**已确认录用件**。若还有更边角的「路由」同义词篇目，不排除漏网；但「只有 BAMAS / ZeroRouter / STEER 三篇」这一判断**已被证伪**。
+
 ---
 
-### 1.1.1 三篇 AAAI 近邻论文详解
+### 1.1.1 五篇 AAAI 近邻论文详解
 
-下面按人话讲清 BAMAS、ZeroRouter、STEER 各自在研究什么、怎么评、得出什么结论。内容依据本地 PDF 正文，不是摘要复读。
+下面按人话讲清 BAMAS、ZeroRouter、STEER、CCPO、Online Multi-LLM Selection 各自在研究什么、怎么评、得出什么结论。内容依据本地 PDF 正文，不是摘要复读。
 
 #### BAMAS：Structuring Budget-Aware Multi-Agent Systems
 
@@ -139,6 +146,60 @@ DAI 2026、APSEC 2026 早期研究成果轨是同窗口备投；一稿多投政�
 **得到的结论是什么。**  
 在数学推理上，STEER 能接近或超过「全程只用大模型」的正确率，同时明显少算；作者报告在 AIME 上相对全程大模型大约多 20% 正确率，并少约 48% 的 FLOPs。在更广的推理任务上，它也常给出最好的正确率–计算量权衡。相对依赖过程奖励模型的 RSD：当过程奖励模型的训练分布与当前模型/任务不一致时（例如过程奖励模型训在 Qwen 数学模型上，却拿去评 Gemma），RSD 正确率会掉，有时甚至比全程大模型更费，因为一步被拒后等于小模型和大模型都跑过。问题级路由器能省算力，但在部分模型与任务上正确率掉得更多，或几乎总是把题扔给大模型。总结论：用小模型自身的逐步置信分数做步骤级切换，可以少依赖外部训练模块，在换模型族、换任务域时更稳，并且在正确率与计算量之间取得可用的折中。
 
+**对我们有没有启示。**  
+没有。  
+STEER 管的是「一道题的推理过程里，每一步用小模型还是大模型」；BudgetFlow 管的是「一批 SWE 任务共用硬预算时，下一笔机会给哪个任务、是否上更强档」。两者决策单位不同，信号也不同（逐步 logits 置信 vs 任务价值 / 估计 token 需求 / 模型匹配 / 预算压力）。因此：不要加逐步置信路由实验；Related Work 里如需提及，只用来划清边界，一句话即可。
+
+#### CCPO：Conformal Constrained Policy Optimization for Cost-Effective LLM Agents
+
+**研究问题是什么。**  
+单个大模型又贵又未必稳；人会在「再试一次 / 换更强模型 / 直接交卷」之间做权衡。CCPO 把这件事做成智能体编排：策略在若干轮里编排「便宜但不准的底座模型」和「贵但更准的引导模型」（文中底座用 LLaMA，引导用 GPT-4o），并可调用检索等工具。目标不是「尽量准就行」，而是：在用户指定的可靠性水平 α 下，**最小化期望费用**；可靠性用共形预测写成可检验的覆盖率约束（预测集合要盖住真答案，或判定该题不可解）。
+
+**Baseline 用的是什么。**  
+两组。  
+- 智能体 / 启发式：Random（在动作集上均匀抽）；把策略网络换成提示过的大模型（GPT-4o / LLaMA）；LLM-EXIT（同一模型既答题又决定要不要再来一轮）；GPT-4o 引导的 UALA（用固定不确定性阈值选动作，而不是学策略）。  
+- 策略学习：普通 CPO（约束策略优化，但无共形）；CPO batch（训完后在校准集上做批次共形定阈值）；CPO online（用在线共形把随机策略收成有覆盖保证的策略）。CCPO 的差别是把共形预测**嵌进**约束策略优化，而不是训完再贴一层阈值。
+
+**数据集用的是什么。**  
+- HotpotQA：多跳常识问答，工具侧跟 UALA 一样用 Wikipedia 检索；训练约 1000 题，校准与测试各约 200。  
+- MMLU：多选学科问答；训练约 560，校准与测试各约 200。原 UALA 用 Google API 当工具，但单价太高（文中写约每千次 5 美元），作者改成思维链采样（第一步温度 0，后续温度 1）。  
+模型：底座 LLaMA-2-7B（8-bit）或 LLaMA-3.2-3B；引导 GPT-4o。回合上限 T=4；可靠性 α 主报告 0.1（部分更强底座用更严的 0.05）。
+
+**实验怎么设计。**  
+每轮策略在「交底座答案 / 交引导答案 / 再查工具或再试」一类动作里选；共形侧维护自适应阈值 κ，与费用感知策略联合更新。策略网络是三层、每层 64 隐单元的小网络，从头训约 1500–2000 步。主指标：累计 API/计算费用（美分）、覆盖率、平均回合长度、预测集合大小。另在 100 次随机划分上画覆盖率与费用箱线图，检查是否稳在目标 α 附近。
+
+**得到的结论是什么。**  
+在 HotpotQA 与 MMLU 上，CCPO 能在达到目标覆盖率的同时，相对最强的费用感知对照把总费用再压一截；作者报告相对一批费用感知与大模型引导方法，费用最多约降 30%。相对 CPO batch / CPO online 这类「先训策略再贴共形」的做法，把共形嵌进优化通常更能同时卡住覆盖与费用。总结论：多智能体式「底座 + 引导」编排，可以在**显式可靠性约束**下做费用最小化，而不只是事后调阈值。
+
+**对我们有没有启示。**  
+有定位启示，没有该搬过来的优化器。  
+1. AAAI 审稿人已经见过「智能体编排 + 费用最小化 + 可靠性/覆盖约束」；BudgetFlow 要写清自己的约束是**批次共享硬预算 + 预注册 Task Value + 验证型解决**，不是单题共形覆盖率 α。  
+2. 报告习惯可对齐：同时报费用与「约束是否满足」（他们报覆盖率；我们报预算是否守住、TRV / Resolved）。  
+3. 不要把 CCPO 的共形阈值或 CPO 训练搬进主线；那是单题智能体编排层，不是批次价值分配。
+
+#### Online Multi-LLM Selection：上下文赌博机下的在线多模型选择
+
+**研究问题是什么。**  
+用户查询会多步 refinement：上一步模型答完，提示会按黑盒过程变掉，无法可靠模拟或预测未来上下文。作者要在这种「上下文无结构演化」下，在线、逐步挑选该调哪个大模型，且不依赖离线路由训练集、也不看模型内部。进一步，他们加了**预算感知**扩展（每轮有费用上限、费用随机）和**位置感知**启发（更希望早几步就答对）。
+
+**Baseline 用的是什么。**  
+单步上下文赌博机路由器 MetaLLM、MixLLM，以及多数投票；再与候选池里各单模型比。公平起见，所有方法都允许多步（最多 H=4）；基线路由器失败后按原设计**重试同一初次选择**，而他们的方法每步可换模型。
+
+**数据集用的是什么。**  
+四套：MMLU-Pro、GPQA（偏知识）、AIME、Math500（偏数学推理）。无离散标签的题用 DeepSeek-R1 当裁判给对错。每套随机 20% 初始化、80% 在线评测。候选池约六个模型，跨能力与单价，文中点名包括 Llama-4-Maverick、Gemini-2.0-Flash、Mistral-Small-3.1，以及 Phi-4、GPT-4.1-Nano、DeepSeek-V3 等。查询用 384 维 BGE 嵌入。预算感知变体的每查询预算，相对「无预算约束的贪心 LinUCB」平均花费来定，故意卡紧。
+
+**实验怎么设计。**  
+主算法是基于 LinUCB 的上下文赌博机，优化「短视遗憾」（myopic regret），证明可不预测未来上下文仍有次线性遗憾。预算感知版在剩余预算内用费用归一化的乐观分数选臂；再提出 PAKH（位置感知背包启发），把高置信、可能更贵的模型尽量排到前几步，避免纯贪心总捡便宜弱模型。主看正确率与费用；图上占「同等费用更高正确率」的左上区域更好。
+
+**得到的结论是什么。**  
+在线方法相对 MetaLLM / MixLLM / 多数投票，在正确率–费用权衡上更好。PAKH 在难推理集上尤其强：文中报告 AIME 约 62.50%、GPQA 约 66.67%；全任务平均相对最强路由基线 MixLLM 正确率更高且更省。无预算的贪心 LinUCB 在 MMLU-Pro、Math500 上正确率最高，说明「先追求准」与「卡预算」是不同工作点。总结论：在提示黑盒演化、只能拿在线反馈时，上下文赌博机可以做自适应、费用敏感的多模型选择。
+
+**对我们有没有启示。**  
+有一点对照命名启示，机制不用搬。  
+1. 他们的「预算」是**单查询多步**上的费用上限；我们的是**一批任务共享**硬预算。Related Work 必须写清这两层，避免审稿人以为我们在做同一问题。  
+2. 「在线反馈更新选模」可提醒：若写学习回路，要强调我们消费的是 harness 可信的任务级记录（费用记忆 / 路由记忆 / 升级记忆），不是他们的逐步赌博机反馈。  
+3. 不必复现六模型在线赌博机实验；主线保持固定任务集与冻结价值即可。
+
 ---
 
 ### 1.2 DAI 2026（备投）
@@ -190,18 +251,23 @@ DAI 2026、APSEC 2026 早期研究成果轨是同窗口备投；一稿多投政�
 | 1 | **BAMAS**<br>AAAI 2026 · CCF A<br>`BAMAS_AAAI26.pdf` | 在给定费用预算下搭建多智能体系统：先用整数线性规划选出一组既够用又不太贵的大模型，再用强化学习决定智能体之间用线性、星形等哪种协作拓扑，最后按选中的模型池和拓扑真正跑起来。对照方法包括 AutoGen、MetaGPT、ChatDev，以及按资源档位贪心选配置的 Naive-CostAware；数据用 GSM8K、MBPP、MATH。作者报告在达到相近正确率的同时，费用最多可降约 86%。 | BAMAS 管的是**单个任务内部**「该用哪些模型、智能体怎么连」；BudgetFlow 管的是**一批任务共用一个硬预算**时，稀缺的模型机会该分给谁、按任务价值怎么分配。 | **有。** Related Work 里把 BAMAS 明确写成「任务内、预算约束下的多智能体构建」，与我们的「批次级 Task Value 分配」对仗写清即可；不必复现他们的整数线性规划和拓扑强化学习。 |
 | 2 | **ZeroRouter**<br>AAAI 2026 · CCF A<br>`ZeroRouter_AAAI26.pdf` | 在大约六十个大模型组成的模型池上做零样本查询级路由（训练时没见过目标模型也能用），并在「尽量准 / 尽量省钱 / 尽量低延迟」三组目标权重下比较。对照包括 CIT-LLM-Routing、RouteLLM、GraphRouter、FORC；评测约九套基准（含 IFEval、BBH、MATH、GPQA、MMLU-PRO，以及 ARC-C、HumanEval 等分布外集合）。 | 决策单位是**一条查询选哪个模型**；没有「多任务共享硬预算、按任务价值排队」这一层。 | **基本没有新实验。** 主线里本来就该有 cheap-only / strong-only / 学得或静态路由对照；把 ZeroRouter 当作「大规模模型池零样本路由」的引用代表即可，不必重跑六十模型池。 |
 | 3 | **STEER**<br>AAAI 2026 · CCF A<br>`STEER_AAAI26.pdf` | 在推理过程中按**推理步骤**在小模型和大模型之间切换以省算力：在小模型生成下一步之前，看它输出分布上的置信程度（文中用 logits 上的置信分数，并用高斯混合模型做校准）；只有小模型对下一步不够有把握时，才把这一步交给大模型。对照分两组：一组依赖外部训练模块（例如用过程奖励模型做逐步筛选的 RSD，以及 Damani 等人在问题级别决定是否升级到大模型的方法）；另一组尽量不依赖外部训练模块（例如 SpecReason 一类设计）。数据包括 MATH500、AIME、Omni-Math、ACPBench、MuSiQue、KOR-Bench 等。作者报告在 AIME 上相对「全程大模型」大约多 20% 准确率、少约 48% 的浮点运算量。 | 这是**单条推理轨迹内部**的逐步模型切换，信号来自小模型自己的输出置信程度；不是批次任务之间的共享硬预算与 Task Value。 | **不相关，无需调整。** 不要为对齐 STEER 去加逐步置信路由实验；Related Work 里用一两句划清「步骤级置信路由 ≠ 批次级价值分配」即可。 |
-| 4 | **RouteLLM**<br>ICLR 2025 · CCF A<br>`RouteLLM_ICLR25.pdf` | 用人类偏好数据训练路由器，在推理时为每条查询在「更强更贵的模型」和「更弱更便宜的模型」之间二选一。训练主要用 Chatbot Arena 的对战偏好，并可用 MMLU 验证集金标、以及 Nectar 上 GPT-4 裁判偏好做数据增强。评测用 MMLU、MT Bench、GSM8K；主对照是在费用约束下随机路由。作者报告在不明显牺牲质量时费用可降一半以上。 | 仍是**单查询、强弱二选一**；没有跨任务的价值竞争。 | **有，而且是我们本来就该有的对照命名。** 确保论文与实验矩阵里把「受 RouteLLM 启发的学得路由 / 任务级路由对照」写清楚、跑在同一共享硬预算和同一验证器下即可；不必按他们的 Arena 偏好数据重新训一套公开路由器。 |
-| 5 | **GraphRouter**<br>ICLR 2025 · CCF A<br>`GraphRouter_ICLR25.pdf` | 把任务、查询、大模型建成一张异构图，用边预测估计「把某查询交给某模型」的效果和费用，从而在「效果优先 / 均衡 / 费用优先」三种权重设定下选模型；新模型进来时尽量少重训。数据包括 Alpaca、GSM8K、SQuAD、Multi-News 等拼成的多任务交互数据。作者报告相对既有路由器至少约 12.3% 的提升。 | 图路由仍然服务**单条查询选模型**；不回答「下一笔预算该给批次里哪一个任务」。 | **没有值得顺手复现的实验。** 引用时把它和 RouteLLM 一起归入「查询级路由」族即可。 |
-| 6 | **Cascade Routing**<br>ICML 2025 · CCF A<br>`CascadeRouting_ICML25.pdf` | 把「事先选一个模型」的路由，和「从小到大依次调用、看质量估计再决定是否继续」的级联，统一成一个可证明的框架（文中的 cascade routing），并强调事后质量估计是否靠谱决定了省钱效果。对照包括单独做路由、单独做级联、以及常见的阈值级联。评测用 RouterBench，并且在 SWE-Bench 上也报了相对提升。 | 决策对象仍是**单条查询的模型调用链**；SWE-Bench 在这里是质量任务，不是「多任务共享硬预算 + 预注册任务价值」。 | **有一点，只在写作。** Related Work / 实验讨论里点明「同属 SWE 测试床，但他们做查询级级联，我们做批次级价值分配」；不必再实现他们的最优级联算法。 |
-| 7 | **RouteNLP**<br>ACL 2026 Industry Track（ACL 主会为 CCF A）<br>`RouteNLP_ACL26.pdf` | 企业场景下跨多种自然语言任务的分层模型路由：难度感知路由器、用共形预测做阈值初始化的置信级联，以及「升级失败聚类 → 针对性蒸馏便宜模型 → 再训路由器」的闭环。对照包括 Always 最高档、Always 便宜档、随机、规则、HybridLLM、RouteLLM 等。他们构造了六任务基准，并在企业客服试点里跑了约八周、每天约五千条查询，报告推理费用约降 58%。 | 单位仍是企业**查询**；质量约束是任务类型上的验收，不是批次 Task Value 与验证型补丁结算。 | **不相关，无需调整实验。** 最多在 Related Work 用一句承认「产业界也在做费用–质量路由」，然后收回批次问题。 |
-| 8 | **SWE-bench**<br>ICLR 2024 · CCF A<br>`SWEbench_ICLR24.pdf` | 评测框架本身：从真实 GitHub issue 与对应拉取请求构造两千余个软件工程题，用仓库测试判定补丁是否真正解决问题。原论文对照包括 GPT-3.5、GPT-4、Claude 2，以及他们微调的 SWE-Llama；另有 Lite 子集与约一万九千条训练实例。 | 它是**测试床与验证协议**；BudgetFlow 在其上研究预算治理，而不是再发明一套 issue 基准。 | **不相关，无需为「对齐 SWE-bench 论文」再开实验。** 保持任务集固定、价值冻结、验证器可信即可。 |
-| 9 | **Avengers-Pro**（Beyond GPT-5）<br>DAI 2025 · CCF C<br>`AvengersPro_DAI25.pdf` | 测试时把查询嵌入、聚类，再按可调参数 α 在「效果」与「费用」之间打分，把查询路由到最合适的模型，从而画出相对单模型的帕累托前沿。数据包括 GPQA-Diamond、Humanity’s Last Exam、ARC-AGI、SimpleQA、LiveCodeBench 等约六套难题；模型池含 GPT-5-medium、Gemini-2.5-pro、Claude-opus-4.1 等。作者报告可在接近最强单模型表现时明显降费，或在相近费用下超过最强单模型。 | 优化的是**查询级性能–费用曲线**；没有预注册的任务价值，也没有一批任务抢同一硬预算。 | **有，且主要是写法。** 投稿 DAI 或写成本–效果图时，可借用「帕累托前沿 / 可调权衡参数」这种读者熟悉的叙述；不必重跑他们的八模型、六基准矩阵。 |
-| 10 | **AgentNet**<br>NeurIPS 2025 · CCF A<br>`AgentNet_NeurIPS25.pdf` | 去中心化的大模型多智能体协作：智能体在动态有向无环图上按本地专长接任务、演化连接，并用检索增强记忆，避免一切都经过中心调度器。对照包括直接让单模型答题，以及 MetaGPT 这类中心化多智能体。数据覆盖数学（MATH）、逻辑问答（BBH）、工具调用（API-Bank）与代码类任务。 | 核心是**协作拓扑与去中心化**；预算与任务价值不是一等公民。 | **不相关，无需调整。** 不要为对齐 AgentNet 去改我们的批次预算实验。 |
-| 11 | **SEMAP**<br>APSEC 2025 早期研究成果轨 · CCF C<br>`SEMAP_APSEC25.pdf` | 用多智能体搭软件工程流水线时，失败模式如何分类与观察。开发任务用基于 MetaGPT 的五角色设置，漏洞相关任务用三角色设置；数据包括 HumanEval，以及从 Big-Vul、CVEFixes 抽样的漏洞子集；度量用 MAST 失败分类，并用大模型当裁判。 | 焦点是**多智能体软件工程中的失败类型**；不是共享硬预算下的总解决价值。 | **仅当写 APSEC 短文时有一点。** 可顺手借用「失败分类 / 早期证据」的叙述框架，讨论 harness 或止损；不必复现他们的漏洞子集实验。 |
-| 12 | **Hybrid Microservices + LLM-MAS**<br>APSEC 2025 技术轨 · CCF C<br>`HybridMAS_APSEC25.pdf` | 比较研究：从功能封装、编排、接口、自动纠正、通信、运维、质量属性、环境感知等八个架构维度，对照经典微服务与大模型多智能体，提出混合架构的研究问题。不是「谁在某个排行榜分数更高」的数值竞赛文。 | 谈的是**系统架构怎么拼**；不是预算分配策略与 TRV。 | **不相关，无需调整实验。** 写 SE 口味短文时最多借它的架构词汇；不要据此加实验。 |
+| 4 | **CCPO**<br>AAAI 2026 · CCF A<br>`CCPO_AAAI26.pdf` | 在智能体编排里联合「便宜底座大模型 + 更贵引导大模型」，用共形约束策略优化（CCPO）在用户指定可靠性水平 α 下最小化费用。对照包括 Random、提示式大模型策略、LLM-EXIT、UALA，以及 CPO / CPO batch / CPO online；数据为 HotpotQA（Wikipedia 工具）与 MMLU。作者报告相对费用感知对照，费用最多约降 30%，同时维持目标覆盖率。 | 约束是**单题**可靠性/覆盖率 α 与期望费用；不是批次共享硬预算，也没有预注册 Task Value 与 SWE 验证结算。 | **有，主要是写法。** Related Work 把「单题可靠性约束下的费用最小化智能体」与「批次硬预算 + Task Value」分层写清；报告里同时强调「约束是否守住」与花费。不必复现共形 CPO。 |
+| 5 | **Online Multi-LLM Selection**<br>AAAI 2026 · CCF A<br>`OnlineMultiLLM_AAAI26.pdf` | 在提示黑盒演化的多步交互里，用上下文赌博机（LinUCB）在线选大模型；并给出预算感知与位置感知（PAKH）扩展。对照 MetaLLM、MixLLM、多数投票；数据 MMLU-Pro、GPQA、AIME、Math500；候选池约六模型。报告相对 MixLLM 等在正确率–费用权衡上更好。 | 「预算」是**单查询多步**费用上限；决策单位仍是查询轨迹，不是一批 SWE 任务抢同一硬预算。 | **有一点对照命名。** 写清「在线单查询预算 ≠ 批次共享硬预算」；学习回路若提及，强调我们用的是 harness 可信任务级记忆，不是逐步赌博机反馈。不必复现六模型在线实验。 |
+| 6 | **MODEL-SAT**（Capability Instruction Tuning）<br>AAAI 2025 · CCF A<br>`MODEL-SAT_AAAI25.pdf` | 用能力指令微调做指令级路由（能力表示 + 用户指令 + 询问提示），新模型可用约 50×20-shot 能力测试快速接入；ZeroRouter 亦以其为对照之一。目标主打**把题做对 / 选最强合适模型**，不是硬预算治理。 | 查询/指令级选模；费用不是一等公民。 | **不相关，无需调整实验。** Related Work 一句带过「AAAI 2025 已有能力指令路由」即可。 |
+| 7 | **ICL-Router**<br>AAAI 2026 · CCF A<br>`ICL-Router_AAAI26.pdf` | 用上下文向量表示模型能力，两阶段训练后可在不加训路由器的情况下接入新模型；主打路由准确与可扩展性。 | 查询级路由表示学习；少谈硬预算与任务价值。 | **不相关，无需调整。** |
+| 8 | **CP-Router**<br>AAAI 2026 · CCF A<br>`CP-Router_AAAI26.pdf` | 用共形预测在「普通大模型 vs 推理大模型（LRM）」之间做免训练路由，按预测集合大小分流以省 token。 | LLM/LRM 二选一；不是批次预算分配。 | **不相关，无需调整。** |
+| 9 | **RouteLLM**<br>ICLR 2025 · CCF A<br>`RouteLLM_ICLR25.pdf` | 用人类偏好数据训练路由器，在推理时为每条查询在「更强更贵的模型」和「更弱更便宜的模型」之间二选一。训练主要用 Chatbot Arena 的对战偏好，并可用 MMLU 验证集金标、以及 Nectar 上 GPT-4 裁判偏好做数据增强。评测用 MMLU、MT Bench、GSM8K；主对照是在费用约束下随机路由。作者报告在不明显牺牲质量时费用可降一半以上。 | 仍是**单查询、强弱二选一**；没有跨任务的价值竞争。 | **有，而且是我们本来就该有的对照命名。** 确保论文与实验矩阵里把「受 RouteLLM 启发的学得路由 / 任务级路由对照」写清楚、跑在同一共享硬预算和同一验证器下即可；不必按他们的 Arena 偏好数据重新训一套公开路由器。 |
+| 10 | **GraphRouter**<br>ICLR 2025 · CCF A<br>`GraphRouter_ICLR25.pdf` | 把任务、查询、大模型建成一张异构图，用边预测估计「把某查询交给某模型」的效果和费用，从而在「效果优先 / 均衡 / 费用优先」三种权重设定下选模型；新模型进来时尽量少重训。数据包括 Alpaca、GSM8K、SQuAD、Multi-News 等拼成的多任务交互数据。作者报告相对既有路由器至少约 12.3% 的提升。 | 图路由仍然服务**单条查询选模型**；不回答「下一笔预算该给批次里哪一个任务」。 | **没有值得顺手复现的实验。** 引用时把它和 RouteLLM 一起归入「查询级路由」族即可。 |
+| 11 | **Cascade Routing**<br>ICML 2025 · CCF A<br>`CascadeRouting_ICML25.pdf` | 把「事先选一个模型」的路由，和「从小到大依次调用、看质量估计再决定是否继续」的级联，统一成一个可证明的框架（文中的 cascade routing），并强调事后质量估计是否靠谱决定了省钱效果。对照包括单独做路由、单独做级联、以及常见的阈值级联。评测用 RouterBench，并且在 SWE-Bench 上也报了相对提升。 | 决策对象仍是**单条查询的模型调用链**；SWE-Bench 在这里是质量任务，不是「多任务共享硬预算 + 预注册任务价值」。 | **有一点，只在写作。** Related Work / 实验讨论里点明「同属 SWE 测试床，但他们做查询级级联，我们做批次级价值分配」；不必再实现他们的最优级联算法。 |
+| 12 | **RouteNLP**<br>ACL 2026 Industry Track（ACL 主会为 CCF A）<br>`RouteNLP_ACL26.pdf` | 企业场景下跨多种自然语言任务的分层模型路由：难度感知路由器、用共形预测做阈值初始化的置信级联，以及「升级失败聚类 → 针对性蒸馏便宜模型 → 再训路由器」的闭环。对照包括 Always 最高档、Always 便宜档、随机、规则、HybridLLM、RouteLLM 等。他们构造了六任务基准，并在企业客服试点里跑了约八周、每天约五千条查询，报告推理费用约降 58%。 | 单位仍是企业**查询**；质量约束是任务类型上的验收，不是批次 Task Value 与验证型补丁结算。 | **不相关，无需调整实验。** 最多在 Related Work 用一句承认「产业界也在做费用–质量路由」，然后收回批次问题。 |
+| 13 | **SWE-bench**<br>ICLR 2024 · CCF A<br>`SWEbench_ICLR24.pdf` | 评测框架本身：从真实 GitHub issue 与对应拉取请求构造两千余个软件工程题，用仓库测试判定补丁是否真正解决问题。原论文对照包括 GPT-3.5、GPT-4、Claude 2，以及他们微调的 SWE-Llama；另有 Lite 子集与约一万九千条训练实例。 | 它是**测试床与验证协议**；BudgetFlow 在其上研究预算治理，而不是再发明一套 issue 基准。 | **不相关，无需为「对齐 SWE-bench 论文」再开实验。** 保持任务集固定、价值冻结、验证器可信即可。 |
+| 14 | **Avengers-Pro**（Beyond GPT-5）<br>DAI 2025 · CCF C<br>`AvengersPro_DAI25.pdf` | 测试时把查询嵌入、聚类，再按可调参数 α 在「效果」与「费用」之间打分，把查询路由到最合适的模型，从而画出相对单模型的帕累托前沿。数据包括 GPQA-Diamond、Humanity’s Last Exam、ARC-AGI、SimpleQA、LiveCodeBench 等约六套难题；模型池含 GPT-5-medium、Gemini-2.5-pro、Claude-opus-4.1 等。作者报告可在接近最强单模型表现时明显降费，或在相近费用下超过最强单模型。 | 优化的是**查询级性能–费用曲线**；没有预注册的任务价值，也没有一批任务抢同一硬预算。 | **有，且主要是写法。** 投稿 DAI 或写成本–效果图时，可借用「帕累托前沿 / 可调权衡参数」这种读者熟悉的叙述；不必重跑他们的八模型、六基准矩阵。 |
+| 15 | **AgentNet**<br>NeurIPS 2025 · CCF A<br>`AgentNet_NeurIPS25.pdf` | 去中心化的大模型多智能体协作：智能体在动态有向无环图上按本地专长接任务、演化连接，并用检索增强记忆，避免一切都经过中心调度器。对照包括直接让单模型答题，以及 MetaGPT 这类中心化多智能体。数据覆盖数学（MATH）、逻辑问答（BBH）、工具调用（API-Bank）与代码类任务。 | 核心是**协作拓扑与去中心化**；预算与任务价值不是一等公民。 | **不相关，无需调整。** 不要为对齐 AgentNet 去改我们的批次预算实验。 |
+| 16 | **SEMAP**<br>APSEC 2025 早期研究成果轨 · CCF C<br>`SEMAP_APSEC25.pdf` | 用多智能体搭软件工程流水线时，失败模式如何分类与观察。开发任务用基于 MetaGPT 的五角色设置，漏洞相关任务用三角色设置；数据包括 HumanEval，以及从 Big-Vul、CVEFixes 抽样的漏洞子集；度量用 MAST 失败分类，并用大模型当裁判。 | 焦点是**多智能体软件工程中的失败类型**；不是共享硬预算下的总解决价值。 | **仅当写 APSEC 短文时有一点。** 可顺手借用「失败分类 / 早期证据」的叙述框架，讨论 harness 或止损；不必复现他们的漏洞子集实验。 |
+| 17 | **Hybrid Microservices + LLM-MAS**<br>APSEC 2025 技术轨 · CCF C<br>`HybridMAS_APSEC25.pdf` | 比较研究：从功能封装、编排、接口、自动纠正、通信、运维、质量属性、环境感知等八个架构维度，对照经典微服务与大模型多智能体，提出混合架构的研究问题。不是「谁在某个排行榜分数更高」的数值竞赛文。 | 谈的是**系统架构怎么拼**；不是预算分配策略与 TRV。 | **不相关，无需调整实验。** 写 SE 口味短文时最多借它的架构词汇；不要据此加实验。 |
 
 **总判断（诚实版）：**  
-真正和主线实验「顺手相关」的，主要是 RouteLLM 族路由对照的命名与同预算评测（第 4 条），以及 BAMAS / Cascade / Avengers-Pro 在 Related Work 里的分层写法（第 1、6、9 条）。其余多数条目的诚实结论是：**不相关，无需为对齐它们再做实验。** 没有发现「必须新开一大套付费实验才能摘到」的低垂果实。
+AAAI 同会近邻**不止三篇**：2026 至少还有 CCPO、Online Multi-LLM、ICL-Router、CP-Router；2025 有 MODEL-SAT。深读五篇里，真正和主线「顺手相关」的，仍是 BAMAS / CCPO / Online Multi-LLM 的分层写法，以及 RouteLLM 族路由对照命名（表内第 9 条）与 Cascade / Avengers-Pro 的叙述对齐。其余多数条目的诚实结论是：**不相关，无需为对齐它们再做实验。** 没有发现「必须新开一大套付费实验才能摘到」的低垂果实。
 
 ---
 
@@ -210,7 +276,7 @@ DAI 2026、APSEC 2026 早期研究成果轨是同窗口备投；一稿多投政�
 1. **现在 → 07-29 19:59：** 交 AAAI Author Kit 全文 + checklist（主路径）。  
 2. **07-28 19:59：** 若保留 DAI，完成摘要登记；全文看 AAAI 一稿政策后再定。  
 3. **08-03：** 需要 SE 短反馈时交 APSEC 早期研究成果轨。  
-4. 精读顺序：`BAMAS` → `AvengersPro_DAI25` → `SEMAP` + `HybridMAS` → `RouteLLM` / `GraphRouter` / `CascadeRouting`。
+4. 精读顺序：`BAMAS` → `CCPO` → `OnlineMultiLLM` → `AvengersPro_DAI25` → `SEMAP` + `HybridMAS` → `RouteLLM` / `GraphRouter` / `CascadeRouting`。
 
 ---
 
