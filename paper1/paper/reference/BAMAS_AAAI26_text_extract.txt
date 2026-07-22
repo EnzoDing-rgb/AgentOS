@@ -1,0 +1,658 @@
+BAMAS: Structuring Budget-Aware Multi-Agent Systems
+Liming Yang1, Junyu Luo1, Xuanzhe Liu1, Yiling Lou2, Zhenpeng Chen3,4*
+1Peking University
+2University of Illinois Urbana-Champaign
+3Nanyang Technological University
+4Tsinghua University
+yangliming2018@pku.edu.cn, luojunyu@stu.pku.edu.cn, liuxuanzhe@pku.edu.cn, yilingl@illinois.edu,
+zhenpeng.chen@ntu.edu.sg
+Abstract
+Large language model (LLM)-based multi-agent systems
+have emerged as a powerful paradigm for enabling autonomous agents to solve complex tasks. As these systems
+scale in complexity, cost becomes an important consideration for practical deployment. However, existing work rarely
+addresses how to structure multi-agent systems under explicit budget constraints. In this paper, we propose BAMAS,
+a novel approach for building multi-agent systems with budget awareness. BAMAS frst selects an optimal set of LLMs
+by formulating and solving an Integer Linear Programming
+problem that balances performance and cost. It then determines how these LLMs should collaborate by leveraging a
+reinforcement learning-based method to select the interaction topology. Finally, the system is instantiated and executed
+based on the selected agents and their collaboration topology. We evaluate BAMAS on three representative tasks and
+compare it with state-of-the-art agent construction methods.
+Results show that BAMAS achieves comparable performance
+while reducing cost by up to 86%.
+Introduction
+LLM-based multi-agent systems, in which LLMs serve as
+core reasoning engines that perceive, communicate, and collaborate, have demonstrated remarkable capabilities in solving complex tasks (Wu et al. 2024; Hong et al. 2024). By
+supporting diverse interaction patterns, these systems can
+decompose problems, generate alternative solutions, and iteratively refne outputs, thereby pushing the boundaries of
+automated problem solving.
+However, as these systems increase in complexity and
+agent count, cost becomes a critical consideration for practical deployment (Chen et al. 2025). In particular, the cost
+is primarily driven by token consumption during LLM calls.
+A single task may require dozens of LLM calls across multiple agents, with costs scaling unpredictably depending on
+the collaboration topology and reasoning depth. Such unpredictability in cost makes these systems diffcult to scale
+reliably in production.
+Despite the critical role of budget management, existing research has predominantly focused on maximiz-
+*Corresponding author: Zhenpeng Chen.
+Copyright © 2026, Association for the Advancement of Artifcial
+Intelligence (www.aaai.org). All rights reserved.
+ing performance, often treating cost as an afterthought.
+Leading frameworks such as AutoGen (Wu et al. 2024)
+and MetaGPT (Hong et al. 2024) typically employ reactive strategies that provide limited control over the costperformance trade-off. To our knowledge, no prior work directly addresses the fundamental question: how can we design a multi-agent system that delivers strong task performance while adhering to a predefned cost budget?
+To address this challenge, we propose BAMAS, a novel
+approach for constructing budget-aware multi-agent systems. Our key insight is that since LLMs are the primary
+drivers of cost, effective budget management should start by
+treating LLM allocation as a constrained optimization problem. Accordingly, BAMAS begins with selecting an optimal
+set of LLMs by formulating and solving an Integer Linear
+Programming problem that ensures both performance and
+strict adherence to the given budget. Next, BAMAS learns
+how to orchestrate collaboration among the selected LLMs
+by training a topology selection policy via reinforcement
+learning. This policy identifes the most effective collaboration topology, such as linear or star structures, that maximizes task performance within the allocated resources. Finally, BAMAS instantiates the multi-agent system based on
+the chosen LLM pool and collaboration topology, strategically balancing the cost-performance trade-off.
+We evaluate BAMAS on three widely-used benchmark
+datasets spanning code generation and mathematical reasoning, and compare it against three state-of-the-art multiagent construction approaches. Results show that BAMAS
+achieves comparable accuracy while reducing costs by up
+to 86% and adhering to predefned budgets, demonstrating a
+strong cost-performance trade-off. An ablation study further
+confrms that our joint optimization strategy signifcantly
+outperforms greedy baselines by identifying superior solutions that balance cost and performance. Our analysis also
+reveals that BAMAS learns to adaptively select collaboration topologies: it favors simpler topologies under tight budgets, while tailoring its structure to specifc task domains
+when resources are more ample, offering both adaptability
+and interpretability.
+In summary, this paper makes the following contributions:
+• We introduce BAMAS, a novel framework for constructing multi-agent systems under budget constraints. BAThe Fortieth AAAI Conference on Artificial Intelligence (AAAI-26)
+29802
+MAS jointly optimizes LLM selection and agent collaboration topology through Integer Linear Programming and
+reinforcement learning, respectively, to maximize task
+performance within a fxed cost budget.
+• We evaluate BAMAS on three widely-used datasets and
+compare it against three state-of-the-art agent construction approaches. BAMAS achieves comparable performance while reducing overall cost by up to 86%, demonstrating an effective cost-performance trade-off.
+• We publicly release our code and data at https://github.
+com/chunfenri/BAMAS, to support further research.
+Related Work
+Multi-agent systems. LLM-based multi-agent systems have
+emerged as a powerful paradigm for enabling autonomous
+agents to tackle complex tasks. These systems have gained
+increasing attention from both academia and industry,
+prompting the development of frameworks that investigate how to structure and coordinate multiple agents effectively (Li et al. 2024). Notable examples include MetaGPT
+(Hong et al. 2024), AutoGen (Wu et al. 2024), and ChatDev
+(Qian et al. 2024). MetaGPT adopts a meta-programming
+paradigm to enforce standardized workfows, where agents
+with specialized roles follow predefned steps in a rigid
+execution pipeline. AutoGen offers a more fexible agent
+architecture, enabling the composition of multi-agent systems through custom dialogue loops, role defnitions, and
+dynamic turn-taking protocols. ChatDev simulates a virtual
+company, with agents collaborating through structured conversations to complete end-to-end tasks. While these frameworks demonstrate strong performance on various problems,
+they pay limited attention to cost-effciency, a key concern
+in real-world deployments. In contrast, we focus on budgetaware multi-agent structuring, aiming to achieve a favorable
+trade-off between performance and cost.
+Cost-effciency AI. The rising computational and monetary
+costs of modern AI systems have spurred research on costeffciency, focusing on optimizing performance under explicit cost or budget constraints (Chen, Zaharia, and Zou
+2024; Zhang et al. 2024; Dekoninck, Baader, and Vechev
+2025). Budget-aware computing has thus emerged as a feld
+that treats cost consumption as a primary factor in system design and optimization (Zhang et al. 2024; Dekoninck, Baader, and Vechev 2025). Various advanced methods
+have been developed to effectively navigate the trade-offs
+between performance and incurred costs (Li et al. 2025b;
+Zellinger, Liu, and Thomson 2025; Arora and Zanette 2025).
+As a rapidly evolving paradigm, LLM-based multi-agent
+systems also face such cost challenges. This paper takes an
+important step towards addressing this gap by proposing a
+budget-aware multi-agent structuring approach that balances
+task performance with token consumption costs.
+Methodology
+We formulate the core problem as follows: given a task T,
+a set of available LLMs A, and a cost budget B, the goal
+is to structure a multi-agent system that achieves a favorable performance–cost trade-off under the budget constraint.
+Specifcally, we aim to determine an optimal subset of LLMs
+P ⊆ A and a collaboration topology t that governs their interactions. Each selected LLM in P functions as a distinct
+agent in the system.
+To address this problem, we propose BAMAS, a novel approach for structuring budget-aware multi-agent systems. As
+illustrated in Figure 1, BAMAS consists of three key components: (1) budget-constrained LLM provisioning, which
+formulates the selection of an optimal LLM pool P as an
+Integer Linear Programming (ILP) problem and solves it to
+satisfy the given cost budget; (2) agent collaboration topology selection, which designs a reinforcement learning-based
+method to identify an effective agent interaction topology t;
+and (3) agent instantiation, where the multi-agent system is
+instantiated and orchestrated based on the selected P and t
+to perform the task.
+Budget-Constrained LLM Provisioning
+This component selects a subset of LLMs P from the available pool A such that the total cost does not exceed a given
+budget B. Empirical studies have shown that, for complex
+reasoning tasks, a single high-performance model often outperforms ensembles of weaker models (Wang et al. 2024).
+Motivated by this insight, we adopt a performance-frst selection strategy that prioritizes stronger LLMs whenever
+they can be afforded within the budget.
+We formalize the selection as an ILP problem, aiming to
+maximize overall performance within the cost budget.
+To operationalize LLM performance, we rank all available LLMs (note that multiple instances of the same LLM
+may exist) into tiers, with A1 representing the highestperformance tier and higher indices indicating lower tiers,
+down to AL as the lowest-performance tier. We use the
+widely referenced LMSys Chatbot Arena Leaderboard (Chiang et al. 2024) as a performance proxy, where a higher
+leaderboard rank indicates better performance.
+The cost of the i-th LLM Aiis computed as:
+ci = Tin · Pin + Tout · Pout, (1)
+where Tin and Tout denote the input and output token
+counts per API call for task T, and Pin, Pout are the corresponding per-token prices provided by the LLM vendor.
+Since exact token usage is unknown before execution, we
+adopt representative estimates. Specifcally, we set Tin =
+500, based on prior measurements showing that typical LLM
+input lengths fall within 128∼256 tokens (Li et al. 2025a),
+and we roughly double the upper bound (256 → 500) to accommodate additional context an agent may ingest from others in multi-agent settings; we determine Tout by sampling
+50 training instances from the target dataset and using the
+maximum observed output length as an upper bound.
+We then construct a decision weight Wi for each LLM
+tier to guide the ILP solver in prioritizing higher-tier LLMs.
+These weights are defned recursively in a bottom-up manner to ensure that selecting a higher-tier LLM always
+outweighs any budget-feasible combination of lower-tier
+LLMs. Specifcally, we set the weight for the lowest tier as
+WL = 1, and compute the weight for any higher tier i as:
+29803
+Figure 1: Overview of BAMAS, which constructs a budget-aware multi-agent system by provisioning a cost-optimal set of
+LLMs and selecting the best collaboration topology to guide task execution.
+Wi = 1 + X
+L
+j=i+1
+
+Wj ·
+
+B
+cj
+ . (2)
+This construction guarantees that any single LLM from
+tier Ai has a higher total weight than any group of lower-tier
+LLMs that can be afforded under the budget B.
+Let xij be a binary decision variable, where xij = 1 indicates selecting the j-th instance of the i-th tier LLM Ai
+.
+This allows that multiple instances of the same LLM are selected. The objective is to maximize the total weight of the
+selected LLMs, subject to the budget constraint B and confguration requirement—specifcally, to ensure a meaningful
+multi-agent setup, at least two LLMs must be selected. The
+resulting ILP formulation is:
+maximize
+x
+X
+L
+i=1
+X
+j
+Wi· xij ,
+subject to X
+L
+i=1
+X
+j
+ci· xij ≤ B, X
+L
+i=1
+X
+j
+xij ≥ 2.
+(3)
+Solving this ILP yields the budget-feasible candidate
+LLM pool P. Due to the structure of Wi, the selected confguration is guaranteed to be lexicographically optimal, maximizing overall performance within the budget. This forms
+a strong foundation for the downstream components, ensuring that subsequent agent construction operates on the bestavailable LLM composition.
+Agent Collaboration Topology Selection
+While the provisioning component determines which LLMs
+to use, this component decides how these LLMs should collaborate to solve the given task. A fxed collaboration topology is unlikely to perform well across a wide variety of
+tasks. To address this, we introduce a topology selection policy, πθ, that selects an appropriate agent collaboration topology t ∈ T , conditioned on the task specifcation T and the
+total budget B.
+The action space of πθ is a curated library T of widelyused agent workfow topologies, each refecting a distinct
+cognitive or reasoning strategy:
+• Linear Topology: Implements sequential reasoning,
+where each agent builds upon the output of the previous
+one. This topology is well-suited for multi-step reasoning
+tasks (Hong et al. 2024; Qian et al. 2024).
+• Star Topology: Supports parallel hypothesis generation and evaluation, embodying a divide-and-conquer
+approach ideal for decomposable or multi-perspective
+problems (Du et al. 2024; Zheng et al. 2023).
+• Feedback Topology: Enables iterative refnement
+through generate-and-critique cycles. This is particularly
+effective for tasks requiring self-correction or quality
+enhancement (Madaan et al. 2023; Shinn et al. 2023).
+• Planner-Driven Topology: Incorporates a central planner agent to dynamically coordinate other agents, offering maximum fexibility. It is especially useful for openended or unstructured tasks with no predefned solution
+path (Yao et al. 2023b,a).
+We train the topology selection policy πθ using an offine reinforcement learning paradigm. This design choice
+is driven by the prohibitive cost and latency associated with
+collecting online trajectories in LLM-based multi-agent environments. The learning objective is to optimize the policy
+parameters θ to maximize the expected fnal reward derived
+from executing a complete task trajectory τ . Formally, the
+objective is given by:
+θ
+∗ = arg max
+θ
+J(θ)
+= arg max
+θ
+Et∼πθ,τ∼Exec(t,P)[Rfnal(τ )] .
+(4)
+Here, Exec(t,P) denotes the agent execution engine that
+instantiates and runs the chosen topology t using the previously provisioned LLM pool P, and Rfnal(τ ) is a composite
+reward function refecting both task success and cost effciency. In the following, we describe the composite reward
+function and the learning process in detail.
+Composite Reward Function The fnal reward Rfnal(τ )
+is designed as a weighted combination of two distinct components. The weights (wperf, wcost) are tunable hyperparameters that govern the trade-off between maximizing task performance and minimizing computational cost:
+Rfnal(τ ) = wperf · Rperf + wcost · Rcost. (5)
+Each reward component serves a different yet complementary role:
+29804
+• Task Success Reward (Rperf): This is a sparse, binary
+reward that evaluates whether the task was solved correctly. It provides a clear learning signal for achieving
+the primary goal: Rperf = +Csucc if the task succeeds,
+and −Cfail otherwise.
+• Cost Effciency Reward (Rcost): This component promotes budget adherence and cost-effcient solutions. A
+heavy penalty −Coverfow is incurred if the actual cost
+Cactual(τ ) exceeds the budget B. If the task is successful,
+an additional bonus g(1−Cactual(τ )/B) is granted, which
+scales with the amount of budget saved. Importantly, this
+effciency bonus is awarded only for successful executions. This encourages the policy to fnd solutions that
+are not only correct but also effcient, while discouraging
+degenerate strategies that reduce cost at the expense of
+task performance.
+Learning Algorithm and Loss Function Our learning algorithm is a form of REINFORCE (Williams 1992), tailored
+for an offine, one-shot decision context where the policy
+makes a single choice of topology, t, and receives a fnal reward, Rfnal, after the entire trajectory completes. We train
+the policy by minimizing the following loss function on a
+static dataset, D, of pre-collected experiences:
+L(θ) = −Eˆ
+(T ,B,t,τ)∼D [log πθ(t|T, B) · Rfnal(τ )]
+− β · H(πθ(·|T, B)).
+(6)
+This loss function consists of two key terms that guide the
+optimization:
+1. Policy Gradient Term: The term − log πθ(t|T, B) ·
+Rfnal(τ ) is the core of the learning algorithm. Here, the
+fnal trajectory reward, Rfnal(τ ), serves as an estimate of
+the advantage of selecting topology t. By minimizing this
+negative log-likelihood weighted by the reward, the optimization process updates θ to increase the probability of
+actions that lead to high rewards. This approach directly
+connects the policy’s decision to its ultimate outcome,
+providing a clear and powerful learning signal without
+the high variance often introduced by importance sampling in offine settings (Thomas and Brunskill 2016;
+Xie, Ma, and Wang 2019).
+2. Entropy Regularization Term: The term −β ·
+H(πθ(·|T, B)) is an entropy bonus, where H(·) is the
+Shannon entropy and β is a hyperparameter. This term
+encourages the policy to maintain a degree of stochasticity, preventing it from prematurely converging to a single,
+suboptimal topology. By promoting exploration within
+the policy space, it enhances training stability and improves the chances of discovering a more globally optimal strategy.
+Given the reward function, learning algorithm, and loss
+function, we perform training of the topology selection policy. During training, the model parameters θ
+∗
+that achieve
+the highest average composite reward across the entire offine dataset D are preserved as the fnal optimized policy.
+Agent Instantiation
+The fnal component constructs the multi-agent system by
+instantiating the selected LLMs P within the chosen workfow topology t. Its primary function is to assign specifc
+LLM instances from P to the distinct agent roles defned
+by the topology. In Linear and Star, all agents act as executors. In Feedback, the highest-weight LLMs serve as critics
+and the rest as executors. In Planner-driven, the highest- and
+second-highest-weight LLMs serve as the planner and critics, respectively, and the remaining models act as executors.
+Since higher weight refects stronger capability, this assignment ensures that the most capable LLMs are allocated to
+the most critical roles.
+Once instantiated, the execution engine manages information fow and coordination among agents based on the
+selected topology. For Linear and Star, the engine uses a
+template-based scheduler to invoke agents sequentially, minimizing coordination overhead. For Feedback, the engine
+pairs a dedicated critic with one or more executors to run a
+generate–critique–revise loop: the critic only audits outputs
+and does not perform task-side computation; if no issues are
+found, the executor’s latest output is returned as the fnal answer, otherwise the critique is routed back for revision until
+acceptance or a preset budget limit. For Planner-driven, the
+planner dynamically orchestrates agent interactions step by
+step according to evolving requirements.
+Evaluation Setup
+Research Questions (RQs)
+We evaluate BAMAS by answering the following RQs.
+RQ1 (Cost–performance trade-off): How well does BAMAS balance cost and task performance compared to existing multi-agent system construction approaches?
+RQ2 (Component analysis): How essential are the core
+components of BAMAS (i.e., LLM provisioning and topology selection) compared to a simplifed and greedy costaware strategy?
+RQ3 (Topology selection): Can BAMAS, through its topology selection policy, choose topologies in a way that adapts
+to both task requirements and budget constraints?
+Datasets
+We evaluate BAMAS on three widely used benchmarks, using each dataset to generate reinforcement learning training
+data and conduct evaluation.
+• GSM8K (Cobbe et al. 2021): A dataset of math word
+problems. We use the frst 1,000 examples from the offcial training set as the reinforcement learning training
+corpus and evaluate on the full test set of 1,319 problems.
+• MBPP (Austin et al. 2021): A dataset for Python programming tasks. We use all 374 problems in the training set as the reinforcement learning training corpus and
+evaluate on the full 500-problem test set.
+• MATH (Hendrycks et al. 2021): A challenging dataset
+of advanced mathematical reasoning problems, large and
+diverse in diffculty levels and problem types. To manage
+its size, we perform stratifed sampling by diffculty level
+29805
+and problem type to construct training and test sets of
+1,000 problems each, preserving the original distribution.
+Available LLMs
+LLMs are the foundation of our multi-agent systems. In our
+experiments, we select two representative LLMs that illustrate the trade-off between performance and cost-effciency:
+• DeepSeek-V3: A high-performance model priced at
+$0.27 per million input tokens and $1.10 per million output tokens.
+• GPT-4.1 nano: A lower-performance but more costeffective alternative priced at $0.10 per million input tokens and $0.40 per million output tokens.
+Evaluation Metrics
+To evaluate the effectiveness and effciency of multi-agent
+systems, we adopt the following metrics:
+• Accuracy (Acc %): The task success rate, defned as the
+percentage of tasks for which the constructed multi-agent
+system produces a correct solution.
+• Average Cost (Avg Cost): The mean cost of the multiagent system across all tasks. For each task, the cost is
+computed as
+Cost =
+ X
+i∈calls
+Pin,i · Tin,i +
+X
+i∈calls
+Pout,i · Tout,i!× 106,
+(7)
+where each API call i contributes cost based on its input
+and output token counts (Tin,i and Tout,i) and corresponding per-token prices (Pin,i and Pout,i). The factor 106
+is
+used to rescale the metric for clearer presentation.
+Baselines
+We compare BAMAS against three state-of-the-art multiagent system construction approaches: AutoGen (Wu et al.
+2024), MetaGPT (Hong et al. 2024), and ChatDev (Qian
+et al. 2024). Detailed descriptions of these approaches are
+provided in the Related Work section. We use these baselines for answering RQ1.
+Additionally, we introduce a heuristic baseline, NaiveCostAware, which greedily selects agent confgurations according to fve predefned resource levels (Levels 1–5). Each
+level corresponds to an increasing number of LLMs, with
+Level i using (i + 1) LLMs, as a multi-agent system requires at least two. Unlike BAMAS, this baseline performs
+no global optimization via ILP and does not conduct topology selection. We employ this baseline to address RQ2.
+Since none of the baselines incorporates an LLM selection component like BAMAS, we fx the LLM type when
+employing these approaches. To ensure fair comparison, all
+baselines are restricted to use DeepSeek-V3 and GPT-4.1
+nano, matching the LLMs used by BAMAS. For example,
+when applying AutoGen, we implement two versions (one
+with DeepSeek-V3 and another with GPT-4.1 nano) and include both in the comparison with BAMAS. For the MATH
+dataset, which contains advanced problems that incur substantially higher costs, we report baseline results using only
+GPT-4.1 nano to reduce expenses.
+Approach Setting
+GSM8K MBPP
+Avg Cost Acc % Avg Cost Acc %
+AutoGen DeepSeek-V3 1425.3 95.4 2661.3 80.8
+AutoGen GPT-4.1 nano 475.3 89.7 666.1 71.4
+MetaGPT DeepSeek-V3 3235.4 93.5 3735.1 82.2
+MetaGPT GPT-4.1 nano 1012.3 86.8 1115.4 71.8
+ChatDev DeepSeek-V3 2733.1 95.0 3635.1 81.2
+ChatDev GPT-4.1 nano 800.5 90.1 1020.1 70.0
+BAMAS
+Budget 500 222.4 87.9 153.7 73.8
+Budget 875 421.6 92.4 316.0 80.4
+Budget 1,250 447.0 94.9 529.2 82.6
+Budget 1,625 542.9 95.3 630.5 82.2
+Budget 2,000 542.6 95.1 811.0 82.2
+Table 1: Average cost (Avg Cost) and task performance (Acc
+%) achieved by BAMAS and baseline approaches on the
+GSM8K and MBPP datasets.
+Approach Setting Avg Cost Acc %
+AutoGen GPT-4.1 nano 797.2 77.6
+MetaGPT GPT-4.1 nano 1380.0 67.1
+ChatDev GPT-4.1 nano 1338.7 75.5
+BAMAS
+Budget 1,000 339.4 72.1
+Budget 2,000 646.0 81.2
+Budget 3,000 870.7 82.7
+Table 2: Average cost (Avg Cost) and task performance (Acc
+%) achieved by BAMAS and baseline approaches on the
+MATH dataset.
+Confguration of BAMAS
+BAMAS operates under a cost budget chosen to span meaningful operating regimes. The minimum budget is defned
+as the estimated cost of executing a viable workfow with
+two LLMs, which is 500 for GSM8K and MBPP, and 1,000
+for MATH. To examine BAMAS’s performance under different constraints, we set fve budget levels for GSM8K and
+MBPP: 500, 875, 1,250, 1,650, and 2,000. For MATH, due
+to its higher execution cost, we use only three budget levels,
+namely 1,000, 2,000, and 3,000, to control expenses.
+Results
+RQ1: Cost-Performance Trade-Off
+This RQ evaluates how effectively BAMAS balances cost
+and task performance, i.e., the cost-performance trade-off,
+in comparison with existing agent construction approaches.
+Cost and performance analysis. Tables 1 and 2 present
+the average cost (Avg Cost) and task success rate (Acc %)
+achieved by BAMAS and each baseline approach across
+the three datasets. As described earlier, each baseline approach is implemented in two versions, each using a different type of LLM, while BAMAS is implemented under
+varying budget constraints. For clarity, we also visualize the
+cost–performance results in a two-dimensional plot, as presented in Figure 2.
+29806
+Figure 2: Average cost and accuracy achieved by BAMAS and baseline approaches across datasets.
+Budget GSM8K MBPP MATH
+500 0 / 1,319 1 / 500 -
+875 0 / 1,319 3 / 500 -
+1,000 - - 11 / 1,000
+1,250 0 / 1,319 5 / 500 -
+1,625 0 / 1,319 3 / 500 -
+2,000 0 / 1,319 3 / 500 30 / 1,000
+3,000 - - 0 / 1,000
+Table 3: Out-of-budget task counts for BAMAS across
+datasets and budget constraints. For example, “1 / 500” for
+MBPP under a budget of 500 means that BAMAS exceeds
+the budget on only 1 of the 500 MBPP tasks.
+As shown in Figure 2, BAMAS exhibits an overall
+cost–performance trade-off. Across all three datasets, increasing the cost consistently leads to higher accuracy. Unlike existing approaches, BAMAS is tunable, allowing practitioners to adjust it to their budget constraints. In real-world
+applications, this tunability means that higher accuracy can
+be achieved simply by allocating a larger budget.
+More importantly, BAMAS consistently demonstrates a
+superior cost–performance trade-off compared to existing
+approaches. As shown in Tables 1 and 2, on GSM8K with a
+budget of 1,625, BAMAS achieves 95.3% accuracy, nearly
+matching AutoGen with DeepSeek-V3 (95.4%), while incurring an average cost of only 542.9 compared to 1,425.3,
+representing a 62% cost reduction. Similarly, on the MBPP
+dataset, BAMAS reaches 82.6% accuracy, comparable to
+the state-of-the-art (82.2%), but at a cost of 529.2 versus
+3,735.1, an 86% reduction. On the MATH dataset, with a
+budget of 2,000, BAMAS surpasses existing approaches in
+accuracy (81.2% vs. 77.6%) while maintaining a lower cost
+(646.0 vs. 797.2). These results demonstrate that BAMAS
+can match or exceed state-of-the-art accuracy while using
+substantially fewer resources.
+Budget adherence of BAMAS. Having shown that BAMAS achieves a better cost–performance trade-off than
+existing approaches, we now examine its cost effciency
+in more detail by assessing whether it adheres to budget
+constraints. Because the exact cost of executing a multiagent system is non-deterministic, it is inevitable that any
+construction approach may occasionally produce systems
+whose execution cost exceeds the specifed budget.
+Table 3 reports the out-of-budget (OOB) task counts for
+Approach Setting
+GSM8K MBPP
+Avg Cost Acc (%) Avg Cost Acc (%)
+NaiveCostAware
+L1 & DS 615.8 95.1 1037.1 80.8
+L2 & DS 1063.5 91.7 1379.1 81.6
+L3 & DS 1389.9 95.1 1770.1 79.8
+L4 & DS 1574.8 94.6 1919.3 79.2
+L5 & DS 1650.8 95.3 2106.7 78.6
+NaiveCostAware
+L1 & GPT 216.7 89.7 352.1 73.0
+L2 & GPT 557.0 89.4 662.4 72.2
+L3 & GPT 562.4 88.6 673.4 72.6
+L4 & GPT 564.7 89.4 677.9 73.6
+L5 & GPT 565.2 89.8 671.8 73.6
+BAMAS
+B = 500 222.4 87.9 153.7 73.8
+B = 875 421.6 92.4 316.0 80.4
+B = 1,250 447.0 94.9 529.2 82.6
+B = 1,625 542.9 95.3 630.5 82.2
+B = 2,000 542.6 95.1 811.0 82.2
+Table 4: Average cost (Avg Cost) and task performance
+(Acc %) achieved by BAMAS and Naive-CostAware on
+the GSM8K and MBPP datasets. DS denotes DeepSeek-V3;
+GPT denotes GPT-4.1 nano; “B=” indicates the budget.
+BAMAS across different datasets and budget constraints.
+Certain cells are left blank because these datasets are evaluated under different budget confgurations, as specifed in
+the “Confguration of BAMAS” section. On the 1,319 tasks
+in the GSM8K dataset, BAMAS incurs no OOB tasks. For
+the MBPP dataset, the number of OOB tasks ranges from 1
+to 5 across the fve budget settings. For the MATH dataset,
+the highest OOB count is 30 under a budget of 2,000, still
+only 3% of all tasks. Overall, OOB occurrences in BAMAS
+are rare.
+RQ2: Component Analysis
+This RQ evaluates the importance of LLM provisioning and
+topology selection in BAMAS by comparing it with NaiveCostAware, a baseline that greedily selects agent confgurations according to fve predefned resource levels. This
+baseline represents a simple, brute-force approach to cost
+management, operating in discrete levels (Li), where each
+level i uses a fxed set of i + 1 identical agents and a
+static linear collaboration topology. In contrast, BAMAS
+decouples resource provisioning from strategy: its budgetconstrained LLM provisioning determines an optimal LLM
+29807
+Figure 3: Collaboration topology distributions across
+datasets and budgets.
+composition, while its agent collaboration topology selection chooses the most suitable topology.
+Table 4 reports the average cost and task performance
+of BAMAS and Naive-CostAware. Due to space limits, we
+show results only for GSM8K and MBPP, though similar
+trends can be observed on the MATH dataset in Figure 2.
+We fnd that BAMAS achieves a superior
+cost–performance trade-off compared to Naive-CostAware,
+highlighting the necessity of both LLM provisioning and
+topology selection. Specifcally, on the GSM8K dataset,
+BAMAS reaches the peak accuracy of 95.3%, matching the
+peak accuracy of Naive-CostAware (L5 & DeepSeek-V3),
+but at a substantially lower average cost (542.9 vs. 1,650.8).
+Similarly, on the MBPP dataset, BAMAS attains higher
+peak accuracy (82.6% vs. 81.6%) while also incurring
+lower cost (529.2 vs. 1,379.1). These results demonstrate
+the effectiveness of BAMAS’s joint optimization of LLM
+provisioning and topology selection.
+RQ3: Topology Selection
+This RQ investigates the distribution of agent collaboration
+topologies to evaluate whether BAMAS can select diverse
+topologies across tasks and budget constraints. Figure 3
+presents the results: the left part shows the topology distributions across datasets, while the right part depicts, for each
+dataset, the distributions under varying budget constraints.
+From the fgure, we make the following observations.
+Task-specifc topology selection. BAMAS does not rely
+on a one-size-fts-all topology; rather, it adapts its strategy to the task domain. For mathematical reasoning tasks
+(i.e., tasks in the GSM8K and MATH datasets), which beneft from iterative refnement, the policy overwhelmingly
+converges on the Feedback topology. Specifcally, BAMAS selects the Feedback topology for 40.1% of tasks
+in GSM8K and 69.8% of tasks in MATH. The higher proportion in MATH is expected, as it contains more challenging advanced problems compared to GSM8K. In contrast,
+for code generation tasks (i.e., the MBPP dataset), BAMAS
+predominantly favors the Linear topology, which aligns
+with a progressive refnement or multi-step generation process (Liu et al. 2025; Rahardja et al. 2025), making it a more
+effective and reliable strategy for such tasks.
+Risk-averse and budget-dependent topology selection.
+The topology selection policy of BAMAS is risk-averse under low budgets. Specifcally, across all datasets, it heavily favors Linear and Star topologies when the budget
+is tight. This behavior is reasonable: these simpler topologies do not involve a critic agent, inherently reducing complexity and the likelihood of exceeding the budget. As the
+budget increases, allowing more fexibility, BAMAS becomes more willing to select complex topologies such as
+Feedback, which, while potentially more powerful, also
+carry higher baseline costs and greater risk of budget overrun. This demonstrates that the policy effectively adapts its
+strategy according to the available budget, balancing potential gains against fnancial risk.
+Topology selection diversity. Across all datasets and budgets, the Planner-Driven topology is never selected,
+a crucial insight into BAMAS’ topology selection policy.
+Although this topology offers the most fexibility, the reinforcement learning component learns that its high cost and
+instability (since a poor plan can derail the entire process)
+make it a suboptimal choice. Instead, the policy achieves
+higher and more reliable fnal rewards by relying on other,
+more structured patterns. Furthermore, we observe that the
+diversity of topology selection correlates with dataset characteristics. For the GSM8K dataset, topology choices for a
+given budget are highly uniform. In contrast, for the MATH
+and MBPP datasets, which contain more diverse problem
+types, the policy exhibits a more mixed distribution of
+topologies at certain budget levels. These fndings suggest
+that BAMAS has learned a nuanced selection strategy, sensitive to the specifc characteristics of problem instances.
+Conclusion
+This paper presents BAMAS, a budget-aware approach for
+constructing multi-agent systems. BAMAS (1) uses Integer
+Linear Programming to allocate LLMs within budget constraints, (2) applies offine reinforcement learning to choose
+an effective collaboration topology, and (3) instantiates the
+system with the selected LLMs and topology. The evaluation results show that BAMAS achieves a state-of-the-art
+cost–performance trade-off compared to existing agent construction approaches, attaining comparable or superior accuracy with substantially lower cost.
+29808
+Acknowledgements
+This work was supported by the National Natural Science
+Foundation of China under the grant number 62325201.
+References
+Arora, D.; and Zanette, A. 2025. Training Language Models
+to Reason Effciently. arXiv preprint arXiv:2502.04463.
+Austin, J.; Odena, A.; Nye, M.; Bosma, M.; Michalewski,
+H.; Dohan, D.; Jiang, E.; Cai, C.; Terry, M.; Le, Q.; and
+Sutton, C. 2021. Program Synthesis with Large Language
+Models. arXiv:2108.07732.
+Chen, L.; Zaharia, M.; and Zou, J. 2024. FrugalGPT: How
+to Use Large Language Models While Reducing Cost and
+Improving Performance. Trans. Mach. Learn. Res., 2024.
+Chen, S.; Liu, Y.; Han, W.; Zhang, W.; and Liu, T.
+2025. A Survey on LLM-Based Multi-Agent System: Recent Advances and New Frontiers in Application.
+arXiv:2412.17481.
+Chiang, W.-L.; Zheng, L.; Sheng, Y.; Angelopoulos, A. N.;
+Li, T.; Li, D.; Zhang, H.; Zhu, B.; Jordan, M.; Gonzalez, J. E.; and Stoica, I. 2024. Chatbot Arena: An
+Open Platform for Evaluating LLMs by Human Preference.
+arXiv:2403.04132.
+Cobbe, K.; Kosaraju, V.; Bavarian, M.; Chen, M.; Jun, H.;
+Kaiser, L.; Plappert, M.; Tworek, J.; Hilton, J.; Nakano, R.;
+Hesse, C.; and Schulman, J. 2021. Training Verifers to
+Solve Math Word Problems. arXiv:2110.14168.
+Dekoninck, J.; Baader, M.; and Vechev, M. 2025. A Unifed Approach to Routing and Cascading for LLMs. arXiv
+preprint arXiv:2410.10347.
+Du, Y.; Li, S.; Torralba, A.; Tenenbaum, J. B.; and Mordatch,
+I. 2024. Improving Factuality and Reasoning in Language
+Models through Multiagent Debate. In Proceedings of the
+Forty-frst International Conference on Machine Learning,
+ICML 2024.
+Hendrycks, D.; Burns, C.; Kadavath, S.; Arora, A.; Basart,
+S.; Tang, E.; Song, D.; and Steinhardt, J. 2021. Measuring
+Mathematical Problem Solving With the MATH Dataset. In
+Proceedings of the Neural Information Processing Systems
+Track on Datasets and Benchmarks, NeurIPS Datasets and
+Benchmarks 2021.
+Hong, S.; Zhuge, M.; Chen, J.; Zheng, X.; Cheng, Y.; Wang,
+J.; Zhang, C.; Wang, Z.; Yau, S. K. S.; Lin, Z.; Zhou, L.; Ran,
+C.; Xiao, L.; Wu, C.; and Schmidhuber, J. 2024. MetaGPT:
+Meta Programming for A Multi-Agent Collaborative Framework. In Proceedings of the Twelfth International Conference on Learning Representations, ICLR 2024.
+Li, J.; Xu, J.; Huang, S.; Chen, Y.; Li, W.; Liu, J.; Lian, Y.;
+Pan, J.; Ding, L.; Zhou, H.; Wang, Y.; and Dai, G. 2025a.
+Large Language Model Inference Acceleration: A Comprehensive Hardware Perspective. arXiv:2410.04466.
+Li, J.; Zhao, W.; Zhang, Y.; and Gan, C. 2025b. Steering LLM Thinking with Budget Guidance. arXiv preprint
+arXiv:2506.13752.
+Li, X.; Wang, S.; Zeng, S.; Wu, Y.; and Yang, Y. 2024. A
+Survey on LLM-Based Multi-Agent Systems: Workfow, Infrastructure, and Challenges. Vicinagearth, 1(1): 9.
+Liu, J.; Wang, K.; Chen, Y.; Peng, X.; Chen, Z.; Zhang, L.;
+and Lou, Y. 2025. Large Language Model-Based Agents
+for Software Engineering: A Survey. ACM Transactions on
+Software Engineering and Methodology.
+Madaan, A.; Tandon, N.; Gupta, P.; Hallinan, S.; Gao, L.;
+Wiegreffe, S.; Alon, U.; Dziri, N.; Prabhumoye, S.; Yang,
+Y.; Gupta, S.; Majumder, B. P.; Hermann, K.; Welleck, S.;
+Yazdanbakhsh, A.; and Clark, P. 2023. Self-Refne: Iterative Refnement with Self-Feedback. In Proceedings of Annual Conference on Neural Information Processing Systems
+2023, NeurIPS 2023.
+Qian, C.; Liu, W.; Liu, H.; Chen, N.; Dang, Y.; Li, J.; Yang,
+C.; Chen, W.; Su, Y.; Cong, X.; Xu, J.; Li, D.; Liu, Z.; and
+Sun, M. 2024. ChatDev: Communicative Agents for Software Development. In Proceedings of the 62nd Annual
+Meeting of the Association for Computational Linguistics
+(Volume 1: Long Papers), ACL 2024, 15174–15186.
+Rahardja, A. W.; Liu, J.; Chen, W.; Chen, Z.; and Lou,
+Y. 2025. Can Agents Fix Agent Issues? In Advances in
+Neural Information Processing Systems: Annual Conference
+on Neural Information Processing Systems 2025, NeurIPS
+2025.
+Shinn, N.; Cassano, F.; Gopinath, A.; Narasimhan, K.; and
+Yao, S. 2023. Refexion: Language Agents with Verbal Reinforcement Learning. In Proceedings of Annual Conference
+on Neural Information Processing Systems 2023, NeurIPS
+2023.
+Thomas, P. S.; and Brunskill, E. 2016. Data-Effcient OffPolicy Policy Evaluation for Reinforcement Learning. In
+Proceedings of the 33rd International Conference on Machine Learning, ICML 2016, 3158–3166.
+Wang, Q.; Wang, Z.; Su, Y.; Tong, H.; and Song, Y. 2024.
+Rethinking the Bounds of LLM Reasoning: Are MultiAgent Discussions the Key? In Proceedings of the 62nd
+Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers), ACL 2024, 6106–6131.
+Williams, R. J. 1992. Simple Statistical Gradient-Following
+Algorithms for Connectionist Reinforcement Learning. Machine Learning, 8(3-4): 229–256.
+Wu, Q.; Bansal, G.; Zhang, J.; Wu, Y.; Zhang, S.; Zhu, E.; Li,
+B.; Jiang, L.; Zhang, X.; and Wang, C. 2024. AutoGen: Enabling Next-Gen LLM Applications via Multi-Agent Conversation. In Proceedings of Conference on Language Modeling, COLM 2024.
+Xie, T.; Ma, Y.; and Wang, Y. 2019. Towards Optimal Off-Policy Evaluation for Reinforcement Learning with
+Marginalized Importance Sampling. In Proceedings of Annual Conference on Neural Information Processing Systems
+2019, NeurIPS 2019, 9665–9675.
+Yao, S.; Yu, D.; Zhao, J.; Shafran, I.; Griffths, T.; Cao, Y.;
+and Narasimhan, K. 2023a. Tree of Thoughts: Deliberate
+Problem Solving with Large Language Models. In Proceedings of Annual Conference on Neural Information Processing Systems 2023, NeurIPS 2023.
+29809
+Yao, S.; Zhao, J.; Yu, D.; Du, N.; Shafran, I.; Narasimhan,
+K. R.; and Cao, Y. 2023b. ReAct: Synergizing Reasoning
+and Acting in Language Models. In Proceedings of the
+Eleventh International Conference on Learning Representations, ICLR 2023.
+Zellinger, M. J.; Liu, R.; and Thomson, M. 2025. CostSaving LLM Cascades with Early Abstention. arXiv
+preprint arXiv:2502.09054.
+Zhang, X.; Huang, Z.; Taga, E. O.; Joe-Wong, C.; Oymak,
+S.; and Chen, J. 2024. Effcient Contextual LLM Cascades
+through Budget-Constrained Policy Learning. In Proceedings of Annual Conference on Neural Information Processing Systems 2024, NeurIPS 2024.
+Zheng, L.; Chiang, W.-L.; Sheng, Y.; Zhuang, S.; Wu, Z.;
+Zhuang, Y.; Lin, Z.; Li, Z.; Li, D.; Xing, E. P.; Zhang, H.;
+Gonzalez, J. E.; and Stoica, I. 2023. Judging LLM-as-aJudge with MT-Bench and Chatbot Arena. In Proceedings of
+Annual Conference on Neural Information Processing Systems 2023, NeurIPS 2023.
+29810
