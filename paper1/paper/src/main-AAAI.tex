@@ -1,19 +1,13 @@
 \documentclass[letterpaper]{article}
 \def\aaaianonymous{true}
-\usepackage[submission]{aaai2026}
-\usepackage{times}
-\usepackage{helvet}
-\usepackage{courier}
+\usepackage[submission]{aaai2027}
 \usepackage[hyphens]{url}
 \usepackage{graphicx}
 \urlstyle{rm}
 \def\UrlFont{\rm}
 \usepackage{natbib}
 \usepackage{caption}
-\usepackage{multicol}
 \frenchspacing
-\setlength{\pdfpagewidth}{8.5in}
-\setlength{\pdfpageheight}{11in}
 \usepackage{amsmath}
 \usepackage{booktabs}
 \usepackage{array}
@@ -43,7 +37,7 @@
 \newcommand{\pos}[1]{\textcolor{bfcoral}{\textbf{#1}}}
 \newcommand{\ctrl}[1]{\textcolor{bfblue}{\textbf{#1}}}
 
-\pdfinfo{/TemplateVersion (2026.1)}
+\pdfinfo{/TemplateVersion (2027.1)}
 
 \title{BudgetFlow: Value-Aware Budget Governance for Agent Tasks}
 \author{
@@ -52,6 +46,7 @@
     Address\\
     \texttt{email}
 }
+\affiliations{}
 
 \begin{document}
 \maketitle
@@ -215,7 +210,7 @@ where $d_i$ is the task's \tokencost and $q(h)$ reduces strong-model access as \
 \section{Experimental Setup}
 \label{sec:setup}
 \paragraph{Task set.}
-We evaluate on fixed 30-task SWE-bench-style bug-fixing batches. Each task requires an agent to inspect a repository, edit code, and produce a patch. Outcomes are scored by a local test-based harness, and every run exports official-format predictions for independent re-evaluation. Task values are pre-registered before execution.
+We evaluate on fixed 30-task SWE-bench-style bug-fixing batches~\cite{swebench}. Each task requires an agent to inspect a repository, edit code, and produce a patch. Outcomes are scored by a local test-based harness, and every run exports official-format predictions for independent re-evaluation. Task values are pre-registered before execution.
 
 \paragraph{Policies.}
 Table~\ref{tab:policies} compares the five policies by the inputs they use. All policies run under the same shared hard budget and the same verifier. The key contrast is whether \taskvalue enters allocation of scarce model opportunities.
@@ -319,9 +314,6 @@ Batch reading & Policy & Resolved Rate & Spend & TRV & TRV per Dollar \\
 \label{fig:cost-value-curve}
 \end{figure*}
 
-\clearpage
-\onecolumn
-\begin{multicols}{2}
 \paragraph{Reading the evidence.}
 The 4-policy BudgetFlow Pareto case reaches \textbf{\trv 18.50 at \$7.98}, compared with \trv 18.00 at \$9.46 for strong-model-only: higher verified value at about 16\% lower spend despite one fewer resolved task. In the 5-policy BudgetFlow leads-all case, \method leads Resolved Rate, \trv, and \trv per Dollar. The Strong Coverage cases are equally important boundary evidence: broad strong-model use is the observed frontier when it converts the shared hard budget to verified value efficiently enough that selective allocation does not improve it.
 
@@ -344,8 +336,5 @@ The SWE-bench experiments instantiate a domain-neutral contract: tasks expose \t
 
 \method formulates Batch-Level Task Budget Allocation and separates allocation signals from \verifier-settled outcomes. On SWE-bench, it improves the spend--\trv frontier in one batch and leads Resolved Rate, \trv, and \trv per Dollar in another under the same hard cap. The transferable object is the interface for governing verified value under fixed resource constraints.
 
-\end{multicols}
-\clearpage
-\twocolumn
 \bibliography{references}
 \end{document}
