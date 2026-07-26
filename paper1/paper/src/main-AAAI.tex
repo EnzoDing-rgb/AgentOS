@@ -10,6 +10,7 @@
 \def\UrlFont{\rm}
 \usepackage{natbib}
 \usepackage{caption}
+\usepackage{multicol}
 \frenchspacing
 \setlength{\pdfpagewidth}{8.5in}
 \setlength{\pdfpageheight}{11in}
@@ -319,6 +320,8 @@ Batch reading & Policy & Resolved Rate & Spend & TRV & TRV per Dollar \\
 \end{figure*}
 
 \clearpage
+\onecolumn
+\begin{multicols}{2}
 \paragraph{Reading the evidence.}
 The 4-policy BudgetFlow Pareto case reaches \textbf{\trv 18.50 at \$7.98}, compared with \trv 18.00 at \$9.46 for strong-model-only: higher verified value at about 16\% lower spend despite one fewer resolved task. In the 5-policy BudgetFlow leads-all case, \method leads Resolved Rate, \trv, and \trv per Dollar. The Strong Coverage cases are equally important boundary evidence: broad strong-model use is the observed frontier when it converts the shared hard budget to verified value efficiently enough that selective allocation does not improve it.
 
@@ -329,12 +332,20 @@ The curve is a no-paid replay of the completed 5-policy batch: task order and ve
 \label{sec:sensitivity}
 Sensitivity replays fixed outcomes from the 5-policy BudgetFlow leads-all case. Figure~\ref{fig:cost-value-curve} is the main cost-value curve: budget replay moves the observed frontier between Strong Coverage and Value-Aware Budget Flow. Re-scoring equal, criticality, compressed, and expanded Task Value profiles leaves \method ahead of the best control by +1.00 \trv in every profile (median +1.00 over 64 permutations).
 
+\paragraph{Task-level model advantage.}
+The five-policy positive case also contains real model-tier heterogeneity. Among tasks where both tiers consumed budget, six passes favor the cheap model, five favor the strong model, and seven fail under both. This mix explains why batch-level allocation can help: it can preserve strong-model opportunities where their expected value-weighted gain is credible while avoiding unnecessary spend on cheap-model-sufficient and ceiling tasks.
+
+\paragraph{Serving-cost boundary.}
+KV Cache Cost-Discount sensitivity keeps verified outcomes fixed while re-costing repeated input tokens. Through a 90\% cache discount, BudgetFlow leads or remains close on \trv per Dollar. At 98--99\% discounts, the learned task-router becomes the best \trv-per-Dollar point while BudgetFlow retains higher \trv. Serving conditions can therefore move the observed frontier without changing the verified outcome record.
+
 \section{Discussion and Conclusion}
 \label{sec:discussion}
 The SWE-bench experiments instantiate a domain-neutral contract: tasks expose \taskvalue, \tokencost, \modelfit, and a \verifier under one \sharedbudget. Frontier-mode reporting makes mixed outcomes interpretable---Strong Coverage when the strong model is broadly cost-effective, Model Fit when tier routing dominates under serving discounts, and Value-Aware Budget Flow when unequal task value forces cross-task tradeoffs. Future work can add finer within-task control, auditable learning from completed batches, and serving-aware multi-tenant scheduling above inference substrates.
 
 \method formulates Batch-Level Task Budget Allocation and separates allocation signals from \verifier-settled outcomes. On SWE-bench, it improves the spend--\trv frontier in one batch and leads Resolved Rate, \trv, and \trv per Dollar in another under the same hard cap. The transferable object is the interface for governing verified value under fixed resource constraints.
 
-
+\end{multicols}
+\clearpage
+\twocolumn
 \bibliography{references}
 \end{document}
