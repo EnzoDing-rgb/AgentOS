@@ -95,22 +95,22 @@ Figure~\ref{fig:overview} summarizes the \method loop. Adjacent systems decide w
 \begin{tikzpicture}[
   font=\small,
   >=Latex,
-  signal/.style={draw=bfblue!65, fill=bfmist, rounded corners=2pt, minimum width=3.25cm, minimum height=0.82cm, align=center},
-  stage/.style={draw=bfnavy, fill=white, rounded corners=2pt, minimum width=3.0cm, minimum height=1.10cm, align=center, line width=0.75pt},
-  state/.style={draw=bfteal!85!black, fill=bfteal!8, rounded corners=2pt, minimum width=4.0cm, minimum height=1.05cm, align=center, line width=0.75pt},
+  signal/.style={draw=bfblue!65, fill=bfmist, rounded corners=2pt, minimum width=3.72cm, minimum height=0.92cm, align=center},
+  stage/.style={draw=bfnavy, fill=white, rounded corners=2pt, minimum width=3.65cm, minimum height=1.18cm, align=center, line width=0.75pt},
+  state/.style={draw=bfteal!85!black, fill=bfteal!8, rounded corners=2pt, minimum width=5.2cm, minimum height=1.14cm, align=center, line width=0.75pt},
   arrow/.style={->, line width=0.9pt, bfnavy},
   loop/.style={->, line width=0.9pt, bfteal!85!black},
   label/.style={font=\scriptsize, text=bfgray, align=center}
 ]
 \node[signal] (value) {\textbf{Task Value}\\frozen before execution};
-\node[signal, right=0.28cm of value] (demand) {\textbf{Estimated token demand}\\run-before planning signal};
-\node[signal, right=0.28cm of demand] (fit) {\textbf{Model fit}\\cheap/strong expected gain};
-\node[signal, right=0.28cm of fit] (budget) {\textbf{Shared hard budget}\\remaining batch capacity};
+\node[signal, right=0.18cm of value] (demand) {\textbf{Estimated token demand}\\run-before planning signal};
+\node[signal, right=0.18cm of demand] (fit) {\textbf{Model fit}\\cheap/strong expected gain};
+\node[signal, right=0.18cm of fit] (budget) {\textbf{Shared hard budget}\\remaining batch capacity};
 
-\node[stage, below=0.70cm of value] (pool) {\textbf{1. Task pool}\\rank candidate opportunities};
-\node[stage, right=0.55cm of pool] (allocate) {\textbf{2. BudgetFlow}\\set cap + model tier};
-\node[stage, right=0.55cm of allocate] (execute) {\textbf{3. Execute}\\produce task artifact};
-\node[state, below=0.80cm of allocate] (settle) {\textbf{4. Verify and update}\\verifier settles outcome; update remaining budget and \trv};
+\node[stage, below=0.78cm of value] (pool) {\textbf{1. Task pool}\\rank candidate opportunities};
+\node[stage, right=0.45cm of pool] (allocate) {\textbf{2. BudgetFlow}\\set cap + model tier};
+\node[stage, right=0.45cm of allocate] (execute) {\textbf{3. Execute}\\produce task artifact};
+\node[state, below=0.82cm of allocate] (settle) {\textbf{4. Verify and update}\\verifier settles outcome; update remaining budget and \trv};
 
 \draw[arrow] (value.south) -- ([xshift=-0.85cm]pool.north);
 \draw[arrow] (demand.south) -- ([xshift=0.40cm]allocate.north);
@@ -244,22 +244,12 @@ We report Resolved Rate, \trv, and \trv per Dollar. Sensitivity replays one comp
 
 \section{Results}
 \label{sec:results}
-Table~\ref{tab:main-evidence} summarizes four paid 30-task batches. Red entries mark \method frontier signals; blue entries mark the strongest control in each group.
-
-In the 4-policy BudgetFlow Pareto case, \method reaches \textbf{\trv 18.50 at \$7.98}, while strong-model-only reaches \trv 18.00 at \$9.46---higher value at about 16\% lower spend despite one fewer resolved task. In the 5-policy BudgetFlow leads-all case, \method resolves 16/30 tasks, reaches \trv 18.00, and achieves 1.81 \trv per Dollar, ahead of the learned task-router on all three metrics. The two Strong Coverage batches show broad strong-model use as the observed frontier, once with a larger lead and once with a close lead. Together, the evidence supports three frontier modes: \textbf{Value-Aware Budget Flow} (central \method target), \textbf{Strong Coverage} (strong model cost-effective under the cap), and \textbf{Model Fit} (accurate tier routing under extreme cache discounts; see sensitivity).
-
-\paragraph{What the boundary cases establish.}
-The Strong Coverage cases are not negative evidence for the formulation. They identify the operating condition in which spending broadly on the strong model is already the best observed use of the shared hard budget. The larger-lead and close-lead cases differ in margin, not mechanism: in both, the strong-model-only baseline converts budget to verified value efficiently enough that selective allocation does not improve the observed frontier. Reporting these boundaries keeps the comparison diagnostic rather than treating a single winning batch as universal evidence.
-
-\paragraph{Why selective allocation can help.}
-The positive cases contain task-level model heterogeneity. In the 5-policy value-aware batch, among tasks where both tiers consumed budget, six passes favor the cheap model, five favor the strong model, and seven fail under both. A batch policy can therefore preserve strong-model opportunities for tasks with credible value-weighted upside while limiting spend on cheap-model-sufficient and ceiling tasks. This is a cross-task decision: the value of a model opportunity depends on what budget remains for later tasks, not only on the local task.
-
-\paragraph{Interpretation.}
-The evidence does not claim that \method always beats the strongest configured tier. It shows when value-aware allocation improves the cost-value frontier, when broad Strong Coverage is the stronger boundary, and how the cost-value curve makes these operating conditions visible under the same verifier and budget protocol.
 
 \begin{table*}[!t]
 \centering
-\small
+\normalsize
+\renewcommand{\arraystretch}{1.18}
+\setlength{\tabcolsep}{5pt}
 \begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.28\textwidth}lcccc@{}}
 \toprule
 Batch reading & Policy & Resolved Rate & Spend & TRV & TRV per Dollar \\
@@ -286,8 +276,8 @@ Batch reading & Policy & Resolved Rate & Spend & TRV & TRV per Dollar \\
 \centering
 \begin{tikzpicture}
 \begin{axis}[
-    width=0.92\textwidth,
-    height=0.31\textwidth,
+    width=0.95\textwidth,
+    height=0.42\textwidth,
     xlabel={Shared budget cap (\$)},
     ylabel={Total Resolved Value},
     xmin=2.7, xmax=10.3,
@@ -329,6 +319,12 @@ Batch reading & Policy & Resolved Rate & Spend & TRV & TRV per Dollar \\
 \end{figure*}
 
 \clearpage
+\paragraph{Reading the evidence.}
+The 4-policy BudgetFlow Pareto case reaches \textbf{\trv 18.50 at \$7.98}, compared with \trv 18.00 at \$9.46 for strong-model-only: higher verified value at about 16\% lower spend despite one fewer resolved task. In the 5-policy BudgetFlow leads-all case, \method leads Resolved Rate, \trv, and \trv per Dollar. The Strong Coverage cases are equally important boundary evidence: broad strong-model use is the observed frontier when it converts the shared hard budget to verified value efficiently enough that selective allocation does not improve it.
+
+\paragraph{Interpretation.}
+The curve is a no-paid replay of the completed 5-policy batch: task order and verifier outcomes remain fixed while accounting is replayed at sampled shared budget caps. It shows where Value-Aware Budget Flow reaches the observed frontier and where a control reaches or shares it. The evidence therefore does not claim that \method always beats the strongest configured tier; it identifies the operating conditions in which shared-budget value allocation improves the cost-value frontier.
+
 \section{Sensitivity Analysis}
 \label{sec:sensitivity}
 Sensitivity replays fixed outcomes from the 5-policy BudgetFlow leads-all case. Figure~\ref{fig:cost-value-curve} is the main cost-value curve: budget replay moves the observed frontier between Strong Coverage and Value-Aware Budget Flow. Re-scoring equal, criticality, compressed, and expanded Task Value profiles leaves \method ahead of the best control by +1.00 \trv in every profile (median +1.00 over 64 permutations).
