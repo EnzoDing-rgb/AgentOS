@@ -1,5 +1,35 @@
 # BudgetFlow 投稿总览
 
+<div style="display:flex;flex-wrap:wrap;gap:10px;font-family:-apple-system,'Segoe UI','Microsoft YaHei',sans-serif;font-size:13px;">
+  <div style="flex:1;min-width:220px;background:#e8f1fb;border:1px solid #c3d8f2;border-radius:10px;padding:10px 14px;">
+    <div style="font-weight:600;color:#1a4d8f;margin-bottom:4px;">🎯 主攻（已投）</div>
+    <div style="color:#22303f;"><b>AAAI 2027</b> · CCF A 会议 · ✅ 已投，双盲评审中</div>
+  </div>
+  <div style="flex:1;min-width:220px;background:#e9f7ee;border:1px solid #c3e4d0;border-radius:10px;padding:10px 14px;">
+    <div style="font-weight:600;color:#1d6b3a;margin-bottom:4px;">🚀 下一投（一箭双雕）</div>
+    <div style="color:#22303f;"><b>FSE 2027</b>（A 会议）全文 <b>10-02</b>，前提 AAAI 09-24 被拒</div>
+    <div style="color:#22303f;">拒后同一加厚版 → 期刊 <b>TSE / TOSEM</b>（A，全年滚动）</div>
+  </div>
+  <div style="flex:1;min-width:220px;background:#f2edf9;border:1px solid #d8cceb;border-radius:10px;padding:10px 14px;">
+    <div style="font-weight:600;color:#5b3a96;margin-bottom:4px;">🗓️ 关键路径（北京时间）</div>
+    <div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center;">
+      <span style="background:#fff;border:1px solid #d8cceb;border-radius:6px;padding:1px 7px;font-size:12px;"><b>08-04</b> 今天</span>
+      <span style="color:#8b83a3;">➜</span>
+      <span style="background:#fff;border:1px solid #d8cceb;border-radius:6px;padding:1px 7px;font-size:12px;"><b>09-24</b> AAAI P1</span>
+      <span style="color:#8b83a3;">➜</span>
+      <span style="background:#fff;border:1px solid #d8cceb;border-radius:6px;padding:1px 7px;font-size:12px;"><b>10-02</b> FSE 截稿<span style="color:#7a8494;">（若拒）</span></span>
+      <span style="color:#8b83a3;">➜</span>
+      <span style="background:#fff;border:1px solid #d8cceb;border-radius:6px;padding:1px 7px;font-size:12px;"><b>11-30</b> AAAI 终</span>
+      <span style="color:#8b83a3;">➜</span>
+      <span style="background:#fff;border:1px solid #d8cceb;border-radius:6px;padding:1px 7px;font-size:12px;"><b>2027-01-22</b> FSE 通知</span>
+    </div>
+  </div>
+  <div style="flex:1;min-width:220px;background:#fbf4e3;border:1px solid #ebdcb3;border-radius:10px;padding:10px 14px;">
+    <div style="font-weight:600;color:#8a6a12;margin-bottom:4px;">🧪 实验计划（已拍板）</div>
+    <div style="color:#22303f;"><b>17 次真跑</b>（A 6 + B 10 + D 1）+ 2 处写作 · 见下</div>
+  </div>
+</div>
+
 基准日：2026-08-04（原 2026-07-22 版由 git 历史保留）。
 核心问题：一批任务共享同一个硬预算时，如何结合任务价值、智能体验证和软件工程验证，最大化总解决价值（TRV）。
 CCF 依据：第七版目录（人工智能 + 软件工程分册已扫）。
@@ -8,34 +38,32 @@ CCF 依据：第七版目录（人工智能 + 软件工程分册已扫）。
 
 ---
 
-## 决策逻辑（当前，供汇报）
+## 决策逻辑
 
 ### 现状
 
-主攻已定且已投：**AAAI 2027 主技术轨（CCF A 会议）**。摘要与全文均在截稿前提交（07-26 完成投稿版本），现处双盲评审期。
+**AAAI 2027 主技术轨（CCF A 会议）已投**（07-26 提交，双盲评审中）。
 
 ### 并行投递的唯一约束是内容差异，不是时间等待
 
-1. 实质相同的内容不能同时在两处评审（一稿多投，所有正规出版社与会议明令禁止）。
-2. 实质不同的版本（期刊扩展版：显著新贡献 + 投稿时披露关联版本）是学术标准路径，**随时可投，不必等待 AAAI 结果**。
-3. 因此“现在能不能投别的”取决于能否提供差异化版本，而不是等待某个拒稿信号。
+1. 实质相同的内容不能同时在两处评审（一稿多投，明令禁止）。
+2. 实质不同的版本（期刊扩展版：显著新贡献 + 披露关联版本）是学术标准路径，**随时可投，不必等 AAAI 结果**。
+3. 所以”现在能不能投别的”取决于能否做出差异化版本，而不是等拒稿信号。
 
 ### 本窗口对 C 类会议（DAI 2026 / APSEC 2026）的评估：不投
 
 两会在 2026-08-04 截稿。评估后本窗口不投，理由：
 
-1. **内容重叠**：两会方向与 AAAI 版实质重叠，同内容双投违规；写差异化版本需要完整的改写工作量，其回报低于投入。
-2. **反馈时效**：两会的评审通知（09-16 / 09-21）不早于 AAAI Phase 1 通知（09-24），不能提供更快反馈。
-3. **优先级**：同样的改写投入，投向 A 类承接线（FSE 2027 / 期刊 TSE·TOSEM）的长期价值更高。
-4. **不投的损失为零**：拒稿才需要保底渠道；期刊全年滚动可投、SANER/AAMAS 窗口 10 月开放，不存在错过即消失的机会。
+1. **内容重叠**：与 AAAI 版实质重叠，同内容双投违规；写差异化版本的回报低于投入。
+2. **反馈时效**：两会的通知（09-16 / 09-21）不早于 AAAI Phase 1（09-24），给不了更快反馈。
+3. **机会成本**：同样改写投入投向 A 类承接线（FSE 2027 / 期刊 TSE·TOSEM）更值；期刊滚动可投、10 月还有 SANER/AAMAS 窗口，不存在错过即消失的机会。
 
 ### 下一投目标：FSE 2027（A 会议）+ 期刊 TSE / TOSEM（A 刊）——一箭双雕
 
 FSE 和期刊**不是二选一**，是同一份加厚版的两次机会：
 
-- **共同基础**：以 ICML 完整版为骨架，扩写为 18 页加厚版（FSE 正文上限 18 页，期刊 TSE / TOSEM 通常 12–18 页，规格接近）。
-- **实验共用**：新增实验（见下）对两个目标都加血，做一遍、两处用。
-- **排队策略**：FSE 2027 截稿在前（**10-02**）先投；FSE 被拒 → 同一加厚版转投期刊 TSE / TOSEM（全年滚动）。无论 AAAI 结果如何，8–9 月做的工作都用得上。
+- **同一份稿**：以 ICML 完整版为骨架扩成 18 页加厚版（FSE 正文上限 18 页，TSE/TOSEM 通常 12–18 页，规格接近）；新增实验做一遍、两处用。
+- **排队**：FSE 截稿在前（**10-02**）先投；被拒 → 同一加厚版转期刊 TSE/TOSEM（全年滚动）。无论 AAAI 结果如何，8–9 月的活都用得上。
 
 | 目标 | 级别 | 关键日期 | 前提 |
 |------|------|----------|------|
@@ -44,40 +72,33 @@ FSE 和期刊**不是二选一**，是同一份加厚版的两次机会：
 
 ### 30% 新工作 = 新增实验计划（已拍板）
 
-补五块实验/分析，堵住审稿人五个攻击点：
+补五块，堵住审稿人五个攻击点：
 
-**实验 A：真实收紧预算跑**（堵"重放不等于运行"）
-- 现状：论文的预算敏感性是拿已跑结果事后算账，不是真跑。真跑时策略会提前改变决策（预算紧了会省着花、把贵模型留给重要任务），事后算看不到。
-- 做法：预算从 9.95 美元降到 **6.5 美元**（约 35% 收紧），各策略真跑一次（30 任务）；segment 对比基线（实验 D）并入本组，5 策略变 **6 策略**。
-- 成本：**6 次运行**。产出：真实"预算 → 解决价值"曲线（论文主图）。
+**实验 A：真实收紧预算跑**（堵"重放 ≠ 运行"）
+- 预算从 9.95 美元降到 **6.5 美元**（约 35% 收紧），各策略真跑一次（30 任务）；segment 基线（实验 D）并入本组，5 策略变 **6 策略**。
+- 成本 **6 次运行**；产出真实"预算 → 解决价值"曲线（论文主图）。
 
-**实验 B：换价值分布真跑**（堵"赢是撞上一套有利价值表"）
-- 两个变体，各 5 策略真跑：
-  - B1：高价值任务从 6 个 → **12 个**（数量加倍）。
-  - B2：高价值任务分数从 1.5 → **2.5**（提高分数，数量不变）。
-- 成本：**10 次运行**。产出：价值环境变化下 BudgetFlow 依然领先的稳健性证据。
+**实验 B：换价值分布真跑**（堵"赢是撞上有利价值表"）
+- 两个变体，各 5 策略真跑：B1 高价值任务 6 → **12** 个；B2 分数 1.5 → **2.5**。
+- 成本 **10 次运行**；产出价值环境变化下 BudgetFlow 依然领先的证据。
 
-**实验 D：加一条"任务中途换模型"对比基线**（堵"你没跟这层的对手正面比过"）
-- 现状：我们比较的对手——STEER、CCPO、BAMAS、Online Multi-LLM——都是在任务中途按步换模型的；论文只写了"它们是另一层"，从没跑过这一层的基线。
-- 做法：同样的 30 任务、同一个共享预算、同一个验证器，加一种"先跑便宜模型、任务中途觉得不行就升级强模型"的跑法（对齐 STEER 式），真跑。
-  - 默认预算 9.95：作为主 5 策略对比的第 6 臂（1 次运行）。
-  - 收紧预算 6.5：并入实验 A（上面已计）。
-- 定位：segment 只当**对手**、不进我们自己的机制；Main Claim 保持"批量层分钱"不变（符合 North Star 边界）。
-- 成本：新增约 **2 次运行**（必要时加一次重复）。产出：segment 层对手在同一共享预算下的 TRV，正面比较 + 上图。
+**实验 D：加"任务中途换模型"对比基线**（堵"没跟这层对手正面比过"）
+- 对手 STEER / CCPO / BAMAS / Online Multi-LLM 都是任务中途换模型，我们没跑过这层。加一种"先便宜、不行再升级强模型"的跑法（STEER 式）真跑，同样 30 任务、同一预算、同一验证器。
+- 默认预算 9.95 作第 6 臂（1 次运行）；收紧预算 6.5 并入实验 A。
+- 定位：segment 只当**对手**、不进机制；Main Claim 保持"批量层分钱"不变。
+- 成本新增约 **2 次运行**；产出同预算下与 segment 层的 TRV 对比 + 上图。
 
-**写作 C：把"学得路由 vs BudgetFlow"明说成消融**（不花钱）
-- 学得路由不看任务价值、BudgetFlow 看任务价值——这组对比本质就是"价值信号开/关"，现在论文没这么写。改写成消融叙述，无需新实验。
+**写作 C：把"学得路由 vs BudgetFlow"写成消融**（不花钱）
+- 学得路由不看任务价值、BudgetFlow 看——本质是"价值信号开/关"，论文没这么写，改写即可。
 
-**写作 E：画一张"分层表"**（不花钱）
-- 把我们比较的十几篇论文按"一次问答 / 单个任务 / 任务中途 / 批量分钱"归类成表，BudgetFlow 独占"批量分钱"一格。
-- 先把分层表落到 `related_work.html`（相关工作修正以它为准），再写进论文 Related Work。
-- 效果：把"对手都是任务中途换模型"从弱点变成差异点；直接回应"你和 STEER/CCPO 区别"的疑问。
+**写作 E：画"分层表"**（不花钱）
+- 把比较的十几篇按"一次问答 / 单个任务 / 任务中途 / 批量分钱"归类，BudgetFlow 独占"批量分钱"格；先落 `related_work.html` 再进论文。
 
-**合计**：约 **17 次真跑**（实验 A 6 + 实验 B 10 + 实验 D 1，必要时各加重复）+ 写作 C + 写作 E。
+**合计**：约 **17 次真跑**（A 6 + B 10 + D 1，必要时加重复）+ 写作 C + 写作 E。
 
 ### 通用性：写保守（已拍板）
 
-不做"换任务类型"实验（如文档 / 工单）。论文里明说：**机制设计上可迁移，本次实证限于代码任务（SWE-bench）**；跨任务类型验证放入 future work，一句带过。不为此新开实验。
+不做换任务类型实验（文档 / 工单）。论文明说：**机制可迁移，本次实证限于代码任务（SWE-bench）**；跨类型验证放 future work，一句带过。
 
 ### 下一步节奏
 
@@ -101,22 +122,6 @@ FSE 和期刊**不是二选一**，是同一份加厚版的两次机会：
 | **FSE 2027** 主技术轨 | A 会议 | 候选主投（前提：AAAI Phase 1 被拒） | 全文 **10-02**；通知 2027-01-22；2027-07-12~16 深圳开会 |
 | 期刊 TSE / TOSEM | A 期刊 | 滚动可投 | 无截稿期；审稿约 6 个月 |
 | 期刊 EMSE | B 期刊 | 滚动可投 | 无截稿期；审稿 3–4 个月；特刊 09-28 |
-
-<div style="background:#f6f8fb;border:1px solid #e2e7ef;border-radius:10px;padding:14px 16px;font-family:-apple-system,'Segoe UI','Microsoft YaHei',sans-serif;">
-<div style="font-weight:600;margin-bottom:10px;font-size:14px;">🗓️ 关键路径（按北京时间）</div>
-<div style="display:flex;align-items:stretch;flex-wrap:wrap;gap:8px;font-size:13px;">
-  <div style="background:#fff;border:1px solid #d5dce6;border-radius:8px;padding:8px 12px;"><b>08-04 今天</b><br>定稿实验 A/B/D</div>
-  <div style="align-self:center;color:#a0a8b2;">➜</div>
-  <div style="background:#fff;border:1px solid #d5dce6;border-radius:8px;padding:8px 12px;"><b>09-24</b><br>AAAI Phase 1</div>
-  <div style="align-self:center;color:#a0a8b2;">➜</div>
-  <div style="background:#fff;border:1px solid #d5dce6;border-radius:8px;padding:8px 12px;"><b>10-02</b><br>FSE 截稿<br><span style="color:#7a8494;font-size:12px;">若被拒</span></div>
-  <div style="align-self:center;color:#a0a8b2;">➜</div>
-  <div style="background:#fff;border:1px solid #d5dce6;border-radius:8px;padding:8px 12px;"><b>11-30</b><br>AAAI 最终</div>
-  <div style="align-self:center;color:#a0a8b2;">➜</div>
-  <div style="background:#fff;border:1px solid #d5dce6;border-radius:8px;padding:8px 12px;"><b>2027-01-22</b><br>FSE 通知</div>
-</div>
-<div style="margin-top:10px;font-size:12px;color:#5a6472;line-height:1.7;">⚠️ FSE 有前提：AAAI 09-24 被拒。若未被拒 → 同一加厚版转期刊 TSE/TOSEM（全年滚动），不走 FSE。</div>
-</div>
 
 ---
 
