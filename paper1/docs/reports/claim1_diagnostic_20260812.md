@@ -152,41 +152,194 @@ The batch does contain a real frontier (T2 wins some tasks, T3 wins others). Bud
 win by capturing the cheap-model opportunities **and** not losing the strong-model-only passes. The
 flip analysis in §3 shows it currently does neither consistently.
 
+## 6.1 BudgetFlow vs the value-blind controls (learned router, budget-only)
+
+The paper's core mechanism claim is "value-aware allocation beats value-blind allocation".
+Per-task comparison of BudgetFlow against the two value-blind controls:
+
+| Run | BF-only vs learned router | router-only | BF value delta | BF-only vs budget-only | budget-only-only |
+|---|---:|---:|---:|---:|---:|
+| 4x30 | 4 tasks / val 6.5 | 3 / val 3.0 | **+3.5** | 14 / val 18.5 | 0 |
+| retryfix | 5 tasks / val 7.0 | 4 / val 6.5 | **+0.5** | 5 / val 7.0 | 1 / val 1.5 |
+| learnedprior* | — | — | +4.0 (TRV 16.0 vs 12.0) | — | — |
+| frontierfix | 2 tasks / val 2.0 | 1 / val 1.0 | **+1.0** | 5 / val 6.0 | 1 / val 1.0 |
+
+**BudgetFlow beats the learned router and budget-only in every run.** The value signal works. This
+is the paper's most robust empirical statement, and it is currently under-claimed.
+
+BudgetFlow vs pure strong-model-only (pure T3) is the real contest:
+
+| Run | BF TRV | pure T3 TRV | margin |
+|---|---:|---:|---:|
+| 4x30 | 18.5 | 18.0 | **+0.5** |
+| retryfix | 17.5 | 20.0 | -2.5 |
+| frontierfix | 18.0 | 16.5 | **+1.5** |
+
+Among complete runs, BudgetFlow beats pure T3 in 2 of 3 by small margins and loses one by -2.5
+(mean ≈ -0.17, effectively a toss-up). The paper's honest headline should be the first table
+(value-aware beats value-blind, robustly), with the pure-T3 comparison reported as boundary.
+
+## 6.2 Hard ceiling: tasks no policy ever resolves
+
+Across all four runs and all five policies, 8 tasks are never solved:
+
+| Task | Value |
+|---|---:|
+| `pallets__flask-4045` | 2.5 |
+| `sphinx-doc__sphinx-7686` | 2.5 |
+| `sphinx-doc__sphinx-8282` | 2.5 |
+| `sympy__sympy-13177` | 1.5 |
+| `pylint-dev__pylint-6506` | 1.0 |
+| `sympy__sympy-12171` | 1.0 |
+| `sympy__sympy-24102` | 1.0 |
+| `sphinx-doc__sphinx-8273` | 1.0 |
+
+Three of the four 2.5-value tasks are in this ceiling, so most of the "phantom value" (§5) is
+unobtainable by any policy, not just by BudgetFlow. The remaining 2.5-value task `flask-4992` is
+the one BudgetFlow alone solved in 4x30.
+
+## 6.3 Consolidated budget-cap curve
+
+No-paid replay (from the audits) of each policy's observed rows under tighter caps; this is the
+paper's cost-value curve data.
+
+| Cap | retry BF | retry T3 | retry route | front BF | front T3 | front route |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| $2.99 | 5.0 | 5.0 | **8.0** | 7.5 | 7.5 | 7.5 |
+| $3.98 | 6.0 | 7.5 | **10.0** | **9.0** | 8.5 | 8.5 |
+| $4.98 | 8.5 | 9.5 | **12.0** | 10.0 | **11.0** | 8.5 |
+| $5.97 | 9.5 | 9.5 | **12.0** | 11.0 | **12.0** | 11.0 |
+| $7.47 | 11.5 | **17.0** | 14.5 | 12.0 | 12.0 | **13.0** |
+| $9.95 | 17.5 | **20.0** | 17.0 | 17.0 | 16.5 | 17.0 |
+
+- **retryfix**: learned router leads at every tight cap ($2.99–$5.97); pure T3 leads at loose caps.
+  BudgetFlow never leads. Its cost-value curve is below both controls everywhere.
+- **frontierfix**: BudgetFlow leads at $3.98 and ties at $2.99/$9.95; pure T3 leads at $4.98/$5.97.
+  Competitive but not dominant.
+
+The cost-value curve flips between runs, exactly like the point estimates in §1.
+
+## 6.4 Self-consistency check
+
+Recomputed resolved count / TRV from the per-task matrices for both BudgetFlow and pure T3 in all
+three complete runs; all six spot checks match the audit strategy summaries exactly. The numbers
+in this report are internally consistent with the audits.
+
+## 6.5 Local tooling status
+
+`python3` on this box has neither `pip` nor `pytest`; the audit/sensitivity tooling under
+`paper1/code/budgetflow/` (e.g. `claim1_value_sensitivity.py`, `recost.py`) imports cleanly but the
+test suite cannot run here. If replay tooling is needed later, run it where the JSONL and a
+complete Python environment live.
+
 ## 7. Conclusions
 
-1. **The paper's positive claim is not robust.** BudgetFlow wins 1 of 4 runs at native value
-   (4x30, +0.5), and its only clean five-policy win (frontierfix, +1.0) uses a flat value table.
-   Mean margin vs the best control is **-0.5**. A reviewer who replays or cross-checks the three
-   5x30 runs will see the win is borderline and run-dependent.
-2. **The win is concentrated in single-task, value-table-dependent luck.** 4x30's win is
-   `flask-4992` flipping to BudgetFlow; under the flat table it becomes a loss.
-3. **The concrete, fixable failure is budget exhaustion.** In `retryfix`, BudgetFlow made 25 paid
-   attempts vs pure T3's 30 and missed 3.0 value of late winnable tasks. It burned early budget on
-   failing attempts and on phantom high-value tasks.
+1. **The value-aware claim is supported; the leaderboard claim is not.** BudgetFlow robustly beats
+   the value-blind controls (learned router, budget-only) in every run (§6.1). Against pure
+   strong-model-only it is a toss-up among complete runs (4x30 +0.5, retryfix -2.5,
+   frontierfix +1.5). The paper should headline the first result and report the second as a
+   boundary.
+2. **The headline win still rides on single-task luck.** 4x30's win is `flask-4992` flipping to
+   BudgetFlow; re-scored under the flat table it becomes a loss. frontierfix's +1.0 is execution
+   luck on a favorable (flat) value table.
+3. **The concrete failure is budget exhaustion under phantom high-value tasks.** In `retryfix`,
+   BudgetFlow made 25 paid attempts vs pure T3's 30 and missed 3.0 value of late winnable tasks.
+   It burned early budget on failing attempts and on phantom high-value tasks. The fix direction
+   (progress-gated escalation) is inside-task policy and belongs to future work per
+   `north_star.md`; the E1 oracle quantifies this boundary (see §8).
 4. **`learnedprior` must be flagged incomplete** before any paper use.
 5. **The positive-case audit is filed under `outdated/`** while the negative runs are in the main
-   reports directory. Before the paper uses the frontierfix win as the headline, that report should
-   be promoted and the negative runs should appear beside it, or the selection will look
-   cherry-picked.
+   reports directory. Promote it or the selection will look cherry-picked.
+6. **8 tasks are a hard ceiling** (3 of them 2.5-value); most of the phantom value is unobtainable
+   by any policy, which bounds the upside of any allocation scheme.
 
-## 8. Recommended next experiment (paid, later, targeted)
+## 8. Locked experiment plan (2026-08-12 addendum)
 
-Do not spend on the 17-run A/B/D shotgun from `conf_targets.md` yet. The diagnosis localizes one
-decisive, testable fix:
+Two experiments are planned. E1 is locked; E2 is designed with two decisions ratified
+(aggressive criticality value table; discrimination-first code task selection).
 
-- **Mechanism fix to test**: value-aware **stop/defer** (stop spending on failing attempts early;
-  do not reserve strong-model budget for high-value tasks until there is evidence they are
-  winnable — gate on Model Fit / estimated token demand), so BudgetFlow stays in budget to reach
-  the late winnable tasks.
-- **Single controlled paid run**: re-run the aggressive-table 5x30 protocol (same 30 tasks, same
-  order, same $9.95, same value table, same verifier) with the fix. Success criterion: BudgetFlow
-  no longer has zero-cost late rows on tasks pure T3 passes, and TRV ≥ pure T3.
-- If it works, the paper gets a real, explainable mechanism claim ("budget-aware stop-loss makes
-  value-aware allocation robust") instead of a fragile leaderboard. If it does not, the honest
-  finding is that value-aware allocation is fragile under phantom high-value tasks — itself a
-  reportable boundary result.
+### E1 — 5x30 completion run (LOCKED)
 
-## 9. What is blocked without the run JSONL
+One run, one self-consistent dataset. The point of running all lanes to completion is **not** the
+oracle per se — it is that every comparison and curve in the paper is then derived from a single
+dataset, eliminating the cross-run variance that makes the current four-run evidence fragile.
+
+- Tasks: fixed 30-task set, fixed order. Policies: the 5 mainline strategies
+  (bare T2, bare T3, learned router, budget-only, BudgetFlow task-level).
+- Shared hard budget with the cap raised so every lane attempts all 30 tasks (the pure-T2 lane
+  currently exhausts at ~24–26 tasks under $9.95; completion cap ≈ $12–13).
+- Value table: aggressive criticality (10 high-value tasks incl. 4×2.5), frozen pre-registration.
+- Outputs, all from the one dataset:
+  1. 5-policy comparison at $9.95 (replayed from completed rows).
+  2. Budget-cap replay at $2 / $4 / $6.5 / $9.95 — the paper's cost-value frontier figure.
+  3. Observed-tier oracle (hindsight ceiling): the BF-to-oracle gap **quantifies the phantom-trap
+     boundary** (how much value task-level allocation loses to high-value-but-unsolvable tasks).
+  4. Per-task budget attribution to verify the $1.22 phantom-trap accounting end-to-end.
+- **No 6th strategy.** Progress-gated escalation ("solvability gating") is inside-task escalation
+  policy — exactly the "when should scarce strong-model opportunities be spent inside a task"
+  question that `north_star.md` deliberately defers to future work (finer-grained allocation
+  policy, stage/segment-aware routing + escalation + learned stop/continue). The phantom trap is
+  reported as a measured boundary, not fixed in this paper.
+- Cost: ~$50.
+
+### E2 — 10+10 mixed batch (design; code task selection ratified, text tasks to finalize)
+
+20 tasks, one shared budget, two verifier families:
+
+- 10 code tasks selected from the fixed 30 with **discrimination-first + repo balance**
+  (criterion ratified): prefer tasks where policies disagree in the audits; keep all six repos.
+  Candidate list: `flask-4992`, `flask-4045`, `seaborn-3407`, `sympy-15346`, `sympy-17655`,
+  `django-15814`, `django-13964`, `sphinx-7975`, `sphinx-7738`, `pylint-7993`
+  (8 discriminating, 2 trap/ceiling, 1 easy-pass; 6 repos represented).
+- 10 text tasks sampled from **public, authoritative datasets** (no self-made tasks):
+  - 5 × SummEval (news summarization; human expert scores on 4 dimensions — the human scores let
+    us validate the LLM judge: judge-human agreement is a paper number).
+  - 5 × AlpacaEval (instruction following; standard LLM-as-judge benchmark, ~2k stars, active).
+  - IFEval dropped by decision.
+- Verifier forms in one batch: binary tests (code), graded rubric with human-validation
+  (SummEval), LLM-as-judge (AlpacaEval). "Resolved" = score ≥ frozen threshold for TRV
+  comparability; continuous score × value reported as secondary.
+- Judge: frozen rubric + frozen prompt + frozen model, blind to policy, judge-human agreement
+  reported on the SummEval subset.
+- Values pre-registered before execution (code values from the aggressive criticality table;
+  text values newly pre-registered, mixed 1.0/1.5/2.5).
+- Analyses: overall + per-family TRV, oracle gap, verifier-type breakdown, stop-vs-downgrade
+  behavior per family, judge robustness.
+- This is the generalization evidence: value-aware allocation under heterogeneous verifiers,
+  directly answering the "0/1 vs continuous" critique.
+- Cost: ~$30–40.
+
+### Dataset logistics
+
+SummEval (100 articles / 1600 summaries) and AlpacaEval (805 prompts) are small; no Lite
+versions exist or are needed. Both load via HuggingFace (`mteb/summeval`, `tatsu-lab/alpaca_eval`)
+through the HF mirror configured for this host.
+
+## 9. Insights from the 2026-08-12 discussion
+
+1. **Dimensions narrow to value + effort.** "Difficulty" is a conflation; the correct second
+   dimension is effort (run-before estimated token demand — the schema already names it
+   `task_effort` / Estimated Task Token Demand). Value = exogenous economic weight injected
+   before execution; effort = cost of attempting. High effort ≠ high value (reading many PDFs).
+   The paper should drop "difficulty" language entirely.
+2. **The learned-router control is the middle rung of the signal ladder.** budget-only
+   (no signal) → learned router (effort signal) → BudgetFlow (effort + value). It is the
+   strongest value-blind competitor in the data (current run: router 21.0 vs BF 15.0), so it
+   must be kept — and trained/calibrated fairly (it imitates historical start-tier choices; its
+   training provenance must be disclosed).
+3. **Generalization needs a second domain, not an argument.** Value is domain-independent by
+   construction; effort features are domain-specific (the router must be retrained per domain).
+   The 10+10 mixed batch turns "mechanism-level portability" from an abstraction into evidence
+   across verifier forms, with SummEval's human scores validating the judge.
+4. **BudgetFlow's mechanism does not learn.** The allocation policy is frozen rules consuming
+   pre-registered value; memory infrastructure exists but the mainline evidence ran with
+   prior/adapt off; cross-run continual learning is future work. This asymmetry is deliberate:
+   the comparison isolates the value signal ("learned, value-blind" vs "frozen, value-aware").
+5. **The oracle is a boundary meter, not the headline.** The paper's claim is BF vs the
+   value-blind baselines on one self-consistent dataset; the oracle quantifies the phantom-trap
+   boundary and doubles as a standard regret-style diagnostic.
+
+## 10. What is blocked without the run JSONL
 
 - KV-cache cost-discount recosting (needs per-turn input/output token counts).
 - Precise per-task budget attribution and stop-loss headroom (matrix costs are first-tier only).

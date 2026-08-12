@@ -131,8 +131,11 @@ def _ensure_main_repo(task: LiteTaskRecord) -> Path:
     repo_dir.parent.mkdir(parents=True, exist_ok=True)
     if not repo_dir.exists():
         print(f"{tag('prep')} git clone {paint(task.repo, _BRIGHT_CYAN)} ...", flush=True)
+        # Full clone, not blobless: a --filter=blob:none mirror cannot serve a
+        # workspace's local `git fetch` (git <2.35 upload-pack: unable to read
+        # missing blob objects), which broke every task workspace on this host.
         subprocess.run(
-            ["git", "clone", "--filter=blob:none", repo_url, str(repo_dir)],
+            ["git", "clone", repo_url, str(repo_dir)],
             check=True,
             capture_output=True,
             text=True,
