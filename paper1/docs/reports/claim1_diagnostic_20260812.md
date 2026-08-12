@@ -280,6 +280,11 @@ dataset, eliminating the cross-run variance that makes the current four-run evid
   question that `north_star.md` deliberately defers to future work (finer-grained allocation
   policy, stage/segment-aware routing + escalation + learned stop/continue). The phantom trap is
   reported as a measured boundary, not fixed in this paper.
+- **Future-work entry (added 2026-08-12)**: progress-gated escalation is the concrete
+  instantiation of future-work #1: probe solvability with cheap-model attempts before committing
+  strong-model budget to high-value tasks; stop or escalate on progress evidence. The E1 oracle
+  gap quantifies exactly how much value the phantom trap costs, giving this future-work entry a
+  measured failure mode to motivate it.
 - Cost: ~$50.
 
 ### E2 — 10+10 mixed batch (design; code task selection ratified, text tasks to finalize)
