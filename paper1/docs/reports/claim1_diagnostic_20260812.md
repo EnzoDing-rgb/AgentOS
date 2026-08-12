@@ -232,6 +232,16 @@ in this report are internally consistent with the audits.
 test suite cannot run here. If replay tooling is needed later, run it where the JSONL and a
 complete Python environment live.
 
+**Seaborn harness venv (2026-08-12 finding, E1 prerequisite):** the smoke run's five
+seaborn-3190 pairs aborted with `infra_error` after ~75 min each with zero LLM turns. Root cause:
+`_ensure_seaborn_harness_venv` runs `pip install -e ".[dev]"` per policy, and the five policies
+serialize on the venv lock — each pip attempt stalled (>900 s timeout) and the rows were excluded
+as unscoreable. Fix: pre-warm the venv at
+`harness_venvs/mwaskom__seaborn-<fingerprint>` (fingerprint computed by
+`_seaborn_harness_venv_fingerprint` with the runner's Python) including the `.budgetflow_ready`
+marker and the sitecustomize shim, so the harness skips pip entirely. Pre-warm with a pip mirror
+index to avoid stalls. E1 must confirm all six lanes write rows for all 30 tasks.
+
 ## 7. Conclusions
 
 1. **The value-aware claim is supported; the leaderboard claim is not.** BudgetFlow robustly beats
@@ -258,34 +268,35 @@ complete Python environment live.
 Two experiments are planned. E1 is locked; E2 is designed with two decisions ratified
 (aggressive criticality value table; discrimination-first code task selection).
 
-### E1 — 5x30 completion run (LOCKED)
+### E1 — 6x30 completion run (LOCKED)
 
 One run, one self-consistent dataset. The point of running all lanes to completion is **not** the
 oracle per se — it is that every comparison and curve in the paper is then derived from a single
 dataset, eliminating the cross-run variance that makes the current four-run evidence fragile.
 
-- Tasks: fixed 30-task set, fixed order. Policies: the 5 mainline strategies
-  (bare T2, bare T3, learned router, budget-only, BudgetFlow task-level).
+- Tasks: fixed 30-task set, fixed order. Policies: **6** — bare T2, bare T3, learned router,
+  budget-only, BudgetFlow task-level, and **segment-level BudgetFlow** (6th strategy, added
+  2026-08-12).
+- **6th strategy — segment-level BudgetFlow policy**: task-level value-aware allocation plus
+  inside-task progress-gated escalation. The cheap model probes solvability first; the strong
+  model is committed only on progress evidence (gold files touched, tests improving); no-progress
+  tasks stop early instead of consuming reserved strong-model budget. This targets the
+  phantom-trap failure mode ($1.22 reserved for unsolvable high-value tasks) inside the
+  shared-budget protocol. Deliberate boundary change (2026-08-12): this crosses the
+  stage/segment line `north_star.md` had marked as future work; `north_star.md` needs a matching
+  revision so Claim 1 now includes the segment-level variant as a within-run ablation.
 - Shared hard budget with the cap raised so every lane attempts all 30 tasks (the pure-T2 lane
   currently exhausts at ~24–26 tasks under $9.95; completion cap ≈ $12–13).
 - Value table: aggressive criticality (10 high-value tasks incl. 4×2.5), frozen pre-registration.
 - Outputs, all from the one dataset:
-  1. 5-policy comparison at $9.95 (replayed from completed rows).
+  1. 6-policy comparison at $9.95 (replayed from completed rows).
   2. Budget-cap replay at $2 / $4 / $6.5 / $9.95 — the paper's cost-value frontier figure.
   3. Observed-tier oracle (hindsight ceiling): the BF-to-oracle gap **quantifies the phantom-trap
-     boundary** (how much value task-level allocation loses to high-value-but-unsolvable tasks).
+     boundary**, and the segment-level variant's gap tests whether progress gating recovers it.
   4. Per-task budget attribution to verify the $1.22 phantom-trap accounting end-to-end.
-- **No 6th strategy.** Progress-gated escalation ("solvability gating") is inside-task escalation
-  policy — exactly the "when should scarce strong-model opportunities be spent inside a task"
-  question that `north_star.md` deliberately defers to future work (finer-grained allocation
-  policy, stage/segment-aware routing + escalation + learned stop/continue). The phantom trap is
-  reported as a measured boundary, not fixed in this paper.
-- **Future-work entry (added 2026-08-12)**: progress-gated escalation is the concrete
-  instantiation of future-work #1: probe solvability with cheap-model attempts before committing
-  strong-model budget to high-value tasks; stop or escalate on progress evidence. The E1 oracle
-  gap quantifies exactly how much value the phantom trap costs, giving this future-work entry a
-  measured failure mode to motivate it.
-- Cost: ~$50.
+  5. Segment-level vs task-level BF: the value delta is the inside-task escalation question,
+     measured as a within-run ablation.
+- Cost: ~$60.
 
 ### E2 — 10+10 mixed batch (design; code task selection ratified, text tasks to finalize)
 
