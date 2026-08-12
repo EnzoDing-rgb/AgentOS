@@ -279,10 +279,15 @@ BF vs 纯强模型（纯 T3）才是真正的对手：
   `sympy-15346`、`sympy-17655`、`django-15814`、`django-13964`、`sphinx-7975`、`sphinx-7738`、
   `pylint-7993`（8 个区分度高、2 个陷阱/硬顶、1 个易过；6 仓库全覆盖）。
 - 10 个文本任务采样自**公开权威数据集**（不自己造任务）：
-  - 5 × SummEval（新闻摘要；4 维人类专家评分——人类评分可用于验证 LLM judge，judge-人类一致性
+  - 4 × SummEval（新闻摘要；4 维人类专家评分——人类评分可用于验证 LLM judge，judge-人类一致性
     是论文里的一个数）。
-  - 5 × AlpacaEval（指令遵循；标准 LLM-as-judge 基准，~2k stars，活跃维护）。
-  - IFEval 按决策放弃。
+  - 6 × MT-Bench（指令/对话；原生绝对评分 1–10 分，3.3K 条人类专家判断，CC BY 4.0）。
+  - 2026-08-12 调整：原选 AlpacaEval 换成 MT-Bench，理由——① MT-Bench 有人工标注
+    （3.3K 专家判断），AlpacaEval 纯 LLM 成对胜率、无人工标签；② MT-Bench 的绝对评分是原生协议
+    （judge_llm.py），AlpacaEval 的绝对分是非标准用法；③ MT-Bench 是《Judging LLM-as-a-judge》
+    的开山基准（3000+ 引用）；④ 许可证 CC BY 4.0 比 AlpacaEval 的 CC BY-NC 更干净。
+  - 实现注意点：① MT-Bench 是多轮（2 轮）对话，judge 按官方协议逐轮评分后取平均；② SummEval
+    每个任务需一篇源文章，从 100 篇中采样 5 篇。
 - 一个批次里的验证器形态：二进制测试（代码）、带人类验证的分级评分（SummEval）、LLM-as-judge
   （AlpacaEval）。"解决" = 分数 ≥ 冻结阈值（与代码任务同一 TRV 口径）；连续分数 × 价值作为次要指标。
 - Judge：冻结评分细则 + 冻结 prompt + 冻结模型，盲评（不知道输出来自哪个策略）；SummEval 子集上
@@ -294,8 +299,8 @@ BF vs 纯强模型（纯 T3）才是真正的对手：
 
 ### 数据集落地
 
-SummEval（100 篇文章 / 1600 条摘要）和 AlpacaEval（805 条 prompt）都很小，不需要也不存在
-Lite 版。两者都通过 HuggingFace 加载（`mteb/summeval`、`tatsu-lab/alpaca_eval`），本机已配置
+SummEval（100 篇文章 / 1600 条摘要）和 MT-Bench（80 道多轮题 / 3.3K 人工判断）都很小，不需要
+也不存在 Lite 版。都通过 HuggingFace 加载（`mteb/summeval`、`lmsys/mt_bench`），本机已配置
 HF 镜像。
 
 ## 9. 2026-08-12 讨论的洞察
