@@ -93,3 +93,4 @@ test-results/
 Thumbs.db
 core
 core.*
+external/mini-swe-agent/
