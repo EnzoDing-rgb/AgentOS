@@ -1,189 +1,194 @@
-# Claim 1 Diagnostic — Cross-Run Robustness of the BudgetFlow Win
+# Claim 1 跨运行诊断报告（BudgetFlow 胜负稳健性）
 
-Date: 2026-08-12. No-paid analysis. No model calls. No JSONL required.
+日期：2026-08-12。非付费分析：不调用模型、不依赖原始 JSONL。
 
-This report re-derives the Claim 1 evidence from the four completed audit reports that are
-already in this repo. It does not touch historical artifacts. The purpose is to answer one
-question honestly: **is the BudgetFlow win robust, or is it an artifact of the value table and
-execution noise?**
+本报告基于仓库里已有的四份审计报告重新推导 Claim 1 证据，不修改任何历史产物。目的只有一个：
+诚实回答——**BudgetFlow 的"赢"是真实机制，还是价值表/运气造成的？**
 
-## 0. Sources and limitations
+## 0. 数据来源与局限
 
-Sources (per-task matrices + strategy summaries from the audits):
+数据来源（各审计报告的逐任务矩阵 + 策略汇总）：
 
-| Run | Audit report | Value table | Policies | Completeness |
+| 运行 | 审计报告 | 价值表 | 策略数 | 完整性 |
 |---|---|---|---|---|
-| 4x30 | `mainline_4x30_claim1_matrix_order_audit_20260628.md` | aggressive (10 high-value) | 4 | complete |
-| 5x30 retryfix | `mainline_5x30_claim1_retryfix_clean_20260629_audit.md` | aggressive (10 high-value) | 5 | complete |
-| 5x30 learnedprior | `mainline_5x30_claim1_final_forensic_value_sensitivity_20260629.md` | aggressive (10 high-value) | 5 | **partial_incomplete** |
-| 5x30 frontierfix | `outdated/tmp_claim1_audit_frontierfix_20260630.md` | flat (6 high-value) | 5 | complete |
+| 4x30 | `mainline_4x30_claim1_matrix_order_audit_20260628.md` | 激进（10 高价值） | 4 | 完整 |
+| 5x30 retryfix | `mainline_5x30_claim1_retryfix_clean_20260629_audit.md` | 激进（10 高价值） | 5 | 完整 |
+| 5x30 learnedprior | `mainline_5x30_claim1_final_forensic_value_sensitivity_20260629.md` | 激进（10 高价值） | 5 | **partial_incomplete** |
+| 5x30 "current" | `outdated/tmp_claim1_audit_current_20260630.md` | 平（6 高价值） | 5 | 完整 |
+| 5x30 frontierfix | `outdated/tmp_claim1_audit_frontierfix_20260630.md` | 平（6 高价值） | 5 | 完整 |
 
-Limitations:
+局限：
 
-- The per-task matrix costs are **first-tier costs only** (cell format `P/F/A cost first-tier`),
-  not total task costs. Use them as lower bounds, not as exact budget attribution.
-- `learnedprior` is a **partial, interrupted run** (both BudgetFlow and pure T3 wrote only ~22/30
-  rows, spend ~$6.2). Its numbers are not comparable to the complete runs. The north-star evidence
-  table currently lists it as a "5x30 learned-router stress case"; it should be marked incomplete
-  before any paper use.
-- The three 5x30 runs share the **same task order** (task_ids from
-  `mainline_5x30_claim1_learnedprior_final_budget_plan_20260630.json`) and the same $9.95 hard cap.
-  The value tables differ on **exactly 5 tasks**: `flask-4992`, `flask-4045`, `sphinx-7686`,
-  `sphinx-8282`, `sphinx-8801` (2.5 in aggressive runs, 1.0/1.5 in the flat run).
+- 逐任务矩阵里的 cost 是**首 tier 成本**（单元格格式 `P/F/A cost first-tier`），不是任务总成本。
+  只能当下限，不能当精确预算归属。
+- `learnedprior` 是一个**未完成的中断运行**（所有 lane 都是 partial_incomplete，行数 16–22/30，
+  花费 $5.2–8.2）。north_star 把它列为"5x30 learned-router stress case"证据，但仓库里**没有该运行的
+  完成版审计**——论文使用前必须标注。
+- 仓库里还有一个完整运行（`tmp_claim1_audit_current`，任务顺序同 retryfix、平价值表）：
+  **学得路由 21.0 vs BudgetFlow 15.0（BF 输 6.0）**——这是 BF 输得最惨的一次，且**不在 north_star
+  的证据表里**。
+- 三个 5x30 运行**任务顺序相同**（来自 `learnedprior_final_budget_plan_20260630.json` 的 task_ids），
+  共享 $9.95 硬预算。价值表仅在 **5 个任务**上不同：`flask-4992`、`flask-4045`、`sphinx-7686`、
+  `sphinx-8282`、`sphinx-8801`（激进运行里 2.5 分，平表运行里 1.0/1.5 分）。
 
-## 1. Evidence matrix (the honest main table)
+## 1. 证据矩阵（诚实的论文主表）
 
-| Run | Policy | Resolved | Spend | TRV | TRV/$ | BF margin vs best control |
-|---|---|---|---:|---:|---:|---:|---:|
-| 4x30 | pure T2 | 12/30 | $10.44 | 13.5 | 1.29 | |
-| 4x30 | pure T3 | 15/30 | $9.46 | 18.0 | 1.90 | |
-| 4x30 | learned router | 13/30 | $9.37 | 15.0 | 1.60 | |
-| 4x30 | **BudgetFlow** | 14/30 | $7.98 | **18.5** | **2.32** | **+0.5 vs pure T3** |
-| retryfix | pure T2 | 11/30 | $9.95 | 12.0 | 1.21 | |
-| retryfix | pure T3 | 17/30 | $9.95 | **20.0** | 2.01 | |
-| retryfix | learned router | 14/30 | $9.95 | 17.0 | 1.71 | |
-| retryfix | budget-only | 11/30 | $9.95 | 12.0 | 1.21 | |
-| retryfix | BudgetFlow | 15/30 | $9.95 | 17.5 | 1.76 | **-2.5 vs pure T3** |
-| learnedprior* | pure T3 | 14/30 | $6.34 | 17.0 | 2.68 | |
-| learnedprior* | BudgetFlow | 13/30 | $6.20 | 16.0 | 2.58 | **-1.0 vs pure T3** (run incomplete) |
-| frontierfix | pure T3 | 15/30 | $9.95 | 16.5 | 1.66 | |
-| frontierfix | learned router | 15/30 | $9.95 | 17.0 | 1.71 | |
-| frontierfix | **BudgetFlow** | 16/30 | $9.95 | **18.0** | **1.81** | **+1.0 vs learned router** |
+| 运行 | 策略 | 解决 | 花费 | TRV | TRV/$ | BF 相对最强基线的赢面 |
+|---|---|---:|---:|---:|---:|---:|
+| 4x30 | 纯 T2 | 12/30 | $10.44 | 13.5 | 1.29 | |
+| 4x30 | 纯 T3 | 15/30 | $9.46 | 18.0 | 1.90 | |
+| 4x30 | 学得路由 | 13/30 | $9.37 | 15.0 | 1.60 | |
+| 4x30 | **BudgetFlow** | 14/30 | $7.98 | **18.5** | **2.32** | **+0.5 vs 纯 T3** |
+| retryfix | 纯 T2 | 11/30 | $9.95 | 12.0 | 1.21 | |
+| retryfix | 纯 T3 | 17/30 | $9.95 | **20.0** | 2.01 | |
+| retryfix | 学得路由 | 14/30 | $9.95 | 17.0 | 1.71 | |
+| retryfix | 只看预算 | 11/30 | $9.95 | 12.0 | 1.21 | |
+| retryfix | BudgetFlow | 15/30 | $9.95 | 17.5 | 1.76 | **-2.5 vs 纯 T3** |
+| learnedprior* | 纯 T3 | 14/30 | $6.34 | 17.0 | 2.68 | |
+| learnedprior* | BudgetFlow | 13/30 | $6.20 | 16.0 | 2.58 | **-1.0 vs 纯 T3**（运行未完成） |
+| "current" | 纯 T3 | 17/30 | $9.95 | 18.5 | 1.86 | |
+| "current" | 学得路由 | 19/30 | $9.95 | **21.0** | 2.11 | |
+| "current" | BudgetFlow | 14/30 | $9.95 | 15.0 | 1.51 | **-6.0 vs 学得路由** |
+| frontierfix | 纯 T3 | 15/30 | $9.95 | 16.5 | 1.66 | |
+| frontierfix | 学得路由 | 15/30 | $9.95 | 17.0 | 1.71 | |
+| frontierfix | **BudgetFlow** | 16/30 | $9.95 | **18.0** | **1.81** | **+1.0 vs 学得路由** |
 
-Mean BudgetFlow margin vs best control over the four runs: **(+0.5 - 2.5 - 1.0 + 1.0) / 4 = -0.5**.
-BudgetFlow wins resolved count only in `frontierfix` (16 vs 15).
+BudgetFlow 相对最强基线的平均赢面 = **(+0.5 - 2.5 - 1.0 - 6.0 + 1.0) / 5 = -1.6**。
+BF 只在 4x30（+0.5）和 frontierfix（+1.0，平价值表）赢，在 retryfix / learnedprior / "current" 输。
 
-## 2. Cross-value-table re-scoring (the core result)
+## 2. 交叉价值表重打分（核心结果）
 
-Same executed resolved rows, re-scored under both value tables. This separates "execution
-difference" from "value-table difference".
+同一批"解决/未解决"行，用两种价值表各算一遍 TRV——把"执行差异"和"价值表差异"分开：
 
-| Run (executed rows) | BF TRV @ aggressive | best control TRV @ aggressive | BF TRV @ flat5 | best control TRV @ flat5 |
+| 运行（已执行的行） | 激进表下 BF | 激进表下最强基线 | 平表下 BF | 平表下最强基线 |
 |---|---:|---:|---:|---:|
-| 4x30 | **18.5** | T3 18.0 | 15.5 | **T3 16.5** |
-| retryfix | 17.5 | **T3 20.0** | 16.0 | **T3 18.5** |
-| learnedprior | 16.0 | **T3 17.0** | 14.5 | **T3 15.5** |
-| frontierfix | 18.0 | router 17.0 | **18.0** | router 17.0 |
+| 4x30 | **18.5** | 纯T3 18.0 | 15.5 | **纯T3 16.5** |
+| retryfix | 17.5 | **纯T3 20.0** | 16.0 | **纯T3 18.5** |
+| learnedprior | 16.0 | **纯T3 17.0** | 14.5 | **纯T3 15.5** |
+| frontierfix | 18.0 | 学得路由 17.0 | **18.0** | 学得路由 17.0 |
 
-Reading:
+解读：
 
-- Under the **aggressive** value table, BudgetFlow wins 1 of 3 complete runs (4x30, +0.5) and
-  loses 2 (retryfix -2.5, learnedprior -1.0).
-- Under the **flat** value table, BudgetFlow wins 1 of 4 runs (frontierfix +1.0) and loses 3
-  (4x30 -1.0, retryfix -2.5, learnedprior -1.0).
-- **The 4x30 win is entirely value-table-dependent**: BudgetFlow's 2.5-point advantage comes from
-  resolving `flask-4992` (2.5). Re-scored under the flat table, 4x30 becomes a 1.0 loss.
-- The `frontierfix` win is execution-dependent, not value-table-dependent (native == flat5 there).
+- **激进表下**：BF 只在 4x30 赢（+0.5），retryfix / learnedprior 输。
+- **平表下**：BF 只在 frontierfix 赢（+1.0），4x30 变成输（-1.0），其余照输。
+- **4x30 的赢面完全来自价值表**：BF 的 2.5 分优势来自解出 `flask-4992`（2.5 分）；换平表后
+  该任务只值 1.0，赢面蒸发。
+- frontierfix 的赢面是执行差异（它的原生价值表就是平表）。
 
-Conclusion: **BudgetFlow's win is not robust to either the value table or the run. It is a
-minority outcome under every way the evidence is sliced.**
+结论：**BF 的赢既不抗价值表，也不抗运行。** 无论怎么切片，赢都是少数派结果。
 
-## 3. Where the flip comes from
+## 3. 翻转来自哪里（单任务运气）
 
-Per-task BudgetFlow-vs-pure-T3 outcomes that flip across runs:
+BF vs 纯 T3 的胜负在运行间翻转的任务（逐任务矩阵核实）：
 
-| Task | Value (aggressive) | 4x30 | retryfix | learnedprior | frontierfix |
+| 任务 | 激进表价值 | 4x30 | retryfix | learnedprior | frontierfix |
 |---|---|---|---|---|---|
-| `flask-4992` | 2.5 | **BF P** ($0.19 T3), T3 F | BF F, T3 F | BF F, T3 F | value=1.0, both F |
-| `sympy-15346` | 1.0 | both F | **BF P**, T3 F | T3 P, BF F | both F |
-| `sympy-17655` | 1.0 | BF P, T3 F | **BF P**, T3 F | BF P, T3 F | **BF F**, T3 P |
-| `seaborn-3407` | 1.5 | BF F, T3 F | **BF F**, T3 P | both F | **BF P**, T3 F |
+| `flask-4992` | 2.5 | **BF 解**（$0.19 T3），T3 失败 | 都失败 | 都失败 | 价值=1.0，都失败 |
+| `sympy-15346` | 1.0 | 都失败 | **BF 解**，T3 失败 | T3 解，BF 失败 | 都失败 |
+| `sympy-17655` | 1.0 | BF 解 | **BF 解** | BF 解 | **BF 失败**，T3 解 |
+| `seaborn-3407` | 1.5 | 都失败 | **BF 失败**，T3 解 | 都失败 | **BF 解**，T3 失败 |
 
-`flask-4992` is decisive: in 4x30 BudgetFlow solved it with a $0.19 strong-model start and nobody
-else did; in every other run it failed for everyone. **A single 2.5-point task that flips on
-execution noise is what turns the aggressive-table runs into a win.** The other flips are all on
-value-1.0 tasks and roughly cancel out in TRV.
+`flask-4992` 是决定性的：4x30 里 BF 用 $0.19 强模型起步解出了它、别人都没解出；其他所有运行里
+它对所有人都是失败的。**一个 2.5 分任务在运行噪声下的翻转，决定了激进表运行的输赢。**
+其余翻转都在 1.0 分任务上，TRV 上大致互相抵消。
 
-## 4. Budget exhaustion: the concrete loss mechanism
+## 4. 预算耗尽：具体的失败机制（$1.22 ≈ $1.22）
 
-Zero-cost placeholder rows (budget-exhaustion, not failed attempts):
+零花费占位行（预算耗尽，非尝试失败）：
 
-| Run | BudgetFlow zero-cost rows | pure T3 zero-cost rows |
+| 运行 | BF 零花费行 | 纯 T3 零花费行 |
 |---|---:|---:|
 | 4x30 | 0/30 | 0/30 |
 | retryfix | 5/30 | 0/30 |
-| learnedprior | 8/30 | 8/30 (run incomplete) |
+| learnedprior | 8/30 | 8/30（运行未完成） |
 | frontierfix | 7/30 | 5/30 |
 
-Tasks where BudgetFlow got no value but pure T3 did (and BudgetFlow never reached them — zero-cost
-placeholder):
+BF 没拿到价值、但纯 T3 拿到（且 BF 因预算耗尽从未够到）的任务：
 
-- **retryfix**: `django-13964` (1.0), `sphinx-7975` (1.0), `sympy-18621` (1.0) — 3 tasks / value
-  **3.0**, all zero-cost rows for BudgetFlow, all passed by pure T3. Plus `seaborn-3407` (1.5) that
-  BudgetFlow failed with a strong-model start while pure T3 passed. Total **4.5 value** left on the
-  table to pure T3.
-- **4x30**: `django-15851` (1.0), `django-15814` (1.0), `django-13964` (1.0) missed, but the
-  `flask-4992` (2.5) win covered the gap.
+- **retryfix**：`django-13964`(1.0)、`sphinx-7975`(1.0)、`sympy-18621`(1.0)——3 个任务 / 价值
+  **3.0**，全是 BF 的零花费占位行，纯 T3 全部解出；另有 `seaborn-3407`(1.5) BF 用强模型起步失败、
+  纯 T3 解出。合计 **4.5 价值**留给纯 T3。
+- **4x30**：`django-15851`、`django-15814`、`django-13964` 没够到，但 `flask-4992`(2.5) 的赢面盖过了缺口。
 
-Interpretation: in `retryfix`, BudgetFlow spent its $9.95 on earlier attempts such that it made 25
-paid attempts to pure T3's 30, and missed the late winnable tasks the strong model reached.
-First-tier costs show BudgetFlow burning early budget on failing attempts (`sphinx-7738` ≈ $1.01,
-`pylint-6506` ≈ $0.50 in retryfix) and on phantom high-value tasks (see below).
+**精确的机制对账（retryfix）**：
 
-## 5. Phantom high-value tasks
+BF 押在 4 个"高价值但所有人都解不出"任务上的强模型预算：
+`flask-4992` $0.23 + `flask-4045` $0.33 + `sphinx-7686` $0.36 + `sphinx-8282` $0.30 = **$1.22**。
 
-High-value tasks (value ≥ 1.5) that **every** policy failed:
+纯 T3 解决 BF 没够到的 3 个尾部任务的花费：
+`django-13964` $0.32 + `sphinx-7975` $0.66 + `sympy-18621` $0.24 = **$1.22**。
 
-| Run | Phantom tasks | Phantom value | BudgetFlow first-tier spend on them |
+**$1.22 对 $1.22。** 这不是巧合，是预算结构的必然：
+
+> 价值感知分配器把强模型预算押在"值钱但解不出"的任务上（2.5 分最值得押），而这 $1.22 恰好就是
+> 纯 T3 用来解决尾部 3 个可解任务的 $1.22。**边际预算决定了输赢。**
+
+这也解释了为什么平价值表下 BF 赢（幻影任务只剩 2 个、只押 $0.37），激进表下 BF 输
+（幻影任务 4 个、押 $1.22）——**同一个机制，两种结果**。
+
+注意（修正）：BF 用便宜模型并非浪费——retryfix 里 16 个全 T2 任务解出 12 个（75% 通过率），
+15 个解决里 12 个来自 T2。**机制不是"T2 空转烧钱"，是"为无解的高价值任务预留了预算"。**
+
+## 5. 幻影高价值任务
+
+所有策略都失败的高价值任务（价值 ≥ 1.5）：
+
+| 运行 | 幻影任务数 | 幻影价值 | BF 在它们上的首 tier 花费 |
 |---|---:|---:|---:|
 | 4x30 | 4 | 9.0 | ~$1.18 |
 | retryfix | 4 | 9.0 | ~$0.99 |
 | learnedprior | 5 | 11.5 | ~$0.94 |
 | frontierfix | 2 | 3.0 | ~$0.37 |
 
-In the aggressive runs, 9–11.5 value sits on tasks nobody can solve. A value-aware allocator has
-no way to know these are unwinnable in advance, so it reserves strong-model budget for them and
-burns it. This is the natural failure mode the paper must either fix or report.
+激进表下 9–11.5 分价值躺在所有人都解不出的任务上。价值感知分配器无从预知它们不可解，
+于是为它们预留强模型预算并烧掉。这是任务级价值分配的自然失效模式。
 
-## 6. Task-level model advantage (frontier structure)
+## 6. 任务级模型优势（前沿结构）
 
-Comparable paid T2/T3 pairs per run (from the audits):
+可比的 T2/T3 付费任务对（来自审计）：
 
-| Frontier bucket | retryfix | frontierfix |
+| 前沿桶 | retryfix | frontierfix |
 |---|---:|---:|
-| T2 cheaper pass | 4 | 6 |
-| T3 cheaper pass | 5 | 5 |
-| T2-only pass | 2 | 0 |
-| T3-only pass | 0 | 0 |
-| both fail | 6 | 7 |
-| comparable tasks | 17 | 18 |
+| T2 更便宜且通过 | 4 | 6 |
+| T3 更便宜且通过 | 5 | 5 |
+| 仅 T2 通过 | 2 | 0 |
+| 仅 T3 通过 | 0 | 0 |
+| 都失败 | 6 | 7 |
+| 可比任务数 | 17 | 18 |
 
-The batch does contain a real frontier (T2 wins some tasks, T3 wins others). BudgetFlow can only
-win by capturing the cheap-model opportunities **and** not losing the strong-model-only passes. The
-flip analysis in §3 shows it currently does neither consistently.
+批次里确实存在真实前沿（T2 赢一部分、T3 赢一部分）。BF 只有同时抓住便宜模型机会、又不丢掉
+强模型独占任务，才能赢——§3 的翻转分析显示它目前两者都做不到。
 
-## 6.1 BudgetFlow vs the value-blind controls (learned router, budget-only)
+## 6.1 BF vs 价值盲对照（好消息）
 
-The paper's core mechanism claim is "value-aware allocation beats value-blind allocation".
-Per-task comparison of BudgetFlow against the two value-blind controls:
+论文的核心机制主张是"价值感知分配胜过价值盲分配"。逐任务对比：
 
-| Run | BF-only vs learned router | router-only | BF value delta | BF-only vs budget-only | budget-only-only |
+| 运行 | BF-only vs 学得路由 | 路由-only | BF 价值差 | BF-only vs 只看预算 | 只看预算-only |
 |---|---:|---:|---:|---:|---:|
-| 4x30 | 4 tasks / val 6.5 | 3 / val 3.0 | **+3.5** | 14 / val 18.5 | 0 |
-| retryfix | 5 tasks / val 7.0 | 4 / val 6.5 | **+0.5** | 5 / val 7.0 | 1 / val 1.5 |
-| learnedprior* | — | — | +4.0 (TRV 16.0 vs 12.0) | — | — |
-| frontierfix | 2 tasks / val 2.0 | 1 / val 1.0 | **+1.0** | 5 / val 6.0 | 1 / val 1.0 |
+| 4x30 | 4 任务 / 6.5 | 3 / 3.0 | **+3.5** | 14 / 18.5 | 0 |
+| retryfix | 5 任务 / 7.0 | 4 / 6.5 | **+0.5** | 5 / 7.0 | 1 / 1.5 |
+| learnedprior* | — | — | +4.0（TRV 16.0 vs 12.0） | — | — |
+| frontierfix | 2 任务 / 2.0 | 1 / 1.0 | **+1.0** | 5 / 6.0 | 1 / 1.0 |
 
-**BudgetFlow beats the learned router and budget-only in every run.** The value signal works. This
-is the paper's most robust empirical statement, and it is currently under-claimed.
+**BF 在所有运行里都赢"价值盲"对照（学得路由、只看预算）。** 价值信号是有效的——这是论文最稳健、
+目前被低估的实证结论。
 
-BudgetFlow vs pure strong-model-only (pure T3) is the real contest:
+BF vs 纯强模型（纯 T3）才是真正的对手：
 
-| Run | BF TRV | pure T3 TRV | margin |
+| 运行 | BF TRV | 纯 T3 TRV | 赢面 |
 |---|---:|---:|---:|
 | 4x30 | 18.5 | 18.0 | **+0.5** |
 | retryfix | 17.5 | 20.0 | -2.5 |
 | frontierfix | 18.0 | 16.5 | **+1.5** |
 
-Among complete runs, BudgetFlow beats pure T3 in 2 of 3 by small margins and loses one by -2.5
-(mean ≈ -0.17, effectively a toss-up). The paper's honest headline should be the first table
-(value-aware beats value-blind, robustly), with the pure-T3 comparison reported as boundary.
+完整运行里 BF 对纯 T3 是 2 胜 1 负、均值 ≈ -0.17，接近平手。论文诚实的主线应是第一张表
+（价值感知稳健胜过价值盲），纯 T3 对比作为边界如实报告。
 
-## 6.2 Hard ceiling: tasks no policy ever resolves
+## 6.2 硬顶：任何策略都没解出的任务
 
-Across all four runs and all five policies, 8 tasks are never solved:
+全部运行、全部策略都解不出的任务共 **8 个**（其中 3 个是 2.5 分）：
 
-| Task | Value |
+| 任务 | 价值 |
 |---|---:|
 | `pallets__flask-4045` | 2.5 |
 | `sphinx-doc__sphinx-7686` | 2.5 |
@@ -194,17 +199,15 @@ Across all four runs and all five policies, 8 tasks are never solved:
 | `sympy__sympy-24102` | 1.0 |
 | `sphinx-doc__sphinx-8273` | 1.0 |
 
-Three of the four 2.5-value tasks are in this ceiling, so most of the "phantom value" (§5) is
-unobtainable by any policy, not just by BudgetFlow. The remaining 2.5-value task `flask-4992` is
-the one BudgetFlow alone solved in 4x30.
+4 个 2.5 分任务里 3 个在硬顶里——§5 的"幻影价值"大部分是任何策略都拿不到的，不单是 BF 拿不到。
+剩下的 2.5 分任务 `flask-4992` 是 4x30 里 BF 唯一解出的那个。
 
-## 6.3 Consolidated budget-cap curve
+## 6.3 整合的预算容量曲线
 
-No-paid replay (from the audits) of each policy's observed rows under tighter caps; this is the
-paper's cost-value curve data.
+各策略观测行的无付费回放（来自审计），即论文的成本-价值曲线数据：
 
-| Cap | retry BF | retry T3 | retry route | front BF | front T3 | front route |
-|---|---:|---:|---:|---:|---:|---:|---:|
+| 预算 | retry BF | retry T3 | retry 路由 | front BF | front T3 | front 路由 |
+|---|---:|---:|---:|---:|---:|---:|
 | $2.99 | 5.0 | 5.0 | **8.0** | 7.5 | 7.5 | 7.5 |
 | $3.98 | 6.0 | 7.5 | **10.0** | **9.0** | 8.5 | 8.5 |
 | $4.98 | 8.5 | 9.5 | **12.0** | 10.0 | **11.0** | 8.5 |
@@ -212,158 +215,113 @@ paper's cost-value curve data.
 | $7.47 | 11.5 | **17.0** | 14.5 | 12.0 | 12.0 | **13.0** |
 | $9.95 | 17.5 | **20.0** | 17.0 | 17.0 | 16.5 | 17.0 |
 
-- **retryfix**: learned router leads at every tight cap ($2.99–$5.97); pure T3 leads at loose caps.
-  BudgetFlow never leads. Its cost-value curve is below both controls everywhere.
-- **frontierfix**: BudgetFlow leads at $3.98 and ties at $2.99/$9.95; pure T3 leads at $4.98/$5.97.
-  Competitive but not dominant.
+- **retryfix**：学得路由在每一个紧预算档领先（$2.99–$5.97），纯 T3 在松预算档领先。BF 从不领先，
+  成本-价值曲线全程低于两个对照。
+- **frontierfix**：BF 在 $3.98 领先、$2.99/$9.95 打平；纯 T3 在 $4.98/$5.97 领先。有竞争力但不占优。
 
-The cost-value curve flips between runs, exactly like the point estimates in §1.
+成本-价值曲线和点估计一样在运行之间翻转。
 
-## 6.4 Self-consistency check
+## 6.4 自洽性校验
 
-Recomputed resolved count / TRV from the per-task matrices for both BudgetFlow and pure T3 in all
-three complete runs; all six spot checks match the audit strategy summaries exactly. The numbers
-in this report are internally consistent with the audits.
+用逐任务矩阵重算三个完整运行的解决数/TRV（BF 与纯 T3 各抽查），全部与审计策略汇总完全一致。
+本报告的数字与审计内部自洽。
 
-## 6.5 Local tooling status
+## 7. 结论
 
-`python3` on this box has neither `pip` nor `pytest`; the audit/sensitivity tooling under
-`paper1/code/budgetflow/` (e.g. `claim1_value_sensitivity.py`, `recost.py`) imports cleanly but the
-test suite cannot run here. If replay tooling is needed later, run it where the JSONL and a
-complete Python environment live.
+1. **"价值感知 > 价值盲"是稳健的；"BF 赢 TRV 前沿"不是。** BF 在所有运行里都赢价值盲对照
+   （§6.1）；对纯强模型是抛硬币（4x30 +0.5、retryfix -2.5、frontierfix +1.5）。论文应主打前者，
+   把后者作为边界如实报告。
+2. **主头彩仍押在单任务运气上。** 4x30 的赢面是 `flask-4992` 翻转给 BF；平表下一重打分就变输。
+   frontierfix 的 +1.0 是平价值表下的执行运气。
+3. **具体失败机制是"幻影高价值陷阱"下的预算耗尽。** retryfix 里 BF 只做 25 次付费尝试（纯 T3
+   做了 30），没够到 3 个纯 T3 能解的尾部任务（价值 3.0）；$1.22 押在无解高价值任务上、
+   $1.22 恰好是纯 T3 解决尾部任务的费用。修复方向（按进展证据做任务内升级/止损）属于任务内
+   策略，E1 的 oracle 差距会把这个边界量化（见 §8）。
+4. **`learnedprior` 必须标注为未完成**才能用于论文。
+5. **"current" 这个 BF 输 6.0 的完整运行不在 north_star 证据表里**，正面案例（frontierfix）的审计
+   只在 `outdated/` 的 tmp 文件里。证据摆放需要处理，否则会被看作挑结果。
+6. **8 个任务是硬顶**（3 个是 2.5 分）；大部分幻影价值任何策略都拿不到，这框定了任何分配方案
+   的价值上限。
 
-**Seaborn harness venv (2026-08-12 finding, E1 prerequisite):** the smoke run's five
-seaborn-3190 pairs aborted with `infra_error` after ~75 min each with zero LLM turns. Root cause:
-`_ensure_seaborn_harness_venv` runs `pip install -e ".[dev]"` per policy, and the five policies
-serialize on the venv lock — each pip attempt stalled (>900 s timeout) and the rows were excluded
-as unscoreable. Fix: pre-warm the venv at
-`harness_venvs/mwaskom__seaborn-<fingerprint>` (fingerprint computed by
-`_seaborn_harness_venv_fingerprint` with the runner's Python) including the `.budgetflow_ready`
-marker and the sitecustomize shim, so the harness skips pip entirely. Pre-warm with a pip mirror
-index to avoid stalls. E1 must confirm all six lanes write rows for all 30 tasks.
+## 8. 拍板的实验计划（2026-08-12 增补）
 
-## 7. Conclusions
+两个实验。E1 已拍板；E2 已定两个决策（激进 criticality 价值表；区分度优先挑代码任务）。
 
-1. **The value-aware claim is supported; the leaderboard claim is not.** BudgetFlow robustly beats
-   the value-blind controls (learned router, budget-only) in every run (§6.1). Against pure
-   strong-model-only it is a toss-up among complete runs (4x30 +0.5, retryfix -2.5,
-   frontierfix +1.5). The paper should headline the first result and report the second as a
-   boundary.
-2. **The headline win still rides on single-task luck.** 4x30's win is `flask-4992` flipping to
-   BudgetFlow; re-scored under the flat table it becomes a loss. frontierfix's +1.0 is execution
-   luck on a favorable (flat) value table.
-3. **The concrete failure is budget exhaustion under phantom high-value tasks.** In `retryfix`,
-   BudgetFlow made 25 paid attempts vs pure T3's 30 and missed 3.0 value of late winnable tasks.
-   It burned early budget on failing attempts and on phantom high-value tasks. The fix direction
-   (progress-gated escalation) is inside-task policy and belongs to future work per
-   `north_star.md`; the E1 oracle quantifies this boundary (see §8).
-4. **`learnedprior` must be flagged incomplete** before any paper use.
-5. **The positive-case audit is filed under `outdated/`** while the negative runs are in the main
-   reports directory. Promote it or the selection will look cherry-picked.
-6. **8 tasks are a hard ceiling** (3 of them 2.5-value); most of the phantom value is unobtainable
-   by any policy, which bounds the upside of any allocation scheme.
+### E1 — 6x30 完成型运行（已拍板）
 
-## 8. Locked experiment plan (2026-08-12 addendum)
+一次运行、一份自洽数据。跑完所有 lane 的目的**不是** oracle 本身——而是论文里的每个对比和
+曲线都来自同一份数据，消灭当前四运行证据的跨运行方差。
 
-Two experiments are planned. E1 is locked; E2 is designed with two decisions ratified
-(aggressive criticality value table; discrimination-first code task selection).
+- 任务：固定 30 任务集、固定顺序。策略：**6 个**——纯 T2、纯 T3、学得路由、只看预算、
+  BudgetFlow 任务级、**segment-level BudgetFlow**（第 6 策略，2026-08-12 加入）。
+- **第 6 策略 — segment-level BudgetFlow policy**：任务级价值感知分配 + 任务内按进展证据的
+  升级/止损。先用便宜模型试探可解性；出现进展证据（动了关键文件、测试在变好）才押强模型；
+  无进展的任务早停，不再消耗为高价值任务预留的强模型预算。直接针对幻影陷阱失效模式
+  （$1.22 押在无解高价值任务上），且不破坏共享预算协议。
+- 共享硬预算上限提高到所有 lane 都能尝试全部 30 任务（纯 T2 lane 在 $9.95 下目前只到 ~24–26
+  个任务；完成型上限 ≈ $12–13）。
+- 价值表：激进 criticality（10 个高价值任务，含 4×2.5），执行前冻结预注册。
+- 同一份数据产出的分析：
+  1. $9.95 下的 6 策略对比（从完整行回放）。
+  2. $2 / $4 / $6.5 / $9.95 的预算回放曲线——论文的成本-价值前沿主图。
+  3. 观测分层 oracle（事后诸葛亮上限）：BF 与 oracle 的差距**量化幻影陷阱边界**；
+     segment-level 变体的差距检验进展门控能否捡回它。
+  4. 逐任务预算归属，端到端验证 $1.22 的幻影陷阱对账。
+  5. segment-level vs 任务级 BF：价值差就是"任务内升级"问题，作为运行内消融。
+- 成本：~$60。
 
-### E1 — 6x30 completion run (LOCKED)
+### E2 — 10+10 混合批次（设计；代码任务挑选已定，文本任务待定稿）
 
-One run, one self-consistent dataset. The point of running all lanes to completion is **not** the
-oracle per se — it is that every comparison and curve in the paper is then derived from a single
-dataset, eliminating the cross-run variance that makes the current four-run evidence fragile.
+20 个任务、一个共享预算、两种验证器族：
 
-- Tasks: fixed 30-task set, fixed order. Policies: **6** — bare T2, bare T3, learned router,
-  budget-only, BudgetFlow task-level, and **segment-level BudgetFlow** (6th strategy, added
-  2026-08-12).
-- **6th strategy — segment-level BudgetFlow policy**: task-level value-aware allocation plus
-  inside-task progress-gated escalation. The cheap model probes solvability first; the strong
-  model is committed only on progress evidence (gold files touched, tests improving); no-progress
-  tasks stop early instead of consuming reserved strong-model budget. This targets the
-  phantom-trap failure mode ($1.22 reserved for unsolvable high-value tasks) inside the
-  shared-budget protocol. Deliberate boundary change (2026-08-12): this crosses the
-  stage/segment line `north_star.md` had marked as future work; `north_star.md` needs a matching
-  revision so Claim 1 now includes the segment-level variant as a within-run ablation.
-- Shared hard budget with the cap raised so every lane attempts all 30 tasks (the pure-T2 lane
-  currently exhausts at ~24–26 tasks under $9.95; completion cap ≈ $12–13).
-- Value table: aggressive criticality (10 high-value tasks incl. 4×2.5), frozen pre-registration.
-- Outputs, all from the one dataset:
-  1. 6-policy comparison at $9.95 (replayed from completed rows).
-  2. Budget-cap replay at $2 / $4 / $6.5 / $9.95 — the paper's cost-value frontier figure.
-  3. Observed-tier oracle (hindsight ceiling): the BF-to-oracle gap **quantifies the phantom-trap
-     boundary**, and the segment-level variant's gap tests whether progress gating recovers it.
-  4. Per-task budget attribution to verify the $1.22 phantom-trap accounting end-to-end.
-  5. Segment-level vs task-level BF: the value delta is the inside-task escalation question,
-     measured as a within-run ablation.
-- Cost: ~$60.
+- 10 个代码任务从固定 30 任务集按**区分度优先 + 仓库均衡**挑选（已定准则）：优先选审计里策略
+  分歧大的任务，6 个仓库全保留。候选名单：`flask-4992`、`flask-4045`、`seaborn-3407`、
+  `sympy-15346`、`sympy-17655`、`django-15814`、`django-13964`、`sphinx-7975`、`sphinx-7738`、
+  `pylint-7993`（8 个区分度高、2 个陷阱/硬顶、1 个易过；6 仓库全覆盖）。
+- 10 个文本任务采样自**公开权威数据集**（不自己造任务）：
+  - 5 × SummEval（新闻摘要；4 维人类专家评分——人类评分可用于验证 LLM judge，judge-人类一致性
+    是论文里的一个数）。
+  - 5 × AlpacaEval（指令遵循；标准 LLM-as-judge 基准，~2k stars，活跃维护）。
+  - IFEval 按决策放弃。
+- 一个批次里的验证器形态：二进制测试（代码）、带人类验证的分级评分（SummEval）、LLM-as-judge
+  （AlpacaEval）。"解决" = 分数 ≥ 冻结阈值（与代码任务同一 TRV 口径）；连续分数 × 价值作为次要指标。
+- Judge：冻结评分细则 + 冻结 prompt + 冻结模型，盲评（不知道输出来自哪个策略）；SummEval 子集上
+  报告 judge-人类一致性。
+- 价值在**执行前全部预注册冻结**（代码任务用激进 criticality 表；文本任务新预注册，1.0/1.5/2.5 混合）。
+- 分析：总体 + 分族 TRV、oracle 差距、验证器形态分解、每族的"停止 vs 降级"行为、judge 稳健性。
+- 这就是泛化性证据：价值感知分配在异构验证器下依然稳健，正面回应"0/1 与连续判定"的批评。
+- 成本：~$30–40。
 
-### E2 — 10+10 mixed batch (design; code task selection ratified, text tasks to finalize)
+### 数据集落地
 
-20 tasks, one shared budget, two verifier families:
+SummEval（100 篇文章 / 1600 条摘要）和 AlpacaEval（805 条 prompt）都很小，不需要也不存在
+Lite 版。两者都通过 HuggingFace 加载（`mteb/summeval`、`tatsu-lab/alpaca_eval`），本机已配置
+HF 镜像。
 
-- 10 code tasks selected from the fixed 30 with **discrimination-first + repo balance**
-  (criterion ratified): prefer tasks where policies disagree in the audits; keep all six repos.
-  Candidate list: `flask-4992`, `flask-4045`, `seaborn-3407`, `sympy-15346`, `sympy-17655`,
-  `django-15814`, `django-13964`, `sphinx-7975`, `sphinx-7738`, `pylint-7993`
-  (8 discriminating, 2 trap/ceiling, 1 easy-pass; 6 repos represented).
-- 10 text tasks sampled from **public, authoritative datasets** (no self-made tasks):
-  - 5 × SummEval (news summarization; human expert scores on 4 dimensions — the human scores let
-    us validate the LLM judge: judge-human agreement is a paper number).
-  - 5 × AlpacaEval (instruction following; standard LLM-as-judge benchmark, ~2k stars, active).
-  - IFEval dropped by decision.
-- Verifier forms in one batch: binary tests (code), graded rubric with human-validation
-  (SummEval), LLM-as-judge (AlpacaEval). "Resolved" = score ≥ frozen threshold for TRV
-  comparability; continuous score × value reported as secondary.
-- Judge: frozen rubric + frozen prompt + frozen model, blind to policy, judge-human agreement
-  reported on the SummEval subset.
-- Values pre-registered before execution (code values from the aggressive criticality table;
-  text values newly pre-registered, mixed 1.0/1.5/2.5).
-- Analyses: overall + per-family TRV, oracle gap, verifier-type breakdown, stop-vs-downgrade
-  behavior per family, judge robustness.
-- This is the generalization evidence: value-aware allocation under heterogeneous verifiers,
-  directly answering the "0/1 vs continuous" critique.
-- Cost: ~$30–40.
+## 9. 2026-08-12 讨论的洞察
 
-### Dataset logistics
+1. **维度收窄为价值 + effort。** "难度"是混淆概念；正确的第二维度是 effort（执行前估计的 token
+   消耗——schema 里本来就叫 `task_effort` / Estimated Task Token Demand）。价值 = 执行前注入的
+   外生经济权重；effort = 尝试的成本。高 effort ≠ 高价值（读很多 PDF）。论文应彻底弃用
+   "difficulty" 的说法。
+2. **学得路由对照组是"信号阶梯"的中间一阶。** 只看预算（无信号）→ 学得路由（effort 信号）→
+   BudgetFlow（effort + 价值）。数据里它是 BF 最强的价值盲对手（"current" 运行 21.0 vs 15.0），
+   必须保留，且要公平校准（它模仿历史起步决策，训练来源必须披露）。
+3. **泛化性需要第二域，不是论证。** 价值信号构造上就域无关；effort 特征域相关（路由换域必须
+   重训）。10+10 混合批次把"机制级可迁移"从抽象变成跨验证器形态的证据，SummEval 的人类评分
+   验证 judge。
+4. **BudgetFlow 的机制不学习。** 分配策略是消费预注册价值的冻结规则；记忆基础设施存在但主线
+   证据跑的是 prior/adapt off；跨运行持续学习是 future work。这个不对称是刻意的：对比隔离的
+   就是"价值信号"这个变量（"学来的、盲价值" vs "冻结的、见价值"）。
+5. **oracle 是边界测量仪，不是主角。** 论文的主张是同一份自洽数据里 BF 对价值盲基线；oracle
+   量化幻影陷阱边界，兼作标准的 regret 式诊断。
 
-SummEval (100 articles / 1600 summaries) and AlpacaEval (805 prompts) are small; no Lite
-versions exist or are needed. Both load via HuggingFace (`mteb/summeval`, `tatsu-lab/alpaca_eval`)
-through the HF mirror configured for this host.
+## 10. 没有原始 JSONL 就做不了的事
 
-## 9. Insights from the 2026-08-12 discussion
+- KV 缓存折扣重计费（需要逐 turn 的输入/输出 token 数）。
+- 精确的逐任务预算归属与止损空间（矩阵 cost 只有首 tier）。
+- 用仓库审计工具（`claim1_value_sensitivity.py`、`recost.py`、预算回放）在真实行上重跑。
+- 对 frontierfix 运行做干净的值/预算敏感性（它的逐任务行只有这里的汇总矩阵）。
 
-1. **Dimensions narrow to value + effort.** "Difficulty" is a conflation; the correct second
-   dimension is effort (run-before estimated token demand — the schema already names it
-   `task_effort` / Estimated Task Token Demand). Value = exogenous economic weight injected
-   before execution; effort = cost of attempting. High effort ≠ high value (reading many PDFs).
-   The paper should drop "difficulty" language entirely.
-2. **The learned-router control is the middle rung of the signal ladder.** budget-only
-   (no signal) → learned router (effort signal) → BudgetFlow (effort + value). It is the
-   strongest value-blind competitor in the data (current run: router 21.0 vs BF 15.0), so it
-   must be kept — and trained/calibrated fairly (it imitates historical start-tier choices; its
-   training provenance must be disclosed).
-3. **Generalization needs a second domain, not an argument.** Value is domain-independent by
-   construction; effort features are domain-specific (the router must be retrained per domain).
-   The 10+10 mixed batch turns "mechanism-level portability" from an abstraction into evidence
-   across verifier forms, with SummEval's human scores validating the judge.
-4. **BudgetFlow's mechanism does not learn.** The allocation policy is frozen rules consuming
-   pre-registered value; memory infrastructure exists but the mainline evidence ran with
-   prior/adapt off; cross-run continual learning is future work. This asymmetry is deliberate:
-   the comparison isolates the value signal ("learned, value-blind" vs "frozen, value-aware").
-5. **The oracle is a boundary meter, not the headline.** The paper's claim is BF vs the
-   value-blind baselines on one self-consistent dataset; the oracle quantifies the phantom-trap
-   boundary and doubles as a standard regret-style diagnostic.
-
-## 10. What is blocked without the run JSONL
-
-- KV-cache cost-discount recosting (needs per-turn input/output token counts).
-- Precise per-task budget attribution and stop-loss headroom (matrix costs are first-tier only).
-- Re-running the repo audit tooling (`claim1_value_sensitivity.py`, `recost.py`, budget replay) on
-  the actual rows.
-- Clean value/budget sensitivity on the `frontierfix` run (its per-task rows exist only as the
-  summarized matrix here).
-
-If the run JSONL can be restored from the execution machine (`/root/.dev/AgentOS/...` per the
-runtime CostSource audits), the audit tooling in `paper1/code/budgetflow/experiments/` can
-reproduce all three sensitivity families directly.
+如果运行 JSONL 能从执行机（审计里 runtime CostSource 指向的 `/root/.dev/AgentOS/...`）取回，
+`paper1/code/budgetflow/experiments/` 下的审计工具可以直接重产出三族敏感性。
